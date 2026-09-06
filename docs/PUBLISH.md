@@ -11,6 +11,24 @@ Scope:
 - Historical tags `v0.1.0`, `v0.1.1`, and `v0.2.0` are already backfilled in
   `CHANGELOG.md`.
 
+The repository publishes through `.github/workflows/release.yml` using PyPI
+Trusted Publishing. The workflow builds and checks distributions on `v*` tag
+pushes, then publishes them through the protected `pypi` GitHub environment.
+No PyPI API token belongs in GitHub Secrets.
+
+For the first setup, register a pending GitHub publisher at
+<https://pypi.org/manage/account/publishing/> with:
+
+- PyPI project name: `tweetnook`
+- Owner: `gezerwezer`
+- Repository: `tweetnook`
+- Workflow name: `release.yml`
+- Environment name: `pypi`
+
+Configure the `pypi` GitHub environment with a required reviewer before using
+it for a real release. A pending publisher can create the new PyPI project when
+the first tagged workflow succeeds.
+
 ## Versioning
 
 Use semver-style version bumps:
@@ -60,11 +78,12 @@ Use semver-style version bumps:
 - [ ] Create an annotated tag:
       `git tag -a vX.Y.Z -m "vX.Y.Z"`
 - [ ] Push the release commit and tag:
-      `git push origin main`, `git push origin vX.Y.Z`
-- [ ] Publish to PyPI with the configured credentials:
-      `uv publish dist/tweetnook-X.Y.Z-py3-none-any.whl dist/tweetnook-X.Y.Z.tar.gz`
-- [ ] If `uv publish` is not configured, use the fallback upload path:
-      `uvx --from twine twine upload dist/tweetnook-X.Y.Z-py3-none-any.whl dist/tweetnook-X.Y.Z.tar.gz`
+      `git push origin main`, `git push origin vX.Y.Z`; the tagged push starts
+      `.github/workflows/release.yml` and publishes through Trusted Publishing
+      after the `pypi` environment approval.
+- [ ] Confirm the tagged GitHub Actions workflow publishes the distributions to
+      PyPI. Use manual `uv publish`/Twine upload only as an intentional fallback
+      when the workflow is unavailable.
 - [ ] Verify the published install path from PyPI:
       `uvx --refresh --from "tweetnook==X.Y.Z" tweetnook --help`
 - [ ] Extract the `## [X.Y.Z]` section body from `CHANGELOG.md` to a notes file

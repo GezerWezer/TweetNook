@@ -148,6 +148,18 @@ The commands above describe mechanics, not authorization. Publishing, pushing,
 tagging, and release creation are external state changes and require the release
 owner's direction.
 
+## GitHub Actions Trusted Publishing
+
+The active release workflow is
+[`../../.github/workflows/release.yml`](../../.github/workflows/release.yml).
+It builds and checks the wheel/source distribution on `v*` tag pushes, stores
+the artifacts, and publishes them through the `pypi` GitHub environment using
+PyPI Trusted Publishing. Configure the matching pending publisher on PyPI with
+owner `gezerwezer`, repository `tweetnook`, workflow `release.yml`, and
+environment `pypi`. No PyPI API token or GitHub secret is required.
+
+Protect the `pypi` GitHub environment with a required reviewer before releasing.
+
 ## Archive compatibility notes
 
 Every release touching storage/import must document:
