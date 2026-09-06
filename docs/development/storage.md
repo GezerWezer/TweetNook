@@ -6,7 +6,8 @@
 `ArchiveStore` owns database access, schema upgrades, and record merging. It uses
 SQLite schema version 5 with FTS5 search. Collection memberships, shared tweet
 content, and raw captures have distinct roles within the same archive table.
-LanceDB and PyArrow support the legacy importer.
+The optional `legacy-migration` extra provides LanceDB for the legacy importer;
+PyArrow is installed transitively with it.
 
 ## Connection and schema lifecycle
 

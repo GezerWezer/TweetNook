@@ -376,15 +376,17 @@ def run_migration(
 
     lancedb = _import_lancedb()
     if lancedb is None:
+        message = (
+            "The `legacy-migration` extra is required to read the legacy archive. "
+            'Install it with `python -m pip install "tweetnook[legacy-migration]"`.'
+        )
         if pipeline is not None:
-            message = "lancedb and pyarrow are required to read the legacy archive"
             pipeline.fail_step("migration-inspect", message)
             pipeline.issue(message, level="error", dedupe_key="migration:dependencies")
             pipeline.skip_step("migration-copy", "legacy migration dependencies being unavailable")
             pipeline.skip_step("migration-index", "no rows being migrated")
         else:
-            print("Error: lancedb and pyarrow are required to run the migration.")
-            print("Please reinstall tweetnook with its migration dependencies.")
+            print(f"Error: {message}")
         return MigrationResult(status="dependency_missing")
 
     if pipeline is not None:

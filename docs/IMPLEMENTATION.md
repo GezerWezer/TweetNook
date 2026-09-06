@@ -2,6 +2,12 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Dependency trim (2026-09-06)
+
+- [x] Move LanceDB legacy migration support to the optional `legacy-migration` extra and remove the direct PyArrow dependency.
+- [x] Remove unused Loguru setup and the uninvoked Mypy dev dependency.
+- [x] Update migration/install guidance and validate the locked dependency graph.
+
 ## Application rename (2026-09-06)
 
 - [x] Rename the Python package, distribution metadata, console command, and systemd identifiers to TweetNook.

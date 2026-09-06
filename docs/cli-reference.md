@@ -292,6 +292,12 @@ temporary disk space, and does not clean media or activity files.
 tweetnook migrate
 ```
 
+The legacy migration support is optional. Install it before running this command:
+
+```bash
+python -m pip install "tweetnook[legacy-migration]"
+```
+
 Look for the fixed legacy `<data>/archive.lancedb` source and copy it into the
 current SQLite `archive.db`. The command has no options. Keep the old source
 until row counts/search/database checks validate the result.

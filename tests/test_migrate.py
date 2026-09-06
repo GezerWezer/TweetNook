@@ -473,8 +473,8 @@ def test_missing_optional_dependency_returns_result_instead_of_exiting(
 
     assert result.status == "dependency_missing"
     output = capsys.readouterr().out
-    assert "lancedb and pyarrow are required" in output
-    assert "reinstall tweetnook" in output
+    assert "legacy-migration" in output
+    assert "tweetnook[legacy-migration]" in output
 
 
 @pytest.mark.parametrize(
