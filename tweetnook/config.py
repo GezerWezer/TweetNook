@@ -133,11 +133,11 @@ class TaggingConfig(BaseModel):
     api_mode: Literal["free", "paid"] = "free"
     model: str = Field(default="gemini-3.6-flash", min_length=1)
     thinking_level: Literal["high", "medium", "low", "none"] = "high"
-    google_search: bool = True
+    google_search: bool = False
     free_batch_size: int = Field(default=20, ge=1, le=20)
     free_rpm: int = Field(default=10, ge=1)
-    free_rpd: int = Field(default=250, ge=1)
-    processing_tier: Literal["standard", "flex"] = "standard"
+    free_rpd: int = Field(default=20, ge=1)
+    processing_tier: Literal["standard", "flex"] = "flex"
     daily_spend_limit_usd: float | None = Field(default=None, gt=0)
     unlimited_spend: bool = False
     search_safety_reserve: int = Field(default=100, ge=1, le=1000)

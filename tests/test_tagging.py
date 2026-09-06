@@ -648,7 +648,12 @@ async def test_paid_interaction_uses_model_schema_search_and_service_tier(
 
     tagged = await tagging.tag_media_tweets(
         store,
-        config(api_mode="paid", unlimited_spend=True, processing_tier=tier),
+        config(
+            api_mode="paid",
+            unlimited_spend=True,
+            processing_tier=tier,
+            google_search=True,
+        ),
         paths,
         console()[0],
         ["1"],
@@ -895,7 +900,7 @@ async def test_unknown_search_accounting_disables_search_for_later_requests(
     for tweet_id in ("1", "2"):
         await tagging.tag_media_tweets(
             store,
-            config(api_mode="paid", unlimited_spend=True),
+            config(api_mode="paid", unlimited_spend=True, google_search=True),
             paths,
             console()[0],
             [tweet_id],
@@ -927,7 +932,7 @@ async def test_retry_with_known_search_usage_keeps_first_attempt_accounted(
 
     tagged = await tagging.tag_media_tweets(
         store,
-        config(api_mode="paid", unlimited_spend=True),
+        config(api_mode="paid", unlimited_spend=True, google_search=True),
         paths,
         console()[0],
         ["1"],
@@ -1003,7 +1008,7 @@ async def test_retry_with_unknown_search_usage_disables_search_and_consumes_rese
 
     tagged = await tagging.tag_media_tweets(
         store,
-        config(api_mode="paid", unlimited_spend=True),
+        config(api_mode="paid", unlimited_spend=True, google_search=True),
         paths,
         console()[0],
         ["1"],
