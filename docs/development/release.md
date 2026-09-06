@@ -141,8 +141,9 @@ uv publish \
 ```
 
 Use Twine only as an intentional fallback. Refresh registry resolver caches when
-verifying. Create a GitHub Release from the corresponding changelog section;
-tags alone do not create the release-page entry.
+verifying. After the PyPI upload succeeds, the tagged workflow creates the
+GitHub Release with generated notes and the exact wheel/source artifacts; review
+or edit that release entry as needed.
 
 The commands above describe mechanics, not authorization. Publishing, pushing,
 tagging, and release creation are external state changes and require the release
@@ -153,10 +154,12 @@ owner's direction.
 The active release workflow is
 [`../../.github/workflows/release.yml`](../../.github/workflows/release.yml).
 It builds and checks the wheel/source distribution on `v*` tag pushes, stores
-the artifacts, and publishes them through the `pypi` GitHub environment using
-PyPI Trusted Publishing. Configure the matching pending publisher on PyPI with
-owner `gezerwezer`, repository `tweetnook`, workflow `release.yml`, and
-environment `pypi`. No PyPI API token or GitHub secret is required.
+the artifacts, publishes them through the `pypi` GitHub environment using PyPI
+Trusted Publishing, and creates a GitHub Release after the upload succeeds.
+The release includes GitHub-generated notes and both distribution artifacts.
+Configure the matching pending publisher on PyPI with owner `gezerwezer`,
+repository `tweetnook`, workflow `release.yml`, and environment `pypi`. No
+PyPI API token or GitHub secret is required.
 
 Protect the `pypi` GitHub environment with a required reviewer before releasing.
 

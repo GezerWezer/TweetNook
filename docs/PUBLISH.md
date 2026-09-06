@@ -13,8 +13,9 @@ Scope:
 
 The repository publishes through `.github/workflows/release.yml` using PyPI
 Trusted Publishing. The workflow builds and checks distributions on `v*` tag
-pushes, then publishes them through the protected `pypi` GitHub environment.
-No PyPI API token belongs in GitHub Secrets.
+pushes, publishes them through the protected `pypi` GitHub environment, and then
+creates a GitHub Release with GitHub-generated notes and the exact wheel/source
+artifacts. No PyPI API token belongs in GitHub Secrets.
 
 For the first setup, register a pending GitHub publisher at
 <https://pypi.org/manage/account/publishing/> with:
@@ -79,17 +80,18 @@ Use semver-style version bumps:
       `git tag -a vX.Y.Z -m "vX.Y.Z"`
 - [ ] Push the release commit and tag:
       `git push origin main`, `git push origin vX.Y.Z`; the tagged push starts
-      `.github/workflows/release.yml` and publishes through Trusted Publishing
-      after the `pypi` environment approval.
+      `.github/workflows/release.yml`, publishes through Trusted Publishing
+      after the `pypi` environment approval, and creates the GitHub Release.
 - [ ] Confirm the tagged GitHub Actions workflow publishes the distributions to
-      PyPI. Use manual `uv publish`/Twine upload only as an intentional fallback
-      when the workflow is unavailable.
+      PyPI and creates the GitHub Release with generated notes and both
+      distribution artifacts. Use manual `uv publish`/Twine upload only as an
+      intentional fallback when the workflow is unavailable.
 - [ ] Verify the published install path from PyPI:
       `uvx --refresh --from "tweetnook==X.Y.Z" tweetnook --help`
-- [ ] Extract the `## [X.Y.Z]` section body from `CHANGELOG.md` to a notes file
-      (stop before the next `## [` header and before the `[x.y.z]: ...` link
-      footer), then create the GitHub Release and mark it latest:
-      `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <path> --latest`
+- [ ] Review the GitHub Release created by the tagged workflow. It uses
+      GitHub-generated notes and includes the exact wheel and source archive
+      built for the tag; edit the notes if a release-specific summary is
+      preferred.
 - [ ] Verify the GitHub tag/release page and PyPI project page both show the new
       version correctly
 - [ ] Confirm the tree is clean again with `git status -sb`
@@ -109,8 +111,8 @@ Use semver-style version bumps:
   the release entry when the version is being prepared.
 - If a release includes breaking behavior or archive upgrade steps, add the
   upgrade note to both `README.md` and `CHANGELOG.md`.
-- GitHub Releases are a separate overlay on top of pushed git tags. Tags alone
-  do not populate the Releases page; `gh release create` is what exposes a tag
-  as a versioned release with notes and a browsable entry. Historical tags
+- GitHub Releases are a separate overlay on top of pushed git tags. The tagged
+  workflow creates that release after the PyPI upload, using GitHub-generated
+  notes and attaching the built wheel and source archive. Historical tags
   `v0.1.0` through `v0.2.4` were backfilled on 2026-04-23 using the per-version
   `CHANGELOG.md` sections as release notes.
