@@ -1,0 +1,13 @@
+{
+  "name": "tweetnook-web-assets",
+  "private": true,
+  "scripts": {
+    "build": "node build.cjs"
+  },
+  "devDependencies": {
+    "@alpinejs/collapse": "3.13.3",
+    "@alpinejs/intersect": "3.13.3",
+    "alpinejs": "3.13.3",
+    "tailwindcss": "3.4.17"
+  }
+}
