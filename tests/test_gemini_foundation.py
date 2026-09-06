@@ -96,8 +96,10 @@ def test_blank_additional_instructions_are_normalized_to_none() -> None:
     )
 
 
-def test_search_defaults_on_but_free_execution_disables_it() -> None:
-    assert TaggingConfig().google_search is True
+def test_tagging_defaults_match_documented_values() -> None:
+    assert TaggingConfig().google_search is False
+    assert TaggingConfig().free_rpd == 20
+    assert TaggingConfig().processing_tier == "flex"
 
 
 def test_live_model_metadata_drives_model_discovery() -> None:
