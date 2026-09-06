@@ -46,8 +46,8 @@ and [upstream history](https://github.com/lhl/tweetxvault/commits/main/).
 
 ### Claims corrected or excluded
 
-- LanceDB and PyArrow remain declared dependencies for legacy migration. The
-  SQLite change does not mean they have disappeared from the installation.
+- LanceDB remains available through the optional `legacy-migration` extra for
+  legacy migration; PyArrow is installed transitively by that extra.
 - Upstream already supplies syncing and archive import,
   media downloads, article retrieval, thread expansion, and link previews. Those
   features are credited as inherited rather than presented as new additions.

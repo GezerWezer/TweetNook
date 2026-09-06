@@ -78,6 +78,12 @@ create an automatic database backup, but that copy does not include media or
 configuration. A database from a newer, unsupported version is rejected.
 
 For the older/upstream LanceDB format, keep `archive.lancedb` in the data folder.
+Before migrating, install the one-time migration support:
+
+```bash
+python -m pip install "tweetnook[legacy-migration]"
+```
+
 If no SQLite archive exists, Web Setup detects it and offers **Migrate existing
 archive**. Advanced users can run the same migration from the terminal:
 

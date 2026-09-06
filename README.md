@@ -50,6 +50,12 @@ Install TweetNook with pip:
 python3 -m pip install tweetnook
 ````
 
+If you need to migrate an older upstream LanceDB archive, install the migration support too:
+
+```bash
+python3 -m pip install "tweetnook[legacy-migration]"
+```
+
 To include automated tagging support:
 
 ```bash

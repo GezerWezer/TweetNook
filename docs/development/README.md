@@ -27,6 +27,7 @@ node tests/js/test_web_assets.cjs
 
 Node.js is needed for the JavaScript asset harness. For optional tagging work,
 install with `uv sync --extra automated-tagging`, then run normal `uv run tweetnook` commands.
+For legacy LanceDB migration tests, add `--extra legacy-migration` to that command.
 Use temporary archives and mocked provider calls in tests; see [Testing](testing.md).
 
 ## Understand the application
@@ -57,7 +58,7 @@ responsibilities and relevant tests.
 - Long-running web jobs use the same CLI pipelines as terminal commands.
 - The scheduler runs only during the web server's lifetime.
 - Core startup works without Gemini's optional dependencies.
-- The active store is SQLite with FTS5; LanceDB dependencies support legacy imports.
+- The active store is SQLite with FTS5; the optional `legacy-migration` extra supports legacy imports.
 
 Lock coverage, merge precedence, and failure handling are detailed in
 [Architecture](architecture.md) and [Storage](storage.md).

@@ -6,7 +6,6 @@ import asyncio
 import os
 import re
 import subprocess
-import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,7 +13,6 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import typer
-from loguru import logger
 from rich import box
 from rich.console import Console
 from rich.table import Table
@@ -220,9 +218,7 @@ SEARCH_LIMIT_OPTION = Annotated[int, typer.Option("--limit", help=SEARCH_LIMIT_H
 
 
 def _configure_logging() -> Console:
-    logger.remove()
     service_mode = bool(os.environ.get("INVOCATION_ID") or os.environ.get("JOURNAL_STREAM"))
-    logger.add(sys.stderr, level="INFO", format="{message}", colorize=not service_mode)
     return Console(
         stderr=True,
         force_terminal=False if service_mode else None,

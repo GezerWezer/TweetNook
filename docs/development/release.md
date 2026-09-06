@@ -29,8 +29,6 @@ Known metadata mismatches:
 - `readme = "README.md"`, not staged `README.md`;
 - the original packaged README still advertises stale FastAPI/Vue and HTML-
   export behavior;
-- `lancedb` and `pyarrow` remain mandatory core dependencies even though the
-  current runtime uses them only for one-way legacy archive migration;
 - public PyPI can resolve a different upstream version/feature set;
 - original changelog/docs contain stale runtime claims.
 
