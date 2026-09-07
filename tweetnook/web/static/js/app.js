@@ -1566,14 +1566,43 @@ function tweetApp() {
             this.openTagModal(tweetId, tagsData);
         },
 
+        copyTextWithLegacyFallback(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'fixed';
+            textarea.style.top = '0';
+            textarea.style.left = '-9999px';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            try {
+                textarea.focus();
+                textarea.select();
+                if (!document.execCommand('copy')) {
+                    throw new Error('Legacy clipboard command failed');
+                }
+            } finally {
+                document.body.removeChild(textarea);
+            }
+        },
+
         async copyRawTweet(tweet) {
             this.closeTweetMenu();
             if (!tweet?.raw_json) {
                 alert('No raw tweet data is available.');
                 return;
             }
+            const rawText = JSON.stringify(tweet.raw_json, null, 2);
             try {
-                await navigator.clipboard.writeText(JSON.stringify(tweet.raw_json, null, 2));
+                if (globalThis.navigator?.clipboard?.writeText) {
+                    try {
+                        await globalThis.navigator.clipboard.writeText(rawText);
+                        return;
+                    } catch (error) {
+                        console.warn('Clipboard API copy failed; trying fallback', error);
+                    }
+                }
+                this.copyTextWithLegacyFallback(rawText);
             } catch (error) {
                 console.error('Could not copy raw tweet data', error);
                 alert('Could not copy raw tweet data.');
