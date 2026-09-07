@@ -6,7 +6,7 @@ import json
 import sqlite3
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -2629,113 +2629,186 @@ class ArchiveStore:
         limit: int = 20,
         exclude_tweet_ids: set[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Return one homogeneous batch of untagged saved or directly quoted tweets."""
+        """Return one homogeneous batch of untagged saved or directly quoted tweets.
+
+        Keep candidate discovery streaming.  A materialized CTE for the complete
+        eligible population is particularly expensive here: large archives make
+        SQLite sort that population into temporary B-trees before it can return
+        even a one-tweet batch.  Walking the existing record/page index lets us
+        stop as soon as the next homogeneous batch is full and keeps temporary
+        storage independent of archive size.
+        """
+        if limit < 1:
+            return []
+
         state_placeholders = ", ".join("?" for _state in AVAILABLE_ENRICHMENT_STATES)
-        excluded = sorted(exclude_tweet_ids or set())
-        exclusion_sql = ""
-        if excluded:
-            exclusion_sql = (
-                "AND candidate.tweet_id NOT IN (" + ", ".join("?" for _tweet_id in excluded) + ")"
+        valid_tag_sql = """
+            NOT EXISTS (
+                SELECT 1
+                FROM archive tag INDEXED BY idx_archive_tweet_id
+                WHERE tag.tweet_id = {tweet_id}
+                  AND tag.record_type = 'media_tag'
+                  AND (tag.enrichment_state = 'done' OR tag.enrichment_state IS NULL)
+                  AND json_valid(tag.raw_json)
+                  AND json_type(tag.raw_json, '$.tags') = 'array'
+                  AND json_array_length(tag.raw_json, '$.tags') > 0
             )
-        query = f"""
-            WITH saved AS (
-                SELECT t.tweet_id, MAX(COALESCE(t.created_at_ts, 0)) AS sort_ts
-                FROM archive t INDEXED BY idx_archive_record_page
-                WHERE t.record_type = 'tweet'
-                  AND EXISTS (
-                      SELECT 1
-                      FROM archive o INDEXED BY idx_archive_tweet_id
-                      WHERE o.tweet_id = t.tweet_id
-                        AND o.record_type = 'tweet_object'
-                        AND o.enrichment_state IN ({state_placeholders})
-                  )
-                GROUP BY t.tweet_id
-            ),
-            quoted AS (
-                SELECT r.target_tweet_id AS tweet_id,
-                       MAX(COALESCE(o.created_at_ts, 0)) AS sort_ts
-                FROM archive r INDEXED BY idx_archive_tweet_id
-                JOIN saved s ON s.tweet_id = r.tweet_id
-                JOIN archive o INDEXED BY idx_archive_tweet_id
-                  ON o.tweet_id = r.target_tweet_id
-                 AND o.record_type = 'tweet_object'
-                 AND o.enrichment_state IN ({state_placeholders})
-                WHERE r.record_type = 'tweet_relation'
-                  AND r.relation_type = 'quote_of'
-                GROUP BY r.target_tweet_id
-            ),
-            candidates AS (
-                SELECT tweet_id, MAX(sort_ts) AS sort_ts
-                FROM (
-                    SELECT tweet_id, sort_ts FROM saved
-                    UNION ALL
-                    SELECT tweet_id, sort_ts FROM quoted
-                )
-                GROUP BY tweet_id
-            ),
-            classified AS (
-                SELECT
-                    candidate.tweet_id,
-                    candidate.sort_ts,
-                    (
-                        SELECT relation.target_tweet_id
+        """
+        saved_query = f"""
+            SELECT t.tweet_id, t.created_at_ts AS sort_ts
+            FROM archive t INDEXED BY idx_archive_record_page
+            WHERE t.record_type = 'tweet'
+              AND EXISTS (
+                  SELECT 1
+                  FROM archive o INDEXED BY idx_archive_tweet_id
+                  WHERE o.tweet_id = t.tweet_id
+                    AND o.record_type = 'tweet_object'
+                    AND o.enrichment_state IN ({state_placeholders})
+              )
+              AND {valid_tag_sql.format(tweet_id="t.tweet_id")}
+            ORDER BY t.created_at_ts DESC,
+                     CAST(t.sort_index AS INTEGER) DESC,
+                     t.tweet_id DESC
+        """
+        quoted_query = f"""
+            SELECT o.tweet_id, o.created_at_ts AS sort_ts
+            FROM archive o INDEXED BY idx_archive_record_page
+            WHERE o.record_type = 'tweet_object'
+              AND o.enrichment_state IN ({state_placeholders})
+              AND {valid_tag_sql.format(tweet_id="o.tweet_id")}
+              AND EXISTS (
+                  SELECT 1
+                  FROM archive relation INDEXED BY idx_archive_target_tweet_id
+                  WHERE relation.target_tweet_id = o.tweet_id
+                    AND relation.record_type = 'tweet_relation'
+                    AND relation.relation_type = 'quote_of'
+                    AND EXISTS (
+                        SELECT 1
+                        FROM archive saved INDEXED BY idx_archive_tweet_id
+                        WHERE saved.tweet_id = relation.tweet_id
+                          AND saved.record_type = 'tweet'
+                          AND EXISTS (
+                              SELECT 1
+                              FROM archive source_object INDEXED BY idx_archive_tweet_id
+                              WHERE source_object.tweet_id = saved.tweet_id
+                                AND source_object.record_type = 'tweet_object'
+                                AND source_object.enrichment_state IN ({state_placeholders})
+                          )
+                    )
+              )
+            ORDER BY o.created_at_ts DESC,
+                     CAST(o.sort_index AS INTEGER) DESC,
+                     o.tweet_id DESC
+        """
+        classification_query = """
+            SELECT
+                (
+                    SELECT MIN(relation.target_tweet_id)
+                    FROM archive relation INDEXED BY idx_archive_tweet_id
+                    WHERE relation.tweet_id = ?
+                      AND relation.record_type = 'tweet_relation'
+                      AND relation.relation_type = 'quote_of'
+                ) AS quoted_tweet_id,
+                CASE WHEN
+                    EXISTS (
+                        SELECT 1
+                        FROM archive media INDEXED BY idx_archive_tweet_id
+                        WHERE media.tweet_id = ?
+                          AND media.record_type = 'media'
+                    )
+                    OR EXISTS (
+                        SELECT 1
                         FROM archive relation INDEXED BY idx_archive_tweet_id
-                        WHERE relation.tweet_id = candidate.tweet_id
+                        JOIN archive quoted_media INDEXED BY idx_archive_tweet_id
+                          ON quoted_media.tweet_id = relation.target_tweet_id
+                         AND quoted_media.record_type = 'media'
+                        WHERE relation.tweet_id = ?
                           AND relation.record_type = 'tweet_relation'
                           AND relation.relation_type = 'quote_of'
-                        ORDER BY relation.target_tweet_id
-                        LIMIT 1
-                    ) AS quoted_tweet_id,
-                    CASE WHEN
-                        EXISTS (
-                            SELECT 1
-                            FROM archive media INDEXED BY idx_archive_tweet_id
-                            WHERE media.tweet_id = candidate.tweet_id
-                              AND media.record_type = 'media'
-                        )
-                        OR EXISTS (
-                            SELECT 1
-                            FROM archive relation INDEXED BY idx_archive_tweet_id
-                            JOIN archive quoted_media INDEXED BY idx_archive_tweet_id
-                              ON quoted_media.tweet_id = relation.target_tweet_id
-                             AND quoted_media.record_type = 'media'
-                            WHERE relation.tweet_id = candidate.tweet_id
-                              AND relation.record_type = 'tweet_relation'
-                              AND relation.relation_type = 'quote_of'
-                        )
-                        THEN 'media' ELSE 'text'
-                    END AS content_type
-                FROM candidates candidate
-                WHERE NOT EXISTS (
-                    SELECT 1
-                    FROM archive tag INDEXED BY idx_archive_tweet_id
-                    WHERE tag.tweet_id = candidate.tweet_id
-                      AND tag.record_type = 'media_tag'
-                      AND (tag.enrichment_state = 'done' OR tag.enrichment_state IS NULL)
-                      AND json_valid(tag.raw_json)
-                      AND json_type(tag.raw_json, '$.tags') = 'array'
-                      AND json_array_length(tag.raw_json, '$.tags') > 0
-                )
-                {exclusion_sql}
-            )
-            SELECT tweet_id, quoted_tweet_id, content_type, sort_ts
-            FROM classified
-            WHERE content_type = (
-                SELECT content_type
-                FROM classified
-                ORDER BY sort_ts DESC, tweet_id DESC
-                LIMIT 1
-            )
-            ORDER BY sort_ts DESC, tweet_id DESC
-            LIMIT ?
+                    )
+                    THEN 'media' ELSE 'text'
+                END AS content_type
         """
-        params = [
-            *AVAILABLE_ENRICHMENT_STATES,
-            *AVAILABLE_ENRICHMENT_STATES,
-            *excluded,
-            limit,
-        ]
-        return [dict(row) for row in self.conn.execute(query, params).fetchall()]
+
+        excluded = exclude_tweet_ids or set()
+        seen: set[str] = set()
+        selected_type: str | None = None
+        selected: list[dict[str, Any]] = []
+
+        def ordered_unique_rows(rows: sqlite3.Cursor) -> Iterator[sqlite3.Row]:
+            """Restore tweet-ID tie ordering without an SQLite temp sort."""
+            group_ts: int | None = None
+            group: dict[str, sqlite3.Row] = {}
+            for row in rows:
+                sort_ts = int(row["sort_ts"] or 0)
+                if group_ts is not None and sort_ts != group_ts:
+                    for tweet_id in sorted(group, reverse=True):
+                        yield group[tweet_id]
+                    group.clear()
+                group_ts = sort_ts
+                tweet_id = str(row["tweet_id"])
+                group.setdefault(tweet_id, row)
+            for tweet_id in sorted(group, reverse=True):
+                yield group[tweet_id]
+
+        def next_row(rows: Iterator[sqlite3.Row]) -> sqlite3.Row | None:
+            return next(rows, None)
+
+        def row_key(row: sqlite3.Row) -> tuple[int, str]:
+            return int(row["sort_ts"] or 0), str(row["tweet_id"])
+
+        saved_rows = self.conn.execute(saved_query, AVAILABLE_ENRICHMENT_STATES)
+        quoted_rows = self.conn.execute(
+            quoted_query,
+            (*AVAILABLE_ENRICHMENT_STATES, *AVAILABLE_ENRICHMENT_STATES),
+        )
+        try:
+            saved_stream = ordered_unique_rows(saved_rows)
+            quoted_stream = ordered_unique_rows(quoted_rows)
+            saved_row = next_row(saved_stream)
+            quoted_row = next_row(quoted_stream)
+            while saved_row is not None or quoted_row is not None:
+                if quoted_row is None or (
+                    saved_row is not None and row_key(saved_row) >= row_key(quoted_row)
+                ):
+                    row = saved_row
+                    saved_row = next_row(saved_stream)
+                else:
+                    row = quoted_row
+                    quoted_row = next_row(quoted_stream)
+                if row is None:
+                    continue
+                tweet_id = str(row["tweet_id"])
+                if tweet_id in seen:
+                    continue
+                seen.add(tweet_id)
+                if tweet_id in excluded:
+                    continue
+                classification = self.conn.execute(
+                    classification_query,
+                    (tweet_id, tweet_id, tweet_id),
+                ).fetchone()
+                if classification is None:
+                    continue
+                content_type = str(classification["content_type"])
+                if selected_type is None:
+                    selected_type = content_type
+                if content_type != selected_type:
+                    continue
+                selected.append(
+                    {
+                        "tweet_id": tweet_id,
+                        "quoted_tweet_id": classification["quoted_tweet_id"],
+                        "content_type": content_type,
+                        "sort_ts": int(row["sort_ts"] or 0),
+                    }
+                )
+                if len(selected) >= limit:
+                    break
+        finally:
+            saved_rows.close()
+            quoted_rows.close()
+        return selected
 
     def get_eligible_tweets_for_tagging(self, *, limit: int = 20) -> list[str]:
         """Compatibility wrapper returning IDs from the next homogeneous tag batch."""

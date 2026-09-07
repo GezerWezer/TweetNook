@@ -2,6 +2,14 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Bounded automated-tagging candidate selection (2026-09-06)
+
+- [x] Replace full-population candidate materialization with index-ordered streaming selection.
+- [x] Preserve saved and directly quoted eligibility, homogeneous text/media batches, retries,
+  exclusions, deduplication, and global newest-first processing.
+- [x] Add query-plan and early-stop regressions proving candidate discovery does not create
+  archive-sized temporary B-trees or continue classifying after a batch is full.
+
 ## Settings checkbox scroll containment (2026-09-06)
 
 - [x] Anchor visually hidden checkbox inputs inside their visible Automated Tagging and Schedule controls.

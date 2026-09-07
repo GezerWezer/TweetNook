@@ -85,18 +85,59 @@ def test_tagging_eligibility_filters_dedupes_orders_and_limits(paths) -> None:
     ]
     assert {candidate["content_type"] for candidate in media_candidates} == {"media"}
     assert store.get_tagging_coverage_counts() == (5, 2)
-    eligibility_queries = [statement for statement in statements if "classified AS" in statement]
-    assert len(eligibility_queries) == 2
-    assert all(
-        "FROM archive t INDEXED BY idx_archive_record_page" in statement
-        for statement in eligibility_queries
-    )
-    assert all("classified AS" in statement for statement in eligibility_queries)
+    candidate_queries = [
+        statement
+        for statement in statements
+        if "SELECT t.tweet_id, t.created_at_ts AS sort_ts" in statement
+        or "SELECT o.tweet_id, o.created_at_ts AS sort_ts" in statement
+    ]
+    assert len(candidate_queries) == 4
+    assert all("WITH " not in statement for statement in candidate_queries)
+    assert all("GROUP BY" not in statement for statement in candidate_queries)
+    assert all("INDEXED BY idx_archive_record_page" in statement for statement in candidate_queries)
+    store.conn.set_trace_callback(None)
+    for statement in candidate_queries:
+        plan = store.conn.execute(f"EXPLAIN QUERY PLAN {statement}").fetchall()
+        assert all("TEMP B-TREE" not in row["detail"] for row in plan)
     coverage_queries = [statement for statement in statements if "eligible_tweets AS" in statement]
     assert len(coverage_queries) == 2
     assert "FROM archive t INDEXED BY idx_archive_record_page" in coverage_queries[0]
     assert "quoted AS" in coverage_queries[0]
     assert "FROM saved\n                CROSS JOIN archive relation" in coverage_queries[0]
+    store.close()
+
+
+def test_tagging_candidate_scan_stops_when_batch_is_full(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    for position in range(10):
+        _seed_tag_candidate(store, str(position), created_at_ts=position)
+    statements: list[str] = []
+    store.conn.set_trace_callback(statements.append)
+
+    candidates = store.get_eligible_tagging_candidates(limit=2)
+
+    assert [candidate["tweet_id"] for candidate in candidates] == ["9", "8"]
+    classification_queries = [
+        statement for statement in statements if "AS quoted_tweet_id" in statement
+    ]
+    assert len(classification_queries) == 2
+    candidate_queries = [
+        statement
+        for statement in statements
+        if "AS sort_ts" in statement
+        and (
+            "FROM archive t INDEXED BY idx_archive_record_page" in statement
+            or "FROM archive o INDEXED BY idx_archive_record_page" in statement
+        )
+    ]
+    assert len(candidate_queries) == 2
+    assert all(
+        "TEMP B-TREE" not in row["detail"]
+        for statement in candidate_queries
+        for row in store.conn.execute(f"EXPLAIN QUERY PLAN {statement}").fetchall()
+    )
+    assert all("WITH " not in statement for statement in candidate_queries)
     store.close()
 
 
