@@ -7,6 +7,11 @@ const statsSuspendedVideos = new Set();
 function tweetApp() {
     return {
         viewMode: 'list',
+        activeRoute: { viewMode: 'list' },
+        pendingRoute: null,
+        pendingRouteState: null,
+        navigationDepth: 0,
+        routeUsesPanel: false,
         tweets: [],
         loading: true,
         loadingMore: false,
@@ -745,8 +750,35 @@ function tweetApp() {
             
             // Restore split panel preference
             this.splitPanel = localStorage.getItem('tvx-split-panel') === 'true';
-            
-            
+            this.routeUsesPanel = this.shouldUseSplitPanel();
+
+            const initialRoute = this.parseRoute(window.location.pathname);
+            if (initialRoute) {
+                const initialState = this.historyStateForRoute(initialRoute, {
+                    depth: 0,
+                    scrollY: initialRoute.viewMode === 'list' ? window.scrollY : undefined,
+                });
+                this.activeRoute = initialRoute;
+                this.pendingRoute = initialRoute;
+                this.pendingRouteState = initialState;
+                history.replaceState(initialState, '', this.routeUrl(initialRoute));
+            }
+
+            window.addEventListener('popstate', (event) => {
+                this.pauseAllVideos();
+                const route = this.routeFromHistoryState(event.state)
+                    || this.parseRoute(window.location.pathname);
+                if (route) return this.applyRoute(route, { fromPopState: true, state: event.state });
+            });
+            window.addEventListener('resize', () => {
+                const usePanel = this.shouldUseSplitPanel();
+                if (usePanel === this.routeUsesPanel) return;
+                this.routeUsesPanel = usePanel;
+                if (this.activeRoute.viewMode !== 'list' && this.archiveResourcesLoaded) {
+                    this.applyRoute(this.activeRoute, { state: history.state });
+                }
+            });
+
             this.fetchSetup();
             this.fetchNotices();
             setInterval(() => { this.fetchSetup(); this.fetchNotices(); }, 3000);
@@ -805,30 +837,6 @@ function tweetApp() {
             });
             domObserver.observe(document.body, { childList: true, subtree: true });
             
-            history.replaceState({ viewMode: 'list', scrollY: window.scrollY }, '');
-            
-            window.addEventListener('popstate', (e) => {
-                this.pauseAllVideos();
-                if (e.state && e.state.viewMode === 'thread') {
-                    this.openThread(e.state.tweetId, true);
-                } else if (e.state && e.state.viewMode === 'quotes') {
-                    this.viewMode = 'quotes';
-                    this.quotesTweetId = e.state.quotesTweetId;
-                    if (this.quotesList.length === 0) {
-                        this.fetchQuotes();
-                    }
-                } else {
-                    this.viewMode = 'list';
-                    if (e.state && e.state.scrollY !== undefined) {
-                        window.scrollTo(0, e.state.scrollY);
-                        this.$nextTick(() => {
-                            window.scrollTo(0, e.state.scrollY);
-                            setTimeout(() => window.scrollTo(0, e.state.scrollY), 20);
-                        });
-                    }
-                }
-            });
-
         },
 
         pauseAllVideos() {
@@ -1022,34 +1030,249 @@ function tweetApp() {
             localStorage.setItem('tvx-font-size-px', px);
         },
 
-        toggleSplitPanel(val) {
-            this.splitPanel = val;
-            localStorage.setItem('tvx-split-panel', val);
-            if (!val) this.closePanel();
+        parseRoute(pathname) {
+            if (pathname === '/') return { viewMode: 'list' };
+            const match = pathname.match(/^\/post\/(\d+)(?:\/(quotes))?\/?$/);
+            if (!match) return null;
+            return match[2]
+                ? { viewMode: 'quotes', quotesTweetId: match[1] }
+                : { viewMode: 'thread', tweetId: match[1] };
         },
 
-        closePanel() {
+        routeUrl(route) {
+            if (route?.viewMode === 'list') return '/';
+            if (route?.viewMode === 'thread' && typeof route.tweetId === 'string' && /^\d+$/.test(route.tweetId)) {
+                return `/post/${encodeURIComponent(route.tweetId)}`;
+            }
+            if (route?.viewMode === 'quotes' && typeof route.quotesTweetId === 'string' && /^\d+$/.test(route.quotesTweetId)) {
+                return `/post/${encodeURIComponent(route.quotesTweetId)}/quotes`;
+            }
+            throw new Error('Invalid TweetNook route');
+        },
+
+        routeFromHistoryState(state) {
+            if (!state || typeof state !== 'object') return null;
+            if (state.viewMode === 'list') return { viewMode: 'list' };
+            if (state.viewMode === 'thread' && typeof state.tweetId === 'string' && /^\d+$/.test(state.tweetId)) {
+                return { viewMode: 'thread', tweetId: state.tweetId };
+            }
+            if (state.viewMode === 'quotes' && typeof state.quotesTweetId === 'string' && /^\d+$/.test(state.quotesTweetId)) {
+                return { viewMode: 'quotes', quotesTweetId: state.quotesTweetId };
+            }
+            return null;
+        },
+
+        historyStateForRoute(route, { depth = this.navigationDepth, scrollY } = {}) {
+            const state = { ...route, tweetNookDepth: depth };
+            if (scrollY !== undefined) state.scrollY = scrollY;
+            return state;
+        },
+
+        currentRoute() {
+            return { ...this.activeRoute };
+        },
+
+        routeKey(route) {
+            if (route.viewMode === 'thread') return `thread:${route.tweetId}`;
+            if (route.viewMode === 'quotes') return `quotes:${route.quotesTweetId}`;
+            return 'list';
+        },
+
+        shouldUseSplitPanel() {
+            return this.splitPanel && window.innerWidth >= 1024;
+        },
+
+        pushRoute(route) {
+            const state = this.historyStateForRoute(route, { depth: this.navigationDepth + 1 });
+            history.pushState(state, '', this.routeUrl(route));
+            this.navigationDepth = state.tweetNookDepth;
+            this.activeRoute = { ...route };
+            return state;
+        },
+
+        replaceRoute(route, { scrollY, depth = this.navigationDepth } = {}) {
+            const state = this.historyStateForRoute(route, { depth, scrollY });
+            history.replaceState(state, '', this.routeUrl(route));
+            this.navigationDepth = depth;
+            this.activeRoute = { ...route };
+            return state;
+        },
+
+        savePanelSnapshot() {
+            const top = this.panelStack[this.panelStack.length - 1];
+            if (!top) return;
+            top.scrollY = this.$refs.detailPanel?.scrollTop || 0;
+            if (this.panelMode === 'thread') top.data = this.panelThreadData;
+            else if (this.panelMode === 'quotes') top.data = this.panelQuotesList;
+        },
+
+        saveCurrentRouteState() {
+            const route = this.currentRoute();
+            if (route.viewMode === 'list') {
+                return this.replaceRoute(route, { scrollY: window.scrollY });
+            }
+            if (this.shouldUseSplitPanel()) this.savePanelSnapshot();
+            return this.replaceRoute(route, { scrollY: window.scrollY });
+        },
+
+        async applyRoute(route, { fromPopState = false, state = null } = {}) {
+            if (!route) return false;
+            const routeState = state || this.historyStateForRoute(route);
+            if (state && Number.isInteger(routeState.tweetNookDepth) && routeState.tweetNookDepth >= 0) {
+                this.navigationDepth = routeState.tweetNookDepth;
+            } else if (fromPopState) {
+                this.navigationDepth = 0;
+            }
+            this.activeRoute = { ...route };
+
+            if (!this.archiveResourcesLoaded) {
+                this.pendingRoute = { ...route };
+                this.pendingRouteState = routeState;
+                return false;
+            }
+
+            this.pendingRoute = null;
+            this.pendingRouteState = null;
+            this.routeUsesPanel = this.shouldUseSplitPanel();
+            if (route.viewMode === 'list') {
+                this.closePanel(false);
+                this.viewMode = 'list';
+                if (routeState?.scrollY !== undefined) {
+                    const scrollY = routeState.scrollY;
+                    window.scrollTo(0, scrollY);
+                    this.$nextTick(() => {
+                        window.scrollTo(0, scrollY);
+                        setTimeout(() => window.scrollTo(0, scrollY), 20);
+                    });
+                }
+                return true;
+            }
+
+            if (this.shouldUseSplitPanel()) {
+                this.viewMode = 'list';
+                await this.applyPanelRoute(route, routeState);
+                return true;
+            }
+
+            this.closePanel(false);
+            if (route.viewMode === 'thread') await this.showFullThread(route.tweetId);
+            else await this.showFullQuotes(route.quotesTweetId);
+            return true;
+        },
+
+        async applyPanelRoute(route, state) {
+            this.savePanelSnapshot();
+            const key = this.routeKey(route);
+            let matchIndex = -1;
+            for (let index = this.panelStack.length - 1; index >= 0; index--) {
+                const entry = this.panelStack[index];
+                if (entry.routeKey !== key) continue;
+                if (Number.isInteger(state?.tweetNookDepth) && entry.historyDepth !== state.tweetNookDepth) continue;
+                matchIndex = index;
+                break;
+            }
+            if (matchIndex >= 0) {
+                this.panelStack = this.panelStack.slice(0, matchIndex + 1);
+            } else {
+                if (state?.tweetNookDepth === 0) this.panelStack = [];
+                this.panelStack.push({
+                    type: route.viewMode,
+                    tweetId: route.viewMode === 'thread' ? route.tweetId : route.quotesTweetId,
+                    routeKey: key,
+                    historyDepth: state?.tweetNookDepth,
+                });
+            }
+
+            const entry = this.panelStack[this.panelStack.length - 1];
+            this.panelMode = route.viewMode;
+            this.$nextTick(() => {
+                if (this.$refs.detailPanel) this.$refs.detailPanel.scrollTop = entry.scrollY || 0;
+            });
+            if (route.viewMode === 'thread') {
+                this.panelQuotesList = [];
+                if (entry.data) {
+                    this.panelThreadData = entry.data;
+                    this.panelLoadingThread = false;
+                    return;
+                }
+                this.panelLoadingThread = true;
+                this.panelThreadData = null;
+                try {
+                    const data = await this.loadThread(route.tweetId);
+                    entry.data = data;
+                    if (this.panelStack.at(-1) === entry) this.panelThreadData = data;
+                } catch (error) {
+                    console.error(error);
+                    if (this.panelStack.at(-1) === entry) this.goBack();
+                } finally {
+                    if (this.panelStack.at(-1) === entry) this.panelLoadingThread = false;
+                }
+                return;
+            }
+
+            this.panelThreadData = null;
+            this.panelQuotesTweetId = route.quotesTweetId;
+            this.panelQuotesPage = 1;
+            if (entry.data) {
+                this.panelQuotesList = entry.data;
+                this.panelQuotesLoading = false;
+                return;
+            }
+            this.panelQuotesList = [];
+            await this.fetchPanelQuotes();
+        },
+
+        async showFullThread(tweetId) {
+            this.viewMode = 'thread';
+            this.loadingThread = true;
+            this.threadData = null;
+            window.scrollTo(0, 0);
+            try {
+                const data = await this.loadThread(tweetId);
+                if (this.routeKey(this.activeRoute) === `thread:${tweetId}` && !this.shouldUseSplitPanel()) {
+                    this.threadData = data;
+                }
+            } catch (error) {
+                console.error(error);
+                if (this.routeKey(this.activeRoute) === `thread:${tweetId}`) this.goBack();
+            } finally {
+                this.loadingThread = false;
+            }
+        },
+
+        async showFullQuotes(tweetId) {
+            this.viewMode = 'quotes';
+            this.quotesTweetId = tweetId;
+            this.quotesPage = 1;
+            this.quotesList = [];
+            this.quotesLoading = true;
+            window.scrollTo(0, 0);
+            await this.fetchQuotes();
+        },
+
+        toggleSplitPanel(val) {
+            const route = this.currentRoute();
+            this.splitPanel = val;
+            this.routeUsesPanel = this.shouldUseSplitPanel();
+            localStorage.setItem('tvx-split-panel', val);
+            if (route.viewMode === 'list') this.closePanel(false);
+            else if (this.archiveResourcesLoaded) return this.applyRoute(route, { state: history.state });
+        },
+
+        closePanel(syncRoute = true) {
             this.panelStack = [];
             this.panelMode = null;
             this.panelThreadData = null;
             this.panelQuotesList = [];
+            if (syncRoute && this.activeRoute.viewMode !== 'list') {
+                const route = { viewMode: 'list' };
+                const state = this.replaceRoute(route, { scrollY: window.scrollY });
+                this.applyRoute(route, { state });
+            }
         },
 
         panelGoBack() {
-            if (this.panelStack.length <= 1) return;
-            this.panelStack.pop();
-            const prev = this.panelStack[this.panelStack.length - 1];
-            this.panelMode = prev.type;
-            if (prev.type === 'thread') {
-                this.panelThreadData = prev.data;
-                this.panelLoadingThread = false;
-            } else if (prev.type === 'quotes') {
-                this.panelQuotesList = prev.data;
-                this.panelQuotesLoading = false;
-            }
-            this.$nextTick(() => {
-                if (this.$refs.detailPanel) this.$refs.detailPanel.scrollTop = prev.scrollY || 0;
-            });
+            if (this.navigationDepth > 0) this.goBack();
         },
 
         async fetchPanelQuotes(append = false) {
@@ -1105,97 +1328,22 @@ function tweetApp() {
         },
 
         async openThread(tweetId, fromPopState = false, fromPanel = false) {
-            // Split panel mode (desktop only)
-            if (this.splitPanel && window.innerWidth >= 1024 && !fromPopState) {
-                if (!fromPanel) {
-                    // Clicked from list - reset panel stack
-                    this.panelStack = [{ type: 'thread', tweetId }];
-                } else {
-                    // Clicked from within panel - save current state and push
-                    if (this.panelStack.length > 0) {
-                        const top = this.panelStack[this.panelStack.length - 1];
-                        top.scrollY = this.$refs.detailPanel?.scrollTop || 0;
-                        if (this.panelMode === 'thread') top.data = this.panelThreadData;
-                        else if (this.panelMode === 'quotes') top.data = this.panelQuotesList;
-                    }
-                    this.panelStack.push({ type: 'thread', tweetId });
-                }
-                this.panelMode = 'thread';
-                this.panelLoadingThread = true;
-                this.panelThreadData = null;
-                this.$nextTick(() => {
-                    if (this.$refs.detailPanel) this.$refs.detailPanel.scrollTop = 0;
-                });
-                try {
-                    this.panelThreadData = await this.loadThread(tweetId);
-                    const top = this.panelStack[this.panelStack.length - 1];
-                    if (top) top.data = this.panelThreadData;
-                } catch (e) {
-                    console.error(e);
-                    if (fromPanel && this.panelStack.length > 1) this.panelStack.pop();
-                } finally {
-                    this.panelLoadingThread = false;
-                }
-                return;
-            }
-
-            if (this.viewMode === 'list') {
-                history.replaceState({ viewMode: 'list', scrollY: window.scrollY }, '');
-            } else if (this.viewMode === 'quotes') {
-                history.replaceState({ viewMode: 'quotes', quotesTweetId: this.quotesTweetId, scrollY: window.scrollY }, '');
-            }
-            this.viewMode = 'thread';
-            this.loadingThread = true;
-            this.threadData = null;
-            window.scrollTo(0, 0);
-
-            if (!fromPopState) {
-                history.pushState({ viewMode: 'thread', tweetId }, '');
-            }
-
-            try {
-                this.threadData = await this.loadThread(tweetId);
-            } catch (e) {
-                console.error(e);
-                this.goBack();
-            } finally {
-                this.loadingThread = false;
-            }
+            void fromPanel;
+            if (typeof tweetId !== 'string' || !/^\d+$/.test(tweetId)) return;
+            const route = { viewMode: 'thread', tweetId };
+            if (fromPopState) return this.applyRoute(route, { fromPopState: true });
+            this.saveCurrentRouteState();
+            const state = this.pushRoute(route);
+            return this.applyRoute(route, { state });
         },
         
         async openQuotes(tweetId, fromPanel = false) {
-            // Split panel mode
-            if (this.splitPanel && window.innerWidth >= 1024) {
-                if (this.panelStack.length > 0) {
-                    const top = this.panelStack[this.panelStack.length - 1];
-                    top.scrollY = this.$refs.detailPanel?.scrollTop || 0;
-                    if (this.panelMode === 'thread') top.data = this.panelThreadData;
-                    else if (this.panelMode === 'quotes') top.data = this.panelQuotesList;
-                }
-                this.panelStack.push({ type: 'quotes', tweetId });
-                this.panelMode = 'quotes';
-                this.panelQuotesTweetId = tweetId;
-                this.panelQuotesPage = 1;
-                this.panelQuotesList = [];
-                this.panelQuotesLoading = true;
-                this.$nextTick(() => {
-                    if (this.$refs.detailPanel) this.$refs.detailPanel.scrollTop = 0;
-                });
-                await this.fetchPanelQuotes();
-                return;
-            }
-
-            history.replaceState({ viewMode: this.viewMode, tweetId: this.threadData?.main?.tweet_id, scrollY: window.scrollY }, '');
-            this.viewMode = 'quotes';
-            this.quotesTweetId = tweetId;
-            this.quotesPage = 1;
-            this.quotesList = [];
-            this.quotesLoading = true;
-            window.scrollTo(0, 0);
-            
-            history.pushState({ viewMode: 'quotes', quotesTweetId: tweetId }, '');
-            
-            await this.fetchQuotes();
+            void fromPanel;
+            if (typeof tweetId !== 'string' || !/^\d+$/.test(tweetId)) return;
+            const route = { viewMode: 'quotes', quotesTweetId: tweetId };
+            this.saveCurrentRouteState();
+            const state = this.pushRoute(route);
+            return this.applyRoute(route, { state });
         },
         
         async fetchQuotes(append = false) {
@@ -1219,13 +1367,15 @@ function tweetApp() {
         },
         
         goBack() {
-            // In split panel mode, goBack just closes the panel
-            if (this.splitPanel && window.innerWidth >= 1024 && this.panelStack.length > 0) {
-                this.closePanel();
+            this.pauseAllVideos();
+            this.savePanelSnapshot();
+            if (this.navigationDepth > 0) {
+                history.back();
                 return;
             }
-            this.pauseAllVideos();
-            history.back();
+            const route = { viewMode: 'list' };
+            const state = this.replaceRoute(route, { scrollY: window.scrollY, depth: 0 });
+            this.applyRoute(route, { state });
         },
 
         async fetchStats() {
@@ -1520,7 +1670,13 @@ function tweetApp() {
         search() { 
             if (this.collectionFilter !== 'likes' && this.sortOrder.startsWith('liked_')) this.sortOrder = 'newest';
             if (!this.searchQuery.trim() && this.sortOrder === 'default') this.sortOrder = this.collectionFilter === 'likes' ? 'liked_latest' : 'newest';
-            this.page = 1; this.viewMode = 'list'; this.fetchTweets(); 
+            this.page = 1;
+            const route = { viewMode: 'list' };
+            if (this.activeRoute.viewMode !== 'list') this.replaceRoute(route, { scrollY: window.scrollY });
+            this.activeRoute = route;
+            this.closePanel(false);
+            this.viewMode = 'list';
+            this.fetchTweets();
         },
         searchFrom(username) {
             if(!username) return;
@@ -2469,6 +2625,13 @@ function tweetApp() {
                     this.archiveResourcesLoaded = true;
                     await Promise.all([this.fetchTweets(), this.fetchStats(), this.fetchGlobalTags(),
                         this.fetchArchiveEnrichmentStatus(), this.fetchAutomatedTagging()]);
+                    const pendingRoute = this.pendingRoute;
+                    const pendingRouteState = this.pendingRouteState;
+                    if (pendingRoute) {
+                        this.pendingRoute = null;
+                        this.pendingRouteState = null;
+                        await this.applyRoute(pendingRoute, { state: pendingRouteState });
+                    }
                 }
             } catch (error) {
                 this.setupError = error.message;

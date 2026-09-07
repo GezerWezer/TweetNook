@@ -79,8 +79,15 @@ def test_fresh_server_empty_choice_password_and_live_attachment(first_run):
         assert not first_run.database_path.exists()
         status = client.get("/api/setup").json()
         assert status["required"] and not status["archive"]["ready"]
+        root = client.get("/")
+        for path in ("/post/123", "/post/123/quotes"):
+            detail = client.get(path)
+            assert detail.status_code == 200
+            assert detail.content == root.content
+            assert "text/html" in detail.headers["content-type"]
         assert client.get("/api/activity/status").status_code == 200
         assert client.get("/api/tweets").json()["detail"]["code"] == "setup_required"
+        assert client.get("/post/not-a-number").json()["detail"]["code"] == "setup_required"
         assert client.post("/api/setup/complete", json={"skip_auth": True}).status_code == 409
         assert client.post("/api/setup/archive/empty").status_code == 200
         assert first_run.database_path.exists()

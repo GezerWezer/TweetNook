@@ -8,7 +8,7 @@ const vm = require('node:vm');
 const ROOT = path.resolve(__dirname, '..', '..');
 const JS_DIR = path.join(ROOT, 'tweetnook', 'web', 'static', 'js');
 
-function browserContext() {
+function browserContext(pathname = '/') {
     const stored = new Map();
     const cssProperties = new Map();
     const rootClasses = new Set();
@@ -17,6 +17,8 @@ function browserContext() {
     const scrollCalls = [];
     const appendedLinks = [];
     const videos = [];
+    const location = { origin: 'http://localhost', pathname };
+    let historyState = null;
 
     const context = {
         console: {
@@ -26,6 +28,8 @@ function browserContext() {
         },
         setTimeout,
         clearTimeout,
+        setInterval: () => 0,
+        clearInterval() {},
         URL,
         Date,
         Math,
@@ -54,11 +58,18 @@ function browserContext() {
         },
         history: {
             scrollRestoration: 'auto',
+            get state() {
+                return historyState;
+            },
             replaceState(...args) {
                 historyCalls.push(['replace', ...args]);
+                historyState = args[0];
+                if (args[2]) location.pathname = args[2];
             },
             pushState(...args) {
                 historyCalls.push(['push', ...args]);
+                historyState = args[0];
+                if (args[2]) location.pathname = args[2];
             },
             back() {
                 historyCalls.push(['back']);
@@ -141,13 +152,13 @@ function browserContext() {
     context.window = {
         innerWidth: 1280,
         scrollY: 0,
-        location: { origin: 'http://localhost' },
+        location,
         addEventListener(name, callback) {
             events.set(name, callback);
         },
         dispatchEvent(event) {
             const callback = events.get(event.type);
-            if (callback) callback(event);
+            if (callback) return callback(event);
         },
         scrollTo(...args) {
             scrollCalls.push(args);
@@ -934,6 +945,179 @@ test('themes, accents, fonts, sizes, and split panel persist preferences', () =>
     assert.equal(app.panelMode, null);
 });
 
+test('detail routes parse and generate canonical string tweet IDs', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const largeId = '12345678901234567890';
+
+    assert.deepEqual({ ...app.parseRoute('/') }, { viewMode: 'list' });
+    assert.deepEqual({ ...app.parseRoute(`/post/${largeId}`) }, { viewMode: 'thread', tweetId: largeId });
+    assert.deepEqual(
+        { ...app.parseRoute(`/post/${largeId}/quotes`) },
+        { viewMode: 'quotes', quotesTweetId: largeId },
+    );
+    assert.equal(typeof app.parseRoute(`/post/${largeId}`).tweetId, 'string');
+    assert.equal(app.routeUrl({ viewMode: 'thread', tweetId: largeId }), `/post/${largeId}`);
+    assert.equal(app.routeUrl({ viewMode: 'quotes', quotesTweetId: largeId }), `/post/${largeId}/quotes`);
+    assert.throws(() => app.routeUrl({ viewMode: 'thread', tweetId: Number(largeId) }), /Invalid TweetNook route/);
+    assert.equal(app.parseRoute('/post/not-a-number'), null);
+    assert.equal(app.parseRoute('/post/123/other'), null);
+});
+
+test('initialization preserves direct detail paths without adding history entries', () => {
+    for (const [pathname, viewMode] of [['/post/123', 'thread'], ['/post/123/quotes', 'quotes']]) {
+        const context = browserContext(pathname);
+        const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const app = immediateComponent(tweetApp());
+        app.fetchSetup = async () => {};
+        app.fetchNotices = async () => {};
+        app.fetchActivityStatus = async () => {};
+
+        app.initApp();
+
+        assert.equal(app.pendingRoute.viewMode, viewMode);
+        assert.equal(context.window.location.pathname, pathname);
+        assert.equal(context.__state.historyCalls.filter(call => call[0] === 'replace').length, 1);
+        assert.equal(context.__state.historyCalls.filter(call => call[0] === 'push').length, 0);
+        assert.equal(context.history.state.tweetNookDepth, 0);
+    }
+});
+
+test('popstate applies URL routes without pushing and restores list scroll', async () => {
+    const context = browserContext();
+    context.fetch = async url => ({
+        ok: true,
+        async json() {
+            if (url.includes('/quotes')) return { tweets: [], total: 0, limit: 20 };
+            return { main: { tweet_id: url.split('/').at(-1) }, parents: [], children: [] };
+        },
+    });
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.fetchSetup = async () => {};
+    app.fetchNotices = async () => {};
+    app.fetchActivityStatus = async () => {};
+    app.initApp();
+    app.archiveResourcesLoaded = true;
+    context.__state.historyCalls.length = 0;
+
+    await context.window.dispatchEvent({
+        type: 'popstate',
+        state: { viewMode: 'thread', tweetId: '123', tweetNookDepth: 1 },
+    });
+    assert.equal(app.viewMode, 'thread');
+    assert.equal(app.threadData.main.tweet_id, '123');
+
+    context.window.location.pathname = '/post/123/quotes';
+    await context.window.dispatchEvent({ type: 'popstate', state: null });
+    assert.equal(app.viewMode, 'quotes');
+    assert.equal(app.quotesTweetId, '123');
+
+    await context.window.dispatchEvent({
+        type: 'popstate',
+        state: { viewMode: 'list', scrollY: 321, tweetNookDepth: 0 },
+    });
+    assert.equal(app.viewMode, 'list');
+    assert.ok(context.__state.scrollCalls.some(call => call[0] === 0 && call[1] === 321));
+    assert.equal(context.__state.historyCalls.filter(call => call[0] === 'push').length, 0);
+});
+
+test('split-panel routes follow browser history and rebuild cached content', async () => {
+    const context = browserContext();
+    const requests = [];
+    context.fetch = async url => {
+        requests.push(url);
+        return {
+            ok: true,
+            async json() {
+                if (url.includes('/quotes')) return { tweets: [{ tweet_id: 'quote' }], total: 1, limit: 20 };
+                return { main: { tweet_id: url.split('/').at(-1) }, parents: [], children: [] };
+            },
+        };
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.archiveResourcesLoaded = true;
+    app.splitPanel = true;
+    app.$refs.detailPanel = { scrollTop: 0 };
+
+    await app.openThread('123');
+    await app.toggleSplitPanel(false);
+    assert.equal(app.viewMode, 'thread');
+    assert.equal(app.panelMode, null);
+    assert.equal(context.window.location.pathname, '/post/123');
+    await app.toggleSplitPanel(true);
+    assert.equal(app.panelMode, 'thread');
+    await app.openThread('456', false, true);
+    await app.openQuotes('456', true);
+    assert.deepEqual(
+        context.__state.historyCalls.filter(call => call[0] === 'push').map(call => call[3]),
+        ['/post/123', '/post/456', '/post/456/quotes'],
+    );
+    assert.equal(app.panelStack.length, 3);
+
+    app.panelGoBack();
+    assert.equal(context.__state.historyCalls.at(-1)[0], 'back');
+    await app.applyRoute(
+        { viewMode: 'thread', tweetId: '456' },
+        { fromPopState: true, state: { viewMode: 'thread', tweetId: '456', tweetNookDepth: 2 } },
+    );
+    assert.equal(app.panelMode, 'thread');
+    assert.equal(app.panelThreadData.main.tweet_id, '456');
+    assert.equal(app.panelStack.length, 2);
+
+    await app.applyRoute(
+        { viewMode: 'thread', tweetId: '123' },
+        { fromPopState: true, state: { viewMode: 'thread', tweetId: '123', tweetNookDepth: 1 } },
+    );
+    assert.equal(app.panelStack.length, 1);
+    assert.equal(app.panelThreadData.main.tweet_id, '123');
+    await app.applyRoute(
+        { viewMode: 'list' },
+        { fromPopState: true, state: { viewMode: 'list', scrollY: 0, tweetNookDepth: 0 } },
+    );
+    assert.equal(app.panelMode, null);
+    assert.equal(app.panelStack.length, 0);
+
+    await app.applyRoute(
+        { viewMode: 'thread', tweetId: '456' },
+        { fromPopState: true, state: { viewMode: 'thread', tweetId: '456', tweetNookDepth: 2 } },
+    );
+    assert.equal(app.panelThreadData.main.tweet_id, '456');
+    assert.equal(requests.filter(url => url === '/api/tweets/456').length, 1);
+});
+
+test('direct detail Back and detail searches stay inside the archive route', async () => {
+    const context = browserContext('/post/123');
+    context.fetch = async url => ({
+        ok: true,
+        async json() {
+            if (url.startsWith('/api/tweets?')) return { tweets: [], page: 1, total_pages: 1, total: 0 };
+            return { main: { tweet_id: '123' }, parents: [], children: [] };
+        },
+    });
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.archiveResourcesLoaded = true;
+    app.activeRoute = { viewMode: 'thread', tweetId: '123' };
+    app.navigationDepth = 0;
+    await app.applyRoute(app.activeRoute, {
+        state: { viewMode: 'thread', tweetId: '123', tweetNookDepth: 0 },
+    });
+
+    app.goBack();
+    assert.equal(context.window.location.pathname, '/');
+    assert.notEqual(context.__state.historyCalls.at(-1)[0], 'back');
+
+    app.activeRoute = { viewMode: 'thread', tweetId: '123' };
+    app.viewMode = 'thread';
+    app.searchQuery = 'from:alice';
+    app.search();
+    assert.equal(context.window.location.pathname, '/');
+    assert.equal(app.viewMode, 'list');
+});
+
 test('thread and quote navigation update history, panel state, and network state', async () => {
     const context = browserContext();
     let threadFetches = 0;
@@ -953,6 +1137,7 @@ test('thread and quote navigation update history, panel state, and network state
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
+    app.archiveResourcesLoaded = true;
     app.$refs.detailPanel = { scrollTop: 99 };
 
     await app.openThread('42');
@@ -961,7 +1146,7 @@ test('thread and quote navigation update history, panel state, and network state
     assert.equal(app.loadingThread, false);
     assert.ok(
         context.__state.historyCalls.some(
-            call => call[0] === 'push' && call[1].tweetId === '42',
+            call => call[0] === 'push' && call[1].tweetId === '42' && call[3] === '/post/42',
         ),
     );
 
@@ -969,6 +1154,7 @@ test('thread and quote navigation update history, panel state, and network state
     assert.equal(app.viewMode, 'quotes');
     assert.deepEqual(Array.from(app.quotesList, tweet => tweet.tweet_id), ['q1']);
     assert.equal(app.quotesTotalPages, 2);
+    assert.equal(context.__state.historyCalls.at(-1)[3], '/post/42/quotes');
 
     app.splitPanel = true;
     context.window.innerWidth = 1280;
@@ -980,9 +1166,10 @@ test('thread and quote navigation update history, panel state, and network state
     assert.equal(app.panelMode, 'quotes');
     assert.equal(app.panelStack.length, 2);
     app.panelGoBack();
-    assert.equal(app.panelMode, 'thread');
+    assert.equal(context.__state.historyCalls.at(-1)[0], 'back');
     app.closePanel();
     assert.equal(app.panelMode, null);
+    assert.equal(context.window.location.pathname, '/');
 });
 
 test('thread cache reuses successes across modes but retries failures', async () => {
@@ -1040,6 +1227,7 @@ test('goBack tears down playing videos before navigating history', () => {
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
+    app.navigationDepth = 1;
     app.goBack();
     assert.equal(video.paused, true);
     assert.equal(video.currentTime, 0);
@@ -2500,6 +2688,13 @@ test('first-run gating loads archive resources only after completion and preserv
     const app = immediateComponent(tweetApp());
     const calls = [];
     for (const method of ['fetchTweets', 'fetchStats', 'fetchGlobalTags', 'fetchArchiveEnrichmentStatus', 'fetchAutomatedTagging']) app[method] = async () => calls.push(method);
+    let appliedDeepLinks = 0;
+    app.pendingRoute = { viewMode: 'thread', tweetId: '123' };
+    app.pendingRouteState = { viewMode: 'thread', tweetId: '123', tweetNookDepth: 0 };
+    app.showFullThread = async tweetId => {
+        assert.equal(tweetId, '123');
+        appliedDeepLinks++;
+    };
     await app.fetchSetup();
     assert.equal(app.setupForced, true);
     assert.equal(app.showSetupModal, true);
@@ -2514,8 +2709,10 @@ test('first-run gating loads archive resources only after completion and preserv
     required = false;
     await app.fetchSetup();
     assert.equal(calls.length, 5);
+    assert.equal(appliedDeepLinks, 1);
     await app.fetchSetup();
     assert.equal(calls.length, 5);
+    assert.equal(appliedDeepLinks, 1);
     const before = JSON.stringify(app.setupData);
     app.rerunSetup();
     assert.equal(app.setupFlowStep, 1);

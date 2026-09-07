@@ -206,24 +206,39 @@ async def test_lifespan_closes_store_when_context_exits_with_error(
 def test_packaged_root_and_static_assets_are_served() -> None:
     with TestClient(server.app) as client:
         root = client.get("/")
+        post = client.get("/post/12345678901234567890")
+        quotes = client.get("/post/12345678901234567890/quotes")
         static = client.get("/static/js/themes.js")
 
     assert root.status_code == 200
     assert "text/html" in root.headers["content-type"]
     assert "tweetnook" in root.text.lower()
+    for detail in (post, quotes):
+        assert detail.status_code == 200
+        assert detail.headers["content-type"] == root.headers["content-type"]
+        assert detail.content == root.content
     assert static.status_code == 200
     assert "javascript" in static.headers["content-type"]
+
+
+@pytest.mark.parametrize("path", ["/post/not-a-number", "/post/123/other"])
+def test_malformed_document_routes_are_not_swallowed(path: str) -> None:
+    with TestClient(server.app) as client:
+        response = client.get(path)
+
+    assert response.status_code in {404, 422}
 
 
 def test_packaged_root_is_password_protected() -> None:
     server_state["password_hash"] = hashlib.sha256(b"secret").hexdigest()
 
     with TestClient(server.app) as client:
-        unauthorized = client.get("/")
-        authorized = client.get("/", auth=("tweetnook", "secret"))
+        paths = ["/", "/post/123", "/post/123/quotes"]
+        unauthorized = [client.get(path) for path in paths]
+        authorized = [client.get(path, auth=("tweetnook", "secret")) for path in paths]
 
-    assert unauthorized.status_code == 401
-    assert authorized.status_code == 200
+    assert [response.status_code for response in unauthorized] == [401, 401, 401]
+    assert [response.status_code for response in authorized] == [200, 200, 200]
 
 
 def test_media_files_are_authenticated_and_path_contained(tmp_path: Path) -> None:
