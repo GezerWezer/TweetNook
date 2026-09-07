@@ -1386,7 +1386,7 @@
                                     <div class="flex items-start justify-between gap-4">
                                         <div><h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Enable automated tagging</h3><p class="text-sm text-[var(--text-secondary)] mb-4">Generate tags for archived tweets automatically via a Gemini LLM. Manual tags remain available when this is off.</p></div>
                                         <div class="flex shrink-0 items-center">
-                                            <label class="inline-flex cursor-pointer items-center rounded-lg">
+                                            <label class="relative inline-flex cursor-pointer items-center rounded-lg">
                                                 <input type="checkbox" x-model="automatedTagging.enabled" class="sr-only">
                                                 <span :class="automatedTagging.enabled ? 'border-[var(--accent-color)] bg-[var(--accent-color)] text-white border-[3px]' : 'border-[var(--text-secondary)] bg-transparent text-transparent'" class="flex h-6 w-6 items-center justify-center rounded-lg border-2 transition">
                                                     <svg viewBox="0 0 24 24" aria-hidden="true" class="h-5 w-5 fill-current"><g><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z"></path></g></svg>
@@ -1516,7 +1516,7 @@
                                     <p class="text-sm text-[var(--text-secondary)] mb-4">Identification aid for uncertain entities and references.</p>
                                     <label :class="automatedTagging.api_mode === 'free' ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'" class="flex items-center justify-between gap-4 rounded-lg">
                                         <span class="text-sm font-bold text-[var(--text-secondary)]">Enable Google Search</span>
-                                        <span class="inline-flex shrink-0 items-center rounded-lg">
+                                        <span class="relative inline-flex shrink-0 items-center rounded-lg">
                                             <input type="checkbox" x-model="automatedTagging.google_search" :disabled="automatedTagging.api_mode === 'free'" class="sr-only">
                                             <span :class="automatedTagging.google_search ? 'border-[var(--accent-color)] bg-[var(--accent-color)] text-white border-[3px]' : 'border-[var(--text-secondary)] bg-transparent text-transparent'" class="flex h-6 w-6 items-center justify-center rounded-lg border-2 transition">
                                                 <svg viewBox="0 0 24 24" aria-hidden="true" class="h-5 w-5 fill-current"><g><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z"></path></g></svg>
@@ -1747,7 +1747,7 @@
                                             <h3 class="mb-2 text-lg font-bold text-[var(--text-primary)]">Enable scheduled syncs</h3>
                                             <p class="text-sm text-[var(--text-secondary)]">Scheduled syncs require internet access from the server. Turn them off for local-only browsing.</p>
                                         </div>
-                                        <label class="inline-flex shrink-0 cursor-pointer items-center rounded-lg">
+                                        <label class="relative inline-flex shrink-0 cursor-pointer items-center rounded-lg">
                                             <input type="checkbox" x-model="scheduleForm.enabled" @change="scheduleFieldChanged()" class="sr-only">
                                             <span :class="scheduleForm.enabled ? 'border-[var(--accent-color)] bg-[var(--accent-color)] text-white border-[3px]' : 'border-[var(--text-secondary)] bg-transparent text-transparent'" class="flex h-6 w-6 items-center justify-center rounded-lg border-2 transition">
                                                 <svg viewBox="0 0 24 24" aria-hidden="true" class="h-5 w-5 fill-current"><g><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z"></path></g></svg>
@@ -1836,7 +1836,7 @@
                                                 <h3 class="mb-2 text-lg font-bold text-[var(--text-primary)]">Randomize run time</h3>
                                                 <p class="text-sm text-[var(--text-secondary)]">Each run starts at a random time between these two added delays after the selected time.</p>
                                             </div>
-                                            <label class="inline-flex shrink-0 cursor-pointer items-center rounded-lg">
+                                            <label class="relative inline-flex shrink-0 cursor-pointer items-center rounded-lg">
                                                 <input type="checkbox" x-model="scheduleForm.randomize_time" @change="scheduleFieldChanged()" class="sr-only">
                                                 <span :class="scheduleForm.randomize_time ? 'border-[var(--accent-color)] bg-[var(--accent-color)] text-white border-[3px]' : 'border-[var(--text-secondary)] bg-transparent text-transparent'" class="flex h-6 w-6 items-center justify-center rounded-lg border-2 transition">
                                                     <svg viewBox="0 0 24 24" aria-hidden="true" class="h-5 w-5 fill-current"><g><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z"></path></g></svg>

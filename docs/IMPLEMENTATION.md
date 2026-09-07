@@ -2,6 +2,12 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Settings checkbox scroll containment (2026-09-06)
+
+- [x] Anchor visually hidden checkbox inputs inside their visible Automated Tagging and Schedule controls.
+- [x] Audit every Settings checkbox and add browser-asset regression coverage preventing modal-shell scrolling.
+- [x] Verify Google Search, Automated Tagging enablement, Schedule enable/randomization, and Configuration Advanced in a real browser.
+
 ## Raw JSON clipboard fallback (2026-09-06)
 
 - [x] Fall back to the legacy textarea copy path when the Clipboard API is unavailable or rejects a `Copy raw` request.

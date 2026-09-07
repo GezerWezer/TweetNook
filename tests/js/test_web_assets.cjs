@@ -2106,6 +2106,8 @@ test('automated tagging has a dedicated conditional Settings page', () => {
     assert.match(automatedTaggingHtml, /<h3[^>]*>Thinking<\/h3>/);
     assert.match(automatedTaggingHtml, /<h3[^>]*>Spend limit<\/h3>/);
     assert.match(automatedTaggingHtml, /<h3[^>]*>Google Search<\/h3>/);
+    assert.match(automatedTaggingHtml, /<label class="[^"]*\brelative\b[^"]*">\s*<input type="checkbox" x-model="automatedTagging\.enabled"/);
+    assert.match(automatedTaggingHtml, /<span class="[^"]*\brelative\b[^"]*">\s*<input type="checkbox" x-model="automatedTagging\.google_search"/);
     assert.match(automatedTaggingHtml, /role="group" aria-label="Thinking level"/);
     assert.match(automatedTaggingHtml, /automatedTagging\.thinking_level = level\.key/);
     assert.match(automatedTaggingHtml, /role="group" aria-label="Processing tier"/);
@@ -2177,6 +2179,28 @@ test('automated tagging has a dedicated conditional Settings page', () => {
     assert.match(js, /automatedTaggingSpendHistory\(\)/);
     assert.match(css, /\.spend-history-chart/);
     assert.match(css, /background: var\(--accent-color\)/);
+});
+
+test('Settings hidden checkboxes stay anchored inside the modal', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const settingsHtml = html.slice(
+        html.indexOf('<!-- Settings Modal -->'),
+        html.indexOf('<!-- Setup Modal -->'),
+    );
+    for (const model of [
+        'automatedTagging.enabled',
+        'automatedTagging.google_search',
+        'showAdvancedConfig',
+        'scheduleForm.enabled',
+        'scheduleForm.randomize_time',
+    ]) {
+        const inputAt = settingsHtml.indexOf(`x-model="${model}"`);
+        assert.notEqual(inputAt, -1, `missing Settings checkbox for ${model}`);
+        const beforeInput = settingsHtml.slice(Math.max(0, inputAt - 300), inputAt);
+        const anchorAt = Math.max(beforeInput.lastIndexOf('<label'), beforeInput.lastIndexOf('<span'), beforeInput.lastIndexOf('<div'));
+        const anchor = beforeInput.slice(anchorAt);
+        assert.match(anchor, /class="[^"]*\brelative\b[^"]*"/, `${model} needs a positioned ancestor`);
+    }
 });
 
 test('automated tagging spend periods normalize to the stored daily limit', () => {
