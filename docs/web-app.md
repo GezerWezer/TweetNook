@@ -57,6 +57,9 @@ the local media file is missing; see [Download media](enrichment.md#download-med
 
 Select a tweet to open its archived conversation. Parent tweets appear in order,
 followed by saved replies. You can also browse saved tweets that quote it.
+Tweet and quote views have copyable URLs (`/post/<tweet-id>` and
+`/post/<tweet-id>/quotes`), so they can be bookmarked, refreshed, or shared with
+someone who can access the same TweetNook server and archive.
 
 The conversation contains what tweetnook has captured. Gaps can mean a tweet
 has not been downloaded yet or Twitter/X no longer makes it available. A placeholder

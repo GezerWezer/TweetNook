@@ -1,11 +1,13 @@
 """FastAPI Web server for TweetNook."""
 
+import re
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Path as PathParameter
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from rich.console import Console
@@ -44,6 +46,7 @@ def _build_fts_in_background(store) -> None:
 
 
 _lifecycle_lock = threading.RLock()
+_DETAIL_DOCUMENT_PATH = re.compile(r"^/post/\d+(?:/quotes)?$")
 
 
 def archive_is_ready() -> bool:
@@ -203,6 +206,7 @@ async def gate_initial_setup(request: Request, call_next):
     if coordinator is not None:
         safe = (
             path == "/"
+            or _DETAIL_DOCUMENT_PATH.fullmatch(path) is not None
             or path.startswith("/static/")
             or path == "/api/setup"
             or path.startswith("/api/setup/")
@@ -251,10 +255,30 @@ if static_dir.exists():
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
-@app.get("/", response_class=HTMLResponse)
-def read_root(_auth: Annotated[bool, Depends(verify_credentials)]):
+def _serve_web_app() -> FileResponse:
     html_path = Path(__file__).parent / "index.html"
     return FileResponse(html_path)
+
+
+@app.get("/", response_class=HTMLResponse)
+def read_root(_auth: Annotated[bool, Depends(verify_credentials)]):
+    return _serve_web_app()
+
+
+@app.get("/post/{tweet_id}", response_class=HTMLResponse)
+def read_post(
+    tweet_id: Annotated[str, PathParameter(pattern=r"^\d+$")],
+    _auth: Annotated[bool, Depends(verify_credentials)],
+):
+    return _serve_web_app()
+
+
+@app.get("/post/{tweet_id}/quotes", response_class=HTMLResponse)
+def read_post_quotes(
+    tweet_id: Annotated[str, PathParameter(pattern=r"^\d+$")],
+    _auth: Annotated[bool, Depends(verify_credentials)],
+):
+    return _serve_web_app()
 
 
 @app.get("/media/{media_path:path}", response_class=FileResponse)
