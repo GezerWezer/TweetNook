@@ -22,15 +22,12 @@ TweetNook uses Gemini for two main reasons:
 
 ## Set it up
 
-Install the optional dependencies once in the Python environment used by the
+If not installed initially, install the optional dependencies once in the Python environment used by the
 TweetNook server:
 
 ```bash
 python -m pip install "tweetnook[automated-tagging]"
 ```
-
-Developers using a uv source checkout can use `uv sync --extra automated-tagging`
-instead. Normal runtime commands do not require a `--extra` flag.
 
 1. Restart TweetNook after installing the dependencies. For a systemd
    installation use `tweetnook service restart`; for a foreground
@@ -98,6 +95,9 @@ intend to remove that guard.
 
 ## Preview one tweet
 
+> [!IMPORTANT]
+> A test run makes a real request and can use quota or incur charges, even though it does not save tags.
+
 In the web panel, enter an archived tweet's numeric ID under **Test run** and
 check the preview before running the test. The test uses the current form values
 without saving them.
@@ -110,9 +110,6 @@ tweetnook tag --test 1234567890123456789
 
 The terminal test uses your configured settings. Without an ID, it selects one
 eligible tweet. Neither test saves generated tags or descriptions.
-> [!IMPORTANT]
-> This feature sends selected tweets and media to Google. A test run makes a real
-> request and can use quota or incur charges, even though it does not save tags.
 
 Wait for other archive or tagging jobs to finish before running a test.
 
@@ -126,7 +123,8 @@ Overwatch, providing that as a hint may improve the results.
 For example:
 
 - Prefer original Japanese titles over localized names.
-- more examples
+- Tag photography posts by genre, such as street photography, astrophotography, or wildlife photography.
+- Tag car posts with the exact manufacturer and model when the vehicle is identifiable
 
 The model can also receive commonly used tags from your archive to encourage
 consistent names. These hints guide suggestions but do not guarantee a
