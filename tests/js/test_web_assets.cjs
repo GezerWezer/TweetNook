@@ -1153,6 +1153,40 @@ test('tweet overflow supports copying raw data, untagged tweets, and a one-secon
     assert.equal(app.tweetMenuPressTimer, null);
 });
 
+test('tweet overflow copies raw data when the Clipboard API is unavailable', async () => {
+    const context = browserContext();
+    let copiedText = null;
+    const textarea = {
+        value: '',
+        style: {},
+        setAttribute() {},
+        focus() {},
+        select() {
+            copiedText = this.value;
+        },
+    };
+    context.navigator = {};
+    context.document.createElement = tag => {
+        assert.equal(tag, 'textarea');
+        return textarea;
+    };
+    context.document.body.appendChild = node => assert.equal(node, textarea);
+    context.document.body.removeChild = node => assert.equal(node, textarea);
+    context.document.execCommand = command => {
+        assert.equal(command, 'copy');
+        return true;
+    };
+    const { tweetApp } = loadScripts(
+        context,
+        ['themes.js', 'app.js'],
+        '({tweetApp})',
+    );
+    const app = immediateComponent(tweetApp());
+
+    await app.copyRawTweet({ raw_json: { rest_id: '3', legacy: { full_text: 'Fallback' } } });
+    assert.equal(copiedText, '{\n  "rest_id": "3",\n  "legacy": {\n    "full_text": "Fallback"\n  }\n}');
+});
+
 test('tweet overflow markup covers list and detail surfaces without legacy tag icons', () => {
     const html = fs.readFileSync(
         path.join(ROOT, 'tweetnook', 'web', 'index.html'),

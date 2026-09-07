@@ -2,6 +2,11 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Raw JSON clipboard fallback (2026-09-06)
+
+- [x] Fall back to the legacy textarea copy path when the Clipboard API is unavailable or rejects a `Copy raw` request.
+- [x] Add browser-asset regression coverage for non-secure/HTTP-style pages; the harness passes 61/61.
+
 ## Dependency trim (2026-09-06)
 
 - [x] Move LanceDB legacy migration support to the optional `legacy-migration` extra and remove the direct PyArrow dependency.
