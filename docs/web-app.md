@@ -30,7 +30,6 @@ The optional manual background commands remain available:
 
 Stopping TweetNook asks active Web/scheduled work to stop gracefully so already
 committed work is preserved. Use `tweetnook service stop` for a systemd installation.
-Install optional tagging dependencies once; no runtime `--extra` flag is needed.
 
 ## Browse saved tweets
 
@@ -119,12 +118,10 @@ Scheduled sync saves **bookmarks and likes**. Save your own tweets separately wi
 
 ## Update your Twitter/X connection or import an archive
 
-**Settings → Setup** lets you replace your Twitter/X session values. A masked value
-(`********`) means a value is already saved; leaving the mask keeps it. New
+**Settings → Setup** lets you replace your Twitter/X session values. New
 values are checked before they are saved.
 
-You can also upload an official Twitter/X archive ZIP and start an import. The app keeps
-one staged ZIP, up to 50 GiB. Uploading stages the file; **Import** adds it to the
+You can also upload an official Twitter/X archive ZIP and start an import. **Import** adds it to the
 archive. Clearing the staged ZIP removes that uploaded copy only, not imported
 tweets or media. Finish active jobs before uploading or importing.
 
@@ -189,4 +186,4 @@ need internet. This is not a standalone HTML export or a replicated browser data
 In **Appearance**, use **Load local fonts** to request the browser's permission
 to list fonts on the device displaying the page (not the server). This requires a
 supporting browser and HTTPS or localhost. If unavailable or denied, use the fallback
-choices. The custom dropdown previews each font in its own typeface. No fonts are downloaded.
+choices. The custom dropdown previews each font in its own typeface.

@@ -72,11 +72,6 @@ repair for database corruption.
 
 ## Upgrade or migrate an older archive
 
-Supported older SQLite databases upgrade when opened. Make a complete backup
-before opening an irreplaceable archive with a newer version. Some upgrades
-create an automatic database backup, but that copy does not include media or
-configuration. A database from a newer, unsupported version is rejected.
-
 For the older/upstream LanceDB format, keep `archive.lancedb` in the data folder.
 Before migrating, install the one-time migration support:
 
