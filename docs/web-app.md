@@ -35,7 +35,8 @@ committed work is preserved. Use `tweetnook service stop` for a systemd installa
 
 Choose **All Tweets**, **Likes**, **Bookmarks**, or **Your Tweets**. Scroll to
 load more tweets, or choose **Latest**, **Oldest**, or **Random** to change the
-order. With a text search, **Relevance** becomes available.
+order. Random order stays stable while you scroll and is reshuffled when you
+start a new search. With a text search, **Relevance** becomes available.
 
 With **Likes** selected, **Recently liked** and **Earliest liked** follow observed
 like order instead of tweet publication date. These orders also apply to searches

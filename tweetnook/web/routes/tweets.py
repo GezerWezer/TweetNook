@@ -71,6 +71,7 @@ def api_tweets(
     sort: str = Query("default"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    random_seed: int | None = Query(None, ge=0, le=2_147_483_647),
     store=Depends(require_store),  # noqa: B008
     _auth: bool = Depends(verify_credentials),
 ):
@@ -89,6 +90,7 @@ def api_tweets(
             sort=sort,
             page=page,
             limit=limit,
+            random_seed=random_seed,
         )
         paginated_tweets = result.rows
         annotate_web_tweets(store, paginated_tweets)
@@ -98,6 +100,7 @@ def api_tweets(
             "total": result.total,
             "page": result.page,
             "pages": result.pages,
+            "has_more": result.has_more,
             "truncated": result.truncated,
         }
     except SearchQueryError as exc:

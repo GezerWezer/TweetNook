@@ -90,7 +90,7 @@
         <div x-show="archiveReady && !setupForced && viewMode === 'list'" class="pb-4">
             <!-- Count Header -->
             <div x-show="!loading" class="px-4 py-2 border-b border-[var(--border-color)] text-sm text-[var(--text-secondary)] font-bold">
-                <span x-text="total.toLocaleString() + (searchQuery ? ' Results' : (collectionFilter === 'all' ? ' Tweets' : ' ' + collectionFilter.charAt(0).toUpperCase() + collectionFilter.slice(1)))"></span>
+                <span x-text="resultCountLabel()"></span>
             </div>
 
             <div class="p-4 border-b border-[var(--border-color)] relative" x-data="searchAutocomplete()" @click.away="showDropdown = false">
@@ -337,7 +337,7 @@
             </template>
 
             <!-- Infinite Scroll Sentinel -->
-            <div x-show="!loading && page < totalPages" x-intersect="loadMore()" class="p-6 text-center text-[var(--accent-color)] flex justify-center">
+            <div x-show="!loading && hasMore" x-intersect="loadMore()" class="p-6 text-center text-[var(--accent-color)] flex justify-center">
                 <svg class="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>

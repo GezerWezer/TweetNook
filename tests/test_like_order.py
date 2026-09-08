@@ -273,8 +273,13 @@ def test_api_search_paths_sort_likes_before_pagination(store, query, sort, expec
         membership(store, tweet_id, text="needle")
     capture(store, list("CBA"))
     result = _list_tweets(store, collection="likes", q=query, sort=sort, page=2, limit=1)
-    assert result["total"] == 3
-    assert result["pages"] == 3
+    if query and any(term in query for term in ("needle", "missing")):
+        assert result["total"] is None
+        assert result["pages"] is None
+    else:
+        assert result["total"] == 3
+        assert result["pages"] == 3
+    assert result["has_more"] is True
     assert [row["tweet_id"] for row in result["tweets"]] == [expected[1]]
     all_results = _list_tweets(store, collection="likes", q=query, sort=sort)
     assert [row["tweet_id"] for row in all_results["tweets"]] == expected

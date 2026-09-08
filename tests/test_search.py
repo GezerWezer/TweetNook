@@ -29,45 +29,40 @@ def _row(
     }
 
 
-class SearchStore:
-    def __init__(self, rows: list[dict[str, Any]]) -> None:
-        self.rows = rows
-
-    def export_rows(self, collection: str, *, sort: str, include_raw_json: bool):
-        assert (collection, sort, include_raw_json) == ("all", "newest", True)
-        return [dict(row) for row in reversed(self.rows)]
-
-    def search_fts(
-        self,
-        query: str,
-        *,
-        limit: int,
-        types: set[str] | None,
-        collections: set[str] | None,
-    ) -> list[dict[str, Any]]:
-        assert types == {"post"}
-        assert collections is None
-        term = query.strip('"').casefold()
-        matches = []
-        for score, row in enumerate(reversed(self.rows), start=1):
-            if term in row["text"].casefold():
-                matches.append(
-                    {
-                        "tweet_id": row["tweet_id"],
-                        "text": row["text"],
-                        "created_at": row["created_at"],
-                        "collections": ["bookmark"],
-                        "match_score": float(score),
-                    }
+def _real_store(tmp_path, rows: list[dict[str, Any]]) -> ArchiveStore:
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    records = []
+    for row in rows:
+        tweet_id = row["tweet_id"]
+        author = row["author"]
+        records.append(
+            store._record(
+                row_key=f"tweet:bookmark::{tweet_id}",
+                record_type="tweet",
+                tweet_id=tweet_id,
+                collection_type="bookmark",
+                text=row["text"],
+                author_id=author["id"],
+                author_username=author["username"],
+                author_display_name=author["display_name"],
+                created_at=row["created_at"],
+                created_at_ts=int(tweet_id),
+                sort_index=tweet_id,
+                raw_json=json.dumps(row["raw_json"]),
+            )
+        )
+        for index, media in enumerate(row["media"]):
+            records.append(
+                store._record(
+                    row_key=f"media:{tweet_id}:{index}",
+                    record_type="media",
+                    tweet_id=tweet_id,
+                    media_key=str(index),
+                    media_type=media["type"],
                 )
-        return matches[:limit]
-
-    def fetch_tweets_by_ids(self, tweet_ids: list[str]) -> list[dict[str, Any]]:
-        by_id = {row["tweet_id"]: row for row in self.rows}
-        return [dict(by_id[tweet_id]) for tweet_id in tweet_ids]
-
-    def _query(self, **kwargs: Any) -> list[dict[str, Any]]:
-        raise AssertionError(f"unexpected collection query: {kwargs}")
+            )
+    store._merge_records(records)
+    return store
 
 
 def test_parser_uses_implicit_and_and_adjacent_or_groups() -> None:
@@ -110,35 +105,40 @@ def test_parser_rejects_malformed_or_unknown_operators(query: str) -> None:
         parse_search_query(query)
 
 
-def test_grouped_search_requires_all_groups_and_any_or_alternative() -> None:
+def test_grouped_search_requires_all_groups_and_any_or_alternative(tmp_path) -> None:
     photo = [{"type": "photo"}]
-    store = SearchStore(
+    store = _real_store(
+        tmp_path,
         [
             _row("1", "cats", media=photo),
             _row("2", "dogs", media=photo),
             _row("3", "dogs", username="bob", media=photo),
             _row("4", "cats"),
-        ]
+        ],
     )
 
     result = search_posts(store, "from:alice cats OR dogs has:image", limit=20)
 
     assert {row["tweet_id"] for row in result.rows} == {"1", "2"}
-    assert result.total == 2
+    assert result.total is None
+    store.close()
 
 
-def test_explicit_or_makes_repeated_filters_alternatives() -> None:
-    store = SearchStore(
+def test_explicit_or_makes_repeated_filters_alternatives(tmp_path) -> None:
+    store = _real_store(
+        tmp_path,
         [
             _row("1", "one"),
             _row("2", "two", username="bob"),
             _row("3", "three", username="carol"),
-        ]
+        ],
     )
 
     result = search_posts(store, "from:alice OR from:bob", limit=20)
 
     assert {row["tweet_id"] for row in result.rows} == {"1", "2"}
+    assert result.total == 2
+    store.close()
 
 
 def test_real_store_pushes_normalized_filters_into_sql(tmp_path) -> None:
@@ -356,12 +356,169 @@ def test_real_store_hydrates_only_the_requested_fts_page(tmp_path) -> None:
 
     store.fetch_tweets_by_ids = track_fetch
 
-    page = search_posts(store, "candidate", limit=5, candidate_limit=30)
+    page = search_posts(store, "candidate", limit=5)
 
     assert len(page.rows) == 5
-    assert page.total == 30
+    assert page.total is None
+    assert page.has_more is True
     assert len(hydrated_ids) == 1
     assert len(hydrated_ids[0]) == 5
+    store.close()
+
+
+def test_unified_search_paginates_complete_large_result_sets(tmp_path) -> None:
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    records = []
+    for tweet_id in range(1, 1601):
+        text = "foo shared term" if tweet_id <= 1300 else "bar alternate term"
+        if tweet_id > 1500:
+            text = "clean archive entry"
+        legacy: dict[str, Any] = {}
+        if tweet_id <= 1300 and tweet_id % 5 == 0:
+            legacy = {
+                "in_reply_to_status_id_str": str(tweet_id - 1),
+                "in_reply_to_screen_name": "alice",
+            }
+        collections = ("bookmark", "like") if tweet_id <= 1300 else ("bookmark",)
+        for collection in collections:
+            records.append(
+                store._record(
+                    row_key=f"tweet:{collection}::{tweet_id}",
+                    record_type="tweet",
+                    tweet_id=str(tweet_id),
+                    collection_type=collection,
+                    text=text,
+                    author_id="alice",
+                    author_username="alice",
+                    author_display_name="Alice",
+                    created_at_ts=tweet_id,
+                    sort_index=str(tweet_id),
+                    raw_json=json.dumps({"legacy": legacy}),
+                )
+            )
+        if tweet_id % 4 == 0:
+            records.append(
+                store._record(
+                    row_key=f"media:{tweet_id}:video",
+                    record_type="media",
+                    tweet_id=str(tweet_id),
+                    media_key="video",
+                    media_type="video",
+                )
+            )
+        if tweet_id <= 1300 and tweet_id % 6 == 0:
+            records.append(
+                store._record(
+                    row_key=f"media_tag:{tweet_id}",
+                    record_type="media_tag",
+                    tweet_id=str(tweet_id),
+                    raw_json=json.dumps({"tags": ["example"]}),
+                )
+            )
+    store._merge_records(records)
+
+    page_50 = search_posts(store, "foo", page=50, limit=20)
+    page_51 = search_posts(store, "foo", page=51, limit=20)
+    assert len(page_51.rows) == 20
+    assert page_51.total is page_51.pages is None
+    assert page_51.has_more is True
+    assert {row["tweet_id"] for row in page_50.rows}.isdisjoint(
+        row["tweet_id"] for row in page_51.rows
+    )
+
+    or_page = search_posts(store, "foo OR bar", page=66, limit=20)
+    assert len(or_page.rows) == 20
+    assert or_page.has_more is True
+
+    negative = search_posts(store, "NOT foo", sort="oldest", page=1, limit=100)
+    assert len(negative.rows) == 100
+    assert all("foo" not in row["text"] for row in negative.rows)
+
+    mixed = search_posts(store, "foo OR has:video", sort="newest", page=1, limit=100)
+    assert [row["tweet_id"] for row in mixed.rows[:3]] == ["1600", "1596", "1592"]
+    assert len(mixed.rows) == 100
+
+    videos = search_posts(store, "foo has:video", page=6, limit=20)
+    replies = search_posts(store, "foo is:reply", page=6, limit=20)
+    tags = search_posts(store, "foo tag:example", page=6, limit=20)
+    assert len(videos.rows) == len(replies.rows) == len(tags.rows) == 20
+    assert all(row["media"] for row in videos.rows)
+    assert all(row["raw_json"]["legacy"].get("in_reply_to_status_id_str") for row in replies.rows)
+    assert all(row["media_tags"] == {"tags": ["example"]} for row in tags.rows)
+
+    newest = search_posts(store, "foo", sort="newest", limit=3)
+    oldest = search_posts(store, "foo", sort="oldest", limit=3)
+    assert [row["tweet_id"] for row in newest.rows] == ["1300", "1299", "1298"]
+    assert [row["tweet_id"] for row in oldest.rows] == ["1", "2", "3"]
+
+    all_foo = search_posts(store, "foo", page=65, limit=20)
+    like_foo = search_posts(store, "foo", collections={"like"}, page=65, limit=20)
+    assert len(all_foo.rows) == len(like_foo.rows) == 20
+    assert len({row["tweet_id"] for row in all_foo.rows}) == 20
+    assert {row["tweet_id"] for row in all_foo.rows} == {row["tweet_id"] for row in like_foo.rows}
+
+    liked_latest = search_posts(
+        store,
+        "foo",
+        collections={"like"},
+        sort="liked_latest",
+        page=51,
+        limit=20,
+    )
+    liked_earliest = search_posts(
+        store,
+        "foo",
+        collections={"like"},
+        sort="liked_earliest",
+        limit=3,
+    )
+    assert [row["tweet_id"] for row in liked_latest.rows[:3]] == ["300", "299", "298"]
+    assert [row["tweet_id"] for row in liked_earliest.rows] == ["1", "2", "3"]
+
+    random_first = search_posts(store, None, sort="random", limit=20, random_seed=17)
+    random_second = search_posts(store, None, sort="random", page=2, limit=20, random_seed=17)
+    random_repeat = search_posts(store, None, sort="random", limit=20, random_seed=17)
+    random_new_seed = search_posts(store, None, sort="random", limit=20, random_seed=18)
+    assert [row["tweet_id"] for row in random_first.rows] == [
+        row["tweet_id"] for row in random_repeat.rows
+    ]
+    assert {row["tweet_id"] for row in random_first.rows}.isdisjoint(
+        row["tweet_id"] for row in random_second.rows
+    )
+    assert [row["tweet_id"] for row in random_first.rows] != [
+        row["tweet_id"] for row in random_new_seed.rows
+    ]
+    assert random_first.total == 1600
+
+    plan_shapes = {
+        "simple": ("foo", {}),
+        "collection": ("foo", {"collections": {"bookmark"}}),
+        "filter": ("foo has:video", {}),
+        "or": ("foo OR bar", {}),
+        "negative": ("NOT foo", {}),
+        "newest": ("foo", {"sort": "newest"}),
+    }
+    plans = {}
+    for name, (query, options) in plan_shapes.items():
+        statements: list[str] = []
+        store.conn.set_trace_callback(statements.append)
+        search_posts(store, query, **options)
+        store.conn.set_trace_callback(None)
+        page_sql = next(
+            statement
+            for statement in statements
+            if "SELECT matches.tweet_id" in statement and "ORDER BY" in statement
+        )
+        plans[name] = " ".join(
+            row["detail"] for row in store.conn.execute(f"EXPLAIN QUERY PLAN {page_sql}")
+        )
+    assert all("archive_fts VIRTUAL TABLE INDEX" in plan for plan in plans.values())
+    assert "idx_archive_tweet_id" in plans["simple"]
+    assert "idx_archive_tweet_id" in plans["collection"]
+    assert "idx_archive_search_attachment" in plans["filter"]
+    assert "idx_archive_tweet_id" in plans["or"]
+    assert "idx_archive_record_page" in plans["negative"]
+    assert "idx_archive_tweet_id" in plans["newest"]
     store.close()
 
 
@@ -460,7 +617,7 @@ def test_tag_search_matches_tags_on_a_quoted_original(tmp_path) -> None:
     count_sql = next(
         statement
         for statement in statements
-        if "COUNT(DISTINCT tweet_id)" in statement and "matching_tags" in statement
+        if "SELECT COUNT(*) FROM matches" in statement and "matching_tags" in statement
     )
     plan = " ".join(row["detail"] for row in store.conn.execute(f"EXPLAIN QUERY PLAN {count_sql}"))
     assert "idx_archive_media_tag_lookup" in count_sql

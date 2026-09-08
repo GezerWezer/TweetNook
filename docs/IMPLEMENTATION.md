@@ -2,6 +2,18 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Unbounded Web search pagination (2026-09-07)
+
+- [x] Replace positive, OR, negative, and grouped candidate lists with one SQLite tweet-ID executor.
+- [x] Evaluate every structured filter and collection predicate before logical tweet deduplication,
+  sorting, and `LIMIT`/`OFFSET`; hydrate only the returned page.
+- [x] Preserve relevance, newest/oldest, derived like ordering, and stable seeded random ordering.
+- [x] Return `has_more` from a `limit + 1` probe, omit expensive exact text totals, and update the
+  Web infinite-scroll/count states plus demo adapter.
+- [x] Cover >1,000 matches, mixed boolean queries, negative exclusions, filters, duplicate
+  memberships, deep pagination, all sort families, hydration bounds, API behavior, and query plans.
+- [x] Document large-search behavior and validate the full Python/browser/demo/lint suites.
+
 ## Managed systemd update command (2026-09-07)
 
 - [x] Add `sudo tweetnook update` with managed-unit validation and service-Python discovery.

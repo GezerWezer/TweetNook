@@ -230,9 +230,10 @@ Use uppercase `AND`, `OR`, and `NOT`, double-quote multiword filter values, and
 check that filter names and values are supported. Remember that `until` excludes
 the date entered. Article-content searches do not accept tweet filters.
 
-Broad text searches consider at most 1,000 candidates per text lookup. The
-terminal warns when capped; the web app currently does not. Try more distinctive
-words or an exact phrase. Pure structured-filter queries do not have this cap.
+Broad text searches cover the complete archive. The web app intentionally labels
+them **Results** without an exact count so it can return the first page without a
+second full-match scan. If a broad query is slow, try more distinctive words or
+an exact phrase; this narrows the work without changing query correctness.
 
 See [Search](search.md) for examples and the full filter list.
 

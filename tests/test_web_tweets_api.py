@@ -241,6 +241,63 @@ class ListingStore:
         )
         return [dict(row) for row in self.search_rows]
 
+    def search_tweet_ids(
+        self,
+        query_groups,
+        *,
+        collections,
+        sort,
+        limit,
+        offset,
+        random_seed=None,
+        include_total=False,
+    ):
+        self.calls.append(
+            (
+                "search_tweet_ids",
+                {
+                    "query_groups": query_groups,
+                    "collections": collections,
+                    "sort": sort,
+                    "limit": limit,
+                    "offset": offset,
+                    "random_seed": random_seed,
+                    "include_total": include_total,
+                },
+            )
+        )
+        has_text = any(clause.get("kind") == "text" for group in query_groups for clause in group)
+        source = self.search_rows if has_text else self.rows
+
+        def timestamp(row):
+            full_row = next(
+                (candidate for candidate in self.rows if candidate["tweet_id"] == row["tweet_id"]),
+                row,
+            )
+            if full_row.get("created_at_ts") is not None:
+                return full_row["created_at_ts"]
+            created_at = full_row.get("created_at", "")
+            if "T" in created_at:
+                return datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
+            return datetime.strptime(created_at, "%a %b %d %H:%M:%S %z %Y").timestamp()
+
+        rows = [
+            {
+                "tweet_id": row["tweet_id"],
+                "match_score": row.get("match_score", 0.0),
+                "created_at_ts": timestamp(row),
+                "sort_index": row.get("sort_index"),
+            }
+            for row in source
+        ]
+        if sort == "oldest":
+            rows.sort(key=lambda row: (row.get("created_at_ts") or 0, row["tweet_id"]))
+        elif sort == "newest":
+            rows.sort(
+                key=lambda row: (row.get("created_at_ts") or 0, row["tweet_id"]), reverse=True
+            )
+        return rows[offset : offset + limit + 1], len(rows) if include_total else None
+
     def export_rows(
         self, collection: str, *, sort: str, include_raw_json: bool
     ) -> list[dict[str, Any]]:
@@ -297,42 +354,44 @@ def _list_tweets(
         sort=sort,
         page=page,
         limit=limit,
+        random_seed=None,
         store=store,
         _auth=True,
     )
 
 
 @pytest.mark.parametrize(
-    ("sort", "order_by"),
+    ("sort", "effective_sort"),
     [
-        ("default", "created_at_ts DESC"),
-        ("newest", "created_at_ts DESC"),
-        ("oldest", "created_at_ts ASC"),
-        ("random", "RANDOM()"),
-        ("unexpected", "created_at_ts DESC"),
+        ("default", "newest"),
+        ("newest", "newest"),
+        ("oldest", "oldest"),
+        ("random", "random"),
+        ("unexpected", "newest"),
     ],
 )
-def test_api_tweets_fast_path_uses_bounded_pagination_and_sort(sort: str, order_by: str):
+def test_api_tweets_fast_path_uses_bounded_pagination_and_sort(sort: str, effective_sort: str):
     store = ListingStore([_row(tweet_id="1"), _row(tweet_id="2"), _row(tweet_id="3")])
 
     result = _list_tweets(store, collection="likes", sort=sort, page=2, limit=1)
 
     assert result["page"] == 2
     assert result["pages"] == 3
+    assert result["has_more"] is True
     assert [tweet["tweet_id"] for tweet in result["tweets"]] == ["2"]
-    query = next(data for name, data in store.calls if name == "query")
+    query = next(data for name, data in store.calls if name == "search_tweet_ids")
     assert query["offset"] == 1
     assert query["limit"] == 1
-    assert order_by in query["order_by"]
-    count = next(data for name, data in store.calls if name == "count_distinct")
-    assert "collection_type = 'like'" in count["expr"]
+    assert query["sort"] == effective_sort
+    assert query["collections"] == {"like"}
+    assert query["include_total"] is True
 
 
 def test_api_tweets_invalid_collection_falls_back_to_all():
     store = ListingStore([_row()])
     _list_tweets(store, collection="not-real")
-    count = next(data for name, data in store.calls if name == "count_distinct")
-    assert "collection_type" not in count["expr"]
+    query = next(data for name, data in store.calls if name == "search_tweet_ids")
+    assert query["collections"] is None
 
 
 def test_api_tweets_rejects_unknown_search_filters():
@@ -351,9 +410,12 @@ def test_api_tweets_pushdown_quotes_untrusted_author_and_conversation():
 
     _list_tweets(store, q=f'from:"{payload}" conversation_id:"{payload}"')
 
-    count = next(data for name, data in store.calls if name == "count_distinct")
-    assert "alice'' or 1=1 --" in count["expr"]
-    assert "alice' or 1=1 --'" not in count["expr"]
+    query = next(data for name, data in store.calls if name == "search_tweet_ids")
+    expressions = " ".join(
+        clause["expression"] for group in query["query_groups"] for clause in group
+    )
+    assert "alice'' or 1=1 --" in expressions
+    assert "alice' or 1=1 --'" not in expressions
 
 
 def test_api_tweets_fts_path_sorts_and_paginates_hydrated_results():
@@ -374,14 +436,41 @@ def test_api_tweets_fts_path_sorts_and_paginates_hydrated_results():
     result = _list_tweets(store, q="needle", sort="oldest", page=1, limit=1)
 
     assert [tweet["tweet_id"] for tweet in result["tweets"]] == ["old"]
-    assert result["total"] == 2
-    search = next(data for name, data in store.calls if name == "search")
-    assert search == {
-        "query": "needle",
-        "limit": 1000,
-        "types": {"post"},
-        "collections": None,
-    }
+    assert result["total"] is None
+    assert result["pages"] is None
+    search = next(data for name, data in store.calls if name == "search_tweet_ids")
+    assert search["limit"] == 1
+    assert search["offset"] == 0
+    assert search["sort"] == "oldest"
+    assert search["include_total"] is False
+
+
+def test_api_tweets_text_search_browses_past_one_thousand(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    store._merge_records(
+        [
+            store._record(
+                row_key=f"tweet:bookmark::{tweet_id}",
+                record_type="tweet",
+                tweet_id=str(tweet_id),
+                collection_type="bookmark",
+                text="broad searchable token",
+                created_at_ts=tweet_id,
+                sort_index=str(tweet_id),
+                raw_json=json.dumps({"legacy": {}}),
+            )
+            for tweet_id in range(1, 1206)
+        ]
+    )
+
+    result = _list_tweets(store, q="searchable", page=51, limit=20)
+
+    assert len(result["tweets"]) == 20
+    assert result["total"] is None
+    assert result["pages"] is None
+    assert result["has_more"] is True
+    assert result["truncated"] is False
+    store.close()
 
 
 def test_api_tweets_post_filter_path_preserves_relevance_order_without_export():
@@ -404,15 +493,16 @@ def test_api_tweets_has_media_uses_sql_pagination_without_export():
 
     assert len(result["tweets"]) == 1
     assert not any(name == "export" for name, _ in store.calls)
-    count = next(data for name, data in store.calls if name == "count_distinct")
-    assert "EXISTS (SELECT 1 FROM archive AS related" in count["expr"]
-    assert "related.record_type = 'media'" in count["expr"]
+    query = next(data for name, data in store.calls if name == "search_tweet_ids")
+    expression = query["query_groups"][0][0]["expression"]
+    assert "EXISTS (SELECT 1 FROM archive AS related" in expression
+    assert "related.record_type = 'media'" in expression
 
 
 def test_api_tweets_includes_unavailable_tombstones_as_placeholders():
     unavailable = _row(text="This Post is from a suspended account. {learnmore}")
     store = ListingStore([unavailable, _row(tweet_id="201")])
-    result = _list_tweets(store, limit=1)
+    result = _list_tweets(store, sort="oldest", limit=1)
     assert [tweet["tweet_id"] for tweet in result["tweets"]] == ["200"]
     assert result["tweets"][0]["availability"] == {
         "state": "unavailable",
@@ -964,6 +1054,8 @@ def _api_client(store: object) -> TestClient:
         "/api/tweets?page=0",
         "/api/tweets?limit=0",
         "/api/tweets?limit=101",
+        "/api/tweets?random_seed=-1",
+        "/api/tweets?random_seed=2147483648",
         "/api/tweets/1/quotes?page=0",
         "/api/tweets/1/quotes?limit=101",
     ],

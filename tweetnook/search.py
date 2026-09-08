@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import random
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -139,9 +138,10 @@ class ParsedSearchQuery:
 @dataclass(slots=True)
 class SearchPage:
     rows: list[dict[str, Any]]
-    total: int
+    total: int | None
     page: int
-    pages: int
+    pages: int | None
+    has_more: bool
     truncated: bool = False
 
 
@@ -507,9 +507,9 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
         comparison = ">=" if key in {"since", "since_time"} else "<"
         expression = f"created_at_ts {comparison} {int(boundary)}"
     elif key == "since_id":
-        expression = f"CAST(tweet_id AS INTEGER) > {int(value)}"
+        expression = f"CAST(archive.tweet_id AS INTEGER) > {int(value)}"
     elif key == "max_id":
-        expression = f"CAST(tweet_id AS INTEGER) <= {int(value)}"
+        expression = f"CAST(archive.tweet_id AS INTEGER) <= {int(value)}"
     elif (key, value) in {("is", "reply"), ("filter", "replies")}:
         expression = (
             f"NULLIF(json_extract(raw_json, '{legacy_path}.in_reply_to_status_id_str'), "
@@ -573,7 +573,7 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
     elif key == "tag":
         normalized_value = _sql_quote(value.lower())
         expression = (
-            "tweet_id IN ("
+            "archive.tweet_id IN ("
             "WITH matching_tags(tweet_id) AS MATERIALIZED ("
             "SELECT DISTINCT tagged.tweet_id "
             "FROM archive tagged INDEXED BY idx_archive_media_tag_lookup "
@@ -603,22 +603,6 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
     return f"NOT (COALESCE(({expression}), 0))" if negated else expression
 
 
-def _filter_candidate_ids(store: Any, tweet_ids: list[str], expressions: list[str]) -> set[str]:
-    """Apply SQL predicates to a bounded list of tweet candidate IDs."""
-    if not expressions:
-        return set(tweet_ids)
-    matched: set[str] = set()
-    for chunk_start in range(0, len(tweet_ids), 100):
-        chunk = tweet_ids[chunk_start : chunk_start + 100]
-        ids = ", ".join(_sql_quote(tweet_id) for tweet_id in chunk)
-        expr = f"record_type = 'tweet' AND tweet_id IN ({ids})"
-        for expression in expressions:
-            expr += f" AND {expression}"
-        rows = store._query(expr=expr, cols=["DISTINCT tweet_id"])
-        matched.update(row["tweet_id"] for row in rows if row.get("tweet_id"))
-    return matched
-
-
 def _effective_sort(sort: str, *, has_positive_text: bool) -> str:
     if sort in LIKE_SORTS:
         return sort
@@ -633,26 +617,6 @@ def _effective_sort(sort: str, *, has_positive_text: bool) -> str:
     return "newest"
 
 
-def _sort_rows(rows: list[dict[str, Any]], sort: str, *, store: Any = None) -> None:
-    if sort in LIKE_SORTS:
-        order = store.get_like_order().ordered_ids(sort)
-        ranks = {tweet_id: rank for rank, tweet_id in enumerate(order)}
-        rows.sort(key=lambda row: (ranks.get(row.get("tweet_id"), len(ranks)), row["tweet_id"]))
-        return
-    if sort == "random":
-        random.shuffle(rows)
-        return
-
-    def sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
-        timestamp = _row_created_at_timestamp(row)
-        missing = timestamp is None
-        timestamp = timestamp or 0.0
-        tweet_id = row.get("tweet_id") or ""
-        return (missing, timestamp if sort == "oldest" else -timestamp, tweet_id)
-
-    rows.sort(key=sort_key)
-
-
 def _hydrate_metadata(
     rows: list[dict[str, Any]], hits: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -660,257 +624,9 @@ def _hydrate_metadata(
     for row in rows:
         hit = hit_by_id.get(row.get("tweet_id"), {})
         row["type"] = "post"
-        if hit.get("collections") is not None:
-            row["collections"] = hit["collections"]
         if hit.get("match_score") is not None:
             row["match_score"] = hit["match_score"]
     return rows
-
-
-def _page(rows: list[dict[str, Any]], *, page: int, limit: int, truncated: bool) -> SearchPage:
-    total = len(rows)
-    start = (page - 1) * limit
-    return SearchPage(
-        rows=rows[start : start + limit],
-        total=total,
-        page=page,
-        pages=math.ceil(total / limit) if total else 1,
-        truncated=truncated,
-    )
-
-
-def _collection_ids(store: Any, collections: set[str] | None) -> set[str] | None:
-    expr = _collection_expr(collections)
-    if not expr:
-        return None
-    rows = store._query(
-        expr=f"record_type = 'tweet' AND {expr}",
-        cols=["DISTINCT tweet_id"],
-    )
-    return {row["tweet_id"] for row in rows if row.get("tweet_id")}
-
-
-def _export_candidates(store: Any, collections: set[str] | None) -> list[dict[str, Any]]:
-    rows = store.export_rows("all", sort="newest", include_raw_json=True)
-    allowed_ids = _collection_ids(store, collections)
-    if allowed_ids is not None:
-        rows = [row for row in rows if row.get("tweet_id") in allowed_ids]
-    return rows
-
-
-def _search_post_candidates(
-    store: Any,
-    query: str,
-    *,
-    limit: int,
-    collections: set[str] | None,
-) -> list[dict[str, Any]]:
-    narrow_search = getattr(store, "search_post_fts_candidates", None)
-    if callable(narrow_search):
-        return narrow_search(query, limit=limit, collections=collections)
-    return store.search_fts(
-        query,
-        limit=limit,
-        types={"post"},
-        collections=collections,
-    )
-
-
-def _search_positive_text_or(
-    store: Any,
-    parsed: ParsedSearchQuery,
-    *,
-    collections: set[str] | None,
-    sort: str,
-    page: int,
-    limit: int,
-    candidate_limit: int,
-) -> SearchPage | None:
-    if len(parsed.groups) != 1 or not all(
-        clause.kind == "text" and not clause.negated for clause in parsed.groups[0]
-    ):
-        return None
-    text_query = " OR ".join(clause.value for clause in parsed.groups[0])
-    hits = _search_post_candidates(
-        store,
-        text_query,
-        limit=candidate_limit,
-        collections=collections,
-    )
-    effective_sort = _effective_sort(sort, has_positive_text=True)
-    if effective_sort != "relevance":
-        _sort_rows(hits, effective_sort, store=store)
-    total = len(hits)
-    start = (page - 1) * limit
-    page_hits = hits[start : start + limit]
-    ids = [hit["tweet_id"] for hit in page_hits if hit.get("tweet_id")]
-    return SearchPage(
-        rows=_hydrate_metadata(store.fetch_tweets_by_ids(ids), page_hits),
-        total=total,
-        page=page,
-        pages=math.ceil(total / limit) if total else 1,
-        truncated=len(hits) >= candidate_limit,
-    )
-
-
-def _search_negative_text_only(
-    store: Any,
-    parsed: ParsedSearchQuery,
-    *,
-    collections: set[str] | None,
-    sort: str,
-    page: int,
-    limit: int,
-    candidate_limit: int,
-) -> SearchPage | None:
-    clauses = [clause for group in parsed.groups for clause in group]
-    if (
-        any(len(group) != 1 for group in parsed.groups)
-        or not clauses
-        or not all(clause.kind == "text" and clause.negated for clause in clauses)
-    ):
-        return None
-
-    excluded_ids: set[str] = set()
-    truncated = False
-    for clause in clauses:
-        hits = _search_post_candidates(
-            store,
-            clause.value,
-            limit=candidate_limit,
-            collections=collections,
-        )
-        truncated = truncated or len(hits) >= candidate_limit
-        excluded_ids.update(str(hit["tweet_id"]) for hit in hits if hit.get("tweet_id"))
-
-    filter_expr = "record_type = 'tweet'"
-    collection_expr = _collection_expr(collections)
-    if collection_expr:
-        filter_expr += f" AND {collection_expr}"
-    if excluded_ids:
-        values = ", ".join(_sql_quote(tweet_id) for tweet_id in sorted(excluded_ids))
-        filter_expr += f" AND tweet_id NOT IN ({values})"
-
-    effective_sort = _effective_sort(sort, has_positive_text=False)
-    order_by = "created_at_ts DESC, CAST(sort_index AS INTEGER) DESC, tweet_id DESC"
-    if effective_sort == "oldest":
-        order_by = "created_at_ts ASC, CAST(sort_index AS INTEGER) ASC, tweet_id ASC"
-    elif effective_sort == "random":
-        order_by = "RANDOM()"
-    total = store._count_distinct("tweet_id", filter_expr)
-    start = (page - 1) * limit
-    if effective_sort in LIKE_SORTS:
-        id_rows = store.query_like_order_ids(
-            filter_expr, sort=effective_sort, limit=limit, offset=start
-        )
-    else:
-        id_rows = store._query(
-            expr=filter_expr,
-            cols=["DISTINCT tweet_id"],
-            limit=limit,
-            offset=start,
-            order_by=order_by,
-        )
-    ids = [row["tweet_id"] for row in id_rows if row.get("tweet_id")]
-    return SearchPage(
-        rows=_hydrate_metadata(store.fetch_tweets_by_ids(ids), []),
-        total=total,
-        page=page,
-        pages=math.ceil(total / limit) if total else 1,
-        truncated=truncated,
-    )
-
-
-def _search_grouped(
-    store: Any,
-    parsed: ParsedSearchQuery,
-    *,
-    collections: set[str] | None,
-    sort: str,
-    page: int,
-    limit: int,
-    candidate_limit: int,
-) -> SearchPage:
-    rows = _export_candidates(store, collections)
-    needs_resurrected = any(
-        clause.kind == "filter" and clause.key == "is" and clause.value == "resurrected"
-        for group in parsed.groups
-        for clause in group
-    )
-    resurrected_ids: set[str] = set()
-    if needs_resurrected:
-        state_rows = store._query(
-            expr="record_type = 'tweet_object' AND enrichment_state = 'resurrected'",
-            cols=["tweet_id"],
-        )
-        resurrected_ids = {
-            row["tweet_id"] for row in state_rows if isinstance(row.get("tweet_id"), str)
-        }
-    text_matches: dict[SearchClause, dict[str, float]] = {}
-    truncated = False
-    for group in parsed.groups:
-        for clause in group:
-            if clause.kind != "text" or clause in text_matches:
-                continue
-            hits = _search_post_candidates(
-                store,
-                clause.value,
-                limit=candidate_limit,
-                collections=collections,
-            )
-            truncated = truncated or len(hits) >= candidate_limit
-            text_matches[clause] = {
-                hit["tweet_id"]: float(hit.get("match_score") or 0.0)
-                for hit in hits
-                if hit.get("tweet_id")
-            }
-
-    scores: dict[str, float] = {}
-    matched_rows: list[dict[str, Any]] = []
-    for row in rows:
-        tweet_id = row.get("tweet_id")
-        row_score = 0.0
-        keep = True
-        for group in parsed.groups:
-            group_match = False
-            group_score = 0.0
-            for clause in group:
-                if clause.kind == "text":
-                    matched = tweet_id in text_matches[clause]
-                    if clause.negated:
-                        matched = not matched
-                    elif matched:
-                        group_score = max(group_score, text_matches[clause][str(tweet_id)])
-                else:
-                    if clause.key == "is" and clause.value == "resurrected":
-                        matched = tweet_id in resurrected_ids
-                    else:
-                        matched = _filter_matches(row, str(clause.key), clause.value)
-                    if clause.negated:
-                        matched = not matched
-                group_match = group_match or matched
-            if not group_match:
-                keep = False
-                break
-            row_score += group_score
-        if keep:
-            matched_rows.append(row)
-            if isinstance(tweet_id, str):
-                scores[tweet_id] = row_score
-
-    effective_sort = _effective_sort(sort, has_positive_text=parsed.has_positive_text)
-    if effective_sort == "relevance":
-        matched_rows.sort(
-            key=lambda row: (scores.get(str(row.get("tweet_id")), 0.0), row.get("tweet_id") or ""),
-            reverse=True,
-        )
-    else:
-        _sort_rows(matched_rows, effective_sort, store=store)
-    for row in matched_rows:
-        row["type"] = "post"
-        if row.get("tweet_id") in scores:
-            row["match_score"] = scores[str(row["tweet_id"])]
-    return _page(matched_rows, page=page, limit=limit, truncated=truncated)
 
 
 def search_posts(
@@ -921,9 +637,9 @@ def search_posts(
     sort: str = "default",
     page: int = 1,
     limit: int = 20,
-    candidate_limit: int = 1000,
+    random_seed: int | None = None,
 ) -> SearchPage:
-    """Search hydrated archive tweets using the canonical Web query language."""
+    """Search the complete logical archive and hydrate only the requested page."""
     if page < 1:
         raise ValueError("page must be at least 1")
     if limit < 1:
@@ -936,156 +652,44 @@ def search_posts(
         raise SearchQueryError("Like order is available only for the Likes collection.")
 
     parsed = parse_search_query(query)
-    if parsed.has_or:
-        text_or_page = _search_positive_text_or(
-            store,
-            parsed,
-            collections=collections,
-            sort=sort,
-            page=page,
-            limit=limit,
-            candidate_limit=candidate_limit,
-        )
-        if text_or_page is not None:
-            return text_or_page
-    if parsed.has_negative_text:
-        negative_page = _search_negative_text_only(
-            store,
-            parsed,
-            collections=collections,
-            sort=sort,
-            page=page,
-            limit=limit,
-            candidate_limit=candidate_limit,
-        )
-        if negative_page is not None:
-            return negative_page
-    if parsed.has_or or parsed.has_negative_text:
-        return _search_grouped(
-            store,
-            parsed,
-            collections=collections,
-            sort=sort,
-            page=page,
-            limit=limit,
-            candidate_limit=candidate_limit,
-        )
-
-    filters, text_query = parsed.conjunctive_parts()
-    pushable_exprs: list[str] = []
-    post_filters: dict[str, list[str]] = {}
-    for raw_key, values in filters.items():
-        negated = raw_key.startswith("-")
-        key = raw_key[1:] if negated else raw_key
-        normalized_exprs = [
-            _normalized_filter_expr(key, value, negated=negated) for value in values
-        ]
-        if all(expression is not None for expression in normalized_exprs):
-            pushable_exprs.extend(str(expression) for expression in normalized_exprs)
-            continue
-        post_filters[raw_key] = values
-
-    effective_sort = _effective_sort(sort, has_positive_text=bool(text_query))
-    start = (page - 1) * limit
-    collection_expr = _collection_expr(collections)
-
-    if not post_filters and not text_query:
-        filter_expr = "record_type = 'tweet'"
-        if collection_expr:
-            filter_expr += f" AND {collection_expr}"
-        for expression in pushable_exprs:
-            filter_expr += f" AND {expression}"
-        total = store._count_distinct("tweet_id", filter_expr)
-        order_by = "created_at_ts DESC, CAST(sort_index AS INTEGER) DESC, tweet_id DESC"
-        if effective_sort == "oldest":
-            order_by = "created_at_ts ASC, CAST(sort_index AS INTEGER) ASC, tweet_id ASC"
-        elif effective_sort == "random":
-            order_by = "RANDOM()"
-        if effective_sort in LIKE_SORTS:
-            id_rows = store.query_like_order_ids(
-                filter_expr, sort=effective_sort, limit=limit, offset=start
+    query_groups: list[tuple[dict[str, Any], ...]] = []
+    for group in parsed.groups:
+        compiled_group: list[dict[str, Any]] = []
+        for clause in group:
+            if clause.kind == "text":
+                compiled_group.append(
+                    {"kind": "text", "value": clause.value, "negated": clause.negated}
+                )
+                continue
+            expression = _normalized_filter_expr(
+                str(clause.key), clause.value, negated=clause.negated
             )
-        else:
-            id_rows = store._query(
-                expr=filter_expr,
-                cols=["DISTINCT tweet_id"],
-                limit=limit,
-                offset=start,
-                order_by=order_by,
-            )
-        ids = [row["tweet_id"] for row in id_rows if row.get("tweet_id")]
-        hydrated = _hydrate_metadata(store.fetch_tweets_by_ids(ids), [])
-        return SearchPage(
-            rows=hydrated,
-            total=total,
-            page=page,
-            pages=math.ceil(total / limit) if total else 1,
-        )
+            if expression is None:
+                raise SearchQueryError(f"Unsupported search filter: {clause.key}:")
+            compiled_group.append({"kind": "filter", "expression": expression})
+        query_groups.append(tuple(compiled_group))
 
-    if not post_filters and text_query and not pushable_exprs:
-        hits = _search_post_candidates(
-            store,
-            text_query,
-            limit=candidate_limit,
-            collections=collections,
-        )
-        truncated = len(hits) >= candidate_limit
-        if effective_sort != "relevance":
-            _sort_rows(hits, effective_sort, store=store)
-        total = len(hits)
-        page_hits = hits[start : start + limit]
-        ids = [hit["tweet_id"] for hit in page_hits if hit.get("tweet_id")]
-        hydrated = _hydrate_metadata(store.fetch_tweets_by_ids(ids), page_hits)
-        return SearchPage(
-            rows=hydrated,
-            total=total,
-            page=page,
-            pages=math.ceil(total / limit) if total else 1,
-            truncated=truncated,
-        )
-
-    hits: list[dict[str, Any]] = []
-    truncated = False
-    if text_query:
-        hits = _search_post_candidates(
-            store,
-            text_query,
-            limit=candidate_limit,
-            collections=collections,
-        )
-        truncated = len(hits) >= candidate_limit
-        candidate_ids = [hit["tweet_id"] for hit in hits if hit.get("tweet_id")]
-        matched_ids = _filter_candidate_ids(store, candidate_ids, pushable_exprs)
-        hits = [hit for hit in hits if hit.get("tweet_id") in matched_ids]
-        if not post_filters:
-            if effective_sort != "relevance":
-                _sort_rows(hits, effective_sort, store=store)
-            total = len(hits)
-            page_hits = hits[start : start + limit]
-            ids = [hit["tweet_id"] for hit in page_hits if hit.get("tweet_id")]
-            hydrated = _hydrate_metadata(store.fetch_tweets_by_ids(ids), page_hits)
-            return SearchPage(
-                rows=hydrated,
-                total=total,
-                page=page,
-                pages=math.ceil(total / limit) if total else 1,
-                truncated=truncated,
-            )
-        rows = store.fetch_tweets_by_ids([hit["tweet_id"] for hit in hits])
-    else:
-        rows = _export_candidates(store, collections)
-    rows = _apply_advanced_filters(rows, post_filters if text_query else filters)
-    if effective_sort == "relevance" and hits:
-        order = {hit["tweet_id"]: index for index, hit in enumerate(hits)}
-        rows.sort(key=lambda row: order.get(row.get("tweet_id"), candidate_limit + 1))
-    else:
-        _sort_rows(rows, effective_sort, store=store)
-    hit_by_id = {hit.get("tweet_id"): hit for hit in hits}
-    for row in rows:
-        row["type"] = "post"
-        hit = hit_by_id.get(row.get("tweet_id"), {})
-        if hit.get("match_score") is not None:
-            row["match_score"] = hit["match_score"]
-        if hit.get("collections") is not None:
-            row["collections"] = hit["collections"]
-    return _page(rows, page=page, limit=limit, truncated=truncated)
+    hits, total = store.search_tweet_ids(
+        tuple(query_groups),
+        collections=collections,
+        sort=_effective_sort(sort, has_positive_text=parsed.has_positive_text),
+        limit=limit,
+        offset=(page - 1) * limit,
+        random_seed=random_seed,
+        include_total=not parsed.has_text,
+    )
+    has_more = len(hits) > limit
+    page_hits = hits[:limit]
+    ids = [str(hit["tweet_id"]) for hit in page_hits if hit.get("tweet_id")]
+    hydrated_by_id = {
+        row.get("tweet_id"): row for row in store.fetch_tweets_by_ids(ids) if row.get("tweet_id")
+    }
+    hydrated = [hydrated_by_id[tweet_id] for tweet_id in ids if tweet_id in hydrated_by_id]
+    hydrated = _hydrate_metadata(hydrated, page_hits)
+    return SearchPage(
+        rows=hydrated,
+        total=total,
+        page=page,
+        pages=(math.ceil(total / limit) if total else 1) if total is not None else None,
+        has_more=has_more,
+    )

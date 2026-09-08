@@ -131,14 +131,17 @@ tweetnook search 'from:alice has:article'
 
 ## Large searches
 
-Broad text searches may omit matches: each text lookup considers at most 1,000
-candidate tweets. This also applies to excluded text. The terminal warns when
-this limit is reached; the web app currently does not show that warning.
+Broad searches cover the complete archive and can be browsed past 1,000 matches.
+TweetNook applies text, collection, and structured filters before choosing and
+hydrating each page. The selected relevance, date, like, or random order is also
+applied before pagination, and a tweet saved in several collections still
+occupies one result slot.
 
-Use more specific words or a distinctive phrase when possible. Author, date,
-collection, and media filters help narrow what you see, but do not remove the
-text lookup limit. Queries made entirely of structured filters are not subject
-to that limit.
+The web app does not calculate an exact total for text searches because counting
+every match would delay the first page. Its header therefore says **Results**
+without a number. Filter-only and ordinary collection feeds continue to show an
+exact total. Very deep numbered pages may take longer because SQLite must skip
+the preceding matches.
 
 ## Advanced filters
 

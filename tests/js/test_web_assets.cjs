@@ -832,6 +832,7 @@ test('tweet fetching encodes search state, hydrates pagination, appends, and rep
         page: 1,
         pages: 3,
         total: 5,
+        has_more: true,
     };
     context.fetch = async url => {
         calls.push(url);
@@ -861,12 +862,18 @@ test('tweet fetching encodes search state, hydrates pagination, appends, and rep
     assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['1']);
     assert.equal(app.totalPages, 3);
     assert.equal(app.total, 5);
+    assert.equal(app.hasMore, true);
     assert.equal(app.loading, false);
+    app.total = null;
+    assert.equal(app.resultCountLabel(), 'Results');
+    app.total = 3482;
+    assert.equal(app.resultCountLabel(), '3,482 Results');
 
-    responseData = { tweets: [{ tweet_id: '2' }], page: 2, pages: 3, total: 5 };
+    responseData = { tweets: [{ tweet_id: '2' }], page: 2, pages: 3, total: 5, has_more: false };
     app.page = 2;
     await app.fetchTweets(true);
     assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['1', '2']);
+    assert.equal(app.hasMore, false);
     assert.equal(app.loadingMore, false);
 
     context.fetch = async () => ({
@@ -879,6 +886,37 @@ test('tweet fetching encodes search state, hydrates pagination, appends, and rep
     await app.fetchTweets();
     assert.equal(app.error, 'temporarily unavailable');
     assert.deepEqual(Array.from(app.tweets), []);
+});
+
+test('random feeds keep one seed across pages and rotate it for a new search', async () => {
+    const context = browserContext();
+    context.Math = Object.create(Math);
+    context.Math.random = () => 0.5;
+    const calls = [];
+    context.fetch = async url => {
+        calls.push(url);
+        return {
+            ok: true,
+            status: 200,
+            async json() {
+                return { tweets: [], page: 1, pages: 1, total: 0, has_more: false };
+            },
+        };
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.sortOrder = 'random';
+    app.randomSeed = 12345;
+
+    await app.fetchTweets();
+    app.page = 2;
+    await app.fetchTweets(true);
+    assert.match(calls[0], /random_seed=12345/);
+    assert.match(calls[1], /random_seed=12345/);
+
+    app.fetchTweets = () => {};
+    app.search();
+    assert.notEqual(app.randomSeed, 12345);
 });
 
 test('like order is exposed for Likes, preserved during search, and reset on collection change', () => {
@@ -934,11 +972,17 @@ test('list searching, incremental loading, and back-to-top obey state guards', (
     app.loadingMore = false;
     app.page = 1;
     app.totalPages = 2;
+    app.hasMore = true;
     app.loadMore();
     assert.equal(app.page, 2);
     assert.equal(fetches, 11);
+    app.hasMore = false;
     app.loadMore();
     assert.equal(fetches, 11);
+
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    assert.match(html, /x-show="!loading && hasMore"/);
+    assert.doesNotMatch(html, /x-show="!loading && page < totalPages"/);
 
     app.scrollToTop();
     const scrollOptions = context.__state.scrollCalls.at(-1)[0];
