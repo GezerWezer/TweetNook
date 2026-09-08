@@ -861,6 +861,10 @@ function tweetApp() {
             this.fetchActivityStatus();
             this.activityPollTimer = setInterval(() => this.fetchActivityStatus(), 1000);
 
+            this.$watch('showStatsModal', val => {
+                if (val) this.lockModalScroll();
+                else if (!this.showSettingsModal && !this.showSetupModal) this.unlockModalScroll();
+            });
             this.$watch('showSettingsModal', val => {
                 if (val) {
                     this.lockModalScroll();
