@@ -125,7 +125,7 @@ values.
 | `password_hash` | unset | internal | SHA-256 Web password hash; create in Setup; CLI recovery via `web set-password` |
 | `host` | `0.0.0.0` | nonempty | Address where the web app listens |
 | `port` | `8000` | 1–65535 | Web app port |
-| `fetch_avatars` | `true` | Boolean | Fetch/cache author avatars from captured URLs |
+| `fetch_avatars` | `true` | Boolean | Fetch/cache successful author avatars from captured URLs |
 
 Setup creates the initial password as its final action; no default password is
 created by `serve` or `web start`. `tweetnook web set-password` remains an
