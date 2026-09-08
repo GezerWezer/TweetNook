@@ -5,12 +5,15 @@ from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from tweetnook.config import XDGPaths
 from tweetnook.web.deps import get_server_state, require_store, verify_credentials
 
 router = APIRouter()
+AVATAR_CANDIDATE_LIMIT = 8
+AVATAR_CACHE_HEADERS = {"Cache-Control": "no-cache"}
+TRANSPARENT_CACHE_HEADERS = {"Cache-Control": "no-store, max-age=0"}
 
 TRANSPARENT_PNG = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
@@ -33,45 +36,73 @@ def get_avatar(
     avatar_path = avatars_dir / f"{user_id}.jpg"
     fallback_path = avatars_dir / f"{user_id}.png"
     if avatar_path.exists():
-        return FileResponse(avatar_path)
-    if fallback_path.exists():
-        return FileResponse(fallback_path, media_type="image/png")
+        return FileResponse(avatar_path, headers=AVATAR_CACHE_HEADERS)
 
-    def save_and_return_transparent():
-        fallback_path.write_bytes(TRANSPARENT_PNG)
-        return FileResponse(fallback_path, media_type="image/png")
+    def return_transparent():
+        # A failed fetch must not become a persistent negative cache entry. The
+        # source URL or archive metadata may become available later.
+        return Response(
+            content=TRANSPARENT_PNG,
+            media_type="image/png",
+            headers=TRANSPARENT_CACHE_HEADERS,
+        )
 
     safe_user_id = user_id.replace("'", "''")
     rows = store._query(
-        expr=f"author_id = '{safe_user_id}' AND record_type = 'tweet'",
-        limit=1,
+        expr=(
+            f"author_id = '{safe_user_id}' AND record_type IN ('tweet', 'tweet_object') "
+            "AND raw_json IS NOT NULL AND json_valid(raw_json) "
+            "AND ("
+            "CASE WHEN json_valid(raw_json) THEN "
+            "json_extract(raw_json, '$.core.user_results.result.avatar.image_url') END IS NOT NULL "
+            "OR CASE WHEN json_valid(raw_json) THEN "
+            "json_extract(raw_json, '$.core.user_results.result.legacy.profile_image_url_https') "
+            "END IS NOT NULL)"
+        ),
+        cols=["raw_json"],
+        limit=AVATAR_CANDIDATE_LIMIT,
+        order_by="last_seen_at DESC",
     )
-    if not rows:
-        rows = store._query(
-            expr=f"author_id = '{safe_user_id}' AND record_type = 'tweet_object'",
-            limit=1,
-        )
 
-    if rows and rows[0].get("raw_json"):
-        config = server_state.get("config")
-        if not config or not config.web.fetch_avatars:
-            return save_and_return_transparent()
+    config = server_state.get("config")
+    if config and config.web.fetch_avatars:
+        attempted_urls: set[str] = set()
+        for row in rows:
+            raw_json = row.get("raw_json")
+            if not raw_json:
+                continue
 
-        try:
-            raw = json.loads(rows[0]["raw_json"])
-            user_res = raw.get("core", {}).get("user_results", {}).get("result", {})
+            try:
+                raw = json.loads(raw_json)
+                user_res = raw.get("core", {}).get("user_results", {}).get("result", {})
+                if not isinstance(user_res, dict):
+                    continue
 
-            url = user_res.get("avatar", {}).get("image_url")
-            if not url:
-                url = user_res.get("legacy", {}).get("profile_image_url_https")
+                avatar = user_res.get("avatar") or {}
+                legacy = user_res.get("legacy") or {}
+                url = avatar.get("image_url") or legacy.get("profile_image_url_https")
+                if not isinstance(url, str) or not url:
+                    continue
 
-            if url:
                 url = url.replace("_normal", "_400x400")
+                if url in attempted_urls:
+                    continue
+                attempted_urls.add(url)
                 resp = httpx.get(url, timeout=10.0)
-                if resp.status_code == 200:
+                if resp.status_code == 200 and resp.content:
                     avatar_path.write_bytes(resp.content)
-                    return FileResponse(avatar_path)
-        except Exception:
-            pass
+                    try:
+                        fallback_path.unlink()
+                    except FileNotFoundError:
+                        pass
+                    except OSError:
+                        # A stale fallback must never prevent serving a newly
+                        # downloaded avatar.
+                        pass
+                    return FileResponse(avatar_path, headers=AVATAR_CACHE_HEADERS)
+            except Exception:
+                # One stale URL or malformed candidate must not prevent trying
+                # the next stored representation for this author.
+                continue
 
-    return save_and_return_transparent()
+    return return_transparent()

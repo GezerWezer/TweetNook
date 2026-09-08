@@ -225,9 +225,13 @@ styles, and an activity title that always says Archive Sync.
 
 ## Avatars and outbound requests
 
-Avatar route order is cached JPG, cached fallback PNG, author lookup, optional
-fetch. Fetch rewrites `_normal` to `_400x400`, uses a 10-second synchronous
-HTTPX call, and caches either response or transparent fallback.
+Avatar route order is cached JPG, author lookup, optional fetch. It considers
+recent `tweet` and `tweet_object` rows that contain either supported profile-image
+field, rewrites `_normal` to `_400x400`, and tries up to eight candidates with a
+10-second synchronous HTTPX call. Successful responses are cached as JPGs;
+transparent failures are returned with `no-store` and are never persisted, so a
+later sync or recovered network connection can succeed. The browser adds a
+versioned query parameter to invalidate older cached transparent responses.
 
 Media download, URL unfurl, and avatar fetching follow stored external URLs.
 There is no comprehensive egress/SSRF policy or general response-size cap.

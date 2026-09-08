@@ -3,6 +3,7 @@
  */
 
 const statsSuspendedVideos = new Set();
+const AVATAR_URL_VERSION = 2;
 
 function tweetNookSyncGifIndicator(video) {
     const indicator = video?.parentElement?.querySelector?.('[data-gif-toggle]');
@@ -3466,7 +3467,8 @@ function tweetApp() {
 
         avatarUrl(userId) {
             if (this.isDemo) return window.TweetNookDemo?.avatarUrl(userId) || '';
-            return '/api/avatar/' + (userId || 'unknown');
+            const encodedUserId = encodeURIComponent(userId || 'unknown');
+            return '/api/avatar/' + encodedUserId + '?v=' + AVATAR_URL_VERSION;
         },
 
         formatMediaDuration(durationMillis) {

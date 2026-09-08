@@ -519,6 +519,7 @@ test('tweet app starts with coherent list, panel, modal, and theme state', () =>
     assert.equal(app.statsGeneratedAt, null);
     assert.equal(app.statsRefreshing, false);
     assert.ok(Object.keys(app.THEMES).length >= 15);
+    assert.equal(app.avatarUrl('user/42'), '/api/avatar/user%2F42?v=2');
 });
 
 test('lightbox navigation moves through media and clamps at both ends', () => {
