@@ -216,7 +216,10 @@ def update_managed_installation() -> None:
     typer.echo("TweetNook service restarted.")
 
 
-@service_app.command("install", help="Write the service unit and enable/start it; requires sudo.")
+@service_app.command(
+    "install",
+    help="Write and enable the service unit, then restart to load installed code; requires sudo.",
+)
 def install(
     user: Annotated[
         str | None, typer.Option(help="Unix service user; defaults to SUDO_USER.")
@@ -253,11 +256,17 @@ def install(
         finally:
             Path(name).unlink(missing_ok=True)
         _systemctl("daemon-reload")
-        _systemctl("enable", "--now", UNIT_NAME)
+        _systemctl("enable", UNIT_NAME)
+        # enable --now only starts an inactive unit. An existing Python process
+        # would retain old routes while StaticFiles serves newly installed JS.
+        # restart also starts an inactive unit, without starting it twice.
+        _systemctl("restart", UNIT_NAME)
     except (ValueError, OSError, subprocess.CalledProcessError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
-    typer.echo("TweetNook service enabled. Open this host's Web address to complete Setup.")
+    typer.echo(
+        "TweetNook service enabled and restarted. Open this host's Web address to complete Setup."
+    )
 
 
 @service_app.command(

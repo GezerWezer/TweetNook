@@ -335,6 +335,10 @@ restarts on failure, and allows 90 seconds for shutdown. The service user must
 be able to access the installed environment. `--user` defaults to `SUDO_USER`;
 direct root installation requires an explicit user.
 
+`install` reloads the unit, enables boot startup, and restarts the service even
+when it is already active. This loads updated Python routes together with the
+installed Web assets. An inactive service is started once.
+
 `install` accepts `--data-home`, `--config-home`, and `--cache-home` for absolute
 XDG parent folders (each contains the `tweetnook/` application directory).
 Defaults are the selected user's `.local/share`, `.config`, and `.cache`.

@@ -46,12 +46,65 @@ def test_install_enable_start_and_uninstall_preserve_data(tmp_path, monkeypatch)
     result = runner.invoke(service.service_app, ["install", "--user", "archiver"])
     assert result.exit_code == 0, result.output
     assert service.sys.executable in unit_path.read_text()
-    assert calls == [("daemon-reload",), ("enable", "--now", service.UNIT_NAME)]
+    assert calls == [
+        ("daemon-reload",),
+        ("enable", service.UNIT_NAME),
+        ("restart", service.UNIT_NAME),
+    ]
     result = runner.invoke(service.service_app, ["uninstall"])
     assert result.exit_code == 0
     assert calls[-2:] == [("disable", "--now", service.UNIT_NAME), ("daemon-reload",)]
     assert not unit_path.exists()
     assert data.read_bytes() == b"preserve"
+
+
+def test_reinstall_reloads_code_in_an_already_active_service(tmp_path, monkeypatch):
+    """Model start's no-op on active units, the cause of mixed API/static versions."""
+    unit_path = tmp_path / "tweetnook.service"
+    state = {"installed": "old", "running": None, "starts": 0}
+
+    def systemctl(*args):
+        if args[0] == "restart" or (args[:2] == ("enable", "--now") and state["running"] is None):
+            assert service.sys.executable in unit_path.read_text()
+            state["running"] = state["installed"]
+            state["starts"] += 1
+
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    monkeypatch.setattr(service, "service_user", lambda name: account())
+    monkeypatch.setattr(service, "_systemctl", systemctl)
+    runner = CliRunner()
+    assert runner.invoke(app, ["service", "install"]).exit_code == 0
+    assert state["running"] == "old"
+    assert state["starts"] == 1
+    # A package upgrade replaces static files but leaves imported Python in memory.
+    state["installed"] = "new"
+    result = runner.invoke(app, ["service", "install"])
+    assert result.exit_code == 0, result.output
+    assert state["running"] == "new"
+    assert state["starts"] == 2
+    assert "enabled and restarted" in result.output
+
+
+@pytest.mark.parametrize("failed_action", ["daemon-reload", "enable", "restart"])
+def test_install_reports_activation_failure_without_claiming_success(
+    tmp_path, monkeypatch, failed_action
+):
+    calls = []
+
+    def systemctl(*args):
+        calls.append(args)
+        if args[0] == failed_action:
+            raise subprocess.CalledProcessError(1, ["systemctl", *args])
+
+    monkeypatch.setattr(service, "UNIT_PATH", tmp_path / "tweetnook.service")
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    monkeypatch.setattr(service, "service_user", lambda name: account())
+    monkeypatch.setattr(service, "_systemctl", systemctl)
+    result = CliRunner().invoke(app, ["service", "install"])
+    assert result.exit_code == 1
+    assert calls[-1][0] == failed_action
+    assert "enabled and restarted" not in result.output
 
 
 def test_install_refuses_unmanaged_unit(tmp_path, monkeypatch):
@@ -244,6 +297,7 @@ def test_service_and_serve_help():
     assert "foreground" in runner.invoke(app, ["serve", "--help"]).output
     result = runner.invoke(app, ["service", "install", "--help"])
     assert result.exit_code == 0
+    assert "restart to load installed code" in " ".join(result.output.split())
     for flag in ["--user", "--data-home", "--config-home", "--cache-home"]:
         assert flag in result.output
     for command in ["start", "stop", "restart", "status", "uninstall"]:
