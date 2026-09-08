@@ -2777,6 +2777,18 @@ test('notifications live in Settings and the old header popup is removed', () =>
     assert.doesNotMatch(html, /class="setup-btn sm:hidden"[^>]*aria-label="Settings"/);
 });
 
+test('Settings and Setup stay above an expanded activity drawer', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const activityStart = html.indexOf('<!-- Twitter/X-style activity drawer -->');
+    const activityMarkup = html.slice(activityStart, html.indexOf('</section>', activityStart));
+
+    assert.equal((html.match(/settings-modal-backdrop fixed inset-0 z-\[100\]/g) || []).length, 2);
+    assert.match(css, /\.activity-drawer\s*\{[\s\S]*?z-index: 70;/);
+    assert.doesNotMatch(activityMarkup, /activity-over-settings/);
+    assert.doesNotMatch(css, /\.activity-drawer\.activity-over-settings/);
+});
+
 test('Settings tabs use the requested order and Appearance is the default', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
