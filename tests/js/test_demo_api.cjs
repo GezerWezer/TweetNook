@@ -79,6 +79,7 @@ async function main() {
         'https://example.test/api/tweets?collection=all&sort=default&page=1&limit=100',
     );
     assert.equal(allTweets.body.total, 26);
+    assert.equal(allTweets.body.has_more, false);
     assert.ok(allTweets.body.tweets.every(tweet => tweet.collections.length > 0));
     assert.equal(
         allTweets.body.tweets.some(tweet => tweet.tweet_id === '202602050028'),

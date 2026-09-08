@@ -1752,15 +1752,12 @@ def search_archive(
             rows=display_rows,
             count_line=(
                 f"showing {len(display_rows)} of {post_page.total} search results"
-                if post_page is not None and search_types == {"post"}
+                if post_page is not None
+                and post_page.total is not None
+                and search_types == {"post"}
                 else f"showing {len(display_rows)} search results"
             ),
         )
-        if post_page is not None and post_page.truncated:
-            console.print(
-                "[yellow]Search reached the 1,000-candidate limit; "
-                "results may be incomplete.[/yellow]"
-            )
     except SearchQueryError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from exc

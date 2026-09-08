@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import time
@@ -4467,20 +4468,10 @@ class ArchiveStore:
         *,
         limit: int,
         collections: set[str] | None = None,
-        narrow: bool = False,
     ) -> list[dict[str, Any]]:
         where_expr = _and_expr("record_type = 'tweet'", self._search_collection_expr(collections))
-        columns = None
-        if narrow:
-            columns = [
-                "archive.tweet_id AS tweet_id",
-                "archive.created_at AS created_at",
-                "archive.created_at_ts AS created_at_ts",
-                "archive.sort_index AS sort_index",
-            ]
         return self._query(
             expr=where_expr,
-            cols=columns,
             limit=limit,
             is_fts=True,
             query=query,
@@ -4757,46 +4748,200 @@ class ArchiveStore:
                 return results[:limit]
             fetch_limit = min(fetch_limit * 2, max_fetch_limit)
 
-    def search_post_fts_candidates(
+    def search_tweet_ids(
         self,
-        query: str,
+        query_groups: tuple[tuple[dict[str, Any], ...], ...],
         *,
-        limit: int = 20,
-        collections: set[str] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Return narrow ranked tweet candidates without hydrating their object graphs."""
-        self.ensure_fts_index()
-        query = self._prepare_fts_query(query)
-        if not query:
-            return []
+        collections: set[str] | None,
+        sort: str,
+        limit: int,
+        offset: int,
+        random_seed: int | None = None,
+        include_total: bool = False,
+    ) -> tuple[list[dict[str, Any]], int | None]:
+        """Evaluate the Web tweet query in SQLite and return one lightweight page.
 
-        fetch_limit = max(limit, 1)
-        max_fetch_limit = max(limit * 8, 50)
-        while True:
-            raw_rows = self._search_post_rows_fts(
-                query,
-                limit=fetch_limit,
-                collections=collections,
-                narrow=True,
+        Text clauses are independent FTS relations. The supplied filter expressions
+        are produced by the canonical query compiler, never by HTTP input directly.
+        """
+        self.ensure_fts_index()
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+
+        # Preserve the index-ordered ordinary-feed path. It already deduplicates
+        # logical tweets before LIMIT/OFFSET and avoids building a search CTE when
+        # there is no query to evaluate.
+        if not query_groups and sort != "random" and (not collections or len(collections) == 1):
+            collection = next(iter(collections)) if collections else "all"
+            filter_expr = "record_type = 'tweet'"
+            if collection != "all":
+                filter_expr += f" AND collection_type = {_expr_quote(collection)}"
+            total = self._count_distinct("tweet_id", filter_expr) if include_total else None
+            if sort in {"liked_latest", "liked_earliest"}:
+                rows = self.query_like_order_ids(
+                    filter_expr,
+                    sort=sort,
+                    limit=limit + 1,
+                    offset=offset,
+                )
+                return rows, total
+            ids = self.get_paginated_tweet_ids(
+                collection,
+                limit=limit + 1,
+                offset=offset,
+                sort=sort,
             )
-            rows = self._dedupe_search_rows(raw_rows)
-            results = [
-                {
-                    "tweet_id": row["tweet_id"],
-                    "created_at": row.get("created_at"),
-                    "created_at_ts": row.get("created_at_ts"),
-                    "sort_index": row.get("sort_index"),
-                    "match_score": self._search_score(row),
-                }
-                for row in rows
-            ]
-            if (
-                len(results) >= limit
-                or len(raw_rows) < fetch_limit
-                or fetch_limit >= max_fetch_limit
-            ):
-                return results[:limit]
-            fetch_limit = min(fetch_limit * 2, max_fetch_limit)
+            return [{"tweet_id": tweet_id} for tweet_id in ids], total
+
+        collection_expr = self._search_collection_expr(collections)
+        ctes: list[str] = []
+        params: list[Any] = []
+        compiled_groups: list[list[dict[str, Any]]] = []
+        text_index = 0
+        for group in query_groups:
+            compiled_group: list[dict[str, Any]] = []
+            for clause in group:
+                compiled = dict(clause)
+                if compiled["kind"] == "text":
+                    prepared = self._prepare_fts_query(str(compiled["value"]))
+                    alias = f"text_match_{text_index}"
+                    text_index += 1
+                    compiled["alias"] = alias
+                    where = "archive.record_type = 'tweet'"
+                    if collection_expr:
+                        where += f" AND {collection_expr}"
+                    ctes.append(
+                        f"{alias}(tweet_id, rank) AS MATERIALIZED ("
+                        "SELECT archive.tweet_id, MIN(archive_fts.rank) "
+                        "FROM archive_fts "
+                        "JOIN archive ON archive.rowid = archive_fts.rowid "
+                        f"WHERE archive_fts MATCH ? AND {where} "
+                        "GROUP BY archive.tweet_id)"
+                    )
+                    params.append(prepared)
+                compiled_group.append(compiled)
+            compiled_groups.append(compiled_group)
+
+        # Any all-positive-text AND group is a complete candidate driver. Using one
+        # keeps ordinary text searches FTS-led while mixed OR and negative-only
+        # queries correctly evaluate against the complete logical tweet population.
+        driver_group = next(
+            (
+                group
+                for group in compiled_groups
+                if group
+                and all(
+                    clause["kind"] == "text" and not clause.get("negated", False)
+                    for clause in group
+                )
+            ),
+            None,
+        )
+        if driver_group is not None:
+            union = " UNION ".join(
+                f"SELECT tweet_id FROM {clause['alias']}" for clause in driver_group
+            )
+            ctes.append(f"candidate_ids(tweet_id) AS MATERIALIZED ({union})")
+            from_sql = (
+                "candidate_ids JOIN archive AS archive INDEXED BY idx_archive_tweet_id "
+                "ON archive.tweet_id = candidate_ids.tweet_id"
+            )
+        else:
+            from_sql = "archive AS archive"
+
+        joins: list[str] = []
+        group_conditions: list[str] = []
+        group_scores: list[str] = []
+        for group in compiled_groups:
+            alternatives: list[str] = []
+            positive_scores: list[str] = []
+            for clause in group:
+                if clause["kind"] == "text":
+                    alias = str(clause["alias"])
+                    joins.append(f"LEFT JOIN {alias} ON {alias}.tweet_id = archive.tweet_id")
+                    if clause.get("negated", False):
+                        alternatives.append(f"{alias}.tweet_id IS NULL")
+                    else:
+                        alternatives.append(f"{alias}.tweet_id IS NOT NULL")
+                        positive_scores.append(f"COALESCE(-{alias}.rank, 0.0)")
+                else:
+                    alternatives.append(f"({clause['expression']})")
+            if alternatives:
+                group_conditions.append(f"({' OR '.join(alternatives)})")
+            if positive_scores:
+                group_scores.append(
+                    positive_scores[0]
+                    if len(positive_scores) == 1
+                    else f"MAX({', '.join(positive_scores)})"
+                )
+
+        where = ["archive.record_type = 'tweet'"]
+        if collection_expr:
+            where.append(collection_expr)
+        where.extend(group_conditions)
+        score_expr = " + ".join(group_scores) if group_scores else "0.0"
+        ctes.append(
+            "matches(tweet_id, match_score, created_at_ts, sort_index) AS MATERIALIZED ("
+            "SELECT archive.tweet_id, "
+            f"MAX({score_expr}), MAX(archive.created_at_ts), "
+            "MAX(CAST(archive.sort_index AS INTEGER)) "
+            f"FROM {from_sql} {' '.join(dict.fromkeys(joins))} "
+            f"WHERE {' AND '.join(where)} GROUP BY archive.tweet_id)"
+        )
+        with_sql = "WITH " + ", ".join(ctes)
+
+        page_from = "matches"
+        page_params = list(params)
+        if sort in {"liked_latest", "liked_earliest"}:
+            ordered_ids = self.get_like_order().ordered_ids(sort)
+            page_from = (
+                "matches JOIN json_each(?) AS like_order ON like_order.value = matches.tweet_id"
+            )
+            page_params.append(json.dumps(ordered_ids))
+            order_by = "CAST(like_order.key AS INTEGER), matches.tweet_id"
+        elif sort == "oldest":
+            order_by = (
+                "matches.created_at_ts IS NULL, matches.created_at_ts ASC, "
+                "matches.sort_index ASC, matches.tweet_id ASC"
+            )
+        elif sort == "newest":
+            order_by = (
+                "matches.created_at_ts IS NULL, matches.created_at_ts DESC, "
+                "matches.sort_index DESC, matches.tweet_id DESC"
+            )
+        elif sort == "random":
+            seed = int(random_seed or 0)
+
+            def stable_random_key(tweet_id: Any, supplied_seed: Any) -> int:
+                digest = hashlib.blake2b(
+                    f"{int(supplied_seed)}:{tweet_id}".encode(), digest_size=8
+                ).digest()
+                return int.from_bytes(digest, "big") & ((1 << 63) - 1)
+
+            self.conn.create_function(
+                "tweetnook_random_key", 2, stable_random_key, deterministic=True
+            )
+            order_by = "tweetnook_random_key(matches.tweet_id, ?), matches.tweet_id"
+            page_params.append(seed)
+        else:
+            order_by = "matches.match_score DESC, matches.tweet_id DESC"
+
+        page_sql = (
+            f"{with_sql} SELECT matches.tweet_id, matches.match_score, "
+            "matches.created_at_ts, matches.sort_index "
+            f"FROM {page_from} ORDER BY {order_by} LIMIT ? OFFSET ?"
+        )
+        page_params.extend([limit + 1, offset])
+        rows = [dict(row) for row in self.conn.execute(page_sql, page_params).fetchall()]
+
+        total = None
+        if include_total:
+            total = int(
+                self.conn.execute(f"{with_sql} SELECT COUNT(*) FROM matches", params).fetchone()[0]
+            )
+        return rows, total
 
     def version_count(self) -> int:
         return 1

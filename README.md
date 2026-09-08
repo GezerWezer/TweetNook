@@ -140,7 +140,7 @@ The same queries work in the terminal:
 tweetnook search '"night sky" has:image' --sort newest --limit 20
 ```
 
-See [Search](docs/search.md) for all filters and search limits.
+See [Search](docs/search.md) for all filters and search behavior.
 
 ### Add tags
 

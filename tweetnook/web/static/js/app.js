@@ -19,6 +19,8 @@ function tweetApp() {
         page: 1,
         totalPages: 1,
         total: 0,
+        hasMore: false,
+        randomSeed: null,
         collectionFilter: 'likes',
         sortOrder: 'liked_latest',
         feedMenu: null,
@@ -47,6 +49,16 @@ function tweetApp() {
         },
         feedLabel(kind) {
             return this.feedOptions(kind).find(option => option.value === this.feedValue(kind))?.label || 'Relevance';
+        },
+        resultCountLabel() {
+            if (this.searchQuery.trim() && this.total === null) return 'Results';
+            const count = Number(this.total) || 0;
+            const noun = this.searchQuery.trim()
+                ? 'Results'
+                : (this.collectionFilter === 'all'
+                    ? 'Tweets'
+                    : this.collectionFilter.charAt(0).toUpperCase() + this.collectionFilter.slice(1));
+            return `${count.toLocaleString()} ${noun}`;
         },
         openFeedMenu(kind, trigger) {
             this.feedMenu = kind;
@@ -897,12 +909,17 @@ function tweetApp() {
             if (!append) {
                 this.loading = true;
                 this.tweets = [];
+                this.hasMore = false;
                 window.scrollTo(0, 0);
             } else {
                 this.loadingMore = true;
             }
             
             let url = `/api/tweets?collection=${this.collectionFilter}&sort=${this.sortOrder}&page=${this.page}`;
+            if (this.sortOrder === 'random') {
+                if (this.randomSeed === null) this.randomSeed = Math.floor(Math.random() * 2147483648);
+                url += `&random_seed=${this.randomSeed}`;
+            }
             if (this.searchQuery.trim()) {
                 url += `&q=${encodeURIComponent(this.searchQuery)}`;
             }
@@ -929,7 +946,8 @@ function tweetApp() {
                 }
                 this.page = data.page;
                 this.totalPages = data.pages;
-                this.total = data.total || 0;
+                this.total = data.total;
+                this.hasMore = data.has_more;
             } catch (e) {
                 console.error(e);
                 this.error = e.message;
@@ -1350,7 +1368,7 @@ function tweetApp() {
         },
         
         loadMore() {
-            if (this.loadingMore || this.loading || this.page >= this.totalPages) return;
+            if (this.loadingMore || this.loading || !this.hasMore) return;
             this.page++;
             this.fetchTweets(true);
         },
@@ -1725,6 +1743,7 @@ function tweetApp() {
             if (this.collectionFilter !== 'likes' && this.sortOrder.startsWith('liked_')) this.sortOrder = 'newest';
             if (!this.searchQuery.trim() && this.sortOrder === 'default') this.sortOrder = this.collectionFilter === 'likes' ? 'liked_latest' : 'newest';
             this.page = 1;
+            this.randomSeed = this.sortOrder === 'random' ? Math.floor(Math.random() * 2147483648) : null;
             const route = { viewMode: 'list' };
             if (this.activeRoute.viewMode !== 'list') this.replaceRoute(route, { scrollY: window.scrollY });
             this.activeRoute = route;

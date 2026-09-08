@@ -370,14 +370,17 @@
             return sourceTweets.get(String(tweetId));
         }
 
-        function sortedTweets(tweets, sort, groups) {
+        function sortedTweets(tweets, sort, groups, randomSeed = 0) {
             const copy = [...tweets];
             if (sort === 'random') {
-                for (let index = copy.length - 1; index > 0; index -= 1) {
-                    const target = Math.floor(Math.random() * (index + 1));
-                    [copy[index], copy[target]] = [copy[target], copy[index]];
-                }
-                return copy;
+                const key = tweet => {
+                    let hash = Number(randomSeed) >>> 0;
+                    for (const character of String(tweet.tweet_id)) {
+                        hash = Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0;
+                    }
+                    return hash;
+                };
+                return copy.sort((left, right) => key(left) - key(right) || String(left.tweet_id).localeCompare(String(right.tweet_id)));
             }
             if (sort === 'liked_latest' || sort === 'liked_earliest') {
                 const direction = sort === 'liked_latest' ? -1 : 1;
@@ -785,13 +788,20 @@
                     ? tweet.collections.includes(collection)
                     : tweet.collections.length > 0);
                 tweets = tweets.filter(tweet => matchesQuery(tweet, groups));
-                tweets = sortedTweets(tweets, url.searchParams.get('sort') || 'default', groups);
+                tweets = sortedTweets(
+                    tweets,
+                    url.searchParams.get('sort') || 'default',
+                    groups,
+                    url.searchParams.get('random_seed') || 0,
+                );
                 const total = tweets.length;
+                const start = (page - 1) * limit;
                 return jsonResponse({
-                    tweets: tweets.slice((page - 1) * limit, page * limit),
+                    tweets: tweets.slice(start, start + limit),
                     total,
                     page,
                     pages: Math.max(1, Math.ceil(total / limit)),
+                    has_more: start + limit < total,
                     truncated: false,
                 });
             }

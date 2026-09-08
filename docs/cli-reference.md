@@ -127,8 +127,8 @@ tweetnook search QUERY [--limit N] [--sort SORT]
 Plural aliases `posts`, `articles`, `bookmarks`, `likes`, and `tweets` are also
 accepted, but canonical singular values are clearest. Structured filters are tweet-only; use
 `has:article` from tweet search rather than structured filters with article
-search. Tweet text-search paths warn when their 1,000-candidate cap is reached;
-article search uses a separate stored-article scan.
+search. Tweet searches evaluate the complete archive before applying the requested
+result limit; article search uses a separate stored-article scan.
 
 See [Search](search.md) for the full grammar.
 
