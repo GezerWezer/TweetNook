@@ -8,8 +8,9 @@ This is the active implementation checklist. Update checkboxes as items complete
 - [x] Select a minor version for the new managed update command and substantial Web/search work.
 - [x] Update package version metadata and replace legacy upstream changelog history with TweetNook history.
 - [x] Run the full release validation, build, metadata check, and isolated wheel smoke test.
-- [ ] Commit the release metadata, create `v0.1.0`, and push `main` plus the tag.
-- [ ] Confirm the tag workflow publishes PyPI and GitHub release artifacts; verify the public install.
+- [x] Commit the release metadata, create `v0.1.0`, and push `main` plus the tag.
+- [x] Confirm the tag workflow publishes PyPI and GitHub release artifacts; verify the public install.
+- [ ] Enable GitHub Pages with GitHub Actions as its source, then rerun the failed demo deployment.
 
 ## Unbounded Web search pagination (2026-09-07)
 
