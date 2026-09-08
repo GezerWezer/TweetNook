@@ -2,6 +2,13 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Randomized scheduled sync advancement (2026-09-08)
+
+- [x] Preserve initialization/reload scheduling in the remaining part of the current randomized window.
+- [x] Treat successful and conflict-skipped occurrences as consumed before calculating the next fixed-time run.
+- [x] Advance overdue daily, weekly, and monthly occurrences from the current time, with deterministic regression coverage.
+- [x] Validate hourly and non-randomized scheduling plus the full project test suite.
+
 ## Database performance and navigation repairs (2026-09-08)
 
 - [x] Repair service reinstall restart in a focused commit after the optimizations. The supplied server served current JavaScript with a legacy API; install now reloads/enables/restarts, and the existing update command already stops/upgrades/starts.

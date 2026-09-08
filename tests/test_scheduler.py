@@ -113,6 +113,56 @@ def test_randomized_time_uses_future_part_of_current_window() -> None:
     assert upper_bound == 2
 
 
+@pytest.mark.parametrize(
+    ("config", "after", "expected"),
+    [
+        (
+            ScheduleConfig(
+                cadence="daily",
+                time="03:00",
+                timezone="UTC",
+                randomize_time=True,
+                random_offset_min_hours=0,
+                random_offset_max_hours=2,
+            ),
+            datetime(2026, 8, 12, 3, 16, tzinfo=UTC),
+            datetime(2026, 8, 13, 4, 0, tzinfo=UTC),
+        ),
+        (
+            ScheduleConfig(
+                cadence="weekly",
+                weekday=2,
+                time="09:00",
+                timezone="UTC",
+                randomize_time=True,
+                random_offset_min_hours=0,
+                random_offset_max_hours=2,
+            ),
+            datetime(2026, 8, 12, 9, 16, tzinfo=UTC),
+            datetime(2026, 8, 19, 10, 0, tzinfo=UTC),
+        ),
+        (
+            ScheduleConfig(
+                cadence="monthly",
+                day_of_month=31,
+                time="04:00",
+                timezone="UTC",
+                randomize_time=True,
+                random_offset_min_hours=0,
+                random_offset_max_hours=2,
+            ),
+            datetime(2026, 8, 31, 4, 16, tzinfo=UTC),
+            datetime(2026, 9, 30, 5, 0, tzinfo=UTC),
+        ),
+    ],
+)
+def test_consumed_randomized_occurrence_advances_to_next_nominal_run(
+    config, after, expected
+) -> None:
+    with patch("tweetnook.scheduler.random.uniform", return_value=1.0):
+        assert next_run_after(config, after, occurrence_consumed=True) == expected
+
+
 def test_hourly_schedule_ignores_fixed_time_randomization() -> None:
     config = ScheduleConfig(
         cadence="hours",
@@ -184,6 +234,79 @@ def test_scheduler_launches_due_sync_and_advances_next_run(tmp_path) -> None:
     assert manager._state["next_run_at"] == 1_001.0 + 2 * 3600
 
 
+def test_scheduler_consumes_randomized_daily_occurrence_once(tmp_path) -> None:
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    config = AppConfig(
+        schedule=ScheduleConfig(
+            enabled=True,
+            cadence="daily",
+            time="03:00",
+            timezone="UTC",
+            randomize_time=True,
+            random_offset_min_hours=0,
+            random_offset_max_hours=2,
+        )
+    )
+    started = []
+
+    class Supervisor:
+        def __init__(self):
+            self.config = config
+
+        def start(self, **_kwargs):
+            started.append(True)
+            return {"run_id": "scheduled-run"}
+
+    manager = ScheduleManager(paths, config, Supervisor())
+    occurrence = datetime(2026, 8, 12, 3, 16, tzinfo=UTC)
+    manager._state["next_run_at"] = occurrence.timestamp()
+
+    with patch("tweetnook.scheduler.random.uniform", return_value=1.0):
+        manager.tick(now=occurrence.timestamp())
+
+    next_run = datetime.fromtimestamp(manager._state["next_run_at"], UTC)
+    assert next_run == datetime(2026, 8, 13, 4, 0, tzinfo=UTC)
+
+    manager.tick(now=datetime(2026, 8, 12, 4, 30, tzinfo=UTC).timestamp())
+    assert started == [True]
+
+
+def test_scheduler_resumes_after_an_overdue_randomized_occurrence(tmp_path) -> None:
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    config = AppConfig(
+        schedule=ScheduleConfig(
+            enabled=True,
+            cadence="daily",
+            time="03:00",
+            timezone="UTC",
+            randomize_time=True,
+            random_offset_min_hours=0,
+            random_offset_max_hours=2,
+        )
+    )
+
+    class Supervisor:
+        def __init__(self):
+            self.config = config
+
+        def start(self, **_kwargs):
+            return {"run_id": "scheduled-run"}
+
+    manager = ScheduleManager(paths, config, Supervisor())
+    manager._state["next_run_at"] = datetime(2026, 8, 10, 3, 16, tzinfo=UTC).timestamp()
+
+    with patch("tweetnook.scheduler.random.uniform", return_value=1.0):
+        manager.tick(now=datetime(2026, 8, 12, 12, 0, tzinfo=UTC).timestamp())
+
+    assert datetime.fromtimestamp(manager._state["next_run_at"], UTC) == datetime(
+        2026, 8, 13, 4, 0, tzinfo=UTC
+    )
+
+
 def test_scheduler_records_conflicting_run_as_skipped(tmp_path) -> None:
     paths = XDGPaths(
         config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
@@ -219,6 +342,44 @@ def test_scheduler_records_conflicting_run_as_skipped(tmp_path) -> None:
             "active_kind": "import",
         }
     ]
+
+
+def test_scheduler_conflict_consumes_randomized_daily_occurrence(tmp_path) -> None:
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    config = AppConfig(
+        schedule=ScheduleConfig(
+            enabled=True,
+            cadence="daily",
+            time="03:00",
+            timezone="UTC",
+            randomize_time=True,
+            random_offset_min_hours=0,
+            random_offset_max_hours=2,
+        )
+    )
+
+    class Supervisor:
+        active_run_id = "blocking-import"
+        active_kind = "import"
+
+        def __init__(self):
+            self.config = config
+
+        def start(self, **_kwargs):
+            raise JobConflictError("busy")
+
+    manager = ScheduleManager(paths, config, Supervisor())
+    occurrence = datetime(2026, 8, 12, 3, 16, tzinfo=UTC)
+    manager._state["next_run_at"] = occurrence.timestamp()
+
+    with patch("tweetnook.scheduler.random.uniform", return_value=0.5):
+        manager.tick(now=occurrence.timestamp())
+
+    assert datetime.fromtimestamp(manager._state["next_run_at"], UTC) == datetime(
+        2026, 8, 13, 3, 30, tzinfo=UTC
+    )
 
 
 def test_scheduler_ignores_conflict_notification_failure(tmp_path) -> None:

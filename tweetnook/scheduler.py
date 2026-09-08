@@ -82,11 +82,24 @@ def next_run_after(
     after: datetime,
     *,
     random_offset: float | None = None,
+    occurrence_consumed: bool = False,
 ) -> datetime:
     if config.cadence == "hours" or not config.randomize_time:
         return _next_nominal_run(config, after)
     if random_offset is not None and random_offset < 0:
         raise ValueError("Random added delay must not be negative")
+
+    if occurrence_consumed:
+        nominal = _next_nominal_run(config, after)
+        offset = (
+            random.uniform(
+                config.random_offset_min_hours,
+                config.random_offset_max_hours,
+            )
+            if random_offset is None
+            else random_offset
+        )
+        return nominal + timedelta(hours=offset)
 
     if random_offset is None:
         nominal = _next_nominal_run(
@@ -262,6 +275,7 @@ class ScheduleManager:
             self._state["next_run_at"] = next_run_after(
                 schedule,
                 datetime.fromtimestamp(timestamp, UTC),
+                occurrence_consumed=True,
             ).timestamp()
             self._state["fingerprint"] = self._fingerprint(schedule)
             self._save_state()
