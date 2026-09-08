@@ -276,7 +276,7 @@ ARCHIVE_COLUMNS = [
     "value",
 ]
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 COLUMN_TYPES = {
     field: (
         "TEXT PRIMARY KEY"
@@ -331,6 +331,7 @@ class ArchiveStore:
         self.conn = sqlite3.connect(db_file, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA recursive_triggers=ON")
 
         database_config = config.database if config is not None else DatabaseConfig()
         self.conn.execute(
@@ -359,12 +360,8 @@ class ArchiveStore:
             self._create_latest_schema()
             return
 
-        if current_version == 3:
+        if current_version in {3, 4, 5}:
             self._migrate_search_index(current_version)
-            return
-
-        if current_version == 4:
-            self._migrate_search_support_indexes(current_version)
             return
 
         self._migrate_legacy_database(current_version)
@@ -408,8 +405,9 @@ class ArchiveStore:
         )
 
     def _migrate_search_index(self, current_version: int) -> None:
-        """Replace the derived all-row FTS index without copying canonical archive data."""
+        """Repair derived FTS documents/triggers without copying canonical archive data."""
         with self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
             self._rebuild_fts_schema()
             self._create_archive_indexes()
             expected = self.conn.execute(
@@ -567,7 +565,14 @@ class ArchiveStore:
         END;
         """)
         self.conn.execute("""
-        CREATE TRIGGER IF NOT EXISTS archive_au AFTER UPDATE ON archive BEGIN
+        CREATE TRIGGER IF NOT EXISTS archive_au AFTER UPDATE ON archive
+        WHEN (old.record_type = 'tweet' OR new.record_type = 'tweet')
+          AND (old.record_type IS NOT new.record_type
+            OR old.author_username IS NOT new.author_username
+            OR old.author_display_name IS NOT new.author_display_name
+            OR old.text IS NOT new.text
+            OR old.note_tweet_text IS NOT new.note_tweet_text)
+        BEGIN
           INSERT INTO archive_fts(
             archive_fts, rowid, author_username, author_display_name, text, note_tweet_text
           ) SELECT
@@ -1030,7 +1035,11 @@ class ArchiveStore:
         cols = list(ARCHIVE_COLUMNS)
         placeholders = ", ".join(["?"] * len(cols))
         col_names = ", ".join(cols)
-        sql = f"INSERT OR REPLACE INTO archive ({col_names}) VALUES ({placeholders})"
+        updates = ", ".join(f"{col} = excluded.{col}" for col in cols if col != "row_key")
+        sql = (
+            f"INSERT INTO archive ({col_names}) VALUES ({placeholders}) "
+            f"ON CONFLICT(row_key) DO UPDATE SET {updates}"
+        )
         params = []
         for record in records:
             row = []
@@ -3052,19 +3061,13 @@ class ArchiveStore:
         enrichment_retry_eligible: bool | int | None | object = _UNSET,
         cursor: _PageBuffer | None = None,
     ) -> None:
-        row = self._lookup_row(self._row_key_for_tweet_object(tweet_id), cursor=cursor)
-        if row is None:
-            raise KeyError(f"Tweet object row not found: {tweet_id}")
-        updated = dict(row)
-        updated.update(
-            {
-                "enrichment_state": enrichment_state,
-                "enrichment_checked_at": enrichment_checked_at,
-                "enrichment_http_status": enrichment_http_status,
-                "enrichment_reason": enrichment_reason,
-                "updated_at": utc_now(),
-            }
-        )
+        changes = {
+            "enrichment_state": enrichment_state,
+            "enrichment_checked_at": enrichment_checked_at,
+            "enrichment_http_status": enrichment_http_status,
+            "enrichment_reason": enrichment_reason,
+            "updated_at": utc_now(),
+        }
         optional_updates = {
             "enrichment_detail": enrichment_detail,
             "enrichment_retry_count": enrichment_retry_count,
@@ -3077,7 +3080,22 @@ class ArchiveStore:
                 continue
             if field_name == "enrichment_retry_eligible" and value is not None:
                 value = int(bool(value))
-            updated[field_name] = value
+            changes[field_name] = value
+        row_key = self._row_key_for_tweet_object(tweet_id)
+        if cursor is None:
+            with self.conn:
+                result = self.conn.execute(
+                    f"UPDATE archive SET {', '.join(f'{field} = ?' for field in changes)} "
+                    "WHERE row_key = ?",
+                    (*changes.values(), row_key),
+                )
+                if not result.rowcount:
+                    raise KeyError(f"Tweet object row not found: {tweet_id}")
+            return
+        row = self._lookup_row(row_key, cursor=cursor)
+        if row is None:
+            raise KeyError(f"Tweet object row not found: {tweet_id}")
+        updated = {**row, **changes}
         self._queue_record(updated, cursor=cursor)
 
     def _refresh_tweet_records_for_detail(

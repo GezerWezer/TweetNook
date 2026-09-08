@@ -2,6 +2,17 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Database performance and navigation repairs (2026-09-08)
+
+- [ ] Repair install/update service restart in a focused commit after the optimizations. Confirmed on the supplied server: current JavaScript, legacy API without `has_more`, and missing detail document routes.
+- [x] Repair FTS replacement lifecycle and existing orphaned documents; reduce state-only write amplification.
+- [ ] Fix feed duplicate and URL lookup plans; add selective author/profile indexes and planner maintenance.
+- [ ] Apply queue/export limits before hydration; preserve ordering and merge semantics.
+- [ ] Add chronological cursor pagination, safe count reuse, and robust browser continuation handling.
+- [ ] Scope like-order invalidation and index the derived sequence for paging.
+- [ ] Reduce avoidable search materialization while preserving Boolean/ranking behavior.
+- [ ] Refresh user/developer documentation and validate Python, browser, query-plan, and representative performance cases.
+
 ## Twitter/X-style media indicators (2026-09-08)
 
 - [x] Show saved video durations as bottom-left playback pills in single and gallery media.
