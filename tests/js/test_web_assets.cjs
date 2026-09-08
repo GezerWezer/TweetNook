@@ -793,6 +793,7 @@ test('analytics markup exposes the Archive status cards and reason breakdown', (
         path.join(ROOT, 'tweetnook', 'web', 'index.html'),
         'utf8',
     );
+    const appJs = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
     const styles = fs.readFileSync(
         path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'),
         'utf8',
@@ -815,6 +816,15 @@ test('analytics markup exposes the Archive status cards and reason breakdown', (
     assert.match(html, /x-show="!statsRefreshing">Refresh</);
     assert.match(html, /x-show="statsRefreshing" class="inline-flex items-center gap-1.5"/);
     assert.match(html, /\sRefreshing\s+<\/span>/);
+    assert.match(html, /class="stats-modal-scroll flex-1 overflow-y-auto p-4 md:p-6 space-y-8"/);
+    assert.match(styles, /\.stats-modal-scroll\s*\{[^}]*overscroll-behavior: contain;/s);
+    const statsWatcherStart = appJs.indexOf("this.$watch('showStatsModal'");
+    const settingsWatcherStart = appJs.indexOf("this.$watch('showSettingsModal'");
+    assert.ok(statsWatcherStart >= 0 && statsWatcherStart < settingsWatcherStart);
+    const statsWatcher = appJs.slice(statsWatcherStart, settingsWatcherStart);
+    assert.match(statsWatcher, /if \(val\) this\.lockModalScroll\(\);/);
+    assert.match(statsWatcher, /!this\.showSettingsModal && !this\.showSetupModal/);
+    assert.match(statsWatcher, /this\.unlockModalScroll\(\);/);
     assert.doesNotMatch(html, />Pipeline health</);
     assert.doesNotMatch(
         html,

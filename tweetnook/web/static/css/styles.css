@@ -871,6 +871,10 @@ body {
     letter-spacing: -0.02em;
 }
 
+.stats-modal-scroll {
+    overscroll-behavior: contain;
+}
+
 .stats-section-title {
     font-size: 18px;
     font-weight: 700;
