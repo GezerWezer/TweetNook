@@ -3026,7 +3026,6 @@
             <!-- Twitter/X-style activity drawer -->
             <section class="activity-drawer" x-cloak x-init="$nextTick(() => requestAnimationFrame(() => $el.classList.add('activity-drawer-ready')))"
                      :class="[
-                         (showSettingsModal || showSetupModal) && activityDrawerOpen ? 'activity-over-settings' : '',
                          activityDrawerOpen ? 'activity-drawer-panel' : ((activity || activityStartPending) ? 'activity-drawer-bar' : 'activity-drawer-square'),
                          (activity || activityStartPending || activityDrawerOpen) ? 'bottom-4 right-4 sm:right-[88px]' : 'bottom-[160px] right-4'
                      ]"
