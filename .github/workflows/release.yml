@@ -82,3 +82,46 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: gh release create "$TAG" --repo "$GH_REPO" --verify-tag --generate-notes --title "$TAG" --latest dist/*
+
+  pages:
+    name: Deploy GitHub Pages demo
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - publish
+      - release
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build static demo
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+          VERSION: ${{ github.ref_name }}
+        run: python scripts/build_pages_demo.py --output _dist/pages --version "${VERSION#v}" --base-path "$BASE_PATH"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _dist/pages
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

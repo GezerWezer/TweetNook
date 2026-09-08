@@ -2,6 +2,27 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## GitHub Pages demo (2026-09-07)
+
+- [x] Add a synthetic, schema-validated seven-user fixture with 22 root posts, mixed chained and
+  standalone replies, text/media quote combinations, and prompt-aligned tags plus media descriptions;
+  keep invented posters absent.
+- [x] Make the demo All Tweets feed the union of authored, liked, and bookmarked records while
+  retaining context-only saved replies inside conversation views.
+- [x] Add three recent liked guide posts and give every liked record a text-only quote reply plus a
+  plain text-only reply, without promoting those helper replies into feed collections.
+- [x] Order Likes as the three guides, two-image gallery, standalone video, and four-image gallery;
+  use every supplied non-avatar media asset in the visible feed with at most two uses per asset.
+- [x] Include a synthetic community note on the standalone User Two source post and preserve it
+  wherever that post appears directly or inside a quote.
+- [x] Preserve feed, search/autocomplete, multi-author replies/threads/quotes, stats, schedule,
+  automated tagging, and a trace-calibrated three-minute Sync pipeline without a FastAPI server.
+- [x] Gate demo initialization, hide Setup/Configuration/Logs, explain those hidden panels in the
+  Settings sidebar footer, add the accent-colored topbar marker, and preserve production behavior.
+- [x] Build a deterministic subpath-safe Pages artifact with public-output safety checks.
+- [x] Add focused adapter/build regressions and run the existing Web/search plus full validation suites.
+- [x] Deploy Pages only after successful PyPI publication and add the concise README demo link.
+
 ## Bounded automated-tagging candidate selection (2026-09-06)
 
 - [x] Replace full-population candidate materialization with index-ordered streaming selection.

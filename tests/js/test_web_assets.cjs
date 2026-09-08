@@ -965,6 +965,14 @@ test('detail routes parse and generate canonical string tweet IDs', () => {
     assert.equal(app.parseRoute('/post/123/other'), null);
 });
 
+test('single-column thread quote count tolerates route teardown', () => {
+    const html = fs.readFileSync(
+        path.join(ROOT, 'tweetnook', 'web', 'index.html'),
+        'utf8',
+    );
+    assert.match(html, /threadData\?\.main\?\.local_quote_count > 0/);
+});
+
 test('initialization preserves direct detail paths without adding history entries', () => {
     for (const [pathname, viewMode] of [['/post/123', 'thread'], ['/post/123/quotes', 'quotes']]) {
         const context = browserContext(pathname);

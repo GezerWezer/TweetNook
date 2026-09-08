@@ -33,7 +33,10 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true" class="w-5 h-5 fill-[var(--white-icon)]"><path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z"></path></svg>
                 </button>
                 <div class="flex flex-col">
-                    <h1 class="text-xl font-bold text-[var(--text-primary)]" x-text="viewMode === 'list' ? 'Your Archive' : viewMode === 'quotes' ? 'Quote Tweets' : 'Tweet'"></h1>
+                    <div class="flex items-baseline gap-2">
+                        <h1 class="text-xl font-bold text-[var(--text-primary)]" x-text="viewMode === 'list' ? 'Your Archive' : viewMode === 'quotes' ? 'Quote Tweets' : 'Tweet'"></h1>
+                        <span x-show="isDemo" x-cloak class="text-xs font-extrabold tracking-[0.14em] text-[var(--accent-color)]">DEMO</span>
+                    </div>
                     <span x-show="viewMode === 'list' && lastSyncFormatted" class="text-[13px] text-[var(--text-secondary)]" x-text="lastSyncFormatted"></span>
                 </div>
             </div>
@@ -124,7 +127,7 @@
                                 <div class="flex items-center space-x-3 w-full py-1">
                                     <div class="w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden">
                                         <span x-text="(opt.desc || opt.value || '?').charAt(0)"></span>
-                                        <img :src="'/api/avatar/' + (opt.id || 'unknown')" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                        <img :src="avatarUrl(opt.id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                     </div>
                                     <div class="flex flex-col min-w-0 flex-1">
                                         <span class="font-bold text-[15px] text-[var(--text-primary)] leading-tight truncate" x-html="highlightMatch(opt.desc || opt.value, opt.query)"></span>
@@ -228,7 +231,7 @@
                     <div class="flex space-x-2">
                         <div class="w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden" @click.stop="openProfileCard($event, tweet)">
                             <span x-text="getInitial(tweet)"></span>
-                            <img :src="'/api/avatar/' + (tweet.author.id || 'unknown')" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                            <img :src="avatarUrl(tweet.author.id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                         </div>
 
                         <div class="flex-1 min-w-0">
@@ -303,7 +306,7 @@
                                             <div class="flex items-center space-x-1 text-[15px] mb-1">
                                                 <div class="w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                     <span x-text="getQuoteAuthor(getQuoteTweet(tweet)).initial"></span>
-                                                    <img :src="'/api/avatar/' + getQuoteAuthor(getQuoteTweet(tweet)).id" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                                    <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(tweet)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                                 </div>
                                                 <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(tweet)).name"></span>
                                                 <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(tweet)).screen_name"></span>
@@ -360,7 +363,7 @@
                             
                             <div class="w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, parent)">
                                 <span x-text="getInitial(parent)"></span>
-                                <img :src="'/api/avatar/' + (parent.author.id || 'unknown')" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                <img :src="avatarUrl(parent.author.id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                             </div>
 
                             <div class="flex-1 min-w-0 z-10">
@@ -399,7 +402,7 @@
                         <div class="flex space-x-2 mb-3 relative z-10">
                             <div class="w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden cursor-pointer" @click.stop="openProfileCard($event, threadData.main)">
                                 <span x-text="getInitial(threadData.main)"></span>
-                                <img :src="'/api/avatar/' + (threadData.main.author.id || 'unknown')" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                <img :src="avatarUrl(threadData.main.author.id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                             </div>
 
                             <div class="cursor-pointer flex-1" @click.stop="openProfileCard($event, threadData.main)">
@@ -461,7 +464,7 @@
                                         <div class="flex items-center space-x-1 text-[15px] mb-1">
                                             <div class="w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                 <span x-text="getQuoteAuthor(getQuoteTweet(threadData?.main)).initial"></span>
-                                                <img :src="'/api/avatar/' + getQuoteAuthor(getQuoteTweet(threadData?.main)).id" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                                <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(threadData?.main)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                             </div>
                                             <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(threadData?.main)).name"></span>
                                             <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(threadData?.main)).screen_name"></span>
@@ -491,7 +494,7 @@
                                     <span class="roll-item text-[var(--accent-color)] font-medium" x-text="formatSyncDate(threadData.main)"></span>
                                 </div>
                             </div>
-                            <template x-if="threadData.main.local_quote_count > 0">
+                            <template x-if="threadData?.main?.local_quote_count > 0">
                                 <button @click="openQuotes(threadData.main.tweet_id)" class="text-[var(--accent-color)] hover:underline text-[15px] font-medium transition ml-auto">
                                     Browse <span x-text="threadData.main.local_quote_count"></span> Quote Tweets
                                 </button>
@@ -514,7 +517,7 @@
                                 
                                 <div class="w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, child)">
                                     <span x-text="getInitial(child)"></span>
-                                    <img :src="'/api/avatar/' + (child.author.id || 'unknown')" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                    <img :src="avatarUrl(child.author.id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                 </div>
 
                                 <div class="flex-1 min-w-0 z-10">
@@ -561,7 +564,7 @@
                                             <!-- Avatar -->
                                             <div class="w-10 h-10 rounded-full flex-shrink-0 relative bg-gray-700 flex items-center justify-center font-bold text-white uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, reply)">
                                                 <span x-text="getInitial(reply)"></span>
-                                                <img :src="'/api/avatar/' + (reply.author.id || 'unknown')" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                                <img :src="avatarUrl(reply.author.id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                             </div>
 
                                             <div class="flex-1 min-w-0 z-10">
@@ -613,7 +616,7 @@
                     <div class="flex flex-col relative">
                         <div class="flex space-x-2">
                             <div class="flex-shrink-0 relative z-10 w-10">
-                                <img :src="'/api/avatar/' + threadData.main.author.id" class="w-10 h-10 rounded-full bg-[var(--bg-secondary)]" loading="lazy">
+                                <img :src="avatarUrl(threadData.main.author.id)" class="w-10 h-10 rounded-full bg-[var(--bg-secondary)]" loading="lazy">
                             </div>
                             <div class="flex-1 min-w-0 pb-1">
                                 <div class="flex items-center justify-between">
@@ -635,7 +638,7 @@
             <template x-for="tweet in quotesList" :key="tweet.tweet_id">
                 <div class="tweet-border cursor-pointer hover-bg transition p-4" @click="openThread(tweet.tweet_id)">
                     <div class="flex space-x-2">
-                        <img :src="'/api/avatar/' + tweet.author.id" class="w-10 h-10 rounded-full flex-shrink-0 bg-[var(--bg-secondary)]" loading="lazy">
+                        <img :src="avatarUrl(tweet.author.id)" class="w-10 h-10 rounded-full flex-shrink-0 bg-[var(--bg-secondary)]" loading="lazy">
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center space-x-1 overflow-hidden">
@@ -702,7 +705,7 @@
                             <div class="w-0.5 bg-[var(--thread-line)] absolute top-[52px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
                             <div class="w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, parent)">
                                 <span x-text="getInitial(parent)"></span>
-                                <img :src="'/api/avatar/' + (parent.author.id || 'unknown')" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                <img :src="avatarUrl(parent.author.id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                             </div>
                             <div class="flex-1 min-w-0 z-10">
                                 <div class="flex items-center space-x-1 text-[15px]">
@@ -737,7 +740,7 @@
                         <div class="flex space-x-2 mb-3 relative z-10">
                             <div class="w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden cursor-pointer" @click.stop="openProfileCard($event, panelThreadData.main)">
                                 <span x-text="getInitial(panelThreadData.main)"></span>
-                                <img :src="'/api/avatar/' + (panelThreadData.main.author.id || 'unknown')" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                <img :src="avatarUrl(panelThreadData.main.author.id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                             </div>
                             <div class="cursor-pointer flex-1" @click.stop="openProfileCard($event, panelThreadData.main)">
                                 <div class="font-bold text-[var(--text-primary)] hover:underline" x-text="panelThreadData.main.author.display_name || 'Unknown'"></div>
@@ -796,7 +799,7 @@
                                         <div class="flex items-center space-x-1 text-[15px] mb-1">
                                             <div class="w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                 <span x-text="getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).initial"></span>
-                                                <img :src="'/api/avatar/' + getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).id" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                                <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                             </div>
                                             <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).name"></span>
                                             <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).screen_name"></span>
@@ -843,7 +846,7 @@
                                 </template>
                                 <div class="w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, child)">
                                     <span x-text="getInitial(child)"></span>
-                                    <img :src="'/api/avatar/' + (child.author.id || 'unknown')" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                    <img :src="avatarUrl(child.author.id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                 </div>
                                 <div class="flex-1 min-w-0 z-10">
                                     <div class="flex items-center space-x-1 text-[15px]">
@@ -880,7 +883,7 @@
                                             </template>
                                             <div class="w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, reply)">
                                                 <span x-text="getInitial(reply)"></span>
-                                                <img :src="'/api/avatar/' + (reply.author.id || 'unknown')" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                                <img :src="avatarUrl(reply.author.id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                             </div>
                                             <div class="flex-1 min-w-0 z-10">
                                                 <div class="flex items-center space-x-1 text-[15px]">
@@ -928,7 +931,7 @@
                     <div class="flex flex-col relative">
                         <div class="flex space-x-2">
                             <div class="flex-shrink-0 relative z-10 w-10">
-                                <img :src="'/api/avatar/' + panelThreadData.main.author.id" class="w-10 h-10 rounded-full bg-[var(--bg-secondary)]" loading="lazy">
+                                <img :src="avatarUrl(panelThreadData.main.author.id)" class="w-10 h-10 rounded-full bg-[var(--bg-secondary)]" loading="lazy">
                             </div>
                             <div class="flex-1 min-w-0 pb-1">
                                 <div class="flex items-center justify-between">
@@ -949,7 +952,7 @@
             <template x-for="tweet in panelQuotesList" :key="tweet.tweet_id">
                 <div class="tweet-border cursor-pointer hover-bg transition p-4" @click="openThread(tweet.tweet_id, false, true)">
                     <div class="flex space-x-2">
-                        <img :src="'/api/avatar/' + tweet.author.id" class="w-10 h-10 rounded-full flex-shrink-0 bg-[var(--bg-secondary)]" loading="lazy">
+                        <img :src="avatarUrl(tweet.author.id)" class="w-10 h-10 rounded-full flex-shrink-0 bg-[var(--bg-secondary)]" loading="lazy">
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center space-x-1 overflow-hidden">
@@ -1137,9 +1140,9 @@
                             <option value="tags">Tags</option>
                             <option x-show="automatedTaggingInstalled" value="automated-tagging">Automated Tagging</option>
                             <option value="notifications" x-text="noticeCount ? `Notifications (${noticeCount})` : 'Notifications'">Notifications</option>
-                            <option value="config">Configuration</option>
-                            <option value="logs">Logs</option>
-                            <option value="setup">Setup</option>
+                            <option x-show="!isDemo" value="config">Configuration</option>
+                            <option x-show="!isDemo" value="logs">Logs</option>
+                            <option x-show="!isDemo" value="setup">Setup</option>
                         </select>
                     </div>
                     <div x-show="!setupForced" class="settings-sidebar flex-1 overflow-y-auto hidden md:block">
@@ -1170,21 +1173,24 @@
                             <span>Notifications</span>
                             <span x-show="noticeCount" x-cloak class="settings-notification-count" x-text="noticeCount" :aria-label="`${noticeCount} unread notifications`"></span>
                         </button>
-                        <button @click="settingsTab = 'config'"
+                        <button x-show="!isDemo" @click="settingsTab = 'config'"
                                 :class="settingsTab === 'config' ? 'bg-[var(--bg-tertiary)] border-r-2 border-[var(--accent-color)]' : 'hover-bg'"
                                 class="w-full text-left px-6 py-3 text-[15px] font-medium text-[var(--text-primary)]">
                             Configuration
                         </button>
-                        <button @click="settingsTab = 'logs'; fetchActivityRuns()"
+                        <button x-show="!isDemo" @click="settingsTab = 'logs'; fetchActivityRuns()"
                                 :class="settingsTab === 'logs' ? 'bg-[var(--bg-tertiary)] border-r-2 border-[var(--accent-color)]' : 'hover-bg'"
                                 class="w-full text-left px-6 py-3 text-[15px] font-medium text-[var(--text-primary)]">
                             Logs
                         </button>
-                        <button @click="settingsTab = 'setup'; fetchSetup()"
+                        <button x-show="!isDemo" @click="settingsTab = 'setup'; fetchSetup()"
                                 :class="settingsTab === 'setup' ? 'bg-[var(--bg-tertiary)] border-r-2 border-[var(--accent-color)]' : 'hover-bg'"
                                 class="w-full text-left px-6 py-3 text-[15px] font-medium text-[var(--text-primary)]">
                             Setup
                         </button>
+                    </div>
+                    <div x-show="isDemo" x-cloak role="note" class="mx-4 mb-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+                        This demo uses synthetic, in-memory data. Setup, Configuration, and Logs are hidden because they require a local TweetNook installation.
                     </div>
                 </div>
 
@@ -1222,7 +1228,7 @@
                                     </div>
                                     <div class="flex items-center justify-between gap-4 py-3 border-t border-[var(--border-color)] mt-2">
                                         <span class="text-sm font-bold text-[var(--text-primary)]">Twitter/X connection</span>
-                                        <span class="text-sm text-[var(--text-secondary)]" x-text="setupData.auth.verified ? 'Connected' : 'Not connected'"></span>
+                                        <span class="text-sm text-[var(--text-secondary)]" x-text="setupData.auth?.verified ? 'Connected' : 'Not connected'"></span>
                                     </div>
                                     <div class="flex items-center justify-between gap-4 py-3 border-t border-[var(--border-color)]">
                                         <span class="text-sm font-bold text-[var(--text-primary)]">Web password</span>
@@ -2963,7 +2969,7 @@
                     <div class="flex justify-between items-start mb-3">
                         <div class="w-16 h-16 rounded-full overflow-hidden bg-[var(--gray-700)] flex items-center justify-center font-bold text-2xl text-[var(--white-icon)] relative flex-shrink-0">
                             <span x-text="profileCard?.initial"></span>
-                            <img :src="'/api/avatar/' + profileCard?.id" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                            <img :src="avatarUrl(profileCard?.id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                         </div>
                         <button class="bg-[var(--text-primary)] text-[var(--bg-primary)] px-4 py-1.5 rounded-full font-bold text-[15px] hover:opacity-90 transition"
                                 @click="searchFrom(profileCard?.username); closeProfileCard()">
@@ -3109,7 +3115,8 @@
                         </div>
 
                         <template x-if="!(activity || activityStartPending)">
-                            <button type="button" class="activity-sync-action is-primary" title="Requires internet access from the server"
+                            <button type="button" class="activity-sync-action is-primary"
+                                    :title="isDemo ? 'Runs a three-minute in-browser sync simulation' : 'Requires internet access from the server'"
                                     @click="startActivity('sync')">
                                 Run Sync Now
                             </button>
