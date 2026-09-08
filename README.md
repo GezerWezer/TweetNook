@@ -6,7 +6,7 @@ Twitter/X, keep it updated with automated syncs, and browse everything in a Web 
 your network. Search by words, author, date, or tag to find something you saved
 without scrolling through your account.
 
-Want to see TweetNook before installing it? [View the live demo](https://gezerwezer.github.io/tweetnook/).
+Want to see TweetNook before installing it? [View the live demo](https://gezerwezer.github.io/TweetNook/).
 
 ## Features
 
