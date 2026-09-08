@@ -201,3 +201,100 @@ def test_bounded_exports_rank_keys_before_loading_content(tmp_path):
     assert "raw_json" not in key_query
     assert "SELECT row_key, tweet_id, text" in " ".join(sql)
     store.close()
+
+
+def test_chronological_continuation_seeks_instead_of_scanning_old_pages(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    _seed_memberships(store, 5000)
+    boundary = store.get_paginated_tweet_rows("all", 1, 3999)[0]
+
+    def steps(operation):
+        count = 0
+
+        def progress():
+            nonlocal count
+            count += 1
+
+        store.conn.set_progress_handler(progress, 100)
+        try:
+            rows = operation()
+        finally:
+            store.conn.set_progress_handler(None, 0)
+        return rows, count
+
+    cursor_rows, cursor_steps = steps(
+        lambda: store.get_paginated_tweet_rows("all", 20, 0, after=boundary)
+    )
+    offset_rows, offset_steps = steps(lambda: store.get_paginated_tweet_rows("all", 20, 4000))
+    assert cursor_rows == offset_rows
+    assert cursor_steps * 20 < offset_steps
+    _, sql = _statements(
+        store, lambda: store.get_paginated_tweet_rows("all", 20, 0, after=boundary)
+    )
+    assert all("OFFSET" not in statement for statement in sql)
+    assert all("TEMP B-TREE" not in _plan(store, statement) for statement in sql)
+    store.close()
+
+
+def test_non_relevance_search_avoids_ranking_and_redundant_candidates(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    _seed_memberships(store)
+    result, sql = _statements(store, lambda: search_posts(store, "common", sort="newest"))
+    assert len(result.rows) == 20
+    search_sql = next(statement for statement in sql if statement.startswith("WITH text_match"))
+    assert "archive_fts.rank" not in search_sql
+    assert "candidate_ids" not in search_sql
+    assert "MATERIALIZE matches" not in _plan(store, search_sql)
+    assert "archive_fts" in _plan(store, search_sql)
+    store.close()
+
+
+def test_selective_text_author_driver_preserves_ranking_and_all_matches(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    _seed_memberships(store, 1300)
+    groups = (
+        ({"kind": "text", "value": "common", "negated": False},),
+        (
+            {
+                "kind": "filter",
+                "expression": "LOWER(COALESCE(author_username, '')) = 'author12'",
+                "index_driver": True,
+            },
+        ),
+    )
+    opts = dict(collections=None, sort="relevance", limit=20, offset=0)
+    narrow, sql = _statements(store, lambda: store.search_tweet_ids(groups, **opts))
+    ordinary = (groups[0], ({**groups[1][0], "index_driver": False},))
+    assert narrow == store.search_tweet_ids(ordinary, **opts)
+    query = next(
+        statement for statement in sql if statement.startswith("WITH structured_candidates")
+    )
+    assert "INDEXED BY idx_archive_tweet_id" in query
+    assert "archive.tweet_id IN (SELECT tweet_id FROM structured_candidates)" in query
+    # A popular author must fall back to full FTS execution, with no 200/1000 cap.
+    with store.conn:
+        store.conn.execute(
+            "UPDATE archive SET author_username = 'author12' WHERE record_type = 'tweet'"
+        )
+    result = search_posts(store, "common from:author12", limit=1301)
+    assert len(result.rows) == 1300
+    store.close()
+
+
+def test_live_graph_prefetch_batches_existing_secondary_rows(tmp_path):
+    from tests.test_storage import _complex_tweet
+    from tweetnook.extractor import extract_secondary_objects
+    from tweetnook.storage.backend import _PageBuffer
+
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    graph = extract_secondary_objects(_complex_tweet("123").raw_json)
+    for _ in range(2):
+        buffer = _PageBuffer()
+        _, sql = _statements(
+            store, lambda buffer=buffer: store._buffer_secondary_graph(graph, cursor=buffer)
+        )
+        assert len(sql) == 1
+        assert "row_key IN (" in sql[0]
+        assert len(buffer.records) > 5
+        store.merge_rows(list(buffer.records.values()))
+    store.close()

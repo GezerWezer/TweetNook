@@ -8,10 +8,10 @@ This is the active implementation checklist. Update checkboxes as items complete
 - [x] Repair FTS replacement lifecycle and existing orphaned documents; reduce state-only write amplification.
 - [x] Fix feed duplicate and URL lookup plans; add selective author/profile indexes and planner maintenance.
 - [x] Apply queue/export limits before hydration.
-- [ ] Add chronological cursor pagination, safe count reuse, and robust browser continuation handling.
+- [x] Add chronological cursor pagination, safe count reuse, and robust browser continuation handling.
 - [x] Scope like-order invalidation and index the derived sequence for paging.
-- [ ] Reduce avoidable search materialization while preserving Boolean/ranking behavior.
-- [ ] Refresh user/developer documentation and validate Python, browser, query-plan, and representative performance cases.
+- [x] Reduce avoidable search materialization while preserving Boolean/ranking behavior.
+- [x] Refresh user/developer documentation and validate Python, browser, query-plan, and representative performance cases.
 
 ## Twitter/X-style media indicators (2026-09-08)
 

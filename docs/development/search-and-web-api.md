@@ -62,38 +62,37 @@ metadata indicating quoted provenance.
 
 ## Execution plan
 
-The executor combines:
+The executor applies every Boolean, structured, and collection predicate in SQL,
+deduplicates logical tweet IDs, orders the matches, and fetches `limit + 1` IDs.
+Only the displayed page is hydrated. Text searches have no 1,000-result cap;
+`has_more` comes from the extra ID, and exact text totals/pages are omitted.
+Filter-only/feed totals remain exact and use bounded caches with write invalidation.
 
-1. SQL pushdown for collection, date/ID, engagement, relationship, attachment,
-   and supported metadata filters;
-2. contentless FTS5 matching/ranking for positive text terms;
-3. hydration/tweet filtering for conditions not safely expressed in the first
-   candidate query;
-4. deterministic pagination/sort over deduplicated tweet IDs.
+Text clauses remain independent FTS relations so different membership documents
+can satisfy different clauses without changing relevance semantics. A single
+positive-text driver reuses its relation directly. The final grouped matches use
+a co-routine when possible, and explicit non-relevance sorts omit BM25 scoring.
+A positive `from:` AND group probes at most 201 IDs through the author index: up
+to 200 candidate tweets use rowid-constrained FTS for non-relevance sorts and an
+early intersection in a single FTS scan for relevance. Larger author sets fall
+back to full FTS-led execution. This threshold selects a plan, never a result cap.
+Other Boolean/OR predicates are still evaluated before pagination.
 
-FTS expression values and SQL literals are escaped/parameterized. Regression
-tests include injection-shaped filter and path IDs.
+FTS values and cursor bounds are parameterized; structured SQL expressions come
+from the canonical compiler. Tests cover injection-shaped filters, malformed
+cursors, complete large result sets, and preserved relevance scores.
 
 Positive text defaults to relevance; filter-only/no-positive-text defaults to
-newest. Explicit newest/oldest are stable tweet-hydration sorts. Web additionally
-supports random order.
+newest. Random results use a stable per-search seed. Explicit newest/oldest order
+on stored timestamp, numeric sort index, and tweet ID.
 
-For the Likes collection, `liked_latest` and `liked_earliest` order by the derived
-like sequence. `like_order.py` recovers cursor-linked GraphQL page observations,
-validates numeric indices within each page, reconstructs complete multipart
-archive datasets, and inserts archive-only runs using shared tweet IDs. Live
-observations win conflicts; disconnected fragments have deterministic placement.
-No timestamp is inferred from a sort index. Unknown-order rows remain last.
-
-The store caches the immutable result against SQLite `total_changes` and
-`data_version`, so local and external writes invalidate it. SQL paths bind the
-sequence through `json_each` and filter before pagination; text/grouped paths
-apply the same ranks to their candidates. This needs no persistent schema
-migration and reads retained raw captures for previously imported archives.
-
-Positive, grouped, and negative text paths cap each FTS candidate set at 1,000.
-Pure structured-filter paths are not subject to that cap. Hitting a text cap
-sets `truncated`; CLI warns, but the current frontend ignores the flag.
+For Likes, `liked_latest` and `liked_earliest` use the derived like sequence.
+`like_order.py` merges cursor-linked GraphQL observations and complete multipart
+archive datasets; live observations win conflicts and unknown-order rows stay
+last. No timestamp is inferred from a sort index. Transactional input revisions
+invalidate the immutable cache across connections, while media/tag/content-only
+updates leave it reusable. A temporary table indexes both order directions for
+paging, without serializing the entire sequence on each request.
 
 Article search is a separate stored-article scan rather than membership FTS.
 Structured tweet filters are rejected with article type; the recommended path is
@@ -113,7 +112,7 @@ Constraints/behavior:
 - an invalid collection currently falls back silently to all;
 - default sort is relevance with positive text, newest otherwise;
 - `liked_latest` / `liked_earliest` require `collection=likes` (or `like`), otherwise 400;
-- search errors return 400; generic errors return 500.
+- malformed/mismatched cursors and search errors return 400; changed like-order cursors return 409; generic errors return 500.
 
 Response shape:
 
@@ -123,9 +122,30 @@ Response shape:
   "total": 0,
   "page": 1,
   "pages": 1,
+  "has_more": false,
+  "next_cursor": null,
   "truncated": false
 }
 ```
+
+Start cursor scrolling with `cursor=` and send each returned `next_cursor` unchanged
+on the next request, retaining the same query, collection, sort, seed, and limit.
+The response `page` advances from the token. Omitting `cursor` preserves explicit
+page/offset clients. Text totals/pages are `null`; `has_more` is authoritative.
+
+Unfiltered newest/oldest feeds seek through composite chronological indexes,
+including explicit NULL/tie ranges. Likes seek by indexed sequence position even
+with a search query (matching complex queries can still require grouping). Other
+search/relevance/random cursors carry an offset and retain their existing complete
+result semantics; they do not promise constant-time deep searches.
+
+Chronological cursors retain their boundary if its row is deleted and exclude new
+head rows already above it. This is a live view, not a database snapshot: editing
+sort keys can change membership/order during scrolling. Like-order revision changes
+return 409; the browser restarts that list. The browser commits page/cursor state
+only after success, ignores stale responses, deduplicates appended IDs, and exposes
+a Load more/Retry control alongside automatic scrolling. Legacy APIs without
+`has_more` use page counts as a compatibility fallback.
 
 Hydrated rows can include author, collection membership, media, URLs, article,
 direct/quote tags, raw JSON, availability, quote/retweet attachments, and match

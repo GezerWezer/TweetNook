@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import math
 import re
 from dataclasses import dataclass
@@ -75,6 +78,10 @@ class SearchQueryError(ValueError):
     """Raised when a shared search query is malformed."""
 
 
+class SearchCursorExpiredError(SearchQueryError):
+    """The derived ordering changed while the caller was paging through it."""
+
+
 @dataclass(frozen=True, slots=True)
 class SearchClause:
     kind: Literal["text", "filter"]
@@ -143,6 +150,44 @@ class SearchPage:
     pages: int | None
     has_more: bool
     truncated: bool = False
+    next_cursor: str | None = None
+
+
+def _read_page_cursor(token: str, context: str, mode: str) -> dict[str, Any]:
+    try:
+        if len(token) > 4096:
+            raise ValueError
+        value = json.loads(
+            base64.b64decode(token + "=" * (-len(token) % 4), altchars=b"-_", validate=True)
+        )
+        if not isinstance(value, dict) or value.get("v") != 1:
+            raise ValueError
+        if value.get("context") != context or value.get("mode") != mode:
+            raise ValueError
+        for key in ("page", "offset"):
+            if type(value.get(key)) is not int or not 0 <= value[key] < 2**31:
+                raise ValueError
+        if value["page"] < 1:
+            raise ValueError
+        after = value.get("after")
+        if not isinstance(after, dict):
+            raise ValueError
+        if mode == "feed":
+            if not isinstance(after.get("tweet_id"), str) or not 0 < len(after["tweet_id"]) <= 256:
+                raise ValueError
+            for key in ("created_at_ts", "sort_index"):
+                number = after[key]
+                if number is not None and (
+                    type(number) is not int or not -(2**63) <= number < 2**63
+                ):
+                    raise ValueError
+        if mode == "like":
+            for key in ("like_position", "revision"):
+                if type(after.get(key)) is not int or not 0 <= after[key] < 2**63:
+                    raise ValueError
+        return value
+    except (ValueError, TypeError, KeyError, UnicodeError, RecursionError) as exc:
+        raise SearchQueryError("Invalid pagination cursor for this search.") from exc
 
 
 def _strip_quotes(value: str) -> str:
@@ -638,6 +683,7 @@ def search_posts(
     page: int = 1,
     limit: int = 20,
     random_seed: int | None = None,
+    cursor: str | None = None,
 ) -> SearchPage:
     """Search the complete logical archive and hydrate only the requested page."""
     if page < 1:
@@ -666,18 +712,57 @@ def search_posts(
             )
             if expression is None:
                 raise SearchQueryError(f"Unsupported search filter: {clause.key}:")
-            compiled_group.append({"kind": "filter", "expression": expression})
+            compiled_group.append(
+                {
+                    "kind": "filter",
+                    "expression": expression,
+                    "index_driver": clause.key == "from" and not clause.negated,
+                }
+            )
         query_groups.append(tuple(compiled_group))
 
+    effective_sort = _effective_sort(sort, has_positive_text=parsed.has_positive_text)
+    mode = "offset"
+    if effective_sort in LIKE_SORTS:
+        mode = "like"
+    elif (
+        not query_groups
+        and (not collections or len(collections) == 1)
+        and effective_sort in {"newest", "oldest"}
+    ):
+        mode = "feed"
+    context = hashlib.sha256(
+        json.dumps(
+            [query_groups, sorted(collections or []), effective_sort, limit, random_seed],
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()[:24]
+    offset = (page - 1) * limit
+    after = None
+    if cursor is not None:
+        page, offset = 1, 0
+        if cursor:
+            continuation = _read_page_cursor(cursor, context, mode)
+            page = continuation["page"]
+            offset = continuation["offset"] if mode == "offset" else 0
+            after = continuation["after"] if mode != "offset" else None
+    revision = store.cache_revision("like_order") if cursor is not None and mode == "like" else None
+    if after and mode == "like" and after["revision"] != revision:
+        raise SearchCursorExpiredError("Like order changed. Reload the list to continue.")
+    cursor_options = {"after": after} if after is not None else {}
     hits, total = store.search_tweet_ids(
         tuple(query_groups),
         collections=collections,
-        sort=_effective_sort(sort, has_positive_text=parsed.has_positive_text),
+        sort=effective_sort,
         limit=limit,
-        offset=(page - 1) * limit,
+        offset=offset,
         random_seed=random_seed,
         include_total=not parsed.has_text,
+        **cursor_options,
     )
+    if revision is not None and revision != store.cache_revision("like_order"):
+        raise SearchCursorExpiredError("Like order changed. Reload the list to continue.")
     has_more = len(hits) > limit
     page_hits = hits[:limit]
     ids = [str(hit["tweet_id"]) for hit in page_hits if hit.get("tweet_id")]
@@ -686,10 +771,32 @@ def search_posts(
     }
     hydrated = [hydrated_by_id[tweet_id] for tweet_id in ids if tweet_id in hydrated_by_id]
     hydrated = _hydrate_metadata(hydrated, page_hits)
+    next_cursor = None
+    if cursor is not None and has_more and page_hits:
+        last = page_hits[-1]
+        boundary = {}
+        if mode == "feed":
+            boundary = {key: last[key] for key in ("created_at_ts", "sort_index", "tweet_id")}
+        elif mode == "like":
+            boundary = {"like_position": last["like_position"], "revision": revision}
+        payload = {
+            "v": 1,
+            "context": context,
+            "mode": mode,
+            "after": boundary,
+            "offset": offset + limit,
+            "page": page + 1,
+        }
+        next_cursor = (
+            base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode())
+            .decode()
+            .rstrip("=")
+        )
     return SearchPage(
         rows=hydrated,
         total=total,
         page=page,
         pages=(math.ceil(total / limit) if total else 1) if total is not None else None,
         has_more=has_more,
+        next_cursor=next_cursor,
     )

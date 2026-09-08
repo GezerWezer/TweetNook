@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Iterator
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -327,6 +328,7 @@ class ArchiveStore:
         self._closed = False
         self._like_order_lock = threading.RLock()
         self._count_cache: dict[str, tuple[int, int]] = {}
+        self._search_count_cache: dict[tuple, tuple[tuple[int, int], int]] = {}
         self.migration_report: MigrationReport | None = None
         if create:
             db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2196,6 +2198,25 @@ class ArchiveStore:
         source: str = LIVE_SOURCE,
         cursor: _PageBuffer,
     ) -> None:
+        keys = [
+            self._row_key_for_tweet_object(item.tweet_id) for item in graph.tweet_objects.values()
+        ]
+        keys.extend(
+            self._row_key_for_tweet_relation(
+                item.source_tweet_id, item.relation_type, item.target_tweet_id
+            )
+            for item in graph.relations.values()
+        )
+        keys.extend(
+            self._row_key_for_media(item.tweet_id, item.media_key) for item in graph.media.values()
+        )
+        keys.extend(self._row_key_for_url(item.url_hash) for item in graph.urls.values())
+        keys.extend(
+            self._row_key_for_url_ref(item.tweet_id, item.position)
+            for item in graph.url_refs.values()
+        )
+        keys.extend(self._row_key_for_article(item.tweet_id) for item in graph.articles.values())
+        self.prefetch_rows(keys, cursor=cursor)
         for item in graph.tweet_objects.values():
             self._queue_record(
                 self._tweet_object_record(item, source=source, cursor=cursor),
@@ -3647,6 +3668,20 @@ class ArchiveStore:
     def get_paginated_tweet_ids(
         self, collection: str, limit: int, offset: int, sort: str = "newest"
     ) -> list[str]:
+        return [
+            row["tweet_id"]
+            for row in self.get_paginated_tweet_rows(collection, limit, offset, sort)
+        ]
+
+    def get_paginated_tweet_rows(
+        self,
+        collection: str,
+        limit: int,
+        offset: int,
+        sort: str = "newest",
+        *,
+        after: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         if sort not in {"newest", "oldest", "random"}:
             raise ValueError(f"Unsupported sort order: {sort}")
         if limit < 0:
@@ -3678,17 +3713,67 @@ class ArchiveStore:
             order_by = "RANDOM()"
 
         sql = (
-            "SELECT candidate.tweet_id FROM archive AS candidate "
+            "SELECT candidate.tweet_id, candidate.created_at_ts, "
+            "CAST(candidate.sort_index AS INTEGER) AS sort_index FROM archive AS candidate "
             f"WHERE {' AND '.join(where)} "
             "AND NOT EXISTS ("
             "SELECT 1 FROM archive AS duplicate INDEXED BY idx_archive_membership "
             f"WHERE {' AND '.join(duplicate_where)}"
             ") "
-            f"ORDER BY {order_by} LIMIT ? OFFSET ?"
         )
-        params.extend([limit, offset])
-        tweet_rows = self.conn.execute(sql, params).fetchall()
-        return [row["tweet_id"] for row in tweet_rows if row["tweet_id"]]
+        if after is None:
+            return [
+                dict(row)
+                for row in self.conn.execute(
+                    f"{sql} ORDER BY {order_by} LIMIT ? OFFSET ?", [*params, limit, offset]
+                )
+                if row["tweet_id"]
+            ]
+        # Disjoint, ordered ranges preserve SQLite's NULL/tie semantics and let
+        # every continuation seek into the composite index. A single OR across
+        # nullable keys can instead scan all preceding pages.
+        columns = [
+            "candidate.created_at_ts",
+            "CAST(candidate.sort_index AS INTEGER)",
+            "candidate.tweet_id",
+        ]
+        values = [after["created_at_ts"], after["sort_index"], after["tweet_id"]]
+        result = []
+        direction = "DESC" if sort == "newest" else "ASC"
+        for condition, bounds, order_start in self._page_cursor_ranges(
+            columns, values, sort == "newest"
+        ):
+            range_order = ", ".join(f"{column} {direction}" for column in columns[order_start:])
+            result.extend(
+                dict(row)
+                for row in self.conn.execute(
+                    f"{sql} AND ({condition}) ORDER BY {range_order} LIMIT ?",
+                    [*params, *bounds, limit - len(result)],
+                )
+                if row["tweet_id"]
+            )
+            if len(result) >= limit:
+                break
+        return result
+
+    @staticmethod
+    def _page_cursor_ranges(columns, values, descending):
+        """Yield lexicographic continuation ranges in native SQLite NULL order."""
+        for index in range(len(columns) - 1, -1, -1):
+            prefix = [f"{column} IS ?" for column in columns[:index]]
+            value = values[index]
+            column = columns[index]
+            if value is not None:
+                comparison = "<" if descending else ">"
+                yield (
+                    " AND ".join([*prefix, f"{column} {comparison} ?"]),
+                    [*values[:index], value],
+                    index,
+                )
+                if descending and index < len(columns) - 1:
+                    yield " AND ".join([*prefix, f"{column} IS NULL"]), values[:index], index + 1
+            elif not descending:
+                yield " AND ".join([*prefix, f"{column} IS NOT NULL"]), values[:index], index
 
     def _hydrate_exported_rows(
         self,
@@ -4963,6 +5048,7 @@ class ArchiveStore:
         offset: int,
         random_seed: int | None = None,
         include_total: bool = False,
+        after: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None]:
         """Evaluate the Web tweet query in SQLite and return one lightweight page.
 
@@ -4990,19 +5076,53 @@ class ArchiveStore:
                     sort=sort,
                     limit=limit + 1,
                     offset=offset,
+                    after_position=after["like_position"] if after else None,
                 )
                 return rows, total
-            ids = self.get_paginated_tweet_ids(
+            rows = self.get_paginated_tweet_rows(
                 collection,
                 limit=limit + 1,
                 offset=offset,
                 sort=sort,
+                after=after,
             )
-            return [{"tweet_id": tweet_id} for tweet_id in ids], total
+            return rows, total
 
         collection_expr = self._search_collection_expr(collections)
         ctes: list[str] = []
         params: list[Any] = []
+        author_groups = [
+            group
+            for group in query_groups
+            if group and all(clause.get("index_driver") for clause in group)
+        ]
+        narrow_ids = None
+        if author_groups and any(
+            clause["kind"] == "text" for group in query_groups for clause in group
+        ):
+            author_where = ["archive.record_type = 'tweet'"]
+            if collection_expr:
+                author_where.append(collection_expr)
+            author_where.extend(
+                "(" + " OR ".join(f"({clause['expression']})" for clause in group) + ")"
+                for group in author_groups
+            )
+            # A bounded selectivity probe chooses a per-row FTS lookup only for
+            # small author sets. Larger sets use the complete FTS-led executor;
+            # this threshold never caps the returned search population.
+            probe = self.conn.execute(
+                "SELECT DISTINCT archive.tweet_id FROM archive "
+                f"WHERE {' AND '.join(author_where)} LIMIT 201"
+            ).fetchall()
+            if len(probe) <= 200:
+                narrow_ids = [row[0] for row in probe]
+                if not narrow_ids:
+                    return [], 0 if include_total else None
+                ctes.append(
+                    "structured_candidates(tweet_id) AS MATERIALIZED "
+                    "(SELECT value FROM json_each(?))"
+                )
+                params.append(json.dumps(narrow_ids))
         compiled_groups: list[list[dict[str, Any]]] = []
         text_index = 0
         for group in query_groups:
@@ -5017,11 +5137,33 @@ class ArchiveStore:
                     where = "archive.record_type = 'tweet'"
                     if collection_expr:
                         where += f" AND {collection_expr}"
+                    rank = "MIN(archive_fts.rank)" if sort == "relevance" else "0.0"
+                    text_from = "archive_fts JOIN archive ON archive.rowid = archive_fts.rowid"
+                    if narrow_ids is not None:
+                        # Include every membership of the selected logical IDs:
+                        # text and author predicates may match different rows.
+                        text_from = (
+                            "structured_candidates CROSS JOIN archive "
+                            "INDEXED BY idx_archive_tweet_id "
+                            "ON archive.tweet_id = structured_candidates.tweet_id "
+                            "CROSS JOIN archive_fts ON archive_fts.rowid = archive.rowid"
+                        )
+                        if sort == "relevance":
+                            # BM25 initialization per row is costly for common
+                            # terms. Scan FTS once, intersect before aggregation,
+                            # and rank only matching authors' membership rows.
+                            text_from = (
+                                "archive_fts CROSS JOIN archive "
+                                "ON archive.rowid = archive_fts.rowid"
+                            )
+                            where += (
+                                " AND archive.tweet_id IN "
+                                "(SELECT tweet_id FROM structured_candidates)"
+                            )
                     ctes.append(
                         f"{alias}(tweet_id, rank) AS MATERIALIZED ("
-                        "SELECT archive.tweet_id, MIN(archive_fts.rank) "
-                        "FROM archive_fts "
-                        "JOIN archive ON archive.rowid = archive_fts.rowid "
+                        f"SELECT archive.tweet_id, {rank} "
+                        f"FROM {text_from} "
                         f"WHERE archive_fts MATCH ? AND {where} "
                         "GROUP BY archive.tweet_id)"
                     )
@@ -5044,7 +5186,16 @@ class ArchiveStore:
             ),
             None,
         )
-        if driver_group is not None:
+        driver_alias = None
+        if driver_group is not None and len(driver_group) == 1:
+            # Reuse the already-deduplicated text relation directly, avoiding a
+            # second copy of the same candidate IDs and a redundant self-join.
+            driver_alias = driver_group[0]["alias"]
+            from_sql = (
+                f"{driver_alias} JOIN archive AS archive INDEXED BY idx_archive_tweet_id "
+                f"ON archive.tweet_id = {driver_alias}.tweet_id"
+            )
+        elif driver_group is not None:
             union = " UNION ".join(
                 f"SELECT tweet_id FROM {clause['alias']}" for clause in driver_group
             )
@@ -5065,7 +5216,8 @@ class ArchiveStore:
             for clause in group:
                 if clause["kind"] == "text":
                     alias = str(clause["alias"])
-                    joins.append(f"LEFT JOIN {alias} ON {alias}.tweet_id = archive.tweet_id")
+                    if alias != driver_alias:
+                        joins.append(f"LEFT JOIN {alias} ON {alias}.tweet_id = archive.tweet_id")
                     if clause.get("negated", False):
                         alternatives.append(f"{alias}.tweet_id IS NULL")
                     else:
@@ -5088,7 +5240,7 @@ class ArchiveStore:
         where.extend(group_conditions)
         score_expr = " + ".join(group_scores) if group_scores else "0.0"
         ctes.append(
-            "matches(tweet_id, match_score, created_at_ts, sort_index) AS MATERIALIZED ("
+            "matches(tweet_id, match_score, created_at_ts, sort_index) AS NOT MATERIALIZED ("
             "SELECT archive.tweet_id, "
             f"MAX({score_expr}), MAX(archive.created_at_ts), "
             "MAX(CAST(archive.sort_index AS INTEGER)) "
@@ -5099,13 +5251,19 @@ class ArchiveStore:
 
         page_from = "matches"
         page_params = list(params)
+        page_where = ""
+        page_extra = ""
         if sort in {"liked_latest", "liked_earliest"}:
-            ordered_ids = self.get_like_order().ordered_ids(sort)
+            position = "earliest_position" if sort == "liked_earliest" else "latest_position"
             page_from = (
-                "matches JOIN json_each(?) AS like_order ON like_order.value = matches.tweet_id"
+                "matches JOIN temp.tweetnook_like_order AS like_order "
+                "ON like_order.tweet_id = matches.tweet_id"
             )
-            page_params.append(json.dumps(ordered_ids))
-            order_by = "CAST(like_order.key AS INTEGER), matches.tweet_id"
+            order_by = f"like_order.{position}, matches.tweet_id"
+            page_extra = f", like_order.{position} AS like_position"
+            if after:
+                page_where = f"WHERE like_order.{position} > ?"
+                page_params.append(after["like_position"])
         elif sort == "oldest":
             order_by = (
                 "matches.created_at_ts IS NULL, matches.created_at_ts ASC, "
@@ -5135,17 +5293,36 @@ class ArchiveStore:
 
         page_sql = (
             f"{with_sql} SELECT matches.tweet_id, matches.match_score, "
-            "matches.created_at_ts, matches.sort_index "
-            f"FROM {page_from} ORDER BY {order_by} LIMIT ? OFFSET ?"
+            f"matches.created_at_ts, matches.sort_index{page_extra} "
+            f"FROM {page_from} {page_where} ORDER BY {order_by} LIMIT ? OFFSET ?"
         )
         page_params.extend([limit + 1, offset])
-        rows = [dict(row) for row in self.conn.execute(page_sql, page_params).fetchall()]
+        like_sort = sort in {"liked_latest", "liked_earliest"}
+        with self._like_order_lock if like_sort else nullcontext():
+            if like_sort:
+                self._ensure_like_order_table()
+            rows = [dict(row) for row in self.conn.execute(page_sql, page_params).fetchall()]
 
         total = None
         if include_total:
-            total = int(
-                self.conn.execute(f"{with_sql} SELECT COUNT(*) FROM matches", params).fetchone()[0]
+            signature = (
+                self.conn.total_changes,
+                self.conn.execute("PRAGMA data_version").fetchone()[0],
             )
+            cache_key = (with_sql, tuple(params))
+            cached = self._search_count_cache.get(cache_key)
+            if not self.conn.in_transaction and cached is not None and cached[0] == signature:
+                total = cached[1]
+            else:
+                total = int(
+                    self.conn.execute(
+                        f"{with_sql} SELECT COUNT(*) FROM matches", params
+                    ).fetchone()[0]
+                )
+                if len(self._search_count_cache) >= 64 or self.conn.in_transaction:
+                    self._search_count_cache.clear()
+                if not self.conn.in_transaction:
+                    self._search_count_cache[cache_key] = (signature, total)
         return rows, total
 
     def version_count(self) -> int:

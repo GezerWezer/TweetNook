@@ -140,8 +140,10 @@ occupies one result slot.
 The web app does not calculate an exact total for text searches because counting
 every match would delay the first page. Its header therefore says **Results**
 without a number. Filter-only and ordinary collection feeds continue to show an
-exact total. Very deep numbered pages may take longer because SQLite must skip
-the preceding matches.
+exact total. Ordinary newest/oldest feeds and Likes use cursor scrolling to avoid
+skipping all earlier rows. Complex searches and explicit numbered pages can still
+take longer at large depths. If loading fails, use **Retry loading more**; the
+failed page is retried without advancing past it.
 
 ## Advanced filters
 

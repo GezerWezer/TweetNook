@@ -38,6 +38,7 @@ Start with [Architecture](architecture.md), then choose the area you are changin
 |---|---|
 | Twitter/X authentication, requests, and timeline sync | [Client and sync](client-and-sync.md) |
 | Database schema, transactions, and merge rules | [Storage](storage.md) |
+| SQL performance changes and measured limits | [Database optimization validation](database-performance.md) |
 | Official Twitter/X archives | [Archive import](archive-import.md) |
 | Tweet extraction, threads, media, and availability | [Enrichment](enrichment.md) |
 | Query parsing and archive read APIs | [Search and web API](search-and-web-api.md) |
