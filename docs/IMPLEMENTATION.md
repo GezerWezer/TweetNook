@@ -7,7 +7,9 @@ This is the active implementation checklist. Update checkboxes as items complete
 - [x] Remove the unpushed database-performance validation document from commit history and the development index.
 - [x] Add user-facing release highlights to the changelog and source GitHub Release notes from them.
 - [x] Update version metadata, release documentation, and validation entries for `0.1.1`.
-- [ ] Run release validation, build artifacts, push `main` and `v0.1.1`, and verify PyPI/GitHub/Pages publication.
+- [x] Run release validation, build artifacts, push `main` and `v0.1.1`, and verify PyPI/GitHub/Pages publication.
+  - Workflow run `34269962193` succeeded; PyPI `0.1.1`, the GitHub Release,
+    both artifacts, and the Pages demo were verified.
 
 ## Randomized scheduled sync advancement (2026-09-08)
 
