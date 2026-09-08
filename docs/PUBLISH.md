@@ -13,8 +13,9 @@ Scope:
 The repository publishes through `.github/workflows/release.yml` using PyPI
 Trusted Publishing. The workflow builds and checks distributions on `v*` tag
 pushes, publishes them through the protected `pypi` GitHub environment, and then
-creates a GitHub Release with GitHub-generated notes and the exact wheel/source
-artifacts. No PyPI API token belongs in GitHub Secrets.
+creates a GitHub Release with the changelog `Highlights` bullets, a full
+comparison link, and the exact wheel/source artifacts. No PyPI API token belongs
+in GitHub Secrets.
 
 For the first setup, register a pending GitHub publisher at
 <https://pypi.org/manage/account/publishing/> with:
@@ -52,8 +53,9 @@ Use semver-style version bumps:
 - [ ] Update version metadata in:
       `tweetnook/__init__.py`
 - [ ] Update `CHANGELOG.md`:
-      add a new topmost `## [X.Y.Z] - YYYY-MM-DD` section, keep the validation
-      bullets, and update the version links at the bottom
+      add a new topmost `## [X.Y.Z] - YYYY-MM-DD` section with concise
+      user-facing `### Highlights` bullets, keep the validation bullets, and
+      update the version links at the bottom
 - [ ] Update README/docs/help text if install steps, CLI behavior, or supported
       workflows changed
 - [ ] Update `docs/README.md` if documentation files were added or removed
@@ -82,15 +84,15 @@ Use semver-style version bumps:
       `.github/workflows/release.yml`, publishes through Trusted Publishing
       after the `pypi` environment approval, and creates the GitHub Release.
 - [ ] Confirm the tagged GitHub Actions workflow publishes the distributions to
-      PyPI and creates the GitHub Release with generated notes and both
-      distribution artifacts. Use manual `uv publish`/Twine upload only as an
-      intentional fallback when the workflow is unavailable.
+      PyPI and creates the GitHub Release with the changelog highlights, full
+      comparison link, and both distribution artifacts. Use manual `uv publish`
+      /Twine upload only as an intentional fallback when the workflow is
+      unavailable.
 - [ ] Verify the published install path from PyPI:
       `uvx --refresh --from "tweetnook==X.Y.Z" tweetnook --help`
-- [ ] Review the GitHub Release created by the tagged workflow. It uses
-      GitHub-generated notes and includes the exact wheel and source archive
-      built for the tag; edit the notes if a release-specific summary is
-      preferred.
+- [ ] Review the GitHub Release created by the tagged workflow. It includes the
+      changelog `Highlights` bullets, a full-changelog comparison link, and the
+      exact wheel and source archive built for the tag.
 - [ ] Verify the GitHub tag/release page and PyPI project page both show the new
       version correctly
 - [ ] Confirm the tree is clean again with `git status -sb`
@@ -111,5 +113,6 @@ Use semver-style version bumps:
 - If a release includes breaking behavior or archive upgrade steps, add the
   upgrade note to both `README.md` and `CHANGELOG.md`.
 - GitHub Releases are a separate overlay on top of pushed git tags. The tagged
-  workflow creates that release after the PyPI upload, using GitHub-generated
-  notes and attaching the built wheel and source archive.
+  workflow creates that release after the PyPI upload, using the matching
+  changelog `Highlights` section plus a full-changelog comparison link, and
+  attaches the built wheel and source archive.

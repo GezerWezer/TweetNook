@@ -3,6 +3,47 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning while it is in the `0.x` series.
 
+## [0.1.1] - 2026-09-08
+
+### Highlights
+
+- Made archive browsing, filtered search, Likes pagination, enrichment, and
+  bounded exports substantially faster and more responsive on large archives.
+- Improved archive reliability by preserving full-text search data during
+  updates and recovering profile avatars after temporary lookup failures.
+- Added saved video durations and GIF playback controls across feeds, galleries,
+  quotes, and conversation views.
+- Made background operation more dependable with correct randomized schedule
+  advancement and managed-service restarts after reinstall.
+- Smoothed Web interactions with contained Analytics scrolling, lighter sync
+  drawer transitions, and cleaner mobile controls.
+
+### Changed
+
+- Feed and Likes continuation now use indexed cursors and safely recover when
+  the underlying like order changes.
+- Filtered search and enrichment work now avoid unnecessary materialization and
+  hydration, while preserving complete result sets and existing query behavior.
+- Archive writes now repair derived full-text documents, preserve stable rowids,
+  batch live-graph lookups, and maintain relevant SQLite planner statistics.
+
+### Fixed
+
+- Fixed randomized daily, weekly, and monthly schedules so consumed and overdue
+  occurrences advance to the next valid run.
+- Fixed Analytics modal scroll chaining into the page background.
+- Fixed profile-avatar misses becoming permanent after a transient failure.
+- Fixed managed-service reinstall leaving active Python processes on stale code.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check`
+- `uv run ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q`
+- `node tests/js/test_web_assets.cjs`
+- `node tests/js/test_demo_api.cjs`
+- `git diff --check`
+
 ## [0.1.0] - 2026-09-07
 
 ### Added
@@ -67,5 +108,6 @@ semantic-style versioning while it is in the `0.x` series.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[0.1.1]: https://github.com/gezerwezer/tweetnook/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/gezerwezer/tweetnook/compare/v0.0.9...v0.1.0
 [0.0.9]: https://github.com/gezerwezer/tweetnook/releases/tag/v0.0.9

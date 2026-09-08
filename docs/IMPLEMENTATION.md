@@ -2,6 +2,13 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## TweetNook 0.1.1 release (2026-09-08)
+
+- [x] Remove the unpushed database-performance validation document from commit history and the development index.
+- [x] Add user-facing release highlights to the changelog and source GitHub Release notes from them.
+- [x] Update version metadata, release documentation, and validation entries for `0.1.1`.
+- [ ] Run release validation, build artifacts, push `main` and `v0.1.1`, and verify PyPI/GitHub/Pages publication.
+
 ## Randomized scheduled sync advancement (2026-09-08)
 
 - [x] Preserve initialization/reload scheduling in the remaining part of the current randomized window.
