@@ -55,7 +55,7 @@ def test_index_loads_local_assets_in_dependency_order():
     assert 'x-text="statsHealth.enrichment.incomplete.toLocaleString()"' in html
     assert 'x-model="showEmptyUnavailableReasons"' in html
     assert 'aria-label="Command activity"' in html
-    assert '<section class="activity-drawer" x-cloak' in html
+    assert '<section class="activity-drawer hidden sm:block" x-cloak' in html
     assert "requestAnimationFrame(() => $el.classList.add('activity-drawer-ready'))" in html
     assert "activity-spinner" in html
     floating_actions = html[
