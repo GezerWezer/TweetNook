@@ -1316,8 +1316,15 @@ def test_optimize_archive_uses_write_lock(paths, monkeypatch) -> None:
     assert lock_calls == [paths.lock_file]
     assert store.optimized is True
     assert store.closed is True
-    assert "vacuuming database..." in buffer.getvalue()
-    assert "vacuum complete." in buffer.getvalue()
+    assert "optimizing database and search index..." in buffer.getvalue()
+    assert "database optimization complete." in buffer.getvalue()
+
+
+def test_optimize_help_describes_query_and_search_maintenance() -> None:
+    result = runner.invoke(cli.app, ["optimize", "--help"])
+    assert result.exit_code == 0
+    assert "query planning" in result.stdout
+    assert "full-text index" in result.stdout
 
 
 @pytest.mark.parametrize(

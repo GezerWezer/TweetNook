@@ -6,8 +6,8 @@ This is the active implementation checklist. Update checkboxes as items complete
 
 - [ ] Repair install/update service restart in a focused commit after the optimizations. Confirmed on the supplied server: current JavaScript, legacy API without `has_more`, and missing detail document routes.
 - [x] Repair FTS replacement lifecycle and existing orphaned documents; reduce state-only write amplification.
-- [ ] Fix feed duplicate and URL lookup plans; add selective author/profile indexes and planner maintenance.
-- [ ] Apply queue/export limits before hydration; preserve ordering and merge semantics.
+- [x] Fix feed duplicate and URL lookup plans; add selective author/profile indexes and planner maintenance.
+- [ ] Apply queue/export limits before hydration; queues now limit in SQL, bounded export remains in progress.
 - [ ] Add chronological cursor pagination, safe count reuse, and robust browser continuation handling.
 - [ ] Scope like-order invalidation and index the derived sequence for paging.
 - [ ] Reduce avoidable search materialization while preserving Boolean/ranking behavior.

@@ -4,7 +4,7 @@
 [Archive Import](archive-import.md) · [Search and Web API](search-and-web-api.md)
 
 `ArchiveStore` owns database access, schema upgrades, and record merging. It uses
-SQLite schema version 6 with FTS5 search. Collection memberships, shared tweet
+SQLite schema version 7 with FTS5 search. Collection memberships, shared tweet
 content, and raw captures have distinct roles within the same archive table.
 The optional `legacy-migration` extra provides LanceDB for the legacy importer;
 PyArrow is installed transitively with it.
@@ -19,7 +19,7 @@ Opening the store:
 - requests negative `cache_size` in KiB and configured `mmap_size`;
 - checks `PRAGMA user_version` and migrates when required.
 
-A current v6 database takes the cheap version path; it does not run integrity
+A current v7 database takes the cheap version path; it does not run integrity
 checks or derived-index repair on every open.
 
 The single wide table is:
@@ -86,7 +86,8 @@ without that explicit count assertion. `ensure_fts_index()` and
 `ensure_scalar_indexes()` are currently no-ops, despite Web startup calling
 them; creation/migration is expected to have built the structures.
 
-Scalar/partial indexes cover tweet IDs, relation targets, collection/date/sort
+Scalar/partial indexes cover membership deduplication/counts, normalized author
+equality, profile aggregation, tweet IDs, relation targets, collection/date/sort
 pagination, attachment presence, tags, enrichment eligibility/due dates, and raw
 capture targets.
 
@@ -171,12 +172,13 @@ Open behavior by source version:
 
 | Source | Migration |
 |---|---|
-| no archive table | create latest table, FTS, indexes, set v6 |
+| no archive table | create latest table, FTS, indexes, set v7 |
 | v3–v5 | transactionally rebuild derived FTS/triggers/indexes, removing old replacement orphans; validate membership count, no backup |
-| older/unknown legacy | quick-check, validated SQLite backup, add fields, backfill timestamps/scheduler, rebuild, targeted legacy-terminal repair, validate, set v6 |
-| > v6 | reject as newer than supported |
+| v6 | add partial membership/author/profile indexes and planner statistics; no FTS rebuild or backup |
+| older/unknown legacy | quick-check, validated SQLite backup, add fields, backfill timestamps/scheduler, rebuild, targeted legacy-terminal repair, validate, set v7 |
+| > v7 | reject as newer than supported |
 
-Legacy backup naming is `archive.db.pre-schema-v6.<UTC>.bak`, with collision
+Legacy backup naming is `archive.db.pre-schema-v7.<UTC>.bak`, with collision
 suffixes. SQLite's backup API writes a temporary file, quick-checks it, then
 atomically renames it.
 
@@ -185,7 +187,7 @@ Opening a mismatched database through `open_archive_store()` acquires
 
 ## Legacy LanceDB migration
 
-`storage/migrate.py` looks for `<data>/archive.lancedb`, creates/opens SQLite v6,
+`storage/migrate.py` looks for `<data>/archive.lancedb`, creates/opens SQLite v7,
 and reads source ranges in isolated subprocess workers. Source failures split
 ranges recursively so a bad row can be isolated; destination/worker-launch
 failures abort. Destination inserts use `INSERT OR IGNORE`, enabling reruns that
@@ -200,7 +202,9 @@ rows. The CLI does not reliably encode every result status in its exit code.
 
 - `check_integrity(full=False)` uses `quick_check`; full uses
   `integrity_check`.
-- `optimize()` currently ignores its cleanup argument and runs `VACUUM`.
+- `optimize()` compacts with `VACUUM`, runs `PRAGMA optimize=0x10002`, and merges
+  FTS segments. Writer connection close runs lightweight `PRAGMA optimize`;
+  read-only/current-schema sessions skip that maintenance.
 - `version_count()` is a compatibility method hard-coded to 1.
 - `counts()['collections']` is membership-row count, not distinct collection
   names or unique tweet count.
