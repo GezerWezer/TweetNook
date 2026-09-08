@@ -4,7 +4,7 @@
 [Archive Import](archive-import.md) · [Search and Web API](search-and-web-api.md)
 
 `ArchiveStore` owns database access, schema upgrades, and record merging. It uses
-SQLite schema version 7 with FTS5 search. Collection memberships, shared tweet
+SQLite schema version 8 with FTS5 search. Collection memberships, shared tweet
 content, and raw captures have distinct roles within the same archive table.
 The optional `legacy-migration` extra provides LanceDB for the legacy importer;
 PyArrow is installed transitively with it.
@@ -19,7 +19,7 @@ Opening the store:
 - requests negative `cache_size` in KiB and configured `mmap_size`;
 - checks `PRAGMA user_version` and migrates when required.
 
-A current v7 database takes the cheap version path; it does not run integrity
+A current v8 database takes the cheap version path; it does not run integrity
 checks or derived-index repair on every open.
 
 The single wide table is:
@@ -172,13 +172,13 @@ Open behavior by source version:
 
 | Source | Migration |
 |---|---|
-| no archive table | create latest table, FTS, indexes, set v7 |
+| no archive table | create latest table, FTS, indexes, set v8 |
 | v3–v5 | transactionally rebuild derived FTS/triggers/indexes, removing old replacement orphans; validate membership count, no backup |
-| v6 | add partial membership/author/profile indexes and planner statistics; no FTS rebuild or backup |
-| older/unknown legacy | quick-check, validated SQLite backup, add fields, backfill timestamps/scheduler, rebuild, targeted legacy-terminal repair, validate, set v7 |
-| > v7 | reject as newer than supported |
+| v6–v7 | add any missing partial indexes and cache-revision triggers; refresh planner statistics; no FTS rebuild or backup |
+| older/unknown legacy | quick-check, validated SQLite backup, add fields, backfill timestamps/scheduler, rebuild, targeted legacy-terminal repair, validate, set v8 |
+| > v8 | reject as newer than supported |
 
-Legacy backup naming is `archive.db.pre-schema-v7.<UTC>.bak`, with collision
+Legacy backup naming is `archive.db.pre-schema-v8.<UTC>.bak`, with collision
 suffixes. SQLite's backup API writes a temporary file, quick-checks it, then
 atomically renames it.
 
@@ -187,7 +187,7 @@ Opening a mismatched database through `open_archive_store()` acquires
 
 ## Legacy LanceDB migration
 
-`storage/migrate.py` looks for `<data>/archive.lancedb`, creates/opens SQLite v7,
+`storage/migrate.py` looks for `<data>/archive.lancedb`, creates/opens SQLite v8,
 and reads source ranges in isolated subprocess workers. Source failures split
 ranges recursively so a bad row can be isolated; destination/worker-launch
 failures abort. Destination inserts use `INSERT OR IGNORE`, enabling reruns that
@@ -231,3 +231,18 @@ data directory.
 - `tests/test_export.py`
 - `tests/test_stats.py`
 - import/media/tag/Web route tests that depend on merge/hydration
+
+## Derived query caches
+
+Schema v8 tracks membership and like-order input revisions with transactional SQL
+triggers. Unfiltered collection counts reuse the membership revision. Like-order
+reconstruction ignores content-only membership changes, tagging, and media writes;
+new/changed observations and memberships invalidate it across connections. Reads
+inside a write transaction bypass the caches to keep rollback safe. Each connection
+indexes the reconstructed sequence in a temporary table with latest/earliest
+positions. The table is disposable and excluded from archive backups.
+
+Exports rank narrow membership keys in SQLite, deduplicate, and apply offset/limit
+before loading tweet text, raw payloads, or secondary objects. Unknown dates remain
+last and raw payloads come from the selected membership. Unlimited exports still
+return the complete hydrated list.

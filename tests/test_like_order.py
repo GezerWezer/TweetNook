@@ -324,9 +324,52 @@ def test_like_pagination_uses_indexed_membership_probes(store):
         )
     finally:
         store.conn.set_trace_callback(None)
-    query = next(statement for statement in statements if "json_each" in statement)
+    query = next(statement for statement in statements if "SELECT ordering.tweet_id" in statement)
     plan = store.conn.execute("EXPLAIN QUERY PLAN " + query).fetchall()
     assert any("USING INDEX idx_archive_tweet_id (tweet_id=?)" in row[3] for row in plan)
+    assert any("latest_position>?" in row[3] for row in plan)
+    assert not any("TEMP B-TREE" in row[3] for row in plan)
+
+
+def test_like_cache_ignores_unrelated_writes_but_rebuilds_for_order_changes(store):
+    membership(store, "A", sort_index="1", source=LIVE_SOURCE)
+    membership(store, "B", sort_index="2", source=LIVE_SOURCE)
+    original = store.get_like_order()
+    assert original.ids == ("B", "A")
+    for writer in (store, ArchiveStore(store.db_path, create=False)):
+        try:
+            writer.merge_rows([writer._record(row_key="media:m", record_type="media")])
+            with writer.conn:
+                writer.conn.execute(
+                    "UPDATE archive SET text = 'changed', raw_json = '{}' "
+                    "WHERE record_type = 'tweet'"
+                )
+            assert store.get_like_order() is original
+        finally:
+            if writer is not store:
+                writer.close()
+    with store.conn:
+        store.conn.execute("UPDATE archive SET sort_index = '3' WHERE tweet_id = 'A'")
+    assert store.get_like_order().ids == ("A", "B")
+    assert store.get_like_order() is not original
+
+
+def test_like_cache_and_sequence_do_not_survive_rolled_back_inputs(store):
+    membership(store, "A", sort_index="1", source=LIVE_SOURCE)
+    membership(store, "B", sort_index="2", source=LIVE_SOURCE)
+    expr = "record_type = 'tweet' AND collection_type = 'like'"
+
+    def ids():
+        return [
+            row["tweet_id"]
+            for row in store.query_like_order_ids(expr, sort="liked_latest", limit=10, offset=0)
+        ]
+
+    assert ids() == ["B", "A"]
+    store.conn.execute("UPDATE archive SET sort_index = '3' WHERE tweet_id = 'A'")
+    assert ids() == ["A", "B"]
+    store.conn.rollback()
+    assert ids() == ["B", "A"]
 
 
 def test_corrupt_capture_payload_does_not_break_unknown_order(store):

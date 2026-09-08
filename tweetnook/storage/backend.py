@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import threading
 import time
 import uuid
 from collections.abc import Callable, Iterator
@@ -276,7 +277,7 @@ ARCHIVE_COLUMNS = [
     "value",
 ]
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 COLUMN_TYPES = {
     field: (
         "TEXT PRIMARY KEY"
@@ -324,6 +325,8 @@ class ArchiveStore:
     def __init__(self, db_path: Path, *, create: bool, config: AppConfig | None = None) -> None:
         self.db_path = db_path
         self._closed = False
+        self._like_order_lock = threading.RLock()
+        self._count_cache: dict[str, tuple[int, int]] = {}
         self.migration_report: MigrationReport | None = None
         if create:
             db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -365,7 +368,7 @@ class ArchiveStore:
             self._migrate_search_index(current_version)
             return
 
-        if current_version == 6:
+        if current_version in {6, 7}:
             self._migrate_search_support_indexes(current_version)
             return
 
@@ -657,6 +660,82 @@ class ArchiveStore:
             ON archive(author_id)
             WHERE author_id IS NOT NULL AND author_id != ''
         """)
+        self._create_cache_revisions()
+
+    def _create_cache_revisions(self) -> None:
+        """Track derived-data inputs across processes, including direct SQL writes."""
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS archive_revisions "
+            "(scope TEXT PRIMARY KEY, generation INTEGER NOT NULL)"
+        )
+        self.conn.executemany(
+            "INSERT OR IGNORE INTO archive_revisions VALUES (?, 0)",
+            [("membership",), ("like_order",)],
+        )
+        scopes = {
+            "membership": (
+                "{row}.record_type = 'tweet'",
+                ("record_type", "tweet_id", "collection_type"),
+            ),
+            "like_order": (
+                "({row}.record_type = 'tweet' AND {row}.collection_type = 'like') OR "
+                "({row}.record_type = 'raw_capture' AND {row}.operation IN "
+                "('Likes', 'XArchiveLikes', 'XArchiveManifest')) OR "
+                "{row}.record_type = 'import_manifest'",
+                (
+                    "record_type",
+                    "tweet_id",
+                    "collection_type",
+                    "sort_index",
+                    "source",
+                    "operation",
+                    "raw_json",
+                    "cursor_in",
+                    "cursor_out",
+                    "http_status",
+                    "captured_at",
+                    "archive_digest",
+                    "archive_generation_date",
+                    "import_started_at",
+                    "row_key",
+                ),
+            ),
+        }
+        for scope, (relevant, columns) in scopes.items():
+            for event in ("INSERT", "DELETE", "UPDATE"):
+                rows = (
+                    ("new", "old")
+                    if event == "UPDATE"
+                    else ("new" if event == "INSERT" else "old",)
+                )
+                condition = " OR ".join(f"({relevant.format(row=row)})" for row in rows)
+                if event == "UPDATE":
+                    changed = " OR ".join(f"old.{col} IS NOT new.{col}" for col in columns)
+                    # Membership content/raw payload updates do not change like order.
+                    if scope == "like_order":
+                        membership_changed = " OR ".join(
+                            f"old.{col} IS NOT new.{col}" for col in columns[:5]
+                        )
+                        changed = (
+                            f"((old.record_type = 'tweet' AND new.record_type = 'tweet' "
+                            f"AND ({membership_changed})) OR "
+                            f"((old.record_type != 'tweet' OR new.record_type != 'tweet') "
+                            f"AND ({changed})))"
+                        )
+                    condition = f"({condition}) AND ({changed})"
+                self.conn.execute(
+                    f"CREATE TRIGGER IF NOT EXISTS archive_revision_{scope}_{event.lower()} "
+                    f"AFTER {event} ON archive WHEN {condition} BEGIN "
+                    "UPDATE archive_revisions SET generation = generation + 1 "
+                    f"WHERE scope = '{scope}'; END"
+                )
+
+    def cache_revision(self, scope: str) -> int:
+        return int(
+            self.conn.execute(
+                "SELECT generation FROM archive_revisions WHERE scope = ?", (scope,)
+            ).fetchone()[0]
+        )
 
     def _backfill_enrichment_scheduler(self) -> None:
         now = utc_now()
@@ -3478,6 +3557,10 @@ class ArchiveStore:
         }
 
     def count_export_rows(self, collection: str) -> int:
+        revision = self.cache_revision("membership")
+        cached = self._count_cache.get(collection)
+        if not self.conn.in_transaction and cached is not None and cached[0] == revision:
+            return cached[1]
         sql = (
             "SELECT COUNT(DISTINCT tweet_id) FROM archive INDEXED BY idx_archive_membership "
             "WHERE record_type = 'tweet'"
@@ -3486,30 +3569,79 @@ class ArchiveStore:
         if collection != "all":
             sql += " AND collection_type = ?"
             params = (collection,)
-        return self.conn.execute(sql, params).fetchone()[0]
+        count = int(self.conn.execute(sql, params).fetchone()[0])
+        if not self.conn.in_transaction:
+            if len(self._count_cache) >= 32:
+                self._count_cache.clear()
+            self._count_cache[collection] = (revision, count)
+        else:
+            self._count_cache.clear()
+        return count
 
     def get_like_order(self):
         """Return the derived order independently of tweet content/source updates."""
         from tweetnook.like_order import load_like_order
 
-        return load_like_order(self)
+        with self._like_order_lock:
+            return load_like_order(self)
+
+    def _ensure_like_order_table(self) -> None:
+        """Index the immutable derived sequence once per input revision/connection.
+
+        Call under _like_order_lock. A savepoint preserves any caller transaction;
+        temporary rows never become part of the on-disk archive or backups.
+        """
+        order = self.get_like_order()
+        if getattr(self, "_indexed_like_order", None) is order and not self.conn.in_transaction:
+            return
+        self.conn.execute("SAVEPOINT like_order_index")
+        try:
+            self.conn.execute(
+                "CREATE TEMP TABLE IF NOT EXISTS tweetnook_like_order "
+                "(tweet_id TEXT PRIMARY KEY, latest_position INTEGER UNIQUE, "
+                "earliest_position INTEGER UNIQUE)"
+            )
+            self.conn.execute("DELETE FROM temp.tweetnook_like_order")
+            earliest = {
+                tweet_id: i for i, tweet_id in enumerate(order.ordered_ids("liked_earliest"))
+            }
+            self.conn.executemany(
+                "INSERT INTO temp.tweetnook_like_order VALUES (?, ?, ?)",
+                ((tweet_id, i, earliest[tweet_id]) for i, tweet_id in enumerate(order.ids)),
+            )
+        except BaseException:
+            self.conn.execute("ROLLBACK TO like_order_index")
+            raise
+        finally:
+            self.conn.execute("RELEASE like_order_index")
+        self._indexed_like_order = order if not self.conn.in_transaction else None
 
     def query_like_order_ids(
-        self, filter_expr: str, *, sort: str, limit: int, offset: int
+        self,
+        filter_expr: str,
+        *,
+        sort: str,
+        limit: int,
+        offset: int,
+        after_position: int | None = None,
     ) -> list[dict[str, Any]]:
         """Filter before pagination without hydrating every liked tweet.
 
         filter_expr comes from the internal search planner, never directly from
-        an HTTP parameter. The derived sequence is passed as bound JSON data.
+        an HTTP parameter. Position ranges use the temporary sequence index.
         """
-        ids = self.get_like_order().ordered_ids(sort)
-        rows = self.conn.execute(
-            "SELECT ordering.value AS tweet_id FROM json_each(?) AS ordering "
-            "WHERE EXISTS (SELECT 1 FROM archive INDEXED BY idx_archive_tweet_id "
-            f"WHERE archive.tweet_id = ordering.value AND ({filter_expr})) "
-            "ORDER BY CAST(ordering.key AS INTEGER) LIMIT ? OFFSET ?",
-            (json.dumps(ids), limit, offset),
-        ).fetchall()
+        position = "earliest_position" if sort == "liked_earliest" else "latest_position"
+        with self._like_order_lock:
+            self._ensure_like_order_table()
+            rows = self.conn.execute(
+                f"SELECT ordering.tweet_id, ordering.{position} AS like_position "
+                "FROM temp.tweetnook_like_order AS ordering "
+                f"WHERE ordering.{position} > ? AND EXISTS "
+                "(SELECT 1 FROM archive INDEXED BY idx_archive_tweet_id "
+                f"WHERE archive.tweet_id = ordering.tweet_id AND ({filter_expr})) "
+                f"ORDER BY ordering.{position} LIMIT ? OFFSET ?",
+                (-1 if after_position is None else after_position, limit, offset),
+            ).fetchall()
         return [dict(row) for row in rows]
 
     def get_paginated_tweet_ids(
@@ -3822,55 +3954,62 @@ class ArchiveStore:
             "synced_at",
         ]
 
-        defer_raw_json = include_raw_json and limit is not None
-        if include_raw_json and not defer_raw_json:
+        if include_raw_json:
             tweet_columns.append("raw_json")
 
-        tweet_rows = self._query(expr=filter_expr, cols=tweet_columns)
+        # Rank lightweight membership keys in SQLite; materialize text, JSON, and
+        # secondary objects only for the selected logical tweets. Legacy dates
+        # without a timestamp retain the export parser's unknown-last semantics.
+        def legacy_timestamp(value):
+            parsed = _parse_created_at(value)
+            return parsed.timestamp() if parsed is not None else None
 
-        def sort_index_value(row: dict[str, Any]) -> int:
-            raw = row.get("sort_index")
-            if not raw:
-                return 0
+        def export_integer_key(value):
+            # Keep Python int() semantics (invalid values become zero), including
+            # indices beyond SQLite's signed integer range. Length-prefixed digits
+            # sort lexically as integers; complement negative keys to reverse them.
             try:
-                return int(raw)
+                number = int(value or 0)
             except (TypeError, ValueError):
-                return 0
+                number = 0
+            digits = str(abs(number))
+            key = f"{len(digits):020d}{digits}"
+            if number < 0:
+                return "0" + key.translate(str.maketrans("0123456789", "9876543210"))
+            return "1" + key
 
-        def oldest_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
-            created_at = _parse_created_at(row.get("created_at"))
-            if created_at is not None:
-                return (0, created_at, sort_index_value(row), row.get("tweet_id") or "")
-            return (1, datetime.max, sort_index_value(row), row.get("tweet_id") or "")
-
-        def newest_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
-            created_at = _parse_created_at(row.get("created_at"))
-            if created_at is not None:
-                return (
-                    0,
-                    -created_at.timestamp(),
-                    -sort_index_value(row),
-                    row.get("tweet_id") or "",
-                )
-            return (1, 0.0, -sort_index_value(row), row.get("tweet_id") or "")
-
-        sort_key = oldest_sort_key if sort == "oldest" else newest_sort_key
-        sorted_rows = sorted(tweet_rows, key=sort_key)
-        unique_rows = []
-        seen_tweet_ids: set[str] = set()
-        for row in sorted_rows:
-            tweet_id = row.get("tweet_id")
-            if not isinstance(tweet_id, str) or tweet_id in seen_tweet_ids:
-                continue
-            seen_tweet_ids.add(tweet_id)
-            unique_rows.append(row)
-        sorted_rows = unique_rows
-        if offset > 0:
-            sorted_rows = sorted_rows[offset:]
-        if limit is not None:
-            sorted_rows = sorted_rows[:limit]
-
-        return self._hydrate_exported_rows(sorted_rows, include_raw_json, defer_raw_json)
+        self.conn.create_function(
+            "tweetnook_export_timestamp", 1, legacy_timestamp, deterministic=True
+        )
+        self.conn.create_function(
+            "tweetnook_export_integer", 1, export_integer_key, deterministic=True
+        )
+        direction = "ASC" if sort == "oldest" else "DESC"
+        order = (
+            f"export_timestamp IS NULL, export_timestamp {direction}, "
+            f"export_sort {direction}, tweet_id ASC, source_rowid ASC"
+        )
+        keys = self.conn.execute(
+            "WITH candidates AS MATERIALIZED ("
+            "SELECT row_key, rowid AS source_rowid, tweet_id, "
+            "COALESCE(created_at_ts, tweetnook_export_timestamp(created_at)) AS export_timestamp, "
+            "tweetnook_export_integer(sort_index) AS export_sort "
+            f"FROM archive WHERE {filter_expr} AND tweet_id IS NOT NULL), "
+            "ranked AS (SELECT *, ROW_NUMBER() OVER ("
+            f"PARTITION BY tweet_id ORDER BY {order}) AS duplicate_rank FROM candidates) "
+            "SELECT row_key FROM ranked WHERE duplicate_rank = 1 "
+            f"ORDER BY {order} LIMIT ? OFFSET ?",
+            (-1 if limit is None else limit, offset),
+        ).fetchall()
+        selected = self._rows_for_values(
+            "tweet",
+            "row_key",
+            [row["row_key"] for row in keys],
+            columns=["row_key", *tweet_columns],
+        )
+        by_key = {row["row_key"]: row for row in selected}
+        sorted_rows = [by_key[row["row_key"]] for row in keys if row["row_key"] in by_key]
+        return self._hydrate_exported_rows(sorted_rows, include_raw_json, False)
 
     def get_tag_counts(self, query: str = "", limit: int = 50) -> list[dict[str, Any]]:
         sql = """
