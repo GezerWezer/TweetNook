@@ -27,7 +27,7 @@ from tweetnook.archive_import import (
 )
 from tweetnook.articles import refresh_articles
 from tweetnook.auth import resolve_auth_bundle
-from tweetnook.cli_service import service_app
+from tweetnook.cli_service import service_app, update_managed_installation
 from tweetnook.cli_web import web_app
 from tweetnook.config import ensure_paths, load_config
 from tweetnook.exceptions import ConfigError, ProcessLockError, TweetNookError
@@ -99,6 +99,12 @@ app.add_typer(view_app, name="view", help="Render archived tweets in the termina
 
 app.add_typer(service_app, name="service")
 app.add_typer(web_app, name="web", help="Manage the background web UI server.")
+
+
+@app.command("update")
+def update_command() -> None:
+    """Update TweetNook and restart its managed system service."""
+    update_managed_installation()
 
 
 def _web_pipeline(console: Console, title: str, paths) -> PipelineReporter:
