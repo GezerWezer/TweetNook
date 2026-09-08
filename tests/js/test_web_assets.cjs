@@ -521,6 +521,38 @@ test('tweet app starts with coherent list, panel, modal, and theme state', () =>
     assert.ok(Object.keys(app.THEMES).length >= 15);
 });
 
+test('lightbox navigation moves through media and clamps at both ends', () => {
+    const context = browserContext();
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const { tweetApp } = loadScripts(
+        context,
+        ['themes.js', 'app.js'],
+        '({tweetApp})',
+    );
+    const app = immediateComponent(tweetApp());
+    app.lightboxMedia = [{type: 'photo'}, {type: 'photo'}, {type: 'photo'}];
+    app.lightboxIndex = 0;
+
+    app.prevLightbox();
+    assert.equal(app.lightboxIndex, 0);
+    app.nextLightbox();
+    assert.equal(app.lightboxIndex, 1);
+    app.nextLightbox();
+    app.nextLightbox();
+    assert.equal(app.lightboxIndex, 2);
+    app.prevLightbox();
+    assert.equal(app.lightboxIndex, 1);
+
+    app.lightboxMedia = [{type: 'photo'}];
+    app.lightboxIndex = 0;
+    app.nextLightbox();
+    app.prevLightbox();
+    assert.equal(app.lightboxIndex, 0);
+    assert.match(html, /@click\.stop="prevLightbox\(\)"/);
+    assert.match(html, /@click\.stop="nextLightbox\(\)"/);
+    assert.match(html, /@click\.stop="lightboxOpen = false"/);
+});
+
 test('reply-recipient links open an anchored profile card without searching', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(

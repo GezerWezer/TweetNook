@@ -878,6 +878,16 @@ function tweetApp() {
             });
         },
 
+        prevLightbox() {
+            if (this.lightboxMedia.length < 2) return;
+            this.lightboxIndex = Math.max(0, this.lightboxIndex - 1);
+        },
+
+        nextLightbox() {
+            if (this.lightboxMedia.length < 2) return;
+            this.lightboxIndex = Math.min(this.lightboxMedia.length - 1, this.lightboxIndex + 1);
+        },
+
         scrollToTop() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         },
