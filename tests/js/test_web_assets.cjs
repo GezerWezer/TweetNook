@@ -1965,7 +1965,7 @@ test('missing tweet skeletons cover terminal, relation, tombstone, and textless 
     assert.doesNotMatch(css, /animation:[^;]*tweet-skeleton/);
 });
 
-test('media renderer preserves dimensions and selects photo, video, GIF, and placeholders', () => {
+test('media renderer preserves dimensions and adds Twitter/X-style playback indicators', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
@@ -1997,6 +1997,11 @@ test('media renderer preserves dimensions and selects photo, video, GIF, and pla
     ]);
     assert.match(video, /controls/);
     assert.doesNotMatch(video, /autoplay muted/);
+    assert.match(video, /class="media-video-duration"/);
+    assert.match(video, /aria-label="Video duration 2:00">2:00<\/span>/);
+    assert.equal(app.formatMediaDuration(3000), '0:03');
+    assert.equal(app.formatMediaDuration(3723000), '1:02:03');
+    assert.equal(app.formatMediaDuration(null), '');
 
     const gif = app.renderMediaGrid([
         {
@@ -2006,6 +2011,11 @@ test('media renderer preserves dimensions and selects photo, video, GIF, and pla
     ]);
     assert.match(gif, /autoplay muted playsinline/);
     assert.match(gif, /loop/);
+    assert.match(gif, /data-animated-gif/);
+    assert.match(gif, /data-gif-toggle aria-label="Pause GIF"/);
+    assert.match(gif, /media-gif-pause-icon/);
+    assert.match(gif, /media-gif-play-icon/);
+    assert.doesNotMatch(gif, /media-video-duration/);
 
     const missing = app.renderMediaGrid([{ type: 'photo', width: 4, height: 3 }]);
     assert.match(missing, /Media not downloaded/);
@@ -2017,6 +2027,80 @@ test('media renderer preserves dimensions and selects photo, video, GIF, and pla
     ]);
     assert.match(grid, /grid-rows-2/);
     assert.match(grid, /row-span-2/);
+
+    const gridVideo = app.renderMediaGrid([
+        { type: 'photo', download: { local_path: 'media/1.jpg' } },
+        {
+            type: 'video',
+            duration_millis: 3000,
+            download: { local_path: 'media/2.mp4' },
+        },
+    ]);
+    assert.match(gridVideo, /aria-label="Video duration 0:03">0:03<\/span>/);
+
+    const css = fs.readFileSync(
+        path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'),
+        'utf8',
+    );
+    assert.match(css, /\.media-video-duration,/);
+    assert.match(css, /\.media-gif-indicator \{/);
+    assert.match(css, /\.media-gif-indicator\.is-paused \.media-gif-play-icon/);
+});
+
+test('GIF indicator tracks playback state and toggles the archived animation', async () => {
+    const context = browserContext();
+    loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const classes = new Set();
+    const attributes = new Map();
+    let playCalls = 0;
+    let pauseCalls = 0;
+    const indicator = {
+        classList: {
+            toggle(name, enabled) {
+                if (enabled) classes.add(name);
+                else classes.delete(name);
+            },
+        },
+        setAttribute(name, value) {
+            attributes.set(name, value);
+        },
+    };
+    const video = {
+        paused: false,
+        ended: false,
+        parentElement: { querySelector: () => indicator },
+        play() {
+            playCalls += 1;
+            this.paused = false;
+            context.window.tweetNookSyncGifIndicator(this);
+            return Promise.resolve();
+        },
+        pause() {
+            pauseCalls += 1;
+            this.paused = true;
+            context.window.tweetNookSyncGifIndicator(this);
+        },
+    };
+    indicator.parentElement = { querySelector: () => video };
+    const event = {
+        prevented: false,
+        stopped: false,
+        preventDefault() { this.prevented = true; },
+        stopPropagation() { this.stopped = true; },
+    };
+
+    context.window.tweetNookSyncGifIndicator(video);
+    assert.equal(attributes.get('aria-label'), 'Pause GIF');
+    context.window.tweetNookToggleGif(event, indicator);
+    assert.equal(pauseCalls, 1);
+    assert.ok(classes.has('is-paused'));
+    assert.equal(attributes.get('title'), 'Play GIF');
+    context.window.tweetNookToggleGif(event, indicator);
+    await Promise.resolve();
+    assert.equal(playCalls, 1);
+    assert.ok(!classes.has('is-paused'));
+    assert.equal(event.prevented, true);
+    assert.equal(event.stopped, true);
 });
 
 test('activity drawer loads any pipeline and starts production jobs', async () => {

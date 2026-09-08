@@ -1694,3 +1694,64 @@ body {
     height: 20px;
     font-size: 11px;
 }
+
+/* Twitter/X-style playback badges for archived video and animated GIF media. */
+.media-video-duration,
+.media-gif-indicator {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    z-index: 2;
+    min-height: 22px;
+    border-radius: 6px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.78);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 22px;
+}
+.media-video-duration {
+    padding: 0 7px;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+}
+.media-gif-indicator {
+    display: inline-flex;
+    align-items: stretch;
+    min-width: 60px;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    font-family: inherit;
+    cursor: pointer;
+}
+.media-gif-indicator:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+.media-gif-action,
+.media-gif-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.media-gif-action {
+    width: 29px;
+    border-right: 1px solid rgba(255, 255, 255, 0.22);
+}
+.media-gif-label {
+    padding: 0 8px;
+}
+.media-gif-action svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+.media-gif-play-icon,
+.media-gif-indicator.is-paused .media-gif-pause-icon {
+    display: none;
+}
+.media-gif-indicator.is-paused .media-gif-play-icon {
+    display: block;
+}

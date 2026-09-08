@@ -4,6 +4,34 @@
 
 const statsSuspendedVideos = new Set();
 
+function tweetNookSyncGifIndicator(video) {
+    const indicator = video?.parentElement?.querySelector?.('[data-gif-toggle]');
+    if (!indicator) return;
+
+    const isPaused = Boolean(video.paused || video.ended);
+    indicator.classList.toggle('is-paused', isPaused);
+    const action = isPaused ? 'Play GIF' : 'Pause GIF';
+    indicator.setAttribute('aria-label', action);
+    indicator.setAttribute('title', action);
+}
+
+function tweetNookToggleGif(event, indicator) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
+    const video = indicator?.parentElement?.querySelector?.('video[data-animated-gif]');
+    if (!video) return;
+    if (video.paused || video.ended) {
+        const playResult = video.play();
+        if (playResult?.catch) playResult.catch(() => tweetNookSyncGifIndicator(video));
+    } else {
+        video.pause();
+    }
+}
+
+window.tweetNookSyncGifIndicator = tweetNookSyncGifIndicator;
+window.tweetNookToggleGif = tweetNookToggleGif;
+
 function tweetApp() {
     return {
         isDemo: window.TWEETNOOK_DEMO === true,
@@ -3415,6 +3443,35 @@ function tweetApp() {
             return '/api/avatar/' + (userId || 'unknown');
         },
 
+        formatMediaDuration(durationMillis) {
+            const millis = Number(durationMillis);
+            if (!Number.isFinite(millis) || millis <= 0) return '';
+
+            const totalSeconds = Math.floor(millis / 1000);
+            const seconds = String(totalSeconds % 60).padStart(2, '0');
+            const totalMinutes = Math.floor(totalSeconds / 60);
+            if (totalMinutes < 60) return `${totalMinutes}:${seconds}`;
+
+            const minutes = String(totalMinutes % 60).padStart(2, '0');
+            return `${Math.floor(totalMinutes / 60)}:${minutes}:${seconds}`;
+        },
+
+        renderMediaPlaybackIndicator(item) {
+            if (item.isGif) {
+                return `<button type="button" class="media-gif-indicator" data-gif-toggle aria-label="Pause GIF" title="Pause GIF" onclick="window.tweetNookToggleGif(event, this)">
+                            <span class="media-gif-action" aria-hidden="true">
+                                <svg class="media-gif-pause-icon" viewBox="0 0 24 24"><path d="M6 4h4v16H6zm8 0h4v16h-4z"></path></svg>
+                                <svg class="media-gif-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                            </span>
+                            <span class="media-gif-label">GIF</span>
+                        </button>`;
+            }
+
+            const duration = this.formatMediaDuration(item.m.duration_millis);
+            if (!duration) return '';
+            return `<span class="media-video-duration" aria-label="Video duration ${duration}">${duration}</span>`;
+        },
+
         renderMediaGrid(mediaList) {
             if (!mediaList || mediaList.length === 0) return '';
             
@@ -3449,7 +3506,8 @@ function tweetApp() {
             `;
 
             if (allMedia.length === 1) {
-                const { src, poster, type, isGif, isShort } = allMedia[0];
+                const item = allMedia[0];
+                const { src, poster, type, isGif, isShort } = item;
                 const aspect = allMedia[0].m.width && allMedia[0].m.height ? (allMedia[0].m.width / allMedia[0].m.height) : 0;
                 const containerStyle = aspect 
                     ? `width: min(100%, calc(512px * ${aspect})); aspect-ratio: ${aspect}; max-height: 512px;`
@@ -3467,9 +3525,14 @@ function tweetApp() {
                     const loopAttr = (isGif || isShort) ? 'loop' : '';
                     const autoplayAttr = isGif ? 'autoplay muted playsinline' : '';
                     const controlsAttr = isGif ? '' : 'controls';
+                    const gifEvents = isGif
+                        ? 'data-animated-gif onplay="window.tweetNookSyncGifIndicator(this)" onpause="window.tweetNookSyncGifIndicator(this)" onloadeddata="window.tweetNookSyncGifIndicator(this)"'
+                        : '';
+                    const indicator = this.renderMediaPlaybackIndicator(item);
 
                     return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block" style="${containerStyle}" @click.stop>
-                                <video src="${src}" poster="${poster || ''}" ${autoplayAttr} ${loopAttr} ${controlsAttr} class="w-full h-full object-cover outline-none block"></video>
+                                <video src="${src}" poster="${poster || ''}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} class="w-full h-full object-cover outline-none block"></video>
+                                ${indicator}
                             </div>`;
                 }
             }
@@ -3496,8 +3559,13 @@ function tweetApp() {
                         const loopAttr = (isGif || isShort) ? 'loop' : '';
                         const autoplayAttr = isGif ? 'autoplay muted playsinline' : '';
                         const controlsAttr = isGif ? '' : 'controls';
+                        const gifEvents = isGif
+                            ? 'data-animated-gif onplay="window.tweetNookSyncGifIndicator(this)" onpause="window.tweetNookSyncGifIndicator(this)" onloadeddata="window.tweetNookSyncGifIndicator(this)"'
+                            : '';
+                        const indicator = this.renderMediaPlaybackIndicator(item);
                         html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass}">
-                                    <video src="${src}" poster="${poster || ''}" ${autoplayAttr} ${loopAttr} ${controlsAttr} class="absolute inset-0 w-full h-full object-cover outline-none"></video>
+                                    <video src="${src}" poster="${poster || ''}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} class="absolute inset-0 w-full h-full object-cover outline-none"></video>
+                                    ${indicator}
                                 </div>`;
                     }
                 }

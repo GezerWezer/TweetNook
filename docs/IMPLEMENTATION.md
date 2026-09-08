@@ -2,6 +2,12 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Twitter/X-style media indicators (2026-09-08)
+
+- [x] Show saved video durations as bottom-left playback pills in single and gallery media.
+- [x] Add a segmented GIF badge with a playback-state-aware play/pause control.
+- [x] Cover formatting, rendering, interaction, styling, and the static Pages build path.
+
 ## TweetNook 0.1.0 release (2026-09-07)
 
 - [x] Sync `main` and tags with `origin`; confirm PyPI's latest version is `0.0.9`.
