@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tweetnook"
-version = "0.0.9"
+version = "0.1.0"
 description = "Self-hosted Web archive for Twitter/X bookmarks, likes, tweets, and official exports."
 readme = "README.md"
 license = "Apache-2.0"
@@ -64,6 +64,7 @@ packages = ["tweetnook"]
 include = [
   "/tweetnook",
   "/README.md",
+  "/CHANGELOG.md",
   "/LICENSE",
   "/pyproject.toml",
   "/docs/*.md",
