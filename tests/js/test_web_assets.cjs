@@ -2898,6 +2898,17 @@ test('activity drawer animation isolates layout and transitions only geometry', 
     }
 });
 
+test('floating analytics, settings, and sync controls are desktop-only', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const statsStart = html.indexOf('<!-- Stats Button -->');
+    const settingsStart = html.indexOf('<!-- Settings Button -->');
+    const activityStart = html.indexOf('<!-- Twitter/X-style activity drawer -->');
+
+    assert.match(html.slice(statsStart, settingsStart), /class="[^\"]*hidden sm:flex[^\"]*"/);
+    assert.match(html.slice(settingsStart, activityStart), /class="[^\"]*hidden sm:flex[^\"]*"/);
+    assert.match(html.slice(activityStart, html.indexOf('</section>', activityStart)), /class="activity-drawer hidden sm:block"/);
+});
+
 test('Settings tabs use the requested order and Appearance is the default', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
