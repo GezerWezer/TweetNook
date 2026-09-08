@@ -10,7 +10,8 @@ This is the active implementation checklist. Update checkboxes as items complete
 - [x] Run the full release validation, build, metadata check, and isolated wheel smoke test.
 - [x] Commit the release metadata, create `v0.1.0`, and push `main` plus the tag.
 - [x] Confirm the tag workflow publishes PyPI and GitHub release artifacts; verify the public install.
-- [ ] Enable GitHub Pages with GitHub Actions as its source, then rerun the failed demo deployment.
+- [x] Enable GitHub Pages with GitHub Actions as its source, allow `v*` tag deployments in the
+  `github-pages` environment, rerun the failed job, and verify the public `0.1.0` demo.
 
 ## Unbounded Web search pagination (2026-09-07)
 
