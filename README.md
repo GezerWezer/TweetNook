@@ -215,6 +215,11 @@ tweetnook export json --out my-tweets.json
 JSON exports do not include media files or everything needed to restore an
 archive. Use a full folder backup.
 
+After large imports or deletions, `tweetnook optimize` reclaims database space,
+refreshes SQLite query-planner statistics, and merges full-text index segments.
+Run it while other archive jobs are stopped. Normal writer jobs also perform
+lightweight planner maintenance when they close the database.
+
 
 ## Documentation and help
 

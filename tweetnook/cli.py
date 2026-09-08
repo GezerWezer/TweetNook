@@ -1537,7 +1537,7 @@ def tag_archive(
 
 @app.command("optimize")
 def optimize_archive() -> None:
-    """Vacuum the SQLite database to reclaim space after large deletions."""
+    """Reclaim SQLite space and optimize query planning and the full-text index."""
     console = _configure_logging()
     config, paths = load_config()
 
@@ -1547,9 +1547,9 @@ def optimize_archive() -> None:
             console.print("[red]No local archive found.[/red]")
             raise typer.Exit(1)
         try:
-            console.print("vacuuming database...")
+            console.print("optimizing database and search index...")
             store.optimize()
-            console.print("vacuum complete.")
+            console.print("database optimization complete.")
         finally:
             store.close()
 

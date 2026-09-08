@@ -1338,6 +1338,9 @@ def test_search_authors_falls_back_for_legacy_missing_display_name_column(paths)
     connection = store.conn
 
     class LegacyAuthorConnection:
+        def __getattr__(self, name):
+            return getattr(connection, name)
+
         def execute(self, sql, parameters=()):
             if "MIN(author_display_name)" in sql:
                 raise sqlite3.OperationalError("no such column: author_display_name")

@@ -283,7 +283,8 @@ it on a quiescent copy.
 tweetnook optimize
 ```
 
-Acquire the archive lock and run SQLite `VACUUM`. It can be expensive, requires
+Acquire the archive lock, run SQLite `VACUUM`, refresh planner statistics, and
+merge FTS index segments. It can be expensive, requires
 temporary disk space, and does not clean media or activity files.
 
 ## `migrate`

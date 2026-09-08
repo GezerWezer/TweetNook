@@ -276,7 +276,7 @@ ARCHIVE_COLUMNS = [
     "value",
 ]
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 COLUMN_TYPES = {
     field: (
         "TEXT PRIMARY KEY"
@@ -323,6 +323,7 @@ class ArchiveStore:
 
     def __init__(self, db_path: Path, *, create: bool, config: AppConfig | None = None) -> None:
         self.db_path = db_path
+        self._closed = False
         self.migration_report: MigrationReport | None = None
         if create:
             db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -364,6 +365,10 @@ class ArchiveStore:
             self._migrate_search_index(current_version)
             return
 
+        if current_version == 6:
+            self._migrate_search_support_indexes(current_version)
+            return
+
         self._migrate_legacy_database(current_version)
 
     def _create_latest_schema(self) -> None:
@@ -373,6 +378,7 @@ class ArchiveStore:
             self._create_fts_schema()
             self._create_archive_indexes()
             self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        self.conn.execute("PRAGMA optimize=0x10002")
 
     def _migrate_legacy_database(self, current_version: int) -> None:
         self._require_quick_check("before migration")
@@ -431,8 +437,10 @@ class ArchiveStore:
     def _migrate_search_support_indexes(self, current_version: int) -> None:
         """Add derived search indexes without copying canonical archive data."""
         with self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
             self._create_archive_indexes()
             self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        self.conn.execute("PRAGMA optimize=0x10002")
 
         self.migration_report = MigrationReport(
             from_version=current_version,
@@ -633,6 +641,21 @@ class ArchiveStore:
             CREATE INDEX IF NOT EXISTS idx_archive_media_tag_lookup
             ON archive(tweet_id, raw_json)
             WHERE record_type = 'media_tag'
+        """)
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archive_membership
+            ON archive(tweet_id, row_key, collection_type)
+            WHERE record_type = 'tweet'
+        """)
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archive_search_author
+            ON archive(LOWER(COALESCE(author_username, '')), created_at_ts DESC, tweet_id)
+            WHERE record_type = 'tweet'
+        """)
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archive_profile_author
+            ON archive(author_id)
+            WHERE author_id IS NOT NULL AND author_id != ''
         """)
 
     def _backfill_enrichment_scheduler(self) -> None:
@@ -997,7 +1020,16 @@ class ArchiveStore:
             self.conn.execute(f"DELETE FROM archive WHERE {filter_expr}")
 
     def close(self) -> None:
-        self.conn.close()
+        if self._closed:
+            return
+        try:
+            # Read-only/current-schema opens stay cheap. Writers refresh planner
+            # statistics at the end of their job, including direct SQL tag writes.
+            if self.conn.total_changes and not self.conn.in_transaction:
+                self.conn.execute("PRAGMA optimize")
+        finally:
+            self._closed = True
+            self.conn.close()
 
     def _record(self, **overrides: Any) -> dict[str, Any]:
         record = {field: None for field in ARCHIVE_COLUMNS}
@@ -1098,20 +1130,31 @@ class ArchiveStore:
         *,
         columns: list[str] | None = None,
     ) -> list[dict[str, Any]]:
+        if field_name not in ARCHIVE_COLUMNS:
+            raise ValueError(f"Unknown archive field: {field_name}")
         unique_values = [value for value in dict.fromkeys(values) if value]
         if not unique_values:
             return []
+        if record_type == "url" and field_name == "url_hash":
+            unique_values = [self._row_key_for_url(value) for value in unique_values]
+            field_name = "row_key"
         rows: list[dict[str, Any]] = []
         chunk_size = 100
         for start in range(0, len(unique_values), chunk_size):
             chunk = unique_values[start : start + chunk_size]
-            joined = " OR ".join(f"{field_name} = {_expr_quote(value)}" for value in chunk)
-            expr = f"record_type = {_expr_quote(record_type)} AND ({joined})"
             value_index = {
                 "tweet_id": "idx_archive_tweet_id",
                 "target_tweet_id": "idx_archive_target_tweet_id",
+                "row_key": "sqlite_autoindex_archive_1",
             }.get(field_name)
-            rows.extend(self._query(expr=expr, cols=columns, indexed_by=value_index))
+            source = f"archive INDEXED BY {value_index}" if value_index else "archive"
+            selected = ", ".join(columns) if columns else "*"
+            placeholders = ", ".join("?" for _value in chunk)
+            sql = (
+                f"SELECT {selected} FROM {source} WHERE record_type = ? "
+                f"AND {field_name} IN ({placeholders})"
+            )
+            rows.extend(dict(row) for row in self.conn.execute(sql, (record_type, *chunk)))
         return rows
 
     def _lookup_row(
@@ -2193,14 +2236,12 @@ class ArchiveStore:
             "variants_json",
             "source",
         ]
-        rows = self._query(expr=where_expr, cols=cols)
-        rows.sort(
-            key=lambda row: (
-                row.get("tweet_id") or "",
-                row.get("position") if row.get("position") is not None else 1_000_000,
-            )
+        return self._query(
+            expr=where_expr,
+            cols=cols,
+            order_by="COALESCE(tweet_id, ''), COALESCE(position, 1000000), rowid",
+            limit=limit,
         )
-        return rows[:limit] if limit is not None else rows
 
     def update_media_download(
         self,
@@ -2304,9 +2345,12 @@ class ArchiveStore:
             "content_type",
             "unfurl_state",
         ]
-        rows = self._query(expr=where_expr, cols=cols)
-        rows.sort(key=lambda row: row.get("canonical_url") or row.get("url") or "")
-        return rows[:limit] if limit is not None else rows
+        return self._query(
+            expr=where_expr,
+            cols=cols,
+            order_by="COALESCE(NULLIF(canonical_url, ''), url, ''), rowid",
+            limit=limit,
+        )
 
     def update_url_unfurl(
         self,
@@ -2391,9 +2435,7 @@ class ArchiveStore:
             "record_type = 'article'",
             "(status IS NULL OR status != 'body_present')" if preview_only else "",
         )
-        rows = self._query(expr=where_expr)
-        rows.sort(key=lambda row: row.get("tweet_id") or "")
-        return rows[:limit] if limit is not None else rows
+        return self._query(expr=where_expr, order_by="COALESCE(tweet_id, ''), rowid", limit=limit)
 
     def get_article_tweet_ids(
         self,
@@ -2405,10 +2447,13 @@ class ArchiveStore:
             "record_type = 'article'",
             "(status IS NULL OR status != 'body_present')" if preview_only else "",
         )
-        rows = self._query(expr=where_expr, cols=["tweet_id"])
-        rows.sort(key=lambda row: row.get("tweet_id") or "")
-        ids = [row["tweet_id"] for row in rows if row.get("tweet_id")]
-        return ids[:limit] if limit is not None else ids
+        rows = self._query(
+            expr=_and_expr(where_expr, "tweet_id IS NOT NULL AND tweet_id != ''"),
+            cols=["tweet_id"],
+            order_by="tweet_id, rowid",
+            limit=limit,
+        )
+        return [row["tweet_id"] for row in rows]
 
     def list_tweet_objects_for_enrichment(
         self, *, limit: int | None = None, now: str | None = None
@@ -3433,7 +3478,10 @@ class ArchiveStore:
         }
 
     def count_export_rows(self, collection: str) -> int:
-        sql = "SELECT COUNT(DISTINCT tweet_id) FROM archive WHERE record_type = 'tweet'"
+        sql = (
+            "SELECT COUNT(DISTINCT tweet_id) FROM archive INDEXED BY idx_archive_membership "
+            "WHERE record_type = 'tweet'"
+        )
         params: tuple[str, ...] = ()
         if collection != "all":
             sql += " AND collection_type = ?"
@@ -3501,7 +3549,7 @@ class ArchiveStore:
             "SELECT candidate.tweet_id FROM archive AS candidate "
             f"WHERE {' AND '.join(where)} "
             "AND NOT EXISTS ("
-            "SELECT 1 FROM archive AS duplicate "
+            "SELECT 1 FROM archive AS duplicate INDEXED BY idx_archive_membership "
             f"WHERE {' AND '.join(duplicate_where)}"
             ") "
             f"ORDER BY {order_by} LIMIT ? OFFSET ?"
@@ -4796,7 +4844,7 @@ class ArchiveStore:
             filter_expr = "record_type = 'tweet'"
             if collection != "all":
                 filter_expr += f" AND collection_type = {_expr_quote(collection)}"
-            total = self._count_distinct("tweet_id", filter_expr) if include_total else None
+            total = self.count_export_rows(collection) if include_total else None
             if sort in {"liked_latest", "liked_earliest"}:
                 rows = self.query_like_order_ids(
                     filter_expr,
@@ -4966,6 +5014,9 @@ class ArchiveStore:
 
     def optimize(self, *, cleanup: bool = True) -> None:
         self.conn.execute("VACUUM")
+        self.conn.execute("PRAGMA optimize=0x10002")
+        with self.conn:
+            self.conn.execute("INSERT INTO archive_fts(archive_fts) VALUES ('optimize')")
 
 
 def open_archive_store(

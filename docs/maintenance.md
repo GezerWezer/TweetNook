@@ -50,9 +50,13 @@ After making a backup, run:
 tweetnook optimize
 ```
 
-This compacts the database. It can take time and needs temporary disk space, so
+This compacts the database, refreshes query-planner statistics, and merges
+full-text search index segments. It can take time and needs temporary disk space, so
 run it while other jobs are stopped. It does not delete media, exports, staged
 uploads, logs, or cached files.
+
+Normal writer jobs also perform lightweight planner-statistics maintenance when
+they close the database. Ordinary browsing does not run compaction.
 
 ## Repair older records
 
