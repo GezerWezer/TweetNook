@@ -4,7 +4,7 @@ This is the active implementation checklist. Update checkboxes as items complete
 
 ## Database performance and navigation repairs (2026-09-08)
 
-- [ ] Repair install/update service restart in a focused commit after the optimizations. Confirmed on the supplied server: current JavaScript, legacy API without `has_more`, and missing detail document routes.
+- [x] Repair service reinstall restart in a focused commit after the optimizations. The supplied server served current JavaScript with a legacy API; install now reloads/enables/restarts, and the existing update command already stops/upgrades/starts.
 - [x] Repair FTS replacement lifecycle and existing orphaned documents; reduce state-only write amplification.
 - [x] Fix feed duplicate and URL lookup plans; add selective author/profile indexes and planner maintenance.
 - [x] Apply queue/export limits before hydration.

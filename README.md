@@ -69,7 +69,7 @@ For a persistent homelab/server installation, install TweetNook as a system serv
 sudo tweetnook service install
 ```
 
-This installs and enables the TweetNook service so it starts automatically at boot and keeps running in the background.
+This installs and enables the TweetNook service so it starts automatically at boot and keeps running in the background. Running it again restarts the service to load the installed code and Web assets together.
 
 Check its status with:
 

@@ -28,6 +28,20 @@ app import without that initialization leaves process-global state empty,
 authentication disabled, and no store; it is a test/internal path, not the
 supported runtime.
 
+## Managed systemd lifecycle
+
+`cli_service.py` writes a managed unit for the invoking Python environment.
+`service install` atomically replaces the unit, calls `daemon-reload`, enables it,
+and explicitly restarts it. `enable --now` alone leaves an active process running:
+its imported Python routes can stay old while static files already come from an
+updated package, breaking pagination or refreshed detail URLs. Restart uses the
+unit's existing cooperative shutdown policy and also starts an inactive service.
+
+`tweetnook update` already stops the managed service before upgrading its exact
+Python environment, then starts it again. A manual pip upgrade alone does not
+restart an existing server; follow it with `service restart` (or restart the
+foreground process). Pip installation itself never modifies host services.
+
 ## FastAPI lifespan
 
 `web/server.py` lifespan:
