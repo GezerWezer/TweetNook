@@ -2885,6 +2885,19 @@ test('Settings and Setup stay above an expanded activity drawer', () => {
     assert.doesNotMatch(css, /\.activity-drawer\.activity-over-settings/);
 });
 
+test('activity drawer animation isolates layout and transitions only geometry', () => {
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const drawerRule = css.match(/\.activity-drawer\s*\{([^}]*)\}/)?.[1] || '';
+    const readyRule = css.match(/\.activity-drawer\.activity-drawer-ready\s*\{([^}]*)\}/)?.[1] || '';
+
+    assert.match(drawerRule, /contain: layout paint style;/);
+    assert.match(readyRule, /will-change: width, height, right, bottom, border-radius;/);
+    assert.doesNotMatch(readyRule, /transition:\s*all\b/);
+    for (const property of ['width', 'height', 'right', 'bottom', 'border-radius']) {
+        assert.match(readyRule, new RegExp(`(?:transition:|,)\\s*${property} 0\\.35s`));
+    }
+});
+
 test('Settings tabs use the requested order and Appearance is the default', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
