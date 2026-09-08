@@ -234,6 +234,7 @@ body {
     z-index: 70;
     overflow: hidden;
     overscroll-behavior: none;
+    contain: layout paint style;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04);
@@ -243,7 +244,13 @@ body {
 }
 .activity-drawer.activity-drawer-ready {
     visibility: visible;
-    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: width, height, right, bottom, border-radius;
+    transition:
+        width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+        height 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+        right 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+        bottom 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+        border-radius 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .activity-drawer button,
 .activity-drawer input,
