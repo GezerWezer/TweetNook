@@ -2,6 +2,13 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Managed systemd update command (2026-09-07)
+
+- [x] Add `sudo tweetnook update` with managed-unit validation and service-Python discovery.
+- [x] Preflight pip and the installed version before gracefully stopping the service.
+- [x] Upgrade with the service Python, restart on success or package-upgrade failure, and report the version.
+- [x] Document the command and cover success, already-current, failure, ownership, preflight, and help behavior.
+
 ## GitHub Pages demo (2026-09-07)
 
 - [x] Add a synthetic, schema-validated seven-user fixture with 22 root posts, mixed chained and

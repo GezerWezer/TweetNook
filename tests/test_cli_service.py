@@ -1,3 +1,4 @@
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -80,6 +81,164 @@ def test_service_reports_missing_systemd(monkeypatch):
     assert "systemd" in result.output
 
 
+def write_managed_unit(unit_path, python):
+    unit_path.write_text(service.render_unit(account(), python=str(python)))
+
+
+def test_update_uses_managed_service_python_in_order(tmp_path, monkeypatch):
+    unit_path = tmp_path / "tweetnook.service"
+    service_python = tmp_path / "service-python"
+    service_python.touch()
+    write_managed_unit(unit_path, service_python)
+    events = []
+    versions = iter(["0.0.9\n", "0.0.10\n"])
+
+    def systemd(**kwargs):
+        events.append(("systemd", kwargs))
+
+    def systemctl(*args):
+        events.append(("systemctl", *args))
+
+    def run(command, **kwargs):
+        events.append(("run", command, kwargs))
+        stdout = next(versions) if command[1] == "-c" else ""
+        return SimpleNamespace(stdout=stdout)
+
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", systemd)
+    monkeypatch.setattr(service, "_systemctl", systemctl)
+    monkeypatch.setattr(service.subprocess, "run", run)
+
+    result = CliRunner().invoke(app, ["update"])
+
+    assert result.exit_code == 0, result.output
+    assert events == [
+        ("systemd", {"admin": True}),
+        (
+            "run",
+            [str(service_python), "-m", "pip", "--version"],
+            {"check": True, "capture_output": True, "text": True},
+        ),
+        (
+            "run",
+            [str(service_python), "-c", "import tweetnook; print(tweetnook.__version__)"],
+            {"check": True, "capture_output": True, "text": True},
+        ),
+        ("systemctl", "stop", service.UNIT_NAME),
+        (
+            "run",
+            [str(service_python), "-m", "pip", "install", "--upgrade", "tweetnook"],
+            {"check": True},
+        ),
+        ("systemctl", "start", service.UNIT_NAME),
+        (
+            "run",
+            [str(service_python), "-c", "import tweetnook; print(tweetnook.__version__)"],
+            {"check": True, "capture_output": True, "text": True},
+        ),
+    ]
+    assert "TweetNook updated: 0.0.9 → 0.0.10" in result.output
+    assert "TweetNook service restarted." in result.output
+
+
+def test_update_reports_already_current(tmp_path, monkeypatch):
+    unit_path = tmp_path / "tweetnook.service"
+    service_python = tmp_path / "service-python"
+    service_python.touch()
+    write_managed_unit(unit_path, service_python)
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    monkeypatch.setattr(service, "_systemctl", lambda *args: None)
+    monkeypatch.setattr(
+        service.subprocess,
+        "run",
+        lambda command, **kwargs: SimpleNamespace(stdout="0.0.9\n"),
+    )
+
+    result = CliRunner().invoke(app, ["update"])
+
+    assert result.exit_code == 0, result.output
+    assert "TweetNook is already up to date (0.0.9)." in result.output
+    assert "TweetNook service restarted." in result.output
+
+
+def test_update_restarts_service_after_pip_failure(tmp_path, monkeypatch):
+    unit_path = tmp_path / "tweetnook.service"
+    service_python = tmp_path / "service-python"
+    service_python.touch()
+    write_managed_unit(unit_path, service_python)
+    events = []
+
+    def systemctl(*args):
+        events.append(("systemctl", *args))
+
+    def run(command, **kwargs):
+        if command[1:4] == ["-m", "pip", "install"]:
+            events.append(("pip", command))
+            raise subprocess.CalledProcessError(1, command)
+        return SimpleNamespace(stdout="0.0.9\n")
+
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    monkeypatch.setattr(service, "_systemctl", systemctl)
+    monkeypatch.setattr(service.subprocess, "run", run)
+
+    result = CliRunner().invoke(app, ["update"])
+
+    assert result.exit_code == 1
+    assert events == [
+        ("systemctl", "stop", service.UNIT_NAME),
+        (
+            "pip",
+            [str(service_python), "-m", "pip", "install", "--upgrade", "tweetnook"],
+        ),
+        ("systemctl", "start", service.UNIT_NAME),
+    ]
+    assert "TweetNook update failed" in result.output
+    assert "TweetNook service restarted." in result.output
+
+
+def test_update_refuses_unmanaged_service_before_subprocesses(tmp_path, monkeypatch):
+    unit_path = tmp_path / "tweetnook.service"
+    unit_path.write_text("[Service]\nExecStart=/usr/bin/python -m tweetnook serve\n")
+    calls = []
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    monkeypatch.setattr(service, "_systemctl", lambda *args: calls.append(args))
+    monkeypatch.setattr(service.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+
+    result = CliRunner().invoke(app, ["update"])
+
+    assert result.exit_code == 1
+    assert calls == []
+    assert "not managed by TweetNook" in result.output
+
+
+def test_update_missing_pip_leaves_service_running(tmp_path, monkeypatch):
+    unit_path = tmp_path / "tweetnook.service"
+    service_python = tmp_path / "service-python"
+    service_python.touch()
+    write_managed_unit(unit_path, service_python)
+    systemctl_calls = []
+    subprocess_calls = []
+
+    def run(command, **kwargs):
+        subprocess_calls.append(command)
+        raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    monkeypatch.setattr(service, "_systemctl", lambda *args: systemctl_calls.append(args))
+    monkeypatch.setattr(service.subprocess, "run", run)
+
+    result = CliRunner().invoke(app, ["update"])
+
+    assert result.exit_code == 1
+    assert subprocess_calls == [[str(service_python), "-m", "pip", "--version"]]
+    assert systemctl_calls == []
+    assert "update preflight failed" in result.output
+
+
 def test_service_and_serve_help():
     runner = CliRunner()
     assert "foreground" in runner.invoke(app, ["serve", "--help"]).output
@@ -89,3 +248,4 @@ def test_service_and_serve_help():
         assert flag in result.output
     for command in ["start", "stop", "restart", "status", "uninstall"]:
         assert runner.invoke(app, ["service", command, "--help"]).exit_code == 0
+    assert runner.invoke(app, ["update", "--help"]).exit_code == 0

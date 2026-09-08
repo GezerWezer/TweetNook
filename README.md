@@ -85,6 +85,17 @@ sudo tweetnook service stop
 sudo tweetnook service start
 ```
 
+### Update TweetNook
+
+For an installation created by `tweetnook service install`, update TweetNook with:
+
+```bash
+sudo tweetnook update
+```
+
+The command gracefully stops active Web and scheduled work, upgrades TweetNook in the exact Python
+environment recorded by the managed systemd service, and restarts the service afterward.
+
 ### 3. Open TweetNook
 
 After the service starts, open the Web UI using the address shown by TweetNook, for example:

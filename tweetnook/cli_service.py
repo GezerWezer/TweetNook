@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import pwd
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -114,6 +115,105 @@ def _owned_unit():
         UNIT_PATH.exists() and not UNIT_PATH.read_text().startswith(OWNERSHIP_MARKER)
     ):
         raise ValueError("Refusing to replace or remove a service unit not managed by TweetNook.")
+
+
+def _service_python() -> str:
+    if not UNIT_PATH.exists():
+        raise ValueError("TweetNook's managed service is not installed.")
+
+    exec_start = [
+        line.removeprefix("ExecStart=")
+        for line in UNIT_PATH.read_text().splitlines()
+        if line.startswith("ExecStart=")
+    ]
+    if len(exec_start) != 1:
+        raise ValueError("The managed TweetNook service has an invalid ExecStart command.")
+    try:
+        command = shlex.split(exec_start[0])
+    except ValueError as exc:
+        raise ValueError("The managed TweetNook service has an invalid ExecStart command.") from exc
+    if len(command) != 4 or command[1:] != ["-m", "tweetnook", "serve"]:
+        raise ValueError("The managed TweetNook service has an invalid ExecStart command.")
+
+    python = command[0]
+    if not Path(python).is_file():
+        raise ValueError(f"The service Python executable does not exist: {python}")
+    return python
+
+
+def _service_version(python: str) -> str:
+    result = subprocess.run(
+        [python, "-c", "import tweetnook; print(tweetnook.__version__)"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    version = result.stdout.strip()
+    if not version:
+        raise ValueError("The service Python environment did not report a TweetNook version.")
+    return version
+
+
+def update_managed_installation() -> None:
+    try:
+        _systemd(admin=True)
+        _owned_unit()
+        python = _service_python()
+        subprocess.run(
+            [python, "-m", "pip", "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        old_version = _service_version(python)
+    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+        typer.echo(f"TweetNook update preflight failed: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    typer.echo("Stopping TweetNook...")
+    try:
+        _systemctl("stop", UNIT_NAME)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        typer.echo(f"Could not stop the TweetNook service: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    try:
+        subprocess.run(
+            [python, "-m", "pip", "install", "--upgrade", "tweetnook"],
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        typer.echo(f"TweetNook update failed: {exc}", err=True)
+        try:
+            _systemctl("start", UNIT_NAME)
+        except (OSError, subprocess.CalledProcessError) as restart_exc:
+            typer.echo(f"The TweetNook service could not be restarted: {restart_exc}", err=True)
+        else:
+            typer.echo("TweetNook service restarted.")
+        raise typer.Exit(1) from exc
+
+    try:
+        _systemctl("start", UNIT_NAME)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        typer.echo(
+            f"TweetNook was updated, but the service could not be restarted: {exc}", err=True
+        )
+        raise typer.Exit(1) from exc
+
+    try:
+        new_version = _service_version(python)
+    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+        typer.echo(
+            f"TweetNook service restarted, but its installed version could not be read: {exc}",
+            err=True,
+        )
+        raise typer.Exit(1) from exc
+
+    if old_version == new_version:
+        typer.echo(f"TweetNook is already up to date ({new_version}).")
+    else:
+        typer.echo(f"TweetNook updated: {old_version} → {new_version}")
+    typer.echo("TweetNook service restarted.")
 
 
 @service_app.command("install", help="Write the service unit and enable/start it; requires sudo.")
