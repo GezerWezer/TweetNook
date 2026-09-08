@@ -6,6 +6,8 @@ Twitter/X, keep it updated with automated syncs, and browse everything in a Web 
 your network. Search by words, author, date, or tag to find something you saved
 without scrolling through your account.
 
+Want to see TweetNook before installing it? [View the live demo](https://gezerwezer.github.io/tweetnook/).
+
 ## Features
 
 - **Archive your tweets:** save bookmarks, likes, and your own tweets, along with replies and quoted tweets

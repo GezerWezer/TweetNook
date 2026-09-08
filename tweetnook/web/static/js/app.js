@@ -6,6 +6,7 @@ const statsSuspendedVideos = new Set();
 
 function tweetApp() {
     return {
+        isDemo: window.TWEETNOOK_DEMO === true,
         viewMode: 'list',
         activeRoute: { viewMode: 'list' },
         pendingRoute: null,
@@ -779,9 +780,40 @@ function tweetApp() {
                 }
             });
 
-            this.fetchSetup();
             this.fetchNotices();
-            setInterval(() => { this.fetchSetup(); this.fetchNotices(); }, 3000);
+            if (this.isDemo) {
+                this.setupData = {
+                    completed: true,
+                    required: false,
+                    auth: {configured: false, verified: false},
+                    archive: {ready: true, enrichment_state: 'complete', pending_enrichment: 0},
+                    web: {password_configured: true},
+                };
+                this.archiveReady = true;
+                this.setupForced = false;
+                this.archiveResourcesLoaded = true;
+                Promise.all([
+                    this.fetchTweets(),
+                    this.fetchStats(),
+                    this.fetchGlobalTags(),
+                    this.fetchArchiveEnrichmentStatus(),
+                    this.fetchAutomatedTagging(),
+                ]).then(() => {
+                    if (this.pendingRoute) {
+                        const route = this.pendingRoute;
+                        const state = this.pendingRouteState;
+                        this.pendingRoute = null;
+                        this.pendingRouteState = null;
+                        this.applyRoute(route, {state});
+                    }
+                });
+            } else {
+                this.fetchSetup();
+            }
+            setInterval(() => {
+                if (!this.isDemo) this.fetchSetup();
+                this.fetchNotices();
+            }, 3000);
             setInterval(() => { if (this.archiveResourcesLoaded) this.fetchArchiveEnrichmentStatus(); }, 60000);
             setInterval(() => { this.statsAgeNow = Date.now(); }, 30000);
             this.fetchActivityStatus();
@@ -790,11 +822,11 @@ function tweetApp() {
             this.$watch('showSettingsModal', val => {
                 if (val) {
                     this.lockModalScroll();
-                    this.fetchSetup();
+                    if (!this.isDemo) this.fetchSetup();
                     if (!this.setupForced) {
-                        this.fetchConfig();
+                        if (!this.isDemo) this.fetchConfig();
                         if (this.archiveReady) this.fetchScheduleSettings();
-                        this.fetchActivityRuns();
+                        if (!this.isDemo) this.fetchActivityRuns();
                         this.fetchAutomatedTagging();
                     }
                 } else {
@@ -1031,8 +1063,13 @@ function tweetApp() {
         },
 
         parseRoute(pathname) {
-            if (pathname === '/') return { viewMode: 'list' };
-            const match = pathname.match(/^\/post\/(\d+)(?:\/(quotes))?\/?$/);
+            let routePath = pathname;
+            const basePath = this.demoBasePath();
+            if (this.isDemo && basePath !== '/' && routePath.startsWith(basePath)) {
+                routePath = '/' + routePath.slice(basePath.length);
+            }
+            if (routePath === '/' || routePath === '') return { viewMode: 'list' };
+            const match = routePath.match(/^\/post\/(\d+)(?:\/(quotes))?\/?$/);
             if (!match) return null;
             return match[2]
                 ? { viewMode: 'quotes', quotesTweetId: match[1] }
@@ -1040,14 +1077,21 @@ function tweetApp() {
         },
 
         routeUrl(route) {
-            if (route?.viewMode === 'list') return '/';
+            const basePath = this.demoBasePath();
+            if (route?.viewMode === 'list') return basePath;
             if (route?.viewMode === 'thread' && typeof route.tweetId === 'string' && /^\d+$/.test(route.tweetId)) {
-                return `/post/${encodeURIComponent(route.tweetId)}`;
+                return `${basePath}post/${encodeURIComponent(route.tweetId)}`;
             }
             if (route?.viewMode === 'quotes' && typeof route.quotesTweetId === 'string' && /^\d+$/.test(route.quotesTweetId)) {
-                return `/post/${encodeURIComponent(route.quotesTweetId)}/quotes`;
+                return `${basePath}post/${encodeURIComponent(route.quotesTweetId)}/quotes`;
             }
             throw new Error('Invalid TweetNook route');
+        },
+
+        demoBasePath() {
+            if (!this.isDemo) return '/';
+            const configured = String(window.TWEETNOOK_DEMO_BASE || '/');
+            return `/${configured.replace(/^\/+|\/+$/g, '')}${configured === '/' ? '' : '/'}`;
         },
 
         routeFromHistoryState(state) {
@@ -2527,6 +2571,7 @@ function tweetApp() {
         },
 
         async fetchConfig() {
+            if (this.isDemo) return;
             try {
                 const [resSchema, resConfig, resDefaults] = await Promise.all([
                     fetch('/api/config/schema'),
@@ -2573,6 +2618,7 @@ function tweetApp() {
         },
 
         openSetup() {
+            if (this.isDemo) return;
             if (this.setupData?.completed) this.setupRerun = true;
             this.showSetupModal = true;
             this.showSettingsModal = false;
@@ -2587,6 +2633,7 @@ function tweetApp() {
         },
 
         rerunSetup() {
+            if (this.isDemo) return;
             this.setupFlowStep = 1;
             this.setupDirection = 'forward';
             this.setupRerun = true;
@@ -2607,6 +2654,7 @@ function tweetApp() {
         },
 
         async fetchSetup() {
+            if (this.isDemo) return;
             if (this.setupPolling || this.setupFinishing) return;
             this.setupPolling = true;
             try {
@@ -3333,15 +3381,22 @@ function tweetApp() {
             return null;
         },
 
+        avatarUrl(userId) {
+            if (this.isDemo) return window.TweetNookDemo?.avatarUrl(userId) || '';
+            return '/api/avatar/' + (userId || 'unknown');
+        },
+
         renderMediaGrid(mediaList) {
             if (!mediaList || mediaList.length === 0) return '';
             
             const getSrc = (m) => {
-                return m.download?.local_path ? `/${m.download.local_path}` : null;
+                if (m.download?.local_path) return `/${m.download.local_path}`;
+                return this.isDemo ? (m.url || m.media_url || null) : null;
             };
 
             const getPoster = (m) => {
-                return m.download?.thumbnail_local_path ? `/${m.download.thumbnail_local_path}` : null;
+                if (m.download?.thumbnail_local_path) return `/${m.download.thumbnail_local_path}`;
+                return this.isDemo ? (m.thumbnail_url || null) : null;
             };
 
             const allMedia = mediaList.map(m => {
