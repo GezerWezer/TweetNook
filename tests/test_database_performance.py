@@ -54,8 +54,9 @@ def test_actual_feed_duplicate_probes_and_counts_use_membership_index(tmp_path):
             store, lambda collection=collection: store.count_export_rows(collection)
         )
         assert count == 100
-        assert "idx_archive_membership" in _plan(store, statements[0])
-        assert "TEMP B-TREE" not in _plan(store, statements[0])
+        count_sql = next(sql for sql in statements if "COUNT(DISTINCT tweet_id)" in sql)
+        assert "idx_archive_membership" in _plan(store, count_sql)
+        assert "TEMP B-TREE" not in _plan(store, count_sql)
     store.close()
 
 
@@ -165,3 +166,38 @@ def test_writer_close_maintains_stats_but_read_close_does_not(tmp_path):
     reader.conn.set_trace_callback(statements.append)
     reader.close()
     assert not statements
+
+
+def test_membership_counts_are_reused_and_invalidate_on_external_changes(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    _seed_memberships(store)
+    assert store.count_export_rows("all") == 100
+    _, sql = _statements(store, lambda: store.count_export_rows("all"))
+    assert not any("COUNT(" in statement for statement in sql)
+    other = ArchiveStore(store.db_path, create=False)
+    with other.conn:
+        other.conn.execute("UPDATE archive SET text = 'changed' WHERE record_type = 'tweet'")
+    _, sql = _statements(store, lambda: store.count_export_rows("all"))
+    assert not any("COUNT(" in statement for statement in sql)
+    with other.conn:
+        other.conn.execute("DELETE FROM archive WHERE tweet_id = '0'")
+    assert store.count_export_rows("all") == 99
+    other.close()
+    # Reading uncommitted changes must not poison a cache after rollback.
+    store.conn.execute("DELETE FROM archive WHERE tweet_id = '1'")
+    assert store.count_export_rows("all") == 98
+    store.conn.rollback()
+    assert store.count_export_rows("all") == 99
+    store.close()
+
+
+def test_bounded_exports_rank_keys_before_loading_content(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    _seed_memberships(store)
+    rows, sql = _statements(store, lambda: store.export_rows("all", limit=2, offset=20))
+    assert [row["tweet_id"] for row in rows] == ["79", "78"]
+    key_query = next(statement for statement in sql if statement.startswith("WITH candidates"))
+    assert "LIMIT 2 OFFSET 20" in key_query
+    assert "raw_json" not in key_query
+    assert "SELECT row_key, tweet_id, text" in " ".join(sql)
+    store.close()

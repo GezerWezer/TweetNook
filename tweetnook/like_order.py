@@ -161,14 +161,10 @@ class LikeOrder:
 
 
 def load_like_order(store: Any) -> LikeOrder:
-    """Recover existing captures; cache until this or another connection writes.
-
-    No persistent schema migration or archive mutation is required. Cache values
-    are immutable, so simultaneous readers may safely compute the same result.
-    """
-    signature = (store.conn.total_changes, store.conn.execute("PRAGMA data_version").fetchone()[0])
+    """Recover captures only when like-order inputs change, including external writes."""
+    signature = store.cache_revision("like_order")
     cached = getattr(store, "_like_order_cache", None)
-    if cached is not None and cached[0] == signature:
+    if not store.conn.in_transaction and cached is not None and cached[0] == signature:
         return cached[1]
 
     memberships = store.conn.execute(
@@ -178,7 +174,7 @@ def load_like_order(store: Any) -> LikeOrder:
     members = {row["tweet_id"] for row in memberships}
     if not members:
         result = LikeOrder((), frozenset())
-        store._like_order_cache = (signature, result)
+        store._like_order_cache = None if store.conn.in_transaction else (signature, result)
         return result
 
     # Join paginated captures by cursor, not by sortIndex magnitudes from different
@@ -293,5 +289,5 @@ def load_like_order(store: Any) -> LikeOrder:
     ordered = [tweet_id for tweet_id in merge_missing(live, archive) if tweet_id in members]
     unknown = members - set(ordered)
     result = LikeOrder(tuple(ordered + sorted(unknown)), frozenset(unknown))
-    store._like_order_cache = (signature, result)
+    store._like_order_cache = None if store.conn.in_transaction else (signature, result)
     return result
