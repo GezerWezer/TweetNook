@@ -4,7 +4,7 @@
 [Archive Import](archive-import.md) · [Search and Web API](search-and-web-api.md)
 
 `ArchiveStore` owns database access, schema upgrades, and record merging. It uses
-SQLite schema version 5 with FTS5 search. Collection memberships, shared tweet
+SQLite schema version 6 with FTS5 search. Collection memberships, shared tweet
 content, and raw captures have distinct roles within the same archive table.
 The optional `legacy-migration` extra provides LanceDB for the legacy importer;
 PyArrow is installed transitively with it.
@@ -19,7 +19,7 @@ Opening the store:
 - requests negative `cache_size` in KiB and configured `mmap_size`;
 - checks `PRAGMA user_version` and migrates when required.
 
-A current v5 database takes the cheap version path; it does not run integrity
+A current v6 database takes the cheap version path; it does not run integrity
 checks or derived-index repair on every open.
 
 The single wide table is:
@@ -30,7 +30,8 @@ archive(row_key TEXT PRIMARY KEY, record_type TEXT, ...typed nullable fields...)
 
 Most columns are `TEXT` to support heterogeneous records. Indexed numeric fields
 include `created_at_ts`, retry count, and retry eligibility. Every record builder
-initializes the complete schema shape before `INSERT OR REPLACE` merge.
+initializes the complete schema shape before an UPSERT that preserves the rowid.
+Known enrichment status updates write only their changed fields.
 
 ## Record types and keys
 
@@ -74,8 +75,10 @@ content and lifecycle. This supports:
 - `note_tweet_text`
 
 Insert/update/delete triggers index only `record_type='tweet'`. Secondary objects
-never become standalone FTS rows. An update trigger removes the old row when it
-was a membership and inserts the new row when it is one.
+never become standalone FTS rows. An update removes/reinserts indexed text only
+when the record type or searchable fields change. Connections enable recursive
+triggers so an explicit replacement also removes the old FTS document. Normal
+merge UPSERTs preserve rowids and avoid replacement deletes entirely.
 
 FTS is a derived index. The v3 schema-migration rebuild validates its count
 against tweet membership rows; the public `rebuild_search_index()` path rebuilds
@@ -168,13 +171,12 @@ Open behavior by source version:
 
 | Source | Migration |
 |---|---|
-| no archive table | create latest table, FTS, indexes, set v5 |
-| v4 | add current search/support indexes, no backup |
-| v3 | rebuild derived FTS/indexes, validate count, no backup |
-| older/unknown legacy | quick-check, validated SQLite backup, add fields, backfill timestamps/scheduler, rebuild, targeted legacy-terminal repair, validate, set v5 |
-| > v5 | reject as newer than supported |
+| no archive table | create latest table, FTS, indexes, set v6 |
+| v3–v5 | transactionally rebuild derived FTS/triggers/indexes, removing old replacement orphans; validate membership count, no backup |
+| older/unknown legacy | quick-check, validated SQLite backup, add fields, backfill timestamps/scheduler, rebuild, targeted legacy-terminal repair, validate, set v6 |
+| > v6 | reject as newer than supported |
 
-Legacy backup naming is `archive.db.pre-schema-v5.<UTC>.bak`, with collision
+Legacy backup naming is `archive.db.pre-schema-v6.<UTC>.bak`, with collision
 suffixes. SQLite's backup API writes a temporary file, quick-checks it, then
 atomically renames it.
 
@@ -183,7 +185,7 @@ Opening a mismatched database through `open_archive_store()` acquires
 
 ## Legacy LanceDB migration
 
-`storage/migrate.py` looks for `<data>/archive.lancedb`, creates/opens SQLite v5,
+`storage/migrate.py` looks for `<data>/archive.lancedb`, creates/opens SQLite v6,
 and reads source ranges in isolated subprocess workers. Source failures split
 ranges recursively so a bad row can be isolated; destination/worker-launch
 failures abort. Destination inserts use `INSERT OR IGNORE`, enabling reruns that
