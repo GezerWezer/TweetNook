@@ -542,6 +542,39 @@
                                     <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(child)" @click="handleTextClick($event)"></div>
                                     <div x-html="renderCard(child)" @click.stop></div>
                                     <div x-html="renderMediaGrid(child.media)" @click.stop></div>
+
+                                    <!-- Quote Tweet -->
+                                    <template x-if="getQuoteTweet(child)">
+                                        <div>
+                                            <template x-if="isTombstone(getQuoteTweet(child))">
+                                                <div x-html="renderQuotePlaceholder(getQuoteTweet(child))" @click.stop></div>
+                                            </template>
+                                            <template x-if="!isTombstone(getQuoteTweet(child))">
+                                                <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" @click.stop="openThread(getTweetId(getQuoteTweet(child)))">
+                                                    <div class="flex items-center space-x-1 text-[15px] mb-1">
+                                                        <div class="w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                                            <span x-text="getQuoteAuthor(getQuoteTweet(child)).initial"></span>
+                                                            <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(child)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                                        </div>
+                                                        <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(child)).name"></span>
+                                                        <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(child)).screen_name"></span>
+                                                        <span class="text-[var(--text-secondary)]">·</span>
+                                                        <span class="text-[var(--text-secondary)]" x-text="formatDate(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
+                                                    </div>
+                                                    <template x-if="getReplyTo({raw_json: getQuoteTweet(child)})">
+                                                        <div class="text-[15px] text-[var(--text-secondary)] mb-1">
+                                                            Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(child)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(child)})"></span>
+                                                        </div>
+                                                    </template>
+                                                    <div class="text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(child))" @click="handleTextClick($event)"></div>
+                                                    <div x-html="renderCard({raw_json: getQuoteTweet(child)})" @click.stop></div>
+                                                    <div x-html="renderMediaGrid(child.qt_media)" @click.stop></div>
+                                                    <div x-html="renderCommunityNote(getQuoteTweet(child), true)" @click.stop></div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+
                                     <div x-html="renderCommunityNote(child.raw_json)" @click.stop></div>
                                     <div x-html="renderActionBar(child)"></div>
                                 </div>
@@ -589,6 +622,39 @@
                                                 <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(reply)" @click="handleTextClick($event)"></div>
                                                 <div x-html="renderCard(reply)" @click.stop></div>
                                                 <div x-html="renderMediaGrid(reply.media)" @click.stop></div>
+
+                                                <!-- Quote Tweet -->
+                                                <template x-if="getQuoteTweet(reply)">
+                                                    <div>
+                                                        <template x-if="isTombstone(getQuoteTweet(reply))">
+                                                            <div x-html="renderQuotePlaceholder(getQuoteTweet(reply))" @click.stop></div>
+                                                        </template>
+                                                        <template x-if="!isTombstone(getQuoteTweet(reply))">
+                                                            <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" @click.stop="openThread(getTweetId(getQuoteTweet(reply)))">
+                                                                <div class="flex items-center space-x-1 text-[15px] mb-1">
+                                                                    <div class="w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                                                        <span x-text="getQuoteAuthor(getQuoteTweet(reply)).initial"></span>
+                                                                        <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(reply)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                                                    </div>
+                                                                    <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(reply)).name"></span>
+                                                                    <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(reply)).screen_name"></span>
+                                                                    <span class="text-[var(--text-secondary)]">·</span>
+                                                                    <span class="text-[var(--text-secondary)]" x-text="formatDate(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
+                                                                </div>
+                                                                <template x-if="getReplyTo({raw_json: getQuoteTweet(reply)})">
+                                                                    <div class="text-[15px] text-[var(--text-secondary)] mb-1">
+                                                                        Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(reply)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(reply)})"></span>
+                                                                    </div>
+                                                                </template>
+                                                                <div class="text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(reply))" @click="handleTextClick($event)"></div>
+                                                                <div x-html="renderCard({raw_json: getQuoteTweet(reply)})" @click.stop></div>
+                                                                <div x-html="renderMediaGrid(reply.qt_media)" @click.stop></div>
+                                                                <div x-html="renderCommunityNote(getQuoteTweet(reply), true)" @click.stop></div>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+
                                                 <div x-html="renderCommunityNote(reply.raw_json)" @click.stop></div>
                                                 <div x-html="renderActionBar(reply)"></div>
                                             </div>
@@ -868,6 +934,39 @@
                                     <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(child)" @click="handleTextClick($event)"></div>
                                     <div x-html="renderCard(child)" @click.stop></div>
                                     <div x-html="renderMediaGrid(child.media)" @click.stop></div>
+
+                                    <!-- Quote Tweet -->
+                                    <template x-if="getQuoteTweet(child)">
+                                        <div>
+                                            <template x-if="isTombstone(getQuoteTweet(child))">
+                                                <div x-html="renderQuotePlaceholder(getQuoteTweet(child))" @click.stop></div>
+                                            </template>
+                                            <template x-if="!isTombstone(getQuoteTweet(child))">
+                                                <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" @click.stop="openThread(getTweetId(getQuoteTweet(child)), false, true)">
+                                                    <div class="flex items-center space-x-1 text-[15px] mb-1">
+                                                        <div class="w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                                            <span x-text="getQuoteAuthor(getQuoteTweet(child)).initial"></span>
+                                                            <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(child)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                                        </div>
+                                                        <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(child)).name"></span>
+                                                        <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(child)).screen_name"></span>
+                                                        <span class="text-[var(--text-secondary)]">·</span>
+                                                        <span class="text-[var(--text-secondary)]" x-text="formatDate(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
+                                                    </div>
+                                                    <template x-if="getReplyTo({raw_json: getQuoteTweet(child)})">
+                                                        <div class="text-[15px] text-[var(--text-secondary)] mb-1">
+                                                            Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(child)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(child)})"></span>
+                                                        </div>
+                                                    </template>
+                                                    <div class="text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(child))" @click="handleTextClick($event)"></div>
+                                                    <div x-html="renderCard({raw_json: getQuoteTweet(child)})" @click.stop></div>
+                                                    <div x-html="renderMediaGrid(child.qt_media)" @click.stop></div>
+                                                    <div x-html="renderCommunityNote(getQuoteTweet(child), true)" @click.stop></div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+
                                     <div x-html="renderCommunityNote(child.raw_json)" @click.stop></div>
                                     <div x-html="renderActionBar(child)"></div>
                                 </div>
@@ -905,6 +1004,39 @@
                                                 <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(reply)" @click="handleTextClick($event)"></div>
                                                 <div x-html="renderCard(reply)" @click.stop></div>
                                                 <div x-html="renderMediaGrid(reply.media)" @click.stop></div>
+
+                                                <!-- Quote Tweet -->
+                                                <template x-if="getQuoteTweet(reply)">
+                                                    <div>
+                                                        <template x-if="isTombstone(getQuoteTweet(reply))">
+                                                            <div x-html="renderQuotePlaceholder(getQuoteTweet(reply))" @click.stop></div>
+                                                        </template>
+                                                        <template x-if="!isTombstone(getQuoteTweet(reply))">
+                                                            <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" @click.stop="openThread(getTweetId(getQuoteTweet(reply)), false, true)">
+                                                                <div class="flex items-center space-x-1 text-[15px] mb-1">
+                                                                    <div class="w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                                                        <span x-text="getQuoteAuthor(getQuoteTweet(reply)).initial"></span>
+                                                                        <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(reply)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                                                    </div>
+                                                                    <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(reply)).name"></span>
+                                                                    <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(reply)).screen_name"></span>
+                                                                    <span class="text-[var(--text-secondary)]">·</span>
+                                                                    <span class="text-[var(--text-secondary)]" x-text="formatDate(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
+                                                                </div>
+                                                                <template x-if="getReplyTo({raw_json: getQuoteTweet(reply)})">
+                                                                    <div class="text-[15px] text-[var(--text-secondary)] mb-1">
+                                                                        Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(reply)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(reply)})"></span>
+                                                                    </div>
+                                                                </template>
+                                                                <div class="text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(reply))" @click="handleTextClick($event)"></div>
+                                                                <div x-html="renderCard({raw_json: getQuoteTweet(reply)})" @click.stop></div>
+                                                                <div x-html="renderMediaGrid(reply.qt_media)" @click.stop></div>
+                                                                <div x-html="renderCommunityNote(getQuoteTweet(reply), true)" @click.stop></div>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+
                                                 <div x-html="renderCommunityNote(reply.raw_json)" @click.stop></div>
                                                 <div x-html="renderActionBar(reply)"></div>
                                             </div>

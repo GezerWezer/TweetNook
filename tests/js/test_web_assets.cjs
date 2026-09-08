@@ -1439,10 +1439,30 @@ test('tweet overflow markup covers list and detail surfaces without legacy tag i
     assert.match(html, /startTweetMenuPress\(\$event, tweet\.tweet_id, tweet\.media_tags\)/);
     assert.match(html, /startTweetMenuPress\(\$event, threadData\.main\.tweet_id/);
     assert.match(html, /startTweetMenuPress\(\$event, panelThreadData\.main\.tweet_id/);
-    assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet/g) || []).length, 3);
+    assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet/g) || []).length, 7);
     assert.doesNotMatch(html, /View quoted tweet tags/);
     assert.doesNotMatch(appJs, /title="View Tags"/);
     assert.match(html, /x-model="editableDescription"/);
+});
+
+test('thread reply surfaces render quoted tweets in both presentations', () => {
+    const html = fs.readFileSync(
+        path.join(ROOT, 'tweetnook', 'web', 'index.html'),
+        'utf8',
+    );
+
+    assert.equal((html.match(/<template x-if="getQuoteTweet\(child\)">/g) || []).length, 2);
+    assert.equal((html.match(/<template x-if="getQuoteTweet\(reply\)">/g) || []).length, 2);
+    assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet\(child\)\)/g) || []).length, 2);
+    assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet\(reply\)\)/g) || []).length, 2);
+    assert.equal((html.match(/formatText\(getQuoteTweet\(child\)\)/g) || []).length, 2);
+    assert.equal((html.match(/formatText\(getQuoteTweet\(reply\)\)/g) || []).length, 2);
+    assert.equal((html.match(/renderMediaGrid\(child\.qt_media\)/g) || []).length, 2);
+    assert.equal((html.match(/renderMediaGrid\(reply\.qt_media\)/g) || []).length, 2);
+    assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(child\)\)\)/);
+    assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(child\)\), false, true\)/);
+    assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(reply\)\)\)/);
+    assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(reply\)\), false, true\)/);
 });
 
 test('reply-recipient markup opens profile cards on every tweet surface', () => {
@@ -1451,7 +1471,7 @@ test('reply-recipient markup opens profile cards on every tweet surface', () => 
         'utf8',
     );
 
-    assert.equal((html.match(/openUsernameProfileCard\(\$event, getReplyTo/g) || []).length, 14);
+    assert.equal((html.match(/openUsernameProfileCard\(\$event, getReplyTo/g) || []).length, 18);
     assert.doesNotMatch(html, /searchFrom\(getReplyTo/);
 });
 
