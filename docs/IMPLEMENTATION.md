@@ -2,6 +2,15 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## TweetNook 0.1.0 release (2026-09-07)
+
+- [x] Sync `main` and tags with `origin`; confirm PyPI's latest version is `0.0.9`.
+- [x] Select a minor version for the new managed update command and substantial Web/search work.
+- [x] Update package version metadata and replace legacy upstream changelog history with TweetNook history.
+- [x] Run the full release validation, build, metadata check, and isolated wheel smoke test.
+- [ ] Commit the release metadata, create `v0.1.0`, and push `main` plus the tag.
+- [ ] Confirm the tag workflow publishes PyPI and GitHub release artifacts; verify the public install.
+
 ## Unbounded Web search pagination (2026-09-07)
 
 - [x] Replace positive, OR, negative, and grouped candidate lists with one SQLite tweet-ID executor.

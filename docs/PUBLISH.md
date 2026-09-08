@@ -8,8 +8,7 @@ Scope:
 - `CHANGELOG.md` is release-oriented, not an in-progress ledger. Add a new
   topmost version section when cutting a release; do not keep an `Unreleased`
   section.
-- Historical tags `v0.1.0`, `v0.1.1`, and `v0.2.0` are already backfilled in
-  `CHANGELOG.md`.
+- The initial TweetNook tag `v0.0.9` is backfilled in `CHANGELOG.md`.
 
 The repository publishes through `.github/workflows/release.yml` using PyPI
 Trusted Publishing. The workflow builds and checks distributions on `v*` tag
@@ -105,14 +104,12 @@ Use semver-style version bumps:
 - Immediate post-publish install checks may need `uvx --refresh` (or a short
   retry window) because resolver/index caches can lag behind the successful
   upload for a minute or two.
-- If a historical tag is missing from `CHANGELOG.md`, backfill that entry before
-  publishing the next version.
+- If a historical TweetNook tag is missing from `CHANGELOG.md`, backfill that
+  entry before publishing the next version.
 - Do not add speculative or partial release notes ahead of an actual cut; write
   the release entry when the version is being prepared.
 - If a release includes breaking behavior or archive upgrade steps, add the
   upgrade note to both `README.md` and `CHANGELOG.md`.
 - GitHub Releases are a separate overlay on top of pushed git tags. The tagged
   workflow creates that release after the PyPI upload, using GitHub-generated
-  notes and attaching the built wheel and source archive. Historical tags
-  `v0.1.0` through `v0.2.4` were backfilled on 2026-04-23 using the per-version
-  `CHANGELOG.md` sections as release notes.
+  notes and attaching the built wheel and source archive.

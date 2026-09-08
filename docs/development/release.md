@@ -18,50 +18,15 @@ linked separately in the documentation audit.
 - Version sources:
   - `pyproject.toml`
   - `tweetnook/__init__.py`
-- Current source version at audit: `0.0.9`
+- Current source version: `0.1.0`
 - Build backend: Hatchling
 - Python: ≥3.12
 - Console script: `tweetnook = tweetnook.cli:app`
 - License: Apache-2.0
 
-Known metadata mismatches:
-
-- `readme = "README.md"`, not staged `README.md`;
-- the original packaged README still advertises stale FastAPI/Vue and HTML-
-  export behavior;
-- public PyPI can resolve a different upstream version/feature set;
-- original changelog/docs contain stale runtime claims.
-
-The new docs enter the distribution only after build configuration is updated
-and the resulting artifacts are checked.
-
-## Pre-release provenance decision
-
-Before any registry upload, choose and document one path:
-
-1. coordinate with the existing public project and intentionally release the
-   fork as its continuation; or
-2. choose a distinct distribution name/URLs/repository issue tracker while
-   preserving or deliberately renaming the console command.
-
-Then update every package/repository/install link consistently. Do not upload a
-fork version into a namespace you do not control.
-
-## Promotion of staged documentation
-
-When the rewrite is approved:
-
-- replace/update the real `README.md` deliberately;
-- move or merge `docs/` into the intended `docs/` layout;
-- update every internal relative link after the move;
-- update `docs/README.md` or replace its index;
-- change `pyproject.toml` `readme` and sdist includes;
-- remove or clearly quarantine obsolete docs from primary navigation;
-- rebuild and inspect wheel/sdist rendering/content;
-- run a concrete local-link/anchor checker over every promoted Markdown file
-  (the staged rewrite does not yet ship such a script).
-
-Do not leave two apparently authoritative manuals after promotion.
+The `gezerwezer/tweetnook` repository and `tweetnook` PyPI project are the
+release targets. Tagged releases publish through the protected GitHub Actions
+environment described below.
 
 ## Versioning
 
