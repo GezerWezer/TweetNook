@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from tweetnook import search as archive_search
 from tweetnook.export.common import normalize_collection_name
-from tweetnook.search import SearchQueryError, search_posts
+from tweetnook.search import SearchCursorExpiredError, SearchQueryError, search_posts
 from tweetnook.web.availability import annotate_web_tweets, missing_web_tweet
 from tweetnook.web.deps import require_store, verify_credentials
 
@@ -72,6 +72,7 @@ def api_tweets(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     random_seed: int | None = Query(None, ge=0, le=2_147_483_647),
+    cursor: str | None = None,
     store=Depends(require_store),  # noqa: B008
     _auth: bool = Depends(verify_credentials),
 ):
@@ -91,6 +92,7 @@ def api_tweets(
             page=page,
             limit=limit,
             random_seed=random_seed,
+            cursor=cursor,
         )
         paginated_tweets = result.rows
         annotate_web_tweets(store, paginated_tweets)
@@ -101,8 +103,11 @@ def api_tweets(
             "page": result.page,
             "pages": result.pages,
             "has_more": result.has_more,
+            "next_cursor": result.next_cursor,
             "truncated": result.truncated,
         }
+    except SearchCursorExpiredError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except SearchQueryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as e:

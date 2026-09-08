@@ -48,6 +48,8 @@ function tweetApp() {
         totalPages: 1,
         total: 0,
         hasMore: false,
+        nextCursor: null,
+        feedRequestId: 0,
         randomSeed: null,
         collectionFilter: 'likes',
         sortOrder: 'liked_latest',
@@ -934,22 +936,28 @@ function tweetApp() {
 
         async fetchTweets(append = false) {
             if (this.archiveReady === false || this.setupForced) return;
+            const requestId = ++this.feedRequestId;
+            const requestedPage = append ? this.page + 1 : 1;
             if (!append) {
                 this.loading = true;
                 this.tweets = [];
                 this.hasMore = false;
+                this.nextCursor = null;
                 window.scrollTo(0, 0);
             } else {
                 this.loadingMore = true;
             }
             
-            let url = `/api/tweets?collection=${this.collectionFilter}&sort=${this.sortOrder}&page=${this.page}`;
+            let url = `/api/tweets?collection=${this.collectionFilter}&sort=${this.sortOrder}&page=${requestedPage}`;
             if (this.sortOrder === 'random') {
                 if (this.randomSeed === null) this.randomSeed = Math.floor(Math.random() * 2147483648);
                 url += `&random_seed=${this.randomSeed}`;
             }
             if (this.searchQuery.trim()) {
                 url += `&q=${encodeURIComponent(this.searchQuery)}`;
+            }
+            if (!append || this.nextCursor !== null) {
+                url += `&cursor=${encodeURIComponent(this.nextCursor || '')}`;
             }
 
             try {
@@ -963,25 +971,40 @@ function tweetApp() {
                     throw new Error(`Invalid server response (${res.status}): Please check server logs.`);
                 }
 
+                if (requestId !== this.feedRequestId) return;
+                if (res.status === 409 && append && this.nextCursor) {
+                    // A new sync changed derived like order. Start a fresh list.
+                    return await this.fetchTweets();
+                }
                 if (!res.ok) {
                     throw new Error(data.detail || `Server error: ${res.status}`);
                 }
 
                 if (append) {
-                    this.tweets = [...this.tweets, ...data.tweets];
+                    const seen = new Set(this.tweets.map(tweet => tweet.tweet_id));
+                    this.tweets = [...this.tweets, ...data.tweets.filter(tweet => {
+                        if (seen.has(tweet.tweet_id)) return false;
+                        seen.add(tweet.tweet_id);
+                        return true;
+                    })];
                 } else {
                     this.tweets = data.tweets;
                 }
                 this.page = data.page;
                 this.totalPages = data.pages;
                 this.total = data.total;
-                this.hasMore = data.has_more;
+                this.hasMore = typeof data.has_more === 'boolean'
+                    ? data.has_more : data.page < data.pages;
+                this.nextCursor = data.next_cursor || null;
             } catch (e) {
+                if (requestId !== this.feedRequestId) return;
                 console.error(e);
                 this.error = e.message;
             } finally {
-                this.loading = false;
-                this.loadingMore = false;
+                if (requestId === this.feedRequestId) {
+                    this.loading = false;
+                    this.loadingMore = false;
+                }
             }
         },
         
@@ -1397,8 +1420,7 @@ function tweetApp() {
         
         loadMore() {
             if (this.loadingMore || this.loading || !this.hasMore) return;
-            this.page++;
-            this.fetchTweets(true);
+            return this.fetchTweets(true);
         },
 
         async loadThread(tweetId) {

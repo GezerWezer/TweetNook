@@ -857,7 +857,7 @@ test('tweet fetching encodes search state, hydrates pagination, appends, and rep
     await app.fetchTweets();
     assert.equal(
         calls[0],
-        '/api/tweets?collection=likes&sort=relevance&page=1&q=from%3Aalice%20night%20sky',
+        '/api/tweets?collection=likes&sort=relevance&page=1&q=from%3Aalice%20night%20sky&cursor=',
     );
     assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['1']);
     assert.equal(app.totalPages, 3);
@@ -870,7 +870,6 @@ test('tweet fetching encodes search state, hydrates pagination, appends, and rep
     assert.equal(app.resultCountLabel(), '3,482 Results');
 
     responseData = { tweets: [{ tweet_id: '2' }], page: 2, pages: 3, total: 5, has_more: false };
-    app.page = 2;
     await app.fetchTweets(true);
     assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['1', '2']);
     assert.equal(app.hasMore, false);
@@ -886,6 +885,85 @@ test('tweet fetching encodes search state, hydrates pagination, appends, and rep
     await app.fetchTweets();
     assert.equal(app.error, 'temporarily unavailable');
     assert.deepEqual(Array.from(app.tweets), []);
+});
+
+test('feed cursors survive retries and ignore duplicate membership results', async () => {
+    const context = browserContext();
+    const calls = [];
+    const response = data => ({ok: true, status: 200, json: async () => data});
+    let fail = false;
+    context.fetch = async url => {
+        calls.push(url);
+        if (fail) throw new Error('offline');
+        return response(calls.length === 1
+            ? {tweets: [{tweet_id: '1'}], page: 1, pages: null, total: null, has_more: true, next_cursor: 'cursor/+='}
+            : {tweets: [{tweet_id: '1'}, {tweet_id: '2'}], page: 2, pages: null, total: null, has_more: false, next_cursor: null});
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    await app.fetchTweets();
+    fail = true;
+    await app.loadMore();
+    assert.equal(app.page, 1);
+    assert.equal(app.nextCursor, 'cursor/+=');
+    assert.equal(app.hasMore, true);
+    assert.equal(app.loadingMore, false);
+    fail = false;
+    await app.loadMore();
+    assert.equal(calls[1], calls[2]);
+    assert.match(calls[2], /page=2&cursor=cursor%2F%2B%3D$/);
+    assert.equal(app.page, 2);
+    assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['1', '2']);
+});
+
+test('feed ignores stale responses and falls back to legacy page counts', async () => {
+    const context = browserContext();
+    const pending = [];
+    context.fetch = url => new Promise(resolve => pending.push({url, resolve}));
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const first = app.fetchTweets();
+    app.searchQuery = 'new query';
+    const second = app.fetchTweets();
+    const resolve = (index, data) => pending[index].resolve({ok: true, status: 200, json: async () => data});
+    resolve(0, {tweets: [{tweet_id: 'old'}], page: 1, pages: 1, total: 1});
+    await first;
+    assert.equal(app.loading, true);
+    assert.equal(app.tweets.length, 0);
+    resolve(1, {tweets: [{tweet_id: 'new'}], page: 1, pages: 2, total: 2});
+    await second;
+    assert.equal(app.loading, false);
+    assert.equal(app.hasMore, true);
+    assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['new']);
+    const more = app.loadMore();
+    assert.match(pending[2].url, /page=2/);
+    assert.doesNotMatch(pending[2].url, /cursor=/);
+    resolve(2, {tweets: [{tweet_id: 'next'}], page: 2, pages: 2, total: 2});
+    await more;
+    assert.equal(app.hasMore, false);
+});
+
+test('expired like cursor reloads the list once with a fresh cursor', async () => {
+    const context = browserContext();
+    const calls = [];
+    context.fetch = async url => {
+        calls.push(url);
+        const expired = calls.length === 2;
+        return {ok: !expired, status: expired ? 409 : 200, json: async () => expired
+            ? {detail: 'Like order changed.'}
+            : {tweets: [{tweet_id: String(calls.length)}], page: 1, pages: 2, total: 30, has_more: true, next_cursor: 'next'}};
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    await app.fetchTweets();
+    await app.loadMore();
+    assert.equal(calls.length, 3);
+    assert.match(calls[2], /page=1&cursor=$/);
+    assert.equal(app.page, 1);
+    assert.equal(app.error, null);
+    assert.equal(app.loading, false);
+    assert.equal(app.loadingMore, false);
+    assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['3']);
 });
 
 test('random feeds keep one seed across pages and rotate it for a new search', async () => {
@@ -974,7 +1052,7 @@ test('list searching, incremental loading, and back-to-top obey state guards', (
     app.totalPages = 2;
     app.hasMore = true;
     app.loadMore();
-    assert.equal(app.page, 2);
+    assert.equal(app.page, 1); // Only a successful fetch advances the committed page.
     assert.equal(fetches, 11);
     app.hasMore = false;
     app.loadMore();
