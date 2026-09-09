@@ -2,6 +2,18 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Cold-read performance audit (2026-09-09)
+
+- [x] Review the current query paths and existing verified OS-cold server measurements.
+- [x] Validate candidate reductions in search and statistics read work on isolated data.
+- [x] Record prioritized findings, evidence, and measurement limits without changing production behavior.
+  - Existing server cold reads: feed 54–56 ms/3.24 MiB, broad search 5.97 s/510 MiB,
+    report 53.68–57.36 s/2.84 GiB. Local clone prototypes preserved tested results:
+    compact search metadata 4.55→3.31 ms; covering statistics indexes plus bounded
+    URL discovery 80.71→54.52 ms (warm medians, not server cold-read predictions).
+    Frontier filtering alone regressed slightly. Production-sized cold validation,
+    write costs, and implementation remain outside this audit.
+
 ## Resurrected thread expansion repair (2026-09-08)
 
 - [x] Persist the complete thread context returned by a successful resurrection lookup.
