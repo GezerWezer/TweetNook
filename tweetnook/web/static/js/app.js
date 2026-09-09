@@ -5,6 +5,37 @@
 const statsSuspendedVideos = new Set();
 const AVATAR_URL_VERSION = 2;
 
+function formatMediaDuration(durationMillis) {
+    const millis = Number(durationMillis);
+    if (!Number.isFinite(millis) || millis <= 0) return '';
+
+    const totalSeconds = Math.floor(millis / 1000);
+    const seconds = String(totalSeconds % 60).padStart(2, '0');
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    if (totalMinutes < 60) return `${totalMinutes}:${seconds}`;
+
+    const minutes = String(totalMinutes % 60).padStart(2, '0');
+    return `${Math.floor(totalMinutes / 60)}:${minutes}:${seconds}`;
+}
+
+function tweetNookSyncVideoDuration(video) {
+    const indicator = video?.parentElement?.querySelector?.('[data-video-duration]');
+    const durationSeconds = Number(video?.duration);
+    if (!indicator || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return;
+
+    const duration = formatMediaDuration(durationSeconds * 1000);
+    indicator.textContent = duration;
+    indicator.hidden = !duration;
+    if (duration) {
+        indicator.removeAttribute('aria-hidden');
+        indicator.setAttribute('aria-label', `Video duration ${duration}`);
+    }
+}
+
+function tweetNookSetVideoUiVisible(video, visible) {
+    video?.parentElement?.classList?.toggle('is-player-ui-visible', Boolean(visible));
+}
+
 function tweetNookSyncGifIndicator(video) {
     const indicator = video?.parentElement?.querySelector?.('[data-gif-toggle]');
     if (!indicator) return;
@@ -32,6 +63,8 @@ function tweetNookToggleGif(event, indicator) {
 
 window.tweetNookSyncGifIndicator = tweetNookSyncGifIndicator;
 window.tweetNookToggleGif = tweetNookToggleGif;
+window.tweetNookSyncVideoDuration = tweetNookSyncVideoDuration;
+window.tweetNookSetVideoUiVisible = tweetNookSetVideoUiVisible;
 
 function tweetApp() {
     return {
@@ -3472,16 +3505,7 @@ function tweetApp() {
         },
 
         formatMediaDuration(durationMillis) {
-            const millis = Number(durationMillis);
-            if (!Number.isFinite(millis) || millis <= 0) return '';
-
-            const totalSeconds = Math.floor(millis / 1000);
-            const seconds = String(totalSeconds % 60).padStart(2, '0');
-            const totalMinutes = Math.floor(totalSeconds / 60);
-            if (totalMinutes < 60) return `${totalMinutes}:${seconds}`;
-
-            const minutes = String(totalMinutes % 60).padStart(2, '0');
-            return `${Math.floor(totalMinutes / 60)}:${minutes}:${seconds}`;
+            return formatMediaDuration(durationMillis);
         },
 
         renderMediaPlaybackIndicator(item) {
@@ -3496,8 +3520,10 @@ function tweetApp() {
             }
 
             const duration = this.formatMediaDuration(item.m.duration_millis);
-            if (!duration) return '';
-            return `<span class="media-video-duration" aria-label="Video duration ${duration}">${duration}</span>`;
+            const visibility = duration
+                ? `aria-label="Video duration ${duration}"`
+                : 'hidden aria-hidden="true"';
+            return `<span class="media-video-duration" data-video-duration ${visibility}>${duration}</span>`;
         },
 
         renderMediaGrid(mediaList) {
@@ -3558,8 +3584,10 @@ function tweetApp() {
                         : '';
                     const indicator = this.renderMediaPlaybackIndicator(item);
 
-                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block" style="${containerStyle}" @click.stop>
-                                <video src="${src}" poster="${poster || ''}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} class="w-full h-full object-cover outline-none block"></video>
+                    const videoEvents = isGif ? '' : 'onloadedmetadata="window.tweetNookSyncVideoDuration(this)" ondurationchange="window.tweetNookSyncVideoDuration(this)" onmouseenter="window.tweetNookSetVideoUiVisible(this, true)" onmouseleave="window.tweetNookSetVideoUiVisible(this, false)" onfocus="window.tweetNookSetVideoUiVisible(this, true)" onblur="window.tweetNookSetVideoUiVisible(this, false)" ontouchstart="window.tweetNookSetVideoUiVisible(this, true)"';
+
+                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block ${isGif ? '' : 'media-video-player'}" style="${containerStyle}" @click.stop>
+                                <video src="${src}" poster="${poster || ''}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="w-full h-full object-cover outline-none block"></video>
                                 ${indicator}
                             </div>`;
                 }
@@ -3590,9 +3618,10 @@ function tweetApp() {
                         const gifEvents = isGif
                             ? 'data-animated-gif onplay="window.tweetNookSyncGifIndicator(this)" onpause="window.tweetNookSyncGifIndicator(this)" onloadeddata="window.tweetNookSyncGifIndicator(this)"'
                             : '';
+                        const videoEvents = isGif ? '' : 'onloadedmetadata="window.tweetNookSyncVideoDuration(this)" ondurationchange="window.tweetNookSyncVideoDuration(this)" onmouseenter="window.tweetNookSetVideoUiVisible(this, true)" onmouseleave="window.tweetNookSetVideoUiVisible(this, false)" onfocus="window.tweetNookSetVideoUiVisible(this, true)" onblur="window.tweetNookSetVideoUiVisible(this, false)" ontouchstart="window.tweetNookSetVideoUiVisible(this, true)"';
                         const indicator = this.renderMediaPlaybackIndicator(item);
-                        html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass}">
-                                    <video src="${src}" poster="${poster || ''}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} class="absolute inset-0 w-full h-full object-cover outline-none"></video>
+                        html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass} ${isGif ? '' : 'media-video-player'}">
+                                    <video src="${src}" poster="${poster || ''}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="absolute inset-0 w-full h-full object-cover outline-none"></video>
                                     ${indicator}
                                 </div>`;
                     }
