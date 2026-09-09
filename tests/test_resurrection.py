@@ -152,6 +152,57 @@ def test_weighted_selection_uses_120_50_30_quota_and_spills(paths) -> None:
     store.close()
 
 
+@pytest.mark.asyncio
+async def test_successful_resurrection_persists_returned_thread_context(
+    paths, config, auth_bundle
+) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    store._merge_records([_terminal_row(store, "1", "protected_account")])
+    store.close()
+    QueryIdStore(paths).save({"TweetDetail": "qid"})
+    focal = make_tweet_result(
+        "1",
+        "returned reply",
+        user_id="42",
+        in_reply_to_status_id="2",
+        conversation_id="2",
+    )
+    parent = make_tweet_result("2", "returned parent", user_id="43")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=make_tweet_detail_response([focal, parent], module=True),
+            request=request,
+        )
+
+    result = await resurrection.resurrect_due_tweets(
+        budget=1,
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert result.resurrected == 1
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        assert store._get_row("tweet_object:1")["enrichment_state"] == "resurrected"
+        assert store._get_row("tweet_object:2")["text"] == "returned parent"
+        relations = {
+            (row["tweet_id"], row["relation_type"], row["target_tweet_id"])
+            for row in store._query(expr="record_type = 'tweet_relation'")
+        }
+        assert ("1", "thread_parent", "2") in relations
+        assert ("2", "thread_child", "1") in relations
+        assert store.list_expanded_thread_target_ids() == ["1"]
+        assert store._count("record_type = 'raw_capture' AND operation = 'ThreadExpandDetail'") == 1
+    finally:
+        store.close()
+
+
 def test_persist_unavailable_tweet_preserves_rich_existing_fields(paths) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None
@@ -500,8 +551,8 @@ async def test_account_recovery_boost_stays_inside_global_budget(
             ]
             return candidates[:limit]
 
-        def persist_tweet_detail(self, *, tweet, raw_json, http_status, cursor):
-            self.persisted.append(tweet.tweet_id)
+        def persist_thread_detail(self, *, focal_tweet_id, tweets, raw_json, http_status, cursor):
+            self.persisted.append(focal_tweet_id)
 
         def persist_unavailable_tweet(self, **kwargs):
             raise AssertionError(f"unexpected unavailable result: {kwargs}")

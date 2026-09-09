@@ -3357,18 +3357,21 @@ class ArchiveStore:
     ) -> None:
         owns_buffer = cursor is None
         buffer = cursor or _PageBuffer()
+        self._refresh_tweet_records_for_details(tweets, cursor=buffer)
+        self._buffer_secondary_graph(
+            extract_thread_objects([tweet.raw_json for tweet in tweets]),
+            source=LIVE_SOURCE,
+            cursor=buffer,
+        )
+        # Write the completion marker after the canonical rows. A resurrected
+        # object whose enrichment timestamp is newer than its last marker needs
+        # one fresh expansion; a marker written here proves that refresh happened.
         self.append_raw_capture(
             "ThreadExpandDetail",
             focal_tweet_id,
             None,
             http_status,
             raw_json,
-            source=LIVE_SOURCE,
-            cursor=buffer,
-        )
-        self._refresh_tweet_records_for_details(tweets, cursor=buffer)
-        self._buffer_secondary_graph(
-            extract_thread_objects([tweet.raw_json for tweet in tweets]),
             source=LIVE_SOURCE,
             cursor=buffer,
         )
@@ -3486,6 +3489,34 @@ class ArchiveStore:
         targets = [row["cursor_in"] for row in rows if isinstance(row.get("cursor_in"), str)]
         unique = list(dict.fromkeys(targets))
         return unique[:limit] if limit is not None else unique
+
+    def list_expanded_thread_target_ids(self, *, limit: int | None = None) -> list[str]:
+        """Return targets whose latest expansion marker does not predate recovery."""
+
+        rows = self.conn.execute(
+            """
+            WITH latest_expansions AS (
+                SELECT cursor_in AS tweet_id, MAX(captured_at) AS captured_at
+                FROM archive INDEXED BY idx_archive_capture_target
+                WHERE record_type = 'raw_capture'
+                  AND operation = 'ThreadExpandDetail'
+                  AND cursor_in IS NOT NULL AND cursor_in != ''
+                GROUP BY cursor_in
+            )
+            SELECT expansion.tweet_id, expansion.captured_at
+            FROM latest_expansions AS expansion
+            LEFT JOIN archive AS object INDEXED BY idx_archive_tweet_id
+              ON object.record_type = 'tweet_object'
+             AND object.tweet_id = expansion.tweet_id
+            WHERE object.enrichment_state IS NULL
+               OR object.enrichment_state != 'resurrected'
+               OR object.enrichment_checked_at IS NULL
+               OR expansion.captured_at >= object.enrichment_checked_at
+            ORDER BY expansion.captured_at, expansion.tweet_id
+            """
+        ).fetchall()
+        targets = [str(row[0]) for row in rows]
+        return targets[:limit] if limit is not None else targets
 
     def list_url_ref_rows(self) -> list[dict[str, Any]]:
         rows = self._query(
@@ -4198,18 +4229,7 @@ class ArchiveStore:
         oldest_created_at: str | None = None
         newest_created_at: str | None = None
         unique_post_ids: set[str] = set()
-        expanded_thread_targets = {
-            str(row[0])
-            for row in self.conn.execute(
-                """
-                SELECT cursor_in
-                FROM archive INDEXED BY idx_archive_capture_target
-                WHERE record_type = 'raw_capture'
-                  AND operation = 'ThreadExpandDetail'
-                  AND cursor_in IS NOT NULL AND cursor_in != ''
-                """
-            ).fetchall()
-        }
+        expanded_thread_targets = set(self.list_expanded_thread_target_ids())
         collection_stats = {
             collection: ArchiveCollectionStats(collection_type=collection)
             for collection in SEARCH_COLLECTION_ORDER

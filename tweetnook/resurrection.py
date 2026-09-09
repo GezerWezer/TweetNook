@@ -20,6 +20,7 @@ from tweetnook.client.timelines import (
     build_tweet_detail_url,
     fetch_page,
     parse_tweet_detail_response,
+    parse_tweet_detail_tweets,
 )
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.exceptions import (
@@ -401,8 +402,12 @@ async def resurrect_due_tweets(
                     if focal.kind == FocalResultKind.AVAILABLE and focal.tweet is not None:
                         consecutive_focal_absences = 0
                         available_author_id = focal.tweet.author_id
-                        store.persist_tweet_detail(
-                            tweet=focal.tweet,
+                        thread_tweets = parse_tweet_detail_tweets(payload)
+                        if all(tweet.tweet_id != tweet_id for tweet in thread_tweets):
+                            thread_tweets.insert(0, focal.tweet)
+                        store.persist_thread_detail(
+                            focal_tweet_id=tweet_id,
+                            tweets=thread_tweets,
                             raw_json=payload,
                             http_status=response.status_code,
                             cursor=buffer,
