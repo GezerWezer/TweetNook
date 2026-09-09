@@ -2,6 +2,12 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Video duration overlay repair (2026-09-09)
+
+- [x] Refresh saved video duration badges from the media element's loaded runtime.
+- [x] Hide the redundant badge while native video controls are exposed by hover, focus, or touch.
+- [x] Cover single videos, gallery videos, missing archived durations, and player interaction state.
+
 ## Cold-read performance audit (2026-09-09)
 
 - [x] Review the current query paths and existing verified OS-cold server measurements.

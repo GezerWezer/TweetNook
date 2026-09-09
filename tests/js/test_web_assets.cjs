@@ -2086,8 +2086,14 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     ]);
     assert.match(video, /controls/);
     assert.doesNotMatch(video, /autoplay muted/);
-    assert.match(video, /class="media-video-duration"/);
+    assert.match(video, /class="[^"]*media-video-player[^"]*"/);
+    assert.match(video, /class="media-video-duration" data-video-duration/);
     assert.match(video, /aria-label="Video duration 2:00">2:00<\/span>/);
+    assert.match(video, /onloadedmetadata="window\.tweetNookSyncVideoDuration\(this\)"/);
+    assert.match(video, /onmouseenter="window\.tweetNookSetVideoUiVisible\(this, true\)"/);
+    assert.match(video, /onmouseleave="window\.tweetNookSetVideoUiVisible\(this, false\)"/);
+    assert.match(video, /onfocus="window\.tweetNookSetVideoUiVisible\(this, true\)"/);
+    assert.match(video, /onblur="window\.tweetNookSetVideoUiVisible\(this, false\)"/);
     assert.equal(app.formatMediaDuration(3000), '0:03');
     assert.equal(app.formatMediaDuration(3723000), '1:02:03');
     assert.equal(app.formatMediaDuration(null), '');
@@ -2125,15 +2131,65 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
             download: { local_path: 'media/2.mp4' },
         },
     ]);
+    assert.match(gridVideo, /media-video-player/);
     assert.match(gridVideo, /aria-label="Video duration 0:03">0:03<\/span>/);
+
+    const videoWithoutArchivedDuration = app.renderMediaGrid([
+        { type: 'video', download: { local_path: 'media/no-duration.mp4' } },
+    ]);
+    assert.match(
+        videoWithoutArchivedDuration,
+        /class="media-video-duration" data-video-duration hidden aria-hidden="true"><\/span>/,
+    );
 
     const css = fs.readFileSync(
         path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'),
         'utf8',
     );
     assert.match(css, /\.media-video-duration,/);
+    assert.match(css, /\.media-video-player:hover \.media-video-duration,/);
+    assert.match(css, /\.media-video-player:focus-within \.media-video-duration,/);
+    assert.match(css, /\.media-video-player\.is-player-ui-visible \.media-video-duration/);
     assert.match(css, /\.media-gif-indicator \{/);
     assert.match(css, /\.media-gif-indicator\.is-paused \.media-gif-play-icon/);
+});
+
+test('video duration uses loaded media metadata and yields to the player UI', () => {
+    const context = browserContext();
+    loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const classes = new Set();
+    const attributes = new Map([['aria-hidden', 'true']]);
+    const indicator = {
+        hidden: true,
+        textContent: '',
+        removeAttribute(name) {
+            attributes.delete(name);
+        },
+        setAttribute(name, value) {
+            attributes.set(name, value);
+        },
+    };
+    const frame = {
+        classList: {
+            toggle(name, enabled) {
+                if (enabled) classes.add(name);
+                else classes.delete(name);
+            },
+        },
+        querySelector: () => indicator,
+    };
+    const video = { duration: 125.9, parentElement: frame };
+
+    context.window.tweetNookSyncVideoDuration(video);
+    assert.equal(indicator.textContent, '2:05');
+    assert.equal(indicator.hidden, false);
+    assert.equal(attributes.get('aria-label'), 'Video duration 2:05');
+    assert.equal(attributes.has('aria-hidden'), false);
+
+    context.window.tweetNookSetVideoUiVisible(video, true);
+    assert.ok(classes.has('is-player-ui-visible'));
+    context.window.tweetNookSetVideoUiVisible(video, false);
+    assert.ok(!classes.has('is-player-ui-visible'));
 });
 
 test('GIF indicator tracks playback state and toggles the archived animation', async () => {

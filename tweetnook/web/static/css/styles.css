@@ -1719,6 +1719,13 @@ body {
     padding: 0 7px;
     pointer-events: none;
     font-variant-numeric: tabular-nums;
+    transition: opacity 100ms ease, visibility 100ms ease;
+}
+.media-video-player:hover .media-video-duration,
+.media-video-player:focus-within .media-video-duration,
+.media-video-player.is-player-ui-visible .media-video-duration {
+    opacity: 0;
+    visibility: hidden;
 }
 .media-gif-indicator {
     display: inline-flex;
