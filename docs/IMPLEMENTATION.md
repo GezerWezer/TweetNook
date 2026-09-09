@@ -2,6 +2,13 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Resurrected thread expansion repair (2026-09-08)
+
+- [x] Persist the complete thread context returned by a successful resurrection lookup.
+- [x] Requeue thread expansion when a prior expansion marker predates a later resurrection.
+- [x] Cover direct resurrection expansion, legacy stale markers, thread selection, and statistics.
+- [x] Run the full Python and lint/format validation suites.
+
 ## TweetNook 0.1.1 release (2026-09-08)
 
 - [x] Remove the unpushed database-performance validation document from commit history and the development index.

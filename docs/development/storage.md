@@ -128,6 +128,12 @@ capture time, source, and target context. Live keys use UUIDs; archive-import
 keys use deterministic SHA-256 inputs so a failed/rerun import does not duplicate
 captures.
 
+`ThreadExpandDetail` captures also act as expansion-completion markers. For a
+canonical object in `resurrected` state, a marker older than its latest enrichment
+check is stale and does not suppress a fresh thread pass. Successful thread
+persistence writes its marker after the recovered canonical rows so subsequent
+passes remain idempotent.
+
 Raw captures are internal evidence, not included as independent records in JSON
 export. Membership `raw_json` is included in exported hydrated tweets by default.
 

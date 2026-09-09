@@ -163,8 +163,15 @@ archive-deleted/deleted-by-author rows are excluded. Retryable reasons use
 intervals from days to months.
 
 Reason-confidence rules prevent weaker evidence overwriting stronger prior
-classification; unknown can upgrade. Successful detail becomes `resurrected`
-and clears scheduler fields.
+classification; unknown can upgrade. Successful detail becomes `resurrected`,
+clears scheduler fields, and persists every thread tweet and relationship already
+returned by that TweetDetail response. This also writes the current thread
+expansion marker without making a redundant request.
+
+If a tweet is recovered independently after an older thread-expansion attempt,
+the recovery timestamp makes that marker stale. The next thread pass fetches the
+current context once and then records a newer marker, including for archives made
+by versions that previously left resurrected tweets permanently skipped.
 
 Same-author probing can use up to five probes; after three successes, up to 15
 same-author rows can be boosted within the global budget. Transport failures do

@@ -449,6 +449,60 @@ def test_live_timeline_ingestion_resurrects_and_clears_terminal_scheduler_metada
     store.close()
 
 
+def test_resurrection_after_thread_failure_requeues_context_expansion(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    tweet = _complex_tweet("100")
+    unavailable_at = "2026-08-01T00:00:00+00:00"
+    resurrected_at = "2026-08-02T00:00:00+00:00"
+    store._merge_records(
+        [
+            store._record(
+                row_key="tweet_object:100",
+                record_type="tweet_object",
+                tweet_id="100",
+                enrichment_state="resurrected",
+                enrichment_checked_at=resurrected_at,
+            ),
+            store._record(
+                row_key="raw_capture:unavailable-thread-100",
+                record_type="raw_capture",
+                operation="ThreadExpandDetail",
+                cursor_in="100",
+                captured_at=unavailable_at,
+            ),
+        ]
+    )
+
+    assert store.list_raw_capture_target_ids("ThreadExpandDetail") == ["100"]
+    assert store.list_expanded_thread_target_ids() == []
+    assert store.archive_stats().pending_thread_membership_count == 0
+
+    store.persist_page(
+        operation="Bookmarks",
+        collection_type="bookmark",
+        cursor_in=None,
+        cursor_out=None,
+        http_status=200,
+        raw_json={"ok": True},
+        tweets=[tweet],
+        last_head_tweet_id="100",
+        backfill_cursor=None,
+        backfill_incomplete=False,
+    )
+    assert store.archive_stats().pending_thread_membership_count == 1
+
+    store.persist_thread_detail(
+        focal_tweet_id="100",
+        tweets=[tweet],
+        raw_json=make_tweet_detail_response([tweet.raw_json]),
+    )
+
+    assert store.list_expanded_thread_target_ids() == ["100"]
+    assert store.archive_stats().pending_thread_membership_count == 0
+    store.close()
+
+
 def test_archive_stats_bfs_depth(paths) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None

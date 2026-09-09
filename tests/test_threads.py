@@ -383,6 +383,65 @@ async def test_expand_threads_fetches_membership_and_linked_status(
 
 
 @pytest.mark.asyncio
+async def test_expand_threads_refetches_context_after_a_later_resurrection(
+    paths,
+    config,
+    auth_bundle,
+) -> None:
+    root_raw = _seed_thread_archive(paths)
+    parent_raw = make_tweet_result("200", "parent tweet", user_id="2000")
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    store._merge_records(
+        [
+            store._record(
+                row_key="raw_capture:stale-thread-100",
+                record_type="raw_capture",
+                operation="ThreadExpandDetail",
+                cursor_in="100",
+                captured_at="2026-08-01T00:00:00+00:00",
+            )
+        ]
+    )
+    store.update_tweet_object_enrichment(
+        "100",
+        enrichment_state="resurrected",
+        enrichment_checked_at="2026-08-02T00:00:00+00:00",
+        enrichment_http_status=200,
+        enrichment_reason=None,
+    )
+    assert store.list_expanded_thread_target_ids() == []
+    store.close()
+    QueryIdStore(paths).save({"TweetDetail": "detail-qid"})
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.params["variables"])
+        return httpx.Response(
+            200,
+            json=make_tweet_detail_response([root_raw, parent_raw], module=True),
+            request=request,
+        )
+
+    result = await expand_threads(
+        targets=["100"],
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert result.processed == 1
+    assert result.expanded == 1
+    assert len(requests) == 1
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    assert store.list_expanded_thread_target_ids() == ["100"]
+    assert store._get_row("tweet_object:200")["text"] == "parent tweet"
+    store.close()
+
+
+@pytest.mark.asyncio
 async def test_expand_threads_follows_quote_edges_at_configured_depth(
     paths,
     config,

@@ -323,7 +323,7 @@ async def expand_threads(
                 pipeline.skip_step(step_key, "the requested limit allowing no candidates")
             return result
         _log_threads(console, "loading archived thread expansion state...")
-        expanded_targets = set(store.list_raw_capture_target_ids("ThreadExpandDetail"))
+        expanded_targets = set(store.list_expanded_thread_target_ids())
         _log_threads(
             console,
             f"loaded {len(expanded_targets)} previously expanded thread targets",
