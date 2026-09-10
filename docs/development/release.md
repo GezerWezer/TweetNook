@@ -18,7 +18,7 @@ linked separately in the documentation audit.
 - Version sources:
   - `pyproject.toml`
   - `tweetnook/__init__.py`
-- Current source version: `0.1.1`
+- Current source version: `0.1.2`
 - Build backend: Hatchling
 - Python: ≥3.12
 - Console script: `tweetnook = tweetnook.cli:app`
@@ -45,8 +45,9 @@ metadata reflects the release when applicable.
 - [ ] Fetch tags and fast-forward from the chosen release remote.
 - [ ] Resolve distribution/repository/PyPI ownership and metadata.
 - [ ] Pick version and update both version sources.
-- [ ] Add a topmost dated changelog section with concise `Highlights` bullets,
-  user-visible behavior, and validation; remove/resolve contradictory
+- [ ] Add a topmost dated changelog section with concise `Changed` and `Fixed`
+  bullets, an `Added` section when applicable, user-visible behavior, and
+  validation; do not add a `Highlights` section; remove/resolve contradictory
   unreleased history.
 - [ ] Update installation, CLI, supported-platform, security, and migration docs.
 - [ ] Update documentation index and packaging includes.
@@ -106,9 +107,9 @@ uv publish \
 
 Use Twine only as an intentional fallback. Refresh registry resolver caches when
 verifying. After the PyPI upload succeeds, the tagged workflow creates the
-GitHub Release with the matching changelog `Highlights` bullets, a
-full-changelog comparison link, and the exact wheel/source artifacts; review the
-release entry as needed.
+GitHub Release with the matching changelog `Added` section when applicable, plus
+`Changed` and `Fixed`, a full-changelog comparison link, and the exact
+wheel/source artifacts; review the release entry as needed.
 
 The commands above describe mechanics, not authorization. Publishing, pushing,
 tagging, and release creation are external state changes and require the release
@@ -121,8 +122,9 @@ The active release workflow is
 It builds and checks the wheel/source distribution on `v*` tag pushes, stores
 the artifacts, publishes them through the `pypi` GitHub environment using PyPI
 Trusted Publishing, and creates a GitHub Release after the upload succeeds.
-The release includes changelog `Highlights` notes, a full-changelog comparison
-link, and both distribution artifacts.
+The release includes changelog `Added` notes when applicable, plus `Changed` and
+`Fixed`, a full-changelog comparison link, and both distribution artifacts. It
+does not generate a `Highlights` section.
 Configure the matching pending publisher on PyPI with owner `gezerwezer`,
 repository `tweetnook`, workflow `release.yml`, and environment `pypi`. No
 PyPI API token or GitHub secret is required.

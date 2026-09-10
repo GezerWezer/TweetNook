@@ -2,6 +2,15 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## TweetNook 0.1.2 release (2026-09-10)
+
+- [x] Update package version metadata and add the `Changed`/`Fixed` release notes for `0.1.2`,
+  with `Added` when applicable.
+- [x] Update the tagged release workflow and release documentation to include those changelog
+  sections in GitHub Release notes; do not generate or include `Highlights`.
+- [x] Run the full release validation and build the fresh `0.1.2` artifacts.
+- [ ] Push `main` and `v0.1.2`, and verify PyPI/GitHub/Pages publication.
+
 ## Demo analytics projection (2026-09-10)
 
 - [x] Adapt the captured production stats response to demo-sized archive, health, storage, and

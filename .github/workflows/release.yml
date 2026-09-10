@@ -92,19 +92,29 @@ jobs:
           awk -v version="$version" '
             index($0, "## [" version "]") == 1 { in_release = 1; next }
             in_release && /^## \[/ { exit }
-            in_release && /^### Highlights$/ { in_highlights = 1; print; next }
-            in_highlights && /^### / { exit }
-            in_highlights { print }
-          ' CHANGELOG.md > "$RUNNER_TEMP/release-highlights.md"
+            in_release && /^### (Added|Changed|Fixed)$/ {
+              print
+              in_section = 1
+              started = 1
+              next
+            }
+            in_release && /^### / { in_section = 0; next }
+            in_section { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-sections.md"
 
-          if ! grep -q '^### Highlights$' "$RUNNER_TEMP/release-highlights.md"; then
-            echo "CHANGELOG.md has no Highlights section for $TAG" >&2
+          if [[ ! -s "$RUNNER_TEMP/release-sections.md" ]]; then
+            echo "CHANGELOG.md has no Added, Changed, or Fixed sections for $TAG" >&2
+            exit 1
+          fi
+
+          if grep -q '^### Highlights$' "$RUNNER_TEMP/release-sections.md"; then
+            echo "Highlights are not valid release notes for $TAG" >&2
             exit 1
           fi
 
           previous_tag="$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)"
           {
-            cat "$RUNNER_TEMP/release-highlights.md"
+            cat "$RUNNER_TEMP/release-sections.md"
             if [[ -n "$previous_tag" ]]; then
               printf '\nFull changelog: [%s...%s](https://github.com/%s/compare/%s...%s)\n' \
                 "$previous_tag" "$TAG" "$REPOSITORY" "$previous_tag" "$TAG"

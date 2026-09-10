@@ -3,6 +3,41 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning while it is in the `0.x` series.
 
+## [0.1.2] - 2026-09-10
+
+### Added
+
+- Added a paged, segmented Web pipeline activity drawer with state-aware
+  progress cards, live sync outcome metrics, and an Analytics-style run summary.
+
+### Changed
+
+- Scaled the static Pages demo’s Analytics data to its synthetic archive while
+  preserving production category proportions and fixture-specific tag data.
+- Sorted Analytics archive-status reasons and rows by descending unavailable
+  tweet count, and recorded the latest cold-read performance findings for
+  future optimization work.
+
+### Fixed
+
+- Fixed video duration overlays across standalone and gallery media so they
+  synchronize with loaded metadata, show live remaining playback time, and
+  reach `0:00` at the end of playback.
+- Fixed resurrection thread expansion so recovered tweets retain the complete
+  TweetDetail context and stale expansion markers are retried after recovery.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check`
+- `uv run ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q`
+- `node tests/js/test_web_assets.cjs`
+- `node tests/js/test_demo_api.cjs`
+- `git diff --check`
+- `uv build --clear --out-dir /tmp/tweetnook-release-0.1.2`
+- `uvx --from twine twine check /tmp/tweetnook-release-0.1.2/tweetnook-0.1.2.tar.gz /tmp/tweetnook-release-0.1.2/tweetnook-0.1.2-py3-none-any.whl`
+- `uv run --isolated --no-project --with /tmp/tweetnook-release-0.1.2/tweetnook-0.1.2-py3-none-any.whl -- tweetnook --help`
+
 ## [0.1.1] - 2026-09-08
 
 ### Highlights
@@ -108,6 +143,7 @@ semantic-style versioning while it is in the `0.x` series.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[0.1.2]: https://github.com/gezerwezer/tweetnook/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/gezerwezer/tweetnook/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/gezerwezer/tweetnook/compare/v0.0.9...v0.1.0
 [0.0.9]: https://github.com/gezerwezer/tweetnook/releases/tag/v0.0.9
