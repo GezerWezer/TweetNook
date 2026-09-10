@@ -2252,14 +2252,17 @@ test('activity drawer loads any pipeline and starts production jobs', async () =
     const context = browserContext();
     const calls = [];
     let active = true;
+    let stopped = false;
     context.fetch = async (url, options = {}) => {
         calls.push([url, options.method || 'GET']);
         if (url === '/api/activity/import') {
             active = true;
+            stopped = false;
             return { ok: true, json: async () => ({ started: true, kind: 'import', run_id: 'run' }) };
         }
         if (url === '/api/activity/stop') {
             active = false;
+            stopped = true;
             return { ok: true, json: async () => ({ stopping: true }) };
         }
         return {
@@ -2267,9 +2270,11 @@ test('activity drawer loads any pipeline and starts production jobs', async () =
             json: async () => active ? {
                 active: true,
                 snapshot: {
+                    run_id: 'active-run',
                     title: 'tweetnook import enrich',
                     started_at: Date.now() / 1000,
-                    steps: [{ key: 'enrich', completed: 5, total: 10 }],
+                    active_step: 'enrich',
+                    steps: [{ key: 'enrich', state: 'active', completed: 5, total: 10 }],
                     issues: [],
                 },
                 schedule: { configured: false, relative: 'Not configured', date: 'Use cron or a service timer' },
@@ -2277,9 +2282,17 @@ test('activity drawer loads any pipeline and starts production jobs', async () =
                 active: false,
                 snapshot: null,
                 last_snapshot: {
+                    run_id: 'active-run',
                     title: 'tweetnook import enrich',
                     completed_at: Date.now() / 1000,
-                    steps: [{ key: 'enrich', state: 'complete', completed: 10, total: 10 }],
+                    stopped,
+                    success: !stopped,
+                    steps: [{
+                        key: 'enrich',
+                        state: stopped ? 'failed' : 'complete',
+                        completed: stopped ? 5 : 10,
+                        total: 10,
+                    }],
                     issues: [],
                 },
                 schedule: { configured: false, relative: 'Not configured', date: 'Use cron or a service timer' },
@@ -2289,23 +2302,31 @@ test('activity drawer loads any pipeline and starts production jobs', async () =
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
     const app = immediateComponent(tweetApp());
 
+    app.activityPageKey = 'old-run-stage';
     await app.fetchActivityStatus();
     assert.equal(app.activity.title, 'tweetnook import enrich');
     assert.equal(app.activityPercent(app.activity.steps[0]), 50);
+    assert.equal(app.activityPageKey, null);
 
     active = false;
     await app.fetchActivityStatus();
     assert.equal(app.activity, null);
     assert.equal(app.lastActivity.title, 'tweetnook import enrich');
     assert.equal(app.activitySchedule.relative, 'Not configured');
+    app.activityPageKey = '__summary__';
     await app.startActivity('import');
     assert.ok(calls.some(([url, method]) => url === '/api/activity/import' && method === 'POST'));
     assert.equal(app.activityStartPending, false);
     assert.equal(app.activityStartingKind, null);
+    assert.equal(app.activityPageKey, null);
     assert.equal(app.activity.title, 'tweetnook import enrich');
     await app.stopActivity();
     assert.ok(calls.some(([url, method]) => url === '/api/activity/stop' && method === 'POST'));
     assert.equal(app.activity, null);
+    assert.equal(app.activityPageKey, 'enrich');
+    assert.equal(app.activitySelectedPageKey(), 'enrich');
+    assert.equal(app.activitySegmentState(app.activitySelectedPage()), 'cancelled');
+    assert.equal(app.activitySegmentPercent(app.activitySelectedPage()), 50);
 });
 
 test('incomplete enrichment starts the fixed Web action and refreshes status', async () => {
@@ -2467,7 +2488,7 @@ test('unchecked square checkboxes use thinner outlines while checked states reta
     assert.equal((html.match(/text-white border-\[3px\]'/g) || []).length, 4);
 });
 
-test('activity steps reverse wheel input and update the connected scene and fade immediately', () => {
+test('activity stages use focused pages and finish on a run summary', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
     const app = immediateComponent(tweetApp());
@@ -2486,74 +2507,195 @@ test('activity steps reverse wheel input and update the connected scene and fade
     };
 
     assert.equal(app.activityActiveStep().key, 'three');
-    assert.deepEqual(app.activityCompletedSteps().map(step => step.key), ['one', 'two']);
-    assert.equal(app.activityCompletedStackHeight(), '128px');
     assert.equal(app.activityIssues().length, 2);
     assert.equal(app.activityIssueCount(), 3);
+    assert.equal(app.activityRunState(), 'active');
+    assert.equal(app.activityRunStatusTitle(), 'Sync in progress');
+    assert.equal(app.activityRunCounts(), '4 stages · 1 completed · 1 skipped');
+    assert.deepEqual(
+        Array.from(app.activityPages(), page => page.key),
+        ['one', 'two', 'three', 'four', '__summary__'],
+    );
+    assert.equal(app.activityPages().at(-1).state, 'pending');
+    assert.equal(app.activitySelectedSegmentGrow(), 8 / 3);
+    assert.equal(app.activitySegmentPercent(app.activity.steps[0]), 100);
+    assert.equal(app.activitySegmentPercent(app.activity.steps[1]), 100);
+    assert.equal(app.activitySegmentPercent(app.activity.steps[2]), 50);
+    assert.equal(app.activitySegmentPercent(app.activity.steps[3]), 0);
+    assert.equal(app.activitySegmentPercent(app.activityPages().at(-1)), 0);
+    assert.equal(app.activitySegmentState(app.activity.steps[2]), 'active');
+    assert.equal(app.activityPageStateLabel(app.activity.steps[0]), 'Complete');
+    assert.equal(app.activityPageStateLabel(app.activity.steps[1]), 'Skipped');
+    assert.equal(app.activityPageStateLabel(app.activity.steps[2]), 'In progress');
+    assert.equal(app.activityPageUpdateText(app.activity.steps[2]), 'Latest update · Waiting for first result');
+    assert.equal(app.activityPageTimingText(app.activity.steps[2]), 'Timing · Estimating remaining time');
+    app.activity.steps[2].counters = '2 processed';
+    app.activity.steps[2].eta_seconds = 30;
+    assert.equal(app.activityPageUpdateText(app.activity.steps[2]), 'Latest update · 2 processed');
+    assert.equal(app.activityPageTimingText(app.activity.steps[2]), 'Timing · About 00:30 remaining');
+    assert.equal(app.activityRunStateLabel(), 'In progress');
+    assert.equal(app.activitySelectedPageKey(), 'three');
+    assert.equal(app.activitySelectedPageIndex(), 2);
+    assert.equal(app.activityPageDirection, 'forward');
 
-    const styleValues = new Map();
-    const viewport = {
-        scrollTop: 18,
-        scrollHeight: 352,
-        clientHeight: 200,
-        style: {
-            setProperty(name, value) {
-                styleValues.set(name, value);
-            },
-        },
-    };
-    const controlStyleValues = new Map();
-    viewport.closest = () => ({
-        querySelector() {
-            return {
-                style: {
-                    setProperty(name, value) {
-                        controlStyleValues.set(name, value);
-                    },
-                },
-            };
-        },
-    });
-    let prevented = false;
-    app.reverseActivityScroll({
-        currentTarget: viewport,
-        deltaY: -12,
-        deltaMode: 0,
-        preventDefault() {
-            prevented = true;
-        },
-    });
-    assert.equal(prevented, true);
-    assert.equal(viewport.scrollTop, 30);
-    assert.equal(styleValues.get('--activity-scroll-shift'), '60px');
-    assert.equal(controlStyleValues.get('--activity-fade-opacity'), String(1 - 30 / 64));
-    assert.equal(controlStyleValues.get('--activity-fade-shift'), '-30px');
+    app.selectActivityPage('one');
+    assert.equal(app.activitySelectedPageKey(), 'one');
+    assert.equal(app.activityPageDirection, 'back');
+    app.moveActivityPage(1);
+    assert.equal(app.activitySelectedPageKey(), 'two');
+    assert.equal(app.activityPageDirection, 'forward');
+    app.moveActivityPage(-10);
+    assert.equal(app.activitySelectedPageKey(), 'one');
+    assert.equal(app.activityPageDirection, 'back');
+    app.openActivityDrawer();
+    assert.equal(app.activityDrawerOpen, true);
+    assert.equal(app.activityPageKey, null);
+    assert.equal(app.activityPageDirection, 'forward');
+    assert.equal(app.activitySelectedPageKey(), 'three');
+    app.toggleActivityDrawer();
+    assert.equal(app.activityDrawerOpen, false);
+    assert.equal(app.activityCommandLabel(), 'Archive Sync');
 
-    viewport.scrollTop = 18;
-    app.setActivityScrollPosition({ currentTarget: viewport });
-    assert.equal(viewport.scrollTop, 18);
-    assert.equal(styleValues.get('--activity-scroll-shift'), '36px');
-    assert.equal(controlStyleValues.get('--activity-fade-opacity'), String(1 - 18 / 64));
-    assert.equal(controlStyleValues.get('--activity-fade-shift'), '-18px');
+    app.activity.title = 'tweetnook import enrich';
+    assert.equal(app.activityCommandLabel(), 'Archive Enrichment');
+    app.activity.title = 'tweetnook media download';
+    assert.equal(app.activityCommandLabel(), 'Media Download');
+    app.activityStartPending = true;
+    app.activityStartingKind = 'enrich';
+    assert.equal(app.activityCommandLabel(), 'Archive Enrichment');
+    app.activityStartPending = false;
+    app.activityStartingKind = null;
+    app.activity.title = 'tweetnook sync';
 
     app.lastActivity = {
         ...app.activity,
-        state: 'complete',
+        running: false,
+        success: true,
         steps: app.activity.steps.map(step => ({ ...step, state: 'complete' })),
     };
     app.activity = null;
-    prevented = false;
-    viewport.scrollTop = 18;
-    app.reverseActivityScroll({
-        currentTarget: viewport,
-        deltaY: -12,
-        deltaMode: 0,
-        preventDefault() {
-            prevented = true;
-        },
-    });
-    assert.equal(prevented, false);
-    assert.equal(viewport.scrollTop, 18);
+    app.activityPageKey = null;
+    assert.equal(app.activityRunState(), 'complete');
+    assert.equal(app.activityRunStateLabel(), 'Complete');
+    assert.equal(app.activityRunStatusTitle(), 'Last run completed');
+    assert.equal(app.activitySelectedPageKey(), '__summary__');
+    assert.equal(app.activitySelectedPage().is_summary, true);
+    assert.equal(app.activityPages().at(-1).state, 'complete');
+    assert.equal(app.activitySegmentPercent(app.activityPages().at(-1)), 100);
+    assert.equal(app.activityRunCounts(), '4 stages · 4 completed');
+
+    app.lastActivity = {
+        ...app.lastActivity,
+        success: false,
+        stopped: true,
+        steps: [
+            { key: 'one', title: 'First step', state: 'complete', completed: 1, total: 1 },
+            { key: 'three', title: 'Stopped step', state: 'failed', completed: 2, total: 4 },
+            { key: 'four', title: 'Later step', state: 'skipped', completed: 0, total: 1 },
+        ],
+    };
+    const stoppedPage = app.activityPages().find(page => page.key === 'three');
+    assert.equal(app.activitySegmentState(stoppedPage), 'cancelled');
+    assert.equal(app.activityPageStateLabel(stoppedPage), 'Canceled');
+    assert.equal(app.activityRunStateLabel(), 'Canceled');
+    assert.equal(app.activitySegmentPercent(stoppedPage), 50);
+    assert.equal(app.activitySegmentState(app.activityPages().at(-1)), 'cancelled');
+    assert.equal(app.activitySegmentPercent(app.activityPages().at(-1)), 100);
+    assert.equal(app.activityRunCounts(), '3 stages · 1 completed · 1 skipped · 1 canceled');
+});
+
+test('activity schedule footer separates the day from the emphasized run time', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+
+    app.activitySchedule = {
+        enabled: true,
+        relative: 'daily around 3:00 AM',
+        date: 'Tomorrow · browser local time',
+        config: { cadence: 'daily', time: '03:00', randomize_time: true },
+    };
+    assert.equal(app.activityScheduleDayText(), 'Tomorrow');
+    assert.equal(app.activityScheduleTimeText(), 'around 3:00 AM');
+
+    app.activitySchedule = {
+        enabled: false,
+        relative: 'Not scheduled',
+        date: 'Enable scheduling in Settings',
+        config: {},
+    };
+    assert.equal(app.activityScheduleDayText(), 'Not scheduled');
+    assert.equal(app.activityScheduleTimeText(), '');
+});
+
+test('activity run summary turns structured outcomes into analytics-style cards', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.lastActivity = {
+        running: false,
+        success: true,
+        elapsed_seconds: 180,
+        issues: [{ level: 'warning', message: 'One retry', count: 2 }],
+        steps: [
+            { key: 'sync:bookmarks:head', metrics: { new_tweets: 12, tweets_seen: 20, pages: 1 } },
+            { key: 'sync:likes:head', metrics: { new_tweets: 8, tweets_seen: 20, pages: 1 } },
+            { key: 'threads', metrics: { expanded: 6, already_known: 148, failed: 0 } },
+            { key: 'resurrection', metrics: { restored: 1, still_unavailable: 15, retry_later: 2, remaining_due: 3 } },
+            { key: 'media', metrics: { downloaded: 28, downloaded_bytes: 19503514, already_saved: 4, failed: 0 } },
+            { key: 'urls', metrics: { updated: 2, failed: 0 } },
+            { key: 'articles', state: 'skipped', metrics: {} },
+        ],
+    };
+
+    const cards = Object.fromEntries(
+        app.activitySummaryMetrics().map(card => [card.key, card]),
+    );
+    assert.equal(cards['sync:bookmarks'].value, '12');
+    assert.equal(cards['sync:bookmarks'].subtitle, '20 checked · 1 page');
+    assert.equal(cards['sync:likes'].label, 'New liked tweets');
+    assert.equal(cards['sync:likes'].value, '8');
+    assert.equal(cards['tweets-checked'].value, '40');
+    assert.equal(cards['pages-fetched'].value, '2');
+    assert.equal(cards['media-downloaded'].value, '28');
+    assert.equal(cards['media-size'].label, 'Media size');
+    assert.equal(cards['media-size'].value, '18.6 MiB');
+    assert.equal(cards['media-saved'].value, '4');
+    assert.equal(cards['media-failed'].value, '0');
+    assert.equal(cards.threads.subtitle, 'New context saved');
+    assert.equal(cards['threads-known'].value, '148');
+    assert.equal(cards['threads-known'].wide, true);
+    assert.equal(cards['threads-failed'].value, '0');
+    assert.equal(cards.restored.label, 'Tweets resurrected');
+    assert.equal(cards.restored.value, '1');
+    assert.equal(cards['still-unavailable'].value, '15');
+    assert.equal(cards['still-unavailable'].subtitle, '2 retry later · 3 still due');
+    assert.equal(cards['still-unavailable'].wide, true);
+    assert.equal(cards['recovery-retries'].value, '2');
+    assert.equal(cards['recovery-queue'].value, '3');
+    assert.equal(cards.urls.value, '2');
+    assert.equal(cards.urls.label, 'Link previews updated');
+    assert.equal(cards.urls.wide, true);
+    assert.equal(cards['urls-failed'].value, '0');
+    assert.equal(cards.articles.subtitle, 'No refresh needed');
+    assert.equal(cards['articles-failed'].value, '0');
+    assert.equal(cards.duration.value, '03:00');
+    assert.equal(cards.issues.value, '2');
+    assert.equal(Object.keys(cards).length, 21);
+
+    app.activity = {
+        running: true,
+        elapsed_seconds: 0,
+        steps: [{ key: 'media', state: 'pending', metrics: {} }],
+        issues: [],
+    };
+    app.lastActivity = null;
+    const plannedCards = Object.fromEntries(
+        app.activitySummaryMetrics().map(card => [card.key, card]),
+    );
+    assert.equal(plannedCards['media-downloaded'].value, '—');
+    assert.equal(plannedCards['media-size'].value, '—');
+    assert.equal(plannedCards['media-saved'].subtitle, 'Available after this stage');
 });
 
 test('community notes escape headings, text, labels, and external links', () => {

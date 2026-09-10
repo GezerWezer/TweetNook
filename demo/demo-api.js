@@ -419,15 +419,15 @@
                 end: 3,
                 total: 5,
                 unit: 'checks',
-                detail: 'authentication · archive owner · 2 remote endpoint probes',
+                detail: 'sign-in · archive owner · 2 collection checks',
                 rateUnit: 'checks/s',
-                summary: 'authentication ready · 2/2 endpoints available',
+                summary: 'Connected · 2/2 collections ready',
                 scenes: [
-                    {at: 0, completed: 0, activity: 'Resolving Twitter/X authentication', counters: '0/5 checks'},
-                    {at: 0.2, completed: 1, activity: 'Checking local archive ownership', counters: '1/5 checks · authentication resolved'},
-                    {at: 0.4, completed: 2, activity: 'Resolving GraphQL operation IDs', counters: '2/5 checks · authentication ready · archive owner accepted'},
-                    {at: 0.6, completed: 3, activity: 'Probing Bookmarks endpoint', counters: '3/5 checks · 2 operation IDs ready'},
-                    {at: 0.8, completed: 4, activity: 'Probing Likes endpoint', counters: '4/5 checks · 1/2 endpoints ready'},
+                    {at: 0, completed: 0, activity: 'Connecting to Twitter/X', counters: ''},
+                    {at: 0.2, completed: 1, activity: 'Checking archive ownership', counters: 'Signed in'},
+                    {at: 0.4, completed: 2, activity: 'Preparing Twitter/X requests', counters: 'Signed in · archive owner confirmed'},
+                    {at: 0.6, completed: 3, activity: 'Checking Bookmarks', counters: '2 request types ready'},
+                    {at: 0.8, completed: 4, activity: 'Checking Likes', counters: '1/2 collections ready'},
                 ],
             },
             {
@@ -440,11 +440,13 @@
                 detail: 'head pass · each page is committed with its resume cursor',
                 showRate: false,
                 showEta: false,
-                summary: '1 page · 20 tweets · reached saved archive history',
+                showProgress: false,
+                summary: '1 page · 20 tweets · archive is up to date',
+                metrics: {new_tweets: 12, tweets_seen: 20, pages: 1},
                 scenes: [
-                    {at: 0, completed: 0, activity: 'Fetching newest bookmarks · page 1', counters: '0 pages · 0 tweets'},
-                    {at: 0.45, completed: 0, activity: 'Committing 20 tweets and the page 1 resume cursor', counters: '0 pages · 0 tweets'},
-                    {at: 0.8, completed: 1, activity: 'Reached saved archive history', counters: '1 page · 20 tweets · 20 on this page · reached saved archive history'},
+                    {at: 0, completed: 0, activity: 'Fetching page 1', counters: '0 pages · 0 tweets saved'},
+                    {at: 0.45, completed: 0, activity: 'Saving 20 tweets from page 1', counters: '0 pages · 0 tweets saved'},
+                    {at: 0.8, completed: 1, activity: 'Archive is up to date', counters: '1 page · 20 tweets saved'},
                 ],
             },
             {
@@ -457,11 +459,13 @@
                 detail: 'head pass · each page is committed with its resume cursor',
                 showRate: false,
                 showEta: false,
-                summary: '1 page · 20 tweets · reached saved archive history',
+                showProgress: false,
+                summary: '1 page · 20 tweets · archive is up to date',
+                metrics: {new_tweets: 8, tweets_seen: 20, pages: 1},
                 scenes: [
-                    {at: 0, completed: 0, activity: 'Fetching newest likes · page 1', counters: '0 pages · 0 tweets'},
-                    {at: 0.45, completed: 0, activity: 'Committing 20 tweets and the page 1 resume cursor', counters: '0 pages · 0 tweets'},
-                    {at: 0.8, completed: 1, activity: 'Reached saved archive history', counters: '1 page · 20 tweets · 20 on this page · reached saved archive history'},
+                    {at: 0, completed: 0, activity: 'Fetching page 1', counters: '0 pages · 0 tweets saved'},
+                    {at: 0.45, completed: 0, activity: 'Saving 20 tweets from page 1', counters: '0 pages · 0 tweets saved'},
+                    {at: 0.8, completed: 1, activity: 'Archive is up to date', counters: '1 page · 20 tweets saved'},
                 ],
             },
             {
@@ -473,42 +477,44 @@
                 unit: 'candidates',
                 detail: 'membership and reachable linked-status candidates',
                 rateUnit: 'candidates/s',
-                summary: '6 fetched · 6 expanded · 148 already known · 0 failed',
+                summary: '6 expanded · 148 already known',
+                metrics: {expanded: 6, already_known: 148, failed: 0},
                 scenes: [
-                    {at: 0, completed: 0, activity: 'Selecting thread candidates from local archive state', counters: '0/6 candidates'},
-                    {at: 0.02, completed: 0, activity: 'Loading archived thread expansion state…', counters: '0/6 candidates'},
-                    {at: 0.12, completed: 0, activity: 'Loaded 382 previously expanded thread targets', counters: '0/6 candidates'},
-                    {at: 0.14, completed: 0, activity: 'Loading archived membership tweets…', counters: '0/6 candidates'},
+                    {at: 0, completed: 0, activity: 'Selecting candidates', counters: ''},
+                    {at: 0.02, completed: 0, activity: 'Loading prior expansions', counters: ''},
+                    {at: 0.12, completed: 0, activity: 'Prior expansions loaded', counters: ''},
+                    {at: 0.14, completed: 0, activity: 'Reading saved tweets', counters: ''},
                     {at: 0.2, completed: 0, activity: 'Membership pass over 126 archived tweets', counters: '120 already expanded'},
-                    {at: 0.22, completed: 0, activity: 'Loading known tweet IDs for linked-status pass…', counters: '0/6 candidates'},
-                    {at: 0.28, completed: 0, activity: 'Loaded 6,411 known tweet IDs for linked-status dedupe', counters: '0/6 candidates'},
-                    {at: 0.3, completed: 0, activity: 'Loading archived URL references…', counters: '0/6 candidates'},
-                    {at: 0.47, completed: 0, activity: 'Related-status pass over 24 quote relations and 3 reachable URL references', counters: '0/6 candidates · 5 membership · 1 quoted · 0 linked'},
-                    {at: 0.5, completed: 0, activity: 'Resolving the TweetDetail operation ID', counters: '0/6 candidates · 5 membership · 1 quoted · 0 linked'},
-                    {at: 0.59, completed: 1, activity: 'Fetching thread context for 202602140001', counters: '1/6 candidates · 1 fetched · 1 expanded · 148 already known · 0 failed'},
-                    {at: 0.68, completed: 2, activity: 'Fetching thread context for 202602130004', counters: '2/6 candidates · 2 fetched · 2 expanded · 148 already known · 0 failed'},
-                    {at: 0.77, completed: 3, activity: 'Fetching thread context for 202602120007', counters: '3/6 candidates · 3 fetched · 3 expanded · 148 already known · 0 failed'},
-                    {at: 0.86, completed: 4, activity: 'Fetching thread context for 202602110010', counters: '4/6 candidates · 4 fetched · 4 expanded · 148 already known · 0 failed'},
-                    {at: 0.94, completed: 5, activity: 'Fetching thread context for 202602100013', counters: '5/6 candidates · 5 fetched · 5 expanded · 148 already known · 0 failed'},
-                    {at: 0.985, completed: 6, activity: 'Persisting expanded conversation relationships', counters: '6/6 candidates · 6 fetched · 6 expanded · 148 already known · 0 failed'},
+                    {at: 0.22, completed: 0, activity: 'Reading saved tweet IDs', counters: ''},
+                    {at: 0.28, completed: 0, activity: 'Saved tweet IDs loaded', counters: ''},
+                    {at: 0.3, completed: 0, activity: 'Reading URL references', counters: ''},
+                    {at: 0.47, completed: 0, activity: 'Preparing conversation lookups', counters: '5 membership · 1 quoted'},
+                    {at: 0.5, completed: 0, activity: 'Preparing conversation lookups', counters: '5 membership · 1 quoted'},
+                    {at: 0.59, completed: 1, activity: 'Fetching thread context', counters: '1 expanded · 148 already known'},
+                    {at: 0.68, completed: 2, activity: 'Fetching thread context', counters: '2 expanded · 148 already known'},
+                    {at: 0.77, completed: 3, activity: 'Fetching thread context', counters: '3 expanded · 148 already known'},
+                    {at: 0.86, completed: 4, activity: 'Fetching thread context', counters: '4 expanded · 148 already known'},
+                    {at: 0.94, completed: 5, activity: 'Fetching thread context', counters: '5 expanded · 148 already known'},
+                    {at: 0.985, completed: 6, activity: 'Saving conversation relationships', counters: '6 expanded · 148 already known'},
                 ],
             },
             {
                 key: 'resurrection',
-                title: 'Resurrection',
+                title: 'Unavailable tweets',
                 start: 75,
                 end: 171,
                 total: 16,
                 unit: 'tweets',
                 detail: '16 due selected · 100-request ceiling',
                 rateUnit: 'tweets/s',
-                summary: '16 checked · 1 returned · 15 unavailable · 0 transient · 0 still due',
+                summary: '1 restored · 15 still unavailable',
+                metrics: {restored: 1, still_unavailable: 15, retry_later: 2, remaining_due: 3},
                 resolveScene(stepElapsed) {
                     if (stepElapsed < 1) {
                         return {
                             completed: 0,
-                            activity: 'Resolving the TweetDetail operation ID',
-                            counters: '0/16 tweets · 0 checked · 0 returned · 0 unavailable · 0 transient',
+                            activity: 'Preparing recovery checks',
+                            counters: '',
                         };
                     }
                     const completed = Math.min(15, Math.floor(stepElapsed / 6));
@@ -517,15 +523,14 @@
                     if (stepElapsed < 6 || completed === 15) {
                         return {
                             completed,
-                            activity: 'Rate-limit pacing active, using 6.0s/request',
-                            counters: `${completed}/16 tweets · ${completed} checked · ${returned} returned · ${unavailable} unavailable · 0 transient`,
+                            activity: 'Rate-limit pacing · one request every 6s',
+                            counters: [returned ? `${returned} restored` : '', unavailable ? `${unavailable} still unavailable` : ''].filter(Boolean).join(' · '),
                         };
                     }
-                    const nextId = `2026000000${String(completed + 1).padStart(2, '0')}`;
                     return {
                         completed,
-                        activity: `Rechecking unavailable tweet ${nextId}`,
-                        counters: `${completed}/16 tweets · ${completed} checked · ${returned} returned · ${unavailable} unavailable · 0 transient · 0 account probes`,
+                        activity: 'Checking an unavailable tweet',
+                        counters: [returned ? `${returned} restored` : '', unavailable ? `${unavailable} still unavailable` : ''].filter(Boolean).join(' · '),
                     };
                 },
             },
@@ -550,30 +555,32 @@
                 unit: 'files',
                 detail: 'pending media rows',
                 rateUnit: 'files/s',
-                summary: '28 processed · 28 downloaded · 0 skipped · 0 failed · 18.6 MiB transferred',
+                summary: '28 downloaded · 18.6 MiB',
+                metrics: {downloaded: 28, downloaded_bytes: 19503514, already_saved: 4, failed: 0},
                 scenes: [
-                    {at: 0, completed: 0, activity: 'Downloading animated GIF for tweet 202602100013', counters: '0/28 files · 0 processed · 0 downloaded · 0 skipped · 0 failed'},
-                    {at: 0.2, completed: 5, activity: 'Downloading photo for tweet 202602110010', counters: '5/28 files · 5 processed · 5 downloaded · 0 skipped · 0 failed'},
-                    {at: 0.4, completed: 11, activity: 'Downloading video for tweet 202602090016', counters: '11/28 files · 11 processed · 11 downloaded · 0 skipped · 0 failed'},
-                    {at: 0.6, completed: 17, activity: 'Verifying video metadata for tweet 202602090016', counters: '17/28 files · 17 processed · 17 downloaded · 0 skipped · 0 failed'},
-                    {at: 0.8, completed: 23, activity: 'Downloading photo for tweet 202602070022', counters: '23/28 files · 23 processed · 23 downloaded · 0 skipped · 0 failed'},
-                    {at: 0.96, completed: 28, activity: 'Persisting media download metadata', counters: '28/28 files · 28 processed · 28 downloaded · 0 skipped · 0 failed'},
+                    {at: 0, completed: 0, activity: 'Downloading animated GIF', counters: ''},
+                    {at: 0.2, completed: 5, activity: 'Downloading photo', counters: '5 downloaded · 3.4 MiB'},
+                    {at: 0.4, completed: 11, activity: 'Downloading video', counters: '11 downloaded · 7.2 MiB'},
+                    {at: 0.6, completed: 17, activity: 'Downloading video', counters: '17 downloaded · 11.3 MiB'},
+                    {at: 0.8, completed: 23, activity: 'Downloading photo', counters: '23 downloaded · 15.1 MiB'},
+                    {at: 0.96, completed: 28, activity: 'Saving download metadata', counters: '28 downloaded · 18.6 MiB'},
                 ],
             },
             {
                 key: 'urls',
-                title: 'URLs',
+                title: 'Link previews',
                 start: 176,
                 end: 180,
                 total: 2,
                 unit: 'URLs',
                 detail: 'saved URLs · redirects followed · canonical metadata persisted',
                 rateUnit: 'URLs/s',
-                summary: '2 processed · 2 updated · 0 failed',
+                summary: '2 updated',
+                metrics: {updated: 2, failed: 0},
                 scenes: [
-                    {at: 0, completed: 0, activity: 'Fetching metadata from example.com', counters: '0/2 URLs · 0 processed · 0 updated · 0 failed'},
-                    {at: 0.45, completed: 1, activity: 'Fetching metadata from docs.example.com', counters: '1/2 URLs · 1 processed · 1 updated · 0 failed'},
-                    {at: 0.9, completed: 2, activity: 'Persisting canonical URL metadata', counters: '2/2 URLs · 2 processed · 2 updated · 0 failed'},
+                    {at: 0, completed: 0, activity: 'Fetching example.com', counters: ''},
+                    {at: 0.45, completed: 1, activity: 'Fetching docs.example.com', counters: '1 updated'},
+                    {at: 0.9, completed: 2, activity: 'Saving link previews', counters: '2 updated'},
                 ],
             },
         ];
@@ -627,6 +634,7 @@
                                     ? phase.summary
                                     : 'skipped due to an earlier failure stopped the command'
                                 : '',
+                    metrics: stateName === 'complete' ? clone(phase.metrics || {}) : {},
                     completed,
                     total: phase.total,
                     unit: phase.unit,
@@ -636,6 +644,7 @@
                     rate,
                     rate_unit: phase.rateUnit || `${phase.unit}/s`,
                     eta_seconds: stateName === 'active' ? eta : null,
+                    show_progress: phase.showProgress !== false,
                 };
             });
             const activeStep = steps.find(step => step.state === 'active');
@@ -974,6 +983,17 @@
             return errorResponse(`The static demo does not implement ${method} ${path}`, 404);
         }
 
+        if (options.seedLastActivity) {
+            const finishedAt = nowSeconds() - 600;
+            runtime.activity = {
+                runId: 'demo-last-sync',
+                startedAt: finishedAt - syncDurationSeconds,
+                stopped: false,
+                stoppedAt: null,
+            };
+            activitySnapshot();
+        }
+
         return {
             handle,
             parseQuery,
@@ -1013,7 +1033,7 @@
                 return response.json();
             })
             .then(data => {
-                api.store = createStore(data);
+                api.store = createStore(data, {seedLastActivity: true});
                 return api.store;
             });
         global.fetch = async function demoFetch(input, init = {}) {

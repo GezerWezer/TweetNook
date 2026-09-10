@@ -276,6 +276,18 @@ async function main() {
 
     const startedAt = 1_000_000;
     let clock = startedAt;
+    const seededActivityStore = api.createStore(fixture, {
+        now: () => clock,
+        seedLastActivity: true,
+    });
+    const seededStatus = await request(
+        seededActivityStore,
+        'https://example.test/api/activity/status',
+    );
+    assert.equal(seededStatus.body.active, false);
+    assert.equal(seededStatus.body.last_snapshot.success, true);
+    assert.equal(seededStatus.body.last_snapshot.steps.find(step => step.key === 'media').metrics.downloaded, 28);
+
     const activityStore = api.createStore(fixture, {now: () => clock});
     assert.equal((await request(activityStore, 'https://example.test/api/activity/status')).body.active, false);
     assert.equal((await request(activityStore, 'https://example.test/api/activity/sync', {method: 'POST'})).response.status, 202);
@@ -285,9 +297,9 @@ async function main() {
         [4, 'sync:bookmarks:head', 'Bookmarks'],
         [6, 'sync:likes:head', 'Likes'],
         [20, 'threads', 'Threads'],
-        [90, 'resurrection', 'Resurrection'],
+        [90, 'resurrection', 'Unavailable tweets'],
         [173, 'media', 'Media'],
-        [178, 'urls', 'URLs'],
+        [178, 'urls', 'Link previews'],
     ];
     const expectedStepKeys = [
         'preflight:bookmarks,likes',
@@ -308,6 +320,19 @@ async function main() {
         assert.deepEqual(status.body.snapshot.steps.map(step => step.key), expectedStepKeys);
     }
 
+    clock = startedAt + 4;
+    const bookmarks = await request(activityStore, 'https://example.test/api/activity/status');
+    const bookmarkStep = bookmarks.body.snapshot.steps.find(step => step.key === 'sync:bookmarks:head');
+    assert.equal(bookmarkStep.show_progress, false);
+    assert.equal(bookmarkStep.activity, 'Saving 20 tweets from page 1');
+    assert.equal(bookmarkStep.counters, '0 pages · 0 tweets saved');
+
+    clock = startedAt + 173;
+    const media = await request(activityStore, 'https://example.test/api/activity/status');
+    const completedThreads = media.body.snapshot.steps.find(step => step.key === 'threads');
+    assert.equal(completedThreads.summary, '6 expanded · 148 already known');
+    assert.equal(media.body.snapshot.steps.find(step => step.key === 'resurrection').summary, '1 restored · 15 still unavailable');
+
     clock = startedAt + 172;
     const afterArticles = await request(activityStore, 'https://example.test/api/activity/status');
     const articleStep = afterArticles.body.snapshot.steps.find(step => step.key === 'articles');
@@ -322,16 +347,23 @@ async function main() {
     assert.equal(completed.body.last_snapshot.steps.filter(step => step.state === 'complete').length, 7);
     assert.equal(completed.body.last_snapshot.steps.find(step => step.key === 'articles').state, 'skipped');
     assert.equal(completed.body.last_snapshot.summary, 'bookmarks: 1 pages, 20 tweets; likes: 1 pages, 20 tweets');
+    assert.equal(completed.body.last_snapshot.steps.find(step => step.key === 'sync:bookmarks:head').metrics.new_tweets, 12);
+    assert.equal(completed.body.last_snapshot.steps.find(step => step.key === 'sync:likes:head').metrics.new_tweets, 8);
+    assert.equal(completed.body.last_snapshot.steps.find(step => step.key === 'media').metrics.downloaded_bytes, 19503514);
+    assert.equal(completed.body.last_snapshot.steps.find(step => step.key === 'media').metrics.already_saved, 4);
+    assert.equal(completed.body.last_snapshot.steps.find(step => step.key === 'resurrection').metrics.retry_later, 2);
+    assert.equal(completed.body.last_snapshot.steps.find(step => step.key === 'resurrection').metrics.remaining_due, 3);
 
     clock += 10;
     assert.equal((await request(activityStore, 'https://example.test/api/activity/sync', {method: 'POST'})).response.status, 202);
-    clock += 40;
+    clock += 50;
     assert.equal((await request(activityStore, 'https://example.test/api/activity/stop', {method: 'POST'})).response.status, 202);
     const stopped = await request(activityStore, 'https://example.test/api/activity/status');
     assert.equal(stopped.body.active, false);
     assert.equal(stopped.body.last_snapshot.stopped, true);
-    assert.equal(stopped.body.last_snapshot.elapsed_seconds, 40);
+    assert.equal(stopped.body.last_snapshot.elapsed_seconds, 50);
     assert.equal(stopped.body.last_snapshot.steps.find(step => step.state === 'failed').key, 'threads');
+    assert.equal(stopped.body.last_snapshot.steps.find(step => step.state === 'failed').completed, 1);
     assert.equal(stopped.body.last_snapshot.steps.filter(step => step.state === 'skipped').length, 4);
     assert.equal(
         stopped.body.last_snapshot.steps.find(step => step.state === 'skipped').summary,

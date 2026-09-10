@@ -24,9 +24,10 @@ poster or thumbnail files. Every supplied non-avatar media asset must appear in 
 and no such asset may be reused there more than twice.
 
 Its three-minute Sync simulation is calibrated to a representative production trace: quick
-Prepare, Bookmarks, and Likes passes; a detailed thread scan; paced Resurrection retries; skipped
-Articles when none need refresh; then Media and URL processing. All IDs, hosts, and archive counts
-shown by the simulation are synthetic.
+Prepare, Bookmarks, and Likes passes; a detailed thread scan; paced unavailable-tweet recovery;
+skipped Articles when none need refresh; then Media and link-preview processing. All IDs, hosts,
+and archive counts shown by the simulation are synthetic. The demo opens with a completed synthetic
+run so the final summary can be reviewed immediately; starting a new simulation replaces it.
 
 Build the static artifact with:
 

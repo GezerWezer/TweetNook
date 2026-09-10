@@ -2,6 +2,49 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Pipeline copy and Web drawer clarity (2026-09-09)
+
+- [x] Remove duplicated primary progress from active counters and simplify user-facing step copy.
+- [x] Represent open-ended timeline paging without a fabricated `0/1 current page` percentage.
+- [x] Give active and completed Web text enough room while preserving the running-step stack geometry.
+- [x] Use the actual command in the drawer heading and collapse the redundant empty Issues state.
+- [x] Mirror the revised states in the local demo and add focused pipeline/browser regressions.
+- [x] Build and visually verify a localhost demo; leave all changes uncommitted for review.
+
+## Paged pipeline drawer (2026-09-09)
+
+- [x] Reuse the setup flow's segmented progress language for pipeline stages.
+- [x] Present one full drawer page per stage with direct segment and previous/next navigation.
+- [x] Add a final run-summary page with Analytics-style outcome cards and issues.
+- [x] Present structured last-run outcomes in compact Analytics-style metric cards.
+- [x] Expand the run summary with stable, data-driven cards for checked tweets, fetched pages,
+  media size/download state, known threads, resurrection outcomes, and updated previews.
+- [x] Surface the remaining failure, retry, queue, and request metrics; keep cards one fixed height
+  and let content exceeding the narrow-card budget span both columns.
+- [x] Simplify the schedule footer to a title line followed by the day and emphasized run time.
+- [x] Remove the run-summary eyebrow and promote the summary title into its top-left position.
+- [x] Backfill one-column summary cards around wide capsules so the grid has no empty slots.
+- [x] Replace font-glyph page arrows with centered SVG chevrons.
+- [x] Make every stage segment show its own progress and fill canceled stages solid red.
+- [x] Redesign stage and summary pages around a state-aware hero, dedicated progress card, and
+  compact detail grid without restoring redundant status copy.
+- [x] Restyle all pipeline cards to match the attached X Analytics reference: flat surfaces,
+  neutral borders, strong label/value hierarchy, and restrained state markers.
+- [x] Remove the redundant stage-position text from each card and retain it in page navigation.
+- [x] Move the stage title into the resulting top-left space and pin status at the top right.
+- [x] Replace the collapsed running bar's single progress track with all pipeline segments and
+  enlarge the active segment to three times the width of its peers.
+- [x] Keep the expanded segmented strip hidden in collapsed mode by separating its sizing binding
+  from Alpine's visibility style.
+- [x] Add breathing room between the expanded drawer header and its clickable stage segments.
+- [x] Thicken hovered and keyboard-focused stage segments vertically around their fixed centerline.
+- [x] Reserve counters, ETA, and elapsed-card space so live sync text updates do not resize the
+  stage-page card stack, using meaningful default copy instead of invisible placeholders.
+- [x] Reuse the setup flow's directional slide/fade transition between stage and summary pages,
+  with a pipeline-specific 500 ms duration.
+- [x] Update browser regressions and visually verify the revised localhost demo.
+- [x] Leave all redesign changes uncommitted for review.
+
 ## Video duration overlay repair (2026-09-09)
 
 - [x] Refresh saved video duration badges from the media element's loaded runtime.

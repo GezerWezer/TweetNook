@@ -3163,9 +3163,10 @@
                          (activity || activityStartPending || activityDrawerOpen) ? 'bottom-4 right-4 sm:right-[88px]' : 'bottom-[160px] right-4'
                      ]"
                      aria-label="Command activity">
-                <div class="activity-drawer-content">
+                <div class="activity-drawer-content"
+                     :style="`--activity-selected-grow: ${activitySelectedSegmentGrow()}`">
                     <button type="button" class="activity-drawer-tab"
-                            @click="activityDrawerOpen = !activityDrawerOpen"
+                            @click="toggleActivityDrawer()"
                             :aria-expanded="activityDrawerOpen">
                         <!-- Icon: spinner when running, clock when idle -->
                         <span class="activity-drawer-tab-icon">
@@ -3182,7 +3183,7 @@
 
                     <!-- Info (visible in bar + panel states) -->
                     <span class="activity-drawer-tab-info">
-                        <span class="truncate font-bold text-[14px]">Archive Sync</span>
+                        <span class="truncate font-bold text-[14px]" x-text="activityCommandLabel()">Archive Sync</span>
                         <div class="flex items-center gap-2 flex-shrink-0 ml-2">
                             <span x-show="activity" class="text-[var(--text-secondary)] text-[12px]"
                                   x-text="activity ? formatActivityDuration((Date.now() / 1000) - activity.started_at) : ''"></span>
@@ -3194,10 +3195,10 @@
                     </span>
                 </button>
 
-                <!-- Compact active step progress bar visible in double-height collapsed running view -->
+                <!-- Compact segmented pipeline visible in double-height collapsed running view -->
                 <div x-show="(activity || activityStartPending) && !activityDrawerOpen"
                      class="activity-drawer-bar-step cursor-pointer px-3.5 pb-3.5"
-                     @click="activityDrawerOpen = true">
+                     @click="openActivityDrawer()">
                     <template x-if="activityStartPending && !activity">
                         <div class="text-[14px] text-[var(--text-secondary)] flex items-center gap-2 pt-1">
                             <span class="activity-spinner activity-spinner-small">
@@ -3214,159 +3215,203 @@
                         <div>
                             <template x-for="step in activity.steps.filter(s => s.state === 'active')" :key="step.key">
                                 <div>
-                                    <div class="flex items-center justify-between text-[14px] font-bold leading-tight">
-                                        <span class="truncate" x-text="step.title"></span>
-                                        <span class="text-[13px] text-[var(--text-secondary)] font-normal shrink-0 ml-2 truncate" x-text="step.activity"></span>
+                                    <div class="activity-drawer-bar-heading">
+                                        <span class="activity-drawer-bar-title" x-text="step.title"></span>
+                                        <span class="activity-drawer-bar-activity" x-text="step.activity" :title="step.activity"></span>
                                     </div>
-                                    <div class="activity-progress-track mt-2">
-                                        <div class="activity-progress-fill" :style="`width: ${activityPercent(step)}%`"></div>
+                                    <div class="activity-drawer-bar-segments" aria-hidden="true">
+                                        <template x-for="page in activityPages()" :key="page.key">
+                                            <span class="activity-drawer-bar-segment"
+                                                  :class="[`is-${activitySegmentState(page)}`, page.key === step.key ? 'is-current' : '']">
+                                                <span class="activity-stage-progress-track">
+                                                    <span class="activity-stage-progress-fill"
+                                                          :style="`width: ${activitySegmentPercent(page)}%`"></span>
+                                                </span>
+                                            </span>
+                                        </template>
                                     </div>
-                                    <div class="activity-progress-meta mt-1.5 text-[12.5px]">
+                                    <div x-show="step.show_progress !== false" class="activity-progress-meta mt-1.5 text-[12.5px]">
                                         <span class="font-medium" x-text="`${step.completed.toLocaleString()}/${step.total.toLocaleString()} ${step.unit} · ${activityPercent(step).toFixed(1)}%`"></span>
                                         <span x-show="step.eta_seconds !== null" class="text-[var(--text-secondary)]" x-text="`ETA ~${formatActivityDuration(step.eta_seconds)}`"></span>
                                     </div>
+                                    <div x-show="step.show_progress === false && step.counters"
+                                         class="activity-drawer-bar-meta" x-text="step.counters"></div>
                                 </div>
                             </template>
                         </div>
                     </template>
                 </div>
 
+                <nav x-show="activityDrawerOpen && displayActivity"
+                     class="activity-stage-progress"
+                     aria-label="Pipeline stages">
+                    <template x-for="page in activityPages()" :key="page.key">
+                        <button type="button"
+                                class="activity-stage-progress-segment"
+                                :class="[`is-${activitySegmentState(page)}`, activitySelectedPageKey() === page.key ? 'is-selected' : '']"
+                                :aria-label="page.is_summary ? 'Run summary' : page.title"
+                                :aria-current="activitySelectedPageKey() === page.key ? 'step' : null"
+                                :title="page.is_summary ? 'Run summary' : page.title"
+                                @click.stop="selectActivityPage(page.key)">
+                            <span class="activity-stage-progress-track">
+                                <span class="activity-stage-progress-fill"
+                                      :style="`width: ${activitySegmentPercent(page)}%`"></span>
+                            </span>
+                        </button>
+                    </template>
+                </nav>
+
                 <div class="activity-drawer-body">
-                    <!-- Scheduled Sync / Task Control. This layer stays above the step scroll. -->
-                    <div class="activity-drawer-controls"
-                         :class="activityCompletedSteps().length && activityHasActiveStep() ? 'activity-drawer-controls-has-stack' : ''">
-                        <div x-show="!(activity || activityStartPending)" class="activity-sync-schedule">
-                            <div class="activity-sync-schedule-primary">
-                                <span>Next scheduled sync</span>
-                                <span class="activity-sync-schedule-time" x-text="activitySchedule.relative">in relative time</span>
-                            </div>
-                            <div class="activity-sync-schedule-date" x-text="activitySchedule.date">[date]</div>
-                            <div x-show="lastActivity && lastActivity.completed_at"
-                                 class="activity-sync-schedule-last"
-                                 x-text="lastActivity?.completed_at ? `Last sync completed ${formatRelativeDate(new Date(lastActivity.completed_at * 1000))}` : ''"></div>
-                        </div>
-
-                        <template x-if="!(activity || activityStartPending)">
-                            <button type="button" class="activity-sync-action is-primary"
-                                    :title="isDemo ? 'Runs a three-minute in-browser sync simulation' : 'Requires internet access from the server'"
-                                    @click="startActivity('sync')">
-                                Run Sync Now
-                            </button>
-                        </template>
-
-                        <template x-if="activity || activityStartPending">
-                            <button type="button" class="activity-sync-action is-danger"
-                                    @click="stopActivity()">
-                                Stop Task
-                            </button>
-                        </template>
-                    </div>
-                    <div class="activity-drawer-controls-divider" aria-hidden="true"></div>
-
                     <div x-show="activityError" class="activity-error" x-text="activityError"></div>
 
                     <template x-if="displayActivity">
-                        <div class="activity-step-viewport"
-                             :class="activityCompletedSteps().length && activityHasActiveStep() ? 'activity-step-viewport-has-stack' : ''"
-                             @wheel.stop="reverseActivityScroll($event)"
-                             @scroll="setActivityScrollPosition($event)">
-                            <div class="activity-step-track"
-                                 :class="activityCompletedSteps().length && activityHasActiveStep() ? 'activity-step-track-has-stack' : ''"
-                                 :style="`--activity-stack-height: ${activityCompletedSteps().length && activityHasActiveStep() ? activityCompletedStackHeight() : '0px'}`">
-                                <div class="activity-step-scene">
-                                <!-- Completed steps are anchored above the active slot. Newest is closest to it. -->
-                                <template x-if="activityHasActiveStep()">
-                                    <div class="activity-completed-stack" aria-label="Completed sync steps">
-                                        <template x-for="step in activityCompletedSteps()" :key="step.key">
-                                            <div class="activity-completed-card">
-                                                <div class="activity-completed-card-node"
-                                                     :class="step.state === 'skipped' ? 'is-skipped' : (step.state === 'failed' ? 'is-failed' : '')">
-                                                    <span x-text="step.state === 'complete' ? '✓' : (step.state === 'failed' ? '✕' : '–')"></span>
+                        <div class="activity-page-layout">
+                            <div class="activity-page-scroll">
+                                <template x-for="page in activityPages()" :key="page.key">
+                                    <div x-show="activitySelectedPageKey() === page.key"
+                                         class="setup-flow-panel"
+                                         :class="[page.is_summary ? 'activity-summary-page' : 'activity-stage-page', activityPageDirection === 'back' ? 'slide-back' : 'slide-forward']"
+                                        x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
+                                        <template x-if="!page.is_summary">
+                                            <div>
+                                                <section class="activity-page-hero activity-stage-hero"
+                                                         :class="`is-${activitySegmentState(page)}`">
+                                                    <span class="activity-page-state-badge"
+                                                          :class="`is-${activitySegmentState(page)}`"
+                                                          x-text="activityPageStateLabel(page)"></span>
+                                                    <h2 class="activity-page-title" x-text="page.title"></h2>
+                                                    <p class="activity-page-status"
+                                                       x-text="page.state === 'active' ? (page.activity || 'In progress') : (page.state === 'pending' ? 'Waiting to start' : (page.summary || (page.state === 'failed' ? 'Failed' : 'Complete')))"></p>
+                                                    <p class="activity-page-result-strip"
+                                                       :title="activityPageUpdateText(page)"
+                                                       x-text="activityPageUpdateText(page)"></p>
+                                                </section>
+
+                                                <section x-show="page.show_progress !== false && page.state !== 'skipped'"
+                                                         class="activity-page-progress-card">
+                                                    <div class="activity-page-progress-heading">
+                                                        <div>
+                                                            <span class="activity-page-card-label">Progress</span>
+                                                            <strong x-text="`${Number(page.completed || 0).toLocaleString()} of ${Number(page.total || 0).toLocaleString()} ${page.unit || 'items'}`"></strong>
+                                                        </div>
+                                                        <span class="activity-page-progress-value"
+                                                              x-text="`${Math.round(activityPercent(page))}%`"></span>
+                                                    </div>
+                                                    <div class="activity-progress-track">
+                                                        <div class="activity-progress-fill"
+                                                             :style="`width: ${activityPercent(page)}%`"></div>
+                                                    </div>
+                                                    <div class="activity-page-progress-eta"
+                                                         x-text="activityPageTimingText(page)"></div>
+                                                </section>
+
+                                                <div class="activity-page-detail-grid">
+                                                    <section x-show="page.detail" class="activity-page-detail-card">
+                                                        <span class="activity-page-card-label">Scope</span>
+                                                        <strong x-text="page.detail"></strong>
+                                                    </section>
+                                                    <section class="activity-page-detail-card is-compact">
+                                                        <span class="activity-page-card-label">Elapsed</span>
+                                                        <strong x-text="formatActivityDuration(page.elapsed_seconds)"></strong>
+                                                    </section>
                                                 </div>
-                                                <div class="activity-completed-card-copy">
-                                                    <div class="activity-completed-card-title" x-text="step.title"></div>
-                                                    <div x-show="step.summary" class="activity-completed-card-summary" x-text="step.summary"></div>
+                                            </div>
+                                        </template>
+
+                                        <template x-if="page.is_summary">
+                                            <div>
+                                                <section class="activity-page-hero activity-summary-hero"
+                                                         :class="`is-${activityRunState()}`">
+                                                    <span class="activity-page-state-badge"
+                                                          :class="`is-${activityRunState()}`"
+                                                          x-text="activityRunStateLabel()"></span>
+                                                    <h2 class="activity-page-title" x-text="activityRunStatusTitle()"></h2>
+                                                    <p class="activity-page-status" x-text="activityRunCounts()"></p>
+                                                    <p x-show="displayActivity?.summary && activitySummaryMetrics().length <= 2" class="activity-summary-note"
+                                                       x-text="displayActivity?.summary"></p>
+                                                    <p x-show="displayActivity?.completed_at" class="activity-summary-finished">
+                                                        <span>Finished</span>
+                                                        <strong x-text="formatRelativeDate(new Date(displayActivity?.completed_at * 1000))"></strong>
+                                                    </p>
+                                                </section>
+                                                <h3 class="activity-summary-section-title">Run totals</h3>
+                                                <div class="activity-summary-metrics">
+                                                    <template x-for="metric in activitySummaryMetrics()" :key="metric.key">
+                                                        <div class="stats-card activity-summary-metric"
+                                                             :class="{ 'is-wide': metric.wide }">
+                                                            <div class="stats-label" x-text="metric.label"></div>
+                                                            <div class="stats-value" x-text="metric.value"></div>
+                                                            <div x-show="metric.subtitle" class="stats-subtitle" x-text="metric.subtitle"></div>
+                                                        </div>
+                                                    </template>
                                                 </div>
+                                                <section class="activity-page-issues" aria-label="Sync issues">
+                                                    <div class="activity-issues-header">
+                                                        <span x-text="activityIssueCount() ? 'Issues' : 'No issues'">No issues</span>
+                                                        <span x-show="activityIssueCount()" class="activity-issues-count" x-text="activityIssueCount()"></span>
+                                                    </div>
+                                                    <template x-for="issue in activityIssues()" :key="issue.level + issue.message">
+                                                        <div class="activity-issue-row"
+                                                             :class="issue.level === 'error' ? 'is-error' : ''">
+                                                            <span class="activity-issue-mark">!</span>
+                                                            <span x-text="issue.message + (issue.count > 1 ? ` (${issue.count} occurrences)` : '')"></span>
+                                                        </div>
+                                                    </template>
+                                                </section>
                                             </div>
                                         </template>
                                     </div>
                                 </template>
+                            </div>
 
-                                <!-- The active slot has a fixed layout offset; the stack never pushes it down. -->
-                                <div x-show="activityHasActiveStep()" class="activity-active-slot">
-                                    <template x-for="step in displayActivity.steps.filter(s => s.state === 'active')" :key="step.key">
-                                        <div class="activity-active-card">
-                                            <div class="activity-active-card-layout">
-                                                <div class="activity-active-card-status">
-                                                    <span class="activity-spinner activity-spinner-small">
-                                                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-opacity="0.15" stroke-width="3" />
-                                                            <path d="M22 12A10 10 0 0 0 12 2" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
-                                                        </svg>
-                                                    </span>
-                                                </div>
-                                                <div class="activity-active-card-copy">
-                                                    <div class="activity-active-card-header">
-                                                        <div class="activity-active-card-title" x-text="step.title"></div>
-                                                        <div class="activity-active-card-activity" x-text="step.activity"></div>
-                                                    </div>
-                                                    <div x-show="step.counters" class="activity-active-card-counters" x-text="step.counters"></div>
-                                                    <div class="activity-progress-track">
-                                                        <div class="activity-progress-fill" :style="`width: ${activityPercent(step)}%`"></div>
-                                                    </div>
-                                                    <div class="activity-progress-meta">
-                                                        <span x-text="`${step.completed.toLocaleString()}/${step.total.toLocaleString()} ${step.unit} · ${activityPercent(step).toFixed(1)}%`"></span>
-                                                        <span x-show="step.eta_seconds !== null" x-text="`ETA ~${formatActivityDuration(step.eta_seconds)}`"></span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </template>
-                                </div>
-
-                                <!-- A completed command has no active slot, so show its cards in normal terminal flow. -->
-                                <div x-show="!activityHasActiveStep()" class="activity-terminal-list">
-                                    <template x-for="step in activityCompletedSteps()" :key="step.key">
-                                        <div class="activity-completed-card">
-                                            <div class="activity-completed-card-node"
-                                                 :class="step.state === 'skipped' ? 'is-skipped' : (step.state === 'failed' ? 'is-failed' : '')">
-                                                <span x-text="step.state === 'complete' ? '✓' : (step.state === 'failed' ? '✕' : '–')"></span>
-                                            </div>
-                                            <div class="activity-completed-card-copy">
-                                                <div class="activity-completed-card-title" x-text="step.title"></div>
-                                                <div x-show="step.summary" class="activity-completed-card-summary" x-text="step.summary"></div>
-                                            </div>
-                                        </div>
-                                    </template>
-                                </div>
-
-                                </div>
+                            <div class="activity-page-nav" aria-label="Pipeline page navigation">
+                                <button type="button" aria-label="Previous pipeline page"
+                                        :disabled="activitySelectedPageIndex() === 0"
+                                        @click="moveActivityPage(-1)">
+                                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                                        <path d="m12.5 15-5-5 5-5"></path>
+                                    </svg>
+                                </button>
+                                <span x-text="activitySelectedPage()?.is_summary ? 'Run summary' : `Stage ${activitySelectedPageIndex() + 1} of ${activitySteps().length}`"></span>
+                                <button type="button" aria-label="Next pipeline page"
+                                        :disabled="activitySelectedPageIndex() === activityPages().length - 1"
+                                        @click="moveActivityPage(1)">
+                                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                                        <path d="m7.5 5 5 5-5 5"></path>
+                                    </svg>
+                                </button>
                             </div>
                         </div>
                     </template>
 
+                    <div x-show="activityStartPending && !activity" class="activity-empty">
+                        Initializing operation…
+                    </div>
                     <div x-show="!displayActivity && !activityStartPending && !activityError" class="activity-empty">
                         No command is running.
                     </div>
 
-                    <section class="activity-issues-panel" aria-label="Sync issues">
-                        <div class="activity-issues-header">
-                            <span>Issues</span>
-                            <span class="activity-issues-count" x-text="activityIssueCount()"></span>
-                        </div>
-                        <div class="activity-issues-scroll">
-                            <div x-show="activityIssues().length === 0" class="activity-issues-empty">
-                                No issues reported
+                    <div class="activity-drawer-controls">
+                        <div x-show="!(activity || activityStartPending)" class="activity-sync-schedule">
+                            <div class="activity-sync-schedule-primary">
+                                <span>Next scheduled sync</span>
                             </div>
-                            <template x-for="issue in activityIssues()" :key="issue.level + issue.message">
-                                <div class="activity-issue-row"
-                                     :class="issue.level === 'error' ? 'is-error' : ''">
-                                    <span class="activity-issue-mark">!</span>
-                                    <span x-text="issue.message + (issue.count > 1 ? ` (${issue.count} occurrences)` : '')"></span>
-                                </div>
-                            </template>
+                            <div class="activity-sync-schedule-date">
+                                <span x-text="activityScheduleDayText()">Tomorrow</span>
+                                <strong x-show="activityScheduleTimeText()"
+                                        x-text="activityScheduleTimeText()">around 3:00 AM</strong>
+                            </div>
                         </div>
-                    </section>
+                        <template x-if="!(activity || activityStartPending)">
+                            <button type="button" class="activity-sync-action is-primary"
+                                    :title="isDemo ? 'Runs a three-minute in-browser sync simulation' : 'Requires internet access from the server'"
+                                    @click="startActivity('sync')">Run Sync Now</button>
+                        </template>
+                        <template x-if="activity || activityStartPending">
+                            <button type="button" class="activity-sync-action is-danger"
+                                    @click="stopActivity()">Stop Task</button>
+                        </template>
+                    </div>
                 </div>
         </div>
     </section>
