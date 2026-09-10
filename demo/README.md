@@ -17,6 +17,11 @@ The fixture stores 78 records for complete conversation and quote context, but t
 feed exposes only the 26 records that belong to at least one user-facing collection: authored,
 liked, or bookmarked. Context-only saved replies remain accessible inside their conversations.
 
+The Analytics modal uses a demo-sized projection of a captured production stats response. It keeps
+the production category labels, storage proportions, unavailable-reason mix, and tagging coverage,
+while replacing account identifiers and large counts with values appropriate for the synthetic
+archive. Feed, tag editing, and sync simulation state remain session-local.
+
 The builder copies the complete `demo/demo media/` tree to the public artifact, so additional demo
 assets placed there are included automatically. Every avatar and post-media URL referenced by the
 fixture is validated against that source tree before the build succeeds; the fixture may not invent

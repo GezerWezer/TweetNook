@@ -256,16 +256,27 @@ async function main() {
     );
     const initialStats = await request(freshStore, 'https://example.test/api/stats/snapshot');
     assert.equal(initialStats.body.summary.unique_posts, 78);
-    assert.equal(initialStats.body.tags.tagged_tweets, 78);
-    assert.equal(initialStats.body.tags.coverage_pct, 100);
+    assert.equal(initialStats.body.summary.missing_archive_tweets, 5);
+    assert.equal(initialStats.body.health.enrichment.unavailable.reasons.filter(reason => reason.count > 0).length, 3);
+    assert.deepEqual(
+        initialStats.body.health.enrichment.unavailable.reasons
+            .filter(reason => reason.count > 0)
+            .map(reason => [reason.reason, reason.count]),
+        [['protected_account', 1], ['suspended_account', 1], ['unavailable_unknown', 3]],
+    );
+    assert.equal(initialStats.body.storage.formatted_total, '400 KiB');
+    assert.equal(initialStats.body.storage.simplified_segments[0].percent, 86.9);
+    assert.equal(initialStats.body.tags.tagged_tweets, 56);
+    assert.equal(initialStats.body.tags.coverage_pct, 72.7);
+    assert.deepEqual(initialStats.body.tags.top_tags[0], {tag: 'TweetNook demo', count: 74});
     assert.equal((await request(freshStore, `https://example.test/api/tags/${ids.ownerRoot}`, {method: 'DELETE'})).response.status, 200);
     assert.equal(freshStore.hydrate(ids.ownerRoot).media_tags, null);
 
     const stats = await request(freshStore, 'https://example.test/api/stats/snapshot');
     assert.equal(stats.body.summary.unique_posts, 78);
     assert.equal(stats.body.health.enrichment.incomplete, 0);
-    assert.equal(stats.body.tags.tagged_tweets, 77);
-    assert.equal(stats.body.tags.coverage_pct, 99);
+    assert.equal(stats.body.tags.tagged_tweets, 55);
+    assert.equal(stats.body.tags.coverage_pct, 72.7);
 
     const tagging = await request(freshStore, 'https://example.test/api/automated-tagging/test', {
         method: 'POST',

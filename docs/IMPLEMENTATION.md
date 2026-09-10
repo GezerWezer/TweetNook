@@ -2,6 +2,13 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Demo analytics projection (2026-09-10)
+
+- [x] Adapt the captured production stats response to demo-sized archive, health, storage, and
+  tagging values without exposing the source account identifier or production-scale counts.
+- [x] Preserve the synthetic feed, session-local tag mutations, and sync simulation behavior.
+- [x] Update demo API regressions and visually verify the built Pages demo.
+
 ## Pipeline copy and Web drawer clarity (2026-09-09)
 
 - [x] Remove duplicated primary progress from active counters and simplify user-facing step copy.
