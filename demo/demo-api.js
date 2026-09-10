@@ -10,6 +10,61 @@
         'card_name', 'tag', 'hashtag',
     ]);
 
+    // Captured from a production stats response and intentionally projected onto the
+    // small synthetic archive below. Keep the response's category mix and labels, but
+    // do not expose the real account ID or production-scale counts in the public demo.
+    const STATS_REFERENCE = {
+        archiveTweets: 636770,
+        collections: {
+            bookmark: {label: 'Bookmarks', backfill_status: 'none saved'},
+            like: {label: 'Likes', backfill_status: 'none saved'},
+            tweet: {label: 'Authored Tweets', backfill_status: 'none saved'},
+        },
+        enrichment: {
+            threadsExpanded: 33402,
+            resurrected: 42,
+            unavailable: {
+                total: 2823,
+                reasons: [
+                    {reason: 'protected_account', label: 'Protected account', count: 293, due: 114, delayed: 179, permanent: 0},
+                    {reason: 'suspended_account', label: 'Suspended account', count: 839, due: 0, delayed: 839, permanent: 0},
+                    {reason: 'account_missing', label: 'Missing account', count: 29, due: 0, delayed: 29, permanent: 0},
+                    {reason: 'withheld', label: 'Withheld', count: 3, due: 0, delayed: 3, permanent: 0},
+                    {reason: 'not_found', label: 'Not found', count: 0, due: 0, delayed: 0, permanent: 0},
+                    {reason: 'unavailable_unknown', label: 'Unknown availability', count: 1659, due: 261, delayed: 1398, permanent: 0},
+                    {reason: 'deleted_by_author', label: 'Deleted by author', count: 0, due: 0, delayed: 0, permanent: 0},
+                    {reason: 'archive_deleted', label: 'Deleted in archive', count: 0, due: 0, delayed: 0, permanent: 0},
+                ],
+            },
+        },
+        storage: {
+            totalBytes: 79447340695,
+            detailed: [
+                {id: 'context_media', group: 'media', name: 'Context Media (Thread Extensions)', bytes: 48900386028, percent: 61.55, description: 'Downloaded media from surrounding thread context.'},
+                {id: 'core_media', group: 'media', name: 'Core Media (Bookmarked & Quoted)', bytes: 18449101264, percent: 23.22, description: 'Downloaded media attached to saved and quoted tweets.'},
+                {id: 'search_index', group: 'database', name: 'Search Index & DB Overhead', bytes: 7617931201, percent: 9.59, description: 'SQLite indexes, FTS data, structural overhead, and active sidecars.'},
+                {id: 'threads', group: 'database', name: 'Thread Extensions & Context', bytes: 2709334002, percent: 3.41, description: 'Estimated payload size for fetched conversation context.'},
+                {id: 'supplementary_media', group: 'media', name: 'Supplementary Media Files', bytes: 1535370967, percent: 1.93, description: 'Video posters, thumbnails, and other derived supporting files.'},
+                {id: 'avatars', group: 'media', name: 'Avatar Image Cache', bytes: 152418180, percent: 0.19, description: 'Locally cached author profile images.'},
+                {id: 'core_db', group: 'database', name: 'Core Tweet Database', bytes: 80261422, percent: 0.1, description: 'Estimated payload size for saved tweet records and raw data.'},
+                {id: 'tags', group: 'database', name: 'Tagging & Topic Metadata', bytes: 2207853, percent: 0.0, description: 'Estimated payload size for search tags and topic metadata.'},
+                {id: 'user_profiles', group: 'database', name: 'User Profiles & Handles', bytes: 253911, percent: 0.0, description: 'Estimated payload size for stored author names and handles.'},
+                {id: 'articles', group: 'database', name: 'Article Content & Cards', bytes: 75867, percent: 0.0, description: 'Estimated payload size for article bodies, previews, and cards.'},
+            ],
+            simplified: [
+                {id: 'media', name: 'Media Files & Avatars', bytes: 69037276439, percent: 86.9, description: 'Downloaded tweet media, thread attachments, and cached avatars.'},
+                {id: 'database', name: 'Database & Indexes', bytes: 10410064256, percent: 13.1, description: 'Primary SQLite archive, full-text indexes, and active sidecars.'},
+            ],
+        },
+        tags: {
+            eligible: 11790,
+            coverage: 72.7,
+            unique: 7105,
+            totalInstances: 20091,
+            average: 2.3,
+        },
+    };
+
     function clone(value) {
         return JSON.parse(JSON.stringify(value));
     }
@@ -235,6 +290,7 @@
         const state = clone(fixture);
         const authors = new Map(state.authors.map(author => [String(author.id), author]));
         const sourceTweets = new Map(state.tweets.map(tweet => [String(tweet.tweet_id), tweet]));
+        const initialTaggedTweetCount = state.tweets.filter(tweet => tweet.tags?.length).length;
         const nowSeconds = typeof options.now === 'function'
             ? options.now
             : () => Date.now() / 1000;
@@ -711,28 +767,121 @@
             const tweets = currentTweets();
             const uniqueAuthors = new Set(tweets.map(tweet => tweet.author.id));
             const tags = tagCounts();
-            const collectionRows = [
-                ['Bookmarks', 'bookmark'],
-                ['Likes', 'like'],
-                ['Tweets', 'tweet'],
-            ].map(([label, collection]) => {
+            const archiveTweetCount = tweets.length;
+            const mediaCount = tweets.reduce((total, tweet) => total + tweet.media.length, 0);
+            const currentTaggedTweetCount = state.tweets.filter(tweet => tweet.tags?.length).length;
+            const collectionRows = Object.entries(STATS_REFERENCE.collections).map(([collection, metadata]) => {
                 const matches = tweets.filter(tweet => tweet.collections.includes(collection));
                 return {
-                    collection: label,
+                    collection: metadata.label,
                     count: matches.length,
                     oldest: matches.length ? new Date(Math.min(...matches.map(tweet => Date.parse(tweet.created_at)))).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : '-',
                     newest: matches.length ? new Date(Math.max(...matches.map(tweet => Date.parse(tweet.created_at)))).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : '-',
                     last_synced: 'Feb 15, 2026 12:10 pm',
-                    backfill_status: 'Complete',
+                    backfill_status: metadata.backfill_status,
                 };
             });
-            const mediaCount = tweets.reduce((total, tweet) => total + tweet.media.length, 0);
-            const taggedTweets = tweets.filter(tweet => tweet.media_tags?.tags?.length).length;
-            const segments = [
-                {id: 'database', name: 'Archive database', bytes: 245760, count: tweets.length, unit: 'tweets', formatted_count: `${tweets.length} synthetic tweets`, formatted_size: '240 KiB', percent: 60, description: 'Synthetic archive records used for this browser session.'},
-                {id: 'media', name: 'Demo media', bytes: 122880, count: mediaCount, unit: 'items', formatted_count: `${mediaCount} local media references`, formatted_size: '120 KiB', percent: 30, description: 'References to the public image, GIF, and video files included with this demo.'},
-                {id: 'search', name: 'Search index', bytes: 40960, count: tweets.length, unit: 'tweets', formatted_count: `${tweets.length} searchable tweets`, formatted_size: '40 KiB', percent: 10, description: 'In-memory search data derived from the synthetic fixture.'},
-            ];
+            const unavailableTotal = Math.min(archiveTweetCount, 5);
+            const sourceUnavailableReasons = STATS_REFERENCE.enrichment.unavailable.reasons;
+            const sourceUnavailableTotal = STATS_REFERENCE.enrichment.unavailable.total;
+            const scaledReasonCounts = new Map(sourceUnavailableReasons.map(reason => [
+                reason.reason,
+                Math.floor(unavailableTotal * reason.count / sourceUnavailableTotal),
+            ]));
+            let unallocatedReasons = unavailableTotal - [...scaledReasonCounts.values()].reduce((total, count) => total + count, 0);
+            const largestReasonRemainders = sourceUnavailableReasons
+                .filter(reason => reason.count > 0)
+                .map(reason => ({
+                    reason: reason.reason,
+                    remainder: unavailableTotal * reason.count / sourceUnavailableTotal
+                        - Math.floor(unavailableTotal * reason.count / sourceUnavailableTotal),
+                }))
+                .sort((left, right) => right.remainder - left.remainder);
+            for (const item of largestReasonRemainders) {
+                if (unallocatedReasons <= 0) break;
+                scaledReasonCounts.set(item.reason, scaledReasonCounts.get(item.reason) + 1);
+                unallocatedReasons -= 1;
+            }
+            const unavailableReasons = STATS_REFERENCE.enrichment.unavailable.reasons.map(reason => {
+                const count = scaledReasonCounts.get(reason.reason) || 0;
+                const permanent = count && reason.permanent > 0 ? 1 : 0;
+                const retryable = count - permanent;
+                const due = retryable > 0 && reason.due > 0
+                    ? Math.min(retryable, Math.max(1, Math.round(retryable * reason.due / reason.count)))
+                    : 0;
+                return {
+                    ...reason,
+                    count,
+                    percent_of_missing: unavailableTotal ? Number((count / unavailableTotal * 100).toFixed(1)) : 0,
+                    percent_of_archive: archiveTweetCount ? Number((count / archiveTweetCount * 100).toFixed(1)) : 0,
+                    retryable,
+                    due,
+                    delayed: retryable - due,
+                    permanent,
+                };
+            });
+            const resurrected = archiveTweetCount > unavailableTotal ? 1 : 0;
+            const enriched = Math.max(0, archiveTweetCount - unavailableTotal - resurrected);
+            const storageTotalBytes = 400 * 1024;
+            const formatDemoStorageSize = bytes => {
+                if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+                if (bytes >= 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KiB`;
+                return `${bytes} B`;
+            };
+            const scaleStorageSegments = (sourceSegments, counts, countLabels) => {
+                const sourceTotalBytes = sourceSegments.reduce((total, segment) => total + segment.bytes, 0);
+                const bytes = sourceSegments.map(segment => Math.max(1, Math.round(
+                    storageTotalBytes * segment.bytes / sourceTotalBytes,
+                )));
+                bytes[0] += storageTotalBytes - bytes.reduce((total, value) => total + value, 0);
+                return sourceSegments.map((segment, index) => ({
+                    ...segment,
+                    bytes: bytes[index],
+                    count: counts[segment.id] ?? 0,
+                    unit: segment.group === 'media' ? 'files' : 'records',
+                    formatted_count: countLabels[segment.id] || `${(counts[segment.id] ?? 0).toLocaleString()} ${segment.group === 'media' ? 'files' : 'records'}`,
+                    formatted_size: formatDemoStorageSize(bytes[index]),
+                    percent: Number((bytes[index] / storageTotalBytes * 100).toFixed(2)),
+                }));
+            };
+            const storageCounts = {
+                context_media: 17,
+                core_media: 6,
+                search_index: 1,
+                threads: archiveTweetCount,
+                supplementary_media: 4,
+                avatars: uniqueAuthors.size,
+                core_db: archiveTweetCount,
+                tags: Math.max(1, tags.length),
+                user_profiles: uniqueAuthors.size,
+                articles: 1,
+            };
+            const storageCountLabels = {
+                context_media: '10 photos · 7 videos/gifs',
+                core_media: '3 photos · 3 videos/gifs',
+                search_index: '1 active index',
+                threads: `${archiveTweetCount.toLocaleString()} context objects`,
+                supplementary_media: '4 supporting files',
+                avatars: `${uniqueAuthors.size} cached avatars`,
+                core_db: `${archiveTweetCount.toLocaleString()} archive tweets`,
+                tags: `${Math.max(1, tags.length)} topic tags`,
+                user_profiles: `${uniqueAuthors.size} demo profiles`,
+                articles: '1 article card',
+            };
+            const storageSegments = scaleStorageSegments(
+                STATS_REFERENCE.storage.detailed,
+                storageCounts,
+                storageCountLabels,
+            );
+            const simplifiedStorageSegments = scaleStorageSegments(
+                STATS_REFERENCE.storage.simplified,
+                {media: mediaCount + uniqueAuthors.size, database: archiveTweetCount},
+                {media: `${mediaCount} media files · ${uniqueAuthors.size} avatars`, database: `${archiveTweetCount.toLocaleString()} archive records · SQLite index`},
+            );
+            const tagEligibleTweets = Math.max(1, archiveTweetCount - 1);
+            const baselineTaggedTweets = Math.round(tagEligibleTweets * STATS_REFERENCE.tags.coverage / 100);
+            const tagDelta = currentTaggedTweetCount - initialTaggedTweetCount;
+            const taggedTweets = Math.max(0, Math.min(tagEligibleTweets, baselineTaggedTweets + tagDelta));
             return {
                 generated_at: new Date().toISOString(),
                 age_seconds: 0,
@@ -740,38 +889,64 @@
                 refreshing: false,
                 refresh_failed: false,
                 summary: {
-                    owner_user_id: state.owner_user_id,
-                    unique_posts: tweets.length,
+                    owner_user_id: 'demo_you',
+                    unique_posts: archiveTweetCount,
                     media_rows: mediaCount,
                     articles: 1,
-                    urls: tweets.reduce((total, tweet) => total + tweet.urls.length, 0),
+                    urls: 5,
                     profiles: uniqueAuthors.size,
                     oldest_post: 'Jan 28, 2026',
                     newest_post: 'Feb 15, 2026',
                     latest_sync: 'Feb 15, 2026',
-                    missing_archive_tweets: 0,
-                    missing_archive_pct: 0,
-                    archive_tweets: tweets.length,
+                    missing_archive_tweets: unavailableTotal,
+                    missing_archive_pct: archiveTweetCount ? Number((unavailableTotal / archiveTweetCount * 100).toFixed(1)) : 0,
+                    archive_tweets: archiveTweetCount,
                 },
                 collections: collectionRows,
                 health: {
-                    threads_expanded: 1,
+                    threads_expanded: Math.max(1, Math.round(
+                        STATS_REFERENCE.enrichment.threadsExpanded / STATS_REFERENCE.archiveTweets * archiveTweetCount,
+                    )),
                     enrichment: {
-                        done: tweets.length,
+                        available: enriched + resurrected,
+                        done: enriched,
                         incomplete: 0,
                         pending: 0,
                         transient: 0,
-                        resurrected: 0,
-                        unavailable: {total: 0, percent_of_archive: 0, reasons: []},
+                        resurrected,
+                        terminal: unavailableTotal,
+                        unavailable: {
+                            total: unavailableTotal,
+                            percent_of_archive: archiveTweetCount ? Number((unavailableTotal / archiveTweetCount * 100).toFixed(1)) : 0,
+                            retryable: unavailableTotal,
+                            due: unavailableReasons.reduce((total, reason) => total + reason.due, 0),
+                            delayed: unavailableReasons.reduce((total, reason) => total + reason.delayed, 0),
+                            permanent: unavailableReasons.reduce((total, reason) => total + reason.permanent, 0),
+                            reasons: unavailableReasons,
+                        },
                     },
                 },
-                storage: {formatted_total: '400 KiB', segments, simplified_segments: segments},
+                storage: {
+                    total_bytes: storageTotalBytes,
+                    formatted_total: '400 KiB',
+                    database_component_bytes_estimated: true,
+                    segments: storageSegments,
+                    simplified_segments: simplifiedStorageSegments,
+                },
                 tags: {
-                    eligible_tweets: tweets.length,
+                    eligible_tweets: tagEligibleTweets,
                     tagged_tweets: taggedTweets,
-                    coverage_pct: Math.round(taggedTweets / tweets.length * 100),
-                    unique_tags: tags.length,
-                    top_tags: tags.slice(0, 10),
+                    untagged_eligible: tagEligibleTweets - taggedTweets,
+                    unique_tags: Math.max(
+                        tags.length,
+                        Math.round(STATS_REFERENCE.tags.unique / STATS_REFERENCE.tags.eligible * tagEligibleTweets),
+                    ),
+                    total_tag_instances: Math.round(
+                        STATS_REFERENCE.tags.totalInstances / STATS_REFERENCE.tags.eligible * tagEligibleTweets,
+                    ),
+                    coverage_pct: STATS_REFERENCE.tags.coverage,
+                    avg_tags_per_tweet: STATS_REFERENCE.tags.average,
+                    top_tags: tags.slice(0, 20),
                 },
             };
         }
