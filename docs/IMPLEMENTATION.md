@@ -2,6 +2,13 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## TweetNook 0.1.3 release (2026-09-10)
+
+- [x] Confirm `v0.1.2` is the latest remote tag and select the patch release `0.1.3`.
+- [x] Update package and lock metadata, release documentation, and the changelog.
+- [x] Run the full release validation and build fresh `0.1.3` artifacts.
+- [ ] Push `main` and `v0.1.3`, then verify GitHub and PyPI publication.
+
 ## Nested Web replies (2026-09-10)
 
 - [x] Return saved second-level replies in Web thread responses regardless of author.
