@@ -154,11 +154,13 @@ class PipelineStep:
     rate_unit: str | None = None
     show_rate: bool = True
     show_eta: bool = True
+    show_progress: bool = True
     state: StepState = "pending"
     completed: int = 0
     activity: str = ""
     counters: str = ""
     summary: str = ""
+    metrics: dict[str, int] = field(default_factory=dict)
     started_at: float | None = None
     finished_at: float | None = None
     last_log_at: float = 0.0
@@ -377,12 +379,14 @@ class PipelineReporter:
         rate_unit: str | None = None,
         show_rate: bool = True,
         show_eta: bool = True,
+        show_progress: bool = True,
     ) -> PipelineStep:
         if key in self._step_by_key:
             step = self._step_by_key[key]
             step.total = max(total, 1)
             step.unit = unit
             step.detail = detail or step.detail
+            step.show_progress = show_progress
             return step
         step = PipelineStep(
             key=key,
@@ -393,6 +397,7 @@ class PipelineReporter:
             rate_unit=rate_unit,
             show_rate=show_rate,
             show_eta=show_eta,
+            show_progress=show_progress,
         )
         self.steps.append(step)
         self._step_by_key[key] = step
@@ -429,7 +434,7 @@ class PipelineReporter:
         if step.started_at is None:
             step.started_at = time.monotonic()
         fields = [activity]
-        if step.total > 0:
+        if step.show_progress and step.total > 0:
             fields.append(f"total={step.total:,} {step.unit}")
         if step.detail:
             fields.append(step.detail)
@@ -469,8 +474,9 @@ class PipelineReporter:
         if detail is not None:
             step.detail = detail
         if self._should_log_progress(step, important=important):
-            progress = f"{step.completed:,}/{step.total:,} {step.unit}"
-            fields = [progress]
+            fields = (
+                [f"{step.completed:,}/{step.total:,} {step.unit}"] if step.show_progress else []
+            )
             if step.counters:
                 fields.append(step.counters)
             elif step.activity:
@@ -536,6 +542,7 @@ class PipelineReporter:
         summary: str,
         *,
         counters: str | None = None,
+        metrics: dict[str, int] | None = None,
     ) -> None:
         step = self._step_by_key[key]
         step.state = "complete"
@@ -543,6 +550,8 @@ class PipelineReporter:
         step.summary = summary
         if counters is not None:
             step.counters = counters
+        if metrics is not None:
+            step.metrics = {name: max(int(value), 0) for name, value in metrics.items()}
         step.finished_at = time.monotonic()
         fields = [summary, f"elapsed {_format_duration(step.elapsed)}"]
         if self.interactive:
@@ -724,10 +733,12 @@ class PipelineReporter:
                     "counters": step.counters,
                     "detail": step.detail,
                     "summary": step.summary,
+                    "metrics": step.metrics,
                     "elapsed_seconds": step.elapsed,
                     "rate": step.rate,
                     "rate_unit": step.rate_unit or f"{step.unit}/s",
                     "eta_seconds": step.eta,
+                    "show_progress": step.show_progress,
                 }
                 for step in self.steps
             ],
@@ -877,7 +888,10 @@ class PipelineReporter:
                 )
                 if step.counters:
                     steps.add_row("", "", Text(step.counters, style="dim"), "")
-                steps.add_row("", "", self._progress_renderable(step), "")
+                if step.show_progress:
+                    steps.add_row("", "", self._progress_renderable(step), "")
+                elif step.detail:
+                    steps.add_row("", "", Text(step.detail, style="dim"), "")
             else:
                 steps.add_row(Text("·", style="grey50"), Text(step.title, style="grey50"), "", "")
 
