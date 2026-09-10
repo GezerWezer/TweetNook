@@ -166,7 +166,7 @@ controls are currently hidden on narrow screens.
 
 Open **Stats** for collection counts, recent sync information, missing details,
 media, tags, and storage use. Choose **Refresh** after a job or tag edit to get
-updated figures. Automatic snapshots can be about five minutes old.
+updated figures. Automatic snapshots can be up to 12 hours old.
 
 Some storage categories are estimates; the total file sizes are measured. For
 an immediate terminal report, run `tweetnook stats`.

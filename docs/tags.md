@@ -49,7 +49,7 @@ This can be useful if automated tagging makes up a new tag instead of using an e
 > Global merges and deletions have no undo. 
 
 If the totals in Stats still show old values after an edit, choose **Refresh**.
-The statistics can be cached for about five minutes.
+Automatic statistics snapshots can be cached for up to 12 hours.
 
 ## Generate tags with Gemini
 
