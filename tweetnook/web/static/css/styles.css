@@ -340,7 +340,7 @@ body {
     transition: opacity 0.015s linear 0s;
 }
 
-/* Compact active step progress bar inside double-height collapsed running view */
+/* Compact segmented pipeline inside double-height collapsed running view */
 .activity-drawer-bar-step {
     flex-shrink: 0;
     background: transparent;
@@ -354,6 +354,120 @@ body {
     visibility: visible;
     pointer-events: auto;
     transition: opacity 0.12s ease-out 0.15s, visibility 0s linear 0s;
+}
+.activity-drawer-bar-heading {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+.activity-drawer-bar-title {
+    flex-shrink: 0;
+    color: var(--text-primary);
+}
+.activity-drawer-bar-activity {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 400;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.activity-drawer-bar-meta {
+    overflow: hidden;
+    margin-top: 9px;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.activity-drawer-bar-segments {
+    height: 3px;
+    display: flex;
+    gap: 4px;
+    margin-top: 10px;
+}
+.activity-drawer-bar-segment {
+    min-width: 0;
+    display: flex;
+    flex: 1 1 0;
+    transition: flex-grow 220ms ease-in-out;
+}
+.activity-drawer-bar-segment.is-current {
+    flex-grow: 3;
+}
+.activity-stage-progress {
+    display: flex;
+    align-items: start;
+    gap: 4px;
+    height: 26px;
+    padding: 6px 16px 0;
+    flex-shrink: 0;
+    background: var(--bg-primary);
+}
+.activity-stage-progress-segment {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 20px;
+    padding: 0;
+    display: flex;
+    align-items: flex-start;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    transition: flex-grow 220ms ease-in-out;
+}
+.activity-stage-progress-track {
+    width: 100%;
+    height: 3px;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: var(--border-color);
+    transform-origin: center;
+    transition: background-color 180ms ease, transform 160ms ease;
+}
+.activity-stage-progress-segment:is(:hover, :focus-visible) .activity-stage-progress-track {
+    transform: scaleY(1.65);
+}
+.activity-stage-progress-fill {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent-color);
+    transition: width 240ms ease, background-color 180ms ease;
+}
+.activity-stage-progress-segment.is-active .activity-stage-progress-track,
+.activity-drawer-bar-segment.is-active .activity-stage-progress-track {
+    background: color-mix(in srgb, var(--accent-color) 28%, var(--border-color));
+}
+.activity-stage-progress-segment.is-failed .activity-stage-progress-track,
+.activity-drawer-bar-segment.is-failed .activity-stage-progress-track {
+    background: color-mix(in srgb, var(--danger-color) 28%, var(--border-color));
+}
+.activity-stage-progress-segment.is-cancelled .activity-stage-progress-track,
+.activity-drawer-bar-segment.is-cancelled .activity-stage-progress-track {
+    background: var(--danger-color);
+}
+.activity-stage-progress-segment.is-skipped .activity-stage-progress-fill,
+.activity-drawer-bar-segment.is-skipped .activity-stage-progress-fill {
+    background: var(--text-secondary);
+}
+.activity-stage-progress-segment.is-failed .activity-stage-progress-fill,
+.activity-stage-progress-segment.is-cancelled .activity-stage-progress-fill,
+.activity-drawer-bar-segment.is-failed .activity-stage-progress-fill,
+.activity-drawer-bar-segment.is-cancelled .activity-stage-progress-fill {
+    background: var(--danger-color);
+}
+.activity-stage-progress-segment.is-selected {
+    flex-grow: var(--activity-selected-grow, 2);
 }
 
 /* --- Panel body (scrollable content) --- */
@@ -380,73 +494,26 @@ body {
 
 /* --- Actions section --- */
 .activity-drawer-controls {
-    --activity-active-offset: 64px;
-    --activity-fade-opacity: 1;
-    --activity-fade-shift: 0px;
     position: relative;
     z-index: 30;
     flex-shrink: 0;
-    padding: 16px;
+    padding: 13px 16px 16px;
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 14px;
+    gap: 10px;
+    border-top: 1px solid var(--border-color);
     background: var(--bg-primary);
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--bg-primary) 82%, transparent);
-}
-.activity-drawer-controls::after {
-    content: '';
-    display: block;
-    position: absolute;
-    z-index: 0;
-    left: 0;
-    right: 0;
-    top: 0;
-    height: calc(100% + var(--activity-active-offset));
-    pointer-events: none;
-    opacity: 0;
-    transform: translateY(var(--activity-fade-shift));
-    will-change: transform;
-    transition: none;
-    background: linear-gradient(
-        to bottom,
-        var(--bg-primary) 0%,
-        var(--bg-primary) calc(100% - 64px),
-        color-mix(in srgb, var(--bg-primary) 82%, transparent) calc(100% - 54px),
-        color-mix(in srgb, var(--bg-primary) 46%, transparent) calc(100% - 38px),
-        transparent calc(100% - 24px),
-        transparent 100%
-    );
-}
-.activity-drawer-controls-has-stack::after {
-    opacity: var(--activity-fade-opacity);
-}
-.activity-drawer-controls-divider {
-    position: relative;
-    z-index: 40;
-    flex: 0 0 1px;
-    width: 100%;
-    height: 1px;
-    pointer-events: none;
-    background: var(--border-color);
 }
 .activity-drawer-controls > * { position: relative; z-index: 1; }
 .activity-sync-schedule {
     padding: 0 2px;
 }
 .activity-sync-schedule-primary {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
     color: var(--text-primary);
     font-size: 15px;
     font-weight: 700;
     line-height: 1.25;
-}
-.activity-sync-schedule-time {
-    flex-shrink: 0;
-    color: var(--text-primary);
 }
 .activity-sync-schedule-date,
 .activity-sync-schedule-last {
@@ -455,7 +522,14 @@ body {
     line-height: 1.3;
 }
 .activity-sync-schedule-date {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
     margin-top: 2px;
+}
+.activity-sync-schedule-date strong {
+    color: var(--text-primary);
+    font-weight: 700;
 }
 .activity-sync-schedule-last {
     margin-top: 7px;
@@ -534,192 +608,309 @@ body {
     text-transform: uppercase;
 }
 
-/* --- Scroll-driven activity step stack --- */
-.activity-step-viewport {
-    --activity-active-offset: 0px;
-    --activity-completed-card-height: 64px;
-    --activity-stack-height: 0px;
-    --activity-scroll-shift: 0px;
-    position: relative;
-    z-index: 10;
+/* --- Segmented, full-page pipeline status --- */
+.activity-page-layout {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+.activity-page-scroll {
     flex: 1;
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
-    overscroll-behavior: none;
-    overflow-anchor: none;
-    scrollbar-gutter: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    padding: 18px 16px;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
 }
-.activity-step-viewport::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
-}
-.activity-step-viewport-has-stack {
-    --activity-active-offset: 64px;
-}
-.activity-step-track {
-    box-sizing: border-box;
-    position: relative;
-    display: flow-root;
+.activity-stage-page,
+.activity-summary-page {
     min-height: 100%;
-    padding: 0 0 20px;
-    overflow: clip;
 }
-.activity-step-track-has-stack {
-    height: calc(100% + var(--activity-stack-height) - var(--activity-active-offset));
+.activity-stage-page.setup-flow-enter,
+.activity-summary-page.setup-flow-enter {
+    transition-duration: 500ms;
 }
-.activity-step-scene {
-    position: relative;
+.activity-page-hero {
+    padding: 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    background: var(--bg-secondary);
 }
-.activity-step-track-has-stack .activity-step-scene {
-    position: absolute;
-    top: var(--activity-stack-height);
-    left: 0;
-    right: 0;
-    transform: translateY(calc(-1 * var(--activity-stack-height) + var(--activity-scroll-shift)));
-    will-change: transform;
-}
-.activity-completed-stack {
-    position: absolute;
-    z-index: 1;
-    top: calc(var(--activity-active-offset) - var(--activity-stack-height));
-    left: 0;
-    right: 0;
-    height: var(--activity-stack-height);
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    pointer-events: none;
-}
-.activity-completed-card {
-    box-sizing: border-box;
-    height: var(--activity-completed-card-height);
-    min-height: var(--activity-completed-card-height);
-    display: flex;
+.activity-page-state-badge {
+    display: inline-flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    overflow: hidden;
-    border-top: 1px solid var(--border-color);
+    gap: 6px;
+    flex-shrink: 0;
+    padding: 4px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    color: var(--text-primary);
     background: var(--bg-primary);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
 }
-.activity-completed-card:first-child { border-top: 0; }
-.activity-completed-card-copy {
-    min-width: 0;
-    flex: 1;
+.activity-page-state-badge::before {
+    content: '';
+    width: 3px;
+    height: 12px;
+    border-radius: 9999px;
+    background: var(--accent-color);
 }
-.activity-completed-card-title,
-.activity-completed-card-summary {
-    overflow: hidden;
-    text-overflow: ellipsis;
+.activity-page-state-badge:is(.is-pending, .is-skipped)::before {
+    background: var(--text-secondary);
+}
+.activity-page-state-badge:is(.is-failed, .is-cancelled)::before {
+    background: var(--danger-color);
+}
+.activity-stage-hero,
+.activity-summary-hero {
+    position: relative;
+}
+.activity-stage-hero > .activity-page-state-badge,
+.activity-summary-hero > .activity-page-state-badge {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+}
+.activity-stage-hero > .activity-page-title,
+.activity-summary-hero > .activity-page-title {
+    min-height: 26px;
+    padding-right: 92px;
+}
+.activity-summary-hero > .activity-page-title {
+    padding-right: 84px;
+    font-size: 22px;
     white-space: nowrap;
 }
-.activity-completed-card-title {
+.activity-page-title {
     color: var(--text-primary);
-    font-size: 15px;
-    font-weight: 700;
-    line-height: 1.25;
-}
-.activity-completed-card-summary {
-    margin-top: 3px;
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.25;
-}
-.activity-completed-card-node {
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    border: 0;
-    border-radius: 50%;
-    color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 14%, transparent);
-    font-size: 13px;
+    font-size: 25px;
     font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
 }
-.activity-completed-card-node.is-skipped {
+.activity-page-status {
+    margin-top: 7px;
     color: var(--text-secondary);
-    background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+    font-size: 14px;
+    line-height: 1.4;
 }
-.activity-completed-card-node.is-failed {
-    color: var(--danger-color);
-    background: color-mix(in srgb, var(--danger-color) 14%, transparent);
+.activity-stage-page .activity-page-status {
+    min-height: 2.8em;
 }
-.activity-active-slot {
-    position: relative;
-    z-index: 2;
-    margin-top: var(--activity-active-offset);
-    transition: margin-top 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.activity-active-card {
-    padding: 14px 16px 13px;
+.activity-page-result-strip {
+    height: calc(1.35em + 14px);
+    overflow: hidden;
+    margin-top: 15px;
+    padding-top: 13px;
     border-top: 1px solid var(--border-color);
-    background: color-mix(in srgb, var(--accent-color) 2%, var(--bg-primary));
+    color: var(--text-primary);
+    font-size: 12.5px;
+    font-weight: 700;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
-.activity-active-card-layout {
+.activity-page-progress-card {
+    margin-top: 12px;
+    padding: 17px 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    background: var(--bg-secondary);
+}
+.activity-page-progress-heading {
     display: flex;
-    align-items: flex-start;
-    gap: 12px;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
 }
-.activity-active-card-status {
-    width: 24px;
-    height: 24px;
+.activity-page-progress-heading > div {
+    min-width: 0;
+}
+.activity-page-card-label {
+    display: block;
+    margin-bottom: 7px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+.activity-page-progress-heading strong,
+.activity-page-detail-card strong {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    line-height: 1.35;
+}
+.activity-page-progress-value {
+    flex-shrink: 0;
+    color: var(--text-primary);
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 0.9;
+}
+.activity-page-progress-card .activity-progress-track {
+    height: 6px;
+    margin-top: 14px;
+}
+.activity-page-progress-eta {
+    min-height: 1.35em;
+    margin-top: 9px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+}
+.activity-page-detail-grid {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 104px;
+    gap: 10px;
+}
+.activity-page-detail-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    background: var(--bg-secondary);
+}
+.activity-page-detail-card:only-child {
+    grid-column: 1 / -1;
+}
+.activity-page-detail-card strong {
+    overflow-wrap: anywhere;
+}
+.activity-page-detail-card.is-compact strong {
+    color: var(--text-primary);
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+.activity-summary-note {
+    margin-top: 12px;
+    color: var(--text-primary);
+    font-size: 12.5px;
+    font-weight: 650;
+    line-height: 1.4;
+}
+.activity-summary-finished {
+    margin-top: 14px;
     display: flex;
     align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    border-radius: 50%;
-    color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+    gap: 5px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 11.5px;
 }
-.activity-active-card-copy {
-    min-width: 0;
-    flex: 1;
+.activity-summary-finished strong {
+    color: var(--text-primary);
+    font-weight: 650;
 }
-.activity-active-card-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-}
-.activity-active-card-title {
-    min-width: 0;
-    overflow: hidden;
+.activity-summary-section-title {
+    margin: 20px 2px 10px;
     color: var(--text-primary);
     font-size: 15px;
     font-weight: 700;
-    line-height: 1.25;
+    letter-spacing: -0.01em;
+}
+.activity-summary-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: dense;
+    gap: 12px;
+}
+.activity-summary-metric.stats-card {
+    height: 112px;
+    min-width: 0;
+    padding: 16px;
+    border-radius: 18px;
+}
+.activity-summary-metric.is-wide {
+    grid-column: 1 / -1;
+}
+.activity-summary-metric .stats-label {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 12.5px;
+    font-weight: 700;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.activity-active-card-activity {
+.activity-summary-metric .stats-value {
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    margin-top: 8px;
+    font-size: 28px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.activity-summary-metric .stats-subtitle {
+    min-width: 0;
+    overflow: hidden;
+    margin-top: 6px;
+    font-size: 11.5px;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.activity-page-issues {
+    margin-top: 18px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    background: var(--bg-secondary);
+}
+.activity-page-nav {
+    min-height: 48px;
+    padding: 8px 16px;
+    display: grid;
+    grid-template-columns: 36px 1fr 36px;
+    align-items: center;
+    gap: 8px;
     flex-shrink: 0;
-    overflow: hidden;
-    max-width: 52%;
+    border-top: 1px solid var(--border-color);
     color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.25;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
 }
-.activity-active-card-counters {
-    overflow: hidden;
-    margin-top: 3px;
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.25;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.activity-page-nav button {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 9999px;
+    color: var(--text-primary);
+    background: transparent;
+    cursor: pointer;
 }
-.activity-terminal-list {
-    position: relative;
-    z-index: 2;
+.activity-page-nav button svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.activity-page-nav button:last-child { justify-self: end; }
+.activity-page-nav button:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 8%, transparent);
+}
+.activity-page-nav button:disabled {
+    opacity: 0.28;
+    cursor: default;
 }
 
 /* Progress bar */
@@ -747,14 +938,7 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
-/* Persistent, independently scrollable issues footer */
-.activity-issues-panel {
-    position: relative;
-    z-index: 45;
-    flex-shrink: 0;
-    border-top: 1px solid var(--border-color);
-    background: var(--bg-primary);
-}
+/* Summary-page issues */
 .activity-issues-header {
     min-height: 38px;
     padding: 0 16px;
@@ -778,18 +962,6 @@ body {
     background: var(--bg-tertiary);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
-}
-.activity-issues-scroll {
-    max-height: 104px;
-    overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: thin;
-}
-.activity-issues-empty {
-    padding: 0 16px 12px;
-    color: var(--text-secondary);
-    font-size: 13px;
 }
 .activity-issue-row {
     display: grid;
