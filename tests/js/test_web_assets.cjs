@@ -731,20 +731,20 @@ test('archive status filters empty reasons and summarizes retry state', () => {
             unavailable: {
                 reasons: [
                     {
-                        reason: 'unavailable_unknown',
-                        count: 2,
-                        percent_of_missing: 66.7,
-                        due: 1,
-                        delayed: 1,
-                        permanent: 0,
-                    },
-                    {
                         reason: 'deleted_by_author',
                         count: 1,
                         percent_of_missing: 33.3,
                         due: 0,
                         delayed: 0,
                         permanent: 1,
+                    },
+                    {
+                        reason: 'unavailable_unknown',
+                        count: 2,
+                        percent_of_missing: 66.7,
+                        due: 1,
+                        delayed: 1,
+                        permanent: 0,
                     },
                     {
                         reason: 'withheld',
@@ -768,20 +768,24 @@ test('archive status filters empty reasons and summarizes retry state', () => {
         ['unavailable_unknown', 'deleted_by_author'],
     );
     assert.equal(
-        app.getUnavailableReasonStatus(app.statsHealth.enrichment.unavailable.reasons[0]),
+        app.getUnavailableReasonStatus(app.statsHealth.enrichment.unavailable.reasons[1]),
         '1 due now · 1 scheduled',
     );
     assert.equal(
-        app.getUnavailableReasonStatus(app.statsHealth.enrichment.unavailable.reasons[1]),
+        app.getUnavailableReasonStatus(app.statsHealth.enrichment.unavailable.reasons[0]),
         '1 permanent',
     );
     assert.ok(
-        app.getUnavailableSegmentWidth(app.statsHealth.enrichment.unavailable.reasons[0])
-        > app.getUnavailableSegmentWidth(app.statsHealth.enrichment.unavailable.reasons[1]),
+        app.getUnavailableSegmentWidth(app.statsHealth.enrichment.unavailable.reasons[1])
+        > app.getUnavailableSegmentWidth(app.statsHealth.enrichment.unavailable.reasons[0]),
     );
 
     app.showEmptyUnavailableReasons = true;
     assert.equal(app.getUnavailableReasons().length, 3);
+    assert.deepEqual(
+        Array.from(app.getUnavailableReasons(), item => item.reason),
+        ['unavailable_unknown', 'deleted_by_author', 'withheld'],
+    );
     assert.equal(app.getUnavailableBarReasons().length, 2);
     assert.equal(
         app.getUnavailableReasonStatus(app.statsHealth.enrichment.unavailable.reasons[2]),
