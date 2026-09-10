@@ -11,6 +11,13 @@ This is the active implementation checklist. Update checkboxes as items complete
 - [x] Mirror the revised states in the local demo and add focused pipeline/browser regressions.
 - [x] Build and visually verify a localhost demo; leave all changes uncommitted for review.
 
+## Video remaining-duration overlay repair (2026-09-10)
+
+- [x] Update standalone and gallery video badges from `currentTime` on `timeupdate` and `ended`.
+- [x] Keep loaded metadata as the authoritative total and show `0:00` at the end of playback.
+- [x] Cover the countdown, accessible label, and both render paths in browser regressions.
+- [x] Build and visually verify the local Pages demo with a real video playing.
+
 ## Paged pipeline drawer (2026-09-09)
 
 - [x] Reuse the setup flow's segmented progress language for pipeline stages.
