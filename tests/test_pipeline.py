@@ -105,6 +105,51 @@ def test_render_uses_determinate_twitter_blue_progress_with_useful_metadata() ->
     assert TWITTER_BLUE == "#1DA1F2"
 
 
+def test_open_ended_step_omits_fabricated_progress_but_keeps_status(tmp_path) -> None:
+    output = StringIO()
+    state_path = tmp_path / "activity-status.json"
+    reporter = PipelineReporter(
+        _console(output),
+        "tweetnook sync",
+        interactive=False,
+        state_path=state_path,
+    )
+
+    with reporter:
+        reporter.add_step(
+            "bookmarks",
+            "Bookmarks",
+            total=1,
+            unit="current page",
+            detail="head pass",
+            show_rate=False,
+            show_eta=False,
+            show_progress=False,
+        )
+        reporter.start_step(
+            "bookmarks",
+            activity="Fetching page 1",
+            counters="0 pages · 0 tweets saved",
+        )
+        reporter.update_step(
+            "bookmarks",
+            completed=1,
+            activity="Archive is up to date",
+            counters="1 page · 20 tweets saved",
+            important=True,
+        )
+
+        snapshot = json.loads(state_path.read_text(encoding="utf-8"))
+        assert snapshot["steps"][0]["show_progress"] is False
+        reporter.console.print(reporter)
+
+    rendered = output.getvalue()
+    assert "Archive is up to date" in rendered
+    assert "1 page · 20 tweets saved" in rendered
+    assert "0/1 current page" not in rendered
+    assert "1/1 current page" not in rendered
+
+
 def test_live_render_uses_twitter_blue_truecolor(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NO_COLOR", raising=False)
     output = StringIO()
@@ -284,10 +329,41 @@ def test_reporter_atomically_publishes_web_lifecycle_snapshot(tmp_path) -> None:
         assert snapshot["steps"][0]["counters"] == "9 refreshed · 1 unavailable"
         assert snapshot["issues"][0]["message"] == "X rate limit reached"
 
+        reporter.complete_step(
+            "enrich",
+            "9 refreshed · 1 unavailable",
+            metrics={"refreshed": 9, "unavailable": 1},
+        )
+        completed_step = json.loads(state_path.read_text(encoding="utf-8"))["steps"][0]
+        assert completed_step["metrics"] == {"refreshed": 9, "unavailable": 1}
+
     finished = json.loads(state_path.read_text(encoding="utf-8"))
     assert finished["running"] is False
     assert finished["success"] is True
     assert list(tmp_path.glob(".*.tmp")) == []
+
+
+def test_stopped_pipeline_snapshot_preserves_the_active_steps_progress(tmp_path) -> None:
+    state_path = tmp_path / "activity-status.json"
+    reporter = PipelineReporter(
+        _console(StringIO()),
+        "tweetnook sync",
+        interactive=False,
+        state_path=state_path,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        with reporter:
+            reporter.add_step("threads", "Threads", total=6, unit="candidates")
+            reporter.start_step("threads", activity="Fetching thread context")
+            reporter.update_step("threads", completed=2)
+            raise KeyboardInterrupt
+
+    stopped = json.loads(state_path.read_text(encoding="utf-8"))
+    assert stopped["success"] is False
+    assert stopped["steps"][0]["state"] == "failed"
+    assert stopped["steps"][0]["completed"] == 2
+    assert stopped["steps"][0]["summary"] == "Stopped by user"
 
 
 def test_reporter_lifecycle_lock_serializes_commands_and_releases_after_failure(tmp_path) -> None:
