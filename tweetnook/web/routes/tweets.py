@@ -72,82 +72,68 @@ def _recursive_reply_rows(
     *,
     limit: int = _THREAD_DESCENDANT_LIMIT,
 ) -> tuple[list[dict], bool]:
-    """Load a bounded reply subtree in one indexed, cycle-safe query."""
+    """Load a bounded reply subtree with indexed, globally deduplicated frontiers."""
     query_limit = limit + 1
-    rows = store.conn.execute(
-        """
-        WITH RECURSIVE reply_tree(tweet_id, parent_tweet_id, depth, path) AS (
-            SELECT relation.tweet_id,
-                   relation.target_tweet_id,
-                   1,
-                   ',' || ? || ',' || relation.tweet_id || ','
-            FROM archive AS relation INDEXED BY idx_archive_target_tweet_id
-            WHERE relation.record_type = 'tweet_relation'
-              AND relation.relation_type IN ('reply_to', 'thread_parent')
-              AND relation.target_tweet_id = ?
-            UNION
-            SELECT relation.target_tweet_id,
-                   relation.tweet_id,
-                   1,
-                   ',' || ? || ',' || relation.target_tweet_id || ','
-            FROM archive AS relation INDEXED BY idx_archive_tweet_id
-            WHERE relation.record_type = 'tweet_relation'
-              AND relation.relation_type = 'thread_child'
-              AND relation.tweet_id = ?
-            UNION
-            SELECT relation.tweet_id,
-                   relation.target_tweet_id,
-                   tree.depth + 1,
-                   tree.path || relation.tweet_id || ','
-            FROM reply_tree AS tree
-            JOIN archive AS relation INDEXED BY idx_archive_target_tweet_id
-              ON relation.target_tweet_id = tree.tweet_id
-            WHERE relation.record_type = 'tweet_relation'
-              AND relation.relation_type IN ('reply_to', 'thread_parent')
-              AND tree.depth < ?
-              AND instr(tree.path, ',' || relation.tweet_id || ',') = 0
-            UNION
-            SELECT relation.target_tweet_id,
-                   relation.tweet_id,
-                   tree.depth + 1,
-                   tree.path || relation.target_tweet_id || ','
-            FROM reply_tree AS tree
-            JOIN archive AS relation INDEXED BY idx_archive_tweet_id
-              ON relation.tweet_id = tree.tweet_id
-            WHERE relation.record_type = 'tweet_relation'
-              AND relation.relation_type = 'thread_child'
-              AND tree.depth < ?
-              AND instr(tree.path, ',' || relation.target_tweet_id || ',') = 0
-            ORDER BY 3 ASC
+    seen = {tweet_id}
+    frontier = [tweet_id]
+    normalized: list[dict] = []
+    depth = 1
+
+    while frontier and len(normalized) < query_limit:
+        placeholders = ", ".join("?" for _ in frontier)
+        # A grouped child can appear only once per directional lookup. Allow room for
+        # every already-seen ID so cycles cannot crowd unseen children out of the cap.
+        candidate_limit = query_limit + len(seen)
+        rows = store.conn.execute(
+            f"""
+            /* tweetnook_reply_frontier */
+            SELECT child_id, MIN(parent_id) AS parent_id
+            FROM (
+                SELECT relation.tweet_id AS child_id,
+                       relation.target_tweet_id AS parent_id
+                FROM archive AS relation INDEXED BY idx_archive_target_tweet_id
+                WHERE relation.record_type = 'tweet_relation'
+                  AND relation.relation_type IN ('reply_to', 'thread_parent')
+                  AND relation.target_tweet_id IN ({placeholders})
+                UNION ALL
+                SELECT relation.target_tweet_id AS child_id,
+                       relation.tweet_id AS parent_id
+                FROM archive AS relation INDEXED BY idx_archive_tweet_id
+                WHERE relation.record_type = 'tweet_relation'
+                  AND relation.relation_type = 'thread_child'
+                  AND relation.tweet_id IN ({placeholders})
+            )
+            WHERE child_id IS NOT NULL AND parent_id IS NOT NULL
+            GROUP BY child_id
+            ORDER BY child_id
             LIMIT ?
-        )
-        SELECT tweet_id, parent_tweet_id, MIN(depth) AS depth
-        FROM reply_tree
-        GROUP BY tweet_id, parent_tweet_id
-        ORDER BY depth, tweet_id
-        """,
-        (
-            tweet_id,
-            tweet_id,
-            tweet_id,
-            tweet_id,
-            query_limit,
-            query_limit,
-            query_limit,
-        ),
-    ).fetchall()
-    truncated = len(rows) > limit
-    normalized = [
-        {
-            "tweet_id": str(row[0]),
-            "target_tweet_id": str(row[1]),
-            "relation_type": "reply_to",
-            "depth": int(row[2]),
-        }
-        for row in rows[:limit]
-        if row[0] and row[1]
-    ]
-    return normalized, truncated
+            """,
+            (*frontier, *frontier, candidate_limit),
+        ).fetchall()
+
+        next_frontier = []
+        for row in rows:
+            child_id = str(row[0])
+            parent_id = str(row[1])
+            if child_id in seen:
+                continue
+            seen.add(child_id)
+            next_frontier.append(child_id)
+            normalized.append(
+                {
+                    "tweet_id": child_id,
+                    "target_tweet_id": parent_id,
+                    "relation_type": "reply_to",
+                    "depth": depth,
+                }
+            )
+            if len(normalized) >= query_limit:
+                break
+
+        frontier = next_frontier
+        depth += 1
+
+    return normalized[:limit], len(normalized) > limit
 
 
 @router.get("/api/tweets")

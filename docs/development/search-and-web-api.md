@@ -161,7 +161,8 @@ The route:
 
 - resolves the main tweet and canonical object;
 - walks at most 50 parent iterations with cycle protection;
-- fetches up to 250 descendant replies with one indexed, cycle-safe recursive CTE;
+- fetches up to 250 descendant replies through bounded, indexed breadth-first
+  frontier lookups that globally deduplicate tweets and alternate relation paths;
 - loads relations, memberships, media, and tags through indexed queries;
 - sorts parents oldest-first;
 - flattens each direct child's descendants depth-first under the compatibility field

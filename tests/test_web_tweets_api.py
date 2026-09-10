@@ -664,7 +664,7 @@ class ThreadStore:
         self.query_columns: list[tuple[str, list[str] | None]] = []
         self.query_indexes: list[tuple[str, str | None]] = []
         self.quote_count_call: tuple[str, tuple[object, ...]] | None = None
-        self.reply_tree_call: tuple[str, tuple[object, ...]] | None = None
+        self.reply_frontier_calls: list[tuple[str, tuple[object, ...]]] = []
         self.result_rows: list[tuple[object, ...]] = []
         self.conn = self
 
@@ -724,15 +724,24 @@ class ThreadStore:
         return []
 
     def execute(self, sql: str, params: tuple[object, ...]):
-        if "WITH RECURSIVE reply_tree" in sql:
-            self.reply_tree_call = (sql, params)
-            self.result_rows = [
-                ("child", "main", 1),
-                ("popular", "main", 1),
-                ("grandchild", "child", 2),
-                ("non-op-grandchild", "child", 2),
-                ("great-grandchild", "grandchild", 3),
+        if "/* tweetnook_reply_frontier */" in sql:
+            self.reply_frontier_calls.append((sql, params))
+            frontier_size = (len(params) - 1) // 2
+            frontier = {str(value) for value in params[:frontier_size]}
+            assert tuple(params[:frontier_size]) == tuple(params[frontier_size : frontier_size * 2])
+            edges = [
+                ("child", "main"),
+                ("popular", "main"),
+                ("grandchild", "child"),
+                ("non-op-grandchild", "child"),
+                ("great-grandchild", "grandchild"),
             ]
+            parent_by_child: dict[str, str] = {}
+            for child_id, parent_id in edges:
+                if parent_id not in frontier:
+                    continue
+                parent_by_child[child_id] = min(parent_id, parent_by_child.get(child_id, parent_id))
+            self.result_rows = sorted(parent_by_child.items())[: int(params[-1])]
             return self
         self.quote_count_call = (sql, params)
         self.result_rows = []
@@ -816,12 +825,11 @@ def test_api_tweet_thread_builds_parents_children_nested_replies_quotes_media_an
     ]
     assert result["children"][0]["op_replies"][2]["author"]["id"] == "u3"
     assert result["reply_tree_truncated"] is False
-    assert store.reply_tree_call is not None
-    reply_tree_sql, reply_tree_params = store.reply_tree_call
-    assert reply_tree_sql.count("INDEXED BY idx_archive_target_tweet_id") == 2
-    assert reply_tree_sql.count("INDEXED BY idx_archive_tweet_id") == 2
-    assert reply_tree_params[:4] == ("main",) * 4
-    assert reply_tree_params[-3:] == (251, 251, 251)
+    assert store.reply_frontier_calls
+    first_frontier_sql, first_frontier_params = store.reply_frontier_calls[0]
+    assert first_frontier_sql.count("INDEXED BY idx_archive_target_tweet_id") == 1
+    assert first_frontier_sql.count("INDEXED BY idx_archive_tweet_id") == 1
+    assert first_frontier_params == ("main", "main", 252)
     assert store.quote_count_call is not None
     assert store.quote_count_call[1] == ("main",)
     assert "INDEXED BY idx_archive_target_tweet_id" in store.quote_count_call[0]
@@ -948,10 +956,65 @@ def test_api_tweet_thread_recursively_loads_and_deduplicates_saved_reply_chain(t
         3,
     ]
     assert result["reply_tree_truncated"] is False
-    recursive_queries = [sql for sql in traced_sql if "WITH RECURSIVE reply_tree" in sql]
-    assert len(recursive_queries) == 1
-    assert "INDEXED BY idx_archive_target_tweet_id" in recursive_queries[0]
-    assert "INDEXED BY idx_archive_tweet_id" in recursive_queries[0]
+    frontier_queries = [sql for sql in traced_sql if "/* tweetnook_reply_frontier */" in sql]
+    assert len(frontier_queries) == 4
+    assert all("INDEXED BY idx_archive_target_tweet_id" in sql for sql in frontier_queries)
+    assert all("INDEXED BY idx_archive_tweet_id" in sql for sql in frontier_queries)
+    assert all("WITH RECURSIVE" not in sql for sql in frontier_queries)
+    store.close()
+
+
+def test_reply_tree_deduplicates_dense_alternate_paths_per_frontier(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    records = []
+    previous_level = ["root"]
+    levels = []
+    for depth in range(1, 7):
+        current_level = [f"{depth}-{index}" for index in range(8)]
+        levels.append(current_level)
+        for parent_id in previous_level:
+            for child_id in current_level:
+                records.extend(
+                    [
+                        store._record(
+                            row_key=f"tweet_relation:{child_id}:reply_to:{parent_id}",
+                            record_type="tweet_relation",
+                            tweet_id=child_id,
+                            relation_type="reply_to",
+                            target_tweet_id=parent_id,
+                        ),
+                        store._record(
+                            row_key=f"tweet_relation:{child_id}:thread_parent:{parent_id}",
+                            record_type="tweet_relation",
+                            tweet_id=child_id,
+                            relation_type="thread_parent",
+                            target_tweet_id=parent_id,
+                        ),
+                        store._record(
+                            row_key=f"tweet_relation:{parent_id}:thread_child:{child_id}",
+                            record_type="tweet_relation",
+                            tweet_id=parent_id,
+                            relation_type="thread_child",
+                            target_tweet_id=child_id,
+                        ),
+                    ]
+                )
+        previous_level = current_level
+    store._merge_records(records)
+
+    traced_sql: list[str] = []
+    store.conn.set_trace_callback(traced_sql.append)
+    rows, truncated = _recursive_reply_rows(store, "root")
+    store.conn.set_trace_callback(None)
+
+    assert truncated is False
+    assert len(rows) == 48
+    assert len({row["tweet_id"] for row in rows}) == 48
+    for depth, level in enumerate(levels, start=1):
+        assert {row["tweet_id"] for row in rows if row["depth"] == depth} == set(level)
+    frontier_queries = [sql for sql in traced_sql if "/* tweetnook_reply_frontier */" in sql]
+    assert len(frontier_queries) == 7
+    assert all("WITH RECURSIVE" not in sql for sql in frontier_queries)
     store.close()
 
 

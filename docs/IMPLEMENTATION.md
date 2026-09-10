@@ -2,6 +2,14 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Cold reply-tree lookup performance (2026-09-10)
+
+- [x] Reproduce the post-restart cold lookup exceeding 120 seconds on the live archive.
+- [x] Replace path-enumerating recursion with bounded indexed breadth-first frontier queries.
+- [x] Globally deduplicate tweets and redundant relation paths while preserving depth and parent metadata.
+- [x] Add a dense alternate-path regression and validate the full Python, browser, and demo suites.
+- [ ] Publish and verify the performance hotfix.
+
 ## TweetNook 0.1.3 release (2026-09-10)
 
 - [x] Confirm `v0.1.2` is the latest remote tag and select the patch release `0.1.3`.
@@ -14,7 +22,7 @@ This is the active implementation checklist. Update checkboxes as items complete
 ## Nested Web replies (2026-09-10)
 
 - [x] Return saved second-level replies in Web thread responses regardless of author.
-- [x] Traverse every saved descendant level with one indexed, cycle-safe, bounded query.
+- [x] Traverse every saved descendant level with an indexed, cycle-safe, bounded lookup.
 - [x] Preserve the response shape while adding reply depth/parent metadata and rendering deeper levels.
 - [x] Disclose the reply cap, add backend/browser regressions, update documentation, and validate.
 
