@@ -2,6 +2,13 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Nested Web replies (2026-09-10)
+
+- [x] Return saved second-level replies in Web thread responses regardless of author.
+- [x] Traverse every saved descendant level with one indexed, cycle-safe, bounded query.
+- [x] Preserve the response shape while adding reply depth/parent metadata and rendering deeper levels.
+- [x] Disclose the reply cap, add backend/browser regressions, update documentation, and validate.
+
 ## TweetNook 0.1.2 release (2026-09-10)
 
 - [x] Update package version metadata and add the `Changed`/`Fixed` release notes for `0.1.2`,

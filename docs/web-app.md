@@ -57,7 +57,11 @@ the local media file is missing; see [Download media](enrichment.md#download-med
 ## Read threads and quotes
 
 Select a tweet to open its archived conversation. Parent tweets appear in order,
-followed by saved replies. You can also browse saved tweets that quote it.
+followed by its saved reply tree regardless of author. Deeper replies are indented
+under each direct reply. To keep unusually large conversations responsive, one view
+shows up to 250 descendant replies and displays a notice when more are saved; select
+a later reply to continue from that point. You can also browse saved tweets that quote
+the selected tweet.
 Tweet and quote views have copyable URLs (`/post/<tweet-id>` and
 `/post/<tweet-id>/quotes`), so they can be bookmarked, refreshed, or shared with
 someone who can access the same TweetNook server and archive.

@@ -18,6 +18,8 @@ _apply_advanced_filters = archive_search._apply_advanced_filters
 _extract_advanced_filters = archive_search._extract_advanced_filters
 _parse_twitter_date = archive_search._parse_twitter_date
 
+_THREAD_DESCENDANT_LIMIT = 250
+
 
 def _sql_quote(value: object) -> str:
     """Quote a scalar for the store's expression-only query interface."""
@@ -62,6 +64,90 @@ def _indexed_relation_rows(
             if len(rows) >= limit:
                 break
     return rows
+
+
+def _recursive_reply_rows(
+    store,
+    tweet_id: str,
+    *,
+    limit: int = _THREAD_DESCENDANT_LIMIT,
+) -> tuple[list[dict], bool]:
+    """Load a bounded reply subtree in one indexed, cycle-safe query."""
+    query_limit = limit + 1
+    rows = store.conn.execute(
+        """
+        WITH RECURSIVE reply_tree(tweet_id, parent_tweet_id, depth, path) AS (
+            SELECT relation.tweet_id,
+                   relation.target_tweet_id,
+                   1,
+                   ',' || ? || ',' || relation.tweet_id || ','
+            FROM archive AS relation INDEXED BY idx_archive_target_tweet_id
+            WHERE relation.record_type = 'tweet_relation'
+              AND relation.relation_type IN ('reply_to', 'thread_parent')
+              AND relation.target_tweet_id = ?
+            UNION
+            SELECT relation.target_tweet_id,
+                   relation.tweet_id,
+                   1,
+                   ',' || ? || ',' || relation.target_tweet_id || ','
+            FROM archive AS relation INDEXED BY idx_archive_tweet_id
+            WHERE relation.record_type = 'tweet_relation'
+              AND relation.relation_type = 'thread_child'
+              AND relation.tweet_id = ?
+            UNION
+            SELECT relation.tweet_id,
+                   relation.target_tweet_id,
+                   tree.depth + 1,
+                   tree.path || relation.tweet_id || ','
+            FROM reply_tree AS tree
+            JOIN archive AS relation INDEXED BY idx_archive_target_tweet_id
+              ON relation.target_tweet_id = tree.tweet_id
+            WHERE relation.record_type = 'tweet_relation'
+              AND relation.relation_type IN ('reply_to', 'thread_parent')
+              AND tree.depth < ?
+              AND instr(tree.path, ',' || relation.tweet_id || ',') = 0
+            UNION
+            SELECT relation.target_tweet_id,
+                   relation.tweet_id,
+                   tree.depth + 1,
+                   tree.path || relation.target_tweet_id || ','
+            FROM reply_tree AS tree
+            JOIN archive AS relation INDEXED BY idx_archive_tweet_id
+              ON relation.tweet_id = tree.tweet_id
+            WHERE relation.record_type = 'tweet_relation'
+              AND relation.relation_type = 'thread_child'
+              AND tree.depth < ?
+              AND instr(tree.path, ',' || relation.target_tweet_id || ',') = 0
+            ORDER BY 3 ASC
+            LIMIT ?
+        )
+        SELECT tweet_id, parent_tweet_id, MIN(depth) AS depth
+        FROM reply_tree
+        GROUP BY tweet_id, parent_tweet_id
+        ORDER BY depth, tweet_id
+        """,
+        (
+            tweet_id,
+            tweet_id,
+            tweet_id,
+            tweet_id,
+            query_limit,
+            query_limit,
+            query_limit,
+        ),
+    ).fetchall()
+    truncated = len(rows) > limit
+    normalized = [
+        {
+            "tweet_id": str(row[0]),
+            "target_tweet_id": str(row[1]),
+            "relation_type": "reply_to",
+            "depth": int(row[2]),
+        }
+        for row in rows[:limit]
+        if row[0] and row[1]
+    ]
+    return normalized, truncated
 
 
 @router.get("/api/tweets")
@@ -162,44 +248,14 @@ def api_tweet_thread(
             seen_ancestor_ids.add(next_parent)
             curr_id = next_parent
 
-        c_rels = _indexed_relation_rows(
-            store,
-            tweet_id,
-            source_types=("thread_child",),
-            target_types=("reply_to", "thread_parent"),
-            limit=100,
-        )
-        child_candidates = set()
-        for r in c_rels:
-            all_relations.append(r)
-            if r.get("tweet_id"):
-                related_ids.add(r["tweet_id"])
-            if r.get("target_tweet_id"):
-                related_ids.add(r["target_tweet_id"])
-            if (
-                r.get("relation_type") in ("reply_to", "thread_parent")
-                and r.get("target_tweet_id") == tweet_id
-            ):
-                child_candidates.add(r.get("tweet_id"))
-            elif r.get("relation_type") == "thread_child" and r.get("tweet_id") == tweet_id:
-                child_candidates.add(r.get("target_tweet_id"))
-
-        if child_candidates:
-            child_id_list = ", ".join(_sql_quote(cid) for cid in child_candidates if cid)
-            sub_rels = store._query(
-                expr=f"record_type = 'tweet_relation' AND target_tweet_id IN ({child_id_list})",
-                cols=["tweet_id", "target_tweet_id", "relation_type"],
-                limit=100,
-                indexed_by="idx_archive_target_tweet_id",
-            )
-            for sr in sub_rels:
-                all_relations.append(sr)
-                if sr.get("tweet_id"):
-                    related_ids.add(sr["tweet_id"])
-                if sr.get("target_tweet_id"):
-                    related_ids.add(sr["target_tweet_id"])
+        descendant_relations, reply_tree_truncated = _recursive_reply_rows(store, tweet_id)
+        all_relations.extend(descendant_relations)
+        for relation in descendant_relations:
+            related_ids.add(relation["tweet_id"])
+            related_ids.add(relation["target_tweet_id"])
 
         id_list = ", ".join(_sql_quote(tid) for tid in related_ids)
+        related_count = len(related_ids)
         objs = store._query(
             expr=f"record_type = 'tweet_object' AND tweet_id IN ({id_list})",
             cols=[
@@ -212,7 +268,7 @@ def api_tweet_thread(
                 "synced_at",
                 "raw_json",
             ],
-            limit=100,
+            limit=related_count,
             indexed_by="idx_archive_tweet_id",
         )
         media = store._query(
@@ -228,7 +284,7 @@ def api_tweet_thread(
                 "local_path",
                 "thumbnail_local_path",
             ],
-            limit=100,
+            limit=related_count * 10,
             indexed_by="idx_archive_tweet_id",
         )
         col_rows = store._query(
@@ -244,13 +300,13 @@ def api_tweet_thread(
                 "synced_at",
                 "raw_json",
             ],
-            limit=100,
+            limit=related_count * 3,
             indexed_by="idx_archive_tweet_id",
         )
         tag_rows = store._query(
             expr=f"record_type = 'media_tag' AND tweet_id IN ({id_list})",
             cols=["tweet_id", "raw_json"],
-            limit=100,
+            limit=related_count,
             indexed_by="idx_archive_tweet_id",
         )
 
@@ -421,32 +477,46 @@ def api_tweet_thread(
             else:
                 break
 
+        child_ids_by_parent: dict[str, list[str]] = {}
+        depth_by_tweet_id: dict[str, int] = {}
+        for relation in descendant_relations:
+            child_id = relation["tweet_id"]
+            parent_id = relation["target_tweet_id"]
+            children_for_parent = child_ids_by_parent.setdefault(parent_id, [])
+            if child_id not in children_for_parent:
+                children_for_parent.append(child_id)
+            depth_by_tweet_id[child_id] = min(
+                relation["depth"], depth_by_tweet_id.get(child_id, relation["depth"])
+            )
+
         children_map = {}
-        for r in all_relations:
-            rel_type = r.get("relation_type")
-            src = r.get("tweet_id")
-            tgt = r.get("target_tweet_id")
+        seen_reply_ids = {tweet_id}
 
-            if tgt == tweet_id and rel_type in ("reply_to", "thread_parent"):
-                if src in formatted and src not in children_map:
-                    children_map[src] = formatted[src]
-                    children_map[src]["op_replies"] = []
-            elif src == tweet_id and rel_type == "thread_child":
-                if tgt in formatted and tgt not in children_map:
-                    children_map[tgt] = formatted[tgt]
-                    children_map[tgt]["op_replies"] = []
+        def append_descendants(parent_id: str, destination: list[dict]) -> None:
+            for nested_id in child_ids_by_parent.get(parent_id, []):
+                if nested_id in seen_reply_ids:
+                    continue
+                seen_reply_ids.add(nested_id)
+                nested_reply = formatted.get(nested_id)
+                if nested_reply is None:
+                    continue
+                nested_reply["thread_depth"] = depth_by_tweet_id.get(nested_id, 2)
+                nested_reply["parent_tweet_id"] = parent_id
+                # Keep the response key for compatibility. Each destination contains its
+                # direct child's complete bounded descendant list in depth-first order.
+                destination.append(nested_reply)
+                append_descendants(nested_id, destination)
 
-        main_author_id = main_tweet["author"]["id"]
-        for r in all_relations:
-            rel_type = r.get("relation_type")
-            src = r.get("tweet_id")
-            tgt = r.get("target_tweet_id")
-
-            if tgt in children_map and rel_type in ("reply_to", "thread_parent"):
-                grandchild = formatted.get(src)
-                if main_author_id and grandchild and grandchild["author"]["id"] == main_author_id:
-                    if grandchild not in children_map[tgt]["op_replies"]:
-                        children_map[tgt]["op_replies"].append(grandchild)
+        for child_id in child_ids_by_parent.get(tweet_id, []):
+            child = formatted.get(child_id)
+            if child is None or child_id in seen_reply_ids:
+                continue
+            seen_reply_ids.add(child_id)
+            child["thread_depth"] = 1
+            child["parent_tweet_id"] = tweet_id
+            child["op_replies"] = []
+            children_map[child_id] = child
+            append_descendants(child_id, child["op_replies"])
 
         parents.sort(key=lambda x: x["created_at"] or "")
         children = list(children_map.values())
@@ -457,7 +527,12 @@ def api_tweet_thread(
 
         children.sort(key=lambda x: (len(x.get("op_replies", [])) > 0, get_likes(x)), reverse=True)
 
-        return {"main": main_tweet, "parents": parents, "children": children}
+        return {
+            "main": main_tweet,
+            "parents": parents,
+            "children": children,
+            "reply_tree_truncated": reply_tree_truncated,
+        }
     except HTTPException:
         raise
     except Exception as e:

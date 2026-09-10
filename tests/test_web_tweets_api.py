@@ -18,6 +18,7 @@ from tweetnook.web.routes.tweets import (  # noqa: E402
     _apply_advanced_filters,
     _extract_advanced_filters,
     _parse_twitter_date,
+    _recursive_reply_rows,
     api_tweet_quotes,
     api_tweet_thread,
     api_tweets,
@@ -662,7 +663,9 @@ class ThreadStore:
         self.expressions: list[str] = []
         self.query_columns: list[tuple[str, list[str] | None]] = []
         self.query_indexes: list[tuple[str, str | None]] = []
-        self.quote_count_call: tuple[str, tuple[str, ...]] | None = None
+        self.quote_count_call: tuple[str, tuple[object, ...]] | None = None
+        self.reply_tree_call: tuple[str, tuple[object, ...]] | None = None
+        self.result_rows: list[tuple[object, ...]] = []
         self.conn = self
 
     def _query(
@@ -687,27 +690,6 @@ class ThreadStore:
                         "relation_type": "reply_to",
                     }
                 ]
-            if " AND target_tweet_id = 'main'" in expr and "'reply_to'" in expr:
-                return [
-                    {
-                        "tweet_id": "child",
-                        "target_tweet_id": "main",
-                        "relation_type": "reply_to",
-                    },
-                    {
-                        "tweet_id": "popular",
-                        "target_tweet_id": "main",
-                        "relation_type": "reply_to",
-                    },
-                ]
-            if " AND target_tweet_id IN (" in expr:
-                return [
-                    {
-                        "tweet_id": "grandchild",
-                        "target_tweet_id": "child",
-                        "relation_type": "reply_to",
-                    }
-                ]
             return []
         if "record_type = 'tweet_object'" in expr:
             return [
@@ -716,6 +698,8 @@ class ThreadStore:
                 _thread_object("child", author_id="u2", likes=1),
                 _thread_object("popular", author_id="u2", likes=20),
                 _thread_object("grandchild", likes=0),
+                _thread_object("non-op-grandchild", author_id="u3", likes=0),
+                _thread_object("great-grandchild", author_id="u4", likes=0),
             ]
         if "record_type = 'media'" in expr:
             return [
@@ -739,12 +723,26 @@ class ThreadStore:
             ]
         return []
 
-    def execute(self, sql: str, params: tuple[str, ...]):
+    def execute(self, sql: str, params: tuple[object, ...]):
+        if "WITH RECURSIVE reply_tree" in sql:
+            self.reply_tree_call = (sql, params)
+            self.result_rows = [
+                ("child", "main", 1),
+                ("popular", "main", 1),
+                ("grandchild", "child", 2),
+                ("non-op-grandchild", "child", 2),
+                ("great-grandchild", "grandchild", 3),
+            ]
+            return self
         self.quote_count_call = (sql, params)
+        self.result_rows = []
         return self
 
     def fetchone(self) -> tuple[int]:
         return (2,)
+
+    def fetchall(self) -> list[tuple[object, ...]]:
+        return self.result_rows
 
     def _rows_for_values(
         self,
@@ -789,7 +787,7 @@ class ThreadStore:
         ]
 
 
-def test_api_tweet_thread_builds_parents_children_op_replies_quotes_media_and_tags():
+def test_api_tweet_thread_builds_parents_children_nested_replies_quotes_media_and_tags():
     store = ThreadStore()
 
     result = api_tweet_thread("main", store=store, _auth=True)
@@ -801,7 +799,29 @@ def test_api_tweet_thread_builds_parents_children_op_replies_quotes_media_and_ta
     assert result["main"]["qt_media"][0]["download"]["local_path"] == "media/quote.mp4"
     assert [tweet["tweet_id"] for tweet in result["parents"]] == ["parent"]
     assert [tweet["tweet_id"] for tweet in result["children"]] == ["child", "popular"]
-    assert [reply["tweet_id"] for reply in result["children"][0]["op_replies"]] == ["grandchild"]
+    assert [reply["tweet_id"] for reply in result["children"][0]["op_replies"]] == [
+        "grandchild",
+        "great-grandchild",
+        "non-op-grandchild",
+    ]
+    assert [reply["thread_depth"] for reply in result["children"][0]["op_replies"]] == [
+        2,
+        3,
+        2,
+    ]
+    assert [reply["parent_tweet_id"] for reply in result["children"][0]["op_replies"]] == [
+        "child",
+        "grandchild",
+        "child",
+    ]
+    assert result["children"][0]["op_replies"][2]["author"]["id"] == "u3"
+    assert result["reply_tree_truncated"] is False
+    assert store.reply_tree_call is not None
+    reply_tree_sql, reply_tree_params = store.reply_tree_call
+    assert reply_tree_sql.count("INDEXED BY idx_archive_target_tweet_id") == 2
+    assert reply_tree_sql.count("INDEXED BY idx_archive_tweet_id") == 2
+    assert reply_tree_params[:4] == ("main",) * 4
+    assert reply_tree_params[-3:] == (251, 251, 251)
     assert store.quote_count_call is not None
     assert store.quote_count_call[1] == ("main",)
     assert "INDEXED BY idx_archive_target_tweet_id" in store.quote_count_call[0]
@@ -861,6 +881,80 @@ def test_api_tweet_thread_builds_parents_children_op_replies_quotes_media_and_ta
             assert index == "idx_archive_tweet_id"
 
 
+def test_api_tweet_thread_recursively_loads_and_deduplicates_saved_reply_chain(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    records = []
+    for tweet_id, author_id in (("100", "u1"), ("200", "u2"), ("300", "u3"), ("400", "u4")):
+        tweet = _thread_object(tweet_id, author_id=author_id)
+        records.append(
+            store._record(
+                row_key=f"tweet_object:{tweet_id}",
+                record_type="tweet_object",
+                tweet_id=tweet_id,
+                text=tweet["text"],
+                author_id=tweet["author_id"],
+                author_username=tweet["author_username"],
+                author_display_name=tweet["author_display_name"],
+                created_at=tweet["created_at"],
+                raw_json=tweet["raw_json"],
+                enrichment_state="done",
+            )
+        )
+    for child_id, parent_id in (("200", "100"), ("300", "200"), ("400", "300")):
+        records.extend(
+            [
+                store._record(
+                    row_key=f"tweet_relation:{child_id}:reply_to:{parent_id}",
+                    record_type="tweet_relation",
+                    tweet_id=child_id,
+                    relation_type="reply_to",
+                    target_tweet_id=parent_id,
+                ),
+                store._record(
+                    row_key=f"tweet_relation:{child_id}:thread_parent:{parent_id}",
+                    record_type="tweet_relation",
+                    tweet_id=child_id,
+                    relation_type="thread_parent",
+                    target_tweet_id=parent_id,
+                ),
+                store._record(
+                    row_key=f"tweet_relation:{parent_id}:thread_child:{child_id}",
+                    record_type="tweet_relation",
+                    tweet_id=parent_id,
+                    relation_type="thread_child",
+                    target_tweet_id=child_id,
+                ),
+            ]
+        )
+    store._merge_records(records)
+
+    limited_rows, limited = _recursive_reply_rows(store, "100", limit=2)
+    assert [row["tweet_id"] for row in limited_rows] == ["200", "300"]
+    assert limited is True
+
+    traced_sql: list[str] = []
+    store.conn.set_trace_callback(traced_sql.append)
+    result = api_tweet_thread("100", store=store, _auth=True)
+    store.conn.set_trace_callback(None)
+
+    assert [child["tweet_id"] for child in result["children"]] == ["200"]
+    assert result["children"][0]["thread_depth"] == 1
+    assert [reply["tweet_id"] for reply in result["children"][0]["op_replies"]] == [
+        "300",
+        "400",
+    ]
+    assert [reply["thread_depth"] for reply in result["children"][0]["op_replies"]] == [
+        2,
+        3,
+    ]
+    assert result["reply_tree_truncated"] is False
+    recursive_queries = [sql for sql in traced_sql if "WITH RECURSIVE reply_tree" in sql]
+    assert len(recursive_queries) == 1
+    assert "INDEXED BY idx_archive_target_tweet_id" in recursive_queries[0]
+    assert "INDEXED BY idx_archive_tweet_id" in recursive_queries[0]
+    store.close()
+
+
 def test_api_tweet_thread_parses_each_tweet_json_once_and_tolerates_malformed(monkeypatch):
     class MalformedThreadStore(ThreadStore):
         def _query(self, **kwargs: Any) -> list[dict[str, Any]]:
@@ -880,7 +974,7 @@ def test_api_tweet_thread_parses_each_tweet_json_once_and_tolerates_malformed(mo
     result = api_tweet_thread("main", store=MalformedThreadStore(), _auth=True)
 
     assert result["main"]["raw_json"] is None
-    assert len(parsed_values) == 8  # five tweet objects and three direct/quoted media-tag rows
+    assert len(parsed_values) == 10  # seven tweet objects and three direct/quoted media-tag rows
 
 
 class CycleStore(ThreadStore):
@@ -969,9 +1063,16 @@ def test_api_tweet_thread_quotes_untrusted_path_id_in_store_expressions():
     class MissingStore:
         def __init__(self) -> None:
             self.expressions: list[str] = []
+            self.conn = self
 
         def _query(self, *, expr: str, **_: Any) -> list[dict[str, Any]]:
             self.expressions.append(expr)
+            return []
+
+        def execute(self, _sql: str, _params: tuple[object, ...]):
+            return self
+
+        def fetchall(self) -> list[tuple[object, ...]]:
             return []
 
     store = MissingStore()

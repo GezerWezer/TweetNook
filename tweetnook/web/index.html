@@ -511,7 +511,7 @@
                         <div class="tweet-border">
                             <!-- Direct Reply Card -->
                             <div class="px-4 py-3 flex relative cursor-pointer hover-bg" @click="openThread(child.tweet_id)">
-                                <!-- Connecting Line down to OP Reply (only if op_replies exists) -->
+                                <!-- Connecting line down to nested replies (legacy op_replies key) -->
                                 <template x-if="child.op_replies && child.op_replies.length > 0">
                                     <div class="w-0.5 bg-[var(--thread-line)] absolute top-[52px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
                                 </template>
@@ -581,16 +581,16 @@
                                 </div>
                             </div>
 
-                            <!-- OP Replies (Threaded directly underneath) -->
+                            <!-- Replies to this direct reply (threaded directly underneath) -->
                             <template x-if="child.op_replies && child.op_replies.length > 0">
                                 <div>
                                     <template x-for="(reply, rIdx) in child.op_replies" :key="reply.tweet_id">
-                                        <div class="px-4 pb-3 pt-0 flex relative cursor-pointer hover-bg" @click="openThread(reply.tweet_id)">
+                                        <div class="px-4 pb-3 pt-0 flex relative cursor-pointer hover-bg" :style="{ marginLeft: nestedReplyIndent(reply) + 'px' }" @click="openThread(reply.tweet_id)">
                                             
                                             <!-- Top Line Bridge from Child -->
                                             <div class="w-0.5 bg-[#333639] absolute top-0 h-[16px] left-[36px] -translate-x-1/2 z-0"></div>
                                             
-                                            <!-- Bottom Line (Only if there are more OP replies after this) -->
+                                            <!-- Bottom line (only if more nested replies follow) -->
                                             <template x-if="rIdx < child.op_replies.length - 1">
                                                 <div class="w-0.5 bg-[#333639] absolute top-[40px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
                                             </template>
@@ -663,6 +663,11 @@
                                     </template>
                                 </div>
                             </template>
+                        </div>
+                    </template>
+                    <template x-if="threadData.reply_tree_truncated">
+                        <div class="px-4 py-3 text-[13px] text-[var(--text-secondary)] border-t border-[var(--border-color)]">
+                            This conversation has more saved replies than can be shown at once. Open a later reply to continue.
                         </div>
                     </template>
                 </div>
@@ -972,11 +977,11 @@
                                     <div x-html="renderActionBar(child)"></div>
                                 </div>
                             </div>
-                            <!-- OP Replies -->
+                            <!-- Replies to this direct reply (legacy op_replies key) -->
                             <template x-if="child.op_replies && child.op_replies.length > 0">
                                 <div>
                                     <template x-for="(reply, rIdx) in child.op_replies" :key="reply.tweet_id">
-                                        <div class="px-4 pb-3 pt-0 flex relative cursor-pointer hover-bg" @click="openThread(reply.tweet_id, false, true)">
+                                        <div class="px-4 pb-3 pt-0 flex relative cursor-pointer hover-bg" :style="{ marginLeft: nestedReplyIndent(reply) + 'px' }" @click="openThread(reply.tweet_id, false, true)">
                                             <div class="w-0.5 bg-[var(--thread-line)] absolute top-0 h-[16px] left-[36px] -translate-x-1/2 z-0"></div>
                                             <template x-if="rIdx < child.op_replies.length - 1">
                                                 <div class="w-0.5 bg-[var(--thread-line)] absolute top-[40px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
@@ -1045,6 +1050,11 @@
                                     </template>
                                 </div>
                             </template>
+                        </div>
+                    </template>
+                    <template x-if="panelThreadData.reply_tree_truncated">
+                        <div class="px-4 py-3 text-[13px] text-[var(--text-secondary)] border-t border-[var(--border-color)]">
+                            This conversation has more saved replies than can be shown at once. Open a later reply to continue.
                         </div>
                     </template>
                 </div>

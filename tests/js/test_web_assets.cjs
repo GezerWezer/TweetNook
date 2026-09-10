@@ -1602,6 +1602,24 @@ test('thread reply surfaces render quoted tweets in both presentations', () => {
     assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(reply\)\), false, true\)/);
 });
 
+test('recursive thread replies indent by bounded depth and disclose truncation', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const html = fs.readFileSync(
+        path.join(ROOT, 'tweetnook', 'web', 'index.html'),
+        'utf8',
+    );
+
+    assert.equal(app.nestedReplyIndent({ thread_depth: 2 }), 0);
+    assert.equal(app.nestedReplyIndent({ thread_depth: 3 }), 12);
+    assert.equal(app.nestedReplyIndent({ thread_depth: 20 }), 72);
+    assert.equal(app.nestedReplyIndent({}), 0);
+    assert.equal((html.match(/nestedReplyIndent\(reply\)/g) || []).length, 2);
+    assert.equal((html.match(/reply_tree_truncated/g) || []).length, 2);
+    assert.equal((html.match(/more saved replies than can be shown at once/g) || []).length, 2);
+});
+
 test('reply-recipient markup opens profile cards on every tweet surface', () => {
     const html = fs.readFileSync(
         path.join(ROOT, 'tweetnook', 'web', 'index.html'),

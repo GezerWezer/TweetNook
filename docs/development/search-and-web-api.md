@@ -161,11 +161,13 @@ The route:
 
 - resolves the main tweet and canonical object;
 - walks at most 50 parent iterations with cycle protection;
-- fetches direct children plus one additional descendant level;
+- fetches up to 250 descendant replies with one indexed, cycle-safe recursive CTE;
 - loads relations, memberships, media, and tags through indexed queries;
 - sorts parents oldest-first;
-- nests same-author child replies under `op_replies`;
-- sorts primary children by OP-reply presence then captured like count;
+- flattens each direct child's descendants depth-first under the compatibility field
+  `op_replies`, with `thread_depth` and `parent_tweet_id` metadata;
+- sorts primary children by nested-reply presence then captured like count;
+- returns `reply_tree_truncated` when the descendant cap is reached;
 - adds `local_quote_count`.
 
 Response:
@@ -174,7 +176,8 @@ Response:
 {
   "main": {},
   "parents": [],
-  "children": []
+  "children": [],
+  "reply_tree_truncated": false
 }
 ```
 
