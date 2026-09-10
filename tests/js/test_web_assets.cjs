@@ -2092,8 +2092,10 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     assert.doesNotMatch(video, /autoplay muted/);
     assert.match(video, /class="[^"]*media-video-player[^"]*"/);
     assert.match(video, /class="media-video-duration" data-video-duration/);
-    assert.match(video, /aria-label="Video duration 2:00">2:00<\/span>/);
+    assert.match(video, /aria-label="Remaining video duration 2:00">2:00<\/span>/);
     assert.match(video, /onloadedmetadata="window\.tweetNookSyncVideoDuration\(this\)"/);
+    assert.match(video, /ontimeupdate="window\.tweetNookSyncVideoDuration\(this\)"/);
+    assert.match(video, /onended="window\.tweetNookSyncVideoDuration\(this\)"/);
     assert.match(video, /onmouseenter="window\.tweetNookSetVideoUiVisible\(this, true\)"/);
     assert.match(video, /onmouseleave="window\.tweetNookSetVideoUiVisible\(this, false\)"/);
     assert.match(video, /onfocus="window\.tweetNookSetVideoUiVisible\(this, true\)"/);
@@ -2136,7 +2138,7 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
         },
     ]);
     assert.match(gridVideo, /media-video-player/);
-    assert.match(gridVideo, /aria-label="Video duration 0:03">0:03<\/span>/);
+    assert.match(gridVideo, /aria-label="Remaining video duration 0:03">0:03<\/span>/);
 
     const videoWithoutArchivedDuration = app.renderMediaGrid([
         { type: 'video', download: { local_path: 'media/no-duration.mp4' } },
@@ -2182,13 +2184,18 @@ test('video duration uses loaded media metadata and yields to the player UI', ()
         },
         querySelector: () => indicator,
     };
-    const video = { duration: 125.9, parentElement: frame };
+    const video = { duration: 125.9, currentTime: 30.2, parentElement: frame };
 
     context.window.tweetNookSyncVideoDuration(video);
-    assert.equal(indicator.textContent, '2:05');
+    assert.equal(indicator.textContent, '1:35');
     assert.equal(indicator.hidden, false);
-    assert.equal(attributes.get('aria-label'), 'Video duration 2:05');
+    assert.equal(attributes.get('aria-label'), 'Remaining video duration 1:35');
     assert.equal(attributes.has('aria-hidden'), false);
+
+    video.currentTime = video.duration;
+    context.window.tweetNookSyncVideoDuration(video);
+    assert.equal(indicator.textContent, '0:00');
+    assert.equal(attributes.get('aria-label'), 'Remaining video duration 0:00');
 
     context.window.tweetNookSetVideoUiVisible(video, true);
     assert.ok(classes.has('is-player-ui-visible'));
