@@ -10,7 +10,7 @@ from threading import Condition, Thread
 from tweetnook.stats import StatsReport, build_stats_report
 from tweetnook.storage import ArchiveStore
 
-WEB_STATS_MAX_AGE_SECONDS = 5 * 60
+WEB_STATS_MAX_AGE_SECONDS = 12 * 60 * 60
 
 
 @dataclass(frozen=True, slots=True)

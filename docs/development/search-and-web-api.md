@@ -242,7 +242,7 @@ and tagging. `/api/stats/report` is fresh; `/api/stats/snapshot` is the cached
 legacy/UI shape. Snapshot behavior:
 
 - initial collection is synchronous and deduplicated;
-- entries are fresh for five minutes;
+- entries are fresh for 12 hours;
 - stale data is returned immediately while one daemon refresh runs;
 - failed refresh retains stale data and sets `refresh_failed`;
 - explicit refresh starts one worker or collects synchronously when absent.

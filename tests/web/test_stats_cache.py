@@ -4,7 +4,7 @@ from threading import Event, Thread
 from types import SimpleNamespace
 
 from tweetnook.stats import StatsReport
-from tweetnook.web.stats_cache import WebStatsCache
+from tweetnook.web.stats_cache import WEB_STATS_MAX_AGE_SECONDS, WebStatsCache
 
 
 def _report(version: int) -> StatsReport:
@@ -14,6 +14,13 @@ def _report(version: int) -> StatsReport:
         generated_at=f"2026-08-10T00:00:0{version}+00:00",
         sections=[],
     )
+
+
+def test_default_stats_cache_max_age_is_twelve_hours() -> None:
+    cache = WebStatsCache()
+
+    assert cache.max_age_seconds == 12 * 60 * 60
+    assert WEB_STATS_MAX_AGE_SECONDS == 12 * 60 * 60
 
 
 def test_cache_deduplicates_concurrent_initial_collection() -> None:
