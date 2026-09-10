@@ -345,6 +345,7 @@ def _plan_archive_import_pipeline(
                 detail="live Twitter/X timeline reconciled into imported archive rows",
                 show_rate=False,
                 show_eta=False,
+                show_progress=False,
             )
         if enrich or detail_lookups > 0:
             pipeline.add_step(
@@ -1384,7 +1385,7 @@ def unfurl_archive(
         with _web_pipeline(console, "tweetnook unfurl", paths) as pipeline:
             pipeline.add_step(
                 "urls",
-                "URLs",
+                "Link previews",
                 total=1,
                 unit="URLs",
                 detail="saved URLs selected for redirect and canonical metadata refresh",
@@ -1464,7 +1465,7 @@ def tag_archive(
                     if pipeline is not None:
                         pipeline.add_step(
                             "tagging",
-                            "Tagging",
+                            "Automated tags",
                             total=1,
                             unit="tweet",
                             detail=f"explicit target · {model or config.tagging.model}",
@@ -1473,8 +1474,7 @@ def tag_archive(
                         )
                         pipeline.start_step(
                             "tagging",
-                            activity=f"Generating tags for tweet {tweet_id}",
-                            counters="0 processed · 0 tagged",
+                            activity="Generating tags",
                         )
                     tagged = await tag_media_tweets(
                         store=job.store,
@@ -1486,9 +1486,7 @@ def tag_archive(
                         dry_run=test,
                     )
                     if pipeline is not None:
-                        summary = f"1 processed · {tagged} tagged" + (
-                            " · test mode, not saved" if test else ""
-                        )
+                        summary = f"{tagged} tagged" + (" · test mode, not saved" if test else "")
                         pipeline.complete_step(
                             "tagging",
                             summary,
@@ -1510,7 +1508,7 @@ def tag_archive(
         with _web_pipeline(console, "tweetnook tag", paths) as pipeline:
             pipeline.add_step(
                 "tagging",
-                "Tagging",
+                "Automated tags",
                 total=1,
                 unit="tweet" if tweet_id is not None else "tweets",
                 detail=(

@@ -50,6 +50,17 @@ class ThreadExpandResult:
     failed: int = 0
 
 
+def _pipeline_outcomes(result: ThreadExpandResult, *, final: bool = False) -> str:
+    parts: list[str] = []
+    if final or result.expanded:
+        parts.append(f"{result.expanded} expanded")
+    if result.skipped:
+        parts.append(f"{result.skipped} already known")
+    if result.failed:
+        parts.append(f"{result.failed} failed")
+    return " · ".join(parts)
+
+
 @dataclass(slots=True)
 class _FocalAbsenceTracker:
     consecutive: int = 0
@@ -311,8 +322,7 @@ async def expand_threads(
         )
         pipeline.start_step(
             step_key,
-            activity="Selecting thread candidates from local archive state",
-            counters="loading memberships, prior expansions, and saved status links",
+            activity="Selecting candidates",
         )
 
     async with locked_archive_job(config=config, paths=paths, console=console) as job:
@@ -462,9 +472,9 @@ async def expand_threads(
                 completed=0,
                 total=(min(pending_total, limit) if limit is not None else pending_total),
                 activity=(
-                    "Resolving Twitter/X authentication"
+                    "Connecting to Twitter/X"
                     if auth_bundle is None
-                    else "Resolving the TweetDetail operation ID"
+                    else "Preparing conversation lookups"
                 ),
                 counters=(
                     f"{len(pending_membership_ids)} membership · "
@@ -513,11 +523,8 @@ async def expand_threads(
                         pipeline.update_step(
                             step_key,
                             completed=min(scanned, selected_total),
-                            activity=f"Fetching {phase} context for {tweet_id}",
-                            counters=(
-                                f"{result.processed} fetched · {result.expanded} expanded · "
-                                f"{result.skipped} already known · {result.failed} failed"
-                            ),
+                            activity=f"Fetching {phase} context",
+                            counters=_pipeline_outcomes(result),
                         )
                     await pacer.wait(attempted=result.processed, sleep=sleep)
                     await _try_expand_target(
@@ -541,10 +548,7 @@ async def expand_threads(
                         pipeline.update_step(
                             step_key,
                             completed=min(scanned, selected_total),
-                            counters=(
-                                f"{result.processed} fetched · {result.expanded} expanded · "
-                                f"{result.skipped} already known · {result.failed} failed"
-                            ),
+                            counters=_pipeline_outcomes(result),
                         )
                     _log_scan_progress(
                         console,
@@ -565,7 +569,11 @@ async def expand_threads(
             )
             pipeline.complete_step(
                 step_key,
-                f"{result.processed} fetched · {result.expanded} expanded · "
-                f"{result.skipped} already known · {result.failed} failed",
+                _pipeline_outcomes(result, final=True),
+                metrics={
+                    "expanded": result.expanded,
+                    "already_known": result.skipped,
+                    "failed": result.failed,
+                },
             )
         return result

@@ -81,6 +81,21 @@ class ResurrectionResult:
     warnings: list[str] = field(default_factory=list)
 
 
+def _pipeline_outcomes(result: ResurrectionResult, *, final: bool = False) -> str:
+    parts: list[str] = []
+    if final or result.resurrected:
+        parts.append(f"{result.resurrected} restored")
+    if result.still_unavailable:
+        parts.append(f"{result.still_unavailable} still unavailable")
+    if result.transient_failures:
+        parts.append(f"{result.transient_failures} retry later")
+    if result.account_probes:
+        parts.append(f"{result.account_probes} account probes")
+    if final and result.remaining_due:
+        parts.append(f"{result.remaining_due} still due")
+    return " · ".join(parts)
+
+
 def _as_utc_datetime(value: str | None = None) -> datetime:
     if value:
         try:
@@ -223,7 +238,7 @@ async def resurrect_due_tweets(
     if pipeline is not None:
         pipeline.add_step(
             step_key,
-            "Resurrection",
+            "Unavailable tweets",
             total=1,
             unit="tweets",
             detail=f"due unavailable tweets · {budget}-request ceiling",
@@ -248,7 +263,7 @@ async def resurrect_due_tweets(
         if pipeline is not None:
             pipeline.add_step(
                 step_key,
-                "Resurrection",
+                "Unavailable tweets",
                 total=len(candidates),
                 unit="tweets",
                 detail=(f"{len(candidates)} due selected"),
@@ -257,20 +272,16 @@ async def resurrect_due_tweets(
             pipeline.start_step(
                 step_key,
                 activity=(
-                    "Resolving Twitter/X authentication"
+                    "Connecting to Twitter/X"
                     if auth_bundle is None
-                    else "Resolving the TweetDetail operation ID"
-                ),
-                counters=(
-                    f"{len(candidates)} due selected · 0 checked · 0 returned · "
-                    "0 unavailable · 0 transient"
+                    else "Preparing recovery checks"
                 ),
             )
 
         if auth_bundle is None:
             auth_bundle = resolve_auth_bundle(config)
             if pipeline is not None:
-                pipeline.status(step_key, "Resolving the TweetDetail operation ID")
+                pipeline.status(step_key, "Preparing recovery checks")
 
         query_store = QueryIdStore(paths)
         query_ids = await resolve_query_ids(
@@ -282,7 +293,7 @@ async def resurrect_due_tweets(
         if pipeline is not None:
             pipeline.status(
                 step_key,
-                f"Rechecking unavailable tweet {candidates[0]['tweet_id']}",
+                "Checking an unavailable tweet",
             )
         client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
         queue = deque(candidates)
@@ -336,12 +347,8 @@ async def resurrect_due_tweets(
                         step_key,
                         completed=result.attempted - 1,
                         total=max(planned_total, result.attempted),
-                        activity=f"Rechecking unavailable tweet {tweet_id}",
-                        counters=(
-                            f"{result.attempted - 1} checked · {result.resurrected} returned · "
-                            f"{result.still_unavailable} unavailable · "
-                            f"{result.transient_failures} transient"
-                        ),
+                        activity="Checking an unavailable tweet",
+                        counters=_pipeline_outcomes(result),
                     )
                 await pacer.wait(attempted=result.attempted - 1, sleep=sleep)
 
@@ -617,12 +624,7 @@ async def resurrect_due_tweets(
                         step_key,
                         completed=result.attempted,
                         total=max(planned_total, result.attempted),
-                        counters=(
-                            f"{result.attempted} checked · {result.resurrected} returned · "
-                            f"{result.still_unavailable} unavailable · "
-                            f"{result.transient_failures} transient · "
-                            f"{result.account_probes} account probes"
-                        ),
+                        counters=_pipeline_outcomes(result),
                     )
 
                 if buffered_attempts >= DETAIL_WRITE_BATCH:
@@ -637,8 +639,12 @@ async def resurrect_due_tweets(
         if pipeline is not None:
             pipeline.complete_step(
                 step_key,
-                f"{result.attempted} checked · {result.resurrected} returned · "
-                f"{result.still_unavailable} unavailable · "
-                f"{result.transient_failures} transient · {result.remaining_due} still due",
+                _pipeline_outcomes(result, final=True),
+                metrics={
+                    "restored": result.resurrected,
+                    "still_unavailable": result.still_unavailable,
+                    "retry_later": result.transient_failures,
+                    "remaining_due": result.remaining_due,
+                },
             )
     return result
