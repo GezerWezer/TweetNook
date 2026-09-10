@@ -2633,6 +2633,12 @@ function tweetApp() {
             return null;
         },
 
+        nestedReplyIndent(tweet) {
+            const depth = Number(tweet?.thread_depth);
+            if (!Number.isFinite(depth)) return 0;
+            return Math.min(Math.max(depth - 2, 0), 6) * 12;
+        },
+
         formatDate(dateStr, includeTime = false) {
             if (!dateStr) return '';
             const d = new Date(dateStr);
