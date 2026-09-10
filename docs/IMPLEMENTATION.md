@@ -7,7 +7,9 @@ This is the active implementation checklist. Update checkboxes as items complete
 - [x] Confirm `v0.1.2` is the latest remote tag and select the patch release `0.1.3`.
 - [x] Update package and lock metadata, release documentation, and the changelog.
 - [x] Run the full release validation and build fresh `0.1.3` artifacts.
-- [ ] Push `main` and `v0.1.3`, then verify GitHub and PyPI publication.
+- [x] Push `main` and `v0.1.3`, then verify GitHub and PyPI publication.
+  - Workflow run `34539996779` succeeded; PyPI `0.1.3`, the GitHub Release with
+    `Changed` and `Fixed` notes, both artifacts, and a public-index CLI install were verified.
 
 ## Nested Web replies (2026-09-10)
 
