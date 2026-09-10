@@ -3,6 +3,32 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning while it is in the `0.x` series.
 
+## [0.1.3] - 2026-09-10
+
+### Changed
+
+- Kept complete saved conversation trees responsive with one indexed recursive
+  lookup, cycle protection, bounded visual indentation, and a 250-descendant
+  response cap that is disclosed when reached.
+
+### Fixed
+
+- Fixed archived conversation views omitting replies below the first level or
+  replies from non-original-post authors, so every saved descendant is shown in
+  its reply hierarchy.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check`
+- `uv run ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q`
+- `node --test tests/js/test_web_assets.cjs`
+- `node --test tests/js/test_demo_api.cjs`
+- `git diff --check`
+- `uv build --clear`
+- `uvx --from twine twine check dist/*`
+- `uv run --isolated --no-project --with dist/tweetnook-0.1.3-py3-none-any.whl -- tweetnook --help`
+
 ## [0.1.2] - 2026-09-10
 
 ### Added
@@ -143,6 +169,7 @@ semantic-style versioning while it is in the `0.x` series.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[0.1.3]: https://github.com/gezerwezer/tweetnook/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/gezerwezer/tweetnook/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/gezerwezer/tweetnook/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/gezerwezer/tweetnook/compare/v0.0.9...v0.1.0
