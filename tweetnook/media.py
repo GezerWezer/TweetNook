@@ -39,6 +39,24 @@ class MediaDownloadResult:
     downloaded_bytes: int = 0
 
 
+def _pipeline_outcomes(result: MediaDownloadResult, *, final: bool = False) -> str:
+    parts: list[str] = []
+    if final or result.downloaded:
+        parts.append(f"{result.downloaded} downloaded")
+    if result.skipped:
+        parts.append(f"{result.skipped} already saved")
+    if result.failed:
+        parts.append(f"{result.failed} failed")
+    if result.downloaded_bytes:
+        parts.append(f"{result.downloaded_bytes / (1024 * 1024):.1f} MiB")
+    return " · ".join(parts)
+
+
+def _media_activity(row: dict[str, object]) -> str:
+    media_type = str(row.get("media_type") or "media").replace("_", " ")
+    return f"Downloading {media_type}"
+
+
 def _safe_media_stem(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", value)
 
@@ -209,14 +227,9 @@ async def download_media(
                 detail=scope,
                 rate_unit="files/s",
             )
-            first = rows[0]
             pipeline.start_step(
                 step_key,
-                activity=(
-                    f"Downloading {first.get('media_type') or 'media'} for "
-                    f"tweet {first.get('tweet_id') or 'unknown'}"
-                ),
-                counters="0 processed · 0 downloaded · 0 skipped · 0 failed",
+                activity=_media_activity(rows[0]),
             )
 
         async with httpx.AsyncClient(
@@ -248,15 +261,8 @@ async def download_media(
                             pipeline.update_step(
                                 step_key,
                                 completed=index - 1,
-                                activity=(
-                                    f"Downloading {row.get('media_type') or 'media'} for "
-                                    f"tweet {row.get('tweet_id') or 'unknown'}"
-                                ),
-                                counters=(
-                                    f"{index - 1} processed · {result.downloaded} downloaded · "
-                                    f"{result.skipped} skipped · {result.failed} failed · "
-                                    f"{result.downloaded_bytes / (1024 * 1024):.1f} MiB"
-                                ),
+                                activity=_media_activity(row),
+                                counters=_pipeline_outcomes(result),
                             )
                         if _download_complete(row, paths.data_dir):
                             result.skipped += 1
@@ -380,11 +386,7 @@ async def download_media(
                             pipeline.update_step(
                                 step_key,
                                 completed=index,
-                                counters=(
-                                    f"{index} processed · {result.downloaded} downloaded · "
-                                    f"{result.skipped} skipped · {result.failed} failed · "
-                                    f"{result.downloaded_bytes / (1024 * 1024):.1f} MiB"
-                                ),
+                                counters=_pipeline_outcomes(result),
                             )
                         if progress is not None:
                             progress(index, len(rows))
@@ -393,8 +395,12 @@ async def download_media(
         if pipeline is not None:
             pipeline.complete_step(
                 step_key,
-                f"{result.processed} processed · {result.downloaded} downloaded · "
-                f"{result.skipped} skipped · {result.failed} failed · "
-                f"{result.downloaded_bytes / (1024 * 1024):.1f} MiB transferred",
+                _pipeline_outcomes(result, final=True),
+                metrics={
+                    "downloaded": result.downloaded,
+                    "downloaded_bytes": result.downloaded_bytes,
+                    "already_saved": result.skipped,
+                    "failed": result.failed,
+                },
             )
         return result

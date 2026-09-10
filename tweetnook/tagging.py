@@ -1574,14 +1574,14 @@ async def tag_pending_media_tweets(
     rich_selector = hasattr(store, "get_eligible_tagging_candidates")
 
     if pipeline is not None:
-        mode_detail = (
+        mode_detail = f"{model_name} · " + (
             f"Free · up to {free_batch_size} tweets/request · {tag_config.free_rpd} requests/day"
             if tag_config.api_mode == "free"
             else (f"Paid · {tag_config.processing_tier.title()} · sequential processing")
         )
         pipeline.add_step(
             "tagging",
-            "Tagging",
+            "Automated tags",
             total=max_requests
             or (free_batch_size if tag_config.api_mode == "free" else PAID_CONCURRENCY),
             unit="tweets",
@@ -1591,8 +1591,7 @@ async def tag_pending_media_tweets(
         )
         pipeline.start_step(
             "tagging",
-            activity="Selecting archived tweets for automated tagging",
-            counters="0 processed · 0 tagged · 0 requests",
+            activity="Selecting tweets",
         )
 
     while max_requests is None or requests < max_requests:
@@ -1631,9 +1630,16 @@ async def tag_pending_media_tweets(
                 total=max(max_requests or processed + len(tweet_ids), 1),
                 activity=(
                     f"Generating {content_type} tags for {len(tweet_ids)} tweet"
-                    f"{'s' if len(tweet_ids) != 1 else ''} with {model_name}"
+                    f"{'s' if len(tweet_ids) != 1 else ''}"
                 ),
-                counters=f"{processed} processed · {tagged} tagged · {requests} requests",
+                counters=" · ".join(
+                    part
+                    for value, part in (
+                        (tagged, f"{tagged} tagged"),
+                        (requests, f"{requests} requests"),
+                    )
+                    if value
+                ),
             )
 
         if tag_config.api_mode == "free":
@@ -1717,7 +1723,14 @@ async def tag_pending_media_tweets(
                 "tagging",
                 completed=processed,
                 total=max(max_requests or processed, processed, 1),
-                counters=f"{processed} processed · {tagged} tagged · {requests} requests",
+                counters=" · ".join(
+                    part
+                    for value, part in (
+                        (tagged, f"{tagged} tagged"),
+                        (requests, f"{requests} requests"),
+                    )
+                    if value
+                ),
                 important=True,
             )
         if dry_run:
@@ -1729,6 +1742,10 @@ async def tag_pending_media_tweets(
         else:
             pipeline.complete_step(
                 "tagging",
-                f"{processed} processed · {tagged} tagged · {requests} requests",
+                f"{tagged} tagged · {requests} requests",
+                metrics={
+                    "tagged": tagged,
+                    "requests": requests,
+                },
             )
     return TaggingRunResult(processed=processed, tagged=tagged, batches=requests)

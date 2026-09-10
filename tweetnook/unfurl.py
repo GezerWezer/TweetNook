@@ -36,6 +36,15 @@ class UrlUnfurlResult:
     failed: int = 0
 
 
+def _pipeline_outcomes(result: UrlUnfurlResult, *, final: bool = False) -> str:
+    parts: list[str] = []
+    if final or result.updated:
+        parts.append(f"{result.updated} updated")
+    if result.failed:
+        parts.append(f"{result.failed} failed")
+    return " · ".join(parts)
+
+
 def _clean_html_text(value: str | None) -> str | None:
     if not value:
         return None
@@ -78,7 +87,7 @@ async def unfurl_urls(
     if pipeline is not None:
         pipeline.add_step(
             step_key,
-            "URLs",
+            "Link previews",
             total=1,
             unit="URLs",
             detail="saved URLs selected for redirect and canonical metadata refresh",
@@ -118,7 +127,7 @@ async def unfurl_urls(
             first_host = urlsplit(str(first_url)).netloc or str(first_url)
             pipeline.add_step(
                 step_key,
-                "URLs",
+                "Link previews",
                 total=len(rows),
                 unit="URLs",
                 detail=scope,
@@ -126,8 +135,7 @@ async def unfurl_urls(
             )
             pipeline.start_step(
                 step_key,
-                activity=f"Fetching metadata from {first_host}",
-                counters="0 processed · 0 updated · 0 failed",
+                activity=f"Fetching {first_host}",
             )
 
         async with httpx.AsyncClient(
@@ -173,11 +181,8 @@ async def unfurl_urls(
                             pipeline.update_step(
                                 step_key,
                                 completed=index - 1,
-                                activity=f"Fetching metadata from {host or request_url}",
-                                counters=(
-                                    f"{index - 1} processed · {result.updated} updated · "
-                                    f"{result.failed} failed"
-                                ),
+                                activity=f"Fetching {host or request_url}",
+                                counters=_pipeline_outcomes(result),
                             )
                         if not isinstance(request_url, str) or not request_url:
                             pending_updates.append(
@@ -281,10 +286,7 @@ async def unfurl_urls(
                             pipeline.update_step(
                                 step_key,
                                 completed=index,
-                                counters=(
-                                    f"{index} processed · {result.updated} updated · "
-                                    f"{result.failed} failed"
-                                ),
+                                counters=_pipeline_outcomes(result),
                             )
                         if progress is not None:
                             progress(index, len(rows))
@@ -293,6 +295,10 @@ async def unfurl_urls(
         if pipeline is not None:
             pipeline.complete_step(
                 step_key,
-                f"{result.processed} processed · {result.updated} updated · {result.failed} failed",
+                _pipeline_outcomes(result, final=True),
+                metrics={
+                    "updated": result.updated,
+                    "failed": result.failed,
+                },
             )
         return result

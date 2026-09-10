@@ -630,6 +630,11 @@ async def test_sync_collection_head_only_clears_saved_backfill_state(
     assert second.pages_fetched == 1
     assert reporter.has_step("sync:bookmarks:head")
     assert not reporter.has_step("sync:bookmarks:backfill")
+    assert reporter._step_by_key["sync:bookmarks:head"].metrics == {
+        "new_tweets": 1,
+        "tweets_seen": 2,
+        "pages": 1,
+    }
 
     store = open_archive_store(paths, create=False)
     assert store is not None

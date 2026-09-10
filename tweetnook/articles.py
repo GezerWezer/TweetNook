@@ -35,6 +35,15 @@ class ArticleRefreshResult:
     failed: int = 0
 
 
+def _pipeline_outcomes(result: ArticleRefreshResult, *, final: bool = False) -> str:
+    parts: list[str] = []
+    if final or result.updated:
+        parts.append(f"{result.updated} refreshed")
+    if result.failed:
+        parts.append(f"{result.failed} failed")
+    return " · ".join(parts)
+
+
 def normalize_article_target(value: str) -> str:
     candidate = value.strip()
     if candidate.isdigit():
@@ -108,18 +117,17 @@ async def refresh_articles(
             pipeline.start_step(
                 step_key,
                 activity=(
-                    "Resolving Twitter/X authentication"
+                    "Connecting to Twitter/X"
                     if auth_bundle is None
-                    else "Resolving the TweetDetail operation ID"
+                    else "Preparing article refresh"
                 ),
-                counters=f"{len(tweet_ids)} selected · 0 processed · 0 refreshed · 0 failed",
             )
 
         if auth_bundle is None:
             emit_status(status, "resolving auth bundle")
             auth_bundle = resolve_auth_bundle(config)
             if pipeline is not None:
-                pipeline.status(step_key, "Resolving the TweetDetail operation ID")
+                pipeline.status(step_key, "Preparing article refresh")
 
         emit_status(status, "resolving TweetDetail query ID")
         query_store = QueryIdStore(paths)
@@ -130,7 +138,7 @@ async def refresh_articles(
             transport=transport,
         )
         if pipeline is not None:
-            pipeline.status(step_key, f"Refreshing article from tweet {tweet_ids[0]}")
+            pipeline.status(step_key, "Refreshing an article")
         client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
         try:
             attempted = 0
@@ -148,11 +156,8 @@ async def refresh_articles(
                             pipeline.update_step(
                                 step_key,
                                 completed=index - 1,
-                                activity=f"Refreshing article from tweet {tweet_id}",
-                                counters=(
-                                    f"{index - 1} processed · {result.updated} refreshed · "
-                                    f"{result.failed} failed"
-                                ),
+                                activity="Refreshing an article",
+                                counters=_pipeline_outcomes(result),
                             )
                         await pacer.wait(attempted=attempted, sleep=sleep)
                         attempted += 1
@@ -231,10 +236,7 @@ async def refresh_articles(
                             pipeline.update_step(
                                 step_key,
                                 completed=index,
-                                counters=(
-                                    f"{index} processed · {result.updated} refreshed · "
-                                    f"{result.failed} failed"
-                                ),
+                                counters=_pipeline_outcomes(result),
                             )
                         if progress is not None:
                             progress(index, len(tweet_ids))
@@ -243,7 +245,10 @@ async def refresh_articles(
         if pipeline is not None:
             pipeline.complete_step(
                 step_key,
-                f"{result.processed} processed · {result.updated} refreshed · "
-                f"{result.failed} failed",
+                _pipeline_outcomes(result, final=True),
+                metrics={
+                    "refreshed": result.updated,
+                    "failed": result.failed,
+                },
             )
         return result
