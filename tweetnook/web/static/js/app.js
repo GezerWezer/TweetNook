@@ -2145,16 +2145,21 @@ function tweetApp() {
             return `Updated ${relative}`;
         },
 
+        sortUnavailableReasons(reasons) {
+            return [...reasons].sort((left, right) => (right.count || 0) - (left.count || 0));
+        },
+
         getUnavailableReasons() {
             const reasons = this.statsHealth?.enrichment?.unavailable?.reasons || [];
-            return this.showEmptyUnavailableReasons
+            const visibleReasons = this.showEmptyUnavailableReasons
                 ? reasons
                 : reasons.filter(reason => (reason.count || 0) > 0);
+            return this.sortUnavailableReasons(visibleReasons);
         },
 
         getUnavailableBarReasons() {
             const reasons = this.statsHealth?.enrichment?.unavailable?.reasons || [];
-            return reasons.filter(reason => (reason.count || 0) > 0);
+            return this.sortUnavailableReasons(reasons.filter(reason => (reason.count || 0) > 0));
         },
 
         getUnavailableSegmentWidth(reason) {
