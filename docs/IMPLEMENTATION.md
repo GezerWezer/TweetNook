@@ -9,7 +9,10 @@ This is the active implementation checklist. Update checkboxes as items complete
 - [x] Update the tagged release workflow and release documentation to include those changelog
   sections in GitHub Release notes; do not generate or include `Highlights`.
 - [x] Run the full release validation and build the fresh `0.1.2` artifacts.
-- [ ] Push `main` and `v0.1.2`, and verify PyPI/GitHub/Pages publication.
+- [x] Push `main` and `v0.1.2`, and verify PyPI/GitHub/Pages publication.
+  - Workflow run `34522605483` succeeded; PyPI `0.1.2`, the GitHub Release with
+    `Added`, `Changed`, and `Fixed` notes but no `Highlights`, both artifacts, and
+    the Pages demo at `https://gezerwezer.github.io/TweetNook/` were verified.
 
 ## Demo analytics projection (2026-09-10)
 
