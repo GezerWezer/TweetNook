@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -50,6 +51,7 @@ def test_cached_avatar_is_returned_without_store_or_network(
     avatar_path = paths.media_dir / "avatars" / "42.jpg"
     avatar_path.parent.mkdir(parents=True)
     avatar_path.write_bytes(b"cached-jpeg")
+    os.utime(avatar_path, (1_000.0, 1_000.0))
     server_state.update({"paths": paths, "config": AppConfig()})
 
     class Store:
@@ -70,6 +72,33 @@ def test_cached_avatar_is_returned_without_store_or_network(
     assert response.status_code == 200
     assert response.content == b"cached-jpeg"
     assert response.headers["content-type"] == "image/jpeg"
+    assert avatar_path.stat().st_mtime > 1_000.0
+
+
+def test_cached_avatar_does_not_refresh_mtime_when_limit_is_disabled(
+    monkeypatch, make_web_client, tmp_path: Path
+) -> None:
+    paths = _paths(tmp_path)
+    avatar_path = paths.media_dir / "avatars" / "42.jpg"
+    avatar_path.parent.mkdir(parents=True)
+    avatar_path.write_bytes(b"cached-jpeg")
+    os.utime(avatar_path, (1_000.0, 1_000.0))
+    config = AppConfig()
+    config.web.avatar_cache_limit_enabled = False
+    server_state.update({"paths": paths, "config": config})
+    monkeypatch.setattr(
+        avatars,
+        "mark_avatar_accessed",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("disabled limits should not track access")
+        ),
+    )
+    client = make_web_client(avatars.router, store=AvatarStore())
+
+    response = client.get("/api/avatar/42")
+
+    assert response.status_code == 200
+    assert avatar_path.stat().st_mtime == 1_000.0
 
 
 def test_avatar_fetches_high_resolution_url_and_caches_response(

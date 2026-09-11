@@ -21,6 +21,7 @@ from tweetnook.reminders import (
 )
 from tweetnook.scheduler import ScheduleManager
 from tweetnook.storage import open_archive_store
+from tweetnook.web.avatar_cache import AvatarCacheManager
 from tweetnook.web.deps import server_state, verify_credentials
 from tweetnook.web.notices import NoticeStore
 from tweetnook.web.routes.activity import router as activity_router
@@ -121,6 +122,11 @@ def stop_scheduler() -> None:
         scheduler.stop()
 
 
+def stop_avatar_cache_manager() -> None:
+    if manager := server_state.pop("avatar_cache_manager", None):
+        manager.stop()
+
+
 def detach_archive_store() -> None:
     stop_scheduler()
     if thread := server_state.pop("fts_thread", None):
@@ -147,6 +153,9 @@ async def lifespan(app: FastAPI):
                 max_runs=config.activity.max_runs,
                 retention_days=config.activity.retention_days,
             )
+            avatar_cache_manager = AvatarCacheManager(paths, config)
+            server_state["avatar_cache_manager"] = avatar_cache_manager
+            avatar_cache_manager.start()
 
             def on_job_start(_run_id: str, _pid: int) -> None:
                 import time
@@ -189,6 +198,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         server_state["shutting_down"] = True
+        stop_avatar_cache_manager()
         stop_scheduler()
         if supervisor := server_state.get("job_supervisor"):
             supervisor.shutdown()

@@ -180,6 +180,8 @@ This is response masking, not encryption or universal log redaction.
 `get_config_ui_schema()` currently whitelists only:
 
 - `web.fetch_avatars`
+- `web.avatar_cache_limit_enabled`
+- `web.avatar_cache_limit_mb`
 - `web.host`
 - `web.port`
 

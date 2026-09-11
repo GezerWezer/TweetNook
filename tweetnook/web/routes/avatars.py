@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, Response
 
 from tweetnook.config import XDGPaths
+from tweetnook.web.avatar_cache import mark_avatar_accessed
 from tweetnook.web.deps import get_server_state, require_store, verify_credentials
 
 router = APIRouter()
@@ -36,6 +37,9 @@ def get_avatar(
     avatar_path = avatars_dir / f"{user_id}.jpg"
     fallback_path = avatars_dir / f"{user_id}.png"
     if avatar_path.exists():
+        config = server_state.get("config")
+        if config and config.web.avatar_cache_limit_enabled:
+            mark_avatar_accessed(avatar_path)
         return FileResponse(avatar_path, headers=AVATAR_CACHE_HEADERS)
 
     def return_transparent():

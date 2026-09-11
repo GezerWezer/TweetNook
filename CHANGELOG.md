@@ -5,6 +5,12 @@ semantic-style versioning while it is in the `0.x` series.
 
 ## [Unreleased]
 
+### Added
+
+- Added an enabled-by-default 512 MiB avatar cache limit. The Web server now
+  records recent use with throttled file modification times and independently
+  evicts least-recently-used avatars in a weekly cleanup job.
+
 ### Fixed
 
 - Prevented uncached author avatars from scanning the full post archive and

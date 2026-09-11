@@ -2,6 +2,14 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Weekly avatar cache limit (2026-09-11)
+
+- [x] Add enabled-by-default Web settings for a 512 MiB avatar cache limit.
+- [x] Treat avatar file mtime as last use and refresh it at most once per day on cache hits.
+- [x] Run size enforcement as an independent weekly Web maintenance job with persisted timing.
+- [x] Evict oldest recognized avatar files until the cache fits while preserving disabled caches.
+- [x] Update user/developer documentation and complete full validation.
+
 ## Live Web disk-pressure investigation (2026-09-11)
 
 - [x] Review prior cache/cold-read reports and inspect the live process and settings.

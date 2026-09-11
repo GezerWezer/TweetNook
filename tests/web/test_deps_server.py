@@ -150,6 +150,36 @@ def test_lifespan_without_paths_does_not_open_a_store(monkeypatch) -> None:
         assert "store" not in server_state
 
 
+def test_lifespan_starts_and_stops_avatar_cache_manager(monkeypatch, tmp_path: Path) -> None:
+    events: list[str] = []
+    paths = _paths(tmp_path)
+    config = AppConfig()
+    server_state.update({"paths": paths, "config": config})
+
+    class Manager:
+        def __init__(self, actual_paths, actual_config):
+            assert actual_paths is paths
+            assert actual_config is config
+            events.append("init")
+
+        def start(self):
+            events.append("start")
+
+        def stop(self):
+            events.append("stop")
+
+    monkeypatch.setattr(server, "AvatarCacheManager", Manager)
+    monkeypatch.setattr(server, "open_archive_store", lambda *_args, **_kwargs: None)
+    app = FastAPI(lifespan=server.lifespan)
+
+    with TestClient(app):
+        assert events == ["init", "start"]
+        assert server_state["avatar_cache_manager"].__class__ is Manager
+
+    assert events == ["init", "start", "stop"]
+    assert "avatar_cache_manager" not in server_state
+
+
 def test_lifespan_allows_missing_archive(monkeypatch, tmp_path: Path) -> None:
     server_state["paths"] = _paths(tmp_path)
     monkeypatch.setattr(server, "open_archive_store", lambda *_args, **_kwargs: None)
