@@ -270,7 +270,7 @@ def update_managed_installation() -> None:
 
     try:
         subprocess.run(
-            [python, "-m", "pip", "install", "--upgrade", "tweetnook"],
+            [python, "-m", "pip", "install", "--no-cache-dir", "--upgrade", "tweetnook"],
             check=True,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
