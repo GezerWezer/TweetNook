@@ -7,7 +7,10 @@ This is the active implementation checklist. Update checkboxes as items complete
 - [x] Confirm `v0.1.3` is the latest remote tag and select the patch release `0.1.4`.
 - [x] Update package and lock metadata, release documentation, and the changelog.
 - [x] Run the full release validation and build fresh `0.1.4` artifacts.
-- [ ] Push `main` and `v0.1.4`, then verify GitHub and PyPI publication.
+- [x] Push `main` and `v0.1.4`, then verify GitHub and PyPI publication.
+  - Workflow run `34561803327` succeeded; PyPI `0.1.4`, the GitHub Release with
+    `Added`, `Changed`, and `Fixed` notes plus both artifacts, the Pages demo, and
+    the clean-index CLI install were verified.
 
 ## Weekly avatar cache limit (2026-09-11)
 
@@ -42,7 +45,7 @@ This is the active implementation checklist. Update checkboxes as items complete
 - [x] Replace path-enumerating recursion with bounded indexed breadth-first frontier queries.
 - [x] Globally deduplicate tweets and redundant relation paths while preserving depth and parent metadata.
 - [x] Add a dense alternate-path regression and validate the full Python, browser, and demo suites.
-- [ ] Publish and verify the performance hotfix.
+- [x] Publish and verify the performance hotfix through the `v0.1.4` release.
 
 ## TweetNook 0.1.3 release (2026-09-10)
 
