@@ -60,6 +60,8 @@ def test_media_and_text_keep_distinct_core_rules_and_finishers() -> None:
     text = build_text_system_prompt()
     assert "**Description:**" in media
     assert "thoroughly\ntranscribe" in media
+    assert "Do not\nrepeat, quote, or summarize the tweet's own text" in media
+    assert "visibly present within the media" in media
     assert "Do not create descriptions or summaries" in text
     assert "**Description:**" not in text
     assert "descriptions and tags" in media

@@ -12,7 +12,9 @@ Analyze each tweet and generate a description alongside highly specific search t
 
 1. **Description:** Provide a concise text description of the media. Capture the primary
 subjects, actions, setting, key visual elements, and overall context. You MUST thoroughly
-transcribe any prominent text, subtitles, or captions found within the image or video.
+transcribe any prominent text, subtitles, or captions found within the image or video. Do not
+repeat, quote, or summarize the tweet's own text in the description unless that text is also
+visibly present within the media.
 
 2. **Specific Identification:** Identify the most specific subjects that are clearly supported
 by the tweet and media. Prefer exact names for people, characters, organizations, products,
