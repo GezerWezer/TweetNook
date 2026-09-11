@@ -79,6 +79,14 @@ tweet records. Disabling avatar fetching returns before database lookup when
 there is no cached JPEG. Successful cached avatars are still served, and failed
 fetches remain nonpersistent so newer archive metadata can recover them.
 
+Cached avatar mtime is the last-use signal. Cache hits refresh it no more than
+once per day, while downloads naturally begin with a current mtime. An
+`AvatarCacheManager` daemon owned by the Web lifespan checks persisted state
+hourly and performs due cleanup once per week, independently of sync scheduling
+and `JobSupervisor`. It totals recognized image files and unlinks oldest mtimes
+until the configured MiB limit is met. Its atomic `avatar-cache-state.json`
+prevents routine Web restarts from postponing the weekly interval.
+
 ## Authentication
 
 `verify_credentials`:
@@ -145,9 +153,9 @@ filesystem principal.
 ## Config API
 
 Responses mask Twitter/X cookies, password hash, and tagging key. The general UI schema
-whitelists only Web host/port/avatar fields and blacklists dedicated-pane
-sections. The POST endpoint validates any known model field rather than enforcing
-that whitelist.
+whitelists Web host/port, avatar fetching, and avatar cache-limit fields while
+blacklisting dedicated-pane sections. The POST endpoint validates any known model
+field rather than enforcing that whitelist.
 
 Config POST persists TOML but does not refresh process-global config,
 supervisor, or scheduler. Dedicated Setup and schedule/tagging routes perform

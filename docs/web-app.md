@@ -187,7 +187,9 @@ trust or put TweetNook behind appropriate HTTPS/network controls.
 The page ships its scripts and styles and uses local fonts. It works without
 internet access while the archive server remains reachable. Downloaded media and
 video posters stay local; link-card images without a matching archived copy are
-omitted. Disable avatar fetching and scheduled syncs to avoid their network attempts.
+omitted. The Web server limits cached avatars to 512 MiB by default using a separate
+weekly least-recently-used cleanup job; both the limit and cleanup can be changed in
+Config. Disable avatar fetching and scheduled syncs to avoid their network attempts.
 Sync, enrichment, authentication checks, Gemini actions, and external links still
 need internet. This is not a standalone HTML export or a replicated browser database.
 

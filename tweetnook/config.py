@@ -73,6 +73,8 @@ class WebConfig(BaseModel):
     host: str = Field(default="0.0.0.0", min_length=1)
     port: int = Field(default=8000, ge=1, le=65535)
     fetch_avatars: bool = True
+    avatar_cache_limit_enabled: bool = True
+    avatar_cache_limit_mb: int = Field(default=512, ge=1)
 
 
 class ScheduleConfig(BaseModel):
@@ -240,6 +242,10 @@ class XDGPaths(BaseModel):
     @property
     def schedule_state_file(self) -> Path:
         return self.data_dir / "schedule-state.json"
+
+    @property
+    def avatar_cache_state_file(self) -> Path:
+        return self.data_dir / "avatar-cache-state.json"
 
     @property
     def activity_runs_dir(self) -> Path:
@@ -526,6 +532,8 @@ def get_config_ui_schema() -> dict[str, Any]:
     return {
         "whitelist": [
             "web.fetch_avatars",
+            "web.avatar_cache_limit_enabled",
+            "web.avatar_cache_limit_mb",
             "web.host",
             "web.port",
         ],
@@ -574,6 +582,8 @@ def get_config_ui_schema() -> dict[str, Any]:
             "web.host": "Host",
             "web.port": "Port",
             "web.fetch_avatars": "Fetch Avatars locally",
+            "web.avatar_cache_limit_enabled": "Limit Avatar Cache",
+            "web.avatar_cache_limit_mb": "Avatar Cache Limit (MiB)",
             "schedule.enabled": "Enable Scheduled Syncs",
             "schedule.cadence": "Schedule Frequency",
             "schedule.every_hours": "Every N Hours",
@@ -628,6 +638,13 @@ def get_config_ui_schema() -> dict[str, Any]:
                 "How deep to go when fetching nested tweet replies or quoted links."
             ),
             "web.fetch_avatars": "Automatically download and cache user profile pictures.",
+            "web.avatar_cache_limit_enabled": (
+                "Run weekly cleanup of least-recently-used cached avatars."
+            ),
+            "web.avatar_cache_limit_mb": (
+                "Maximum avatar cache size. Weekly cleanup removes the least recently used "
+                "files until the cache fits this limit."
+            ),
             "web.host": "The IP address the Web UI binds to (default is 0.0.0.0 for LAN access).",
             "web.port": "The port the Web UI runs on.",
             "schedule.enabled": "Run sync automatically from the always-on Web service.",

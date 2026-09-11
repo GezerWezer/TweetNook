@@ -39,6 +39,7 @@ def test_resolve_paths_honors_explicit_xdg_roots(tmp_path: Path) -> None:
     assert paths.cache_dir == tmp_path / "cache-home" / "tweetnook"
     assert paths.database_file == paths.database_path == paths.data_dir / "archive.db"
     assert paths.media_dir == paths.data_dir / "media"
+    assert paths.avatar_cache_state_file == paths.data_dir / "avatar-cache-state.json"
 
 
 def test_resolve_paths_uses_platform_defaults_for_explicit_empty_env(
@@ -221,6 +222,7 @@ def test_load_config_rejects_invalid_numeric_environment_values(
         (WebConfig, {"host": ""}),
         (WebConfig, {"port": 0}),
         (WebConfig, {"port": 65536}),
+        (WebConfig, {"avatar_cache_limit_mb": 0}),
         (DatabaseConfig, {"cache_size_kb": -1}),
         (DatabaseConfig, {"mmap_size_bytes": -1}),
         (TaggingConfig, {"model": ""}),
@@ -307,6 +309,11 @@ def test_update_config_values_rejects_unknown_paths(paths: XDGPaths) -> None:
 def test_database_defaults_are_fixed() -> None:
     assert DatabaseConfig().cache_size_kb == 524288
     assert DatabaseConfig().mmap_size_bytes == 1073741824
+
+
+def test_avatar_cache_limit_defaults_are_fixed() -> None:
+    assert WebConfig().avatar_cache_limit_enabled is True
+    assert WebConfig().avatar_cache_limit_mb == 512
 
 
 def test_legacy_web_auto_start_setting_is_ignored_and_not_exposed() -> None:

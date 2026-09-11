@@ -28,13 +28,14 @@ settings through the Web UI. If you prefer to manage the file manually, create
 it at the resolved path and edit it while archive jobs are stopped. Keep it
 private because it can contain Twitter/X session values and your Gemini key.
 
-Only add settings you want to change. For example, to use a different port and
-stop fetching author avatars, add or edit this section:
+Only add settings you want to change. For example, to use a different port, stop
+fetching author avatars, and raise the avatar cache limit, add or edit this section:
 
 ```toml
 [web]
 port = 8080
 fetch_avatars = false
+avatar_cache_limit_mb = 1024
 ```
 
 Restart the server after editing general settings. For a systemd installation,
@@ -126,6 +127,8 @@ values.
 | `host` | `0.0.0.0` | nonempty | Address where the web app listens |
 | `port` | `8000` | 1–65535 | Web app port |
 | `fetch_avatars` | `true` | Boolean | Fetch/cache successful author avatars from captured URLs |
+| `avatar_cache_limit_enabled` | `true` | Boolean | Run weekly least-recently-used avatar cache cleanup |
+| `avatar_cache_limit_mb` | `512` | ≥1 | Maximum avatar cache size in MiB |
 
 Setup creates the initial password as its final action; no default password is
 created by `serve` or `web start`. `tweetnook web set-password` remains an
@@ -141,6 +144,14 @@ and completed Setup.
 Avatar fetching visits URLs saved in the archive. Scripts and styles are bundled,
 and fonts are local. Disable avatar fetching and scheduled syncs when you want
 archive browsing without their background internet attempts.
+
+The Web server maintains the avatar limit in its own weekly job; it is not part
+of archive syncs. Successful downloads begin with a current modification time,
+and serving a cached avatar refreshes that time at most once per day. Cleanup
+deletes the oldest modification times until the recognized avatar files fit the
+configured limit. Avatars saved before this behavior use their existing file
+time, so untouched legacy files are normally considered first. Disable
+`avatar_cache_limit_enabled` to retain cached avatars without size-based cleanup.
 
 ## `[schedule]`
 
@@ -269,6 +280,7 @@ and running terminal commands against that archive.
 | `activity/ai-usage/` | Monthly Gemini usage ledger/summary | Recommended when using spend controls |
 | `setup/archive.zip` | One staged Web upload | Optional; may duplicate sensitive source archive |
 | `schedule-state.json` | Persisted next scheduled occurrence | Optional operational state |
+| `avatar-cache-state.json` | Persisted last/next weekly avatar cleanup and result | Optional operational state |
 | `query-ids.json` | 24-hour discovered/fallback query-ID cache | Optional; refetched when possible |
 | `archive.lancedb/` | Possible legacy migration source | Preserve until migration is validated |
 
@@ -283,10 +295,10 @@ XDG data/config/cache homes.
 
 ## Web configuration surfaces
 
-The general Config pane's default view exposes only `web.fetch_avatars`,
-`web.host`, and `web.port`. Advanced mode exposes additional sync/database
-fields. Authentication, schedule, and automated tagging have dedicated panes;
-remaining fields may require direct TOML editing.
+The general Config pane's default view exposes avatar fetching/cache limits plus
+`web.host` and `web.port`. Advanced mode exposes additional sync/database fields.
+Authentication, schedule, and automated tagging have dedicated panes; remaining
+fields may require direct TOML editing.
 
 Restart the app after general configuration changes. Schedule changes made in
 the dedicated pane take effect when saved. For configuration loading and API
