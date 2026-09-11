@@ -126,6 +126,13 @@ An unrelated process using the configured port can be mistaken for tweetnook
 by status or stop commands. Inspect the reported process before stopping an
 unknown one. You can choose a different port in [Configuration](configuration.md#web).
 
+Do not run the manual `tweetnook web` background server alongside the managed
+systemd service. `sudo tweetnook update` now refuses a live manual process recorded
+in the service data directory. Stop it as the service user with `tweetnook web stop`,
+then rerun the update. If update says the managed service did not stay running,
+inspect `systemctl status tweetnook.service --no-pager`; another process may own
+the configured port.
+
 ### The password is rejected
 
 Enter any nonempty username and the password you set. To replace the password

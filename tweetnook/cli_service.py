@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Annotated
 
@@ -23,6 +24,7 @@ service_app = typer.Typer(
 UNIT_PATH = Path("/etc/systemd/system/tweetnook.service")
 UNIT_NAME = "tweetnook.service"
 OWNERSHIP_MARKER = "# Managed by tweetnook service install\n"
+SERVICE_STARTUP_SETTLE_SECONDS = 2.0
 
 
 def _quote(value: str, *, expand_variables: bool = False) -> str:
@@ -110,6 +112,88 @@ def _systemctl(*args):
     subprocess.run(["systemctl", *args], check=True)
 
 
+def _service_environment() -> dict[str, str]:
+    environment: dict[str, str] = {}
+    for line in UNIT_PATH.read_text().splitlines():
+        if not line.startswith("Environment="):
+            continue
+        try:
+            assignments = shlex.split(line.removeprefix("Environment="))
+        except ValueError:
+            continue
+        for assignment in assignments:
+            key, separator, value = assignment.partition("=")
+            if separator and key:
+                # render_unit doubles percent signs to escape systemd specifiers.
+                environment[key] = value.replace("%%", "%")
+    return environment
+
+
+def _is_tweetnook_serve_process(pid: int) -> bool:
+    try:
+        arguments = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+    except OSError:
+        return False
+    return any(
+        arguments[index : index + 3] == [b"-m", b"tweetnook", b"serve"]
+        for index in range(max(0, len(arguments) - 2))
+    )
+
+
+def _manual_web_pid() -> int | None:
+    data_home = _service_environment().get("XDG_DATA_HOME")
+    if not data_home:
+        return None
+    pid_file = Path(data_home) / "tweetnook" / ".web.pid"
+    try:
+        pid = int(pid_file.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    return pid if pid > 0 and _is_tweetnook_serve_process(pid) else None
+
+
+def _service_runtime_state() -> tuple[str, str, int]:
+    result = subprocess.run(
+        [
+            "systemctl",
+            "show",
+            UNIT_NAME,
+            "--property=ActiveState",
+            "--property=SubState",
+            "--property=MainPID",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    fields = {
+        key: value
+        for line in result.stdout.splitlines()
+        for key, separator, value in [line.partition("=")]
+        if separator
+    }
+    try:
+        main_pid = int(fields.get("MainPID", "0"))
+    except ValueError:
+        main_pid = 0
+    return fields.get("ActiveState", "unknown"), fields.get("SubState", "unknown"), main_pid
+
+
+def _verify_service_running() -> None:
+    time.sleep(SERVICE_STARTUP_SETTLE_SECONDS)
+    active_state, sub_state, main_pid = _service_runtime_state()
+    if active_state == "active" and sub_state == "running" and main_pid > 0:
+        return
+    pid_label = str(main_pid) if main_pid > 0 else "none"
+    raise ValueError(
+        f"{UNIT_NAME} did not remain running after startup "
+        f"(state: {active_state}/{sub_state}, main PID: {pid_label}). "
+        "Another process may own the configured Web port. Run "
+        f"`systemctl status {UNIT_NAME} --no-pager` and stop any manual "
+        "`tweetnook web` server before retrying."
+    )
+
+
 def _owned_unit():
     if UNIT_PATH.is_symlink() or (
         UNIT_PATH.exists() and not UNIT_PATH.read_text().startswith(OWNERSHIP_MARKER)
@@ -159,6 +243,13 @@ def update_managed_installation() -> None:
         _systemd(admin=True)
         _owned_unit()
         python = _service_python()
+        if manual_pid := _manual_web_pid():
+            raise ValueError(
+                f"A manual TweetNook Web server is still running (PID: {manual_pid}). "
+                "Stop it as the service user with `tweetnook web stop`, then rerun "
+                "`sudo tweetnook update`; otherwise it can keep old Python code loaded "
+                "and block the managed service port."
+            )
         subprocess.run(
             [python, "-m", "pip", "--version"],
             check=True,
@@ -186,7 +277,8 @@ def update_managed_installation() -> None:
         typer.echo(f"TweetNook update failed: {exc}", err=True)
         try:
             _systemctl("start", UNIT_NAME)
-        except (OSError, subprocess.CalledProcessError) as restart_exc:
+            _verify_service_running()
+        except (ValueError, OSError, subprocess.CalledProcessError) as restart_exc:
             typer.echo(f"The TweetNook service could not be restarted: {restart_exc}", err=True)
         else:
             typer.echo("TweetNook service restarted.")
@@ -194,9 +286,11 @@ def update_managed_installation() -> None:
 
     try:
         _systemctl("start", UNIT_NAME)
-    except (OSError, subprocess.CalledProcessError) as exc:
+        _verify_service_running()
+    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
         typer.echo(
-            f"TweetNook was updated, but the service could not be restarted: {exc}", err=True
+            f"TweetNook was updated, but the managed service did not stay running: {exc}",
+            err=True,
         )
         raise typer.Exit(1) from exc
 

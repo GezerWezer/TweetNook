@@ -94,7 +94,9 @@ sudo tweetnook update
 ```
 
 The command gracefully stops active Web and scheduled work, upgrades TweetNook in the exact Python
-environment recorded by the managed systemd service, and restarts the service afterward.
+environment recorded by the managed systemd service, and restarts the service afterward. It refuses
+to update while a manual `tweetnook web` server is still running from the same data directory, then
+checks that the managed service remains active before reporting success.
 
 ### 3. Open TweetNook
 

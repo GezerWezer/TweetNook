@@ -152,6 +152,9 @@ def test_update_uses_managed_service_python_in_order(tmp_path, monkeypatch):
     def systemctl(*args):
         events.append(("systemctl", *args))
 
+    def verify_service_running():
+        events.append(("verify-service",))
+
     def run(command, **kwargs):
         events.append(("run", command, kwargs))
         stdout = next(versions) if command[1] == "-c" else ""
@@ -160,6 +163,7 @@ def test_update_uses_managed_service_python_in_order(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "UNIT_PATH", unit_path)
     monkeypatch.setattr(service, "_systemd", systemd)
     monkeypatch.setattr(service, "_systemctl", systemctl)
+    monkeypatch.setattr(service, "_verify_service_running", verify_service_running)
     monkeypatch.setattr(service.subprocess, "run", run)
 
     result = CliRunner().invoke(app, ["update"])
@@ -184,6 +188,7 @@ def test_update_uses_managed_service_python_in_order(tmp_path, monkeypatch):
             {"check": True},
         ),
         ("systemctl", "start", service.UNIT_NAME),
+        ("verify-service",),
         (
             "run",
             [str(service_python), "-c", "import tweetnook; print(tweetnook.__version__)"],
@@ -202,6 +207,7 @@ def test_update_reports_already_current(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "UNIT_PATH", unit_path)
     monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
     monkeypatch.setattr(service, "_systemctl", lambda *args: None)
+    monkeypatch.setattr(service, "_verify_service_running", lambda: None)
     monkeypatch.setattr(
         service.subprocess,
         "run",
@@ -225,6 +231,9 @@ def test_update_restarts_service_after_pip_failure(tmp_path, monkeypatch):
     def systemctl(*args):
         events.append(("systemctl", *args))
 
+    def verify_service_running():
+        events.append(("verify-service",))
+
     def run(command, **kwargs):
         if command[1:4] == ["-m", "pip", "install"]:
             events.append(("pip", command))
@@ -234,6 +243,7 @@ def test_update_restarts_service_after_pip_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "UNIT_PATH", unit_path)
     monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
     monkeypatch.setattr(service, "_systemctl", systemctl)
+    monkeypatch.setattr(service, "_verify_service_running", verify_service_running)
     monkeypatch.setattr(service.subprocess, "run", run)
 
     result = CliRunner().invoke(app, ["update"])
@@ -246,9 +256,100 @@ def test_update_restarts_service_after_pip_failure(tmp_path, monkeypatch):
             [str(service_python), "-m", "pip", "install", "--upgrade", "tweetnook"],
         ),
         ("systemctl", "start", service.UNIT_NAME),
+        ("verify-service",),
     ]
     assert "TweetNook update failed" in result.output
     assert "TweetNook service restarted." in result.output
+
+
+def test_update_refuses_live_manual_web_server_before_subprocesses(tmp_path, monkeypatch):
+    unit_path = tmp_path / "tweetnook.service"
+    service_python = tmp_path / "service-python"
+    service_python.touch()
+    data_home = tmp_path / "data"
+    pid_file = data_home / "tweetnook" / ".web.pid"
+    pid_file.parent.mkdir(parents=True)
+    pid_file.write_text("4321")
+    unit_path.write_text(
+        service.render_unit(account(), python=str(service_python), data_home=data_home)
+    )
+    calls = []
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    monkeypatch.setattr(service, "_is_tweetnook_serve_process", lambda pid: pid == 4321)
+    monkeypatch.setattr(service, "_systemctl", lambda *args: calls.append(args))
+    monkeypatch.setattr(service.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+
+    result = CliRunner().invoke(app, ["update"])
+
+    assert result.exit_code == 1
+    assert calls == []
+    assert "manual TweetNook Web server is still running (PID: 4321)" in result.output
+    assert "tweetnook web stop" in result.output
+
+
+def test_update_does_not_claim_restart_when_service_dies_after_start(tmp_path, monkeypatch):
+    unit_path = tmp_path / "tweetnook.service"
+    service_python = tmp_path / "service-python"
+    service_python.touch()
+    write_managed_unit(unit_path, service_python)
+    systemctl_calls = []
+    versions = iter(["0.0.9\n"])
+
+    def run(command, **kwargs):
+        stdout = next(versions) if command[1] == "-c" else ""
+        return SimpleNamespace(stdout=stdout)
+
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    monkeypatch.setattr(service, "_systemctl", lambda *args: systemctl_calls.append(args))
+    monkeypatch.setattr(
+        service,
+        "_verify_service_running",
+        lambda: (_ for _ in ()).throw(ValueError("inactive/failed")),
+    )
+    monkeypatch.setattr(service.subprocess, "run", run)
+
+    result = CliRunner().invoke(app, ["update"])
+
+    assert result.exit_code == 1
+    assert systemctl_calls == [
+        ("stop", service.UNIT_NAME),
+        ("start", service.UNIT_NAME),
+    ]
+    assert "managed service did not stay running" in result.output
+    assert "inactive/failed" in result.output
+    assert "TweetNook service restarted." not in result.output
+
+
+def test_verify_service_running_reports_systemd_state(monkeypatch):
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(stdout="ActiveState=failed\nSubState=failed\nMainPID=0\n")
+
+    monkeypatch.setattr(service.time, "sleep", lambda seconds: calls.append(("sleep", seconds)))
+    monkeypatch.setattr(service.subprocess, "run", run)
+
+    with pytest.raises(ValueError, match="failed/failed") as error:
+        service._verify_service_running()
+
+    assert "Another process may own the configured Web port" in str(error.value)
+    assert calls == [
+        ("sleep", service.SERVICE_STARTUP_SETTLE_SECONDS),
+        (
+            [
+                "systemctl",
+                "show",
+                service.UNIT_NAME,
+                "--property=ActiveState",
+                "--property=SubState",
+                "--property=MainPID",
+            ],
+            {"check": True, "capture_output": True, "text": True},
+        ),
+    ]
 
 
 def test_update_refuses_unmanaged_service_before_subprocesses(tmp_path, monkeypatch):

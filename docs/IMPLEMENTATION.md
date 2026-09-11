@@ -182,6 +182,8 @@ This is the active implementation checklist. Update checkboxes as items complete
 - [x] Preflight pip and the installed version before gracefully stopping the service.
 - [x] Upgrade with the service Python, restart on success or package-upgrade failure, and report the version.
 - [x] Document the command and cover success, already-current, failure, ownership, preflight, and help behavior.
+- [x] Reject a live manual Web process from the managed data directory before upgrading.
+- [x] Verify the restarted systemd process remains active before reporting update success.
 
 ## GitHub Pages demo (2026-09-07)
 
