@@ -32,7 +32,7 @@ Thanks to [rrika](https://github.com/rrika) for sharing their
 [archive like-order research](https://github.com/lhl/tweetxvault/issues/2).
 
 > [!NOTE]
-> If you are upgrading from an older upstream installation that uses LanceDB, see the [migration instructions](docs/maintenance.md#upgrade-or-migrate-an-older-archive).
+> If you are updating from TweetXVault, see the [migration instructions](docs/maintenance.md#upgrade-or-migrate-an-older-archive).
 
 
 ## Getting started
@@ -94,9 +94,7 @@ sudo tweetnook update
 ```
 
 The command gracefully stops active Web and scheduled work, upgrades TweetNook in the exact Python
-environment recorded by the managed systemd service, and restarts the service afterward. It refuses
-to update while a manual `tweetnook web` server is still running from the same data directory, then
-checks that the managed service remains active before reporting success.
+environment recorded by the managed systemd service, and restarts the service afterward.
 
 ### 3. Open TweetNook
 
@@ -241,5 +239,5 @@ Use `tweetnook --help` to list commands or add `--help` to a command, such as
 
 ## License
 
-[Apache License 2.0](LICENSE). See [upstream](https://github.com/lhl/tweetxvault)
+[Apache License 2.0](LICENSE). See [TweetXVault](https://github.com/lhl/tweetxvault)
 for the original project.
