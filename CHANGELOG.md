@@ -3,6 +3,16 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning while it is in the `0.x` series.
 
+## [Unreleased]
+
+### Fixed
+
+- Prevented uncached author avatars from scanning the full post archive and
+  stalling reply navigation and pagination. Disabling avatar fetching now skips
+  database candidate lookup while continuing to serve cached avatars.
+- Disabled Python's prepared-statement cache on the shared archive connection
+  to avoid inconsistent results and SQLite errors during concurrent requests.
+
 ## [0.1.3] - 2026-09-10
 
 ### Changed

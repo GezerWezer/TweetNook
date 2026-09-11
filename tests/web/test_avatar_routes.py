@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import httpx
 
 from tweetnook.config import AppConfig, XDGPaths
+from tweetnook.storage.backend import ArchiveStore
 from tweetnook.web.deps import server_state
 from tweetnook.web.routes import avatars
 
@@ -214,7 +215,69 @@ def test_disabled_avatar_fetch_returns_nonpersistent_transparent_png(
     assert first.headers["content-type"] == "image/png"
     assert second.headers["content-type"] == "image/png"
     assert first.headers["cache-control"] == "no-store, max-age=0"
+    assert store.expressions == []
     assert not (paths.media_dir / "avatars" / "42.png").exists()
+
+
+def test_avatar_lookup_uses_author_index_and_preserves_candidate_order(
+    monkeypatch, make_web_client, tmp_path: Path
+) -> None:
+    paths = _paths(tmp_path)
+    server_state.update({"paths": paths, "config": AppConfig()})
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    records = [
+        store._record(
+            row_key=f"tweet_object:{index}",
+            record_type="tweet_object",
+            tweet_id=str(index),
+            author_id=str(index),
+            raw_json=_raw_avatar(f"https://pbs.twimg.com/{index}_normal.jpg"),
+        )
+        for index in range(100)
+    ]
+    records.extend(
+        store._record(
+            row_key=f"tweet_object:target-{index}",
+            record_type="tweet_object",
+            tweet_id=f"target-{index}",
+            author_id="target",
+            last_seen_at=index,
+            raw_json=raw,
+        )
+        for index, raw in enumerate(
+            [
+                _raw_avatar("https://pbs.twimg.com/older_normal.jpg"),
+                _raw_avatar("https://pbs.twimg.com/newer_normal.jpg", modern=True),
+                _raw_without_avatar(),
+                "malformed-json",
+            ]
+        )
+    )
+    store._merge_records(records)
+    calls = []
+
+    def fetch(url, timeout):
+        calls.append(url)
+        return SimpleNamespace(status_code=200, content=b"downloaded")
+
+    monkeypatch.setattr(avatars.httpx, "get", fetch)
+    client = make_web_client(avatars.router, store=store)
+    statements = []
+    store.conn.set_trace_callback(statements.append)
+    try:
+        response = client.get("/api/avatar/target")
+    finally:
+        store.conn.set_trace_callback(None)
+    try:
+        assert response.status_code == 200
+        assert calls == ["https://pbs.twimg.com/newer_400x400.jpg"]
+        queries = [sql for sql in statements if sql.startswith("SELECT raw_json")]
+        assert len(queries) == 1
+        plan = " ".join(row[3] for row in store.conn.execute("EXPLAIN QUERY PLAN " + queries[0]))
+        assert "idx_archive_profile_author (author_id=?)" in plan
+        assert "idx_archive_capture_target" not in plan
+    finally:
+        store.close()
 
 
 def test_missing_malformed_or_failed_avatar_uses_transparent_fallback(
@@ -259,9 +322,9 @@ def test_avatar_escapes_user_id_in_store_expression(make_web_client, tmp_path: P
 
     assert response.status_code == 200
     assert len(store.expressions) == 1
-    assert store.expressions[0].startswith(
+    assert (
         "author_id = 'o''reilly' AND record_type IN ('tweet', 'tweet_object')"
-    )
+    ) in store.expressions[0]
 
 
 def test_avatar_route_requires_authentication(make_web_client, tmp_path: Path) -> None:
