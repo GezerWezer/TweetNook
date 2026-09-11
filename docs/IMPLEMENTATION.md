@@ -2,6 +2,13 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## TweetNook 0.1.4 release (2026-09-11)
+
+- [x] Confirm `v0.1.3` is the latest remote tag and select the patch release `0.1.4`.
+- [x] Update package and lock metadata, release documentation, and the changelog.
+- [x] Run the full release validation and build fresh `0.1.4` artifacts.
+- [ ] Push `main` and `v0.1.4`, then verify GitHub and PyPI publication.
+
 ## Weekly avatar cache limit (2026-09-11)
 
 - [x] Add enabled-by-default Web settings for a 512 MiB avatar cache limit.

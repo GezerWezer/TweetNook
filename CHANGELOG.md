@@ -3,7 +3,7 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning while it is in the `0.x` series.
 
-## [Unreleased]
+## [0.1.4] - 2026-09-11
 
 ### Added
 
@@ -11,13 +11,32 @@ semantic-style versioning while it is in the `0.x` series.
   records recent use with throttled file modification times and independently
   evicts least-recently-used avatars in a weekly cleanup job.
 
+### Changed
+
+- Managed updates now reject a conflicting manual Web process and verify that
+  the restarted systemd service remains active before reporting success.
+
 ### Fixed
 
+- Bounded cold saved-reply-tree lookups with indexed breadth-first frontiers,
+  global deduplication, and the existing 250-descendant cap.
 - Prevented uncached author avatars from scanning the full post archive and
   stalling reply navigation and pagination. Disabling avatar fetching now skips
   database candidate lookup while continuing to serve cached avatars.
 - Disabled Python's prepared-statement cache on the shared archive connection
   to avoid inconsistent results and SQLite errors during concurrent requests.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q`
+- `node --test tests/js/test_web_assets.cjs`
+- `node --test tests/js/test_demo_api.cjs`
+- `git diff --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv build`
+- `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools uvx --from twine twine check dist/tweetnook-0.1.4.tar.gz dist/tweetnook-0.1.4-py3-none-any.whl`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --isolated --no-project --with dist/tweetnook-0.1.4-py3-none-any.whl -- tweetnook --help`
 
 ## [0.1.3] - 2026-09-10
 
@@ -185,6 +204,7 @@ semantic-style versioning while it is in the `0.x` series.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[0.1.4]: https://github.com/gezerwezer/tweetnook/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/gezerwezer/tweetnook/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/gezerwezer/tweetnook/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/gezerwezer/tweetnook/compare/v0.1.0...v0.1.1
