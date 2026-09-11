@@ -339,6 +339,11 @@ direct root installation requires an explicit user.
 when it is already active. This loads updated Python routes together with the
 installed Web assets. An inactive service is started once.
 
+The top-level `sudo tweetnook update` command upgrades the exact Python environment
+recorded in the managed unit. It refuses to proceed when a live manual
+`tweetnook web` process is recorded in the service data directory, and verifies
+that the systemd process remains active after startup before reporting success.
+
 `install` accepts `--data-home`, `--config-home`, and `--cache-home` for absolute
 XDG parent folders (each contains the `tweetnook/` application directory).
 Defaults are the selected user's `.local/share`, `.config`, and `.cache`.

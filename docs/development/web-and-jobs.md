@@ -38,9 +38,13 @@ updated package, breaking pagination or refreshed detail URLs. Restart uses the
 unit's existing cooperative shutdown policy and also starts an inactive service.
 
 `tweetnook update` already stops the managed service before upgrading its exact
-Python environment, then starts it again. A manual pip upgrade alone does not
-restart an existing server; follow it with `service restart` (or restart the
-foreground process). Pip installation itself never modifies host services.
+Python environment, then starts it again. Update rejects a live manual background
+server recorded in the same data directory and verifies the systemd process after
+a short startup settling period, so it cannot report success when that process
+immediately exits (for example, because the manual server still owns the port).
+A manual pip upgrade alone does not restart an existing server; follow it with
+`service restart` (or restart the foreground process). Pip installation itself
+never modifies host services.
 
 ## FastAPI lifespan
 
