@@ -2,6 +2,25 @@
 
 This is the active implementation checklist. Update checkboxes as items complete. Prefer small, reviewable commits.
 
+## Live Web disk-pressure investigation (2026-09-11)
+
+- [x] Review prior cache/cold-read reports and inspect the live process and settings.
+- [x] Measure detail/reply navigation and examine associated avatar query plans.
+- [x] Profile the expensive query and compare a bounded diagnostic alternative.
+- [x] Record verified causes, measurement limits, and prioritized remedies.
+  - A live uncached avatar read 1.95 GiB in 23.85 seconds and blocked a feed for
+    23.27 seconds. The avatar query omitted the partial author index predicate.
+- [x] Make avatar lookup use the existing author index and skip it when fetching is disabled.
+- [x] Replay rapid reply opening and pagination before/after on the server archive.
+  - Isolated read-only ASGI burst: six replies, four pages, two uncached avatars
+    within 550 ms; before 63.93 s/5.66 GiB, avatar fix 0.56 s/1.59 MiB.
+- [x] Address concurrent prepared-statement reuse errors exposed by the burst.
+  - Avatar-only stress: 60 requests, one HTTP error and one incorrect successful
+    response. With Python statement caching disabled, all 120 overlapping requests
+    matched sequential response fingerprints, with zero database changes.
+- [x] Complete full Python, Ruff, and diff validation and commit the fixes.
+- [ ] Deploy and verify the fixes in the live serving process.
+
 ## Cold reply-tree lookup performance (2026-09-10)
 
 - [x] Reproduce the post-restart cold lookup exceeding 120 seconds on the live archive.

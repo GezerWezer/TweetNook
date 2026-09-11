@@ -47,9 +47,16 @@ def get_avatar(
             headers=TRANSPARENT_CACHE_HEADERS,
         )
 
+    config = server_state.get("config")
+    if not config or not config.web.fetch_avatars:
+        return return_transparent()
+
     safe_user_id = user_id.replace("'", "''")
     rows = store._query(
         expr=(
+            # Match the partial author index predicate explicitly: SQLite cannot
+            # infer the nonempty condition from the author equality below.
+            "author_id IS NOT NULL AND author_id != '' AND "
             f"author_id = '{safe_user_id}' AND record_type IN ('tweet', 'tweet_object') "
             "AND raw_json IS NOT NULL AND json_valid(raw_json) "
             "AND ("
@@ -64,45 +71,43 @@ def get_avatar(
         order_by="last_seen_at DESC",
     )
 
-    config = server_state.get("config")
-    if config and config.web.fetch_avatars:
-        attempted_urls: set[str] = set()
-        for row in rows:
-            raw_json = row.get("raw_json")
-            if not raw_json:
+    attempted_urls: set[str] = set()
+    for row in rows:
+        raw_json = row.get("raw_json")
+        if not raw_json:
+            continue
+
+        try:
+            raw = json.loads(raw_json)
+            user_res = raw.get("core", {}).get("user_results", {}).get("result", {})
+            if not isinstance(user_res, dict):
                 continue
 
-            try:
-                raw = json.loads(raw_json)
-                user_res = raw.get("core", {}).get("user_results", {}).get("result", {})
-                if not isinstance(user_res, dict):
-                    continue
-
-                avatar = user_res.get("avatar") or {}
-                legacy = user_res.get("legacy") or {}
-                url = avatar.get("image_url") or legacy.get("profile_image_url_https")
-                if not isinstance(url, str) or not url:
-                    continue
-
-                url = url.replace("_normal", "_400x400")
-                if url in attempted_urls:
-                    continue
-                attempted_urls.add(url)
-                resp = httpx.get(url, timeout=10.0)
-                if resp.status_code == 200 and resp.content:
-                    avatar_path.write_bytes(resp.content)
-                    try:
-                        fallback_path.unlink()
-                    except FileNotFoundError:
-                        pass
-                    except OSError:
-                        # A stale fallback must never prevent serving a newly
-                        # downloaded avatar.
-                        pass
-                    return FileResponse(avatar_path, headers=AVATAR_CACHE_HEADERS)
-            except Exception:
-                # One stale URL or malformed candidate must not prevent trying
-                # the next stored representation for this author.
+            avatar = user_res.get("avatar") or {}
+            legacy = user_res.get("legacy") or {}
+            url = avatar.get("image_url") or legacy.get("profile_image_url_https")
+            if not isinstance(url, str) or not url:
                 continue
+
+            url = url.replace("_normal", "_400x400")
+            if url in attempted_urls:
+                continue
+            attempted_urls.add(url)
+            resp = httpx.get(url, timeout=10.0)
+            if resp.status_code == 200 and resp.content:
+                avatar_path.write_bytes(resp.content)
+                try:
+                    fallback_path.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    # A stale fallback must never prevent serving a newly
+                    # downloaded avatar.
+                    pass
+                return FileResponse(avatar_path, headers=AVATAR_CACHE_HEADERS)
+        except Exception:
+            # One stale URL or malformed candidate must not prevent trying
+            # the next stored representation for this author.
+            continue
 
     return return_transparent()

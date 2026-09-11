@@ -334,7 +334,10 @@ class ArchiveStore:
             db_path.parent.mkdir(parents=True, exist_ok=True)
 
         db_file = str(db_path)
-        self.conn = sqlite3.connect(db_file, check_same_thread=False)
+        # Shared Web readers can race CPython's prepared-statement cache even
+        # with serialized SQLite (python/cpython#118172). Keep the database page
+        # cache, but prepare independent statements for concurrent cursors.
+        self.conn = sqlite3.connect(db_file, check_same_thread=False, cached_statements=0)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA recursive_triggers=ON")

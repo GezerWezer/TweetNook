@@ -66,9 +66,18 @@ can finish after the walkthrough; attachment makes browsing available without re
 Current `ensure_scalar_indexes()`/`ensure_fts_index()` are no-ops. A missing
 derived index is not repaired by these startup calls.
 
-The shared SQLite connection uses `check_same_thread=False`. Stats report
+The shared SQLite connection uses `check_same_thread=False` and disables Python's
+prepared-statement cache to avoid inconsistent concurrent cursor results
+([CPython issue 118172](https://github.com/python/cpython/issues/118172)). SQLite's
+configured data page cache and mmap remain enabled. Stats report
 collection serializes itself with an in-process lock; general route use relies
 on SQLite and route behavior.
+
+Uncached avatar lookups explicitly include the partial author index's nonempty
+predicate so candidate selection searches one author instead of scanning all
+tweet records. Disabling avatar fetching returns before database lookup when
+there is no cached JPEG. Successful cached avatars are still served, and failed
+fetches remain nonpersistent so newer archive metadata can recover them.
 
 ## Authentication
 

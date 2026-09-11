@@ -1,5 +1,8 @@
 """Regress actual query shapes and bounded reads without machine-dependent timers."""
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 from tweetnook.search import search_posts
 from tweetnook.storage.backend import SCHEMA_VERSION, ArchiveStore
 
@@ -36,6 +39,32 @@ def _seed_memberships(store, count=100):
             for collection in ("bookmark", "like")
         ]
     )
+
+
+def test_concurrent_readers_preserve_complete_independent_results(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    _seed_memberships(store, count=40)
+    expected = [str(index) for index in range(30, 9, -1)]
+    barrier = Barrier(8)
+
+    def read_pages():
+        for _ in range(20):
+            barrier.wait(timeout=10)
+            rows = store.conn.execute(
+                "SELECT tweet_id FROM archive WHERE record_type = 'tweet' "
+                "AND collection_type = ? AND created_at_ts BETWEEN ? AND ? "
+                "ORDER BY created_at_ts DESC",
+                ("bookmark", 10, 30),
+            ).fetchall()
+            assert [row[0] for row in rows] == expected
+
+    try:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(read_pages) for _ in range(8)]
+            for future in futures:
+                future.result()
+    finally:
+        store.close()
 
 
 def test_actual_feed_duplicate_probes_and_counts_use_membership_index(tmp_path):
