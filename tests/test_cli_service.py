@@ -184,7 +184,15 @@ def test_update_uses_managed_service_python_in_order(tmp_path, monkeypatch):
         ("systemctl", "stop", service.UNIT_NAME),
         (
             "run",
-            [str(service_python), "-m", "pip", "install", "--upgrade", "tweetnook"],
+            [
+                str(service_python),
+                "-m",
+                "pip",
+                "install",
+                "--no-cache-dir",
+                "--upgrade",
+                "tweetnook",
+            ],
             {"check": True},
         ),
         ("systemctl", "start", service.UNIT_NAME),
@@ -253,7 +261,15 @@ def test_update_restarts_service_after_pip_failure(tmp_path, monkeypatch):
         ("systemctl", "stop", service.UNIT_NAME),
         (
             "pip",
-            [str(service_python), "-m", "pip", "install", "--upgrade", "tweetnook"],
+            [
+                str(service_python),
+                "-m",
+                "pip",
+                "install",
+                "--no-cache-dir",
+                "--upgrade",
+                "tweetnook",
+            ],
         ),
         ("systemctl", "start", service.UNIT_NAME),
         ("verify-service",),
