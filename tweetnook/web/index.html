@@ -237,10 +237,10 @@
                         <div class="flex-1 min-w-0">
                             <div class="flex items-start text-[15px]">
                                 <div class="flex items-center space-x-1 min-w-0">
-                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline" x-text="tweet.author.display_name || 'Unknown'" @click.stop="openProfileCard($event, tweet)"></span>
-                                    <span class="text-[var(--text-secondary)] truncate" x-text="'@' + (tweet.author.username || 'unknown')"></span>
+                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" x-text="tweet.author.display_name || 'Unknown'" @click.stop="openProfileCard($event, tweet)"></span>
+                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (tweet.author.username || 'unknown')"></span>
                                     <span class="text-[var(--text-secondary)]">·</span>
-                                    <div class="roll-wrapper text-[var(--text-secondary)]" @click.stop>
+                                    <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
                                         <div class="roll-inner">
                                             <span class="roll-item hover:underline" x-text="formatDate(tweet.created_at)"></span>
                                             <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(tweet)"></span>
@@ -308,10 +308,10 @@
                                                     <span x-text="getQuoteAuthor(getQuoteTweet(tweet)).initial"></span>
                                                     <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(tweet)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                                 </div>
-                                                <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(tweet)).name"></span>
-                                                <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(tweet)).screen_name"></span>
+                                                <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(tweet)).name"></span>
+                                                <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + getQuoteAuthor(getQuoteTweet(tweet)).screen_name"></span>
                                                 <span class="text-[var(--text-secondary)]">·</span>
-                                                <span class="text-[var(--text-secondary)]" x-text="formatDate(getQuoteTweet(tweet)?.legacy?.created_at || getQuoteTweet(tweet)?.created_at)"></span>
+                                                <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(tweet)?.legacy?.created_at || getQuoteTweet(tweet)?.created_at)"></span>
                                             </div>
                                             
                                             <template x-if="getReplyTo({raw_json: getQuoteTweet(tweet)})">
@@ -369,10 +369,10 @@
 
                             <div class="flex-1 min-w-0 z-10">
                                 <div class="flex items-center space-x-1 text-[15px]">
-                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline" @click.stop="openProfileCard($event, parent)" x-text="parent.author.display_name || 'Unknown'"></span>
-                                    <span class="text-[var(--text-secondary)] truncate" x-text="'@' + (parent.author.username || 'unknown')"></span>
+                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, parent)" x-text="parent.author.display_name || 'Unknown'"></span>
+                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (parent.author.username || 'unknown')"></span>
                                     <span class="text-[var(--text-secondary)]">·</span>
-                                    <div class="roll-wrapper text-[var(--text-secondary)]" @click.stop>
+                                    <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
                                         <div class="roll-inner">
                                             <span class="roll-item hover:underline" x-text="formatDate(parent.created_at)"></span>
                                             <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(parent)"></span>
@@ -467,10 +467,10 @@
                                                 <span x-text="getQuoteAuthor(getQuoteTweet(threadData?.main)).initial"></span>
                                                 <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(threadData?.main)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                             </div>
-                                            <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(threadData?.main)).name"></span>
-                                            <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(threadData?.main)).screen_name"></span>
+                                            <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(threadData?.main)).name"></span>
+                                            <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + getQuoteAuthor(getQuoteTweet(threadData?.main)).screen_name"></span>
                                             <span class="text-[var(--text-secondary)]">·</span>
-                                            <span class="text-[var(--text-secondary)]" x-text="formatDate(getQuoteTweet(threadData?.main)?.legacy?.created_at || getQuoteTweet(threadData?.main)?.created_at)"></span>
+                                            <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(threadData?.main)?.legacy?.created_at || getQuoteTweet(threadData?.main)?.created_at)"></span>
                                         </div>
                                         
                                         <template x-if="getReplyTo({raw_json: getQuoteTweet(threadData?.main)})">
@@ -523,10 +523,10 @@
 
                                 <div class="flex-1 min-w-0 z-10">
                                     <div class="flex items-center space-x-1 text-[15px]">
-                                        <span class="font-bold text-[var(--text-primary)] truncate hover:underline" @click.stop="openProfileCard($event, child)" x-text="child.author.display_name || 'Unknown'"></span>
-                                        <span class="text-[var(--text-secondary)] truncate" x-text="'@' + (child.author.username || 'unknown')"></span>
+                                        <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, child)" x-text="child.author.display_name || 'Unknown'"></span>
+                                        <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (child.author.username || 'unknown')"></span>
                                         <span class="text-[var(--text-secondary)]">·</span>
-                                        <div class="roll-wrapper text-[#71767b]" @click.stop>
+                                        <div class="roll-wrapper text-[#71767b] tweet-byline-detail" @click.stop>
                                             <div class="roll-inner">
                                                 <span class="roll-item hover:underline" x-text="formatDate(child.created_at)"></span>
                                                 <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(child)"></span>
@@ -557,10 +557,10 @@
                                                             <span x-text="getQuoteAuthor(getQuoteTweet(child)).initial"></span>
                                                             <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(child)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                                         </div>
-                                                        <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(child)).name"></span>
-                                                        <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(child)).screen_name"></span>
+                                                        <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(child)).name"></span>
+                                                        <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + getQuoteAuthor(getQuoteTweet(child)).screen_name"></span>
                                                         <span class="text-[var(--text-secondary)]">·</span>
-                                                        <span class="text-[var(--text-secondary)]" x-text="formatDate(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
+                                                        <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
                                                     </div>
                                                     <template x-if="getReplyTo({raw_json: getQuoteTweet(child)})">
                                                         <div class="text-[15px] text-[var(--text-secondary)] mb-1">
@@ -603,10 +603,10 @@
 
                                             <div class="flex-1 min-w-0 z-10">
                                                 <div class="flex items-center space-x-1 text-[15px]">
-                                                    <span class="font-bold text-[#e7e9ea] truncate hover:underline" @click.stop="openProfileCard($event, reply)" x-text="reply.author.display_name || 'Unknown'"></span>
-                                                    <span class="text-[#71767b] truncate" x-text="'@' + (reply.author.username || 'unknown')"></span>
+                                                    <span class="font-bold text-[#e7e9ea] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, reply)" x-text="reply.author.display_name || 'Unknown'"></span>
+                                                    <span class="text-[#71767b] tweet-byline-detail" x-text="'@' + (reply.author.username || 'unknown')"></span>
                                                     <span class="text-[#71767b]">·</span>
-                                                    <div class="roll-wrapper text-[#71767b]" @click.stop>
+                                                    <div class="roll-wrapper text-[#71767b] tweet-byline-detail" @click.stop>
                                                         <div class="roll-inner">
                                                             <span class="roll-item hover:underline" x-text="formatDate(reply.created_at)"></span>
                                                             <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(reply)"></span>
@@ -637,10 +637,10 @@
                                                                         <span x-text="getQuoteAuthor(getQuoteTweet(reply)).initial"></span>
                                                                         <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(reply)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                                                     </div>
-                                                                    <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(reply)).name"></span>
-                                                                    <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(reply)).screen_name"></span>
+                                                                    <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(reply)).name"></span>
+                                                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + getQuoteAuthor(getQuoteTweet(reply)).screen_name"></span>
                                                                     <span class="text-[var(--text-secondary)]">·</span>
-                                                                    <span class="text-[var(--text-secondary)]" x-text="formatDate(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
+                                                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
                                                                 </div>
                                                                 <template x-if="getReplyTo({raw_json: getQuoteTweet(reply)})">
                                                                     <div class="text-[15px] text-[var(--text-secondary)] mb-1">
@@ -693,10 +693,10 @@
                             <div class="flex-1 min-w-0 pb-1">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center space-x-1 overflow-hidden">
-                                        <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline" x-text="threadData.main.author.display_name" @click.stop="searchAuthor(threadData.main.author.username)"></span>
-                                        <span class="text-[15px] text-[var(--text-secondary)] truncate" x-text="'@' + threadData.main.author.username"></span>
+                                        <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="threadData.main.author.display_name" @click.stop="searchAuthor(threadData.main.author.username)"></span>
+                                        <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + threadData.main.author.username"></span>
                                         <span class="text-[var(--text-secondary)] px-1">·</span>
-                                        <span class="text-[var(--text-secondary)] hover:underline" x-text="formatDate(threadData.main.created_at)"></span>
+                                        <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(threadData.main.created_at)"></span>
                                     </div>
                                 </div>
                                 <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
@@ -714,10 +714,10 @@
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center space-x-1 overflow-hidden">
-                                    <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline" x-text="tweet.author.display_name" @click.stop="searchAuthor(tweet.author.username)"></span>
-                                    <span class="text-[15px] text-[var(--text-secondary)] truncate" x-text="'@' + tweet.author.username"></span>
+                                    <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="tweet.author.display_name" @click.stop="searchAuthor(tweet.author.username)"></span>
+                                    <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + tweet.author.username"></span>
                                     <span class="text-[var(--text-secondary)] px-1">·</span>
-                                    <span class="text-[var(--text-secondary)] hover:underline" x-text="formatDate(tweet.created_at)"></span>
+                                    <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(tweet.created_at)"></span>
                                 </div>
                             </div>
                             
@@ -781,10 +781,10 @@
                             </div>
                             <div class="flex-1 min-w-0 z-10">
                                 <div class="flex items-center space-x-1 text-[15px]">
-                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline" @click.stop="openProfileCard($event, parent)" x-text="parent.author.display_name || 'Unknown'"></span>
-                                    <span class="text-[var(--text-secondary)] truncate" x-text="'@' + (parent.author.username || 'unknown')"></span>
+                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, parent)" x-text="parent.author.display_name || 'Unknown'"></span>
+                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (parent.author.username || 'unknown')"></span>
                                     <span class="text-[var(--text-secondary)]">·</span>
-                                    <div class="roll-wrapper text-[var(--text-secondary)]" @click.stop>
+                                    <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
                                         <div class="roll-inner">
                                             <span class="roll-item hover:underline" x-text="formatDate(parent.created_at)"></span>
                                             <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(parent)"></span>
@@ -873,10 +873,10 @@
                                                 <span x-text="getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).initial"></span>
                                                 <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                             </div>
-                                            <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).name"></span>
-                                            <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).screen_name"></span>
+                                            <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).name"></span>
+                                            <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).screen_name"></span>
                                             <span class="text-[var(--text-secondary)]">·</span>
-                                            <span class="text-[var(--text-secondary)]" x-text="formatDate(getQuoteTweet(panelThreadData?.main)?.legacy?.created_at || getQuoteTweet(panelThreadData?.main)?.created_at)"></span>
+                                            <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(panelThreadData?.main)?.legacy?.created_at || getQuoteTweet(panelThreadData?.main)?.created_at)"></span>
                                         </div>
                                         <template x-if="getReplyTo({raw_json: getQuoteTweet(panelThreadData?.main)})">
                                             <div class="text-[15px] text-[var(--text-secondary)] mb-1">
@@ -922,10 +922,10 @@
                                 </div>
                                 <div class="flex-1 min-w-0 z-10">
                                     <div class="flex items-center space-x-1 text-[15px]">
-                                        <span class="font-bold text-[var(--text-primary)] truncate hover:underline" @click.stop="openProfileCard($event, child)" x-text="child.author.display_name || 'Unknown'"></span>
-                                        <span class="text-[var(--text-secondary)] truncate" x-text="'@' + (child.author.username || 'unknown')"></span>
+                                        <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, child)" x-text="child.author.display_name || 'Unknown'"></span>
+                                        <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (child.author.username || 'unknown')"></span>
                                         <span class="text-[var(--text-secondary)]">·</span>
-                                        <div class="roll-wrapper text-[var(--text-secondary)]" @click.stop>
+                                        <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
                                             <div class="roll-inner">
                                                 <span class="roll-item hover:underline" x-text="formatDate(child.created_at)"></span>
                                                 <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(child)"></span>
@@ -954,10 +954,10 @@
                                                             <span x-text="getQuoteAuthor(getQuoteTweet(child)).initial"></span>
                                                             <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(child)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                                         </div>
-                                                        <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(child)).name"></span>
-                                                        <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(child)).screen_name"></span>
+                                                        <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(child)).name"></span>
+                                                        <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + getQuoteAuthor(getQuoteTweet(child)).screen_name"></span>
                                                         <span class="text-[var(--text-secondary)]">·</span>
-                                                        <span class="text-[var(--text-secondary)]" x-text="formatDate(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
+                                                        <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
                                                     </div>
                                                     <template x-if="getReplyTo({raw_json: getQuoteTweet(child)})">
                                                         <div class="text-[15px] text-[var(--text-secondary)] mb-1">
@@ -992,10 +992,10 @@
                                             </div>
                                             <div class="flex-1 min-w-0 z-10">
                                                 <div class="flex items-center space-x-1 text-[15px]">
-                                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline" @click.stop="openProfileCard($event, reply)" x-text="reply.author.display_name || 'Unknown'"></span>
-                                                    <span class="text-[var(--text-secondary)] truncate" x-text="'@' + (reply.author.username || 'unknown')"></span>
+                                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, reply)" x-text="reply.author.display_name || 'Unknown'"></span>
+                                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (reply.author.username || 'unknown')"></span>
                                                     <span class="text-[var(--text-secondary)]">·</span>
-                                                    <div class="roll-wrapper text-[var(--text-secondary)]" @click.stop>
+                                                    <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
                                                         <div class="roll-inner">
                                                             <span class="roll-item hover:underline" x-text="formatDate(reply.created_at)"></span>
                                                             <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(reply)"></span>
@@ -1024,10 +1024,10 @@
                                                                         <span x-text="getQuoteAuthor(getQuoteTweet(reply)).initial"></span>
                                                                         <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(reply)).id)" @error="$el.style.display='none'" class="absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                                                     </div>
-                                                                    <span class="font-bold text-[var(--text-primary)] truncate" x-text="getQuoteAuthor(getQuoteTweet(reply)).name"></span>
-                                                                    <span class="text-[var(--text-secondary)] truncate" x-text="'@' + getQuoteAuthor(getQuoteTweet(reply)).screen_name"></span>
+                                                                    <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(reply)).name"></span>
+                                                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + getQuoteAuthor(getQuoteTweet(reply)).screen_name"></span>
                                                                     <span class="text-[var(--text-secondary)]">·</span>
-                                                                    <span class="text-[var(--text-secondary)]" x-text="formatDate(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
+                                                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
                                                                 </div>
                                                                 <template x-if="getReplyTo({raw_json: getQuoteTweet(reply)})">
                                                                     <div class="text-[15px] text-[var(--text-secondary)] mb-1">
@@ -1079,10 +1079,10 @@
                             <div class="flex-1 min-w-0 pb-1">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center space-x-1 overflow-hidden">
-                                        <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline" x-text="panelThreadData.main.author.display_name" @click.stop="searchAuthor(panelThreadData.main.author.username)"></span>
-                                        <span class="text-[15px] text-[var(--text-secondary)] truncate" x-text="'@' + panelThreadData.main.author.username"></span>
+                                        <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="panelThreadData.main.author.display_name" @click.stop="searchAuthor(panelThreadData.main.author.username)"></span>
+                                        <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + panelThreadData.main.author.username"></span>
                                         <span class="text-[var(--text-secondary)] px-1">·</span>
-                                        <span class="text-[var(--text-secondary)] hover:underline" x-text="formatDate(panelThreadData.main.created_at)"></span>
+                                        <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(panelThreadData.main.created_at)"></span>
                                     </div>
                                 </div>
                                 <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(panelThreadData.main)" @click="handleTextClick($event)"></div>
@@ -1099,10 +1099,10 @@
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center space-x-1 overflow-hidden">
-                                    <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline" x-text="tweet.author.display_name" @click.stop="searchAuthor(tweet.author.username)"></span>
-                                    <span class="text-[15px] text-[var(--text-secondary)] truncate" x-text="'@' + tweet.author.username"></span>
+                                    <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="tweet.author.display_name" @click.stop="searchAuthor(tweet.author.username)"></span>
+                                    <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + tweet.author.username"></span>
                                     <span class="text-[var(--text-secondary)] px-1">·</span>
-                                    <span class="text-[var(--text-secondary)] hover:underline" x-text="formatDate(tweet.created_at)"></span>
+                                    <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(tweet.created_at)"></span>
                                 </div>
                             </div>
                             <template x-if="getReplyTo(tweet)">

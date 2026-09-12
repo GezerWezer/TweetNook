@@ -109,6 +109,18 @@ body {
     white-space: nowrap;
 }
 
+.tweet-byline-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tweet-byline-detail {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
 /* ── Missing tweet skeletons ─────────────────────────────────────── */
 
 .tweet-skeleton {
