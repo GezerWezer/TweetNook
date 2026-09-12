@@ -1883,9 +1883,81 @@ body {
     font-size: 11px;
 }
 
-/* Native pinch zoom remains available; one-finger swipes navigate the lightbox. */
+/* Fullscreen media uses direct-manipulation motion while retaining native pinch zoom. */
+.lightbox-viewer {
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+.lightbox-overlay-enter,
+.lightbox-overlay-leave {
+    transition: opacity 180ms ease;
+}
+.lightbox-overlay-enter-start,
+.lightbox-overlay-leave-end {
+    opacity: 0;
+}
+.lightbox-overlay-enter-end,
+.lightbox-overlay-leave-start {
+    opacity: 1;
+}
+.lightbox-stage {
+    contain: strict;
+}
+.lightbox-slide {
+    will-change: transform;
+    backface-visibility: hidden;
+}
+.lightbox-media {
+    user-select: none;
+    -webkit-user-drag: none;
+    -webkit-touch-callout: none;
+}
 .lightbox-gesture-surface {
     touch-action: pinch-zoom;
+}
+.lightbox-chrome,
+.lightbox-nav-button,
+.lightbox-close-button {
+    transition: opacity 120ms linear, background-color 150ms ease;
+}
+.lightbox-close-button {
+    top: max(16px, env(safe-area-inset-top));
+    left: max(16px, env(safe-area-inset-left));
+}
+.lightbox-position {
+    position: absolute;
+    top: max(22px, calc(env(safe-area-inset-top) + 6px));
+    left: 50%;
+    padding: 3px 9px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.46);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(8px);
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+    .lightbox-nav-button {
+        display: none !important;
+    }
+    .lightbox-media {
+        max-width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lightbox-viewer,
+    .lightbox-overlay-enter,
+    .lightbox-overlay-leave,
+    .lightbox-chrome,
+    .lightbox-nav-button,
+    .lightbox-close-button {
+        transition-duration: 1ms !important;
+    }
 }
 
 /* Twitter/X-style playback badges for archived video and animated GIF media. */
