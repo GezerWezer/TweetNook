@@ -69,7 +69,33 @@ window.tweetNookToggleGif = tweetNookToggleGif;
 window.tweetNookSyncVideoDuration = tweetNookSyncVideoDuration;
 window.tweetNookSetVideoUiVisible = tweetNookSetVideoUiVisible;
 
+// Status responses are JSON trees. Retain unchanged reactive objects so polling
+// doesn't invalidate every binding in the mounted (including hidden) tray pages.
+function reconcileActivityValue(current, next) {
+    if (current === next) return current;
+    if (!current || !next || typeof current !== 'object' || typeof next !== 'object'
+        || Array.isArray(current) !== Array.isArray(next)) return next;
+    if (Array.isArray(next) && (current.length !== next.length
+        || next.some((item, index) => item?.key !== current[index]?.key))) return next;
+
+    for (const key of Object.keys(current)) {
+        if (!Object.prototype.hasOwnProperty.call(next, key)) delete current[key];
+    }
+    for (const key of Object.keys(next)) {
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+        const value = reconcileActivityValue(current[key], next[key]);
+        if (current[key] !== value) current[key] = value;
+    }
+    return current;
+}
+
 function tweetApp() {
+    // Transport state is deliberately outside Alpine's reactive component.
+    let activityRequest = null;
+    let activityPollingEnabled = false;
+    let activityClockTimer = null;
+    let activityVisibilityHandler = null;
+
     return {
         isDemo: window.TWEETNOOK_DEMO === true,
         viewMode: 'list',
@@ -213,41 +239,118 @@ function tweetApp() {
         activityDrawerOpen: false,
         activityPageKey: null,
         activityPageDirection: 'forward',
+        activityNowSeconds: Math.floor(Date.now() / 1000),
         showLogModal: false,
 
         get displayActivity() {
             return this.activity || this.lastActivity;
         },
 
-        async fetchActivityStatus() {
-            try {
-                const previousActiveStepKey = this.activity?.active_step
-                    || this.activity?.steps?.find(step => step.state === 'active')?.key
-                    || null;
-                const response = await fetch('/api/activity/status');
-                if (!response.ok) throw new Error('Could not load activity status');
-                const data = await response.json();
-                this.activitySchedule = data.schedule || this.activitySchedule;
-                if (data.active) {
-                    if (this.displayActivity?.run_id !== data.snapshot?.run_id) {
-                        this.activityPageKey = null;
-                        this.activityPageDirection = 'forward';
-                    }
-                    this.activity = data.snapshot;
-                    this.activityStartPending = false;
-                    this.activityStartingKind = null;
+        async fetchActivityStatus(force = false) {
+            if (activityRequest && !force) return activityRequest.promise;
+            activityRequest?.controller.abort();
+            clearTimeout(this.activityPollTimer);
+            this.activityPollTimer = null;
+            const request = { controller: new AbortController(), promise: null };
+            activityRequest = request;
+            request.promise = (async () => {
+                let timedOut = false;
+                const timeout = setTimeout(() => {
+                    timedOut = true;
+                    request.controller.abort();
+                }, 10000);
+                try {
+                    const previousActiveStepKey = this.activity?.active_step
+                        || this.activity?.steps?.find(step => step.state === 'active')?.key
+                        || null;
+                    const response = await fetch('/api/activity/status', { signal: request.controller.signal });
+                    if (!response.ok) throw new Error('Could not load activity status');
+                    const data = await response.json();
+                    // An action/focus refresh can supersede a slow request, even if
+                    // its response body finishes after cancellation.
+                    if (activityRequest !== request || request.controller.signal.aborted) return;
+                    this.activityNowSeconds = Math.floor(Date.now() / 1000);
+                    this.activitySchedule = reconcileActivityValue(this.activitySchedule, data.schedule || this.activitySchedule);
                     this.activityError = null;
-                } else {
-                    const lastActivity = data.last_snapshot || this.activity || this.lastActivity;
-                    this.lastActivity = lastActivity;
-                    this.activity = null;
-                    if (lastActivity?.stopped && !this.activityPageKey && previousActiveStepKey) {
-                        this.activityPageKey = previousActiveStepKey;
+                    if (data.active) {
+                        if (this.displayActivity?.run_id !== data.snapshot?.run_id) {
+                            this.activityPageKey = null;
+                            this.activityPageDirection = 'forward';
+                        }
+                        this.activity = this.activity?.run_id === data.snapshot?.run_id
+                            ? reconcileActivityValue(this.activity, data.snapshot) : data.snapshot;
+                        this.activityStartPending = false;
+                        this.activityStartingKind = null;
+                    } else {
+                        const lastActivity = data.last_snapshot || this.activity || this.lastActivity;
+                        this.lastActivity = this.lastActivity?.run_id === lastActivity?.run_id
+                            ? reconcileActivityValue(this.lastActivity, lastActivity) : lastActivity;
+                        this.activity = null;
+                        if (lastActivity?.stopped && !this.activityPageKey && previousActiveStepKey) {
+                            this.activityPageKey = previousActiveStepKey;
+                        }
+                    }
+                } catch (error) {
+                    if (activityRequest === request) {
+                        this.activityError = timedOut ? 'Activity status request timed out' : error.message;
+                    }
+                } finally {
+                    clearTimeout(timeout);
+                    if (activityRequest === request) {
+                        activityRequest = null;
+                        this.scheduleActivityPoll();
                     }
                 }
-            } catch (error) {
-                this.activityError = error.message;
+            })();
+            return request.promise;
+        },
+
+        scheduleActivityPoll() {
+            clearTimeout(this.activityPollTimer);
+            this.activityPollTimer = null;
+            if (!activityPollingEnabled || document.hidden) return;
+            const delay = this.activity || this.activityStartPending ? 1000 : 5000;
+            this.activityPollTimer = setTimeout(() => this.fetchActivityStatus(), delay);
+        },
+
+        startActivityPolling() {
+            if (activityPollingEnabled) return;
+            activityPollingEnabled = true;
+            activityVisibilityHandler = () => {
+                if (document.hidden) {
+                    clearTimeout(this.activityPollTimer);
+                    this.activityPollTimer = null;
+                } else {
+                    this.activityNowSeconds = Math.floor(Date.now() / 1000);
+                    this.fetchActivityStatus(true);
+                }
+            };
+            document.addEventListener('visibilitychange', activityVisibilityHandler);
+            window.addEventListener('focus', activityVisibilityHandler);
+            activityClockTimer = setInterval(() => {
+                if (this.activity && !document.hidden) {
+                    this.activityNowSeconds = Math.floor(Date.now() / 1000);
+                }
+            }, 1000);
+            if (!document.hidden) this.fetchActivityStatus();
+        },
+
+        stopActivityPolling() {
+            activityPollingEnabled = false;
+            clearTimeout(this.activityPollTimer);
+            this.activityPollTimer = null;
+            clearInterval(activityClockTimer);
+            if (activityVisibilityHandler) {
+                document.removeEventListener('visibilitychange', activityVisibilityHandler);
+                window.removeEventListener('focus', activityVisibilityHandler);
+                activityVisibilityHandler = null;
             }
+            activityRequest?.controller.abort();
+            activityRequest = null;
+        },
+
+        destroy() {
+            this.stopActivityPolling();
         },
 
         async fetchScheduleSettings() {
@@ -495,7 +598,7 @@ function tweetApp() {
                     throw new Error(data.detail || 'Could not start sync');
                 }
                 await new Promise(resolve => setTimeout(resolve, 250));
-                await this.fetchActivityStatus();
+                await this.fetchActivityStatus(true);
                 if (kind === 'enrich') await this.fetchArchiveEnrichmentStatus();
             } catch (error) {
                 this.activityError = error.message;
@@ -514,7 +617,7 @@ function tweetApp() {
                     throw new Error(data.detail || 'Could not stop task');
                 }
                 await new Promise(resolve => setTimeout(resolve, 100));
-                await this.fetchActivityStatus();
+                await this.fetchActivityStatus(true);
             } catch (error) {
                 this.activityError = error.message;
             }
@@ -980,6 +1083,7 @@ function tweetApp() {
             this.activityPageKey = null;
             this.activityPageDirection = 'forward';
             this.activityDrawerOpen = true;
+            if (activityPollingEnabled) this.fetchActivityStatus();
         },
 
         toggleActivityDrawer() {
@@ -1338,8 +1442,7 @@ function tweetApp() {
             }, 3000);
             setInterval(() => { if (this.archiveResourcesLoaded) this.fetchArchiveEnrichmentStatus(); }, 60000);
             setInterval(() => { this.statsAgeNow = Date.now(); }, 30000);
-            this.fetchActivityStatus();
-            this.activityPollTimer = setInterval(() => this.fetchActivityStatus(), 1000);
+            this.startActivityPolling();
 
             this.$watch('showStatsModal', val => {
                 if (val) this.lockModalScroll();

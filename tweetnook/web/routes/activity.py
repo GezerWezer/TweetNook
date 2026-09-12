@@ -110,19 +110,21 @@ def get_activity_status(
     snapshot = _read_active_snapshot()
     paths = server_state.get("paths")
     data_dir = getattr(paths, "data_dir", None)
-    last_snapshot = (
-        latest_finished_snapshot(data_dir, title="tweetnook sync") if data_dir is not None else None
-    )
-    if last_snapshot is None:
-        candidate = _read_snapshot()
-        if (
-            candidate is not None
-            and not candidate.get("running")
-            and candidate.get("title") == "tweetnook sync"
-        ):
-            last_snapshot = candidate
-    if snapshot is not None:
-        last_snapshot = None
+    last_snapshot = None
+    if snapshot is None:
+        last_snapshot = (
+            latest_finished_snapshot(data_dir, title="tweetnook sync")
+            if data_dir is not None
+            else None
+        )
+        if last_snapshot is None:
+            candidate = _read_snapshot()
+            if (
+                candidate is not None
+                and not candidate.get("running")
+                and candidate.get("title") == "tweetnook sync"
+            ):
+                last_snapshot = candidate
     return {
         "active": snapshot is not None,
         "snapshot": snapshot,

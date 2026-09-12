@@ -21,10 +21,15 @@ def _write_snapshot(path, *, pid: int, running: bool = True, title: str = "tweet
     )
 
 
-def test_activity_status_returns_active_pipeline(tmp_path, make_web_client) -> None:
+def test_activity_status_returns_active_pipeline(tmp_path, make_web_client, monkeypatch) -> None:
     status_file = tmp_path / "activity-status.json"
     _write_snapshot(status_file, pid=os.getpid(), title="tweetnook import enrich")
     server_state["paths"] = SimpleNamespace(activity_status_file=status_file, data_dir=tmp_path)
+    monkeypatch.setattr(
+        activity,
+        "latest_finished_snapshot",
+        lambda *_args, **_kwargs: pytest.fail("active status must not scan finished-run history"),
+    )
     client = make_web_client(activity.router)
 
     response = client.get("/api/activity/status")
@@ -32,6 +37,7 @@ def test_activity_status_returns_active_pipeline(tmp_path, make_web_client) -> N
     assert response.status_code == 200
     assert response.json()["active"] is True
     assert response.json()["snapshot"]["title"] == "tweetnook import enrich"
+    assert response.json()["last_snapshot"] is None
 
 
 def test_activity_status_ignores_finished_or_orphaned_snapshots(tmp_path, make_web_client) -> None:
