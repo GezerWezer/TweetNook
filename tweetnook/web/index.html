@@ -3196,7 +3196,7 @@
                         <span class="truncate font-bold text-[14px]" x-text="activityCommandLabel()">Archive Sync</span>
                         <div class="flex items-center gap-2 flex-shrink-0 ml-2">
                             <span x-show="activity" class="text-[var(--text-secondary)] text-[12px]"
-                                  x-text="activity ? formatActivityDuration((Date.now() / 1000) - activity.started_at) : ''"></span>
+                                  x-text="activity ? formatActivityDuration(activityNowSeconds - activity.started_at) : ''"></span>
                             <svg viewBox="0 0 24 24" class="w-4 h-4 fill-current text-[var(--text-secondary)] transition-transform duration-200"
                                  :class="activityDrawerOpen ? 'rotate-180' : ''" aria-hidden="true">
                                 <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"></path>

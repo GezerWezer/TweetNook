@@ -35,6 +35,7 @@ function browserContext(pathname = '/') {
         Math,
         JSON,
         Promise,
+        AbortController,
         encodeURIComponent,
         decodeURIComponent,
         confirm: () => true,
@@ -76,6 +77,12 @@ function browserContext(pathname = '/') {
             },
         },
         document: {
+            addEventListener(name, callback) {
+                events.set(`document:${name}`, callback);
+            },
+            removeEventListener(name) {
+                events.delete(`document:${name}`);
+            },
             documentElement: {
                 style: {
                     setProperty(key, value) {
@@ -155,6 +162,9 @@ function browserContext(pathname = '/') {
         location,
         addEventListener(name, callback) {
             events.set(name, callback);
+        },
+        removeEventListener(name) {
+            events.delete(name);
         },
         dispatchEvent(event) {
             const callback = events.get(event.type);
@@ -2358,6 +2368,176 @@ test('activity drawer loads any pipeline and starts production jobs', async () =
     assert.equal(app.activitySegmentPercent(app.activitySelectedPage()), 50);
 });
 
+test('activity updates retain unchanged rows and handle removal, cancellation, and new runs', async () => {
+    const context = browserContext();
+    let data = {
+        active: true,
+        schedule: {enabled: true, relative: 'Tomorrow'},
+        snapshot: {
+            run_id: 'one', active_step: 'media',
+            steps: [
+                {key: 'media', state: 'active', completed: 1, total: 10, counters: 'old', metrics: {downloaded: 1, failed: 1}},
+                {key: 'articles', state: 'pending', completed: 0, total: 10},
+            ],
+            issues: [{level: 'warning', message: 'Retry', count: 1}],
+        },
+    };
+    context.fetch = async () => ({ok: true, json: async () => JSON.parse(JSON.stringify(data))});
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    await app.fetchActivityStatus();
+    const original = app.activity;
+    const steps = original.steps;
+    const media = steps[0];
+    const articles = steps[1];
+    const metrics = media.metrics;
+    const issues = original.issues;
+    const schedule = app.activitySchedule;
+    await app.fetchActivityStatus();
+    assert.equal(app.activity, original);
+    assert.equal(app.activity.steps, steps);
+    assert.equal(app.activity.steps[0], media);
+    assert.equal(app.activity.issues, issues);
+    assert.equal(app.activitySchedule, schedule);
+
+    data.snapshot.steps[0].completed = 2;
+    data.snapshot.steps[0].metrics.downloaded = 2;
+    delete data.snapshot.steps[0].metrics.failed;
+    delete data.snapshot.steps[0].counters;
+    data.snapshot.issues[0].count = 2;
+    await app.fetchActivityStatus();
+    assert.equal(app.activity.steps[0], media);
+    assert.equal(app.activity.steps[1], articles);
+    assert.equal(media.completed, 2);
+    assert.equal(media.metrics, metrics);
+    assert.equal(metrics.downloaded, 2);
+    assert.equal(Object.hasOwn(metrics, 'failed'), false);
+    assert.equal(Object.hasOwn(media, 'counters'), false);
+    assert.equal(issues[0].count, 2);
+
+    data.snapshot.steps[0].metrics = null;
+    await app.fetchActivityStatus();
+    assert.equal(media.metrics, null);
+    data.snapshot.steps.reverse();
+    await app.fetchActivityStatus();
+    assert.deepEqual(Array.from(app.activity.steps, step => step.key), ['articles', 'media']);
+    data.snapshot.steps.push({key: 'tag', state: 'pending'});
+    await app.fetchActivityStatus();
+    assert.equal(app.activity.steps.length, 3);
+
+    data = {...data, active: false, last_snapshot: {...data.snapshot, stopped: true, success: false}, snapshot: null};
+    data.last_snapshot.steps[1].state = 'failed';
+    app.activityError = 'Temporary connection failure';
+    await app.fetchActivityStatus();
+    assert.equal(app.activity, null);
+    assert.equal(app.activityError, null);
+    assert.equal(app.activityPageKey, 'media');
+    assert.equal(app.activitySegmentState(app.activitySelectedPage()), 'cancelled');
+    const finished = app.lastActivity;
+    await app.fetchActivityStatus();
+    assert.equal(app.lastActivity, finished);
+
+    data = {...data, active: true, snapshot: {run_id: 'two', steps: [{key: 'prepare', state: 'active'}]}};
+    await app.fetchActivityStatus();
+    assert.equal(app.activity.run_id, 'two');
+    assert.equal(app.activityPageKey, null);
+    assert.equal(app.activitySelectedPageKey(), 'prepare');
+    assert.equal(Object.hasOwn(app.activity, 'stopped'), false);
+});
+
+test('activity requests coalesce and superseded responses cannot revive a finished run', async () => {
+    const context = browserContext();
+    const requests = [];
+    context.fetch = (_url, {signal}) => new Promise(resolve => requests.push({resolve, signal}));
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const older = app.fetchActivityStatus();
+    const shared = app.fetchActivityStatus();
+    assert.equal(requests.length, 1);
+    const newer = app.fetchActivityStatus(true);
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].signal.aborted, true);
+    requests[1].resolve({ok: true, json: async () => ({active: false, last_snapshot: {run_id: 'one', success: true, steps: []}})});
+    await newer;
+    const finished = app.lastActivity;
+    // Ignore abort on purpose: late response/body completion must still be harmless.
+    requests[0].resolve({ok: true, json: async () => ({active: true, snapshot: {run_id: 'one', steps: [{key: 'media', state: 'active', completed: 100}]}})});
+    await Promise.all([older, shared]);
+    assert.equal(app.activity, null);
+    assert.equal(app.lastActivity, finished);
+    assert.equal(app.activityError, null);
+});
+
+test('activity request timeout releases the request and a successful retry clears its error', async () => {
+    const context = browserContext();
+    let timeout;
+    context.setTimeout = (callback, delay) => { assert.equal(delay, 10000); timeout = callback; return 1; };
+    context.clearTimeout = () => {};
+    context.fetch = (_url, {signal}) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('aborted')), {once: true});
+    });
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const request = app.fetchActivityStatus();
+    timeout();
+    await request;
+    assert.equal(app.activityError, 'Activity status request timed out');
+    context.fetch = async () => ({ok: true, json: async () => ({active: false})});
+    await app.fetchActivityStatus();
+    assert.equal(app.activityError, null);
+});
+
+test('activity polling adapts to idle and visibility while its elapsed clock stays independent', async () => {
+    const context = browserContext();
+    const timers = new Map();
+    const intervals = new Map();
+    let nextId = 0;
+    let now = 100000;
+    context.Date = class extends Date { static now() { return now; } };
+    context.setTimeout = (callback, delay) => { const id = ++nextId; timers.set(id, {callback, delay}); return id; };
+    context.clearTimeout = id => timers.delete(id);
+    context.setInterval = (callback, delay) => { const id = ++nextId; intervals.set(id, {callback, delay}); return id; };
+    context.clearInterval = id => intervals.delete(id);
+    let requests = 0;
+    let data = {active: true, snapshot: {run_id: 'one', started_at: 90, steps: []}};
+    context.fetch = async () => { requests++; return {ok: true, json: async () => JSON.parse(JSON.stringify(data))}; };
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.startActivityPolling();
+    app.startActivityPolling();
+    await app.fetchActivityStatus();
+    assert.equal(requests, 1);
+    assert.equal(intervals.size, 1);
+    assert.deepEqual([...timers.values()].map(timer => timer.delay), [1000]);
+    const original = app.activity;
+    now = 101000;
+    [...intervals.values()][0].callback();
+    assert.equal(app.activityNowSeconds, 101);
+    assert.equal(app.activity, original);
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.match(html, /formatActivityDuration\(activityNowSeconds - activity.started_at\)/);
+
+    data = {active: false, last_snapshot: {run_id: 'one', success: true, steps: []}};
+    await app.fetchActivityStatus();
+    assert.deepEqual([...timers.values()].map(timer => timer.delay), [5000]);
+    context.document.hidden = true;
+    context.__state.events.get('document:visibilitychange')();
+    assert.equal(timers.size, 0);
+    now = 102000;
+    [...intervals.values()][0].callback();
+    assert.equal(app.activityNowSeconds, 101);
+    context.document.hidden = false;
+    context.__state.events.get('document:visibilitychange')();
+    await app.fetchActivityStatus();
+    assert.equal(requests, 3);
+    assert.equal(app.activityNowSeconds, 102);
+    app.destroy();
+    assert.equal(timers.size, 0);
+    assert.equal(intervals.size, 0);
+    assert.equal(context.__state.events.has('document:visibilitychange'), false);
+    assert.equal(context.__state.events.has('focus'), false);
+});
+
 test('incomplete enrichment starts the fixed Web action and refreshes status', async () => {
     const context = browserContext();
     const requests = [];
@@ -2372,7 +2552,7 @@ test('incomplete enrichment starts the fixed Web action and refreshes status', a
     const app = immediateComponent(tweetApp());
     app.archiveReady = true;
     let activityRefreshes = 0, enrichmentRefreshes = 0;
-    app.fetchActivityStatus = async () => { activityRefreshes++; app.activityStartPending = false; };
+    app.fetchActivityStatus = async force => { assert.equal(force, true); activityRefreshes++; app.activityStartPending = false; };
     app.fetchArchiveEnrichmentStatus = async () => { enrichmentRefreshes++; };
 
     await app.startActivity('enrich');
