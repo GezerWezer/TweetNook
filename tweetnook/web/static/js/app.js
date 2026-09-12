@@ -220,6 +220,8 @@ function tweetApp() {
         lightboxOpen: false,
         lightboxMedia: [],
         lightboxIndex: 0,
+        lightboxGestureStart: null,
+        lightboxSuppressClickUntil: 0,
         videoObserver: null,
 
         // Split panel state
@@ -1540,6 +1542,68 @@ function tweetApp() {
         nextLightbox() {
             if (this.lightboxMedia.length < 2) return;
             this.lightboxIndex = Math.min(this.lightboxMedia.length - 1, this.lightboxIndex + 1);
+        },
+
+        startLightboxGesture(event) {
+            if (!this.lightboxOpen) return;
+            this.lightboxSuppressClickUntil = 0;
+            if (event.touches?.length > 1) {
+                this.lightboxGestureStart = null;
+                return;
+            }
+
+            const target = event.target;
+            if (target?.closest?.('button, video[controls], audio, input, textarea, select, a')) return;
+
+            const touch = event.touches?.[0] || event.changedTouches?.[0];
+            if (!touch) return;
+
+            this.lightboxGestureStart = {
+                x: touch.clientX,
+                y: touch.clientY,
+                closesOnClick: !target?.closest?.('img, video, button'),
+            };
+        },
+
+        endLightboxGesture(event) {
+            const start = this.lightboxGestureStart;
+            this.lightboxGestureStart = null;
+            if (!start || !this.lightboxOpen) return;
+
+            const touch = event.changedTouches?.[0];
+            if (!touch) return;
+
+            const deltaX = touch.clientX - start.x;
+            const deltaY = touch.clientY - start.y;
+            const absX = Math.abs(deltaX);
+            const absY = Math.abs(deltaY);
+            let handled = false;
+
+            if (absX >= 50 && absX > absY * 1.2) {
+                if (deltaX < 0) this.nextLightbox();
+                else this.prevLightbox();
+                handled = true;
+            } else if (deltaY >= 70 && absY > absX * 1.2) {
+                this.lightboxOpen = false;
+                handled = true;
+            }
+
+            if (handled && start.closesOnClick && this.lightboxOpen) {
+                this.lightboxSuppressClickUntil = Date.now() + 500;
+            }
+        },
+
+        cancelLightboxGesture() {
+            this.lightboxGestureStart = null;
+        },
+
+        handleLightboxBackdropClick(event) {
+            if (Date.now() < this.lightboxSuppressClickUntil) {
+                this.lightboxSuppressClickUntil = 0;
+                event.stopPropagation();
+                return;
+            }
+            this.lightboxOpen = false;
         },
 
         scrollToTop() {

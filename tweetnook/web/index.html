@@ -1131,9 +1131,14 @@
              @keydown.window.escape="lightboxOpen = false" 
              @keydown.window.right="if(lightboxOpen) nextLightbox()" 
              @keydown.window.left="if(lightboxOpen) prevLightbox()"
+             @touchstart.passive="startLightboxGesture($event)"
+             @touchend.passive="endLightboxGesture($event)"
+             @touchcancel="cancelLightboxGesture()"
              class="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center" 
              x-cloak 
-             @click="lightboxOpen = false">
+             @click="handleLightboxBackdropClick($event)">
+
+            <div class="absolute inset-0 lightbox-gesture-surface" aria-hidden="true"></div>
              
             <button x-show="lightboxMedia.length > 1 && lightboxIndex > 0" @click.stop="prevLightbox()" aria-label="Previous image" title="Previous image" class="absolute left-4 p-3 text-white hover:bg-gray-800 rounded-full transition z-50">
                 <svg viewBox="0 0 24 24" class="w-8 h-8 fill-current"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"></path></svg>
@@ -1147,16 +1152,16 @@
             </button>
             
             <template x-if="lightboxMedia[lightboxIndex]">
-                <div class="w-full h-full flex justify-center items-center">
+                <div class="pointer-events-none relative z-10 w-full h-full flex justify-center items-center">
                     <template x-if="lightboxMedia[lightboxIndex].type === 'photo'">
-                        <img :src="lightboxMedia[lightboxIndex].src" class="max-w-full max-h-full object-contain" @click.stop>
+                        <img :src="lightboxMedia[lightboxIndex].src" class="pointer-events-auto max-w-full max-h-full object-contain lightbox-gesture-surface" @click.stop>
                     </template>
                     <template x-if="lightboxMedia[lightboxIndex].type === 'video'">
                         <template x-if="lightboxMedia[lightboxIndex].isGif">
-                            <video :src="lightboxMedia[lightboxIndex].src" autoplay loop muted playsinline class="max-w-[90%] max-h-[90%] outline-none" @click.stop></video>
+                            <video :src="lightboxMedia[lightboxIndex].src" autoplay loop muted playsinline class="pointer-events-auto max-w-[90%] max-h-[90%] outline-none lightbox-gesture-surface" @click.stop></video>
                         </template>
                         <template x-if="!lightboxMedia[lightboxIndex].isGif">
-                            <video :src="lightboxMedia[lightboxIndex].src" controls autoplay class="max-w-[90%] max-h-[90%] outline-none" @click.stop></video>
+                            <video :src="lightboxMedia[lightboxIndex].src" controls autoplay class="pointer-events-auto max-w-[90%] max-h-[90%] outline-none" @click.stop></video>
                         </template>
                     </template>
                 </div>

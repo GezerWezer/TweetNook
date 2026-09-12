@@ -564,6 +564,86 @@ test('lightbox navigation moves through media and clamps at both ends', () => {
     assert.match(html, /@click\.stop="lightboxOpen = false"/);
 });
 
+test('lightbox touch swipes navigate horizontally and keep backdrop taps from dismissing', () => {
+    const context = browserContext();
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const { tweetApp } = loadScripts(
+        context,
+        ['themes.js', 'app.js'],
+        '({tweetApp})',
+    );
+    const app = immediateComponent(tweetApp());
+    const imageTarget = { closest: (selector) => selector === 'img, video, button' ? {} : null };
+    const backdropTarget = { closest: () => null };
+    const touchEvent = (x, y, touches = [{clientX: x, clientY: y}], target = backdropTarget) => ({
+        target,
+        touches,
+        changedTouches: [{clientX: x, clientY: y}],
+        stopPropagation() { this.stopped = true; },
+    });
+
+    app.lightboxOpen = true;
+    app.lightboxMedia = [{type: 'photo'}, {type: 'photo'}, {type: 'photo'}];
+    app.startLightboxGesture({...touchEvent(220, 180), target: imageTarget});
+    app.endLightboxGesture({...touchEvent(145, 184), target: imageTarget});
+    assert.equal(app.lightboxIndex, 1);
+    assert.equal(app.lightboxOpen, true);
+
+    app.startLightboxGesture({...touchEvent(220, 180), target: backdropTarget});
+    app.endLightboxGesture({...touchEvent(145, 184), target: backdropTarget});
+    assert.equal(app.lightboxIndex, 2);
+    const swipeClick = touchEvent(145, 184);
+    app.handleLightboxBackdropClick(swipeClick);
+    assert.equal(swipeClick.stopped, true);
+    assert.equal(app.lightboxOpen, true);
+
+    app.startLightboxGesture({...touchEvent(100, 180), target: backdropTarget});
+    app.endLightboxGesture({...touchEvent(170, 175), target: backdropTarget});
+    assert.equal(app.lightboxIndex, 1);
+    assert.match(html, /@touchstart\.passive="startLightboxGesture\(\$event\)"/);
+    assert.match(html, /@touchend\.passive="endLightboxGesture\(\$event\)"/);
+    assert.match(html, /object-contain lightbox-gesture-surface/);
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    assert.match(css, /\.lightbox-gesture-surface\s*\{[^}]*touch-action:\s*pinch-zoom;/s);
+});
+
+test('lightbox dismisses on a downward swipe and ignores controls and short drags', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(
+        context,
+        ['themes.js', 'app.js'],
+        '({tweetApp})',
+    );
+    const app = immediateComponent(tweetApp());
+    const touchEvent = (target, x, y, touches = [{clientX: x, clientY: y}]) => ({
+        target,
+        touches,
+        changedTouches: [{clientX: x, clientY: y}],
+    });
+
+    app.lightboxOpen = true;
+    const imageTarget = {closest: (selector) => selector === 'img, video, button' ? {} : null};
+    app.startLightboxGesture(touchEvent(imageTarget, 100, 100));
+    app.endLightboxGesture(touchEvent(imageTarget, 105, 185));
+    assert.equal(app.lightboxOpen, false);
+
+    app.lightboxOpen = true;
+    app.startLightboxGesture(touchEvent({closest: () => ({})}, 100, 100));
+    app.endLightboxGesture(touchEvent({closest: () => ({})}, 100, 190));
+    assert.equal(app.lightboxOpen, true);
+
+    app.startLightboxGesture(touchEvent({closest: () => null}, 100, 100));
+    app.endLightboxGesture(touchEvent({closest: () => null}, 100, 150));
+    assert.equal(app.lightboxOpen, true);
+
+    app.startLightboxGesture(touchEvent({closest: () => null}, 100, 100, [
+        {clientX: 100, clientY: 100},
+        {clientX: 105, clientY: 105},
+    ]));
+    app.endLightboxGesture(touchEvent({closest: () => null}, 100, 190));
+    assert.equal(app.lightboxOpen, true);
+});
+
 test('reply-recipient links open an anchored profile card without searching', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(
