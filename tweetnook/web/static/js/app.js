@@ -117,6 +117,7 @@ function tweetApp() {
     let activityPollingEnabled = false;
     let activityClockTimer = null;
     let activityVisibilityHandler = null;
+    let lightboxMotionTimer = null;
 
     return {
         isDemo: window.TWEETNOOK_DEMO === true,
@@ -222,6 +223,12 @@ function tweetApp() {
         lightboxIndex: 0,
         lightboxGestureStart: null,
         lightboxSuppressClickUntil: 0,
+        lightboxGestureAxis: null,
+        lightboxGestureOffsetX: 0,
+        lightboxGestureOffsetY: 0,
+        lightboxGestureTransition: 'none',
+        lightboxGestureAnimating: false,
+        lightboxDismissPending: false,
         videoObserver: null,
 
         // Split panel state
@@ -375,6 +382,7 @@ function tweetApp() {
 
         destroy() {
             this.stopActivityPolling();
+            clearTimeout(lightboxMotionTimer);
         },
 
         async fetchScheduleSettings() {
@@ -1473,7 +1481,7 @@ function tweetApp() {
 
             this.$watch('showStatsModal', val => {
                 if (val) this.lockModalScroll();
-                else if (!this.showSettingsModal && !this.showSetupModal) this.unlockModalScroll();
+                else if (!this.showSettingsModal && !this.showSetupModal && !this.lightboxOpen) this.unlockModalScroll();
             });
             this.$watch('showSettingsModal', val => {
                 if (val) {
@@ -1487,18 +1495,20 @@ function tweetApp() {
                     }
                 } else {
                     this.showAutomatedTaggingSpendModal = false;
-                    if (!this.showSetupModal) this.unlockModalScroll();
+                    if (!this.showSetupModal && !this.lightboxOpen) this.unlockModalScroll();
                 }
             });
             this.$watch('showSetupModal', val => {
                 if (val) this.lockModalScroll();
-                else if (!this.showSettingsModal) this.unlockModalScroll();
+                else if (!this.showSettingsModal && !this.lightboxOpen) this.unlockModalScroll();
+            });
+            this.$watch('lightboxOpen', val => {
+                if (val) this.lockModalScroll();
+                else if (!this.showStatsModal && !this.showSettingsModal && !this.showSetupModal) this.unlockModalScroll();
             });
 
             window.addEventListener('open-lightbox', (e) => {
-                this.lightboxMedia = e.detail.media;
-                this.lightboxIndex = e.detail.index;
-                this.lightboxOpen = true;
+                this.openLightbox(e.detail.media, e.detail.index);
             });
             
             this.videoObserver = new IntersectionObserver((entries) => {
@@ -1534,21 +1544,118 @@ function tweetApp() {
             });
         },
 
+        lightboxMotionDuration(duration) {
+            return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 0 : duration;
+        },
+
+        queueLightboxMotion(callback, delay) {
+            clearTimeout(lightboxMotionTimer);
+            lightboxMotionTimer = setTimeout(callback, this.lightboxMotionDuration(delay));
+            lightboxMotionTimer?.unref?.();
+        },
+
+        resetLightboxMotion() {
+            clearTimeout(lightboxMotionTimer);
+            lightboxMotionTimer = null;
+            this.lightboxGestureStart = null;
+            this.lightboxGestureAxis = null;
+            this.lightboxGestureOffsetX = 0;
+            this.lightboxGestureOffsetY = 0;
+            this.lightboxGestureTransition = 'none';
+            this.lightboxGestureAnimating = false;
+            this.lightboxDismissPending = false;
+        },
+
+        openLightbox(media, index = 0) {
+            this.resetLightboxMotion();
+            this.lightboxMedia = Array.isArray(media) ? media : [];
+            const lastIndex = Math.max(0, this.lightboxMedia.length - 1);
+            this.lightboxIndex = Math.min(lastIndex, Math.max(0, Number(index) || 0));
+            this.lightboxOpen = this.lightboxMedia.length > 0;
+            if (this.lightboxOpen) this.$nextTick(() => this.syncLightboxPlayback());
+        },
+
+        closeLightbox() {
+            this.pauseLightboxPlayback();
+            this.resetLightboxMotion();
+            this.lightboxOpen = false;
+        },
+
+        pauseLightboxPlayback() {
+            this.$refs.lightboxStage?.querySelectorAll?.('video').forEach(video => video.pause());
+        },
+
+        syncLightboxPlayback() {
+            const stage = this.$refs.lightboxStage;
+            if (!stage) return;
+            stage.querySelectorAll('video').forEach(video => {
+                const active = video.closest('.lightbox-slide')?.classList.contains('is-active');
+                if (!active) video.pause();
+                else if (video.hasAttribute('autoplay')) video.play().catch(() => {});
+            });
+        },
+
+        lightboxVisibleIndices() {
+            const first = Math.max(0, this.lightboxIndex - 1);
+            const last = Math.min(this.lightboxMedia.length - 1, this.lightboxIndex + 1);
+            const indices = [];
+            for (let index = first; index <= last; index += 1) indices.push(index);
+            return indices;
+        },
+
+        lightboxSlideStyle(mediaIndex) {
+            const position = (mediaIndex - this.lightboxIndex) * 100;
+            const verticalProgress = Math.max(0, this.lightboxGestureOffsetY)
+                / Math.max(1, window.innerHeight || 800);
+            const scale = this.lightboxGestureAxis === 'vertical'
+                ? Math.max(0.9, 1 - verticalProgress * 0.13)
+                : 1;
+            return {
+                transform: `translate3d(calc(${position}% + ${this.lightboxGestureOffsetX}px), ${this.lightboxGestureOffsetY}px, 0) scale(${scale})`,
+                transition: this.lightboxGestureTransition,
+                zIndex: mediaIndex === this.lightboxIndex ? 2 : 1,
+                pointerEvents: mediaIndex === this.lightboxIndex && !this.lightboxGestureAnimating ? 'auto' : 'none',
+            };
+        },
+
+        lightboxBackdropStyle() {
+            const height = Math.max(1, window.innerHeight || 800);
+            const progress = Math.min(1, Math.max(0, this.lightboxGestureOffsetY) / (height * 0.7));
+            const opacity = this.lightboxDismissPending ? 0 : 0.95 * (1 - progress * 0.72);
+            const transitionDuration = this.lightboxDismissPending
+                ? this.lightboxMotionDuration(180)
+                : (this.lightboxGestureAnimating ? this.lightboxMotionDuration(260) : 0);
+            return {
+                backgroundColor: `rgba(0, 0, 0, ${opacity})`,
+                transition: transitionDuration ? `background-color ${transitionDuration}ms linear` : 'none',
+            };
+        },
+
+        lightboxChromeStyle() {
+            if (this.lightboxGestureAnimating) return { opacity: '0' };
+            const distance = Math.hypot(this.lightboxGestureOffsetX, this.lightboxGestureOffsetY);
+            return { opacity: String(Math.max(0, 1 - distance / 180)) };
+        },
+
         prevLightbox() {
-            if (this.lightboxMedia.length < 2) return;
-            this.lightboxIndex = Math.max(0, this.lightboxIndex - 1);
+            if (this.lightboxOpen && this.lightboxGestureAnimating) return;
+            if (this.lightboxMedia.length < 2 || this.lightboxIndex <= 0) return;
+            if (this.lightboxOpen) this.commitLightboxNavigation(-1);
+            else this.lightboxIndex -= 1;
         },
 
         nextLightbox() {
-            if (this.lightboxMedia.length < 2) return;
-            this.lightboxIndex = Math.min(this.lightboxMedia.length - 1, this.lightboxIndex + 1);
+            if (this.lightboxOpen && this.lightboxGestureAnimating) return;
+            if (this.lightboxMedia.length < 2 || this.lightboxIndex >= this.lightboxMedia.length - 1) return;
+            if (this.lightboxOpen) this.commitLightboxNavigation(1);
+            else this.lightboxIndex += 1;
         },
 
         startLightboxGesture(event) {
-            if (!this.lightboxOpen) return;
+            if (!this.lightboxOpen || this.lightboxGestureAnimating) return;
             this.lightboxSuppressClickUntil = 0;
             if (event.touches?.length > 1) {
-                this.lightboxGestureStart = null;
+                this.cancelLightboxGesture();
                 return;
             }
 
@@ -1561,40 +1668,179 @@ function tweetApp() {
             this.lightboxGestureStart = {
                 x: touch.clientX,
                 y: touch.clientY,
+                lastX: touch.clientX,
+                lastY: touch.clientY,
+                lastTime: Number(event.timeStamp) || Date.now(),
+                velocityX: 0,
+                velocityY: 0,
+                moved: false,
                 closesOnClick: !target?.closest?.('img, video, button'),
             };
+            this.lightboxGestureAxis = null;
+            this.lightboxGestureOffsetX = 0;
+            this.lightboxGestureOffsetY = 0;
+            this.lightboxGestureTransition = 'none';
         },
 
-        endLightboxGesture(event) {
+        updateLightboxGesture(touch, timeStamp, trackVelocity = true) {
             const start = this.lightboxGestureStart;
-            this.lightboxGestureStart = null;
-            if (!start || !this.lightboxOpen) return;
-
-            const touch = event.changedTouches?.[0];
-            if (!touch) return;
+            if (!start || !touch) return null;
 
             const deltaX = touch.clientX - start.x;
             const deltaY = touch.clientY - start.y;
             const absX = Math.abs(deltaX);
             const absY = Math.abs(deltaY);
-            let handled = false;
-
-            if (absX >= 50 && absX > absY * 1.2) {
-                if (deltaX < 0) this.nextLightbox();
-                else this.prevLightbox();
-                handled = true;
-            } else if (deltaY >= 70 && absY > absX * 1.2) {
-                this.lightboxOpen = false;
-                handled = true;
+            if (!this.lightboxGestureAxis && Math.max(absX, absY) >= 8) {
+                if (absX > absY * 1.08 && this.lightboxMedia.length > 1) {
+                    this.lightboxGestureAxis = 'horizontal';
+                } else if (absY > absX * 1.08) {
+                    this.lightboxGestureAxis = 'vertical';
+                }
             }
 
-            if (handled && start.closesOnClick && this.lightboxOpen) {
+            const now = Number(timeStamp) || Date.now();
+            if (trackVelocity) {
+                const elapsed = Math.max(8, now - start.lastTime);
+                const instantX = (touch.clientX - start.lastX) / elapsed;
+                const instantY = (touch.clientY - start.lastY) / elapsed;
+                start.velocityX = start.moved ? start.velocityX * 0.35 + instantX * 0.65 : instantX;
+                start.velocityY = start.moved ? start.velocityY * 0.35 + instantY * 0.65 : instantY;
+                start.lastX = touch.clientX;
+                start.lastY = touch.clientY;
+                start.lastTime = now;
+                start.moved = true;
+            }
+
+            if (this.lightboxGestureAxis === 'horizontal') {
+                const movingPastStart = this.lightboxIndex === 0 && deltaX > 0;
+                const movingPastEnd = this.lightboxIndex === this.lightboxMedia.length - 1 && deltaX < 0;
+                this.lightboxGestureOffsetX = deltaX * (movingPastStart || movingPastEnd ? 0.22 : 1);
+                this.lightboxGestureOffsetY = 0;
+            } else if (this.lightboxGestureAxis === 'vertical') {
+                this.lightboxGestureOffsetX = 0;
+                this.lightboxGestureOffsetY = deltaY >= 0 ? deltaY : deltaY * 0.16;
+            }
+
+            return { deltaX, deltaY, absX, absY };
+        },
+
+        moveLightboxGesture(event) {
+            if (!this.lightboxGestureStart) return;
+            if (event.touches?.length !== 1) {
+                this.cancelLightboxGesture();
+                return;
+            }
+            const movement = this.updateLightboxGesture(event.touches[0], event.timeStamp, true);
+            if (movement && this.lightboxGestureAxis) event.preventDefault?.();
+        },
+
+        endLightboxGesture(event) {
+            const start = this.lightboxGestureStart;
+            if (!start || !this.lightboxOpen) return;
+
+            const touch = event.changedTouches?.[0];
+            if (!touch) {
+                this.cancelLightboxGesture();
+                return;
+            }
+
+            const movement = this.updateLightboxGesture(touch, event.timeStamp, start.moved);
+            this.lightboxGestureStart = null;
+            if (!movement) return;
+
+            const { deltaX, deltaY } = movement;
+            const distance = Math.hypot(deltaX, deltaY);
+            if (distance >= 8 && start.closesOnClick) {
                 this.lightboxSuppressClickUntil = Date.now() + 500;
             }
+
+            if (this.lightboxGestureAxis === 'horizontal') {
+                const direction = deltaX < 0 ? 1 : -1;
+                const canNavigate = direction > 0
+                    ? this.lightboxIndex < this.lightboxMedia.length - 1
+                    : this.lightboxIndex > 0;
+                const width = Math.max(1, window.innerWidth || 320);
+                const projectedDistance = Math.abs(this.lightboxGestureOffsetX + start.velocityX * 150);
+                const threshold = Math.min(68, Math.max(50, width * 0.16));
+                if (canNavigate && (projectedDistance >= threshold
+                    || (Math.abs(start.velocityX) >= 0.45 && Math.abs(deltaX) >= 24))) {
+                    this.commitLightboxNavigation(direction);
+                    return;
+                }
+            } else if (this.lightboxGestureAxis === 'vertical') {
+                const height = Math.max(1, window.innerHeight || 800);
+                const threshold = Math.min(84, Math.max(68, height * 0.1));
+                if (deltaY > 0 && (this.lightboxGestureOffsetY >= threshold
+                    || (start.velocityY >= 0.5 && deltaY >= 30))) {
+                    this.animateLightboxDismiss();
+                    return;
+                }
+            }
+
+            this.snapBackLightbox();
+        },
+
+        commitLightboxNavigation(direction) {
+            const duration = this.lightboxMotionDuration(220);
+            const width = Math.max(1, window.innerWidth || 320);
+            const retainedOffset = this.lightboxGestureOffsetX + direction * width;
+            this.lightboxGestureAnimating = true;
+            this.lightboxGestureAxis = 'horizontal';
+            this.lightboxGestureTransition = 'none';
+            this.lightboxIndex += direction;
+            this.lightboxGestureOffsetX = retainedOffset;
+            this.$nextTick(() => {
+                this.lightboxGestureTransition = duration
+                    ? `transform ${duration}ms cubic-bezier(0.22, 0.72, 0, 1)`
+                    : 'none';
+                this.lightboxGestureOffsetX = 0;
+                this.syncLightboxPlayback();
+            });
+            this.queueLightboxMotion(() => {
+                this.lightboxGestureTransition = 'none';
+                this.lightboxGestureAxis = null;
+                this.lightboxGestureAnimating = false;
+            }, 220);
+        },
+
+        animateLightboxDismiss() {
+            const duration = this.lightboxMotionDuration(180);
+            this.lightboxGestureAnimating = true;
+            this.lightboxDismissPending = true;
+            this.lightboxGestureTransition = duration
+                ? `transform ${duration}ms cubic-bezier(0.4, 0, 1, 1)`
+                : 'none';
+            this.lightboxGestureOffsetY = Math.max(1, window.innerHeight || 800) * 1.05;
+            this.queueLightboxMotion(() => this.finishLightboxDismiss(), 180);
+        },
+
+        finishLightboxDismiss() {
+            clearTimeout(lightboxMotionTimer);
+            lightboxMotionTimer = null;
+            this.pauseLightboxPlayback();
+            this.lightboxOpen = false;
+            this.queueLightboxMotion(() => this.resetLightboxMotion(), 180);
+        },
+
+        snapBackLightbox() {
+            const duration = this.lightboxMotionDuration(260);
+            this.lightboxGestureAnimating = true;
+            this.lightboxGestureTransition = duration
+                ? `transform ${duration}ms cubic-bezier(0.22, 0.72, 0, 1)`
+                : 'none';
+            this.lightboxGestureOffsetX = 0;
+            this.lightboxGestureOffsetY = 0;
+            this.queueLightboxMotion(() => {
+                this.lightboxGestureTransition = 'none';
+                this.lightboxGestureAxis = null;
+                this.lightboxGestureAnimating = false;
+            }, 260);
         },
 
         cancelLightboxGesture() {
             this.lightboxGestureStart = null;
+            if (this.lightboxGestureOffsetX || this.lightboxGestureOffsetY) this.snapBackLightbox();
+            else this.lightboxGestureAxis = null;
         },
 
         handleLightboxBackdropClick(event) {
@@ -1603,7 +1849,7 @@ function tweetApp() {
                 event.stopPropagation();
                 return;
             }
-            this.lightboxOpen = false;
+            this.closeLightbox();
         },
 
         scrollToTop() {

@@ -561,10 +561,12 @@ test('lightbox navigation moves through media and clamps at both ends', () => {
     assert.equal(app.lightboxIndex, 0);
     assert.match(html, /@click\.stop="prevLightbox\(\)"/);
     assert.match(html, /@click\.stop="nextLightbox\(\)"/);
-    assert.match(html, /@click\.stop="lightboxOpen = false"/);
+    assert.match(html, /@click\.stop="closeLightbox\(\)"/);
+    assert.match(html, /x-transition:enter="lightbox-overlay-enter"/);
+    assert.match(html, /lightbox-position/);
 });
 
-test('lightbox touch swipes navigate horizontally and keep backdrop taps from dismissing', () => {
+test('lightbox touch drags track the finger, navigate, and protect the following click', () => {
     const context = browserContext();
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const { tweetApp } = loadScripts(
@@ -575,19 +577,28 @@ test('lightbox touch swipes navigate horizontally and keep backdrop taps from di
     const app = immediateComponent(tweetApp());
     const imageTarget = { closest: (selector) => selector === 'img, video, button' ? {} : null };
     const backdropTarget = { closest: () => null };
-    const touchEvent = (x, y, touches = [{clientX: x, clientY: y}], target = backdropTarget) => ({
+    const touchEvent = (x, y, touches = [{clientX: x, clientY: y}], target = backdropTarget, timeStamp = 0) => ({
         target,
         touches,
         changedTouches: [{clientX: x, clientY: y}],
+        timeStamp,
+        preventDefault() { this.prevented = true; },
         stopPropagation() { this.stopped = true; },
     });
 
     app.lightboxOpen = true;
     app.lightboxMedia = [{type: 'photo'}, {type: 'photo'}, {type: 'photo'}];
-    app.startLightboxGesture({...touchEvent(220, 180), target: imageTarget});
-    app.endLightboxGesture({...touchEvent(145, 184), target: imageTarget});
+    app.startLightboxGesture({...touchEvent(220, 180, undefined, imageTarget, 100), target: imageTarget});
+    const move = touchEvent(160, 184, undefined, imageTarget, 150);
+    app.moveLightboxGesture(move);
+    assert.equal(move.prevented, true);
+    assert.equal(app.lightboxGestureAxis, 'horizontal');
+    assert.equal(app.lightboxGestureOffsetX, -60);
+    assert.match(app.lightboxSlideStyle(1).transform, /calc\(100% \+ -60px\)/);
+    app.endLightboxGesture({...touchEvent(145, 184, undefined, imageTarget, 175), target: imageTarget});
     assert.equal(app.lightboxIndex, 1);
     assert.equal(app.lightboxOpen, true);
+    app.resetLightboxMotion();
 
     app.startLightboxGesture({...touchEvent(220, 180), target: backdropTarget});
     app.endLightboxGesture({...touchEvent(145, 184), target: backdropTarget});
@@ -596,18 +607,22 @@ test('lightbox touch swipes navigate horizontally and keep backdrop taps from di
     app.handleLightboxBackdropClick(swipeClick);
     assert.equal(swipeClick.stopped, true);
     assert.equal(app.lightboxOpen, true);
+    app.resetLightboxMotion();
 
     app.startLightboxGesture({...touchEvent(100, 180), target: backdropTarget});
     app.endLightboxGesture({...touchEvent(170, 175), target: backdropTarget});
     assert.equal(app.lightboxIndex, 1);
     assert.match(html, /@touchstart\.passive="startLightboxGesture\(\$event\)"/);
+    assert.match(html, /@touchmove="moveLightboxGesture\(\$event\)"/);
     assert.match(html, /@touchend\.passive="endLightboxGesture\(\$event\)"/);
-    assert.match(html, /object-contain lightbox-gesture-surface/);
+    assert.match(html, /lightboxSlideStyle\(mediaIndex\)/);
+    assert.match(html, /lightboxVisibleIndices\(\)/);
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     assert.match(css, /\.lightbox-gesture-surface\s*\{[^}]*touch-action:\s*pinch-zoom;/s);
+    assert.match(css, /\.lightbox-slide\s*\{[^}]*will-change:\s*transform;/s);
 });
 
-test('lightbox dismisses on a downward swipe and ignores controls and short drags', () => {
+test('lightbox drag-to-dismiss fades and scales before closing, while invalid drags snap back', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
@@ -615,17 +630,31 @@ test('lightbox dismisses on a downward swipe and ignores controls and short drag
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
-    const touchEvent = (target, x, y, touches = [{clientX: x, clientY: y}]) => ({
+    const touchEvent = (target, x, y, touches = [{clientX: x, clientY: y}], timeStamp = 0) => ({
         target,
         touches,
         changedTouches: [{clientX: x, clientY: y}],
+        timeStamp,
+        preventDefault() { this.prevented = true; },
     });
 
     app.lightboxOpen = true;
+    app.lightboxMedia = [{type: 'photo'}];
     const imageTarget = {closest: (selector) => selector === 'img, video, button' ? {} : null};
-    app.startLightboxGesture(touchEvent(imageTarget, 100, 100));
-    app.endLightboxGesture(touchEvent(imageTarget, 105, 185));
+    app.startLightboxGesture(touchEvent(imageTarget, 100, 100, undefined, 100));
+    const dismissMove = touchEvent(imageTarget, 105, 170, undefined, 170);
+    app.moveLightboxGesture(dismissMove);
+    assert.equal(dismissMove.prevented, true);
+    assert.equal(app.lightboxGestureOffsetY, 70);
+    assert.match(app.lightboxSlideStyle(0).transform, /scale\(0\.9\d+/);
+    assert.match(app.lightboxBackdropStyle().backgroundColor, /rgba\(0, 0, 0, 0\.[0-8]/);
+    app.endLightboxGesture(touchEvent(imageTarget, 105, 185, undefined, 190));
+    assert.equal(app.lightboxOpen, true);
+    assert.equal(app.lightboxDismissPending, true);
+    assert.ok(app.lightboxGestureOffsetY >= 800);
+    app.finishLightboxDismiss();
     assert.equal(app.lightboxOpen, false);
+    app.resetLightboxMotion();
 
     app.lightboxOpen = true;
     app.startLightboxGesture(touchEvent({closest: () => ({})}, 100, 100));
@@ -635,6 +664,8 @@ test('lightbox dismisses on a downward swipe and ignores controls and short drag
     app.startLightboxGesture(touchEvent({closest: () => null}, 100, 100));
     app.endLightboxGesture(touchEvent({closest: () => null}, 100, 150));
     assert.equal(app.lightboxOpen, true);
+    assert.equal(app.lightboxGestureOffsetY, 0);
+    app.resetLightboxMotion();
 
     app.startLightboxGesture(touchEvent({closest: () => null}, 100, 100, [
         {clientX: 100, clientY: 100},
@@ -642,6 +673,83 @@ test('lightbox dismisses on a downward swipe and ignores controls and short drag
     ]));
     app.endLightboxGesture(touchEvent({closest: () => null}, 100, 190));
     assert.equal(app.lightboxOpen, true);
+});
+
+test('lightbox gestures use edge resistance and velocity-aware flick navigation', () => {
+    const context = browserContext();
+    context.window.innerWidth = 390;
+    const { tweetApp } = loadScripts(
+        context,
+        ['themes.js', 'app.js'],
+        '({tweetApp})',
+    );
+    const app = immediateComponent(tweetApp());
+    const target = {closest: () => null};
+    const event = (x, y, timeStamp) => ({
+        target,
+        timeStamp,
+        touches: [{clientX: x, clientY: y}],
+        changedTouches: [{clientX: x, clientY: y}],
+        preventDefault() {},
+    });
+
+    app.lightboxOpen = true;
+    app.lightboxMedia = [{type: 'photo'}, {type: 'photo'}];
+    app.startLightboxGesture(event(100, 100, 100));
+    app.moveLightboxGesture(event(160, 102, 180));
+    assert.equal(app.lightboxGestureOffsetX, 13.2);
+    app.endLightboxGesture(event(160, 102, 200));
+    assert.equal(app.lightboxIndex, 0);
+    app.resetLightboxMotion();
+
+    app.startLightboxGesture(event(200, 100, 300));
+    app.moveLightboxGesture(event(174, 101, 320));
+    app.endLightboxGesture(event(170, 101, 330));
+    assert.equal(app.lightboxIndex, 1);
+    assert.equal(app.lightboxGestureAnimating, true);
+});
+
+test('lightbox playback follows the active animated slide and pauses on close', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(
+        context,
+        ['themes.js', 'app.js'],
+        '({tweetApp})',
+    );
+    const app = immediateComponent(tweetApp());
+    const counts = {activePlay: 0, activePause: 0, neighborPlay: 0, neighborPause: 0};
+    const video = (active, prefix) => ({
+        closest() {
+            return {classList: {contains: () => active}};
+        },
+        hasAttribute(name) {
+            return name === 'autoplay';
+        },
+        pause() {
+            counts[`${prefix}Pause`] += 1;
+        },
+        play() {
+            counts[`${prefix}Play`] += 1;
+            return Promise.resolve();
+        },
+    });
+    const active = video(true, 'active');
+    const neighbor = video(false, 'neighbor');
+    app.$refs.lightboxStage = {querySelectorAll: () => [active, neighbor]};
+    app.lightboxOpen = true;
+
+    app.syncLightboxPlayback();
+    assert.deepEqual(counts, {
+        activePlay: 1,
+        activePause: 0,
+        neighborPlay: 0,
+        neighborPause: 1,
+    });
+
+    app.closeLightbox();
+    assert.equal(app.lightboxOpen, false);
+    assert.equal(counts.activePause, 1);
+    assert.equal(counts.neighborPause, 2);
 });
 
 test('reply-recipient links open an anchored profile card without searching', () => {
