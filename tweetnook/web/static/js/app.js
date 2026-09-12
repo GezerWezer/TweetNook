@@ -573,7 +573,10 @@ function tweetApp() {
             return text.replace(/[<>]/g, c => c === '<' ? '&lt;' : '&gt;').split('\n').map(line => {
                 if (line.includes('ERROR:')) return `<span style="color: var(--danger-color)">${line}</span>`;
                 if (line.includes('WARNING:')) return `<span style="color: var(--accent-color)">${line}</span>`;
-                if (line.includes('failed')) return `<span style="color: var(--danger-color)">${line}</span>`;
+                const failureText = line.replace(/\b0+\s+failed\b/gi, '');
+                if (/\bfailed\b/i.test(failureText)) {
+                    return `<span style="color: var(--danger-color)">${line}</span>`;
+                }
                 if (line.includes('completed')) return `<span style="color: var(--accent-color)">${line}</span>`;
                 const parts = line.split(/Z (.*)/);
                 if (parts.length === 3) {
