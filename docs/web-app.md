@@ -51,8 +51,10 @@ and bookmark icons show where you saved a tweet; they do not change anything on
 Twitter/X. Counts are saved values and may differ from Twitter/X today.
 
 Choose **Show more** to expand long text. Open a photo or video to view downloaded
-media at a larger size. **Media not downloaded** means the tweet was saved but
-the local media file is missing; see [Download media](enrichment.md#download-media).
+media at a larger size. In the fullscreen viewer, swipe left or right to move through
+a tweet's media, or swipe down to close it. **Media not downloaded** means the tweet
+was saved but the local media file is missing; see
+[Download media](enrichment.md#download-media).
 
 ## Read threads and quotes
 

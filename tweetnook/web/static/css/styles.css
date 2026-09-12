@@ -1871,6 +1871,11 @@ body {
     font-size: 11px;
 }
 
+/* Native pinch zoom remains available; one-finger swipes navigate the lightbox. */
+.lightbox-gesture-surface {
+    touch-action: pinch-zoom;
+}
+
 /* Twitter/X-style playback badges for archived video and animated GIF media. */
 .media-video-duration,
 .media-gif-indicator {
