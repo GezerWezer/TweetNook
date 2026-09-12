@@ -2128,6 +2128,8 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     assert.match(video, /onmouseleave="window\.tweetNookSetVideoUiVisible\(this, false\)"/);
     assert.match(video, /onfocus="window\.tweetNookSetVideoUiVisible\(this, true\)"/);
     assert.match(video, /onblur="window\.tweetNookSetVideoUiVisible\(this, false\)"/);
+    assert.match(video, /ontouchend="window\.tweetNookSetVideoUiVisible\(this, false\)"/);
+    assert.match(video, /ontouchcancel="window\.tweetNookSetVideoUiVisible\(this, false\)"/);
     assert.equal(app.formatMediaDuration(3000), '0:03');
     assert.equal(app.formatMediaDuration(3723000), '1:02:03');
     assert.equal(app.formatMediaDuration(null), '');
@@ -2190,6 +2192,20 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
 
 test('video duration uses loaded media metadata and yields to the player UI', () => {
     const context = browserContext();
+    const timers = new Map();
+    let nextTimerId = 0;
+    context.setTimeout = (callback, delay) => {
+        const id = ++nextTimerId;
+        timers.set(id, {
+            callback: () => {
+                timers.delete(id);
+                callback();
+            },
+            delay,
+        });
+        return id;
+    };
+    context.clearTimeout = id => timers.delete(id);
     loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
     const classes = new Set();
     const attributes = new Map([['aria-hidden', 'true']]);
@@ -2228,6 +2244,22 @@ test('video duration uses loaded media metadata and yields to the player UI', ()
     context.window.tweetNookSetVideoUiVisible(video, true);
     assert.ok(classes.has('is-player-ui-visible'));
     context.window.tweetNookSetVideoUiVisible(video, false);
+    assert.ok(classes.has('is-player-ui-visible'));
+    const firstTimer = timers.values().next().value;
+    assert.equal(firstTimer.delay, 3000);
+    firstTimer.callback();
+    assert.ok(!classes.has('is-player-ui-visible'));
+
+    context.window.tweetNookSetVideoUiVisible(video, true);
+    context.window.tweetNookSetVideoUiVisible(video, false);
+    const canceledTimerId = timers.keys().next().value;
+    context.window.tweetNookSetVideoUiVisible(video, true);
+    assert.ok(!timers.has(canceledTimerId));
+    assert.ok(classes.has('is-player-ui-visible'));
+    context.window.tweetNookSetVideoUiVisible(video, false);
+    const [lastTimerId, lastTimer] = timers.entries().next().value;
+    lastTimer.callback();
+    assert.ok(!timers.has(lastTimerId));
     assert.ok(!classes.has('is-player-ui-visible'));
 });
 
