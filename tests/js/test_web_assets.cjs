@@ -3604,6 +3604,18 @@ test('activity drawer animation isolates layout and transitions only geometry', 
     }
 });
 
+test('tweet bylines truncate names while keeping handles and dates on one line', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+
+    assert.match(css, /\.tweet-byline-name\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
+    assert.match(css, /\.tweet-byline-detail\s*\{[^}]*flex-shrink:\s*0;[^}]*white-space:\s*nowrap;/s);
+    assert.match(html, /class="[^"]*tweet-byline-name[^"]*"[^>]*x-text="tweet\.author\.display_name/);
+    assert.match(html, /class="[^"]*tweet-byline-detail[^"]*" x-text="'@' \+ \(tweet\.author\.username/);
+    assert.match(html, /class="roll-wrapper[^"]*tweet-byline-detail[^"]*"/);
+    assert.match(html, /class="[^"]*tweet-byline-detail[^"]*" x-text="formatDate\(threadData\.main\.created_at\)"/);
+});
+
 test('floating analytics, settings, and sync controls are desktop-only', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const statsStart = html.indexOf('<!-- Stats Button -->');
