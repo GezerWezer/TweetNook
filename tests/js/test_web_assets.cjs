@@ -3435,6 +3435,20 @@ test('notification badge counts every unread item and actions use Settings desti
     assert.equal(app.activityDrawerOpen, true);
 });
 
+test('log formatting does not mark zero-failure summaries as errors', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const component = immediateComponent(tweetApp());
+
+    const formatted = component.formatLogText(
+        'media: 30 downloaded, 0 failed\nmedia: 29 downloaded, 1 failed\nsync follow-up tagging failed',
+    );
+
+    assert.doesNotMatch(formatted.split('\n')[0], /var\(--danger-color\)/);
+    assert.match(formatted.split('\n')[1], /var\(--danger-color\)/);
+    assert.match(formatted.split('\n')[2], /var\(--danger-color\)/);
+});
+
 test('notifications live in Settings and the old header popup is removed', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
