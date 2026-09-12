@@ -3,6 +3,40 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning while it is in the `0.x` series.
 
+## [0.1.5] - 2026-09-11
+
+### Added
+
+- Added touch-swipe navigation and downward dismissal to the fullscreen media
+  gallery while preserving pinch zoom and native video controls.
+
+### Changed
+
+- Reduced Web sync activity tray rendering and polling work so progress updates
+  stay more responsive during active runs.
+
+### Fixed
+
+- Disabled pip's cache during managed updates so upgrades do not reuse stale
+  package artifacts.
+- Kept tweet text out of media descriptions passed to automated tagging.
+- Kept tweet dates on one line when author names are long by truncating the
+  author name to fit.
+- Hid video duration labels while playback controls are visible.
+- Avoided showing a red failure status when a run completed with no failures.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q`
+- `node --test tests/js/test_web_assets.cjs`
+- `node --test tests/js/test_demo_api.cjs`
+- `git diff --check`
+- `uv build --out-dir /tmp/tweetnook-release-0.1.5`
+- `uvx --from twine twine check /tmp/tweetnook-release-0.1.5/tweetnook-0.1.5.tar.gz /tmp/tweetnook-release-0.1.5/tweetnook-0.1.5-py3-none-any.whl`
+- `uv run --isolated --no-project --with /tmp/tweetnook-release-0.1.5/tweetnook-0.1.5-py3-none-any.whl -- tweetnook --help`
+
 ## [0.1.4] - 2026-09-11
 
 ### Added
@@ -204,6 +238,7 @@ semantic-style versioning while it is in the `0.x` series.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[0.1.5]: https://github.com/gezerwezer/tweetnook/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/gezerwezer/tweetnook/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/gezerwezer/tweetnook/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/gezerwezer/tweetnook/compare/v0.1.1...v0.1.2
