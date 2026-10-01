@@ -10,6 +10,7 @@ const web = path.resolve(__dirname, '../../tweetnook/web');
 const defaults = vm.runInNewContext(
     fs.readFileSync(path.join(web, 'static/js/themes.js'), 'utf8') + '\n' +
     fs.readFileSync(path.join(web, 'static/js/app.js'), 'utf8') + '\ntweetApp()',
+    { window: {} },
 );
 const tweet = {
     tweet_id: '100', text: 'Offline archive fixture', created_at: '2026-09-05T00:00:00Z',
@@ -112,20 +113,59 @@ const server = http.createServer((req, res) => {
         assert.equal(await page.locator('#custom-font-name').count(), 0);
         await page.locator('#display-font').press('ArrowDown');
         await page.keyboard.press('End');
-        assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Georgia');
+        assert.equal(await page.evaluate(() => document.activeElement.textContent.trim()), 'Georgia');
         await page.keyboard.press('Escape');
         assert.equal(await page.locator('#display-font').getAttribute('aria-expanded'), 'false');
         if (process.env.OFFLINE_SCREENSHOT) await page.locator('#display-font').screenshot({ path: process.env.OFFLINE_SCREENSHOT });
-        await page.reload();
+        await page.goto(origin);
         await page.getByText('Offline archive fixture', { exact: true }).first().waitFor();
         assert.match(await page.evaluate(() => document.body.style.fontFamily), /Georgia/);
         assert.ok(requests.some(url => url.includes('q=fixture')));
         assert.ok(requests.includes('/api/tweets/100'));
         assert.ok(!requests.some(url => url.includes('/automated-tagging/models')));
+        // Touch browsers can blur a menu option without focusing the tapped trigger.
+        // That null relatedTarget must not close the menu before its click toggles it.
+        const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+        await mobile.route('**/*', route => {
+            if (new URL(route.request().url()).origin === origin) return route.continue();
+            external.push(route.request().url());
+            return route.abort();
+        });
+        const phone = await mobile.newPage();
+        phone.on('pageerror', error => errors.push(error.message));
+        await phone.goto(origin);
+        await phone.getByText('Offline archive fixture', { exact: true }).first().waitFor();
+        for (const kind of ['collection', 'sort']) {
+            const trigger = phone.locator(`#feed-trigger-${kind}`);
+            const menu = phone.locator(`#feed-menu-${kind}`);
+            await trigger.tap();
+            await menu.waitFor({ state: 'visible' });
+            await menu.locator('[role="menuitemradio"]').first().evaluate(el => {
+                el.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+            });
+            assert.equal(await trigger.getAttribute('aria-expanded'), 'true');
+            await trigger.tap();
+            await menu.waitFor({ state: 'hidden' });
+            await trigger.tap();
+            await menu.waitFor({ state: 'visible' });
+            await phone.getByRole('heading', { name: 'Your Archive', exact: true }).tap();
+            await menu.waitFor({ state: 'hidden' });
+            await trigger.press('ArrowDown');
+            await menu.waitFor({ state: 'visible' });
+            await phone.waitForFunction(kind => document.activeElement?.closest(`[data-feed-menu="${kind}"]`), kind);
+            await phone.keyboard.press('Escape');
+            await menu.waitFor({ state: 'hidden' });
+            assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+            await trigger.tap();
+            await menu.waitFor({ state: 'visible' });
+            await menu.locator('[role="menuitemradio"]').first().tap();
+            await menu.waitFor({ state: 'hidden' });
+        }
+        await mobile.close();
         assert.deepEqual(external, []);
         assert.deepEqual(unexpected, []);
         assert.deepEqual(errors, []);
-        console.log('Offline browser smoke passed: cold load, styles, feed/search/thread, font discovery/preview/keyboard/persistence; zero external requests.');
+        console.log('Offline browser smoke passed: cold load, styles, feed/search/thread, fonts, mobile menu toggle/outside tap/selection/keyboard; zero external requests.');
     } finally {
         if (browser) await browser.close();
         await new Promise(resolve => server.close(resolve));

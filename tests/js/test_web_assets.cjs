@@ -1240,6 +1240,28 @@ test('like order is exposed for Likes, preserved during search, and reset on col
     assert.match(html, /x-for="\(option, index\) in feedOptions\(kind\)"/);
 });
 
+test('feed menus retain null focus transitions and close when focus moves outside', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const expression = html.match(/@focusout="([^"]+)"/)[1];
+    const handleFocusOut = new Function('$el', '$event', 'closeFeedMenu', expression);
+    const inside = {};
+    const outside = {};
+    const container = { contains: target => target === inside };
+    app.$refs = { feedMenus: { querySelectorAll: () => [] } };
+    for (const kind of ['collection', 'sort']) {
+        app.openFeedMenu(kind, { focus() {} });
+        for (const relatedTarget of [null, inside]) {
+            handleFocusOut(container, { relatedTarget }, () => app.closeFeedMenu());
+            assert.equal(app.feedMenu, kind);
+        }
+        handleFocusOut(container, { relatedTarget: outside }, () => app.closeFeedMenu());
+        assert.equal(app.feedMenu, null);
+    }
+});
+
 test('list searching, incremental loading, and back-to-top obey state guards', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(
