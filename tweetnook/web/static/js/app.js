@@ -4598,7 +4598,18 @@ function tweetApp() {
             const viewCount = tweet.raw_json?.views?.count || 0;
             const bmkCount = legacy.bookmark_count || 0;
             
-            const formatNum = (num) => num > 0 ? (num > 999 ? (num/1000).toFixed(1) + 'K' : num) : '';
+            const formatNum = (num) => {
+                let amount = Number(num);
+                if (!Number.isFinite(amount) || amount <= 0) return '';
+                const units = ['', 'K', 'M', 'B', 'T'];
+                let unit = 0;
+                // Promote rounded values too, so 999,950 becomes 1M, not 1000K.
+                while (unit < units.length - 1 && Math.round(amount * 10) / 10 >= 1000) {
+                    amount /= 1000;
+                    unit++;
+                }
+                return `${Number(amount.toFixed(1))}${units[unit]}`;
+            };
             
             const collections = tweet.collections || [];
             if (tweet.collection?.type) collections.push(tweet.collection.type);
