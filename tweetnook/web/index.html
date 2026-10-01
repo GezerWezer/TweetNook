@@ -43,7 +43,7 @@
 
             <div x-show="viewMode === 'list'" x-ref="feedMenus" class="feed-pickers"
                  @click.outside="closeFeedMenu()"
-                 @focusout="if (!$el.contains($event.relatedTarget)) closeFeedMenu()"
+                 @focusout="if ($event.relatedTarget && !$el.contains($event.relatedTarget)) closeFeedMenu()"
                  @keydown.escape.stop.prevent="closeFeedMenu(true)">
                 <template x-for="kind in ['collection', 'sort']" :key="kind">
                     <div class="feed-picker">
