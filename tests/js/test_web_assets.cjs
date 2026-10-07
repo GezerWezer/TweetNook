@@ -566,7 +566,55 @@ test('tweet app starts with coherent list, panel, modal, and theme state', () =>
     assert.equal(app.statsGeneratedAt, null);
     assert.equal(app.statsRefreshing, false);
     assert.ok(Object.keys(app.THEMES).length >= 15);
-    assert.equal(app.avatarUrl('user/42'), '/api/avatar/user%2F42?v=2');
+    assert.equal(app.avatarUrl('user/42'), '/api/avatar/user%2F42?v=3');
+});
+
+test('avatar load and error state hides initials only for real images and recovers on reuse', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const classes = () => {
+        const values = new Set();
+        return {
+            contains: value => values.has(value),
+            toggle(value, enabled) { enabled ? values.add(value) : values.delete(value); },
+            remove(value) { values.delete(value); },
+        };
+    };
+    const parent = { classList: classes() };
+    const image = { naturalWidth: 128, naturalHeight: 128, classList: classes(), parentElement: parent };
+
+    app.avatarLoaded(image); // A real alpha image must suppress the fallback.
+    assert.equal(parent.classList.contains('avatar-loaded'), true);
+    assert.equal(image.classList.contains('avatar-image-loaded'), true);
+
+    image.naturalWidth = image.naturalHeight = 1;
+    app.avatarLoaded(image); // HTTP 200 transparent placeholders do not trigger error.
+    assert.equal(parent.classList.contains('avatar-loaded'), false);
+    assert.equal(image.classList.contains('avatar-image-loaded'), false);
+
+    image.naturalWidth = image.naturalHeight = 48;
+    app.avatarLoaded(image);
+    app.avatarFailed(image);
+    assert.equal(parent.classList.contains('avatar-loaded'), false);
+    assert.equal(image.classList.contains('avatar-image-loaded'), false);
+    app.avatarLoaded(image); // Reusing the same element must recover after an error.
+    assert.equal(parent.classList.contains('avatar-loaded'), true);
+    assert.equal(image.classList.contains('avatar-image-loaded'), true);
+});
+
+test('all avatar templates expose load and error handling, including reply and profile initials', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const images = html.match(/<img\b[^>]*:src="avatarUrl\([^>]*>/g) || [];
+    assert.equal(images.length, 22);
+    for (const image of images) {
+        assert.ok(image.includes('@load="avatarLoaded($el)"'));
+        assert.ok(image.includes('@error="avatarFailed($el)"'));
+        assert.ok(image.includes('class="avatar-image '));
+    }
+    const initialPairs = html.match(/<span[^>]*x-text="(?:getInitial\([^\"]*|getQuoteAuthor\([^\"]*\.initial|profileCard\?\.initial|\(opt\.desc[^\"]*)"[^>]*><\/span>\s*<img[^>]*:src="avatarUrl/g) || [];
+    assert.equal(initialPairs.length, 18);
+    for (const pair of initialPairs) assert.ok(pair.includes('class="avatar-initial"'));
 });
 
 test('lightbox navigation moves through media and clamps at both ends', () => {

@@ -32,6 +32,22 @@ body {
     transition: background-color 0.2s, color 0.2s;
 }
 
+.avatar-image {
+    visibility: hidden;
+}
+
+.avatar-image.avatar-image-loaded {
+    visibility: visible;
+}
+
+.avatar.avatar-loaded {
+    background-color: var(--bg-primary);
+}
+
+.avatar.avatar-loaded > .avatar-initial {
+    visibility: hidden;
+}
+
 .tweet-border {
     border-bottom: 1px solid var(--border-color);
 }
