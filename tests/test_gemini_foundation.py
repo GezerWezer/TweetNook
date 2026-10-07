@@ -102,6 +102,22 @@ def test_tagging_defaults_match_documented_values() -> None:
     assert TaggingConfig().processing_tier == "flex"
 
 
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"unknown_request_reserve_usd": 0},
+        {"unknown_request_reserve_usd": float("inf")},
+        {"max_unknown_requests_per_day": 0},
+        {"max_unknown_search_requests": 0},
+        {"unknown_billing_policy": "ignore"},
+        {"search_unknown_policy": "ignore"},
+    ],
+)
+def test_tagging_uncertainty_controls_are_validated(values):
+    with pytest.raises(ValidationError):
+        TaggingConfig(**values)
+
+
 def test_live_model_metadata_drives_model_discovery() -> None:
     model = model_from_api(
         SimpleNamespace(

@@ -28,7 +28,6 @@ from .gemini_accounting import (
     usage_from_interaction,
 )
 from .gemini_pricing import (
-    OpenRouterPricing,
     load_openrouter_pricing,
     minimum_input_cost_usd,
     pricing_multiplier,
@@ -131,6 +130,9 @@ class _SearchPolicy:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     unavailable_warning_emitted: bool = False
     limit_warning_emitted: bool = False
+    unknown_policy: str = "disable"
+    max_unknown_attempts: int = 3
+    unknown_attempts: int = 0
 
     async def reserve_attempt(self) -> tuple[_SearchReservation | None, str | None]:
         async with self.lock:
@@ -159,13 +161,19 @@ class _SearchPolicy:
             self.in_flight = max(self.in_flight - reservation.amount, 0)
 
     async def mark_unknown(self, reservation: _SearchReservation | None) -> bool:
-        """Conservatively consume an attempt reservation and disable Search."""
+        """Consume an estimated reservation; cap tolerated unknown attempts."""
 
         if reservation is None:
             return False
         async with self.lock:
             self.in_flight = max(self.in_flight - reservation.amount, 0)
             if not self.enabled:
+                return False
+            self.unknown_attempts += 1
+            if (
+                self.unknown_policy == "reserve"
+                and self.unknown_attempts < self.max_unknown_attempts
+            ):
                 return False
             self.enabled = False
             first = not self.unavailable_warning_emitted
@@ -202,6 +210,59 @@ _THINKING_BUDGETS = {
     "high": 8192,
 }
 _FREE_REQUEST_TIMES: dict[str, deque[float]] = defaultdict(deque)
+
+
+@dataclass(slots=True)
+class _PaidRunState:
+    attempts: int = 0
+    stop_reason: str | None = None
+
+
+def _provider_error_code(error: BaseException) -> int | None:
+    for raw in (
+        getattr(error, "status_code", None),
+        getattr(error, "code", None),
+        getattr(getattr(error, "response", None), "status_code", None),
+    ):
+        try:
+            code = int(raw)
+        except (ValueError, TypeError):
+            continue
+        if 400 <= code < 600:
+            return code
+    return None
+
+
+def _budget_pause(tag_config: Any, usage: dict[str, Any]) -> str | None:
+    if usage["unreserved"]:
+        return "earlier billing uncertainty has no cost reservation"
+    if usage["unknown"] and tag_config.unknown_billing_policy == "stop":
+        return "billing usage is uncertain (strict policy)"
+    if usage["unknown"] >= tag_config.max_unknown_requests_per_day:
+        return "the daily limit on billing-unknown requests was reached"
+    if usage["unpriced"]:
+        return "an earlier request has no price estimate"
+    return None
+
+
+def _defer_tagging_failure(store: ArchiveStore, tweet_ids: list[str]) -> None:
+    """Persist backoff separately so explicit retries preserve existing tags."""
+    now = time.time()
+    for tweet_id in tweet_ids:
+        key = f"tagging_retry:{tweet_id}"
+        row = store.conn.execute("SELECT value FROM archive WHERE row_key = ?", (key,)).fetchone()
+        try:
+            previous = json.loads(row[0]) if row else {}
+            attempts = max(int(previous.get("attempts", 0)), 0) + 1
+        except (TypeError, ValueError, AttributeError):
+            attempts = 1
+        delay = min(3600 * 2 ** min(attempts - 1, 8), 7 * 86400)
+        store.conn.execute(
+            "INSERT OR REPLACE INTO archive "
+            "(row_key, record_type, key, value, updated_at) VALUES (?, 'metadata', ?, ?, ?)",
+            (key, key, json.dumps({"attempts": attempts, "next_retry_at": now + delay}), str(now)),
+        )
+    store.conn.commit()
 
 
 async def _wait_for_free_rpm(model: str, requests_per_minute: int) -> None:
@@ -410,20 +471,6 @@ async def _wait_for_remote_file(client: Any, remote: Any) -> Any:
     raise TimeoutError(f"Gemini file processing timed out for {remote.name}")
 
 
-def _count_tokens_google_search_tool() -> Any | None:
-    tool_type = getattr(types, "Tool", None)
-    google_search_type = getattr(types, "GoogleSearch", None)
-    if not callable(tool_type) or not callable(google_search_type):
-        return None
-    try:
-        return tool_type(google_search=google_search_type())
-    except Exception:
-        try:
-            return tool_type(googleSearch=google_search_type())
-        except Exception:
-            return None
-
-
 async def _count_request_tokens(
     client: Any,
     *,
@@ -431,11 +478,17 @@ async def _count_request_tokens(
     system_prompt: str,
     interaction_input: list[Any],
     search_enabled: bool = False,
+    console: Console | None = None,
+    api_key: str | None = None,
 ) -> tuple[int | None, bool]:
-    """Count the exact Paid request input before dispatch when supported."""
+    """Count prompt/media input; subsequent Search/tool expansion is uncertain."""
 
     counter = getattr(getattr(client, "models", None), "count_tokens", None)
     if not callable(counter):
+        if console is not None:
+            console.print(
+                Text("Token preflight unavailable: SDK has no token counter.", style="yellow")
+            )
         return None, False
     contents: list[Any] = []
     for item in interaction_input:
@@ -472,10 +525,6 @@ async def _count_request_tokens(
     if count_config_type is not None:
         try:
             config_kwargs: dict[str, Any] = {"system_instruction": system_prompt}
-            if search_enabled:
-                search_tool = _count_tokens_google_search_tool()
-                if search_tool is not None:
-                    config_kwargs["tools"] = [search_tool]
             kwargs["config"] = count_config_type(**config_kwargs)
         except Exception:
             pass
@@ -485,11 +534,16 @@ async def _count_request_tokens(
         # Older SDK versions may not accept a CountTokensConfig. Retry the
         # same current request without the optional config before falling back.
         kwargs.pop("config", None)
+        kwargs["contents"] = [system_prompt, *contents]
         try:
             response = await asyncio.to_thread(counter, **kwargs)
-        except Exception:
+        except Exception as error:
+            if console is not None:
+                console.print(Text(f"Token preflight unavailable: {_safe_error(error, api_key)}"))
             return None, False
-    except Exception:
+    except Exception as error:
+        if console is not None:
+            console.print(Text(f"Token preflight unavailable: {_safe_error(error, api_key)}"))
         return None, False
     total = getattr(response, "total_tokens", None)
     if total is None:
@@ -497,13 +551,21 @@ async def _count_request_tokens(
     try:
         return max(int(total), 1), True
     except (TypeError, ValueError):
+        if console is not None:
+            console.print(Text("Token preflight unavailable: invalid token count.", style="yellow"))
         return None, False
 
 
 async def _create_interaction(client: Any, **kwargs: Any) -> Any:
     aio = getattr(client, "aio", None)
     if aio is not None and getattr(aio, "interactions", None) is not None:
+        if hasattr(aio.interactions, "sdk_configuration"):
+            # Newer SDKs retry internally even with HttpRetryOptions(attempts=1).
+            # Own retries here so every HTTP attempt has separate accounting.
+            aio.interactions.sdk_configuration.retry_config = None
         return await aio.interactions.create(**kwargs)
+    if hasattr(client.interactions, "sdk_configuration"):
+        client.interactions.sdk_configuration.retry_config = None
     return await asyncio.to_thread(client.interactions.create, **kwargs)
 
 
@@ -540,6 +602,7 @@ async def tag_media_tweets(
     _run_identifier: str | None = None,
     _existing_tags: list[str] | None = None,
     _paid_stop: list[bool] | None = None,
+    _paid_state: _PaidRunState | None = None,
     _attempt: int = 1,
     _logical_request_id: str | None = None,
 ) -> int:
@@ -572,7 +635,12 @@ async def tag_media_tweets(
         ledger,
         tag_config.search_safety_reserve,
         tag_config.api_mode == "paid" and tag_config.google_search,
+        unknown_policy=tag_config.search_unknown_policy,
+        max_unknown_attempts=tag_config.max_unknown_search_requests,
     )
+    paid_state = _paid_state or _PaidRunState()
+    if paid_state.stop_reason:
+        return 0
     logical_request_id = _logical_request_id or new_request_id()
 
     quote_targets = (
@@ -610,6 +678,7 @@ async def tag_media_tweets(
                     _run_identifier=run_identifier,
                     _existing_tags=group_existing_tags,
                     _paid_stop=_paid_stop,
+                    _paid_state=paid_state,
                 )
             return total
         content_type = groups[0] if groups else "text"
@@ -639,6 +708,7 @@ async def tag_media_tweets(
                     _run_identifier=run_identifier,
                     _existing_tags=existing_tags,
                     _paid_stop=_paid_stop,
+                    _paid_state=paid_state,
                 )
 
         return sum(await asyncio.gather(*(paid_one(tweet_id) for tweet_id in tweet_ids)))
@@ -654,7 +724,10 @@ async def tag_media_tweets(
             return 0
 
     try:
-        client = genai.Client(api_key=tag_config.api_key)
+        client = genai.Client(
+            api_key=tag_config.api_key,
+            http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)),
+        )
     except Exception as error:
         console.print(
             f"[red]Could not initialize Gemini: {_safe_error(error, tag_config.api_key)}[/red]"
@@ -910,6 +983,8 @@ async def tag_media_tweets(
             return 0
         if content_type == "media" and not active_media_by_tweet:
             console.print("[yellow]No loadable media found for the selected tweets.[/yellow]")
+            if not dry_run and tag_config.api_mode == "paid":
+                _defer_tagging_failure(store, tweet_ids)
             return 0
 
         console.print(
@@ -1049,122 +1124,87 @@ async def tag_media_tweets(
                 if tag_config.unlimited_spend or tag_config.daily_spend_limit_usd is None
                 else Decimal(str(tag_config.daily_spend_limit_usd))
             )
+
+            def pause(reason: str) -> None:
+                paid_state.stop_reason = reason
+                if _paid_stop is not None:
+                    _paid_stop[0] = True
+                console.print(Text(f"Paid tagging paused: {reason}.", style="yellow"))
+
+            def append_usage(record: Any) -> None:
+                try:
+                    ledger.append(record)
+                except Exception:
+                    pause("the usage ledger could not be saved")
+                    raise
+
             for attempt in range(5):
                 attempt_number = attempt + 1
-                request_identifier = logical_request_id
                 started = time.monotonic()
-                search_reservation: _SearchReservation | None = None
+                search_reservation = None
                 attempt_use_search = False
-                attempt_search = SearchAccounting(0, "disabled")
                 provider_started = False
-                pricing: OpenRouterPricing | None = None
-                preflight_input_tokens: int | None = None
-                attempt_prompt = system_prompt
+                pricing = None
+                preflight_input_tokens = None
+                reserved_cost = Decimal("0")
+                search_settled = False
+                phase = "preflight"
                 try:
+                    budget = ledger.daily_budget_usage()
+                    if daily_limit is not None:
+                        reason = _budget_pause(tag_config, budget)
+                        if reason:
+                            pause(reason)
+                            return 0
+                        if budget["spend"] + budget["reserved"] >= daily_limit:
+                            pause(
+                                "daily estimated spend and uncertainty reserves reached the limit"
+                            )
+                            return 0
                     if tag_config.google_search:
                         search_reservation, reason = await search_policy.reserve_attempt()
                         attempt_use_search = search_reservation is not None
-                        if reason == "limit":
+                        if reason:
                             console.print(
-                                "[yellow]TweetNook's local Gemini Search allowance is near its "
-                                "monthly limit; continuing without Google Search. This counter "
-                                "cannot include searches made by other applications in the same "
-                                "Google project.[/yellow]"
-                            )
-                        elif reason == "accounting":
-                            console.print(
-                                "[yellow]Google Search remains disabled for this run because its "
-                                "usage could not be accounted for authoritatively.[/yellow]"
+                                Text(
+                                    f"Google Search disabled for this attempt: {reason}.",
+                                    style="yellow",
+                                )
                             )
                     attempt_prompt = make_system_prompt(attempt_use_search)
-                    today = ledger.daily_spend() if daily_limit is not None else Decimal("0")
-                    if daily_limit is not None and ledger.daily_unknown_cost_requests() > 0:
-                        console.print(
-                            "[yellow]Paid tagging paused because an earlier request today has "
-                            "unknown billing usage, so the daily spend limit cannot be evaluated "
-                            "safely.[/yellow]"
-                        )
-                        if search_reservation is not None:
-                            await search_policy.commit(
-                                search_reservation, SearchAccounting(0, "disabled")
-                            )
-                        if _paid_stop is not None:
-                            _paid_stop[0] = True
-                        return 0
-                    if daily_limit is not None and ledger.daily_unpriced_requests() > 0:
-                        console.print(
-                            "[yellow]Paid tagging paused because an earlier request today "
-                            "could not be assigned a price estimate, so the daily estimated-"
-                            "spend limit cannot be evaluated safely.[/yellow]"
-                        )
-                        if search_reservation is not None:
-                            await search_policy.commit(
-                                search_reservation, SearchAccounting(0, "disabled")
-                            )
-                        if _paid_stop is not None:
-                            _paid_stop[0] = True
-                        return 0
-                    if daily_limit is not None and today >= daily_limit:
-                        console.print(
-                            "[yellow]Paid Gemini daily spending limit reached; no request "
-                            "was sent.[/yellow]"
-                        )
-                        if search_reservation is not None:
-                            await search_policy.commit(
-                                search_reservation, SearchAccounting(0, "disabled")
-                            )
-                        if _paid_stop is not None:
-                            _paid_stop[0] = True
-                        return 0
                     pricing = await asyncio.to_thread(
-                        load_openrouter_pricing,
-                        paths.ai_usage_dir,
-                        model_name,
+                        load_openrouter_pricing, paths.ai_usage_dir, model_name
                     )
-                    counted, _preflight_ok = await _count_request_tokens(
+                    preflight_input_tokens, _ = await _count_request_tokens(
                         client,
                         model=model_name,
                         system_prompt=attempt_prompt,
                         interaction_input=interaction_input,
                         search_enabled=attempt_use_search,
+                        console=console,
+                        api_key=tag_config.api_key,
                     )
-                    preflight_input_tokens = counted
+                    # This is an explicit local uncertainty allowance, not a
+                    # claimed provider billing cap. Never estimate old unknown
+                    # records retroactively, or turn their actual cost into zero.
+                    reserved_cost = Decimal(str(tag_config.unknown_request_reserve_usd))
+                    if pricing is not None and preflight_input_tokens is not None:
+                        token_estimate = minimum_input_cost_usd(
+                            pricing,
+                            preflight_input_tokens,
+                            multiplier=pricing_multiplier(tag_config.processing_tier),
+                        ) + Decimal(2048) * max(
+                            pricing.output_per_token, pricing.thinking_per_token
+                        ) * pricing_multiplier(tag_config.processing_tier)
+                        reserved_cost = max(reserved_cost, token_estimate)
                     if daily_limit is not None:
                         if pricing is None:
-                            console.print(
-                                "[yellow]Paid tagging paused because current pricing could not "
-                                "be retrieved and the configured daily spending limit cannot be "
-                                "evaluated safely.[/yellow]"
-                            )
-                            if search_reservation is not None:
-                                await search_policy.commit(
-                                    search_reservation, SearchAccounting(0, "disabled")
-                                )
-                            if _paid_stop is not None:
-                                _paid_stop[0] = True
+                            pause("current pricing is unavailable")
                             return 0
-                        if (
-                            preflight_input_tokens is not None
-                            and today
-                            + minimum_input_cost_usd(
-                                pricing,
-                                preflight_input_tokens,
-                                multiplier=pricing_multiplier(tag_config.processing_tier),
-                            )
-                            > daily_limit
-                        ):
-                            console.print(
-                                "[yellow]Paid Gemini daily spending limit would be exceeded by "
-                                "the known input cost; no request was sent.[/yellow]"
-                            )
-                            if search_reservation is not None:
-                                await search_policy.commit(
-                                    search_reservation, SearchAccounting(0, "disabled")
-                                )
-                            if _paid_stop is not None:
-                                _paid_stop[0] = True
+                        if budget["spend"] + budget["reserved"] + reserved_cost > daily_limit:
+                            pause("the next request's cost allowance would exceed the daily budget")
                             return 0
-                    kwargs: dict[str, Any] = {
+                    kwargs = {
                         "model": model_name,
                         "input": interaction_input,
                         "store": False,
@@ -1186,212 +1226,217 @@ async def tag_media_tweets(
                         kwargs["timeout"] = 900.0
                     if attempt_use_search:
                         kwargs["tools"] = [{"type": "google_search"}]
+                    phase = "interaction"
                     provider_started = True
+                    paid_state.attempts += 1
                     response = await _create_interaction(client, **kwargs)
-                    latency_ms = round((time.monotonic() - started) * 1000)
-                    attempt_search = interaction_search_accounting(
-                        response, search_enabled=attempt_use_search
-                    )
                     usage_record, search = usage_from_interaction(
                         response,
                         run_id=run_identifier,
-                        request_id=request_identifier,
+                        request_id=logical_request_id,
                         requested_model=model_name,
                         service_tier=tag_config.processing_tier,
                         content_type=content_type,
                         tweet_ids=tweet_ids,
                         search_enabled=attempt_use_search,
-                        latency_ms=latency_ms,
+                        latency_ms=round((time.monotonic() - started) * 1000),
                         search_reservation_consumed=(
                             search_reservation.amount
-                            if search_reservation is not None and not attempt_search.reliable
+                            if search_reservation is not None
+                            and not interaction_search_accounting(
+                                response, search_enabled=attempt_use_search
+                            ).reliable
                             else None
                         ),
                         attempt=attempt_number,
                         thinking_level=tag_config.thinking_level,
                         request_metadata=request_metadata,
-                        estimate={"input_tokens": preflight_input_tokens}
-                        if preflight_input_tokens is not None
-                        else {},
+                        estimate={"input_tokens": preflight_input_tokens},
+                        reserved_cost_usd=str(reserved_cost),
                         pricing=pricing,
                         pricing_multiplier=pricing_multiplier(tag_config.processing_tier),
                         preflight_input_tokens=preflight_input_tokens,
                     )
-                    ledger.append(usage_record)
-                    if search_reservation is not None:
-                        if search.reliable:
-                            await search_policy.commit(search_reservation, search)
-                            warned = False
-                        else:
-                            warned = await search_policy.mark_unknown(search_reservation)
+                    append_usage(usage_record)
+                    if search.reliable:
+                        await search_policy.commit(search_reservation, search)
                     else:
-                        warned = False
-                    if warned:
+                        disabled = await search_policy.mark_unknown(search_reservation)
                         console.print(
-                            "[yellow]Google Search was disabled for subsequent requests in this "
-                            "run because Gemini did not return authoritative usage or explicit "
-                            "Search steps.[/yellow]"
-                        )
-                    if usage_record.status == "billing_unknown":
-                        if daily_limit is not None:
-                            if _paid_stop is not None:
-                                _paid_stop[0] = True
-                            console.print(
-                                "[yellow]Paid tagging stopped because Gemini returned no usable "
-                                "billing usage metadata.[/yellow]"
+                            Text(
+                                "Search usage is unknown; retained an estimated five-query reserve."
+                                + (
+                                    " Search disabled for the remainder of this run."
+                                    if disabled
+                                    else ""
+                                ),
+                                style="yellow",
                             )
-                            return 0
-                        # Unlimited mode may still parse a useful response and
-                        # may retry transient provider failures below.
-                    break
+                        )
+                    search_settled = True
+                    if usage_record.status == "billing_unknown":
+                        console.print(
+                            Text(
+                                f"Billing usage missing for tweet {tweet_ids[0]}, "
+                                f"attempt {attempt_number}; "
+                                f"retained ${reserved_cost} as an estimated uncertainty reserve.",
+                                style="yellow",
+                            )
+                        )
+                        if daily_limit is not None:
+                            reason = _budget_pause(tag_config, ledger.daily_budget_usage())
+                            if reason:
+                                pause(reason)
+                    break  # Keep useful output even if its billing is unknown.
                 except Exception as error:
-                    latency_ms = round((time.monotonic() - started) * 1000)
-                    failure_interaction = (
+                    code = _provider_error_code(error)
+                    message = _safe_error(error, tag_config.api_key)
+                    console.print(
+                        Text(
+                            f"Gemini {phase} failed for tweet {tweet_ids[0]}, "
+                            f"attempt {attempt_number}/5: "
+                            f"{type(error).__name__} (HTTP {code or 'unknown'}): {message}",
+                            style="yellow",
+                        )
+                    )
+                    if paid_state.stop_reason == "the usage ledger could not be saved":
+                        return 0
+                    failure = (
                         getattr(error, "interaction", None)
                         or getattr(error, "response", None)
                         or getattr(error, "result", None)
                     )
-                    if attempt_use_search and not provider_started:
-                        attempt_use_search = False
-                        attempt_search = SearchAccounting(0, "disabled")
-                    elif attempt_use_search:
-                        attempt_search = (
-                            interaction_search_accounting(failure_interaction, search_enabled=True)
-                            if failure_interaction is not None
-                            else SearchAccounting(None, "unknown")
-                        )
-                    try:
-                        failure_usage = (
-                            failure_interaction.get("usage")
-                            if isinstance(failure_interaction, dict)
-                            else getattr(failure_interaction, "usage", None)
-                        )
-                        if failure_interaction is not None:
-                            failed_record, _ = usage_from_interaction(
-                                failure_interaction,
-                                run_id=run_identifier,
-                                request_id=request_identifier,
-                                requested_model=model_name,
-                                service_tier=tag_config.processing_tier,
-                                content_type=content_type,
-                                tweet_ids=tweet_ids,
-                                search_enabled=attempt_use_search,
-                                latency_ms=latency_ms,
-                                search_reservation_consumed=(
-                                    search_reservation.amount
-                                    if search_reservation is not None
-                                    and not attempt_search.reliable
-                                    else None
-                                ),
-                                attempt=attempt_number,
-                                thinking_level=tag_config.thinking_level,
-                                request_metadata=request_metadata,
-                                estimate={"input_tokens": preflight_input_tokens}
-                                if preflight_input_tokens is not None
-                                else {},
-                                pricing=pricing,
-                                pricing_multiplier=pricing_multiplier(tag_config.processing_tier),
-                                preflight_input_tokens=preflight_input_tokens,
-                            )
-                            ledger.append(
-                                replace(
-                                    failed_record,
-                                    status=(
-                                        "billing_unknown"
-                                        if provider_started
-                                        and not _has_usable_interaction_usage(failure_usage)
-                                        else "failed"
-                                    ),
-                                )
-                            )
-                        else:
-                            ledger.append(
-                                failed_usage_record(
-                                    run_id=run_identifier,
-                                    request_id=request_identifier,
-                                    api_mode="paid",
-                                    model=model_name,
-                                    service_tier=tag_config.processing_tier,
-                                    content_type=content_type,
-                                    tweet_ids=tweet_ids,
-                                    latency_ms=latency_ms,
-                                    search_enabled=attempt_use_search,
-                                    search=attempt_search if attempt_use_search else None,
-                                    search_reservation_consumed=(
-                                        search_reservation.amount
-                                        if search_reservation is not None
-                                        and not attempt_search.reliable
-                                        else None
-                                    ),
-                                    attempt=attempt_number,
-                                    thinking_level=tag_config.thinking_level,
-                                    request_metadata=request_metadata,
-                                    pricing=pricing,
-                                    pricing_multiplier=pricing_multiplier(
-                                        tag_config.processing_tier
-                                    ),
-                                    preflight_input_tokens=preflight_input_tokens,
-                                    status="billing_unknown" if provider_started else "failed",
-                                )
-                            )
-                    except Exception:
-                        pass
-                    if search_reservation is not None:
-                        if attempt_search.reliable:
-                            await search_policy.commit(search_reservation, attempt_search)
-                            warned = False
-                        elif provider_started:
-                            warned = await search_policy.mark_unknown(search_reservation)
-                        else:
-                            await search_policy.commit(
-                                search_reservation, SearchAccounting(0, "disabled")
-                            )
-                            warned = False
-                    else:
-                        warned = False
-                    if warned:
-                        console.print(
-                            "[yellow]Google Search was disabled for subsequent requests in this "
-                            "run because its usage could not be accounted for.[/yellow]"
-                        )
-                    billing_unknown = provider_started and (
-                        failure_interaction is None
-                        or not _has_usable_interaction_usage(failure_usage)
+                    if callable(getattr(failure, "json", None)):
+                        try:
+                            body = failure.json()
+                            if isinstance(body, dict) and ("usage" in body or "id" in body):
+                                failure = body
+                        except (ValueError, TypeError):
+                            pass
+                    usage = (
+                        failure.get("usage")
+                        if isinstance(failure, dict)
+                        else getattr(failure, "usage", None)
                     )
-                    if billing_unknown and daily_limit is not None:
-                        if _paid_stop is not None:
-                            _paid_stop[0] = True
-                        console.print(
-                            "[yellow]Paid tagging stopped because billing usage for a submitted "
-                            "request was unknown.[/yellow]"
+                    has_usage = _has_usable_interaction_usage(usage)
+                    # Explicit validation/auth/rate rejections with no evidence
+                    # of generation are distinct from timeouts/5xx ambiguity.
+                    interaction_id = (
+                        failure.get("id")
+                        if isinstance(failure, dict)
+                        else getattr(failure, "id", None)
+                    )
+                    rejected = code in {400, 401, 403, 404, 422, 429} and not (
+                        usage is not None or interaction_id
+                    )
+                    billing_unknown = provider_started and not has_usage and not rejected
+                    search = (
+                        interaction_search_accounting(failure, search_enabled=attempt_use_search)
+                        if provider_started and not rejected
+                        else SearchAccounting(0, "disabled")
+                    )
+                    common = dict(
+                        run_id=run_identifier,
+                        request_id=logical_request_id,
+                        service_tier=tag_config.processing_tier,
+                        content_type=content_type,
+                        tweet_ids=tweet_ids,
+                        search_enabled=attempt_use_search,
+                        latency_ms=round((time.monotonic() - started) * 1000),
+                        search_reservation_consumed=(
+                            search_reservation.amount
+                            if search_reservation is not None and not search.reliable
+                            else None
+                        ),
+                        attempt=attempt_number,
+                        thinking_level=tag_config.thinking_level,
+                        request_metadata=request_metadata,
+                        estimate={"input_tokens": preflight_input_tokens},
+                        reserved_cost_usd=str(reserved_cost),
+                        pricing=pricing,
+                        pricing_multiplier=pricing_multiplier(tag_config.processing_tier),
+                        preflight_input_tokens=preflight_input_tokens,
+                    )
+                    if has_usage:
+                        record, _ = usage_from_interaction(
+                            failure, requested_model=model_name, **common
                         )
+                        record = replace(record, status="failed")
+                    else:
+                        record = failed_usage_record(
+                            api_mode="paid",
+                            model=model_name,
+                            search=search,
+                            status="billing_unknown" if billing_unknown else "failed",
+                            **common,
+                        )
+                        if not billing_unknown:
+                            record = replace(record, cost_usd="0", estimated_cost_usd="0")
+                    record = replace(
+                        record,
+                        error_type=type(error).__name__,
+                        error_code=code,
+                        error_message=message,
+                        failure_phase=phase,
+                    )
+                    append_usage(record)
+                    if not dry_run:
+                        _defer_tagging_failure(store, tweet_ids)
+                    if search.reliable:
+                        await search_policy.commit(search_reservation, search)
+                    else:
+                        disabled = await search_policy.mark_unknown(search_reservation)
+                        console.print(
+                            Text(
+                                "Search usage is unknown; retained an estimated five-query reserve."
+                                + (
+                                    " Search disabled for the remainder of this run."
+                                    if disabled
+                                    else ""
+                                ),
+                                style="yellow",
+                            )
+                        )
+                    search_settled = True
+                    if code in {401, 403}:
+                        pause("Gemini rejected authentication or access")
                         return 0
-                    error_text = str(error).upper()
-                    retryable = any(
-                        marker in error_text
-                        for marker in (
-                            "429",
-                            "503",
-                            "RESOURCE_EXHAUSTED",
-                            "TIMEOUT",
-                            "TIMED OUT",
-                            "UNAVAILABLE",
-                            "DEADLINE",
+                    if billing_unknown and daily_limit is not None:
+                        reason = _budget_pause(tag_config, ledger.daily_budget_usage())
+                        if reason:
+                            pause(reason)
+                            return 0
+                    retryable = code in {429, 500, 502, 503, 504} or (
+                        code is None
+                        and any(
+                            marker in str(error).upper()
+                            for marker in (
+                                "429",
+                                "503",
+                                "RESOURCE_EXHAUSTED",
+                                "TIMEOUT",
+                                "TIMED OUT",
+                                "UNAVAILABLE",
+                                "DEADLINE",
+                            )
                         )
                     )
                     if retryable and attempt < 4:
                         delay = 15 * (2**attempt)
                         console.print(
-                            f"[yellow]Gemini API busy. Retrying in {delay} seconds "
-                            f"(Attempt {attempt + 1}/5)...[/yellow]"
+                            Text(
+                                f"Gemini API busy. Retrying in {delay} seconds "
+                                f"(Attempt {attempt + 1}/5)...",
+                                style="yellow",
+                            )
                         )
                         await asyncio.sleep(delay)
                         continue
-                    console.print(
-                        "[red]Gemini Tagging Failed: "
-                        f"{_safe_error(error, tag_config.api_key)}[/red]"
-                    )
                     return 0
+                finally:
+                    # Also release reservations on a pricing/budget early return.
+                    if not search_settled:
+                        await search_policy.commit(search_reservation, None)
 
         if response is None:
             return 0
@@ -1405,7 +1450,10 @@ async def tag_media_tweets(
                 return await split_free_batch("Gemini returned an empty response")
             console.print("[red]Gemini returned an empty response.[/red]")
             if not dry_run:
-                _mark_failed(store, tweet_ids)
+                if tag_config.api_mode == "paid":
+                    _defer_tagging_failure(store, tweet_ids)
+                else:
+                    _mark_failed(store, tweet_ids)
             return 0
 
         parsed: list[tuple[str, MediaTagResult | TextTagResult]] = []
@@ -1418,6 +1466,8 @@ async def tag_media_tweets(
                     "[red]Gemini returned invalid structured output: "
                     f"{_safe_error(error, tag_config.api_key)}[/red]"
                 )
+                if not dry_run:
+                    _defer_tagging_failure(store, tweet_ids)
                 return 0
         else:
             free_model = _FreeMediaTagResult if content_type == "media" else _FreeTextTagResult
@@ -1449,6 +1499,8 @@ async def tag_media_tweets(
                 continue
             normalized_tags = _normalized_tags(result.tags, existing_tags)
             if not 2 <= len(normalized_tags) <= 5:
+                if not dry_run and tag_config.api_mode == "paid":
+                    _defer_tagging_failure(store, [tweet_id])
                 continue
             description = getattr(result, "description", None)
             if dry_run:
@@ -1490,6 +1542,9 @@ async def tag_media_tweets(
                     "done",
                     str(time.time()),
                 ),
+            )
+            store.conn.execute(
+                "DELETE FROM archive WHERE row_key = ?", (f"tagging_retry:{tweet_id}",)
             )
             tagged_count += 1
 
@@ -1566,10 +1621,13 @@ async def tag_pending_media_tweets(
         ledger,
         tag_config.search_safety_reserve,
         tag_config.api_mode == "paid" and tag_config.google_search,
+        unknown_policy=tag_config.search_unknown_policy,
+        max_unknown_attempts=tag_config.max_unknown_search_requests,
     )
+    paid_state = _PaidRunState()
     max_requests = 1 if dry_run else batch_limit
     free_batch_size = min(batch_size or tag_config.free_batch_size, 20)
-    processed = tagged = requests = 0
+    processed = tagged = requests = sent_requests = 0
     attempted_ids: set[str] = set()
     rich_selector = hasattr(store, "get_eligible_tagging_candidates")
 
@@ -1636,7 +1694,7 @@ async def tag_pending_media_tweets(
                     part
                     for value, part in (
                         (tagged, f"{tagged} tagged"),
-                        (requests, f"{requests} requests"),
+                        (sent_requests, f"{sent_requests} requests"),
                     )
                     if value
                 ),
@@ -1671,6 +1729,7 @@ async def tag_pending_media_tweets(
             # wave.
             existing_tags = tuple(_top_archive_tags(store))
             paid_stop = [False]
+            attempts_before = paid_state.attempts
 
             async def tag_one(
                 tweet_id: str,
@@ -1699,6 +1758,7 @@ async def tag_pending_media_tweets(
                     _run_identifier=run_identifier,
                     _existing_tags=selected_existing_tags,
                     _paid_stop=selected_paid_stop,
+                    _paid_state=paid_state,
                 )
 
             results = (
@@ -1709,14 +1769,15 @@ async def tag_pending_media_tweets(
             request_increment = len(tweet_ids)
 
         if tag_config.api_mode == "paid":
-            dispatched_ids = [] if paid_stop[0] else tweet_ids
-            if not dispatched_ids:
-                break
+            dispatched_ids = (
+                tweet_ids if not paid_stop[0] or paid_state.attempts > attempts_before else []
+            )
         else:
             dispatched_ids = tweet_ids
         processed += len(dispatched_ids)
         tagged += sum(results)
         requests += len(dispatched_ids) if tag_config.api_mode == "paid" else request_increment
+        sent_requests = paid_state.attempts if tag_config.api_mode == "paid" else requests
         attempted_ids.update(dispatched_ids)
         if pipeline is not None:
             pipeline.update_step(
@@ -1727,25 +1788,32 @@ async def tag_pending_media_tweets(
                     part
                     for value, part in (
                         (tagged, f"{tagged} tagged"),
-                        (requests, f"{requests} requests"),
+                        (sent_requests, f"{sent_requests} requests"),
                     )
                     if value
                 ),
                 important=True,
             )
-        if dry_run:
+        if dry_run or paid_state.stop_reason:
             break
 
     if pipeline is not None:
-        if processed == 0:
+        if paid_state.stop_reason:
+            pipeline.update_step("tagging", completed=processed)
+            pipeline.fail_step(
+                "tagging",
+                f"Paused: {paid_state.stop_reason}",
+                metrics={"tagged": tagged, "requests": paid_state.attempts},
+            )
+        elif processed == 0:
             pipeline.skip_step("tagging", "no eligible tweets or available quota/spend")
         else:
             pipeline.complete_step(
                 "tagging",
-                f"{tagged} tagged · {requests} requests",
+                f"{tagged} tagged · {sent_requests} requests",
                 metrics={
                     "tagged": tagged,
-                    "requests": requests,
+                    "requests": sent_requests,
                 },
             )
-    return TaggingRunResult(processed=processed, tagged=tagged, batches=requests)
+    return TaggingRunResult(processed=processed, tagged=tagged, batches=sent_requests)

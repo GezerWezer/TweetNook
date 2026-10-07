@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import time
 
 from tweetnook.storage import open_archive_store
+from tweetnook.tagging import _defer_tagging_failure
 
 
 def _tag_payload(store, tweet_id: str) -> dict[str, object] | None:
@@ -138,6 +140,38 @@ def test_tagging_candidate_scan_stops_when_batch_is_full(paths) -> None:
         for row in store.conn.execute(f"EXPLAIN QUERY PLAN {statement}").fetchall()
     )
     assert all("WITH " not in statement for statement in candidate_queries)
+    store.close()
+
+
+def test_tagging_backoff_is_persistent_indexed_and_preserves_tags(paths):
+    store = open_archive_store(paths, create=True)
+    _seed_tag_candidate(store, "newest", created_at_ts=30, with_media=False)
+    _seed_tag_candidate(store, "older", created_at_ts=20, with_media=False)
+    store.update_media_tags("newest", ["Manual"])
+    _defer_tagging_failure(store, ["newest", "older"])
+    _defer_tagging_failure(store, ["older"])
+    assert _tag_payload(store, "newest")["tags"] == ["Manual"]
+    row = store.conn.execute(
+        "SELECT value FROM archive WHERE row_key='tagging_retry:older'"
+    ).fetchone()
+    state = json.loads(row[0])
+    assert state["attempts"] == 2
+    assert state["next_retry_at"] > time.time() + 7100
+    store.close()
+    store = open_archive_store(paths, create=False)
+    statements = []
+    store.conn.set_trace_callback(statements.append)
+    assert store.get_eligible_tagging_candidates(limit=20) == []
+    store.conn.set_trace_callback(None)
+    for query in [q for q in statements if "AS sort_ts" in q]:
+        plan = store.conn.execute("EXPLAIN QUERY PLAN " + query).fetchall()
+        assert not any("TEMP B-TREE" in r["detail"] for r in plan)
+        assert any("row_key=?" in r["detail"] for r in plan)
+    store.conn.execute(
+        "UPDATE archive SET value=? WHERE row_key='tagging_retry:older'",
+        (json.dumps({"attempts": 2, "next_retry_at": 0}),),
+    )
+    assert [r["tweet_id"] for r in store.get_eligible_tagging_candidates()] == ["older"]
     store.close()
 
 

@@ -39,6 +39,12 @@ def test_settings_are_masked_and_report_optional_install_state(
     assert response.json()["installed"] is True
     payload = response.json()
     assert payload["values"]["api_key"] == "********"
+    assert payload["values"]["unknown_billing_policy"] == "reserve"
+    assert payload["values"]["unknown_request_reserve_usd"] == 0.02
+    assert payload["values"]["max_unknown_requests_per_day"] == 3
+    assert payload["values"]["search_unknown_policy"] == "reserve"
+    assert payload["values"]["max_unknown_search_requests"] == 3
+    assert payload["accounting"]["today_unknown_reserved_cost_usd"] == "0"
     assert payload["accounting"]["today_cost_usd"] == "0"
     assert payload["accounting"]["today_requests"] == 0
     assert payload["accounting"]["tweet_types"] == {}

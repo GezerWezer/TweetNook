@@ -22,7 +22,7 @@ from .gemini_pricing import (
 )
 
 SEARCH_MONTHLY_ALLOWANCE = 5_000
-LEDGER_VERSION = 2
+LEDGER_VERSION = 3
 _WRITE_LOCK = threading.Lock()
 
 
@@ -107,6 +107,10 @@ class UsageRecord:
     estimated_cost_usd: str | None = None
     preflight_input_tokens: int | None = None
     tool_tokens: int | None = 0
+    error_type: str | None = None
+    error_code: int | None = None
+    error_message: str | None = None
+    failure_phase: str | None = None
 
 
 def new_request_id() -> str:
@@ -741,6 +745,19 @@ def _apply_record(summary: dict[str, Any], record: dict[str, Any]) -> None:
     if billing_unknown:
         summary["unknown_cost_requests"] = int(summary.get("unknown_cost_requests", 0)) + 1
         daily["unknown_cost_requests"] = int(daily.get("unknown_cost_requests", 0)) + 1
+        try:
+            reserved = Decimal(str(record.get("reserved_cost_usd", "0")))
+            if not reserved.is_finite() or reserved <= 0:
+                reserved = Decimal("0")
+        except (ValueError, ArithmeticError):
+            reserved = Decimal("0")
+        daily["unknown_reserved_cost_usd"] = _decimal_text(
+            Decimal(daily.get("unknown_reserved_cost_usd", "0")) + reserved
+        )
+        if not reserved:
+            daily["unreserved_unknown_cost_requests"] = (
+                int(daily.get("unreserved_unknown_cost_requests", 0)) + 1
+            )
     elif _is_unpriced_paid_request(record, raw_cost):
         daily["unpriced_requests"] = int(daily.get("unpriced_requests", 0)) + 1
     # Request counts include unknown/billing-unknown attempts.  Only known
@@ -793,6 +810,8 @@ class AIUsageLedger:
             return None
         required = {"lifetime", "models", "tweet_types", "daily", "monthly", "search"}
         if not isinstance(value, dict) or not required.issubset(value):
+            return None
+        if value.get("version") != LEDGER_VERSION:
             return None
         if any(not isinstance(value.get(key), dict) for key in required):
             return None
@@ -944,6 +963,10 @@ class AIUsageLedger:
             "search_allowance": SEARCH_MONTHLY_ALLOWANCE,
             "unknown_cost_requests": int(summary.get("unknown_cost_requests", 0)),
             "today_unknown_cost_requests": int(today.get("unknown_cost_requests", 0)),
+            "today_unknown_reserved_cost_usd": str(today.get("unknown_reserved_cost_usd", "0")),
+            "today_unreserved_unknown_cost_requests": int(
+                today.get("unreserved_unknown_cost_requests", 0)
+            ),
             "today_unpriced_requests": int(today.get("unpriced_requests", 0)),
         }
 
@@ -955,6 +978,17 @@ class AIUsageLedger:
 
     def daily_unpriced_requests(self, *, now: datetime | None = None) -> int:
         return int(self.statistics(now=now)["today_unpriced_requests"])
+
+    def daily_budget_usage(self, *, now: datetime | None = None) -> dict[str, Any]:
+        """Read known estimates and uncertainty reservations from one snapshot."""
+        stats = self.statistics(now=now)
+        return {
+            "spend": Decimal(stats["today_cost_usd"]),
+            "reserved": Decimal(stats["today_unknown_reserved_cost_usd"]),
+            "unknown": stats["today_unknown_cost_requests"],
+            "unreserved": stats["today_unreserved_unknown_cost_requests"],
+            "unpriced": stats["today_unpriced_requests"],
+        }
 
     def monthly_search_count(self, *, now: datetime | None = None) -> int:
         return int(self.statistics(now=now)["search_queries_this_month"])

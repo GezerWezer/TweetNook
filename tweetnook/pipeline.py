@@ -578,10 +578,12 @@ class PipelineReporter:
             self._log(step.title, "skipped", step.summary)
         self._refresh()
 
-    def fail_step(self, key: str, message: str) -> None:
+    def fail_step(self, key: str, message: str, *, metrics: dict[str, int] | None = None) -> None:
         step = self._step_by_key[key]
         step.state = "failed"
         step.summary = message
+        if metrics is not None:
+            step.metrics = {name: max(int(value), 0) for name, value in metrics.items()}
         step.finished_at = time.monotonic()
         if self.interactive:
             self._record_history(step.title, "failed", message)

@@ -143,6 +143,11 @@ class TaggingConfig(BaseModel):
     daily_spend_limit_usd: float | None = Field(default=None, gt=0)
     unlimited_spend: bool = False
     search_safety_reserve: int = Field(default=100, ge=1, le=1000)
+    unknown_billing_policy: Literal["reserve", "stop"] = "reserve"
+    unknown_request_reserve_usd: float = Field(default=0.02, gt=0, allow_inf_nan=False)
+    max_unknown_requests_per_day: int = Field(default=3, ge=1, le=100)
+    search_unknown_policy: Literal["reserve", "disable"] = "reserve"
+    max_unknown_search_requests: int = Field(default=3, ge=1, le=100)
     tagging_context: list[str] = Field(default_factory=list, max_length=200)
     additional_instructions: str | None = Field(default=None, max_length=4000)
     max_media_size_mb: int = Field(default=100, ge=1)
