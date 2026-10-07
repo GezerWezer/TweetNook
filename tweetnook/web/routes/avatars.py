@@ -2,6 +2,8 @@
 
 import json
 import struct
+import tempfile
+from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
@@ -34,6 +36,46 @@ def _is_placeholder(content: bytes) -> bool:
     )
 
 
+def _avatar_format(content: bytes) -> tuple[str, str] | None:
+    """Identify supported image headers without decoding or flattening alpha."""
+    if _is_placeholder(content):
+        return None
+    if (
+        len(content) >= 33
+        and content.startswith(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+        and all(struct.unpack(">II", content[16:24]))
+    ):
+        return ".png", "image/png"
+    if len(content) >= 12 and content.startswith(b"\xff\xd8\xff"):
+        return ".jpg", "image/jpeg"
+    if (
+        len(content) >= 13
+        and content[:6] in (b"GIF87a", b"GIF89a")
+        and all(struct.unpack("<HH", content[6:10]))
+    ):
+        return ".gif", "image/gif"
+    if (
+        len(content) >= 20
+        and content[:4] == b"RIFF"
+        and content[8:12] == b"WEBP"
+        and content[12:16] in (b"VP8 ", b"VP8L", b"VP8X")
+    ):
+        return ".webp", "image/webp"
+    return None
+
+
+def _cache_avatar(path: Path, content: bytes) -> None:
+    """Publish complete files so concurrent requests cannot see a partial write."""
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".avatar-", delete=False) as file:
+        temporary = Path(file.name)
+        try:
+            file.write(content)
+            file.flush()
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
 @router.get("/api/avatar/{user_id}")
 def get_avatar(
     user_id: str,
@@ -45,24 +87,29 @@ def get_avatar(
     avatars_dir = paths.media_dir / "avatars"
     avatars_dir.mkdir(parents=True, exist_ok=True)
 
-    avatar_path = avatars_dir / f"{user_id}.jpg"
-    fallback_path = avatars_dir / f"{user_id}.png"
-    if avatar_path.exists():
+    config = server_state.get("config")
+    cache_paths = [
+        avatars_dir / f"{user_id}{suffix}" for suffix in (".jpg", ".png", ".gif", ".webp")
+    ]
+    for avatar_path in cache_paths:
         try:
             with avatar_path.open("rb") as cached:
-                placeholder = _is_placeholder(cached.read(24))
+                image_format = _avatar_format(cached.read(33))
+        except FileNotFoundError:
+            continue
         except OSError:
-            placeholder = True
-        if placeholder:
+            continue
+        if image_format is None:
             try:
                 avatar_path.unlink(missing_ok=True)
             except OSError:
                 pass
         else:
-            config = server_state.get("config")
             if config and config.web.avatar_cache_limit_enabled:
                 mark_avatar_accessed(avatar_path)
-            return FileResponse(avatar_path, headers=AVATAR_CACHE_HEADERS)
+            return FileResponse(
+                avatar_path, media_type=image_format[1], headers=AVATAR_CACHE_HEADERS
+            )
 
     def return_transparent():
         # A failed fetch must not become a persistent negative cache entry. The
@@ -73,7 +120,6 @@ def get_avatar(
             headers=TRANSPARENT_CACHE_HEADERS,
         )
 
-    config = server_state.get("config")
     if not config or not config.web.fetch_avatars:
         return return_transparent()
 
@@ -120,17 +166,14 @@ def get_avatar(
                 continue
             attempted_urls.add(url)
             resp = httpx.get(url, timeout=10.0)
-            if resp.status_code == 200 and resp.content and not _is_placeholder(resp.content):
-                avatar_path.write_bytes(resp.content)
-                try:
-                    fallback_path.unlink()
-                except FileNotFoundError:
-                    pass
-                except OSError:
-                    # A stale fallback must never prevent serving a newly
-                    # downloaded avatar.
-                    pass
-                return FileResponse(avatar_path, headers=AVATAR_CACHE_HEADERS)
+            image_format = _avatar_format(resp.content)
+            if resp.status_code == 200 and image_format is not None:
+                suffix, media_type = image_format
+                avatar_path = avatars_dir / f"{user_id}{suffix}"
+                _cache_avatar(avatar_path, resp.content)
+                return FileResponse(
+                    avatar_path, media_type=media_type, headers=AVATAR_CACHE_HEADERS
+                )
         except Exception:
             # One stale URL or malformed candidate must not prevent trying
             # the next stored representation for this author.
