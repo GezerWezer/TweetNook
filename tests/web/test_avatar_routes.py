@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
+import pytest
 
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.storage.backend import ArchiveStore
@@ -364,3 +365,53 @@ def test_avatar_route_requires_authentication(make_web_client, tmp_path: Path) -
     response = client.get("/api/avatar/42")
 
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize("fetch_enabled", [True, False])
+def test_cached_jpg_placeholder_is_invalidated(
+    monkeypatch, make_web_client, tmp_path: Path, fetch_enabled: bool
+) -> None:
+    paths = _paths(tmp_path)
+    path = paths.media_dir / "avatars" / "42.jpg"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(avatars.TRANSPARENT_PNG)
+    config = AppConfig()
+    config.web.fetch_avatars = fetch_enabled
+    server_state.update({"paths": paths, "config": config})
+    calls = []
+
+    def fetch(url, timeout):
+        calls.append(url)
+        return SimpleNamespace(status_code=200, content=b"recovered")
+
+    monkeypatch.setattr(avatars.httpx, "get", fetch)
+    store = AvatarStore(tweet_rows=[{"raw_json": _raw_avatar("https://pbs.twimg.com/new.jpg")}])
+    response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
+
+    assert response.content == (b"recovered" if fetch_enabled else avatars.TRANSPARENT_PNG)
+    assert calls == (["https://pbs.twimg.com/new.jpg"] if fetch_enabled else [])
+    assert path.exists() is fetch_enabled
+    if fetch_enabled:
+        assert path.read_bytes() == b"recovered"
+    else:
+        assert response.headers["cache-control"] == "no-store, max-age=0"
+
+
+def test_downloaded_placeholder_does_not_block_next_source(
+    monkeypatch, make_web_client, tmp_path: Path
+) -> None:
+    paths = _paths(tmp_path)
+    server_state.update({"paths": paths, "config": AppConfig()})
+    store = AvatarStore(
+        tweet_rows=[{"raw_json": _raw_avatar(f"https://pbs.twimg.com/{i}.png")} for i in range(2)]
+    )
+    replies = iter([avatars.TRANSPARENT_PNG, b"recovered"])
+    monkeypatch.setattr(
+        avatars.httpx,
+        "get",
+        lambda *_args, **_kwargs: SimpleNamespace(status_code=200, content=next(replies)),
+    )
+    response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
+
+    assert response.content == b"recovered"
+    assert (paths.media_dir / "avatars" / "42.jpg").read_bytes() == b"recovered"
