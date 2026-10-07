@@ -1,10 +1,12 @@
 """Avatar proxy endpoints."""
 
-import json
+import re
 import struct
 import tempfile
+import time
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, Depends
@@ -16,6 +18,7 @@ from tweetnook.web.deps import get_server_state, require_store, verify_credentia
 
 router = APIRouter()
 AVATAR_CANDIDATE_LIMIT = 8
+AVATAR_FETCH_BUDGET_SECONDS = 20.0
 AVATAR_CACHE_HEADERS = {"Cache-Control": "no-cache"}
 TRANSPARENT_CACHE_HEADERS = {"Cache-Control": "no-store, max-age=0"}
 
@@ -76,6 +79,23 @@ def _cache_avatar(path: Path, content: bytes) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def _avatar_urls(url: str) -> list[str]:
+    """Prefer the large variant, then the captured size and original image."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return []
+    suffix = re.search(r"_(normal|400x400)(?=\.[^./]+$)", parts.path)
+    if suffix is None:
+        return [url]
+    paths = [
+        parts.path[: suffix.start()] + "_400x400" + parts.path[suffix.end() :],
+        parts.path,
+        parts.path[: suffix.start()] + parts.path[suffix.end() :],
+    ]
+    return list(dict.fromkeys(urlunsplit(parts._replace(path=path)) for path in paths))
+
+
 @router.get("/api/avatar/{user_id}")
 def get_avatar(
     user_id: str,
@@ -123,60 +143,29 @@ def get_avatar(
     if not config or not config.web.fetch_avatars:
         return return_transparent()
 
-    safe_user_id = user_id.replace("'", "''")
-    rows = store._query(
-        expr=(
-            # Match the partial author index predicate explicitly: SQLite cannot
-            # infer the nonempty condition from the author equality below.
-            "author_id IS NOT NULL AND author_id != '' AND "
-            f"author_id = '{safe_user_id}' AND record_type IN ('tweet', 'tweet_object') "
-            "AND raw_json IS NOT NULL AND json_valid(raw_json) "
-            "AND ("
-            "CASE WHEN json_valid(raw_json) THEN "
-            "json_extract(raw_json, '$.core.user_results.result.avatar.image_url') END IS NOT NULL "
-            "OR CASE WHEN json_valid(raw_json) THEN "
-            "json_extract(raw_json, '$.core.user_results.result.legacy.profile_image_url_https') "
-            "END IS NOT NULL)"
-        ),
-        cols=["raw_json"],
-        limit=AVATAR_CANDIDATE_LIMIT,
-        order_by="last_seen_at DESC",
-    )
-
+    urls = store.avatar_source_urls(user_id, limit=AVATAR_CANDIDATE_LIMIT)
     attempted_urls: set[str] = set()
-    for row in rows:
-        raw_json = row.get("raw_json")
-        if not raw_json:
-            continue
-
-        try:
-            raw = json.loads(raw_json)
-            user_res = raw.get("core", {}).get("user_results", {}).get("result", {})
-            if not isinstance(user_res, dict):
-                continue
-
-            avatar = user_res.get("avatar") or {}
-            legacy = user_res.get("legacy") or {}
-            url = avatar.get("image_url") or legacy.get("profile_image_url_https")
-            if not isinstance(url, str) or not url:
-                continue
-
-            url = url.replace("_normal", "_400x400")
+    deadline = time.monotonic() + AVATAR_FETCH_BUDGET_SECONDS
+    for source_url in urls:
+        for url in _avatar_urls(source_url):
             if url in attempted_urls:
                 continue
             attempted_urls.add(url)
-            resp = httpx.get(url, timeout=10.0)
-            image_format = _avatar_format(resp.content)
-            if resp.status_code == 200 and image_format is not None:
-                suffix, media_type = image_format
-                avatar_path = avatars_dir / f"{user_id}{suffix}"
-                _cache_avatar(avatar_path, resp.content)
-                return FileResponse(
-                    avatar_path, media_type=media_type, headers=AVATAR_CACHE_HEADERS
-                )
-        except Exception:
-            # One stale URL or malformed candidate must not prevent trying
-            # the next stored representation for this author.
-            continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return return_transparent()
+            try:
+                resp = httpx.get(url, timeout=min(10.0, remaining), follow_redirects=True)
+                image_format = _avatar_format(resp.content)
+                if resp.status_code == 200 and image_format is not None:
+                    suffix, media_type = image_format
+                    avatar_path = avatars_dir / f"{user_id}{suffix}"
+                    _cache_avatar(avatar_path, resp.content)
+                    return FileResponse(
+                        avatar_path, media_type=media_type, headers=AVATAR_CACHE_HEADERS
+                    )
+            except Exception:
+                # Stale variants and network errors must not block other sources.
+                continue
 
     return return_transparent()
