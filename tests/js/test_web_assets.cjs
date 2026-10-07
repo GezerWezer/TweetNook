@@ -3910,6 +3910,36 @@ test('setup password finalization reloads only after successful completion', asy
     assert.equal(app.setupPassword, '');
 });
 
+test('automated tagging saves uncertainty policies and exposes their controls', async () => {
+    const context = browserContext();
+    const values = {
+        enabled: true, api_mode: 'paid', api_key: '********', tagging_context: [],
+        daily_spend_limit_usd: 0.1, unknown_billing_policy: 'stop',
+        unknown_request_reserve_usd: 0.03, max_unknown_requests_per_day: 2,
+        search_unknown_policy: 'reserve', max_unknown_search_requests: 4,
+    };
+    let submitted;
+    context.fetch = async (_url, options) => {
+        submitted = JSON.parse(options.body).values;
+        return {ok: true, async json() {return {values: submitted};}};
+    };
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.automatedTagging = {...values};
+    await app.saveAutomatedTagging();
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    for (const field of [
+        'unknown_billing_policy', 'unknown_request_reserve_usd',
+        'max_unknown_requests_per_day', 'search_unknown_policy', 'max_unknown_search_requests',
+    ]) {
+        assert.equal(submitted[field], values[field]);
+        assert.equal(app.automatedTagging[field], values[field]);
+        assert.ok(html.includes(`automatedTagging.${field}"`));
+    }
+    assert.ok(html.includes('actual charges may differ'));
+    assert.ok(html.includes('Five is not a provider limit'));
+});
+
 async function main() {
     let failures = 0;
     for (const { name, fn } of tests) {

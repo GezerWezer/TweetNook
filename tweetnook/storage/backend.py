@@ -2827,6 +2827,13 @@ class ArchiveStore:
         state_placeholders = ", ".join("?" for _state in AVAILABLE_ENRICHMENT_STATES)
         valid_tag_sql = """
             NOT EXISTS (
+                SELECT 1 FROM archive retry
+                WHERE retry.row_key = 'tagging_retry:' || {tweet_id}
+                  AND CASE WHEN json_valid(retry.value)
+                      THEN CAST(json_extract(retry.value, '$.next_retry_at') AS REAL)
+                      ELSE 0 END > CAST(strftime('%s', 'now') AS REAL)
+            ) AND
+            NOT EXISTS (
                 SELECT 1
                 FROM archive tag INDEXED BY idx_archive_tweet_id
                 WHERE tag.tweet_id = {tweet_id}
