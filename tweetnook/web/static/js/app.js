@@ -3,7 +3,7 @@
  */
 
 const statsSuspendedVideos = new Set();
-const AVATAR_URL_VERSION = 2;
+const AVATAR_URL_VERSION = 3;
 const VIDEO_UI_HIDE_DELAY_MS = 3000;
 const videoUiHideTimers = new WeakMap();
 
@@ -4388,6 +4388,17 @@ function tweetApp() {
             if (this.isDemo) return window.TweetNookDemo?.avatarUrl(userId) || '';
             const encodedUserId = encodeURIComponent(userId || 'unknown');
             return '/api/avatar/' + encodedUserId + '?v=' + AVATAR_URL_VERSION;
+        },
+
+        avatarLoaded(image) {
+            const valid = image.naturalWidth > 1 || image.naturalHeight > 1;
+            image.classList.toggle('avatar-image-loaded', valid);
+            image.parentElement?.classList.toggle('avatar-loaded', valid);
+        },
+
+        avatarFailed(image) {
+            image.classList.remove('avatar-image-loaded');
+            image.parentElement?.classList.remove('avatar-loaded');
         },
 
         formatMediaDuration(durationMillis) {
