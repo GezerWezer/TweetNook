@@ -1,6 +1,7 @@
 """Avatar proxy endpoints."""
 
 import json
+import struct
 from typing import Annotated, Any
 
 import httpx
@@ -23,6 +24,16 @@ TRANSPARENT_PNG = (
 )
 
 
+def _is_placeholder(content: bytes) -> bool:
+    """Recognize one-pixel PNG fallbacks without rejecting real alpha images."""
+    return (
+        content.startswith(b"\x89PNG\r\n\x1a\n")
+        and len(content) >= 24
+        and content[12:16] == b"IHDR"
+        and struct.unpack(">II", content[16:24]) == (1, 1)
+    )
+
+
 @router.get("/api/avatar/{user_id}")
 def get_avatar(
     user_id: str,
@@ -37,10 +48,21 @@ def get_avatar(
     avatar_path = avatars_dir / f"{user_id}.jpg"
     fallback_path = avatars_dir / f"{user_id}.png"
     if avatar_path.exists():
-        config = server_state.get("config")
-        if config and config.web.avatar_cache_limit_enabled:
-            mark_avatar_accessed(avatar_path)
-        return FileResponse(avatar_path, headers=AVATAR_CACHE_HEADERS)
+        try:
+            with avatar_path.open("rb") as cached:
+                placeholder = _is_placeholder(cached.read(24))
+        except OSError:
+            placeholder = True
+        if placeholder:
+            try:
+                avatar_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        else:
+            config = server_state.get("config")
+            if config and config.web.avatar_cache_limit_enabled:
+                mark_avatar_accessed(avatar_path)
+            return FileResponse(avatar_path, headers=AVATAR_CACHE_HEADERS)
 
     def return_transparent():
         # A failed fetch must not become a persistent negative cache entry. The
@@ -98,7 +120,7 @@ def get_avatar(
                 continue
             attempted_urls.add(url)
             resp = httpx.get(url, timeout=10.0)
-            if resp.status_code == 200 and resp.content:
+            if resp.status_code == 200 and resp.content and not _is_placeholder(resp.content):
                 avatar_path.write_bytes(resp.content)
                 try:
                     fallback_path.unlink()
