@@ -4179,11 +4179,18 @@ function tweetApp() {
             return tweet?.tweet_id || tweet?.rest_id || tweet?.id_str || null;
         },
 
+        decodeTweetText(text) {
+            // Captured tweet text can contain entity escapes. Decode one layer
+            // before HTML escaping; never parse tweet content as markup.
+            const entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+            return String(text).replace(/&(amp|lt|gt|quot|apos);/g, (_, name) => entities[name]);
+        },
+
         formatText(tweet, forceFull = false) {
             if (!tweet) return '';
             if (this.isPlaceholderTweet(tweet)) return this.renderTweetPlaceholder(tweet);
             const raw = tweet.raw_json?.raw_json || tweet.raw_json || tweet;
-            let text = tweet.text || raw?.legacy?.full_text || raw?.full_text || '';
+            let text = this.decodeTweetText(tweet.text || raw?.legacy?.full_text || raw?.full_text || '');
             if (this.isTextPlaceholderTweet(tweet)) {
                 return this.renderContentPlaceholder(
                     'Tweet text was not captured in the local archive.',

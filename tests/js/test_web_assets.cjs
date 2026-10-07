@@ -2202,6 +2202,29 @@ test('config boolean controls bind actual booleans', () => {
     assert.doesNotMatch(html, /<option value="(?:true|false)">/);
 });
 
+test('tweet text decodes one entity layer before safe rendering and length checks', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const text = 'Fish &amp; chips &lt;3 &quot;yes&quot; &apos;ok&apos;';
+    const expected = 'Fish &amp; chips &lt;3 "yes" \'ok\'';
+    assert.equal(app.decodeTweetText(text), 'Fish & chips <3 "yes" \'ok\'');
+    assert.equal(app.formatText({ text }), expected);
+    assert.equal(app.formatText({ raw_json: { legacy: { full_text: text } } }), expected);
+    assert.equal(app.formatText({ legacy: { full_text: text } }), expected); // Raw quote/reply object.
+    assert.equal(app.formatText({ text: 'Already & decoded <3' }), 'Already &amp; decoded &lt;3');
+    assert.equal(app.formatText({ text: '&amp;lt; literal entity' }), '&amp;lt; literal entity');
+    assert.equal(app.formatText({ text: '&unknown;' }), '&amp;unknown;');
+    const attack = app.formatText({ text: '&lt;img src=x onerror=alert(1)&gt; @alice #topic' });
+    assert.match(attack, /^&lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.doesNotMatch(attack, /<img/);
+    assert.match(attack, /class="mention/);
+    assert.match(attack, /class="hashtag/);
+    const shortDecoded = app.formatText({ tweet_id: 'entity-length', text: 'A &amp; '.repeat(40) });
+    assert.doesNotMatch(shortDecoded, /Show more/);
+    assert.equal(shortDecoded, 'A &amp; '.repeat(40).trim());
+});
+
 test('text and card renderers escape HTML and reject active URL schemes', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(
