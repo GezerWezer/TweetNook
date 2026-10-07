@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import struct
+import zlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +14,24 @@ from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.web.deps import server_state
 from tweetnook.web.routes import avatars
+
+JPEG = (Path(__file__).resolve().parents[2] / "demo/demo media/avatars/1.jpg").read_bytes()
+
+
+def _alpha_png() -> bytes:
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+        )
+
+    header = struct.pack(">IIBBBBB", 2, 2, 8, 6, 0, 0, 0)
+    pixels = b"\x00\xff\x00\x00\xff\x00\x00\x00\x00" * 2
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(pixels))
+        + chunk(b"IEND", b"")
+    )
 
 
 class AvatarStore:
@@ -51,7 +71,7 @@ def test_cached_avatar_is_returned_without_store_or_network(
     paths = _paths(tmp_path)
     avatar_path = paths.media_dir / "avatars" / "42.jpg"
     avatar_path.parent.mkdir(parents=True)
-    avatar_path.write_bytes(b"cached-jpeg")
+    avatar_path.write_bytes(JPEG)
     os.utime(avatar_path, (1_000.0, 1_000.0))
     server_state.update({"paths": paths, "config": AppConfig()})
 
@@ -71,7 +91,7 @@ def test_cached_avatar_is_returned_without_store_or_network(
     response = client.get("/api/avatar/42")
 
     assert response.status_code == 200
-    assert response.content == b"cached-jpeg"
+    assert response.content == JPEG
     assert response.headers["content-type"] == "image/jpeg"
     assert avatar_path.stat().st_mtime > 1_000.0
 
@@ -82,7 +102,7 @@ def test_cached_avatar_does_not_refresh_mtime_when_limit_is_disabled(
     paths = _paths(tmp_path)
     avatar_path = paths.media_dir / "avatars" / "42.jpg"
     avatar_path.parent.mkdir(parents=True)
-    avatar_path.write_bytes(b"cached-jpeg")
+    avatar_path.write_bytes(JPEG)
     os.utime(avatar_path, (1_000.0, 1_000.0))
     config = AppConfig()
     config.web.avatar_cache_limit_enabled = False
@@ -122,7 +142,7 @@ def test_avatar_fetches_high_resolution_url_and_caches_response(
         avatars.httpx,
         "get",
         lambda url, timeout: (
-            calls.append((url, timeout)) or SimpleNamespace(status_code=200, content=b"downloaded")
+            calls.append((url, timeout)) or SimpleNamespace(status_code=200, content=JPEG)
         ),
     )
     server_state.update({"paths": paths, "config": config})
@@ -131,9 +151,9 @@ def test_avatar_fetches_high_resolution_url_and_caches_response(
     response = client.get("/api/avatar/42")
 
     assert response.status_code == 200
-    assert response.content == b"downloaded"
+    assert response.content == JPEG
     assert calls == [("https://pbs.twimg.com/profile_images/id_400x400.jpg", 10.0)]
-    assert (paths.media_dir / "avatars" / "42.jpg").read_bytes() == b"downloaded"
+    assert (paths.media_dir / "avatars" / "42.jpg").read_bytes() == JPEG
 
 
 def test_stale_transparent_fallback_does_not_block_download(
@@ -149,15 +169,15 @@ def test_stale_transparent_fallback_does_not_block_download(
     monkeypatch.setattr(
         avatars.httpx,
         "get",
-        lambda url, timeout: SimpleNamespace(status_code=200, content=b"recovered"),
+        lambda url, timeout: SimpleNamespace(status_code=200, content=JPEG),
     )
     server_state.update({"paths": paths, "config": AppConfig()})
     client = make_web_client(avatars.router, store=store)
 
     response = client.get("/api/avatar/42")
 
-    assert response.content == b"recovered"
-    assert (paths.media_dir / "avatars" / "42.jpg").read_bytes() == b"recovered"
+    assert response.content == JPEG
+    assert (paths.media_dir / "avatars" / "42.jpg").read_bytes() == JPEG
     assert not fallback_path.exists()
 
 
@@ -174,14 +194,14 @@ def test_avatar_skips_avatarless_rows_and_uses_richer_candidate(
     monkeypatch.setattr(
         avatars.httpx,
         "get",
-        lambda url, timeout: SimpleNamespace(status_code=200, content=b"legacy"),
+        lambda url, timeout: SimpleNamespace(status_code=200, content=JPEG),
     )
     server_state.update({"paths": paths, "config": AppConfig()})
     client = make_web_client(avatars.router, store=store)
 
     response = client.get("/api/avatar/77")
 
-    assert response.content == b"legacy"
+    assert response.content == JPEG
     assert len(store.expressions) == 1
     assert "record_type IN ('tweet', 'tweet_object')" in store.expressions[0]
 
@@ -199,7 +219,7 @@ def test_avatar_tries_next_candidate_after_fetch_failure(
     responses = iter(
         [
             SimpleNamespace(status_code=503, content=b"busy"),
-            SimpleNamespace(status_code=200, content=b"downloaded"),
+            SimpleNamespace(status_code=200, content=JPEG),
         ]
     )
     calls: list[str] = []
@@ -214,7 +234,7 @@ def test_avatar_tries_next_candidate_after_fetch_failure(
 
     response = client.get("/api/avatar/42")
 
-    assert response.content == b"downloaded"
+    assert response.content == JPEG
     assert calls == [
         "https://pbs.twimg.com/profile_images/old_400x400.jpg",
         "https://pbs.twimg.com/profile_images/new_400x400.jpg",
@@ -288,7 +308,7 @@ def test_avatar_lookup_uses_author_index_and_preserves_candidate_order(
 
     def fetch(url, timeout):
         calls.append(url)
-        return SimpleNamespace(status_code=200, content=b"downloaded")
+        return SimpleNamespace(status_code=200, content=JPEG)
 
     monkeypatch.setattr(avatars.httpx, "get", fetch)
     client = make_web_client(avatars.router, store=store)
@@ -382,17 +402,17 @@ def test_cached_jpg_placeholder_is_invalidated(
 
     def fetch(url, timeout):
         calls.append(url)
-        return SimpleNamespace(status_code=200, content=b"recovered")
+        return SimpleNamespace(status_code=200, content=JPEG)
 
     monkeypatch.setattr(avatars.httpx, "get", fetch)
     store = AvatarStore(tweet_rows=[{"raw_json": _raw_avatar("https://pbs.twimg.com/new.jpg")}])
     response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
 
-    assert response.content == (b"recovered" if fetch_enabled else avatars.TRANSPARENT_PNG)
+    assert response.content == (JPEG if fetch_enabled else avatars.TRANSPARENT_PNG)
     assert calls == (["https://pbs.twimg.com/new.jpg"] if fetch_enabled else [])
     assert path.exists() is fetch_enabled
     if fetch_enabled:
-        assert path.read_bytes() == b"recovered"
+        assert path.read_bytes() == JPEG
     else:
         assert response.headers["cache-control"] == "no-store, max-age=0"
 
@@ -405,7 +425,7 @@ def test_downloaded_placeholder_does_not_block_next_source(
     store = AvatarStore(
         tweet_rows=[{"raw_json": _raw_avatar(f"https://pbs.twimg.com/{i}.png")} for i in range(2)]
     )
-    replies = iter([avatars.TRANSPARENT_PNG, b"recovered"])
+    replies = iter([avatars.TRANSPARENT_PNG, JPEG])
     monkeypatch.setattr(
         avatars.httpx,
         "get",
@@ -413,5 +433,90 @@ def test_downloaded_placeholder_does_not_block_next_source(
     )
     response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
 
-    assert response.content == b"recovered"
-    assert (paths.media_dir / "avatars" / "42.jpg").read_bytes() == b"recovered"
+    assert response.content == JPEG
+    assert (paths.media_dir / "avatars" / "42.jpg").read_bytes() == JPEG
+
+
+@pytest.mark.parametrize("suffix", [".jpg", ".png"])
+def test_cached_transparent_png_keeps_alpha_and_uses_png_mime(
+    monkeypatch, make_web_client, tmp_path: Path, suffix: str
+) -> None:
+    paths = _paths(tmp_path)
+    path = paths.media_dir / "avatars" / f"42{suffix}"
+    path.parent.mkdir(parents=True)
+    png = _alpha_png()
+    path.write_bytes(png)
+    config = AppConfig()
+    config.web.fetch_avatars = False
+    server_state.update({"paths": paths, "config": config})
+    monkeypatch.setattr(
+        avatars.httpx,
+        "get",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("cache should win")),
+    )
+    response = make_web_client(avatars.router, store=AvatarStore()).get("/api/avatar/42")
+
+    assert response.content == png
+    assert response.headers["content-type"] == "image/png"
+    assert path.read_bytes() == png
+
+
+def test_downloaded_png_uses_png_extension_and_mime(monkeypatch, make_web_client, tmp_path):
+    paths = _paths(tmp_path)
+    png = _alpha_png()
+    server_state.update({"paths": paths, "config": AppConfig()})
+    store = AvatarStore(tweet_rows=[{"raw_json": _raw_avatar("https://pbs.twimg.com/alpha.png")}])
+    monkeypatch.setattr(
+        avatars.httpx,
+        "get",
+        lambda *_args, **_kwargs: SimpleNamespace(status_code=200, content=png),
+    )
+    response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
+
+    assert response.content == png
+    assert response.headers["content-type"] == "image/png"
+    assert (paths.media_dir / "avatars" / "42.png").read_bytes() == png
+    assert not (paths.media_dir / "avatars" / "42.jpg").exists()
+    assert not list((paths.media_dir / "avatars").glob(".avatar-*"))
+
+
+@pytest.mark.parametrize("bad_content", [b"", b"<html>not an image</html>", b"\x89PNG\r\n\x1a\n"])
+def test_nonimage_cache_and_download_are_rejected(
+    monkeypatch, make_web_client, tmp_path, bad_content
+):
+    paths = _paths(tmp_path)
+    path = paths.media_dir / "avatars" / "42.jpg"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(bad_content)
+    server_state.update({"paths": paths, "config": AppConfig()})
+    store = AvatarStore(tweet_rows=[{"raw_json": _raw_avatar("https://pbs.twimg.com/bad.jpg")}])
+    monkeypatch.setattr(
+        avatars.httpx,
+        "get",
+        lambda *_args, **_kwargs: SimpleNamespace(status_code=200, content=bad_content),
+    )
+    response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
+
+    assert response.content == avatars.TRANSPARENT_PNG
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert not path.exists()
+
+
+def test_cache_publication_is_atomic(monkeypatch, tmp_path):
+    path = tmp_path / "42.png"
+    content = _alpha_png()
+    original_replace = Path.replace
+    replacements = []
+
+    def replace(temporary, target):
+        assert not target.exists()
+        assert temporary.read_bytes() == content
+        replacements.append(target)
+        return original_replace(temporary, target)
+
+    monkeypatch.setattr(Path, "replace", replace)
+    avatars._cache_avatar(path, content)
+
+    assert replacements == [path]
+    assert path.read_bytes() == content
+    assert list(tmp_path.iterdir()) == [path]
