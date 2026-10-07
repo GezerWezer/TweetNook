@@ -3,6 +3,40 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning while it is in the `0.x` series.
 
+## [0.1.6] - 2026-10-07
+
+### Changed
+
+- Improved mobile fullscreen gallery motion with drag feedback, flick navigation,
+  responsive controls, reduced-motion support, and active media playback handling.
+- Automated tagging now reserves estimated costs for missing billing metadata and
+  tolerates a bounded number of unknown billing/Search requests. Strict stop and
+  Search-disable policies remain configurable.
+- Engagement counts now use compact K/M/B/T units and promote rounded boundaries.
+
+### Fixed
+
+- Allowed mobile header dropdowns to close reliably on touch browsers.
+- Recovered cached one-pixel avatar placeholders, preserved valid image formats and
+  transparency, and published avatar downloads atomically.
+- Retried distinct avatar sources, image sizes, and redirects when saved URLs fail.
+- Hid fallback initials after avatars load so transparent images render correctly.
+- Decoded captured HTML entities before safely rendering tweet text.
+- Preserved provider error diagnostics, retried transient tagging failures, deferred
+  repeatedly failing tweets, and reported dispatched attempts accurately.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q`
+- `node --test tests/js/test_web_assets.cjs`
+- `node --test tests/js/test_demo_api.cjs`
+- `git diff --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv build --out-dir /tmp/tweetnook-release-0.1.6`
+- `UV_CACHE_DIR=/tmp/uv-cache uvx --from twine twine check /tmp/tweetnook-release-0.1.6/tweetnook-0.1.6.tar.gz /tmp/tweetnook-release-0.1.6/tweetnook-0.1.6-py3-none-any.whl`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --isolated --no-project --with /tmp/tweetnook-release-0.1.6/tweetnook-0.1.6-py3-none-any.whl -- tweetnook --help`
+
 ## [0.1.5] - 2026-09-11
 
 ### Added
@@ -238,6 +272,7 @@ semantic-style versioning while it is in the `0.x` series.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[0.1.6]: https://github.com/gezerwezer/tweetnook/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/gezerwezer/tweetnook/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/gezerwezer/tweetnook/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/gezerwezer/tweetnook/compare/v0.1.2...v0.1.3
