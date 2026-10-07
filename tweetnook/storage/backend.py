@@ -1028,6 +1028,31 @@ class ArchiveStore:
             ):
                 raise RuntimeError(f"Archive migration lost sampled row {row_key!r}.")
 
+    def avatar_source_urls(self, author_id: str, *, limit: int = 8) -> list[str]:
+        """Return distinct captured profile URLs, newest first, using the author index."""
+        rows = self.conn.execute(
+            """
+            SELECT avatar_url FROM (
+                SELECT last_seen_at,
+                    CASE WHEN json_valid(raw_json) THEN COALESCE(
+                        NULLIF(json_extract(raw_json,
+                            '$.core.user_results.result.avatar.image_url'), ''),
+                        NULLIF(json_extract(raw_json,
+                            '$.core.user_results.result.legacy.profile_image_url_https'), '')
+                    ) END AS avatar_url
+                FROM archive
+                WHERE author_id IS NOT NULL AND author_id != '' AND author_id = ?
+                    AND record_type IN ('tweet', 'tweet_object')
+            )
+            WHERE typeof(avatar_url) = 'text' AND avatar_url != ''
+            GROUP BY avatar_url
+            ORDER BY MAX(last_seen_at) DESC, avatar_url
+            LIMIT ?
+            """,
+            (author_id, limit),
+        ).fetchall()
+        return [row[0] for row in rows]
+
     def _query(
         self,
         expr: str,

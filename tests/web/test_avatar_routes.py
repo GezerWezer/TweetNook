@@ -38,12 +38,23 @@ class AvatarStore:
     def __init__(self, tweet_rows=None, object_rows=None):
         self.tweet_rows = tweet_rows or []
         self.object_rows = object_rows or []
-        self.expressions: list[str] = []
+        self.author_ids: list[str] = []
 
-    def _query(self, *, expr: str, limit: int, **_kwargs):
+    def avatar_source_urls(self, author_id: str, *, limit: int):
         assert limit == avatars.AVATAR_CANDIDATE_LIMIT
-        self.expressions.append(expr)
-        return [*self.tweet_rows, *self.object_rows]
+        self.author_ids.append(author_id)
+        urls = []
+        for row in [*self.tweet_rows, *self.object_rows]:
+            try:
+                user = json.loads(row["raw_json"])["core"]["user_results"]["result"]
+                url = (user.get("avatar") or {}).get("image_url") or (user.get("legacy") or {}).get(
+                    "profile_image_url_https"
+                )
+                if isinstance(url, str) and url and url not in urls:
+                    urls.append(url)
+            except (ValueError, KeyError, AttributeError, TypeError):
+                continue
+        return urls[:limit]
 
 
 def _paths(tmp_path: Path) -> XDGPaths:
@@ -141,7 +152,7 @@ def test_avatar_fetches_high_resolution_url_and_caches_response(
     monkeypatch.setattr(
         avatars.httpx,
         "get",
-        lambda url, timeout: (
+        lambda url, timeout, follow_redirects: (
             calls.append((url, timeout)) or SimpleNamespace(status_code=200, content=JPEG)
         ),
     )
@@ -169,7 +180,7 @@ def test_stale_transparent_fallback_does_not_block_download(
     monkeypatch.setattr(
         avatars.httpx,
         "get",
-        lambda url, timeout: SimpleNamespace(status_code=200, content=JPEG),
+        lambda url, timeout, follow_redirects: SimpleNamespace(status_code=200, content=JPEG),
     )
     server_state.update({"paths": paths, "config": AppConfig()})
     client = make_web_client(avatars.router, store=store)
@@ -194,7 +205,7 @@ def test_avatar_skips_avatarless_rows_and_uses_richer_candidate(
     monkeypatch.setattr(
         avatars.httpx,
         "get",
-        lambda url, timeout: SimpleNamespace(status_code=200, content=JPEG),
+        lambda url, timeout, follow_redirects: SimpleNamespace(status_code=200, content=JPEG),
     )
     server_state.update({"paths": paths, "config": AppConfig()})
     client = make_web_client(avatars.router, store=store)
@@ -202,8 +213,7 @@ def test_avatar_skips_avatarless_rows_and_uses_richer_candidate(
     response = client.get("/api/avatar/77")
 
     assert response.content == JPEG
-    assert len(store.expressions) == 1
-    assert "record_type IN ('tweet', 'tweet_object')" in store.expressions[0]
+    assert store.author_ids == ["77"]
 
 
 def test_avatar_tries_next_candidate_after_fetch_failure(
@@ -216,17 +226,16 @@ def test_avatar_tries_next_candidate_after_fetch_failure(
             {"raw_json": _raw_avatar("https://pbs.twimg.com/profile_images/new_normal.jpg")},
         ]
     )
-    responses = iter(
-        [
-            SimpleNamespace(status_code=503, content=b"busy"),
-            SimpleNamespace(status_code=200, content=JPEG),
-        ]
-    )
     calls: list[str] = []
 
-    def fetch(url, timeout):
+    def fetch(url, timeout, follow_redirects):
         calls.append(url)
-        return next(responses)
+        assert follow_redirects is True
+        return (
+            SimpleNamespace(status_code=503, content=b"busy")
+            if "/old" in url
+            else SimpleNamespace(status_code=200, content=JPEG)
+        )
 
     monkeypatch.setattr(avatars.httpx, "get", fetch)
     server_state.update({"paths": paths, "config": AppConfig()})
@@ -237,6 +246,8 @@ def test_avatar_tries_next_candidate_after_fetch_failure(
     assert response.content == JPEG
     assert calls == [
         "https://pbs.twimg.com/profile_images/old_400x400.jpg",
+        "https://pbs.twimg.com/profile_images/old_normal.jpg",
+        "https://pbs.twimg.com/profile_images/old.jpg",
         "https://pbs.twimg.com/profile_images/new_400x400.jpg",
     ]
 
@@ -265,7 +276,7 @@ def test_disabled_avatar_fetch_returns_nonpersistent_transparent_png(
     assert first.headers["content-type"] == "image/png"
     assert second.headers["content-type"] == "image/png"
     assert first.headers["cache-control"] == "no-store, max-age=0"
-    assert store.expressions == []
+    assert store.author_ids == []
     assert not (paths.media_dir / "avatars" / "42.png").exists()
 
 
@@ -306,7 +317,7 @@ def test_avatar_lookup_uses_author_index_and_preserves_candidate_order(
     store._merge_records(records)
     calls = []
 
-    def fetch(url, timeout):
+    def fetch(url, timeout, follow_redirects):
         calls.append(url)
         return SimpleNamespace(status_code=200, content=JPEG)
 
@@ -321,7 +332,7 @@ def test_avatar_lookup_uses_author_index_and_preserves_candidate_order(
     try:
         assert response.status_code == 200
         assert calls == ["https://pbs.twimg.com/newer_400x400.jpg"]
-        queries = [sql for sql in statements if sql.startswith("SELECT raw_json")]
+        queries = [sql for sql in statements if "SELECT avatar_url" in sql]
         assert len(queries) == 1
         plan = " ".join(row[3] for row in store.conn.execute("EXPLAIN QUERY PLAN " + queries[0]))
         assert "idx_archive_profile_author (author_id=?)" in plan
@@ -362,7 +373,7 @@ def test_missing_malformed_or_failed_avatar_uses_transparent_fallback(
         assert not (paths.media_dir / "avatars" / f"{user_id}.png").exists()
 
 
-def test_avatar_escapes_user_id_in_store_expression(make_web_client, tmp_path: Path) -> None:
+def test_avatar_passes_user_id_as_a_value(make_web_client, tmp_path: Path) -> None:
     paths = _paths(tmp_path)
     store = AvatarStore()
     server_state.update({"paths": paths, "config": AppConfig()})
@@ -371,10 +382,7 @@ def test_avatar_escapes_user_id_in_store_expression(make_web_client, tmp_path: P
     response = client.get("/api/avatar/o%27reilly")
 
     assert response.status_code == 200
-    assert len(store.expressions) == 1
-    assert (
-        "author_id = 'o''reilly' AND record_type IN ('tweet', 'tweet_object')"
-    ) in store.expressions[0]
+    assert store.author_ids == ["o'reilly"]
 
 
 def test_avatar_route_requires_authentication(make_web_client, tmp_path: Path) -> None:
@@ -400,7 +408,7 @@ def test_cached_jpg_placeholder_is_invalidated(
     server_state.update({"paths": paths, "config": config})
     calls = []
 
-    def fetch(url, timeout):
+    def fetch(url, timeout, follow_redirects):
         calls.append(url)
         return SimpleNamespace(status_code=200, content=JPEG)
 
@@ -520,3 +528,143 @@ def test_cache_publication_is_atomic(monkeypatch, tmp_path):
     assert replacements == [path]
     assert path.read_bytes() == content
     assert list(tmp_path.iterdir()) == [path]
+
+
+def test_distinct_source_limit_does_not_hide_older_working_url(
+    monkeypatch, make_web_client, tmp_path
+):
+    paths = _paths(tmp_path)
+    server_state.update({"paths": paths, "config": AppConfig()})
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    records = [
+        store._record(
+            row_key=f"tweet_object:{i}",
+            record_type="tweet_object",
+            tweet_id=str(i),
+            author_id="42",
+            last_seen_at=i,
+            raw_json=_raw_avatar("https://pbs.twimg.com/dead.jpg"),
+        )
+        for i in range(12)
+    ]
+    records.append(
+        store._record(
+            row_key="tweet:old",
+            record_type="tweet",
+            tweet_id="old",
+            author_id="42",
+            last_seen_at=-1,
+            raw_json=_raw_avatar("https://pbs.twimg.com/working.jpg"),
+        )
+    )
+    store._merge_records(records)
+    calls = []
+
+    def fetch(url, **kwargs):
+        calls.append(url)
+        return (
+            SimpleNamespace(status_code=404, content=b"")
+            if "/dead" in url
+            else SimpleNamespace(status_code=200, content=JPEG)
+        )
+
+    monkeypatch.setattr(avatars.httpx, "get", fetch)
+    try:
+        response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
+        assert response.content == JPEG
+        assert calls == ["https://pbs.twimg.com/dead.jpg", "https://pbs.twimg.com/working.jpg"]
+        assert store.avatar_source_urls("42' OR 1=1 --") == []
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("bad_large", [b"", avatars.TRANSPARENT_PNG, b"<html>error</html>"])
+@pytest.mark.parametrize("use_original", [False, True])
+def test_resize_falls_back_to_captured_or_original_url(
+    monkeypatch, make_web_client, tmp_path, bad_large, use_original
+):
+    paths = _paths(tmp_path)
+    server_state.update({"paths": paths, "config": AppConfig()})
+    url = "https://pbs.twimg.com/alpha_normal.png?name=_normal"
+    store = AvatarStore(tweet_rows=[{"raw_json": _raw_avatar(url)}])
+    calls = []
+    png = _alpha_png()
+    working_url = url.replace("alpha_normal.png", "alpha.png") if use_original else url
+
+    def fetch(candidate, **kwargs):
+        calls.append(candidate)
+        assert kwargs["follow_redirects"] is True
+        return SimpleNamespace(
+            status_code=200, content=png if candidate == working_url else bad_large
+        )
+
+    monkeypatch.setattr(avatars.httpx, "get", fetch)
+    response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
+
+    assert response.content == png
+    assert calls == ["https://pbs.twimg.com/alpha_400x400.png?name=_normal", url] + (
+        [working_url] if use_original else []
+    )
+
+
+def test_malformed_url_does_not_prevent_another_source(monkeypatch, make_web_client, tmp_path):
+    paths = _paths(tmp_path)
+    server_state.update({"paths": paths, "config": AppConfig()})
+    store = AvatarStore(
+        tweet_rows=[
+            {"raw_json": _raw_avatar("https://[broken")},
+            {"raw_json": _raw_avatar("https://pbs.twimg.com/valid.jpg")},
+        ]
+    )
+    monkeypatch.setattr(
+        avatars.httpx,
+        "get",
+        lambda *_args, **_kwargs: SimpleNamespace(status_code=200, content=JPEG),
+    )
+    response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
+    assert response.content == JPEG
+
+
+def test_redirected_source_is_followed(monkeypatch, make_web_client, tmp_path):
+    paths = _paths(tmp_path)
+    server_state.update({"paths": paths, "config": AppConfig()})
+    store = AvatarStore(tweet_rows=[{"raw_json": _raw_avatar("https://images.example/start")}])
+    calls = []
+
+    def transport(request):
+        calls.append(str(request.url))
+        if request.url.path == "/start":
+            return httpx.Response(302, headers={"location": "/image"})
+        return httpx.Response(200, content=_alpha_png())
+
+    def fetch(url, **kwargs):
+        with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+            return client.get(url, **kwargs)
+
+    monkeypatch.setattr(avatars.httpx, "get", fetch)
+    response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
+
+    assert response.content == _alpha_png()
+    assert calls == ["https://images.example/start", "https://images.example/image"]
+
+
+def test_exhausted_fetch_budget_stops_attempts(monkeypatch, make_web_client, tmp_path):
+    paths = _paths(tmp_path)
+    server_state.update({"paths": paths, "config": AppConfig()})
+    store = AvatarStore(
+        tweet_rows=[{"raw_json": _raw_avatar("https://pbs.twimg.com/alpha_normal.png")}]
+    )
+    now = [100.0]
+    calls = []
+    monkeypatch.setattr(avatars.time, "monotonic", lambda: now[0])
+
+    def fetch(url, **kwargs):
+        calls.append(url)
+        now[0] += avatars.AVATAR_FETCH_BUDGET_SECONDS
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr(avatars.httpx, "get", fetch)
+    response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
+
+    assert response.content == avatars.TRANSPARENT_PNG
+    assert len(calls) == 1
