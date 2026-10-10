@@ -88,6 +88,8 @@ TagResult = MediaTagResult
 # this internal ceiling without changing tagging orchestration.  It is not a
 # configuration setting and normal Paid processing is sequential for now.
 PAID_CONCURRENCY = 1
+PAID_MAX_PROVIDER_FAILURES = 5
+PAID_PROVIDER_FAILURE_WINDOW_SECONDS = 15 * 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +218,21 @@ _FREE_REQUEST_TIMES: dict[str, deque[float]] = defaultdict(deque)
 class _PaidRunState:
     attempts: int = 0
     stop_reason: str | None = None
+    provider_failures: int = 0
+    provider_failure_started: float | None = None
+
+    def provider_pause_reason(self) -> str | None:
+        if self.provider_failures >= PAID_MAX_PROVIDER_FAILURES:
+            return (
+                "Gemini remained unavailable after five consecutive request failures; retry later"
+            )
+        if (
+            self.provider_failure_started is not None
+            and time.monotonic() - self.provider_failure_started
+            >= PAID_PROVIDER_FAILURE_WINDOW_SECONDS
+        ):
+            return "Gemini remained unavailable for 15 minutes; retry later"
+        return None
 
 
 def _provider_error_code(error: BaseException) -> int | None:
@@ -1135,6 +1152,10 @@ async def tag_media_tweets(
                 search_settled = False
                 phase = "preflight"
                 try:
+                    reason = paid_state.provider_pause_reason()
+                    if reason:
+                        pause(reason)
+                        return 0
                     budget = ledger.daily_budget_usage()
                     if daily_limit is not None:
                         reason = _budget_pause(tag_config, budget)
@@ -1211,10 +1232,17 @@ async def tag_media_tweets(
                         kwargs["timeout"] = 900.0
                     if attempt_use_search:
                         kwargs["tools"] = [{"type": "google_search"}]
+                    # Preflight can consume the remaining failure interval.
+                    reason = paid_state.provider_pause_reason()
+                    if reason:
+                        pause(reason)
+                        return 0
                     phase = "interaction"
                     provider_started = True
                     paid_state.attempts += 1
                     response = await _create_interaction(client, **kwargs)
+                    paid_state.provider_failures = 0
+                    paid_state.provider_failure_started = None
                     usage_record, search = usage_from_interaction(
                         response,
                         run_id=run_identifier,
@@ -1275,6 +1303,24 @@ async def tag_media_tweets(
                     break  # Keep useful output even if its billing is unknown.
                 except Exception as error:
                     code = _provider_error_code(error)
+                    retryable = code in {429, 500, 502, 503, 504} or (
+                        code is None
+                        and (
+                            isinstance(error, TimeoutError)
+                            or any(
+                                marker in f"{type(error).__name__}: {error}".upper()
+                                for marker in (
+                                    "429",
+                                    "503",
+                                    "RESOURCE_EXHAUSTED",
+                                    "TIMEOUT",
+                                    "TIMED OUT",
+                                    "UNAVAILABLE",
+                                    "DEADLINE",
+                                )
+                            )
+                        )
+                    )
                     message = _safe_error(error, tag_config.api_key)
                     console.print(
                         Text(
@@ -1365,7 +1411,10 @@ async def tag_media_tweets(
                         failure_phase=phase,
                     )
                     append_usage(record)
-                    if not dry_run:
+                    # Provider availability errors do not identify a bad tweet.
+                    # Leave the queue eligible for the next run and reserve
+                    # candidate backoff for item-specific failures.
+                    if not dry_run and not retryable and code not in {401, 403}:
                         _defer_tagging_failure(store, tweet_ids)
                     if search.reliable:
                         await search_policy.commit(search_reservation, search)
@@ -1391,26 +1440,28 @@ async def tag_media_tweets(
                         if reason:
                             pause(reason)
                             return 0
-                    retryable = code in {429, 500, 502, 503, 504} or (
-                        code is None
-                        and any(
-                            marker in str(error).upper()
-                            for marker in (
-                                "429",
-                                "503",
-                                "RESOURCE_EXHAUSTED",
-                                "TIMEOUT",
-                                "TIMED OUT",
-                                "UNAVAILABLE",
-                                "DEADLINE",
-                            )
-                        )
-                    )
+                    if retryable and provider_started:
+                        paid_state.provider_failures += 1
+                        if paid_state.provider_failure_started is None:
+                            paid_state.provider_failure_started = started
+                        reason = paid_state.provider_pause_reason()
+                        if reason:
+                            pause(reason)
+                            return 0
                     if retryable and attempt < 4:
                         delay = 15 * (2**attempt)
+                        if paid_state.provider_failure_started is not None:
+                            delay = max(
+                                0,
+                                min(
+                                    delay,
+                                    PAID_PROVIDER_FAILURE_WINDOW_SECONDS
+                                    - (time.monotonic() - paid_state.provider_failure_started),
+                                ),
+                            )
                         console.print(
                             Text(
-                                f"Gemini API busy. Retrying in {delay} seconds "
+                                f"Gemini API busy. Retrying in {delay:g} seconds "
                                 f"(Attempt {attempt + 1}/5)...",
                                 style="yellow",
                             )
