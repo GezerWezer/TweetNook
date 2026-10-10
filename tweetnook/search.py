@@ -110,12 +110,6 @@ class ParsedSearchQuery:
             for clause in group
         )
 
-    @property
-    def has_negative_text(self) -> bool:
-        return any(
-            clause.kind == "text" and clause.negated for group in self.groups for clause in group
-        )
-
     def positive_text_terms(self) -> list[str]:
         terms: list[str] = []
         for group in self.groups:
@@ -127,19 +121,6 @@ class ParsedSearchQuery:
                     value = value[1:-1]
                 terms.extend(part for part in value.split() if part)
         return list(dict.fromkeys(terms))
-
-    def conjunctive_parts(self) -> tuple[dict[str, list[str]], str]:
-        """Return the legacy filter/text split for a query without OR or negative text."""
-        filters: dict[str, list[str]] = {}
-        text: list[str] = []
-        for group in self.groups:
-            clause = group[0]
-            if clause.kind == "text":
-                text.append(clause.value)
-                continue
-            key = f"-{clause.key}" if clause.negated else str(clause.key)
-            filters.setdefault(key, []).append(clause.value)
-        return filters, " ".join(text)
 
 
 @dataclass(slots=True)
@@ -272,22 +253,6 @@ def parse_search_query(query: str | None) -> ParsedSearchQuery:
     return ParsedSearchQuery(tuple(tuple(group) for group in groups))
 
 
-def _extract_advanced_filters(q: str | None) -> tuple[dict[str, list[str]], str]:
-    """Compatibility projection used by route-level tests and older callers."""
-    parsed = parse_search_query(q)
-    filters: dict[str, list[str]] = {}
-    text: list[str] = []
-    for group in parsed.groups:
-        for clause in group:
-            if clause.kind == "text":
-                prefix = "-" if clause.negated else ""
-                text.append(f"{prefix}{clause.value}")
-            else:
-                key = f"-{clause.key}" if clause.negated else str(clause.key)
-                filters.setdefault(key, []).append(clause.value)
-    return filters, " ".join(text)
-
-
 def _parse_twitter_date(date_str: str) -> float | None:
     if not date_str:
         return None
@@ -303,187 +268,8 @@ def _parse_twitter_date(date_str: str) -> float | None:
         return None
 
 
-def _row_created_at_timestamp(row: dict[str, Any]) -> float | None:
-    raw_ts = row.get("created_at_ts")
-    if isinstance(raw_ts, int | float):
-        return float(raw_ts)
-    raw = row.get("created_at")
-    if not isinstance(raw, str) or not raw:
-        return None
-    try:
-        return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
-    except ValueError:
-        try:
-            return datetime.strptime(raw, "%a %b %d %H:%M:%S %z %Y").timestamp()
-        except ValueError:
-            return None
-
-
-def _filter_matches(row: dict[str, Any], key: str, value: str) -> bool:
-    raw = row.get("raw_json") or {}
-    if not isinstance(raw, dict):
-        raw = {}
-    legacy = raw.get("legacy") or {}
-    author = row.get("author") or {}
-
-    if key == "from":
-        return author.get("username", "").lower() == value.replace("@", "")
-    if key == "to":
-        return (legacy.get("in_reply_to_screen_name") or "").lower() == value.replace("@", "")
-    if key == "mentions":
-        mentions = [
-            mention.get("screen_name", "").lower()
-            for mention in legacy.get("entities", {}).get("user_mentions", [])
-        ]
-        return value.replace("@", "") in mentions
-    if key in {"since", "until"}:
-        boundary = _parse_twitter_date(value)
-        created = _row_created_at_timestamp(row)
-        if boundary is None or created is None:
-            return False
-        return created >= boundary if key == "since" else created < boundary
-    if key in {"since_time", "until_time"}:
-        created = _row_created_at_timestamp(row)
-        if created is None:
-            return False
-        boundary = float(value)
-        return created >= boundary if key == "since_time" else created < boundary
-    if key == "since_id":
-        return int(row.get("tweet_id", 0)) > int(value)
-    if key == "max_id":
-        return int(row.get("tweet_id", 0)) <= int(value)
-    if key == "has":
-        if value == "article":
-            return bool(row.get("article"))
-        if value == "media":
-            return bool(row.get("media"))
-        if value == "image":
-            return any(media.get("type") == "photo" for media in row.get("media", []))
-        if value == "video":
-            return any(
-                media.get("type") in {"video", "animated_gif"} for media in row.get("media", [])
-            )
-        if value == "links":
-            return bool(row.get("urls"))
-    if key == "is":
-        if value == "reply":
-            return bool(legacy.get("in_reply_to_status_id_str"))
-        if value == "quote":
-            return bool(legacy.get("is_quote_status"))
-        if value == "retweet":
-            return bool(legacy.get("retweeted_status_id_str"))
-        if value == "thread":
-            reply_username = (legacy.get("in_reply_to_screen_name") or "").lower()
-            author_username = (author.get("username") or "").lower()
-            return bool(reply_username) and reply_username == author_username
-        if value == "verified":
-            user_result = raw.get("core", {}).get("user_results", {}).get("result", {})
-            return bool(
-                user_result.get("is_blue_verified") or user_result.get("legacy", {}).get("verified")
-            )
-        if value == "resurrected":
-            return row.get("enrichment_state") == "resurrected"
-    if key == "filter":
-        if value == "articles":
-            return bool(row.get("article"))
-        if value == "replies":
-            return bool(legacy.get("in_reply_to_status_id_str"))
-        if value == "quote":
-            return bool(legacy.get("is_quote_status"))
-        if value == "nativeretweets":
-            return bool(legacy.get("retweeted_status_id_str"))
-        if value in {"self_threads", "threads"}:
-            reply_username = (legacy.get("in_reply_to_screen_name") or "").lower()
-            author_username = (author.get("username") or "").lower()
-            return bool(reply_username) and reply_username == author_username
-        if value == "media":
-            return bool(row.get("media"))
-        if value == "images":
-            return any(media.get("type") == "photo" for media in row.get("media", []))
-        if value in {"videos", "native_video"}:
-            return any(
-                media.get("type") in {"video", "animated_gif"} for media in row.get("media", [])
-            )
-        if value == "links":
-            return bool(row.get("urls"))
-        if value == "verified":
-            user_result = raw.get("core", {}).get("user_results", {}).get("result", {})
-            return bool(
-                user_result.get("is_blue_verified") or user_result.get("legacy", {}).get("verified")
-            )
-    if key == "min_retweets":
-        return int(legacy.get("retweet_count", 0)) >= int(value)
-    if key == "min_faves":
-        return int(legacy.get("favorite_count", 0)) >= int(value)
-    if key == "min_replies":
-        return int(legacy.get("reply_count", 0)) >= int(value)
-    if key == "conversation_id":
-        return legacy.get("conversation_id_str") == value
-    if key == "quoted_tweet_id":
-        return legacy.get("quoted_status_id_str") == value
-    if key == "url":
-        return any(
-            value in (url.get("expanded_url") or "").lower()
-            or value in (url.get("display_url") or "").lower()
-            for url in row.get("urls", [])
-        )
-    if key == "source":
-        return value.replace("_", " ") in raw.get("source", "").lower()
-    if key == "card_name":
-        return raw.get("card", {}).get("name") == value
-    if key == "tag":
-        tags = [
-            *(row.get("media_tags") or {}).get("tags", []),
-            *(row.get("qt_media_tags") or {}).get("tags", []),
-        ]
-        return any(value == tag.lower() for tag in tags)
-    if key == "hashtag":
-        hashtags = [
-            hashtag.get("text", "").lower()
-            for hashtag in legacy.get("entities", {}).get("hashtags", [])
-        ]
-        return value.replace("#", "").lower() in hashtags
-    return False
-
-
-def _apply_advanced_filters(
-    rows: list[dict[str, Any]], filters: dict[str, list[str]]
-) -> list[dict[str, Any]]:
-    """Apply AND-by-default structured filters to hydrated tweet rows."""
-    if not filters:
-        return rows
-    filtered: list[dict[str, Any]] = []
-    for row in rows:
-        keep = True
-        for raw_key, values in filters.items():
-            negated = raw_key.startswith("-")
-            key = raw_key[1:] if negated else raw_key
-            for value in values:
-                try:
-                    matched = _filter_matches(row, key, value)
-                except (TypeError, ValueError):
-                    matched = False
-                if matched == negated:
-                    keep = False
-                    break
-            if not keep:
-                break
-        if keep:
-            filtered.append(row)
-    return filtered
-
-
 def _sql_quote(value: object) -> str:
     return "'" + str(value).replace("'", "''") + "'"
-
-
-def _collection_expr(collections: set[str] | None) -> str:
-    if not collections:
-        return ""
-    if len(collections) == 1:
-        return f"collection_type = {_sql_quote(next(iter(collections)))}"
-    values = ", ".join(_sql_quote(value) for value in sorted(collections))
-    return f"collection_type IN ({values})"
 
 
 def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> str | None:
