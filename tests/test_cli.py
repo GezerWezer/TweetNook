@@ -497,7 +497,10 @@ def test_auth_check_uses_explicit_credentials(paths, monkeypatch) -> None:
     assert "tweets: ready" in output
 
 
-def test_sync_bookmarks_forwards_article_backfill(paths, monkeypatch) -> None:
+@pytest.mark.parametrize("collection_name", ["bookmarks", "likes", "tweets"])
+def test_sync_collection_commands_forward_article_backfill(
+    paths, monkeypatch, collection_name: str
+) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
     monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
@@ -536,10 +539,10 @@ def test_sync_bookmarks_forwards_article_backfill(paths, monkeypatch) -> None:
 
     monkeypatch.setattr(cli, "sync_collection", fake_sync_collection)
 
-    cli.sync_bookmarks(article_backfill=True)
+    getattr(cli, f"sync_{collection_name}")(article_backfill=True)
 
     assert forwarded == {
-        "collection": "bookmarks",
+        "collection": collection_name,
         "full": False,
         "backfill": False,
         "article_backfill": True,
@@ -547,113 +550,7 @@ def test_sync_bookmarks_forwards_article_backfill(paths, monkeypatch) -> None:
         "limit": None,
         "followups": cli.SyncFollowupPlan(),
     }
-    assert "bookmarks: 2 pages, 3 tweets, empty" in buffer.getvalue()
-
-
-def test_sync_likes_forwards_article_backfill(paths, monkeypatch) -> None:
-    buffer = StringIO()
-    _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
-        "resolve_auth_bundle",
-        lambda config: SimpleNamespace(auth_token="t"),
-    )
-    forwarded = {}
-
-    async def fake_sync_collection(
-        collection,
-        *,
-        full,
-        backfill=False,
-        article_backfill=False,
-        head_only=False,
-        limit=None,
-        config=None,
-        auth_bundle=None,
-        console=None,
-        followups=None,
-    ):
-        forwarded.update(
-            {
-                "collection": collection,
-                "full": full,
-                "backfill": backfill,
-                "article_backfill": article_backfill,
-                "head_only": head_only,
-                "limit": limit,
-                "followups": followups,
-            }
-        )
-        return SimpleNamespace(pages_fetched=2, tweets_seen=3, stop_reason="empty")
-
-    monkeypatch.setattr(cli, "sync_collection", fake_sync_collection)
-
-    cli.sync_likes(article_backfill=True)
-
-    assert forwarded == {
-        "collection": "likes",
-        "full": False,
-        "backfill": False,
-        "article_backfill": True,
-        "head_only": False,
-        "limit": None,
-        "followups": cli.SyncFollowupPlan(),
-    }
-    assert "likes: 2 pages, 3 tweets, empty" in buffer.getvalue()
-
-
-def test_sync_tweets_forwards_article_backfill(paths, monkeypatch) -> None:
-    buffer = StringIO()
-    _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
-        "resolve_auth_bundle",
-        lambda config: SimpleNamespace(auth_token="t"),
-    )
-    forwarded = {}
-
-    async def fake_sync_collection(
-        collection,
-        *,
-        full,
-        backfill=False,
-        article_backfill=False,
-        head_only=False,
-        limit=None,
-        config=None,
-        auth_bundle=None,
-        console=None,
-        followups=None,
-    ):
-        forwarded.update(
-            {
-                "collection": collection,
-                "full": full,
-                "backfill": backfill,
-                "article_backfill": article_backfill,
-                "head_only": head_only,
-                "limit": limit,
-                "followups": followups,
-            }
-        )
-        return SimpleNamespace(pages_fetched=2, tweets_seen=3, stop_reason="empty")
-
-    monkeypatch.setattr(cli, "sync_collection", fake_sync_collection)
-
-    cli.sync_tweets(article_backfill=True)
-
-    assert forwarded == {
-        "collection": "tweets",
-        "full": False,
-        "backfill": False,
-        "article_backfill": True,
-        "head_only": False,
-        "limit": None,
-        "followups": cli.SyncFollowupPlan(),
-    }
-    assert "tweets: 2 pages, 3 tweets, empty" in buffer.getvalue()
+    assert f"{collection_name}: 2 pages, 3 tweets, empty" in buffer.getvalue()
 
 
 def test_sync_all_forwards_article_backfill(paths, monkeypatch) -> None:
@@ -867,36 +764,40 @@ def test_sync_likes_forwards_head_only(paths, monkeypatch) -> None:
     assert "likes: 1 pages, 20 tweets, duplicate" in buffer.getvalue()
 
 
-def test_media_download_reports_runner_result(paths, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("runner", "command", "kwargs", "result", "summary"),
+    [
+        (
+            "download_media",
+            "media_download",
+            {"limit": 5, "photos_only": True, "retry_failed": True},
+            {"processed": 3, "downloaded": 2, "skipped": 1, "failed": 0},
+            "media: 3 processed, 2 downloaded, 1 skipped, 0 failed",
+        ),
+        (
+            "unfurl_urls",
+            "unfurl_archive",
+            {"limit": 10, "retry_failed": True},
+            {"processed": 2, "updated": 2, "failed": 0},
+            "unfurl: 2 processed, 2 updated, 0 failed",
+        ),
+    ],
+)
+def test_maintenance_commands_report_runner_result(
+    paths, monkeypatch, runner: str, command: str, kwargs: dict, result: dict, summary: str
+) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
     monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
 
-    async def fake_download_media(**kwargs):
-        return SimpleNamespace(processed=3, downloaded=2, skipped=1, failed=0)
+    async def fake_runner(**_kwargs):
+        return SimpleNamespace(**result)
 
-    monkeypatch.setattr(cli, "download_media", fake_download_media)
+    monkeypatch.setattr(cli, runner, fake_runner)
 
-    cli.media_download(limit=5, photos_only=True, retry_failed=True)
+    getattr(cli, command)(**kwargs)
 
-    output = buffer.getvalue()
-    assert "media: 3 processed, 2 downloaded, 1 skipped, 0 failed" in output
-
-
-def test_unfurl_archive_reports_runner_result(paths, monkeypatch) -> None:
-    buffer = StringIO()
-    _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-
-    async def fake_unfurl_urls(**kwargs):
-        return SimpleNamespace(processed=2, updated=2, failed=0)
-
-    monkeypatch.setattr(cli, "unfurl_urls", fake_unfurl_urls)
-
-    cli.unfurl_archive(limit=10, retry_failed=True)
-
-    output = buffer.getvalue()
-    assert "unfurl: 2 processed, 2 updated, 0 failed" in output
+    assert summary in buffer.getvalue()
 
 
 def test_refresh_archived_articles_reports_runner_result(paths, monkeypatch) -> None:
