@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, replace
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
@@ -446,18 +446,6 @@ def test_failed_usage_records_keep_zero_only_for_definite_pre_provider_failures(
     assert failed.actual["input_tokens"] == 0
     assert unknown.actual["cost_usd"] is None
     assert unknown.actual["input_tokens"] is None
-
-
-def test_legacy_paid_record_without_status_uses_narrow_unknown_fallback(tmp_path) -> None:
-    ledger = AIUsageLedger(tmp_path / "ai-usage")
-    payload = asdict(usage_record("legacy", cost=None))
-    payload.pop("status")
-    ledger.root.mkdir(parents=True, exist_ok=True)
-    (ledger.root / "2026-08.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
-
-    summary = ledger.rebuild()
-    assert summary["daily"]["2026-08-15"]["unknown_cost_requests"] == 1
-    assert summary["daily"]["2026-08-15"]["unpriced_requests"] == 0
 
 
 def _openrouter_response(payload: dict) -> SimpleNamespace:

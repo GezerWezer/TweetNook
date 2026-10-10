@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 
 import pytest
 
 import tweetnook.storage.backend as storage_backend
-from tests.conftest import make_tweet_detail_response, make_tweet_result
 from tweetnook.config import AppConfig, DatabaseConfig
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import (
     ARCHIVE_COLUMNS,
-    COLUMN_TYPES,
     ENRICHMENT_INDEXES,
     SCHEMA_VERSION,
     ArchiveStore,
@@ -273,8 +270,7 @@ def test_schema_v5_repairs_orphaned_fts_documents_atomically(tmp_path: Path, mon
         assert conn.execute("SELECT COUNT(*) FROM archive_fts").fetchone()[0] == 2
     monkeypatch.setattr(ArchiveStore, "_create_archive_indexes", original)
     repaired = ArchiveStore(db_path, create=False)
-    assert repaired.migration_report.search_index_rebuilt
-    assert repaired.migration_report.backup_path is None
+    assert repaired.migration_report.from_version == 5
     assert repaired.conn.execute("SELECT COUNT(*) FROM archive_fts").fetchone()[0] == 1
     assert (
         repaired.conn.execute(
@@ -288,7 +284,6 @@ def test_schema_v5_repairs_orphaned_fts_documents_atomically(tmp_path: Path, mon
         ).fetchone()[0]
         == 1
     )
-    assert list(tmp_path.glob("*.bak")) == []
     repaired.close()
 
 
@@ -338,13 +333,10 @@ def test_current_schema_open_skips_checks_repairs_and_schema_maintenance(
 
     for method_name in (
         "_archive_table_exists",
-        "_archive_column_names",
-        "_require_quick_check",
-        "_backup_before_migration",
         "_backfill_created_at_timestamps",
         "_create_fts_schema",
         "_create_archive_indexes",
-        "_repair_legacy_terminal_rows",
+        "_migrate_search_index",
     ):
         monkeypatch.setattr(ArchiveStore, method_name, unexpected)
 
@@ -352,7 +344,6 @@ def test_current_schema_open_skips_checks_repairs_and_schema_maintenance(
 
     assert current.migration_report is None
     assert current.conn.total_changes == 0
-    assert list(tmp_path.glob("*.bak")) == []
     current.close()
 
 
@@ -377,67 +368,7 @@ def test_current_schema_lock_probe_reads_only_user_version(
     assert statements == ["PRAGMA user_version"]
 
 
-def test_schema_v3_rebuilds_only_derived_search_index_without_backup(tmp_path: Path) -> None:
-    db_path = tmp_path / "archive.db"
-    initial = ArchiveStore(db_path, create=True)
-    initial._merge_records(
-        [
-            _membership(
-                initial,
-                "1",
-                collection="bookmark",
-                text="searchable membership sentinel",
-                created_at=CREATED_2012,
-                created_at_ts=1,
-                sort_index="1",
-            ),
-            initial._record(
-                row_key="tweet_object:2",
-                record_type="tweet_object",
-                tweet_id="2",
-                text="legacy secondary sentinel",
-            ),
-        ]
-    )
-    initial.close()
-
-    legacy = sqlite3.connect(db_path)
-    for trigger in ("archive_ad", "archive_ai", "archive_au"):
-        legacy.execute(f"DROP TRIGGER IF EXISTS {trigger}")
-    legacy.execute("DROP TABLE archive_fts")
-    legacy.execute("""
-        CREATE VIRTUAL TABLE archive_fts USING fts5(
-            author_username, author_display_name, text, note_tweet_text,
-            content='archive', content_rowid='rowid'
-        )
-    """)
-    legacy.execute("INSERT INTO archive_fts(archive_fts) VALUES('rebuild')")
-    legacy.execute("PRAGMA user_version = 3")
-    legacy.commit()
-    assert (
-        legacy.execute(
-            "SELECT COUNT(*) FROM archive_fts WHERE archive_fts MATCH 'secondary'"
-        ).fetchone()[0]
-        == 1
-    )
-    legacy.close()
-
-    migrated = ArchiveStore(db_path, create=True)
-
-    assert migrated.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
-    assert migrated.migration_report is not None
-    assert migrated.migration_report.from_version == 3
-    assert migrated.migration_report.to_version == SCHEMA_VERSION
-    assert migrated.migration_report.backup_path is None
-    assert migrated.migration_report.search_index_rebuilt is True
-    assert [row["tweet_id"] for row in migrated.search_fts("membership")] == ["1"]
-    assert migrated.search_fts("secondary") == []
-    assert migrated.conn.execute("SELECT COUNT(*) FROM archive_fts").fetchone()[0] == 1
-    assert list(tmp_path.glob("*.bak")) == []
-    migrated.close()
-
-
-def test_schema_v4_repairs_search_index_without_backup(tmp_path: Path) -> None:
+def test_schema_v5_upgrade_adds_later_indexes_and_reports_migration(tmp_path: Path) -> None:
     db_path = tmp_path / "archive.db"
     initial = ArchiveStore(db_path, create=True)
     initial._merge_records(
@@ -451,16 +382,17 @@ def test_schema_v4_repairs_search_index_without_backup(tmp_path: Path) -> None:
                 created_at_ts=1,
                 sort_index="1",
             ),
-            initial._record(
-                row_key="media_tag:1",
-                record_type="media_tag",
-                tweet_id="1",
-                raw_json=json.dumps({"tags": ["Nature"]}),
-            ),
         ]
     )
-    initial.conn.execute("DROP INDEX idx_archive_media_tag_lookup")
-    initial.conn.execute("PRAGMA user_version = 4")
+    # Indexes added after the schema-5 releases (0.0.9 and 0.1.0).
+    later_indexes = (
+        "idx_archive_membership",
+        "idx_archive_profile_author",
+        "idx_archive_search_author",
+    )
+    for index in later_indexes:
+        initial.conn.execute(f"DROP INDEX {index}")
+    initial.conn.execute("PRAGMA user_version = 5")
     initial.conn.commit()
     initial.close()
 
@@ -468,20 +400,30 @@ def test_schema_v4_repairs_search_index_without_backup(tmp_path: Path) -> None:
 
     assert migrated.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     assert migrated.migration_report is not None
-    assert migrated.migration_report.from_version == 4
+    assert migrated.migration_report.from_version == 5
     assert migrated.migration_report.to_version == SCHEMA_VERSION
-    assert migrated.migration_report.backup_path is None
-    assert migrated.migration_report.search_index_rebuilt is True
     assert [row["tweet_id"] for row in migrated.search_fts("sentinel")] == ["1"]
-    assert (
-        migrated.conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'index' "
-            "AND name = 'idx_archive_media_tag_lookup'"
-        ).fetchone()
-        is not None
-    )
-    assert list(tmp_path.glob("*.bak")) == []
+    indexes = {
+        row["name"]
+        for row in migrated.conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
+    }
+    assert set(later_indexes) <= indexes
     migrated.close()
+
+
+@pytest.mark.parametrize("version", [2, 4, 6, 7])
+def test_pre_release_schema_is_rejected_without_changes(tmp_path: Path, version: int) -> None:
+    db_path = tmp_path / "archive.db"
+    initial = ArchiveStore(db_path, create=True)
+    initial.conn.execute(f"PRAGMA user_version = {version}")
+    initial.conn.commit()
+    initial.close()
+
+    with pytest.raises(RuntimeError, match="pre-release build"):
+        ArchiveStore(db_path, create=True)
+
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == version
 
 
 def test_new_database_creates_latest_schema_without_migration_work(
@@ -491,12 +433,9 @@ def test_new_database_creates_latest_schema_without_migration_work(
     db_path = tmp_path / "archive.db"
 
     def unexpected(*_args, **_kwargs):
-        pytest.fail("new database entered the legacy migration path")
+        pytest.fail("new database entered the migration path")
 
-    monkeypatch.setattr(ArchiveStore, "_migrate_legacy_database", unexpected)
-    monkeypatch.setattr(ArchiveStore, "_require_quick_check", unexpected)
-    monkeypatch.setattr(ArchiveStore, "_backup_before_migration", unexpected)
-    monkeypatch.setattr(ArchiveStore, "_repair_legacy_terminal_rows", unexpected)
+    monkeypatch.setattr(ArchiveStore, "_migrate_search_index", unexpected)
 
     store = ArchiveStore(db_path, create=True)
 
@@ -516,7 +455,6 @@ def test_new_database_creates_latest_schema_without_migration_work(
             for row in store.conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
         }
     )
-    assert list(tmp_path.glob("*.bak")) == []
     store.close()
 
 
@@ -533,501 +471,6 @@ def test_explicit_integrity_checks_select_quick_or_full_pragma(paths) -> None:
     assert "PRAGMA quick_check" in statements
     assert "PRAGMA integrity_check" in statements
     store.close()
-
-
-def test_created_at_ts_migration_backfills_and_is_idempotent(tmp_path: Path) -> None:
-    db_path = tmp_path / "archive.db"
-    columns = []
-    for name in ARCHIVE_COLUMNS:
-        if name == "created_at_ts":
-            continue
-        columns.append(f"{name} {'TEXT PRIMARY KEY' if name == 'row_key' else 'TEXT'}")
-    connection = sqlite3.connect(db_path)
-    connection.execute(f"CREATE TABLE archive ({', '.join(columns)})")
-    connection.execute(
-        "INSERT INTO archive(row_key, record_type, tweet_id, created_at) VALUES (?, ?, ?, ?)",
-        ("tweet:bookmark::1", "tweet", "1", CREATED_2012),
-    )
-    connection.commit()
-    connection.close()
-
-    first = ArchiveStore(db_path, create=True)
-    first_value = first.conn.execute(
-        "SELECT created_at_ts FROM archive WHERE tweet_id = '1'"
-    ).fetchone()[0]
-    first.close()
-    second = ArchiveStore(db_path, create=True)
-    second_value = second.conn.execute(
-        "SELECT created_at_ts FROM archive WHERE tweet_id = '1'"
-    ).fetchone()[0]
-    created_at_columns = [
-        row["name"] for row in second.conn.execute("PRAGMA table_info(archive)")
-    ].count("created_at_ts")
-
-    assert first_value == second_value == 1_349_818_766
-    assert created_at_columns == 1
-    second.close()
-
-
-def test_enrichment_scheduler_migration_is_backed_up_additive_and_idempotent(
-    tmp_path: Path,
-) -> None:
-    db_path = tmp_path / "archive.db"
-    scheduler_columns = {
-        "enrichment_detail",
-        "enrichment_retry_count",
-        "enrichment_next_retry_at",
-        "enrichment_first_unavailable_at",
-        "enrichment_retry_eligible",
-    }
-    legacy_columns = [name for name in ARCHIVE_COLUMNS if name not in scheduler_columns]
-    definitions = []
-    for name in legacy_columns:
-        column_type = (
-            "TEXT PRIMARY KEY"
-            if name == "row_key"
-            else "INTEGER"
-            if name == "created_at_ts"
-            else "TEXT"
-        )
-        definitions.append(f"{name} {column_type}")
-    connection = sqlite3.connect(db_path)
-    connection.execute(f"CREATE TABLE archive ({', '.join(definitions)})")
-    connection.executemany(
-        """
-        INSERT INTO archive(
-            row_key, record_type, tweet_id, source, text, author_id,
-            enrichment_state, enrichment_checked_at, enrichment_reason,
-            deleted_at, raw_json, media_url, url, counts_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (
-                "tweet:bookmark::1",
-                "tweet",
-                "1",
-                "live_graphql",
-                "searchable migration sentinel",
-                "101",
-                None,
-                None,
-                None,
-                None,
-                '{"id":"1","text":"unchanged"}',
-                None,
-                None,
-                None,
-            ),
-            (
-                "tweet_object:2",
-                "tweet_object",
-                "2",
-                "x_archive",
-                "",
-                None,
-                "pending",
-                None,
-                None,
-                None,
-                '{"id":"2"}',
-                None,
-                None,
-                None,
-            ),
-            (
-                "tweet_object:3",
-                "tweet_object",
-                "3",
-                "x_archive",
-                "",
-                None,
-                "transient_failure",
-                "2026-01-01T00:00:00+00:00",
-                "network",
-                None,
-                '{"id":"3"}',
-                None,
-                None,
-                None,
-            ),
-            (
-                "tweet_object:4",
-                "tweet_object",
-                "4",
-                "x_archive",
-                "deleted archive post",
-                "104",
-                "terminal_unavailable",
-                "2026-01-02T00:00:00+00:00",
-                "deleted",
-                "2026-01-02T00:00:00+00:00",
-                '{"id":"4"}',
-                None,
-                None,
-                None,
-            ),
-            (
-                "tweet_object:5",
-                "tweet_object",
-                "5",
-                "live_graphql",
-                "private post",
-                "105",
-                "terminal_unavailable",
-                "2026-01-03T00:00:00+00:00",
-                "TerminalUnavailableError",
-                None,
-                '{"id":"5"}',
-                None,
-                None,
-                None,
-            ),
-            (
-                "raw_capture:1",
-                "raw_capture",
-                None,
-                "live_graphql",
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                '{"raw":true}',
-                None,
-                None,
-                None,
-            ),
-            (
-                "media:1:m",
-                "media",
-                "1",
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                '{"media":true}',
-                "https://example.test/image.jpg",
-                None,
-                None,
-            ),
-            (
-                "url:u",
-                "url",
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                '{"url":true}',
-                None,
-                "https://example.test",
-                None,
-            ),
-            (
-                "import_manifest:d",
-                "import_manifest",
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                '{"likes":1}',
-            ),
-        ],
-    )
-    connection.commit()
-    connection.close()
-
-    first = ArchiveStore(db_path, create=True)
-    assert first.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
-    assert first.conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
-    assert first._count() == 9
-    assert first.search_fts("sentinel")[0]["tweet_id"] == "1"
-    rich = first._get_row("tweet:bookmark::1")
-    assert rich is not None
-    assert rich["text"] == "searchable migration sentinel"
-    assert rich["author_id"] == "101"
-    assert rich["raw_json"] == '{"id":"1","text":"unchanged"}'
-    deleted = first._get_row("tweet_object:4")
-    assert deleted is not None
-    assert deleted["enrichment_reason"] == "archive_deleted"
-    assert deleted["enrichment_retry_eligible"] == 0
-    ambiguous = first._get_row("tweet_object:5")
-    assert ambiguous is not None
-    assert ambiguous["enrichment_reason"] == "unavailable_unknown"
-    assert ambiguous["enrichment_retry_eligible"] == 1
-    assert ambiguous["author_id"] == "105"
-    transient = first._get_row("tweet_object:3")
-    assert transient is not None
-    assert transient["enrichment_retry_count"] == 0
-    assert transient["enrichment_next_retry_at"] is not None
-    first.close()
-
-    backups = list(tmp_path.glob(f"archive.db.pre-schema-v{SCHEMA_VERSION}.*.bak"))
-    assert len(backups) == 1
-    second = ArchiveStore(db_path, create=True)
-    assert second._count() == 9
-    second.close()
-    assert list(tmp_path.glob(f"archive.db.pre-schema-v{SCHEMA_VERSION}.*.bak")) == backups
-
-
-def test_legacy_terminal_repair_prefers_rich_indexed_capture_and_reports_deferral(
-    paths, capsys
-) -> None:
-    store = open_archive_store(paths, create=True)
-    assert store is not None
-    rich_payload = make_tweet_detail_response(
-        [make_tweet_result("6", "recovered detail text", user_id="606")]
-    )
-    store._merge_records(
-        [
-            store._record(
-                row_key="tweet_object:6",
-                record_type="tweet_object",
-                tweet_id="6",
-                enrichment_state="terminal_unavailable",
-                raw_json='{"__tombstone__":true}',
-            ),
-            store._record(
-                row_key="tweet:like::6",
-                record_type="tweet",
-                tweet_id="6",
-                collection_type="like",
-                text="sparse membership text",
-                author_id=None,
-                raw_json='{"tweetId":"6"}',
-            ),
-            store._record(
-                row_key="raw_capture:detail-6",
-                record_type="raw_capture",
-                operation="TweetDetail",
-                cursor_in="6",
-                captured_at="2026-01-01T00:00:00+00:00",
-                raw_json=json.dumps(rich_payload),
-            ),
-            store._record(
-                row_key="tweet_object:7",
-                record_type="tweet_object",
-                tweet_id="7",
-                enrichment_state="terminal_unavailable",
-                raw_json='{"__tombstone__":true}',
-            ),
-        ]
-    )
-
-    report = store._repair_legacy_terminal_rows()
-
-    repaired = store._get_row("tweet_object:6")
-    assert repaired is not None
-    assert repaired["text"] == "recovered detail text"
-    assert repaired["author_id"] == "606"
-    assert report == {
-        "legacy_terminal_rows_scanned": 2,
-        "content_rows_repaired": 1,
-        "author_rows_repaired": 1,
-        "rows_still_missing_author": 1,
-        "rows_without_richer_source": 1,
-    }
-    assert capsys.readouterr().out == ""
-    store.close()
-
-
-def test_schema_v2_migrates_to_latest_with_backup_reason_preservation_and_repairs(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    db_path = tmp_path / "archive.db"
-    definitions = []
-    for name in ARCHIVE_COLUMNS:
-        if name in {"enrichment_followup_status", "enrichment_aborted_reason"}:
-            continue
-        definitions.append(f"{name} {COLUMN_TYPES[name]}")
-    connection = sqlite3.connect(db_path)
-    connection.execute(f"CREATE TABLE archive ({', '.join(definitions)})")
-    connection.execute("PRAGMA user_version = 2")
-    detail_payload = make_tweet_detail_response(
-        [make_tweet_result("1", "recovered from capture", user_id="101")]
-    )
-    connection.executemany(
-        "INSERT INTO archive ("
-        "row_key, record_type, tweet_id, operation, cursor_in, captured_at, source, "
-        "text, author_id, enrichment_state, enrichment_reason, enrichment_detail, "
-        "enrichment_retry_count, enrichment_next_retry_at, "
-        "enrichment_first_unavailable_at, enrichment_retry_eligible, raw_json"
-        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            (
-                "tweet_object:1",
-                "tweet_object",
-                "1",
-                None,
-                None,
-                None,
-                "live_graphql",
-                None,
-                None,
-                "terminal_unavailable",
-                "LegacyMysteryReason",
-                "original detail",
-                2,
-                "2026-01-01T00:00:00+00:00",
-                "2025-01-01T00:00:00+00:00",
-                1,
-                '{"__tombstone__":true}',
-            ),
-            (
-                "raw_capture:detail-1",
-                "raw_capture",
-                None,
-                "TweetDetail",
-                "1",
-                "2026-01-02T00:00:00+00:00",
-                "live_graphql",
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                json.dumps(detail_payload),
-            ),
-            (
-                "tweet_object:2",
-                "tweet_object",
-                "2",
-                None,
-                None,
-                None,
-                "live_graphql",
-                "available",
-                "202",
-                "done",
-                "protected_account",
-                "stale scheduler detail",
-                4,
-                "2030-01-01T00:00:00+00:00",
-                "2025-01-01T00:00:00+00:00",
-                1,
-                '{"rest_id":"2"}',
-            ),
-        ],
-    )
-    connection.commit()
-    connection.close()
-
-    quick_check_stages: list[str] = []
-    backup_calls = 0
-    repair_calls = 0
-    original_quick_check = ArchiveStore._require_quick_check
-    original_backup = ArchiveStore._backup_before_migration
-    original_repair = ArchiveStore._repair_legacy_terminal_rows
-
-    def tracked_quick_check(self: ArchiveStore, stage: str) -> None:
-        quick_check_stages.append(stage)
-        original_quick_check(self, stage)
-
-    def tracked_backup(self: ArchiveStore, target_version: int) -> Path:
-        nonlocal backup_calls
-        backup_calls += 1
-        return original_backup(self, target_version)
-
-    def tracked_repair(self: ArchiveStore, **kwargs) -> dict[str, int]:
-        nonlocal repair_calls
-        repair_calls += 1
-        return original_repair(self, **kwargs)
-
-    monkeypatch.setattr(ArchiveStore, "_require_quick_check", tracked_quick_check)
-    monkeypatch.setattr(ArchiveStore, "_backup_before_migration", tracked_backup)
-    monkeypatch.setattr(ArchiveStore, "_repair_legacy_terminal_rows", tracked_repair)
-
-    first = ArchiveStore(db_path, create=True)
-    assert first.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
-    assert first.migration_report is not None
-    assert first.migration_report.from_version == 2
-    assert first.migration_report.to_version == SCHEMA_VERSION
-    terminal = first._get_row("tweet_object:1")
-    assert terminal["text"] == "recovered from capture"
-    assert terminal["author_id"] == "101"
-    assert terminal["enrichment_reason"] == "unavailable_unknown"
-    assert "Legacy enrichment reason: LegacyMysteryReason" in terminal["enrichment_detail"]
-    available = first._get_row("tweet_object:2")
-    assert available["enrichment_reason"] is None
-    assert available["enrichment_detail"] is None
-    assert available["enrichment_retry_count"] == 0
-    assert available["enrichment_next_retry_at"] is None
-    assert available["enrichment_first_unavailable_at"] is None
-    assert available["enrichment_retry_eligible"] == 0
-    first.close()
-
-    backups = list(tmp_path.glob(f"archive.db.pre-schema-v{SCHEMA_VERSION}.*.bak"))
-    assert len(backups) == 1
-    backup = sqlite3.connect(backups[0])
-    assert backup.execute("PRAGMA quick_check").fetchone()[0] == "ok"
-    assert backup.execute("PRAGMA user_version").fetchone()[0] == 2
-    backup.close()
-
-    second = ArchiveStore(db_path, create=True)
-    assert second.migration_report is None
-    second.close()
-    assert list(tmp_path.glob(f"archive.db.pre-schema-v{SCHEMA_VERSION}.*.bak")) == backups
-    assert quick_check_stages == ["before migration", "after migration"]
-    assert backup_calls == 1
-    assert repair_calls == 1
-
-
-def test_migration_backup_failure_leaves_original_unchanged_and_no_artifacts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    db_path = tmp_path / "archive.db"
-    definitions = ", ".join(f"{name} {COLUMN_TYPES[name]}" for name in ARCHIVE_COLUMNS)
-    connection = sqlite3.connect(db_path)
-    connection.execute(f"CREATE TABLE archive ({definitions})")
-    connection.execute("PRAGMA user_version = 2")
-    connection.execute(
-        "INSERT INTO archive (row_key, record_type, tweet_id) "
-        "VALUES ('tweet_object:1', 'tweet_object', '1')"
-    )
-    connection.commit()
-    connection.close()
-    original_connect = sqlite3.connect
-
-    class InvalidBackupConnection:
-        def close(self) -> None:
-            return None
-
-    def failing_connect(path, *args, **kwargs):
-        if str(path).endswith(".bak.tmp"):
-            Path(path).touch()
-            return InvalidBackupConnection()
-        return original_connect(path, *args, **kwargs)
-
-    monkeypatch.setattr(sqlite3, "connect", failing_connect)
-
-    with pytest.raises(RuntimeError, match="validated pre-migration backup"):
-        ArchiveStore(db_path, create=True)
-
-    check = original_connect(db_path)
-    assert check.execute("PRAGMA user_version").fetchone()[0] == 2
-    assert check.execute("SELECT COUNT(*) FROM archive").fetchone()[0] == 1
-    check.close()
-    assert list(tmp_path.glob("*.bak")) == []
-    assert list(tmp_path.glob("*.bak.tmp")) == []
 
 
 def test_enrichment_selector_omits_sql_limit_when_unbounded(paths) -> None:
@@ -1328,36 +771,6 @@ def test_search_authors_matches_username_display_name_and_at_prefix(paths) -> No
     assert [row["username"] for row in store.search_authors("Builder")] == ["bob"]
     assert store.search_authors("@") == []
     assert store.search_authors("") == []
-    store.close()
-
-
-def test_search_authors_falls_back_for_legacy_missing_display_name_column(paths) -> None:
-    store = open_archive_store(paths, create=True)
-    assert store is not None
-    _seed_search_rows(store)
-    connection = store.conn
-
-    class LegacyAuthorConnection:
-        def __getattr__(self, name):
-            return getattr(connection, name)
-
-        def execute(self, sql, parameters=()):
-            if "MIN(author_display_name)" in sql:
-                raise sqlite3.OperationalError("no such column: author_display_name")
-            return connection.execute(sql, parameters)
-
-        def close(self) -> None:
-            connection.close()
-
-    store.conn = LegacyAuthorConnection()
-
-    assert store.search_authors("@ali") == [
-        {
-            "id": "author-1",
-            "username": "alice",
-            "display_name": "alice",
-        }
-    ]
     store.close()
 
 

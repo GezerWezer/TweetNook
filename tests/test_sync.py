@@ -11,6 +11,7 @@ import httpx
 import pytest
 from rich.console import Console
 
+import tweetnook.storage.backend as storage_backend
 import tweetnook.sync as sync_module
 from tests.conftest import (
     make_article_result,
@@ -25,7 +26,6 @@ from tweetnook.exceptions import ConfigError, ProcessLockError, TweetNookError
 from tweetnook.pipeline import PipelineReporter
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.storage import open_archive_store
-from tweetnook.storage.backend import ArchiveStore
 from tweetnook.sync import (
     ProcessLock,
     RemotePreflightError,
@@ -288,13 +288,15 @@ async def test_sync_stage_database_opens_never_run_quick_check(
     initial = open_archive_store(paths, create=True, config=config)
     assert initial is not None
     initial.close()
-    quick_check_stages: list[str] = []
+    statements: list[str] = []
+    original_connect = storage_backend.sqlite3.connect
 
-    monkeypatch.setattr(
-        ArchiveStore,
-        "_require_quick_check",
-        lambda _self, stage: quick_check_stages.append(stage),
-    )
+    def tracing_connect(*args, **kwargs):
+        connection = original_connect(*args, **kwargs)
+        connection.set_trace_callback(statements.append)
+        return connection
+
+    monkeypatch.setattr(storage_backend.sqlite3, "connect", tracing_connect)
 
     async def handler(request: httpx.Request) -> httpx.Response:
         _operation, variables = _op_and_variables(request)
@@ -325,7 +327,8 @@ async def test_sync_stage_database_opens_never_run_quick_check(
     )
 
     assert result.pages_fetched == 1
-    assert quick_check_stages == []
+    assert statements
+    assert not any("quick_check" in statement for statement in statements)
 
 
 @pytest.mark.asyncio

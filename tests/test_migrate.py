@@ -790,7 +790,7 @@ def test_destination_initialization_failure_prevents_workers(
     assert "Failed to" in capsys.readouterr().out
 
 
-def test_lancedb_migration_creates_latest_schema_without_legacy_upgrade(
+def test_lancedb_migration_creates_latest_schema_without_upgrading(
     monkeypatch: pytest.MonkeyPatch,
     paths,
 ) -> None:
@@ -799,10 +799,9 @@ def test_lancedb_migration_creates_latest_schema_without_legacy_upgrade(
     monkeypatch.setattr(migrate, "_create_progress", lambda _total: None)
 
     def unexpected(*_args, **_kwargs):
-        pytest.fail("new LanceDB destination entered the legacy SQLite migration path")
+        pytest.fail("new LanceDB destination entered the SQLite schema-upgrade path")
 
-    monkeypatch.setattr(ArchiveStore, "_migrate_legacy_database", unexpected)
-    monkeypatch.setattr(ArchiveStore, "_backup_before_migration", unexpected)
+    monkeypatch.setattr(ArchiveStore, "_migrate_search_index", unexpected)
 
     result = migrate.run_migration()
 
@@ -813,7 +812,6 @@ def test_lancedb_migration_creates_latest_schema_without_legacy_upgrade(
         assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     finally:
         connection.close()
-    assert list(paths.data_dir.glob("archive.db.pre-schema-v*.bak")) == []
 
 
 def test_realistic_rerun_preserves_existing_rows_and_rebuilds_tweet_only_search(
