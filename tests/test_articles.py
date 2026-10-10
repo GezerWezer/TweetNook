@@ -10,7 +10,12 @@ import httpx
 import pytest
 from rich.console import Console
 
-from tests.conftest import make_article_result, make_tweet_detail_response, make_tweet_result
+from tests.conftest import (
+    list_article_rows,
+    make_article_result,
+    make_tweet_detail_response,
+    make_tweet_result,
+)
 from tweetnook.articles import normalize_article_target, refresh_articles
 from tweetnook.client.timelines import TimelineTweet
 from tweetnook.config import AppConfig, AuthConfig, SyncConfig
@@ -145,7 +150,7 @@ async def test_refresh_articles_updates_preview_rows_from_tweet_detail(
     store = open_archive_store(paths, create=False)
     assert store is not None
     try:
-        article_rows = store.list_article_rows(preview_only=False)
+        article_rows = list_article_rows(store, preview_only=False)
         assert len(article_rows) == 1
         article = article_rows[0]
         assert article["status"] == "body_present"
@@ -188,7 +193,7 @@ async def test_refresh_articles_marks_missing_focal_tweet_as_failure(
     store = open_archive_store(paths, create=False)
     assert store is not None
     try:
-        article_rows = store.list_article_rows(preview_only=True)
+        article_rows = list_article_rows(store, preview_only=True)
         assert len(article_rows) == 1
         assert article_rows[0]["status"] == "preview_only"
     finally:
@@ -228,8 +233,8 @@ async def test_refresh_articles_respects_limit(paths, config, auth_bundle) -> No
     store = open_archive_store(paths, create=False)
     assert store is not None
     try:
-        preview_rows = store.list_article_rows(preview_only=True)
-        all_rows = store.list_article_rows(preview_only=False)
+        preview_rows = list_article_rows(store, preview_only=True)
+        all_rows = list_article_rows(store, preview_only=False)
         assert [row["tweet_id"] for row in preview_rows] == ["101"]
         assert {row["tweet_id"]: row["status"] for row in all_rows} == {
             "100": "body_present",

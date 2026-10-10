@@ -714,14 +714,6 @@ class ArchiveStore:
             return self.conn.execute("SELECT COUNT(*) FROM archive").fetchone()[0]
         return self.conn.execute(f"SELECT COUNT(*) FROM archive WHERE {filter_expr}").fetchone()[0]
 
-    def _count_distinct(self, field: str, filter_expr: str | None = None) -> int:
-        if field not in ARCHIVE_COLUMNS:
-            raise ValueError(f"Unknown archive field: {field}")
-        sql = f"SELECT COUNT(DISTINCT {field}) FROM archive"
-        if filter_expr:
-            sql += f" WHERE {filter_expr}"
-        return self.conn.execute(sql).fetchone()[0]
-
     def _delete(self, filter_expr: str) -> None:
         with self.conn:
             self.conn.execute(f"DELETE FROM archive WHERE {filter_expr}")
@@ -930,14 +922,6 @@ class ArchiveStore:
         if context.existing is None:
             return None
         return context.existing.get(field_name)
-
-    def _coalesce_existing(
-        self,
-        context: _RecordContext,
-        field_name: str,
-        *values: Any,
-    ) -> Any:
-        return self._coalesce_value(*values, self._existing_value(context, field_name))
 
     def _record_with_context(
         self,
@@ -1252,12 +1236,6 @@ class ArchiveStore:
         self._delete(
             f"row_key = {_expr_quote(self._row_key_for_sync_state(collection_type, folder_id))}"
         )
-
-    def has_membership(
-        self, tweet_id: str, collection_type: str, folder_id: str | None = None
-    ) -> bool:
-        row_key = self._row_key_for_tweet(tweet_id, collection_type, folder_id)
-        return self._get_row(row_key) is not None
 
     def get_collection_tweet_ids(self, collection_type: str) -> set[str]:
         filter_expr = f"record_type = 'tweet' AND collection_type = {_expr_quote(collection_type)}"
@@ -1969,44 +1947,6 @@ class ArchiveStore:
             limit=limit,
         )
 
-    def update_media_download(
-        self,
-        row_key: str,
-        *,
-        download_state: str,
-        local_path: str | None,
-        sha256: str | None,
-        byte_size: int | None,
-        content_type: str | None,
-        thumbnail_local_path: str | None,
-        thumbnail_sha256: str | None,
-        thumbnail_byte_size: int | None,
-        thumbnail_content_type: str | None,
-        downloaded_at: str | None,
-        download_error: str | None,
-    ) -> None:
-        row = self._get_row(row_key)
-        if row is None:
-            raise KeyError(f"Media row not found: {row_key}")
-        self.merge_rows(
-            [
-                self.build_media_download_update(
-                    row,
-                    download_state=download_state,
-                    local_path=local_path,
-                    sha256=sha256,
-                    byte_size=byte_size,
-                    content_type=content_type,
-                    thumbnail_local_path=thumbnail_local_path,
-                    thumbnail_sha256=thumbnail_sha256,
-                    thumbnail_byte_size=thumbnail_byte_size,
-                    thumbnail_content_type=thumbnail_content_type,
-                    downloaded_at=downloaded_at,
-                    download_error=download_error,
-                )
-            ]
-        )
-
     def build_media_download_update(
         self,
         row: dict[str, Any],
@@ -2078,42 +2018,6 @@ class ArchiveStore:
             limit=limit,
         )
 
-    def update_url_unfurl(
-        self,
-        row_key: str,
-        *,
-        http_status: int | None,
-        final_url: str | None,
-        canonical_url: str | None,
-        title: str | None,
-        description: str | None,
-        site_name: str | None,
-        content_type: str | None,
-        unfurl_state: str,
-        last_fetched_at: str | None,
-        download_error: str | None,
-    ) -> None:
-        row = self._get_row(row_key)
-        if row is None:
-            raise KeyError(f"URL row not found: {row_key}")
-        self.merge_rows(
-            [
-                self.build_url_unfurl_update(
-                    row,
-                    http_status=http_status,
-                    final_url=final_url,
-                    canonical_url=canonical_url,
-                    title=title,
-                    description=description,
-                    site_name=site_name,
-                    content_type=content_type,
-                    unfurl_state=unfurl_state,
-                    last_fetched_at=last_fetched_at,
-                    download_error=download_error,
-                )
-            ]
-        )
-
     def build_url_unfurl_update(
         self,
         row: dict[str, Any],
@@ -2150,18 +2054,6 @@ class ArchiveStore:
             }
         )
         return updated
-
-    def list_article_rows(
-        self,
-        *,
-        preview_only: bool = False,
-        limit: int | None = None,
-    ) -> list[dict[str, Any]]:
-        where_expr = _and_expr(
-            "record_type = 'article'",
-            "(status IS NULL OR status != 'body_present')" if preview_only else "",
-        )
-        return self._query(expr=where_expr, order_by="COALESCE(tweet_id, ''), rowid", limit=limit)
 
     def get_article_tweet_ids(
         self,
@@ -2395,14 +2287,6 @@ class ArchiveStore:
             "AND (enrichment_next_retry_at IS NULL OR "
             f"enrichment_next_retry_at <= {_expr_quote(now)})"
         )
-
-    def list_dead_tweets_for_resurrection(
-        self, *, limit: int | None = None
-    ) -> list[dict[str, Any]]:
-        return self.list_due_resurrection_tweets(limit=limit)
-
-    def count_dead_tweets_for_resurrection(self) -> int:
-        return self.count_due_resurrection_tweets()
 
     def get_eligible_tagging_candidates(
         self,
@@ -3074,21 +2958,6 @@ class ArchiveStore:
         if owns_buffer:
             self._merge_records(list(buffer.records.values()))
 
-    def persist_terminal_unavailable_target(self, focal_tweet_id: str, operation: str) -> None:
-        from tweetnook.resurrection import resurrection_retry_schedule
-
-        retry_eligible, next_retry_at = resurrection_retry_schedule("unavailable_unknown", 0)
-        self.persist_unavailable_tweet(
-            tweet_id=focal_tweet_id,
-            operation=operation,
-            raw_json={"__typename__": "TweetUnavailable"},
-            http_status=404,
-            reason="unavailable_unknown",
-            detail=None,
-            retry_eligible=retry_eligible,
-            next_retry_at=next_retry_at,
-        )
-
     def list_membership_tweet_ids(self, *, limit: int | None = None) -> list[str]:
         rows = self._query(expr="record_type = 'tweet'", cols=["tweet_id", "added_at"])
         rows.sort(key=lambda row: (row.get("added_at") or "", row.get("tweet_id") or ""))
@@ -3105,23 +2974,6 @@ class ArchiveStore:
             if isinstance(row.get("tweet_id"), str) and row["tweet_id"]
         }
         return tweet_ids
-
-    def list_raw_capture_target_ids(
-        self,
-        operation: str,
-        *,
-        limit: int | None = None,
-    ) -> list[str]:
-        expr = (
-            "record_type = 'raw_capture' "
-            f"AND operation = {_expr_quote(operation)} "
-            "AND cursor_in IS NOT NULL"
-        )
-        rows = self._query(expr=expr, cols=["captured_at", "cursor_in"])
-        rows.sort(key=lambda row: (row.get("captured_at") or "", row.get("cursor_in") or ""))
-        targets = [row["cursor_in"] for row in rows if isinstance(row.get("cursor_in"), str)]
-        unique = list(dict.fromkeys(targets))
-        return unique[:limit] if limit is not None else unique
 
     def list_expanded_thread_target_ids(self, *, limit: int | None = None) -> list[str]:
         """Return targets whose latest expansion marker does not predate recovery."""
@@ -3328,14 +3180,6 @@ class ArchiveStore:
                 (-1 if after_position is None else after_position, limit, offset),
             ).fetchall()
         return [dict(row) for row in rows]
-
-    def get_paginated_tweet_ids(
-        self, collection: str, limit: int, offset: int, sort: str = "newest"
-    ) -> list[str]:
-        return [
-            row["tweet_id"]
-            for row in self.get_paginated_tweet_rows(collection, limit, offset, sort)
-        ]
 
     def get_paginated_tweet_rows(
         self,
@@ -4260,9 +4104,6 @@ class ArchiveStore:
         result.secondary_records += self._flush_rehydrate_buffer(buffer)
         return result
 
-    def rehydrate_authors(self, *, progress: Callable[[int], None] | None = None) -> int:
-        return self.rehydrate_from_raw_json(progress=progress).tweets_updated
-
     def ensure_scalar_indexes(self) -> None:
         pass
 
@@ -4325,36 +4166,6 @@ class ArchiveStore:
     def _ordered_search_collections(self, collections: set[str]) -> list[str]:
         order = {k: i for i, k in enumerate(SEARCH_COLLECTION_ORDER)}
         return sorted(list(collections), key=lambda c: (order.get(c, 99), c))
-
-    def _apply_sort(self, search_results: list[dict[str, Any]], sort: str) -> list[dict[str, Any]]:
-        def sort_index_value(row: dict[str, Any]) -> int:
-            raw = row.get("sort_index")
-            if not raw:
-                return 0
-            try:
-                return int(raw)
-            except (TypeError, ValueError):
-                return 0
-
-        def oldest_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
-            created_at = _parse_created_at(row.get("created_at"))
-            if created_at is not None:
-                return (0, created_at.timestamp(), sort_index_value(row), row.get("tweet_id") or "")
-            return (1, datetime.max.timestamp(), sort_index_value(row), row.get("tweet_id") or "")
-
-        def newest_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
-            created_at = _parse_created_at(row.get("created_at"))
-            if created_at is not None:
-                return (
-                    0,
-                    -created_at.timestamp(),
-                    -sort_index_value(row),
-                    row.get("tweet_id") or "",
-                )
-            return (1, 0.0, -sort_index_value(row), row.get("tweet_id") or "")
-
-        sort_key_fn = oldest_sort_key if sort == "oldest" else newest_sort_key
-        return sorted(search_results, key=sort_key_fn)
 
     def _search_collection_expr(self, collections: set[str] | None) -> str:
         if not collections:

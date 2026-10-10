@@ -591,16 +591,6 @@ class PipelineReporter:
             self._log(step.title, "failed", message)
         self._refresh()
 
-    def remove_step(self, key: str) -> None:
-        step = self._step_by_key.get(key)
-        if step is None:
-            return
-        if step.state != "pending":
-            raise RuntimeError("Only pending pipeline steps can be removed.")
-        self.steps.remove(step)
-        del self._step_by_key[key]
-        self._refresh()
-
     def finish(self, summary: str = "", *, success: bool = True) -> None:
         if self._finished:
             return

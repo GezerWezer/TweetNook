@@ -13,9 +13,6 @@ from tweetnook.config import AppConfig, XDGPaths, ensure_paths, load_config
 from tweetnook.exceptions import ConfigError
 from tweetnook.storage import ArchiveStore, open_archive_store
 
-_INTERRUPT_OPTIMIZE_MIN_BATCHES = 4
-_INTERRUPT_OPTIMIZE_MIN_ROWS = 100
-_INTERRUPT_OPTIMIZE_MIN_VERSION_DELTA = 4
 _INTERRUPT_OPTIMIZE_MESSAGE = (
     "interrupt received, compacting archive before exit; press Ctrl-C again to skip"
 )
@@ -66,14 +63,6 @@ class ArchiveWriteTracker:
             or self.row_writes > 0
             or (delta is not None and delta > 0)
             or self.has_optimized_mid_job
-        )
-
-    def should_optimize_on_interrupt(self) -> bool:
-        delta = self.version_delta
-        return (
-            self.batch_writes >= _INTERRUPT_OPTIMIZE_MIN_BATCHES
-            or self.row_writes >= _INTERRUPT_OPTIMIZE_MIN_ROWS
-            or (delta is not None and delta >= _INTERRUPT_OPTIMIZE_MIN_VERSION_DELTA)
         )
 
 

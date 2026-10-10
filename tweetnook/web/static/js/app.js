@@ -1323,7 +1323,6 @@ function tweetApp() {
         mergeSelectedIndex: 0,
         primarySelectedIndex: 0,
         
-        lastSyncAt: null,
         lastSyncFormatted: '',
         darkMode: true,
         
@@ -1930,10 +1929,6 @@ function tweetApp() {
             }
         },
         
-        toggleTheme() {
-            // Legacy — handled by applyTheme
-        },
-
         applyTheme(key) {
             const theme = THEMES[key];
             if (!theme) return;
@@ -2693,27 +2688,6 @@ function tweetApp() {
         toggleExpandStorage(id) {
             if (!this.storageDetailedView) return; // Only detailed view allows row expansion
             this.expandedStorageId = this.expandedStorageId === id ? null : id;
-        },
-
-        updateSyncTime() {
-            if (!this.lastSyncAt) return;
-            
-            const now = new Date();
-            const diffMs = now - this.lastSyncAt;
-            const diffMins = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMins / 60);
-            const diffDays = Math.floor(diffHours / 24);
-            
-            let relativeStr = '';
-            if (diffMins < 1) relativeStr = 'Just now';
-            else if (diffMins < 60) relativeStr = `${diffMins}m ago`;
-            else if (diffHours < 24) relativeStr = `${diffHours}h ago`;
-            else relativeStr = `${diffDays}d ago`;
-            
-            const options = { year: 'numeric', month: 'short', day: 'numeric' };
-            const dateStr = this.lastSyncAt.toLocaleDateString(undefined, options);
-            
-            this.lastSyncFormatted = `Last sync: ${dateStr} · ${relativeStr}`;
         },
 
         search() { 
@@ -4534,10 +4508,6 @@ function tweetApp() {
             
             html += `</div>`;
             return html;
-        },
-
-        renderRawMediaGrid(rawMediaList) {
-            return this.renderMediaGrid(rawMediaList, true);
         },
 
         escapeHTML(str) {

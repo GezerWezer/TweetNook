@@ -193,12 +193,6 @@ def _extract_google_models(payload: Any) -> dict[str, dict[str, str]]:
     return models
 
 
-def _extract_model(payload: Any, model_id: str) -> dict[str, str] | None:
-    """Return one model's normalized pricing for compatibility with old callers."""
-
-    return _extract_google_models(payload).get(model_id)
-
-
 def _write_cache(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
