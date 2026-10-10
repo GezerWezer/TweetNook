@@ -196,6 +196,8 @@ class FakeModels:
 
     def count_tokens(self, **kwargs: Any) -> Any:
         self.count_calls.append(kwargs)
+        if getattr(kwargs.get("config"), "system_instruction", None) is not None:
+            raise ValueError("system_instruction is unsupported for Developer API countTokens")
         return SimpleNamespace(total_tokens=100)
 
 
@@ -672,7 +674,8 @@ async def test_paid_interaction_uses_model_schema_search_and_service_tier(
     assert request["tools"] == [{"type": "google_search"}]
     assert len(models.count_calls) == 1
     assert models.count_calls[0]["model"] == "gemini-3.6-flash"
-    assert not hasattr(models.count_calls[0]["config"], "tools")
+    assert "config" not in models.count_calls[0]
+    assert models.count_calls[0]["contents"][0] == request["system_instruction"]
     usage_path = next(paths.ai_usage_dir.glob("????-??.jsonl"))
     usage = json.loads(usage_path.read_text(encoding="utf-8").splitlines()[0])
     assert usage["estimate"]["input_tokens"] == 100
@@ -716,7 +719,8 @@ async def test_paid_count_tokens_omits_search_tool_when_search_is_disabled(
 
     assert tagged == 1
     assert "tools" not in interactions.calls[0]
-    assert not hasattr(models.count_calls[0]["config"], "tools")
+    assert "config" not in models.count_calls[0]
+    assert models.count_calls[0]["contents"][0] == interactions.calls[0]["system_instruction"]
 
 
 def seed_unknown_billing(paths) -> AIUsageLedger:

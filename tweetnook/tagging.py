@@ -490,7 +490,10 @@ async def _count_request_tokens(
                 Text("Token preflight unavailable: SDK has no token counter.", style="yellow")
             )
         return None, False
-    contents: list[Any] = []
+    # Developer API countTokens rejects CountTokensConfig.system_instruction.
+    # Include the prompt as content for this estimate; the Interactions request
+    # still sends its real system instruction separately.
+    contents: list[Any] = [system_prompt] if system_prompt else []
     for item in interaction_input:
         if isinstance(item, str):
             contents.append(item)
@@ -521,26 +524,8 @@ async def _count_request_tokens(
             # no Part factory; never pass Interactions dictionaries through.
             contents.append(str(uri))
     kwargs: dict[str, Any] = {"model": model, "contents": contents}
-    count_config_type = getattr(types, "CountTokensConfig", None)
-    if count_config_type is not None:
-        try:
-            config_kwargs: dict[str, Any] = {"system_instruction": system_prompt}
-            kwargs["config"] = count_config_type(**config_kwargs)
-        except Exception:
-            pass
     try:
         response = await asyncio.to_thread(counter, **kwargs)
-    except TypeError:
-        # Older SDK versions may not accept a CountTokensConfig. Retry the
-        # same current request without the optional config before falling back.
-        kwargs.pop("config", None)
-        kwargs["contents"] = [system_prompt, *contents]
-        try:
-            response = await asyncio.to_thread(counter, **kwargs)
-        except Exception as error:
-            if console is not None:
-                console.print(Text(f"Token preflight unavailable: {_safe_error(error, api_key)}"))
-            return None, False
     except Exception as error:
         if console is not None:
             console.print(Text(f"Token preflight unavailable: {_safe_error(error, api_key)}"))
