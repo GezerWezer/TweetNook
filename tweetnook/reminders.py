@@ -15,29 +15,11 @@ def print_archive_migration_report(console: Console, store: ArchiveStore) -> boo
         f"Archive schema migrated from v{report.from_version} to v{report.to_version}.",
         highlight=False,
     )
-    if report.backup_path is not None:
-        console.print(f"Validated backup: {report.backup_path}", highlight=False)
-    if report.search_index_rebuilt:
-        console.print(
-            "Rebuilt the derived full-text index with searchable tweets only; "
-            "canonical archive rows were unchanged.",
-            highlight=False,
-        )
-        return True
     console.print(
-        "Legacy unavailable-row repair: "
-        f"{report.legacy_terminal_rows_scanned:,} scanned, "
-        f"{report.content_rows_repaired:,} enriched, "
-        f"{report.author_rows_repaired:,} authors recovered, "
-        f"{report.rows_still_missing_author:,} still missing authors.",
+        "Rebuilt the derived full-text index with searchable tweets only; "
+        "canonical archive rows were unchanged.",
         highlight=False,
     )
-    if report.rows_without_richer_source:
-        console.print(
-            f"{report.rows_without_richer_source:,} legacy rows had no richer indexed "
-            "local source.",
-            highlight=False,
-        )
     return True
 
 

@@ -594,15 +594,10 @@ def _increment_cost(bucket: dict[str, Any], cost: Decimal) -> None:
     bucket["requests"] = int(bucket.get("requests", 0)) + 1
 
 
-def _is_unknown_paid_billing(record: dict[str, Any], raw_cost: Any) -> bool:
+def _is_unknown_paid_billing(record: dict[str, Any]) -> bool:
     if str(record.get("api_mode") or record.get("api_tier") or "").casefold() != "paid":
         return False
-    if "status" in record:
-        return str(record.get("status", "")).casefold() == "billing_unknown"
-    # A failed interaction can still carry an interaction ID even when the
-    # provider omitted usage. Pre-provider failures have no such evidence and
-    # must remain ordinary failed requests rather than billing uncertainty.
-    return raw_cost is None and bool(record.get("interaction_id"))
+    return str(record.get("status", "")).casefold() == "billing_unknown"
 
 
 def _record_has_known_provider_usage(record: dict[str, Any]) -> bool:
@@ -721,7 +716,7 @@ def _apply_record(summary: dict[str, Any], record: dict[str, Any]) -> None:
         and str(record.get("status", "")).casefold() != "billing_unknown"
     ):
         raw_cost = record.get("cost_usd", "0")
-    billing_unknown = _is_unknown_paid_billing(record, raw_cost)
+    billing_unknown = _is_unknown_paid_billing(record)
     cost: Decimal | None = None
     if not billing_unknown and raw_cost is not None:
         try:

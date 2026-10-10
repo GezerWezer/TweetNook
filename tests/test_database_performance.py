@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 from tweetnook.search import search_posts
-from tweetnook.storage.backend import SCHEMA_VERSION, ArchiveStore
+from tweetnook.storage.backend import ArchiveStore
 
 
 def _statements(store, operation):
@@ -157,27 +157,6 @@ def test_queue_limits_reach_sql_and_preserve_filtering_and_order(tmp_path):
             else row
             for row in rows
         ] == ["1", "10"]
-    store.close()
-
-
-def test_v6_upgrade_adds_indexes_without_rebuilding_fts(tmp_path, monkeypatch):
-    path = tmp_path / "archive.db"
-    store = ArchiveStore(path, create=True)
-    _seed_memberships(store, 1)
-    with store.conn:
-        store.conn.execute("DROP INDEX idx_archive_search_author")
-        store.conn.execute("PRAGMA user_version=6")
-    store.close()
-
-    def unexpected(*args):
-        raise AssertionError("additive migration must not rebuild FTS")
-
-    monkeypatch.setattr(ArchiveStore, "_rebuild_fts_schema", unexpected)
-    store = ArchiveStore(path, create=False)
-    assert store.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
-    assert store.migration_report.backup_path is None
-    assert not store.migration_report.search_index_rebuilt
-    assert store.conn.execute("SELECT COUNT(*) FROM archive_fts").fetchone()[0] == 2
     store.close()
 
 
