@@ -5,7 +5,12 @@ from typing import Any
 
 import pytest
 
-from tweetnook.search import SearchQueryError, _filter_matches, parse_search_query, search_posts
+from tweetnook.search import (
+    SearchQueryError,
+    _parse_twitter_date,
+    parse_search_query,
+    search_posts,
+)
 from tweetnook.storage.backend import ArchiveStore
 
 
@@ -321,13 +326,107 @@ def test_real_store_pushes_normalized_filters_into_sql(tmp_path) -> None:
     store.close()
 
 
-def test_thread_filter_is_null_safe_for_incomplete_authors() -> None:
-    row = _row("1", "incomplete")
-    row["author"] = {"username": None}
-    row["raw_json"] = {"legacy": {"in_reply_to_screen_name": "alice"}}
+def _operator_store(tmp_path) -> ArchiveStore:
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    rows = [
+        (
+            "1",
+            "alice",
+            1_767_225_600,  # 2026-01-01T00:00:00Z
+            {
+                "legacy": {
+                    "retweet_count": 5,
+                    "reply_count": 1,
+                    "in_reply_to_status_id_str": "parent",
+                    "in_reply_to_screen_name": "alice",
+                    "is_quote_status": True,
+                }
+            },
+            "conv-1",
+        ),
+        (
+            "2",
+            "bob",
+            1_767_355_200,  # 2026-01-02T12:00:00Z
+            {
+                "legacy": {"retweeted_status_id_str": "original", "reply_count": 3},
+                "core": {"user_results": {"result": {"legacy": {"verified": True}}}},
+            },
+            "conv-2",
+        ),
+        (
+            "3",
+            None,
+            1_767_398_400,  # 2026-01-03T00:00:00Z
+            {"legacy": {"in_reply_to_status_id_str": "other", "in_reply_to_screen_name": "alice"}},
+            "conv-3",
+        ),
+    ]
+    store._merge_records(
+        [
+            store._record(
+                row_key=f"tweet:bookmark::{tweet_id}",
+                record_type="tweet",
+                tweet_id=tweet_id,
+                collection_type="bookmark",
+                text=f"post {tweet_id}",
+                author_id=username or "",
+                author_username=username,
+                created_at_ts=created_at_ts,
+                sort_index=tweet_id,
+                conversation_id=conversation_id,
+                raw_json=json.dumps(raw),
+            )
+            for tweet_id, username, created_at_ts, raw, conversation_id in rows
+        ]
+    )
+    return store
 
-    assert _filter_matches(row, "is", "thread") is False
-    assert _filter_matches(row, "filter", "threads") is False
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("since:2026-01-02", {"2", "3"}),
+        ("until:2026-01-02", {"1"}),
+        ("since_time:1767355200", {"2", "3"}),
+        ("until_time:1767355200", {"1"}),
+        ("since_id:1", {"2", "3"}),
+        ("max_id:2", {"1", "2"}),
+        ("min_retweets:5", {"1"}),
+        ("min_replies:2", {"2"}),
+        ("conversation_id:conv-1", {"1"}),
+        ("is:retweet", {"2"}),
+        ("filter:nativeretweets", {"2"}),
+        ("filter:quote", {"1"}),
+        ("filter:replies", {"1", "3"}),
+        # Tweet 3 replies to alice but has no author username, so it is not a self-thread.
+        ("is:thread", {"1"}),
+        ("filter:threads", {"1"}),
+        ("filter:verified", {"2"}),
+    ],
+)
+def test_real_store_applies_each_remaining_operator_in_sql(
+    tmp_path, query: str, expected: set[str]
+) -> None:
+    store = _operator_store(tmp_path)
+    try:
+        assert {row["tweet_id"] for row in search_posts(store, query).rows} == expected
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2026-01-02", 1_767_312_000),
+        ("2026-01-02_03:04:05", 1_767_323_045),
+        ("", None),
+        ("2026-99-99", None),
+        ("not-a-date", None),
+    ],
+)
+def test_parse_twitter_date(value: str, expected: float | None) -> None:
+    assert _parse_twitter_date(value) == expected
 
 
 def test_real_store_hydrates_only_the_requested_fts_page(tmp_path) -> None:

@@ -15,9 +15,6 @@ from fastapi.testclient import TestClient  # noqa: E402
 from tweetnook.storage.backend import ArchiveStore  # noqa: E402
 from tweetnook.web.deps import get_store, server_state, verify_credentials  # noqa: E402
 from tweetnook.web.routes.tweets import (  # noqa: E402
-    _apply_advanced_filters,
-    _extract_advanced_filters,
-    _parse_twitter_date,
     _recursive_reply_rows,
     api_tweet_quotes,
     api_tweet_thread,
@@ -75,116 +72,6 @@ def _row(**overrides: Any) -> dict[str, Any]:
     return row
 
 
-def test_extract_advanced_filters_preserves_text_phrases_and_repeated_filters():
-    filters, text = _extract_advanced_filters(
-        'from:Alice from:"Bob Smith" -filter:replies "exact phrase" #Python loose'
-    )
-
-    assert filters == {
-        "from": ["alice", "bob smith"],
-        "-filter": ["replies"],
-        "hashtag": ["python"],
-    }
-    assert text == '"exact phrase" loose'
-
-
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("2026-01-02", 1_767_312_000),
-        ("2026-01-02_03:04:05", 1_767_323_045),
-        ("", None),
-        ("2026-99-99", None),
-        ("not-a-date", None),
-    ],
-)
-def test_parse_twitter_date(value: str, expected: float | None):
-    assert _parse_twitter_date(value) == expected
-
-
-@pytest.mark.parametrize(
-    ("filter_name", "value"),
-    [
-        ("from", "@alice"),
-        ("to", "@alice"),
-        ("mentions", "@bob"),
-        ("since", "2026-01-01"),
-        ("until", "2026-01-03"),
-        ("since_time", "1767311000"),
-        ("until_time", "1767313000"),
-        ("since_id", "199"),
-        ("max_id", "200"),
-        ("has", "media"),
-        ("has", "image"),
-        ("has", "video"),
-        ("has", "links"),
-        ("is", "reply"),
-        ("is", "quote"),
-        ("is", "retweet"),
-        ("is", "thread"),
-        ("is", "verified"),
-        ("is", "resurrected"),
-        ("filter", "replies"),
-        ("filter", "quote"),
-        ("filter", "nativeretweets"),
-        ("filter", "threads"),
-        ("filter", "media"),
-        ("filter", "images"),
-        ("filter", "videos"),
-        ("filter", "native_video"),
-        ("filter", "links"),
-        ("filter", "verified"),
-        ("min_retweets", "4"),
-        ("min_faves", "8"),
-        ("min_replies", "2"),
-        ("conversation_id", "conversation-1"),
-        ("quoted_tweet_id", "quoted-1"),
-        ("url", "example.com/story"),
-        ("source", "twitter_web"),
-        ("card_name", "summary"),
-        ("tag", "landscape"),
-        ("hashtag", "#python"),
-    ],
-)
-def test_apply_advanced_filters_supports_each_search_operator(filter_name: str, value: str):
-    row = _row()
-    assert _apply_advanced_filters([row], {filter_name: [value]}) == [row]
-    assert _apply_advanced_filters([row], {f"-{filter_name}": [value]}) == []
-
-
-def test_apply_advanced_filters_distinguishes_image_and_video_media():
-    photo = _row(media=[{"type": "photo"}])
-    video = _row(media=[{"type": "animated_gif"}])
-
-    assert _apply_advanced_filters([photo, video], {"has": ["image"]}) == [photo]
-    assert _apply_advanced_filters([photo, video], {"has": ["video"]}) == [video]
-
-
-def test_apply_advanced_filters_supports_attached_articles():
-    article = _row(article={"title": "Long read"})
-    ordinary = _row(tweet_id="201", article=None)
-
-    assert _apply_advanced_filters([article, ordinary], {"filter": ["articles"]}) == [article]
-
-
-def test_apply_advanced_filters_rejects_invalid_values_without_crashing():
-    row = _row(created_at="invalid", tweet_id="not-numeric")
-    filters = {
-        "since": ["bad"],
-        "since_time": ["bad"],
-        "since_id": ["bad"],
-        "min_faves": ["bad"],
-    }
-    assert _apply_advanced_filters([row], filters) == []
-
-
-def test_apply_advanced_filters_supports_real_twitter_timestamps():
-    row = _row(created_at="Fri Jan 02 00:00:00 +0000 2026", created_at_ts=None)
-
-    assert _apply_advanced_filters([row], {"since": ["2026-01-01"]}) == [row]
-    assert _apply_advanced_filters([row], {"until": ["2026-01-03"]}) == [row]
-
-
 class ListingStore:
     def __init__(
         self,
@@ -202,10 +89,6 @@ class ListingStore:
     def _count(self, expr: str) -> int:
         self.calls.append(("count", {"expr": expr}))
         return len(self.rows)
-
-    def _count_distinct(self, field: str, expr: str) -> int:
-        self.calls.append(("count_distinct", {"field": field, "expr": expr}))
-        return len({row["tweet_id"] for row in self.rows})
 
     def _query(self, **kwargs: Any) -> list[dict[str, Any]]:
         self.calls.append(("query", kwargs))

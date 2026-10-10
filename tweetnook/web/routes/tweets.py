@@ -4,19 +4,12 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from tweetnook import search as archive_search
 from tweetnook.export.common import normalize_collection_name
 from tweetnook.search import SearchCursorExpiredError, SearchQueryError, search_posts
 from tweetnook.web.availability import annotate_web_tweets, missing_web_tweet
 from tweetnook.web.deps import require_store, verify_credentials
 
 router = APIRouter()
-
-# Keep these private route names import-compatible while the implementation lives in the
-# presentation-neutral shared search module.
-_apply_advanced_filters = archive_search._apply_advanced_filters
-_extract_advanced_filters = archive_search._extract_advanced_filters
-_parse_twitter_date = archive_search._parse_twitter_date
 
 _THREAD_DESCENDANT_LIMIT = 250
 
