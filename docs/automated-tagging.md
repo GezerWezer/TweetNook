@@ -18,7 +18,17 @@ TweetNook uses Gemini for two main reasons:
 
 ## If I choose Paid mode, how much will it cost?
 
--- add data
+On my instance, using `gemini-3.6-flash`, Flex processing, and High thinking. The average cost to tag tweets was as follows: (note that YMMV)
+
+| Tweet type | Successful requests measured | Average cost per tweet | Estimated cost per 1,000 tweets |
+|---|---:|---:|---:|
+| Text only | 35 | $0.00157 | $1.57 |
+| Images | 213 | $0.00312 | $3.12 |
+| Videos | 105 | $0.00411 | $4.11 |
+| GIFs | 18 | $0.00276 | $2.76 |
+| Mixed media | 11 | $0.00355 | $3.55 |
+
+
 
 ## Set it up
 
