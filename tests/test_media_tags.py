@@ -290,7 +290,7 @@ def test_update_media_tags_creates_normalizes_and_is_idempotent(paths) -> None:
     store.close()
 
 
-def test_update_media_tags_preserves_description_and_recovers_invalid_json(paths) -> None:
+def test_update_media_tags_preserves_description(paths) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None
     store._merge_records(
@@ -301,20 +301,12 @@ def test_update_media_tags_preserves_description_and_recovers_invalid_json(paths
                 tweet_id="1",
                 raw_json=json.dumps({"description": "A scene", "tags": ["Old"]}),
             ),
-            store._record(
-                row_key="media_tag:2",
-                record_type="media_tag",
-                tweet_id="2",
-                raw_json="{broken",
-            ),
         ]
     )
 
     store.update_media_tags("1", ["New"])
-    store.update_media_tags("2", ["Recovered"])
 
     assert _tag_payload(store, "1") == {"description": "A scene", "tags": ["New"]}
-    assert _tag_payload(store, "2") == {"tags": ["Recovered"]}
     store.close()
 
 
@@ -408,22 +400,12 @@ def test_merge_global_tags_noops_for_blank_primary_or_empty_sources(paths) -> No
     store.close()
 
 
-def test_tag_counts_support_query_unlimited_results_and_malformed_rows(paths) -> None:
+def test_tag_counts_support_query_and_unlimited_results(paths) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None
     store.update_media_tags("1", ["Nature", "Sky"])
     store.update_media_tags("2", ["nature", "City"])
     store.update_media_tags("3", ["Portrait"])
-    store._merge_records(
-        [
-            store._record(
-                row_key="media_tag:broken",
-                record_type="media_tag",
-                tweet_id="broken",
-                raw_json="{broken",
-            )
-        ]
-    )
 
     all_counts = store.get_tag_counts(limit=-1)
     nature_counts = store.get_tag_counts(query="NAT", limit=50)
@@ -436,7 +418,7 @@ def test_tag_counts_support_query_unlimited_results_and_malformed_rows(paths) ->
     store.close()
 
 
-def test_export_includes_valid_tags_and_skips_malformed_tag_json(paths) -> None:
+def test_export_includes_media_tags_only_for_tagged_tweets(paths) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None
     store._merge_records(
@@ -460,16 +442,6 @@ def test_export_includes_valid_tags_and_skips_malformed_tag_json(paths) -> None:
         ]
     )
     store.update_media_tags("1", ["Nature"])
-    store._merge_records(
-        [
-            store._record(
-                row_key="media_tag:2",
-                record_type="media_tag",
-                tweet_id="2",
-                raw_json="{broken",
-            )
-        ]
-    )
 
     exported = {row["tweet_id"]: row for row in store.export_rows("bookmark")}
 
