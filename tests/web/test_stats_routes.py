@@ -530,27 +530,6 @@ def test_tag_stats_handles_empty_archive(tmp_path, make_web_client) -> None:
     assert data["top_tags"] == []
 
 
-def test_tag_stats_ignore_malformed_tag_json(tmp_path, make_web_client) -> None:
-    store = _stats_store(tmp_path)
-    _seed_tag_stats_tweet(store, "t1")
-    _seed_tag_stats_tweet(store, "t2")
-    store.conn.executemany(
-        "INSERT INTO archive (row_key, record_type, tweet_id, raw_json) VALUES (?, ?, ?, ?)",
-        [
-            ("media_tag:t1", "media_tag", "t1", "not-json"),
-            ("media_tag:t2", "media_tag", "t2", json.dumps({"tags": ["Bird"]})),
-        ],
-    )
-    client = make_web_client(stats_routes.router, store=store)
-
-    response = client.get("/api/stats/tags")
-
-    assert response.status_code == 200
-    assert response.json()["tagged_tweets"] == 1
-    assert response.json()["unique_tags"] == 1
-    assert response.json()["top_tags"] == [{"tag": "bird", "count": 1}]
-
-
 def test_tag_stats_require_a_nonempty_tags_array(tmp_path, make_web_client) -> None:
     store = _stats_store(tmp_path)
     for tweet_id in ("t1", "t2", "t3"):

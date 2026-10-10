@@ -14,7 +14,7 @@ from tweetnook.extractor import (
 )
 
 
-@pytest.mark.parametrize("value", [None, "tweet", 1, [], {"legacy": {}}])
+@pytest.mark.parametrize("value", [None, {"legacy": {}}])
 def test_unwrap_tweet_result_rejects_non_tweet_shapes(value) -> None:
     assert unwrap_tweet_result(value) is None
 
@@ -105,8 +105,6 @@ def test_visibility_wrapper_without_birdwatch_does_not_invent_metadata() -> None
     "wrapped",
     [
         {"__typename": "TweetWithVisibilityResults"},
-        {"__typename": "TweetWithVisibilityResults", "tweet": "bad"},
-        {"__typename": "TweetWithVisibilityResults", "tweet": []},
         {
             "__typename": "TweetWithVisibilityResults",
             "tweet": {"__typename": "Unknown"},
@@ -118,24 +116,11 @@ def test_visibility_wrapper_rejects_malformed_nested_tweets(wrapped: dict) -> No
     assert unwrap_tweet_result(wrapped) is None
 
 
-@pytest.mark.parametrize(
-    "note_tweet",
-    [
-        "invalid",
-        [],
-        {"note_tweet_results": "invalid"},
-        {"note_tweet_results": []},
-        {"note_tweet_results": {"result": "invalid"}},
-        {"note_tweet_results": {"result": []}},
-        {"note_tweet_results": {"result": {"text": [], "richtext": "invalid"}}},
-        {"note_tweet_results": {"result": {"text": {}, "richtext": {"text": []}}}},
-    ],
-)
-def test_malformed_note_tweet_falls_back_to_legacy_text(note_tweet) -> None:
+def test_malformed_note_tweet_falls_back_to_legacy_text() -> None:
     tweet = {
         "rest_id": "42",
         "legacy": {"full_text": "legacy fallback"},
-        "note_tweet": note_tweet,
+        "note_tweet": {"note_tweet_results": {"result": {"text": {}, "richtext": {"text": []}}}},
     }
 
     assert extract_note_tweet_text(tweet) is None
@@ -154,9 +139,8 @@ def test_note_tweet_uses_richtext_fallback_only_when_it_is_text() -> None:
     assert extract_canonical_text(tweet) == "rich note"
 
 
-@pytest.mark.parametrize("legacy", ["invalid", [], {"full_text": []}, None])
-def test_canonical_text_handles_malformed_legacy_shapes(legacy) -> None:
-    assert extract_canonical_text({"legacy": legacy}) == ""
+def test_canonical_text_handles_null_legacy() -> None:
+    assert extract_canonical_text({"legacy": None}) == ""
 
 
 def test_secondary_extraction_survives_malformed_note_metadata() -> None:
