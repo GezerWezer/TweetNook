@@ -1914,8 +1914,7 @@ function tweetApp() {
                 this.page = data.page;
                 this.totalPages = data.pages;
                 this.total = data.total;
-                this.hasMore = typeof data.has_more === 'boolean'
-                    ? data.has_more : data.page < data.pages;
+                this.hasMore = data.has_more === true;
                 this.nextCursor = data.next_cursor || null;
             } catch (e) {
                 if (requestId !== this.feedRequestId) return;

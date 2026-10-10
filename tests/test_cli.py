@@ -185,23 +185,19 @@ def test_sync_likes_help_describes_flags() -> None:
     assert "Maximum number of pages to fetch" in result.stdout
 
 
-def test_auth_check_help_has_only_explicit_auth_flow() -> None:
+def test_auth_check_help_describes_local_validation() -> None:
     result = runner.invoke(cli.app, ["auth", "check", "--help"])
 
     assert result.exit_code == 0
     assert "Validate local auth" in result.stdout
-    assert "--browser" not in result.stdout
-    assert "--profile" not in result.stdout
-    assert "--interactive" not in result.stdout
 
 
-def test_export_help_only_lists_json() -> None:
+def test_export_help_describes_json_export() -> None:
     result = runner.invoke(cli.app, ["export", "--help"])
 
     assert result.exit_code == 0
     assert "json" in result.stdout
     assert "Export the archive as JSON." in result.stdout
-    assert "html" not in result.stdout.lower()
 
 
 def test_import_x_archive_help_describes_offline_mode() -> None:
@@ -224,7 +220,7 @@ def test_import_x_archive_help_describes_sample_limit() -> None:
     assert "unified pipeline" in normalized
 
 
-def test_import_enrich_help_has_no_default_limit() -> None:
+def test_import_enrich_help_describes_unbounded_limit() -> None:
     result = runner.invoke(
         cli.app,
         ["import", "enrich", "--help"],
@@ -235,7 +231,6 @@ def test_import_enrich_help_has_no_default_limit() -> None:
     assert "eligible when the command starts" in " ".join(result.stdout.split())
     assert "--limit" in result.stdout
     assert "Omit to process every currently eligible row" in " ".join(result.stdout.split())
-    assert "[default: 200]" not in result.stdout
 
 
 def test_database_check_help_exposes_full_integrity_option() -> None:

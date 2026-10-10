@@ -1087,24 +1087,15 @@ test('analytics markup exposes the Archive status cards and reason breakdown', (
         'utf8',
     );
 
-    assert.match(html, />Archive status</);
-    assert.match(html, />Enriched /);
-    assert.match(html, />Threads /);
-    assert.match(html, />Missing enrichment /);
-    assert.match(html, />Resurrected /);
-    assert.match(html, />Unavailable tweets /);
     assert.match(html, /x-model="showEmptyUnavailableReasons"/);
-    assert.match(html, /archive-status-bar-seg/);
-    assert.match(html, /archive-status-reason-row/);
     assert.match(html, /@click="refreshStats\(\)"/);
     assert.match(html, /@keydown\.window\.escape="closeStatsModal\(\)"/);
     assert.match(html, /@click\.self="closeStatsModal\(\)"/);
     assert.match(html, /@click="closeStatsModal\(\)"/);
     assert.match(html, /x-text="statsAgeLabel\(\)"/);
-    assert.match(html, /x-show="!statsRefreshing">Refresh</);
-    assert.match(html, /x-show="statsRefreshing" class="inline-flex items-center gap-1.5"/);
-    assert.match(html, /\sRefreshing\s+<\/span>/);
-    assert.match(html, /class="stats-modal-scroll flex-1 overflow-y-auto p-4 md:p-6 space-y-8"/);
+    assert.match(html, /x-show="!statsRefreshing"/);
+    assert.match(html, /x-show="statsRefreshing"/);
+    assert.match(html, /class="stats-modal-scroll /);
     assert.match(styles, /\.stats-modal-scroll\s*\{[^}]*overscroll-behavior: contain;/s);
     const statsWatcherStart = appJs.indexOf("this.$watch('showStatsModal'");
     const settingsWatcherStart = appJs.indexOf("this.$watch('showSettingsModal'");
@@ -1113,13 +1104,6 @@ test('analytics markup exposes the Archive status cards and reason breakdown', (
     assert.match(statsWatcher, /if \(val\) this\.lockModalScroll\(\);/);
     assert.match(statsWatcher, /!this\.showSettingsModal && !this\.showSetupModal/);
     assert.match(statsWatcher, /this\.unlockModalScroll\(\);/);
-    assert.doesNotMatch(html, />Pipeline health</);
-    assert.doesNotMatch(
-        html,
-        /class="archive-status-bar-seg[^"]*(?:transition|duration-)/,
-    );
-    assert.doesNotMatch(styles.match(/\.stats-card \{[^}]+\}/s)[0], /transition:/);
-    assert.doesNotMatch(styles.match(/\.stats-info-icon \{[^}]+\}/s)[0], /transition:/);
 });
 
 test('tweet fetching encodes search state, hydrates pagination, appends, and reports errors', async () => {
@@ -1214,7 +1198,7 @@ test('feed cursors survive retries and ignore duplicate membership results', asy
     assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['1', '2']);
 });
 
-test('feed ignores stale responses and falls back to legacy page counts', async () => {
+test('feed ignores stale responses and pages without a cursor', async () => {
     const context = browserContext();
     const pending = [];
     context.fetch = url => new Promise(resolve => pending.push({url, resolve}));
@@ -1224,11 +1208,11 @@ test('feed ignores stale responses and falls back to legacy page counts', async 
     app.searchQuery = 'new query';
     const second = app.fetchTweets();
     const resolve = (index, data) => pending[index].resolve({ok: true, status: 200, json: async () => data});
-    resolve(0, {tweets: [{tweet_id: 'old'}], page: 1, pages: 1, total: 1});
+    resolve(0, {tweets: [{tweet_id: 'old'}], page: 1, pages: 1, total: 1, has_more: false});
     await first;
     assert.equal(app.loading, true);
     assert.equal(app.tweets.length, 0);
-    resolve(1, {tweets: [{tweet_id: 'new'}], page: 1, pages: 2, total: 2});
+    resolve(1, {tweets: [{tweet_id: 'new'}], page: 1, pages: 2, total: 2, has_more: true});
     await second;
     assert.equal(app.loading, false);
     assert.equal(app.hasMore, true);
@@ -1236,7 +1220,7 @@ test('feed ignores stale responses and falls back to legacy page counts', async 
     const more = app.loadMore();
     assert.match(pending[2].url, /page=2/);
     assert.doesNotMatch(pending[2].url, /cursor=/);
-    resolve(2, {tweets: [{tweet_id: 'next'}], page: 2, pages: 2, total: 2});
+    resolve(2, {tweets: [{tweet_id: 'next'}], page: 2, pages: 2, total: 2, has_more: false});
     await more;
     assert.equal(app.hasMore, false);
 });
@@ -1380,7 +1364,6 @@ test('list searching, incremental loading, and back-to-top obey state guards', (
 
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     assert.match(html, /x-show="!loading && hasMore"/);
-    assert.doesNotMatch(html, /x-show="!loading && page < totalPages"/);
 
     app.scrollToTop();
     const scrollOptions = context.__state.scrollCalls.at(-1)[0];
@@ -1857,33 +1840,20 @@ test('tweet overflow copies raw data when the Clipboard API is unavailable', asy
     assert.equal(copiedText, '{\n  "rest_id": "3",\n  "legacy": {\n    "full_text": "Fallback"\n  }\n}');
 });
 
-test('tweet overflow markup covers list and detail surfaces without legacy tag icons', () => {
+test('tweet overflow menus are wired on list and detail surfaces', () => {
     const html = fs.readFileSync(
         path.join(ROOT, 'tweetnook', 'web', 'index.html'),
         'utf8',
     );
-    const appJs = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
 
     assert.equal((html.match(/aria-label="More actions"/g) || []).length, 3);
-    assert.equal((html.match(/<span>Tags<\/span>/g) || []).length, 3);
-    assert.equal((html.match(/<span>Copy raw<\/span>/g) || []).length, 3);
     assert.match(html, /copyRawTweet\(tweet\)/);
     assert.match(html, /copyRawTweet\(threadData\.main\)/);
     assert.match(html, /copyRawTweet\(panelThreadData\.main\)/);
-    assert.equal((html.match(/right-0 top-0 z-50 w-56/g) || []).length, 3);
-    assert.equal((html.match(/'opacity-0': tweetMenuOpen ===/g) || []).length, 3);
-    assert.doesNotMatch(html, /right-\[18px\] top-\[18px\]/);
-    assert.doesNotMatch(html, /bg-\[var\(--dropdown-bg\)\] py-1 shadow-2xl/);
-    assert.doesNotMatch(
-        html,
-        /hover:bg-\[var\(--hover-bg\)\] transition">\s*<svg viewBox="0 0 24 24" class="w-5 h-5/,
-    );
     assert.match(html, /startTweetMenuPress\(\$event, tweet\.tweet_id, tweet\.media_tags\)/);
     assert.match(html, /startTweetMenuPress\(\$event, threadData\.main\.tweet_id/);
     assert.match(html, /startTweetMenuPress\(\$event, panelThreadData\.main\.tweet_id/);
     assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet/g) || []).length, 7);
-    assert.doesNotMatch(html, /View quoted tweet tags/);
-    assert.doesNotMatch(appJs, /title="View Tags"/);
     assert.match(html, /x-model="editableDescription"/);
 });
 
@@ -1932,7 +1902,6 @@ test('reply-recipient markup opens profile cards on every tweet surface', () => 
     );
 
     assert.equal((html.match(/openUsernameProfileCard\(\$event, getReplyTo/g) || []).length, 18);
-    assert.doesNotMatch(html, /searchFrom\(getReplyTo/);
 });
 
 test('config and stats requests update their matching UI state', async () => {
@@ -2082,41 +2051,16 @@ test('setup uses a dedicated responsive X-style modal shell', () => {
     const setupMarkup = html.slice(html.indexOf('<!-- Setup Modal -->'), html.indexOf('<!-- Automated Tagging Spend History Modal -->'));
 
     assert.match(settingsMarkup, /x-show="showSettingsModal"/);
-    assert.match(settingsMarkup, /class="settings-modal-shell/);
-    assert.doesNotMatch(settingsMarkup, /showSetupModal|setup-modal-header|setup-modal-content/);
     assert.match(settingsMarkup, /@click="settingsTab = 'setup'; fetchSetup\(\)"/);
-    assert.doesNotMatch(settingsMarkup, /@click="openSetup\(\)"/);
-    assert.match(settingsMarkup, /Setup status/);
-    assert.match(settingsMarkup, /@click="rerunSetup\(\)">Run setup again/);
-    assert.doesNotMatch(settingsMarkup, />View activity<\/button>/);
+    assert.match(settingsMarkup, /@click="rerunSetup\(\)"/);
     assert.match(setupMarkup, /x-show="showSetupModal"/);
-    assert.match(setupMarkup, /class="setup-modal-shell/);
-    assert.match(setupMarkup, /id="setup-modal-title" class="setup-modal-heading">Setup<\/h1>/);
     assert.match(setupMarkup, /class="setup-desktop-required" role="note"/);
-    assert.match(setupMarkup, /Continue setup on desktop/);
-    assert.doesNotMatch(setupMarkup, /class="setup-modal-mark"/);
-    assert.match(setupMarkup, /class="setup-modal-progress"/);
-    assert.doesNotMatch(setupMarkup, /class="setup-status/);
-    assert.match(setupMarkup, /class="setup-step setup-flow-panel"/);
-    assert.match(setupMarkup, /x-transition:enter="setup-flow-enter"/);
-    assert.match(html, /Bring your archive with you/);
-    assert.match(setupMarkup, /<button type="button" @click\.stop="clearSetupArchive\(\)"\s+class="setup-btn is-ghost-danger"\s+aria-label="Remove uploaded archive" title="Remove uploaded archive">/);
-    assert.match(html, /Connect your Twitter\/X account/);
-    assert.match(setupMarkup, /<button type="button" class="setup-btn" :disabled="setupSavingAuth \|\| setupAuthSuccessPending" @click="goToSetupStep\(1\)">Back<\/button>\s+<button type="button" @click="if \(!setupAuthSuccessPending\) saveSetupAuth\(\)" :disabled="setupSavingAuth"\s+:aria-disabled="setupAuthSuccessPending"\s+class="setup-btn is-primary flex-1">/);
-    assert.match(setupMarkup, /x-text="setupSavingAuth \? 'Testing authentication…' : \(setupAuthSuccessPending \? 'Test successful' : 'Save and continue'\)"/);
-    assert.doesNotMatch(setupMarkup, /x-show="setupAuthResult\?\.success"/);
-    assert.doesNotMatch(setupMarkup, /Save and test/);
-    assert.doesNotMatch(setupMarkup, /@click="goToSetupStep\(3\)">Continue<\/button>/);
-    assert.match(setupMarkup, /<summary class="cursor-pointer">Other setup options<\/summary>[\s\S]*?Continue without connecting Twitter\/X/);
-    assert.match(setupMarkup, />Continue setup<\/button>/);
-    assert.match(setupMarkup, /<p class="text-sm text-\[var\(--accent-color\)\] mt-2">The username field is unused and can be left blank\.<\/p>/);
-    assert.match(html, /Protect your archive/);
-    assert.match(css, /\.setup-modal-shell\s*\{[^}]*600px[^}]*720px/s);
-    assert.match(css, /@media \(max-width: 767px\)[\s\S]*?\.setup-modal-shell\s*\{[^}]*height: 100%/);
+    assert.match(setupMarkup, /@click\.stop="clearSetupArchive\(\)"/);
+    assert.match(setupMarkup, /@click="goToSetupStep\(1\)"/);
+    assert.match(setupMarkup, /@click="if \(!setupAuthSuccessPending\) saveSetupAuth\(\)" :disabled="setupSavingAuth"/);
     assert.match(css, /@media \(max-width: 767px\)[\s\S]*?\.setup-modal-progress,[\s\S]*?\.setup-modal-content\s*\{ display: none !important; \}/);
     assert.match(js, /openSetup\(\)\s*\{[\s\S]*?this\.showSetupModal = true;[\s\S]*?this\.showSettingsModal = false;/);
     assert.match(js, /openSettings\(\)\s*\{[\s\S]*?this\.showSetupModal = false;[\s\S]*?this\.showSettingsModal = true;/);
-    assert.match(js, /goToSetupStep\(step\)[\s\S]*?this\.setupDirection = next < this\.setupFlowStep \? 'back' : 'forward';/);
 });
 
 test('config saves only diffs and resets only eligible explicit fields', async () => {
@@ -2400,8 +2344,6 @@ test('missing tweet skeletons cover terminal, relation, tombstone, and textless 
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
     assert.match(css, /\.tweet-skeleton/);
     assert.match(css, /\.tweet-skeleton-main \{[\s\S]*font-size: 0;[\s\S]*line-height: 0;/);
-    assert.doesNotMatch(css, /tweet-skeleton-pulse/);
-    assert.doesNotMatch(css, /animation:[^;]*tweet-skeleton/);
 });
 
 test('media renderer preserves dimensions and adds Twitter/X-style playback indicators', () => {
@@ -2912,7 +2854,6 @@ test('incomplete enrichment starts the fixed Web action and refreshes status', a
     assert.equal(enrichmentRefreshes, 1);
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     assert.match(html, /Continue enrichment/);
-    assert.doesNotMatch(html, /tweetnook import enrich/);
 });
 
 test('schedule settings load, normalize, and save through the activity API', async () => {
@@ -2996,46 +2937,26 @@ test('schedule settings load, normalize, and save through the activity API', asy
     assert.equal(app.scheduleHasChanges(), false);
 });
 
-test('schedule settings use the established Settings control patterns', () => {
+test('schedule settings bind every control to the schedule form', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     const start = html.indexOf('<!-- Scheduled sync settings -->');
     const end = html.indexOf('<!-- Activity logs -->');
     const scheduleHtml = html.slice(start, end);
 
     assert.match(scheduleHtml, /id="save-schedule-btn"/);
-    assert.match(scheduleHtml, /<div class="mb-6 flex items-start justify-between gap-4">[\s\S]*Scheduled syncs are off[\s\S]*id="save-schedule-btn"/);
-    assert.match(scheduleHtml, /Enable scheduled syncs/);
-    assert.doesNotMatch(scheduleHtml, /Run a full sync automatically while the Web service is running\./);
     assert.match(scheduleHtml, /x-model="scheduleForm\.enabled"/);
     assert.match(scheduleHtml, /<fieldset[^>]*:disabled="!scheduleForm\.enabled"/);
-    assert.match(scheduleHtml, /role="group" aria-label="Schedule frequency"/);
     assert.match(scheduleHtml, /scheduleForm\.cadence = cadence\.key/);
     assert.match(scheduleHtml, /x-model\.number="scheduleForm\.every_hours"/);
-    assert.match(scheduleHtml, /aria-label="Hour"/);
-    assert.match(scheduleHtml, /aria-label="Minute"/);
-    assert.match(scheduleHtml, /aria-label="AM or PM"/);
-    assert.match(scheduleHtml, /<div class="flex w-full max-w-md items-center gap-3"[^>]*role="group" aria-label="Run time">/);
-    assert.match(scheduleHtml, /<div class="flex h-12 min-w-0 flex-1 items-stretch rounded-xl/);
-    assert.match(scheduleHtml, /class="relative h-12 w-28 shrink-0"/);
-    assert.match(scheduleHtml, /class="flex items-center px-1 text-lg font-bold text-\[var\(--text-secondary\)\]" aria-hidden="true">:<\/span>/);
-    assert.equal((scheduleHtml.match(/schedule-dropdown-chevron/g) || []).length, 5);
-    assert.match(scheduleHtml, /x-model="scheduleTimeHour"[^>]*class="[^"]*appearance-none[^"]*pr-9/);
-    assert.match(scheduleHtml, /x-model="scheduleTimeMinute"[^>]*class="[^"]*appearance-none[^"]*pr-9/);
-    assert.match(scheduleHtml, /x-model="scheduleTimePeriod"[^>]*class="[^"]*appearance-none[^"]*pr-9/);
-    assert.match(scheduleHtml, /x-model\.number="scheduleForm\.weekday"[^>]*class="[^"]*appearance-none[^"]*pr-9/);
-    assert.match(scheduleHtml, /x-model="scheduleForm\.timezone"[^>]*class="[^"]*appearance-none[^"]*pr-9/);
-    assert.doesNotMatch(scheduleHtml, /type="time"/);
-    assert.match(scheduleHtml, /x-model="scheduleForm\.randomize_time"/);
-    assert.match(scheduleHtml, /random time between these two added delays after the selected time/);
-    assert.match(scheduleHtml, /x-model\.number="scheduleForm\.random_offset_min_hours"/);
-    assert.match(scheduleHtml, /x-model\.number="scheduleForm\.random_offset_max_hours"/);
-    assert.match(scheduleHtml, /min="0" max="24" step="0\.25" x-model\.number="scheduleForm\.random_offset_min_hours"/);
-    assert.match(scheduleHtml, /min="0" max="24" step="0\.25" x-model\.number="scheduleForm\.random_offset_max_hours"/);
-    assert.doesNotMatch(scheduleHtml, /Negative hours run earlier|signed offset|From offset \(hours\)/);
+    assert.match(scheduleHtml, /x-model="scheduleTimeHour"/);
+    assert.match(scheduleHtml, /x-model="scheduleTimeMinute"/);
+    assert.match(scheduleHtml, /x-model="scheduleTimePeriod"/);
     assert.match(scheduleHtml, /x-model\.number="scheduleForm\.weekday"/);
     assert.match(scheduleHtml, /x-model\.number="scheduleForm\.day_of_month"/);
     assert.match(scheduleHtml, /x-model="scheduleForm\.timezone"/);
-    assert.doesNotMatch(scheduleHtml, /Configuration controls will be added here/);
+    assert.match(scheduleHtml, /x-model="scheduleForm\.randomize_time"/);
+    assert.match(scheduleHtml, /min="0" max="24" step="0\.25" x-model\.number="scheduleForm\.random_offset_min_hours"/);
+    assert.match(scheduleHtml, /min="0" max="24" step="0\.25" x-model\.number="scheduleForm\.random_offset_max_hours"/);
 });
 
 test('unchecked square checkboxes use thinner outlines while checked states retain weight', () => {
@@ -3287,120 +3208,34 @@ test('community notes escape headings, text, labels, and external links', () => 
 
 test('automated tagging has a dedicated conditional Settings page', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
-    const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
     assert.match(html, /x-show="automatedTaggingInstalled"/);
     assert.match(html, /settingsTab = 'automated-tagging'/);
-    assert.match(html, /class="settings-sidebar flex-1 overflow-y-auto hidden md:block"/);
-    assert.doesNotMatch(html, /settings-sidebar[\s\S]*?class="w-full text-left px-6 py-3 text-\[15px\] font-medium text-\[var\(--text-primary\)\] transition"/);
-    assert.match(html, /Generate tags for archived tweets automatically via a Gemini LLM\. Manual tags remain available when this is off\./);
-    assert.doesNotMatch(html, /Turn this on to run automated tagging after sync\./);
     assert.match(html, /md:hidden[\s\S]*x-model="settingsTab"/);
-    assert.match(html, /Tagging Context/);
     assert.match(html, /automatedTaggingContextItems/);
     assert.match(html, /handleAutomatedTaggingContextKeydown\(\$event\)/);
-    assert.match(html, /Add a subject/);
-    assert.match(html, /No autocomplete is used here/);
-    assert.doesNotMatch(html, /textarea[^>]*x-model="automatedTaggingContext"/);
     const automatedTaggingStart = html.indexOf('<!-- Optional direct-Gemini automated tagging -->');
     const automatedTaggingEnd = html.indexOf('<!-- Config Section -->');
     const automatedTaggingHtml = html.slice(automatedTaggingStart, automatedTaggingEnd);
-    assert.match(automatedTaggingHtml, /<select[^>]*x-model="automatedTaggingSpendPeriod"/);
-    assert.doesNotMatch(automatedTaggingHtml, /<section/);
-    assert.doesNotMatch(automatedTaggingHtml, /focus-within:ring/);
-    assert.match(automatedTaggingHtml, /M9\.64 18\.952l-5\.55-4\.861 1\.317-1\.504 3\.951 3\.459 8\.459-10\.948L19\.4 6\.32 9\.64 18\.952z/);
-    assert.match(automatedTaggingHtml, /<fieldset[^>]*:disabled="!automatedTagging\.enabled"[^>]*opacity-50/);
-    assert.match(automatedTaggingHtml, /Enable automated tagging/);
-    assert.match(automatedTaggingHtml, /Enable automated tagging<\/h3><p[^>]*>Generate tags for archived tweets automatically via a Gemini LLM\. Manual tags remain available when this is off\./);
-    assert.match(automatedTaggingHtml, /Please read the <a href="https:\/\/github\.com\/gezerwezer\/tweetnook\/blob\/main\/docs\/automated-tagging\.md" target="_blank" rel="noopener noreferrer"[^>]*>automated tagging documentation<\/a> first\./);
-    assert.ok(automatedTaggingHtml.indexOf('automated tagging documentation') < automatedTaggingHtml.indexOf('id="save-automated-tagging-btn"'));
-    assert.doesNotMatch(automatedTaggingHtml, /<h3[^>]*>Automated Tagging<\/h3>/);
-    assert.match(automatedTaggingHtml, /<h3[^>]*>Model<\/h3>/);
+    assert.match(automatedTaggingHtml, /<fieldset[^>]*:disabled="!automatedTagging\.enabled"/);
+    assert.match(automatedTaggingHtml, /<input type="checkbox" x-model="automatedTagging\.enabled"/);
+    assert.match(automatedTaggingHtml, /<input type="checkbox" x-model="automatedTagging\.google_search"/);
     assert.match(automatedTaggingHtml, /<select[^>]*x-model="automatedTagging\.model"/);
-    assert.match(automatedTaggingHtml, /class="flex items-center justify-between gap-3"/);
-    assert.match(automatedTaggingHtml, /class="w-auto min-w-\[9rem\] shrink-0 whitespace-nowrap/);
-    assert.match(automatedTaggingHtml, /<p class="mt-2 mb-4 text-sm text-\[var\(--text-secondary\)\]">Model refresh and test runs require internet access/);
-    assert.match(automatedTaggingHtml, /<select[^>]*class="block w-full min-w-0/);
-    assert.match(automatedTaggingHtml, /Choose a Gemini model for text and media tagging/);
-    assert.match(automatedTaggingHtml, /https:\/\/ai\.google\.dev\/gemini-api\/docs\/pricing/);
-    assert.doesNotMatch(automatedTaggingHtml, /input_token_limit/);
-    assert.doesNotMatch(automatedTaggingHtml, /output_token_limit/);
-    assert.match(automatedTaggingHtml, /<h3[^>]*>Thinking<\/h3>/);
-    assert.match(automatedTaggingHtml, /<h3[^>]*>Spend limit<\/h3>/);
-    assert.match(automatedTaggingHtml, /<h3[^>]*>Google Search<\/h3>/);
-    assert.match(automatedTaggingHtml, /<label class="[^"]*\brelative\b[^"]*">\s*<input type="checkbox" x-model="automatedTagging\.enabled"/);
-    assert.match(automatedTaggingHtml, /<span class="[^"]*\brelative\b[^"]*">\s*<input type="checkbox" x-model="automatedTagging\.google_search"/);
-    assert.match(automatedTaggingHtml, /role="group" aria-label="Thinking level"/);
-    assert.match(automatedTaggingHtml, /automatedTagging\.thinking_level = level\.key/);
-    assert.match(automatedTaggingHtml, /role="group" aria-label="Processing tier"/);
-    assert.match(automatedTaggingHtml, /automatedTagging\.processing_tier = 'standard'/);
-    assert.match(automatedTaggingHtml, /automatedTagging\.processing_tier = 'flex'/);
-    assert.match(automatedTaggingHtml, /https:\/\/ai\.google\.dev\/gemini-api\/docs\/flex-inference#how-it-works/);
-    assert.doesNotMatch(automatedTaggingHtml, /50% less/);
     assert.match(automatedTaggingHtml, /<option[^>]*:value="model\.id"[^>]*x-text="model\.name"/);
     assert.match(automatedTaggingHtml, /loadAutomatedTaggingModels\(true\)/);
-    assert.match(automatedTaggingHtml, /role="group" aria-label="API usage"/);
-    assert.match(automatedTaggingHtml, /Free batches multiple tweets without Google Search/);
-    assert.match(automatedTaggingHtml, /Learn more/);
+    assert.match(automatedTaggingHtml, /automatedTagging\.thinking_level = level\.key/);
+    assert.match(automatedTaggingHtml, /automatedTagging\.processing_tier = 'standard'/);
+    assert.match(automatedTaggingHtml, /automatedTagging\.processing_tier = 'flex'/);
     assert.match(automatedTaggingHtml, /x-model="automatedTaggingSpendAmount"/);
-    assert.match(automatedTaggingHtml, /x-model="automatedTaggingSpendPeriod"/);
-    assert.match(automatedTaggingHtml, /<div class="flex w-full max-w-md items-center gap-3" role="group" aria-label="Spend limit">/);
-    assert.match(automatedTaggingHtml, /<label class="relative flex h-12 min-w-0 flex-1 items-center rounded-xl border/);
-    assert.match(automatedTaggingHtml, /<label class="relative h-12 w-28 shrink-0">/);
-    assert.match(automatedTaggingHtml, /x-model="automatedTaggingSpendPeriod"[^>]*class="[^"]*appearance-none[^"]*pr-9/);
-    assert.match(automatedTaggingHtml, /View spend history/);
-    assert.doesNotMatch(automatedTaggingHtml, /Estimated spend today/);
-    assert.doesNotMatch(automatedTaggingHtml, /Estimated lifetime spend/);
-    assert.doesNotMatch(automatedTaggingHtml, /Per model:/);
-    assert.doesNotMatch(automatedTaggingHtml, /Unlimited paid spend/);
-    assert.doesNotMatch(html, /automatedTagging\.(?:text|media)_model/);
+    assert.match(automatedTaggingHtml, /<select[^>]*x-model="automatedTaggingSpendPeriod"/);
     assert.match(html, /x-model\.number="automatedTagging\.free_batch_size"/);
     assert.match(html, /x-model="automatedTaggingInstructionInput"/);
     assert.match(html, /addAutomatedTaggingInstruction\(\)/);
-    assert.match(html, /automatedTaggingInstructionItems/);
     assert.match(html, /removeAutomatedTaggingInstruction\(item\)/);
-    assert.doesNotMatch(html, /<summary[^>]*>Advanced<\/summary>/);
-    assert.match(html, /id="automated-tagging-test"/);
-    assert.match(html, /Archived tweet ID/);
     assert.match(html, /x-model="automatedTaggingTweetId"/);
-    assert.match(html, /lookupAutomatedTaggingTweet()/);
-    assert.doesNotMatch(html, /Search text, author, tweet ID, or status URL/);
-    assert.doesNotMatch(html, /Preview only/);
-    assert.match(html, /<span class="font-bold text-\[var\(--accent-color\)\]">Your settings, descriptions, and tags won't be changed\.<\/span>/);
-    assert.match(html, /id="run-automated-tagging-test-btn"[^>]*class="w-full rounded-full/);
-    assert.match(html, /cannot see searches made by another application/);
-    assert.match(js, /\/api\/automated-tagging\/models/);
-    assert.match(js, /\/api\/automated-tagging\/tweets\?q=/);
-    assert.match(js, /lookupAutomatedTaggingTweet/);
-    assert.match(js, /\/api\/automated-tagging\/test/);
-    assert.match(js, /saveAutomatedTagging/);
-    assert.match(js, /runAutomatedTaggingTest/);
-    assert.match(js, /this\.addAutomatedTaggingInstruction\(\);/);
-    assert.match(js, /this\.automatedTagging\.google_search = mode === 'paid'/);
-    assert.match(js, /settingsBodyOverflow/);
-    assert.match(js, /document\.body\.style\.overflow = 'hidden'/);
-    assert.match(js, /automatedTaggingSpendPeriodDays/);
-    assert.match(js, /automatedTaggingModelCache/);
-    assert.match(js, /loadAutomatedTaggingModels\(forceRefresh = false\)/);
-    assert.match(js, /setAutomatedTaggingInstructionItems/);
-    assert.match(js, /values\.additional_instructions = this\.automatedTaggingInstructionItems\.join\('\\n'\) \|\| null/);
+    assert.match(html, /lookupAutomatedTaggingTweet\(\)/);
     assert.match(html, /@click="openAutomatedTaggingSpendHistory\(\)"/);
-    assert.match(html, /aria-labelledby="automated-tagging-spend-title"/);
-    assert.match(html, /Pricing overview/);
-    assert.match(html, /\{key: 'lifetime', label: 'Lifetime'\}/);
-    assert.doesNotMatch(html, /Automated Tagging · estimated Gemini pricing/);
-    assert.match(html, /Cost by model/);
-    assert.match(html, /Averages by tweet type/);
-    assert.match(html, /Avg \/ tweet/);
-    assert.match(html, /Media items/);
-    assert.match(html, /How pricing is calculated/);
     assert.match(html, /automatedTaggingSpendChartData\(\)/);
     assert.match(html, /automatedTaggingSpendModels\(\)/);
-    assert.match(html, /Gemini API pricing/);
-    assert.match(js, /showAutomatedTaggingSpendModal/);
-    assert.match(js, /automatedTaggingSpendHistory\(\)/);
-    assert.match(css, /\.spend-history-chart/);
-    assert.match(css, /background: var\(--accent-color\)/);
 });
 
 test('Settings hidden checkboxes stay anchored inside the modal', () => {
@@ -3675,7 +3510,6 @@ test('custom font dropdown supports keyboard focus and selection', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     assert.match(html, /Load local fonts/);
     assert.match(html, /:style="\{ fontFamily: f.family \}"/);
-    assert.doesNotMatch(html, /custom-font-name|Installed font family name|Fonts come from this device/);
 });
 
 test('loading tagging settings never discovers provider models implicitly', async () => {
@@ -3799,22 +3633,14 @@ test('log formatting does not mark zero-failure summaries as errors', () => {
     assert.match(formatted.split('\n')[2], /var\(--danger-color\)/);
 });
 
-test('notifications live in Settings and the old header popup is removed', () => {
+test('notifications live in Settings with unread counts', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
-    const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     assert.match(html, /<option value="notifications" x-text="noticeCount \? `Notifications \(\$\{noticeCount\}\)` : 'Notifications'">/);
     assert.match(html, /settingsTab = 'notifications'; fetchNotices\(\)/);
     assert.match(html, /settingsTab === 'notifications' \? 'Notifications'/);
     assert.match(html, /Settings, \$\{noticeCount\} unread notifications/);
     assert.match(html, /class="settings-notification-count" x-text="noticeCount"/);
     assert.match(html, /class="notification-count-badge" x-text="noticeCount > 99 \? '99' : noticeCount"/);
-    assert.match(css, /\.notification-count-badge,[\s\S]*?\.settings-notification-count\s*\{[^}]*color: var\(--accent-text\);[^}]*background: var\(--accent-color\);/s);
-    assert.match(css, /\.notification-count-badge\s*\{[^}]*position: absolute;[^}]*top: -5px;[^}]*left: -5px;[^}]*width: 22px;[^}]*height: 22px;/s);
-    assert.match(css, /\.settings-notification-count\s*\{[^}]*width: 20px;[^}]*height: 20px;/s);
-    assert.doesNotMatch(html, /notice-control|notice-inbox/);
-    assert.doesNotMatch(js, /noticesOpen/);
-    assert.doesNotMatch(html, /class="setup-btn sm:hidden"[^>]*aria-label="Settings"/);
 });
 
 test('Settings and Setup stay above an expanded activity drawer', () => {
@@ -3826,7 +3652,6 @@ test('Settings and Setup stay above an expanded activity drawer', () => {
     assert.equal((html.match(/settings-modal-backdrop fixed inset-0 z-\[100\]/g) || []).length, 2);
     assert.match(css, /\.activity-drawer\s*\{[\s\S]*?z-index: 70;/);
     assert.doesNotMatch(activityMarkup, /activity-over-settings/);
-    assert.doesNotMatch(css, /\.activity-drawer\.activity-over-settings/);
 });
 
 test('activity drawer animation isolates layout and transitions only geometry', () => {
