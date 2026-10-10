@@ -400,6 +400,24 @@ def make_user_tweets_response(
     }
 
 
+def list_article_rows(store, *, preview_only: bool = False) -> list[dict[str, object]]:
+    expr = "record_type = 'article'"
+    if preview_only:
+        expr += " AND (status IS NULL OR status != 'body_present')"
+    return store._query(expr=expr, order_by="COALESCE(tweet_id, ''), rowid")
+
+
+def list_raw_capture_target_ids(store, operation: str) -> list[str]:
+    rows = store._query(
+        expr=(
+            f"record_type = 'raw_capture' AND operation = '{operation}' AND cursor_in IS NOT NULL"
+        ),
+        cols=["captured_at", "cursor_in"],
+    )
+    rows.sort(key=lambda row: (row.get("captured_at") or "", row.get("cursor_in") or ""))
+    return list(dict.fromkeys(row["cursor_in"] for row in rows))
+
+
 def request_details(url: str) -> tuple[str, dict[str, object]]:
     parsed = urlparse(url)
     query = parse_qs(parsed.query)

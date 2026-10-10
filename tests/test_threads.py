@@ -7,7 +7,12 @@ import httpx
 import pytest
 from rich.console import Console
 
-from tests.conftest import make_tweet_detail_response, make_tweet_result, make_url_entity
+from tests.conftest import (
+    list_raw_capture_target_ids,
+    make_tweet_detail_response,
+    make_tweet_result,
+    make_url_entity,
+)
 from tweetnook.client.timelines import TimelineTweet
 from tweetnook.exceptions import (
     AuthExpiredError,
@@ -239,7 +244,7 @@ async def test_thread_focal_absence_does_not_create_terminal_state(
     row = store._get_row("tweet_object:100")
     assert row["enrichment_state"] == "done"
     assert row["enrichment_reason"] is None
-    assert store.list_raw_capture_target_ids("ThreadExpandDetail") == []
+    assert list_raw_capture_target_ids(store, "ThreadExpandDetail") == []
     store.close()
 
 
@@ -362,7 +367,7 @@ async def test_expand_threads_fetches_membership_and_linked_status(
         assert ("100", "thread_parent", "200") in relations
         assert ("200", "thread_child", "100") in relations
         assert ("100", "links_to_status", "300") in relations
-        assert store.list_raw_capture_target_ids("ThreadExpandDetail") == ["100", "300"]
+        assert list_raw_capture_target_ids(store, "ThreadExpandDetail") == ["100", "300"]
     finally:
         store.close()
 
@@ -539,7 +544,7 @@ async def test_expand_threads_follows_quote_edges_at_configured_depth(
         assert ("101", "reply_to", "100") in relations
         assert ("201", "reply_to", "200") in relations
         assert ("301", "reply_to", "300") in relations
-        assert store.list_raw_capture_target_ids("ThreadExpandDetail") == ["100", "200", "300"]
+        assert list_raw_capture_target_ids(store, "ThreadExpandDetail") == ["100", "200", "300"]
     finally:
         store.close()
 
@@ -891,7 +896,7 @@ async def test_expand_threads_respects_limit_before_linked_status_pass(
     store = open_archive_store(paths, create=False)
     assert store is not None
     try:
-        assert store.list_raw_capture_target_ids("ThreadExpandDetail") == ["100"]
+        assert list_raw_capture_target_ids(store, "ThreadExpandDetail") == ["100"]
     finally:
         store.close()
 

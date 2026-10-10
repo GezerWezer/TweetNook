@@ -67,18 +67,10 @@ def test_concurrent_readers_preserve_complete_independent_results(tmp_path):
         store.close()
 
 
-def test_actual_feed_duplicate_probes_and_counts_use_membership_index(tmp_path):
+def test_export_counts_use_membership_index(tmp_path):
     store = ArchiveStore(tmp_path / "archive.db", create=True)
     _seed_memberships(store)
     for collection in ("all", "like"):
-        ids, statements = _statements(
-            store, lambda collection=collection: store.get_paginated_tweet_ids(collection, 20, 0)
-        )
-        assert ids == [str(i) for i in range(99, 79, -1)]
-        plan = _plan(store, statements[0])
-        assert "idx_archive_membership" in plan
-        assert "tweet_id=?" in plan
-        assert "TEMP B-TREE" not in plan
         count, statements = _statements(
             store, lambda collection=collection: store.count_export_rows(collection)
         )
@@ -143,7 +135,6 @@ def test_queue_limits_reach_sql_and_preserve_filtering_and_order(tmp_path):
     operations = [
         lambda: store.list_media_rows(states={"pending"}, limit=2),
         lambda: store.list_url_rows(states={"pending"}, limit=2),
-        lambda: store.list_article_rows(preview_only=True, limit=2),
         lambda: store.get_article_tweet_ids(preview_only=True, limit=2),
     ]
     for operation in operations:

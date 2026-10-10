@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 
 from tests.conftest import (
+    list_article_rows,
+    list_raw_capture_target_ids,
     make_article_result,
     make_photo_media,
     make_tweet_detail_response,
@@ -474,7 +476,7 @@ def test_resurrection_after_thread_failure_requeues_context_expansion(paths) -> 
         ]
     )
 
-    assert store.list_raw_capture_target_ids("ThreadExpandDetail") == ["100"]
+    assert list_raw_capture_target_ids(store, "ThreadExpandDetail") == ["100"]
     assert store.list_expanded_thread_target_ids() == []
     assert store.archive_stats().pending_thread_membership_count == 0
 
@@ -1062,19 +1064,23 @@ def test_secondary_row_listings_filter_through_sqlite(paths) -> None:
     )
 
     root_photo = next(row for row in store.list_media_rows() if row["media_key"] == "3_root")
-    store.update_media_download(
-        root_photo["row_key"],
-        download_state="done",
-        local_path="media/root.jpg",
-        sha256="root-sha",
-        byte_size=123,
-        content_type="image/jpeg",
-        thumbnail_local_path=None,
-        thumbnail_sha256=None,
-        thumbnail_byte_size=None,
-        thumbnail_content_type=None,
-        downloaded_at="2026-03-16T00:00:00Z",
-        download_error=None,
+    store.merge_rows(
+        [
+            store.build_media_download_update(
+                root_photo,
+                download_state="done",
+                local_path="media/root.jpg",
+                sha256="root-sha",
+                byte_size=123,
+                content_type="image/jpeg",
+                thumbnail_local_path=None,
+                thumbnail_sha256=None,
+                thumbnail_byte_size=None,
+                thumbnail_content_type=None,
+                downloaded_at="2026-03-16T00:00:00Z",
+                download_error=None,
+            )
+        ]
     )
 
     root_url = next(
@@ -1082,18 +1088,22 @@ def test_secondary_row_listings_filter_through_sqlite(paths) -> None:
         for row in store.list_url_rows()
         if row["canonical_url"] == "https://example.com/story?keep=1"
     )
-    store.update_url_unfurl(
-        root_url["row_key"],
-        http_status=200,
-        final_url="https://example.com/story?keep=1",
-        canonical_url="https://example.com/story?keep=1",
-        title="Root title",
-        description="Root description",
-        site_name="Example",
-        content_type="text/html",
-        unfurl_state="done",
-        last_fetched_at="2026-03-16T00:00:00Z",
-        download_error=None,
+    store.merge_rows(
+        [
+            store.build_url_unfurl_update(
+                root_url,
+                http_status=200,
+                final_url="https://example.com/story?keep=1",
+                canonical_url="https://example.com/story?keep=1",
+                title="Root title",
+                description="Root description",
+                site_name="Example",
+                content_type="text/html",
+                unfurl_state="done",
+                last_fetched_at="2026-03-16T00:00:00Z",
+                download_error=None,
+            )
+        ]
     )
 
     pending_video_rows = store.list_media_rows(states={"pending"}, media_types={"video"})
@@ -1113,7 +1123,7 @@ def test_secondary_row_listings_filter_through_sqlite(paths) -> None:
     done_url_rows = store.list_url_rows(states={"done"})
     assert [row["canonical_url"] for row in done_url_rows] == ["https://example.com/story?keep=1"]
 
-    preview_rows = store.list_article_rows(preview_only=True)
+    preview_rows = list_article_rows(store, preview_only=True)
     assert [row["tweet_id"] for row in preview_rows] == ["101"]
     assert preview_rows[0]["status"] == "preview_only"
     store.close()

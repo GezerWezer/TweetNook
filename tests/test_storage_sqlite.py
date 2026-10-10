@@ -610,39 +610,6 @@ def test_parse_bool_handles_sqlite_text_values(paths, raw: object, expected: boo
     store.close()
 
 
-def test_paginated_ids_support_collection_order_and_random(paths) -> None:
-    store = open_archive_store(paths, create=True)
-    assert store is not None
-    _seed_search_rows(store)
-
-    assert store.get_paginated_tweet_ids("bookmark", 10, 0, "newest") == ["3", "1"]
-    assert store.get_paginated_tweet_ids("bookmark", 10, 0, "oldest") == ["1", "3"]
-    assert store.get_paginated_tweet_ids("bookmark", 1, 1, "newest") == ["1"]
-    assert set(store.get_paginated_tweet_ids("bookmark", 10, 0, "random")) == {"1", "3"}
-    assert store.get_paginated_tweet_ids("all", 10, 0, "newest") == ["3", "2", "1"]
-    assert store.count_export_rows("all") == 3
-    assert store.count_export_rows("like") == 2
-    assert store.get_paginated_tweet_ids("bookmark", 0, 0) == []
-    store.close()
-
-
-@pytest.mark.parametrize(
-    ("limit", "offset", "sort"),
-    [(-1, 0, "newest"), (1, -1, "newest"), (1, 0, "sideways")],
-)
-def test_paginated_ids_reject_invalid_controls(
-    paths,
-    limit: int,
-    offset: int,
-    sort: str,
-) -> None:
-    store = open_archive_store(paths, create=True)
-    assert store is not None
-    with pytest.raises(ValueError):
-        store.get_paginated_tweet_ids("all", limit, offset, sort)
-    store.close()
-
-
 def test_fetch_tweets_preserves_requested_order_and_hydrates_tags(paths) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None
