@@ -1058,7 +1058,10 @@ class QuotesStore:
         self.query = kwargs
         return [{"tweet_id": "q3"}, {"tweet_id": "q2"}]
 
-    def fetch_tweets_by_ids(self, ids: list[str]) -> list[dict[str, Any]]:
+    def fetch_tweets_by_ids(
+        self, ids: list[str], *, include_objects: bool = False
+    ) -> list[dict[str, Any]]:
+        assert include_objects
         return [{"tweet_id": value} for value in ids]
 
     def _rows_for_values(

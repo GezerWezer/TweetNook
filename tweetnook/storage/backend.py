@@ -3629,7 +3629,15 @@ class ArchiveStore:
             )
         return exported
 
-    def fetch_tweets_by_ids(self, tweet_ids: list[str]) -> list[dict[str, Any]]:
+    def fetch_tweets_by_ids(
+        self, tweet_ids: list[str], *, include_objects: bool = False
+    ) -> list[dict[str, Any]]:
+        """Hydrate collection tweets in the requested order, skipping unknown IDs.
+
+        With include_objects, IDs outside every collection fall back to their
+        stored tweet object; those tweets have a null ``collection`` and a
+        top-level ``synced_at``.
+        """
         if not tweet_ids:
             return []
 
@@ -3649,6 +3657,17 @@ class ArchiveStore:
         ]
 
         rows = self._rows_for_values("tweet", "tweet_id", tweet_ids, columns=tweet_columns)
+        object_ids: set[str] = set()
+        if include_objects:
+            member_ids = {row.get("tweet_id") for row in rows}
+            object_rows = self._rows_for_values(
+                "tweet_object",
+                "tweet_id",
+                [tid for tid in tweet_ids if tid not in member_ids],
+                columns=tweet_columns,
+            )
+            object_ids = {row["tweet_id"] for row in object_rows if row.get("tweet_id")}
+            rows.extend(object_rows)
 
         id_order = {tid: i for i, tid in enumerate(tweet_ids)}
         rows.sort(
@@ -3669,11 +3688,16 @@ class ArchiveStore:
             seen_ids.add(tweet_id)
             unique_rows.append(row)
 
-        return self._hydrate_exported_rows(
+        tweets = self._hydrate_exported_rows(
             unique_rows,
             include_raw_json=True,
             defer_raw_json=False,
         )
+        for tweet in tweets:
+            if tweet["tweet_id"] in object_ids:
+                tweet["synced_at"] = tweet["collection"]["synced_at"]
+                tweet["collection"] = None
+        return tweets
 
     def export_rows(
         self,

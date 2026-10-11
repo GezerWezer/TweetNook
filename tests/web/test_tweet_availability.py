@@ -335,3 +335,85 @@ def test_lists_abbreviate_raw_json_and_raw_endpoint_returns_stored_documents(tmp
     assert member.json() == {"tweet_id": "1", "raw_json": member_raw}
     assert context.json() == {"tweet_id": "2", "raw_json": object_raw}
     assert missing.status_code == 404
+
+
+def test_quotes_page_includes_quoting_tweets_outside_collections(tmp_path) -> None:
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    records = [
+        store._record(
+            row_key="tweet:like::100",
+            record_type="tweet",
+            tweet_id="100",
+            collection_type="like",
+            text="quoted",
+            created_at_ts=1,
+            raw_json=json.dumps({"rest_id": "100", "legacy": {"full_text": "quoted"}}),
+        ),
+        store._record(
+            row_key="tweet:like::301",
+            record_type="tweet",
+            tweet_id="301",
+            collection_type="like",
+            text="liked quote",
+            created_at_ts=2,
+            raw_json=json.dumps({"rest_id": "301", "legacy": {"full_text": "liked quote"}}),
+        ),
+        store._record(
+            row_key="tweet_object:302",
+            record_type="tweet_object",
+            tweet_id="302",
+            text="stranger quote",
+            author_id="u9",
+            author_username="stranger",
+            author_display_name="Stranger",
+            synced_at="2026-10-01T00:00:00+00:00",
+            raw_json=json.dumps({"rest_id": "302", "legacy": {"full_text": "stranger quote"}}),
+            enrichment_state="done",
+        ),
+        store._record(
+            row_key="media:302:m1",
+            record_type="media",
+            tweet_id="302",
+            media_key="m1",
+            media_type="photo",
+            media_url="https://pbs.twimg.com/media/m1.jpg",
+            position=0,
+        ),
+    ]
+    for source_id in ("301", "302", "303"):
+        records.append(
+            store._record(
+                row_key=f"tweet_relation:{source_id}:quote_of:100",
+                record_type="tweet_relation",
+                tweet_id=source_id,
+                relation_type="quote_of",
+                target_tweet_id="100",
+            )
+        )
+    store._merge_records(records)
+    app = FastAPI()
+    app.include_router(tweets_router)
+    app.dependency_overrides[get_store] = lambda: store
+    try:
+        with TestClient(app) as client:
+            first = client.get("/api/tweets/100/quotes?limit=2").json()
+            second = client.get("/api/tweets/100/quotes?page=2&limit=2").json()
+            thread = client.get("/api/tweets/100").json()
+    finally:
+        store.close()
+
+    assert first["total"] == second["total"] == thread["main"]["local_quote_count"] == 3
+    # Newest first: the relation-only source, the stranger's quote, then the liked one.
+    relation_only, stranger = first["tweets"]
+    (member,) = second["tweets"]
+    assert member["tweet_id"] == "301"
+    assert member["collection"]["type"] == "like"
+    assert stranger["tweet_id"] == "302"
+    assert stranger["collection"] is None
+    assert stranger["synced_at"] == "2026-10-01T00:00:00+00:00"
+    assert stranger["author"]["username"] == "stranger"
+    assert stranger["raw_json"]["legacy"]["full_text"] == "stranger quote"
+    assert [item["url"] for item in stranger["media"]] == ["https://pbs.twimg.com/media/m1.jpg"]
+    assert stranger["availability"]["state"] == "available"
+    assert relation_only["tweet_id"] == "303"
+    assert relation_only["availability"]["state"] == "not_archived"

@@ -221,6 +221,12 @@ GET /api/tweets/{tweet_id}/quotes?page=1&limit=20
 
 It counts distinct quote-source IDs, pages newest-first, hydrates/annotates them,
 and returns `tweets`, `total`, `page`, and `limit` (not `pages`/`truncated`).
+Hydration uses `fetch_tweets_by_ids(..., include_objects=True)`: a quote by
+someone else is usually stored only as a tweet object, outside every
+collection, so it is built from that object with `collection: null` and a
+top-level `synced_at`. A source with no stored tweet keeps its place as a
+`not_archived` placeholder, so every page holds as many tweets as `total`
+implies.
 
 ## Availability overlay
 
