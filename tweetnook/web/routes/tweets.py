@@ -574,7 +574,14 @@ def api_tweet_quotes(
             indexed_by="idx_archive_target_tweet_id",
         )
         paginated_ids = [r.get("tweet_id") for r in rows if r.get("tweet_id")]
-        paginated_tweets = store.fetch_tweets_by_ids(paginated_ids)
+        # Quotes by other people are usually stored only as tweet objects, outside
+        # every collection; a source with no stored tweet keeps its place as a
+        # placeholder so the page matches the total.
+        fetched = {
+            tweet["tweet_id"]: tweet
+            for tweet in store.fetch_tweets_by_ids(paginated_ids, include_objects=True)
+        }
+        paginated_tweets = [fetched.get(tid) or missing_web_tweet(tid) for tid in paginated_ids]
         annotate_web_tweets(store, paginated_tweets)
         slim_web_tweets(paginated_tweets)
 
