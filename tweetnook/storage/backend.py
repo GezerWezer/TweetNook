@@ -3373,7 +3373,10 @@ class ArchiveStore:
         aggregate on the shared connection stalls every other Web request. The
         caller owns the reader and must close it.
         """
-        return ArchiveStore(self.db_path, create=False, config=self.config, read_only=True)
+        reader = ArchiveStore(self.db_path, create=False, config=self.config, read_only=True)
+        # Closing this archive stops reader queries too, so shutdown never waits on them.
+        reader.conn.set_progress_handler(lambda: self._warm_cancelled, 10_000)
+        return reader
 
     def get_like_order(self):
         """Return the derived order independently of tweet content/source updates."""
@@ -3408,7 +3411,7 @@ class ArchiveStore:
             conn.close()
 
     def interrupt_warm_reads(self) -> None:
-        """Stop current and future warm_read_cache() calls promptly."""
+        """Stop current and future warm_read_cache() and open_reader() queries promptly."""
         self._warm_cancelled = True
 
     def _ensure_like_order_table(self) -> None:

@@ -75,6 +75,7 @@ class WebConfig(BaseModel):
     fetch_avatars: bool = True
     avatar_cache_limit_enabled: bool = True
     avatar_cache_limit_mb: int = Field(default=512, ge=1)
+    analytics_refresh_time: str = Field(default="05:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 
 class ScheduleConfig(BaseModel):
@@ -589,6 +590,7 @@ def get_config_ui_schema() -> dict[str, Any]:
             "web.fetch_avatars": "Fetch Avatars locally",
             "web.avatar_cache_limit_enabled": "Limit Avatar Cache",
             "web.avatar_cache_limit_mb": "Avatar Cache Limit (MiB)",
+            "web.analytics_refresh_time": "Daily Analytics Refresh Time",
             "schedule.enabled": "Enable Scheduled Syncs",
             "schedule.cadence": "Schedule Frequency",
             "schedule.every_hours": "Every N Hours",
@@ -649,6 +651,10 @@ def get_config_ui_schema() -> dict[str, Any]:
             "web.avatar_cache_limit_mb": (
                 "Maximum avatar cache size. Weekly cleanup removes the least recently used "
                 "files until the cache fits this limit."
+            ),
+            "web.analytics_refresh_time": (
+                "Local server time (HH:MM) when Analytics statistics are rebuilt each day. "
+                "Takes effect after a server restart."
             ),
             "web.host": "The IP address the Web UI binds to (default is 0.0.0.0 for LAN access).",
             "web.port": "The port the Web UI runs on.",

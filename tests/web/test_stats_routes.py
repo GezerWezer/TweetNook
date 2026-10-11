@@ -184,7 +184,7 @@ def test_cached_snapshot_serves_old_data_during_manual_refresh(
     monkeypatch.setattr(stats_routes, "web_stats_cache", cache)
     client = make_web_client(stats_routes.router, store=store)
 
-    initial = client.get("/api/stats/snapshot?revalidate=false").json()
+    initial = client.get("/api/stats/snapshot").json()
     _seed_tag_stats_tweet(store, "t2")
     refreshing = client.post("/api/stats/refresh").json()
 
@@ -195,14 +195,13 @@ def test_cached_snapshot_serves_old_data_during_manual_refresh(
     assert set(refreshing) == {
         "generated_at",
         "age_seconds",
-        "stale",
         "refreshing",
         "refresh_failed",
     }
 
     allow_refresh.set()
     cache.wait_for_refreshes()
-    refreshed = client.get("/api/stats/snapshot?revalidate=false").json()
+    refreshed = client.get("/api/stats/snapshot").json()
 
     assert refreshed["summary"]["unique_posts"] == 2
     assert refreshed["refreshing"] is False
@@ -220,7 +219,7 @@ def test_cached_status_returns_refresh_metadata_without_report_sections(
     cache = WebStatsCache()
     monkeypatch.setattr(stats_routes, "web_stats_cache", cache)
     client = make_web_client(stats_routes.router, store=store)
-    initial = client.get("/api/stats/snapshot?revalidate=false").json()
+    initial = client.get("/api/stats/snapshot").json()
 
     response = client.get("/api/stats/status")
 
@@ -228,7 +227,6 @@ def test_cached_status_returns_refresh_metadata_without_report_sections(
     assert response.json() == {
         "generated_at": initial["generated_at"],
         "age_seconds": pytest.approx(0, abs=0.1),
-        "stale": False,
         "refreshing": False,
         "refresh_failed": False,
     }

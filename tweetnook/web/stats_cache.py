@@ -1,16 +1,17 @@
-"""Process-local stale-while-revalidate cache for Web statistics."""
+"""Process-local Web statistics cache, rebuilt in the background once a day."""
 
 from __future__ import annotations
 
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from threading import Condition, Thread
+from datetime import datetime
+from threading import Condition, Event, Thread
 
+from tweetnook.config import ScheduleConfig
+from tweetnook.scheduler import next_run_after
 from tweetnook.stats import StatsReport, build_stats_report
 from tweetnook.storage import ArchiveStore
-
-WEB_STATS_MAX_AGE_SECONDS = 12 * 60 * 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,7 +20,6 @@ class CachedStatsReport:
 
     report: StatsReport
     age_seconds: float
-    stale: bool
     refreshing: bool
     refresh_failed: bool
 
@@ -31,16 +31,18 @@ class _CacheEntry:
 
 
 class WebStatsCache:
-    """Cache full reports for Web callers without affecting the CLI service path."""
+    """Cache full reports for Web callers without affecting the CLI service path.
+
+    Reports change only through start_refresh() and refresh(); reading never
+    triggers collection unless no report exists yet.
+    """
 
     def __init__(
         self,
         *,
-        max_age_seconds: float = WEB_STATS_MAX_AGE_SECONDS,
         builder: Callable[[ArchiveStore], StatsReport] = build_stats_report,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        self.max_age_seconds = max_age_seconds
         self._builder = builder
         self._clock = clock
         self._condition = Condition()
@@ -55,11 +57,9 @@ class WebStatsCache:
         return id(store)
 
     def _result_locked(self, key: int, entry: _CacheEntry) -> CachedStatsReport:
-        age_seconds = max(0.0, self._clock() - entry.stored_at)
         return CachedStatsReport(
             report=entry.report,
-            age_seconds=age_seconds,
-            stale=age_seconds >= self.max_age_seconds,
+            age_seconds=max(0.0, self._clock() - entry.stored_at),
             refreshing=key in self._refreshing,
             refresh_failed=key in self._refresh_failed,
         )
@@ -104,22 +104,13 @@ class WebStatsCache:
         self._threads[key] = thread
         thread.start()
 
-    def get(
-        self,
-        store: ArchiveStore,
-        *,
-        revalidate: bool = True,
-    ) -> CachedStatsReport:
-        """Return a cached report, refreshing stale entries in the background."""
+    def get(self, store: ArchiveStore) -> CachedStatsReport:
+        """Return the cached report, waiting for or collecting the first one."""
         key = self._key(store)
         with self._condition:
             entry = self._entries.get(key)
             if entry is not None:
-                result = self._result_locked(key, entry)
-                if revalidate and result.stale:
-                    self._start_refresh_locked(key, store)
-                    result = self._result_locked(key, entry)
-                return result
+                return self._result_locked(key, entry)
 
             if key in self._refreshing:
                 while key in self._refreshing and key not in self._entries:
@@ -150,11 +141,16 @@ class WebStatsCache:
         with self._condition:
             has_entry = key in self._entries
         if not has_entry:
-            return self.get(store, revalidate=False)
+            return self.get(store)
         with self._condition:
             entry = self._entries[key]
             self._start_refresh_locked(key, store)
             return self._result_locked(key, entry)
+
+    def start_refresh(self, store: ArchiveStore) -> None:
+        """Collect a new report in the background; readers keep the current one."""
+        with self._condition:
+            self._start_refresh_locked(self._key(store), store)
 
     def wait_for_refreshes(self) -> None:
         """Wait for active collectors before their shared store is closed."""
@@ -175,3 +171,55 @@ class WebStatsCache:
 
 
 web_stats_cache = WebStatsCache()
+
+
+def next_daily_refresh(refresh_time: str, after: datetime) -> datetime:
+    """Return the first local refresh_time (HH:MM) strictly after after."""
+    return next_run_after(
+        ScheduleConfig(cadence="daily", time=refresh_time, randomize_time=False), after
+    )
+
+
+class DailyStatsRefresher:
+    """Collect the Web report when the archive attaches, then once a day.
+
+    A request that arrives before the first report waits for that collection;
+    later requests keep the previous report while a new one is collected.
+    """
+
+    def __init__(
+        self,
+        store: ArchiveStore,
+        refresh_time: str,
+        *,
+        cache: WebStatsCache = web_stats_cache,
+        now: Callable[[], datetime] = lambda: datetime.now().astimezone(),
+    ) -> None:
+        self._store = store
+        self._refresh_time = refresh_time
+        self._cache = cache
+        self._now = now
+        self._stop = Event()
+        self._thread: Thread | None = None
+
+    def start(self) -> None:
+        self._cache.start_refresh(self._store)
+        self._thread = Thread(target=self._run, name="tweetnook-stats-daily", daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        due = next_daily_refresh(self._refresh_time, self._now())
+        while True:
+            # Re-check after every wake: waits can end early and the clock can jump.
+            remaining = (due - self._now()).total_seconds()
+            if remaining > 0:
+                if self._stop.wait(remaining):
+                    return
+                continue
+            self._cache.start_refresh(self._store)
+            due = next_daily_refresh(self._refresh_time, max(due, self._now()))
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join()

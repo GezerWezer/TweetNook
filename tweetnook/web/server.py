@@ -38,7 +38,7 @@ from tweetnook.web.routes.storage_stats import router as storage_stats_router
 from tweetnook.web.routes.tags import router as tags_router
 from tweetnook.web.routes.tweets import router as tweets_router
 from tweetnook.web.setup_coordinator import SetupCoordinator
-from tweetnook.web.stats_cache import web_stats_cache
+from tweetnook.web.stats_cache import DailyStatsRefresher, web_stats_cache
 from tweetnook.web.warmup import ArchiveWarmer
 
 
@@ -83,6 +83,9 @@ def attach_archive_store() -> bool:
         server_state["archive_warmer"] = warmer
         warmer.request()
         web_stats_cache.clear()
+        refresher = DailyStatsRefresher(store, server_state["config"].web.analytics_refresh_time)
+        server_state["stats_refresher"] = refresher
+        refresher.start()
         return True
 
 
@@ -141,6 +144,8 @@ def request_archive_warmup() -> None:
 
 def detach_archive_store() -> None:
     stop_scheduler()
+    if refresher := server_state.pop("stats_refresher", None):
+        refresher.stop()
     if warmer := server_state.pop("archive_warmer", None):
         warmer.stop()
     if thread := server_state.pop("fts_thread", None):
@@ -178,7 +183,7 @@ async def lifespan(app: FastAPI):
 
             def on_job_complete(run_id: str, exit_code: int) -> None:
                 server_state.pop("activity_worker_started_at", None)
-                web_stats_cache.clear()
+                # Analytics keeps its daily report; Refresh collects one on demand.
                 # Jobs change like-order inputs and churn the page cache.
                 request_archive_warmup()
                 coordinator = server_state.get("setup_coordinator")
@@ -187,6 +192,9 @@ async def lifespan(app: FastAPI):
                     coordinator.state.archive_init_run_id,
                     coordinator.state.auto_enrich_run_id,
                 }
+                if setup_job and (store := server_state.get("store")) is not None:
+                    # A new archive should not show its pre-import report until tomorrow.
+                    web_stats_cache.start_refresh(store)
                 if exit_code != 0 and run.get("status") != "stopped" and not setup_job:
                     action = (
                         "setup"

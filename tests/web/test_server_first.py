@@ -143,6 +143,35 @@ def test_attached_archive_warms_at_start_and_after_each_job(first_run, monkeypat
     assert events == ["init", "request", "request", "stop"]
 
 
+def test_attached_archive_keeps_its_daily_analytics_report_after_jobs(first_run, monkeypatch):
+    events = []
+
+    class Refresher:
+        def __init__(self, _store, refresh_time):
+            events.append(f"init {refresh_time}")
+
+        def start(self):
+            events.append("start")
+
+        def stop(self):
+            events.append("stop")
+
+    monkeypatch.setattr(server, "DailyStatsRefresher", Refresher)
+    monkeypatch.setattr(server.web_stats_cache, "clear", lambda: events.append("clear"))
+    monkeypatch.setattr(
+        server.web_stats_cache, "start_refresh", lambda _store: events.append("refresh")
+    )
+    open_archive_store(first_run, create=True).close()
+    with TestClient(server.app):
+        assert events == ["clear", "init 05:00", "start"]
+        supervisor = server_state["job_supervisor"]
+        supervisor.start(kind="sync", title="Sync", cli_args=["sync"], origin="web")
+        supervisor.finish()
+        assert events == ["clear", "init 05:00", "start"]
+
+    assert events[3] == "stop"
+
+
 @pytest.fixture
 def coordinator(first_run, monkeypatch):
     supervisor = Supervisor(first_run, server_state["config"])

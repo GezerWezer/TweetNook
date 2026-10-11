@@ -300,7 +300,7 @@ POST   /api/tags/merge
 ```
 
 Mutations use storage normalization/merge rules. They do not invalidate the
-five-minute Web stats cache.
+daily Web stats cache.
 
 ## Stats routes
 
@@ -309,8 +309,8 @@ and tagging. `/api/stats/report` is fresh; `/api/stats/snapshot` is the cached
 legacy/UI shape. Snapshot behavior:
 
 - initial collection is synchronous and deduplicated;
-- entries are fresh for 12 hours;
-- stale data is returned immediately while one daemon refresh runs;
+- collection runs in the background on attach and daily at `web.analytics_refresh_time`;
+- the previous report is returned while a refresh runs;
 - failed refresh retains stale data and sets `refresh_failed`;
 - explicit refresh starts one worker or collects synchronously when absent.
 
