@@ -113,6 +113,20 @@ def test_parser_rejects_malformed_or_unknown_operators(query: str) -> None:
         parse_search_query(query)
 
 
+def test_highlight_terms_preserve_phrases_and_prefixes_and_exclude_negative_filters():
+    query = (
+        'gif is:reply "night sky" gif* OR cats -dogs NOT "bad phrase" '
+        "from:alice #python -#hidden tag:gift description:red"
+    )
+    assert parse_search_query(query).highlight_terms() == [
+        "gif",
+        '"night sky"',
+        "gif*",
+        "cats",
+        "#python",
+    ]
+
+
 def test_grouped_search_requires_all_groups_and_any_or_alternative(tmp_path) -> None:
     photo = [{"type": "photo"}]
     store = _real_store(

@@ -1002,6 +1002,11 @@
                     pages: Math.max(1, Math.ceil(total / limit)),
                     has_more: start + limit < total,
                     truncated: false,
+                    highlight_terms: groups.flat().filter(token => !token.negated && (
+                        token.kind === 'text' || token.key === 'hashtag'
+                    )).map(token => token.kind === 'text'
+                        ? (token.phrase ? `"${token.value}"` : token.value)
+                        : `#${token.value}`),
                 });
             }
 

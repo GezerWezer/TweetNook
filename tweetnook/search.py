@@ -124,6 +124,17 @@ class ParsedSearchQuery:
                 terms.extend(part for part in value.split() if part)
         return list(dict.fromkeys(terms))
 
+    def highlight_terms(self) -> list[str]:
+        """Visible positive text/hashtag clauses, preserving phrase and prefix syntax."""
+        return list(
+            dict.fromkeys(
+                clause.value if clause.kind == "text" else f"#{clause.value}"
+                for group in self.groups
+                for clause in group
+                if not clause.negated and (clause.kind == "text" or clause.key == "hashtag")
+            )
+        )
+
 
 @dataclass(slots=True)
 class SearchPage:

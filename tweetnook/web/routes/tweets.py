@@ -7,7 +7,13 @@ from fastapi.responses import Response
 
 from tweetnook import fastjson
 from tweetnook.export.common import normalize_collection_name
-from tweetnook.search import SearchCursorExpiredError, SearchQueryError, count_posts, search_posts
+from tweetnook.search import (
+    SearchCursorExpiredError,
+    SearchQueryError,
+    count_posts,
+    parse_search_query,
+    search_posts,
+)
 from tweetnook.web.availability import annotate_web_tweets, missing_web_tweet, slim_web_tweets
 from tweetnook.web.deps import require_store, verify_credentials
 
@@ -183,6 +189,7 @@ def api_tweets(
                 "has_more": result.has_more,
                 "next_cursor": result.next_cursor,
                 "truncated": result.truncated,
+                "highlight_terms": parse_search_query(q).highlight_terms(),
             }
         )
     except SearchCursorExpiredError as exc:

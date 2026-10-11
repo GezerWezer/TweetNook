@@ -81,6 +81,10 @@ async function main() {
     assert.equal(allTweets.body.total, 26);
     assert.equal(allTweets.body.has_more, false);
     assert.ok(allTweets.body.tweets.every(tweet => tweet.collections.length > 0));
+    const mixedSearch = await request(store, 'https://example.test/api/tweets?collection=all&q=gif%20is:reply');
+    const mixedCount = await request(store, 'https://example.test/api/tweets/count?collection=all&q=gif%20is:reply');
+    assert.deepEqual(mixedSearch.body.highlight_terms, ['gif']);
+    assert.equal(mixedCount.body.total, mixedSearch.body.total);
     assert.equal(
         allTweets.body.tweets.some(tweet => tweet.tweet_id === '202602050028'),
         false,

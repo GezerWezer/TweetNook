@@ -25,6 +25,12 @@ tweetnook search 'from:alice has:image "night sky"'
 ```
 
 Search matches words and phrases, not concepts with unrelated wording. 
+
+In the web app, matching words and phrases are **bold** in result cards and their
+quoted tweets, including after **Show more**. Matching ignores case and accents;
+prefix queries bold the matching word. Positive hashtags are highlighted too.
+Filters and excluded terms don't cause text highlighting.
+
 ## Combine words and filters
 
 Words next to each other must all match. Use `OR` for alternatives and `-` to

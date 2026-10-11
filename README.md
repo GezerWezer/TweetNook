@@ -149,6 +149,7 @@ capsules, including spaces. Press **Escape** to continue typing after a capsule;
 multiword values are quoted automatically.
 
 Search results show an exact count; text-search counts load after the first results.
+Matching text is bold in result cards, including quoted tweets.
 
 The same queries work in the terminal:
 

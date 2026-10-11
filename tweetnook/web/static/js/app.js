@@ -257,6 +257,7 @@ function tweetApp() {
             if (changed) this.search();
         },
         searchQuery: '',
+        searchHighlightTerms: [],
         countError: false,
         error: null,
         showScrollTop: false,
@@ -2102,6 +2103,7 @@ function tweetApp() {
                     this.renderFeedList(added, { append: true });
                 } else {
                     this.tweets = data.tweets;
+                    this.searchHighlightTerms = data.highlight_terms || [];
                     this.renderFeedList(data.tweets);
                     this.scheduleFeedPrefetch();
                 }
@@ -2253,7 +2255,7 @@ function tweetApp() {
                 const tweet = this.feedCardTweet(text);
                 if (!text || !tweet) continue;
                 const source = text.closest('[data-action="quote"]') ? this.getQuoteTweet(tweet) : tweet;
-                outsideAlpine(() => { text.innerHTML = this.formatText(source); });
+                outsideAlpine(() => { text.innerHTML = this.formatText(source, false, true); });
             }
             this.placeListMenu();
         },
@@ -2311,7 +2313,7 @@ function tweetApp() {
                     + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(this.formatDate(quote.legacy?.created_at || quote.created_at))}</span>`
                     + '</div>'
                     + (quoteReplyTo ? replyLine(quoteReplyTo) : '')
-                    + `<div class="text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote)}</div>`
+                    + `<div class="text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote, false, true)}</div>`
                     + part(this.renderMediaGrid(tweet.qt_media), ' data-action="stop"')
                     + part(this.renderCard({ raw_json: quote }), ' data-action="stop"')
                     + part(this.renderCommunityNote(quote, true), ' data-action="stop"')
@@ -2326,7 +2328,7 @@ function tweetApp() {
                 + '<div class="flex-1 min-w-0">'
                 + byline
                 + (replyTo ? replyLine(replyTo) : '')
-                + `<div class="text-[15px] -mt-2 whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(tweet)}</div>`
+                + `<div class="text-[15px] -mt-2 whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(tweet, false, true)}</div>`
                 + part(this.renderMediaGrid(tweet.media), ' data-action="stop"')
                 + part(this.renderCard(tweet), ' data-action="stop"')
                 + quoteBlock
@@ -4757,7 +4759,56 @@ function tweetApp() {
             return String(text).replace(/&(amp|lt|gt|quot|apos);/g, (_, name) => entities[name]);
         },
 
-        formatText(tweet, forceFull = false) {
+        searchMatchRanges(text) {
+            const normalize = value => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+            const words = value => Array.from(value.matchAll(/[\p{L}\p{N}\p{M}]+/gu), match => ({
+                value: normalize(match[0]), start: match.index, end: match.index + match[0].length,
+            }));
+            const tokens = words(text);
+            const ranges = [];
+            for (const term of this.searchHighlightTerms) {
+                const parts = words(term);
+                if (!parts.length) continue;
+                const prefix = !term.startsWith('"') && term.endsWith('*') && parts.length === 1;
+                for (let i = 0; i <= tokens.length - parts.length; i++) {
+                    if (!parts.every((part, j) => prefix
+                        ? tokens[i + j].value.startsWith(part.value)
+                        : tokens[i + j].value === part.value)) continue;
+                    let start = tokens[i].start;
+                    if (term.startsWith('#')) {
+                        if (text[start - 1] !== '#') continue;
+                        start -= 1;
+                    }
+                    ranges.push([start, tokens[i + parts.length - 1].end]);
+                }
+            }
+            ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+            const merged = [];
+            for (const range of ranges) {
+                const previous = merged[merged.length - 1];
+                if (previous && range[0] <= previous[1]) previous[1] = Math.max(previous[1], range[1]);
+                else merged.push(range.slice());
+            }
+            return merged;
+        },
+
+        highlightSearchText(text, highlight = true, ranges = null, baseOffset = 0) {
+            text = String(text || '');
+            const escape = value => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            if (!highlight || !this.searchHighlightTerms.length) return escape(text);
+            ranges = ranges || this.searchMatchRanges(text);
+            let html = '', offset = 0;
+            for (const range of ranges) {
+                const start = Math.max(0, range[0] - baseOffset);
+                const end = Math.min(text.length, range[1] - baseOffset);
+                if (start >= end) continue;
+                html += escape(text.slice(offset, start)) + '<strong>' + escape(text.slice(start, end)) + '</strong>';
+                offset = end;
+            }
+            return html + escape(text.slice(offset));
+        },
+
+        formatText(tweet, forceFull = false, highlightSearch = false) {
             if (!tweet) return '';
             if (this.isPlaceholderTweet(tweet)) return this.renderTweetPlaceholder(tweet);
             const raw = tweet.raw_json?.raw_json || tweet.raw_json || tweet;
@@ -4786,7 +4837,7 @@ function tweetApp() {
                 isTruncated = true;
             }
             
-            let urlMap = {};
+            let urlMap = Object.create(null);
             if (raw && raw.legacy) {
                 const urlsToRemove = [];
                 if (raw.legacy.entities?.media) urlsToRemove.push(...raw.legacy.entities.media.map(m => m.url));
@@ -4802,22 +4853,32 @@ function tweetApp() {
                 
                 if (raw.legacy.entities?.urls) {
                     raw.legacy.entities.urls.forEach(u => {
-                        if (!urlsToRemove.includes(u.url)) {
+                        if (u.url && !urlsToRemove.includes(u.url)) {
                             const expandedUrl = this.safeURL(u.expanded_url);
-                            const displayUrl = this.escapeHTML(u.display_url || u.expanded_url || '');
+                            const displayUrl = this.highlightSearchText(u.display_url || u.expanded_url || '', highlightSearch);
                             urlMap[u.url] = `<a href="${expandedUrl}" target="_blank" rel="noopener noreferrer" class="text-[var(--accent-color)] hover:underline" @click.stop>${displayUrl}</a>`;
                         }
                     });
                 }
             }
             
-            text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            text = text.replace(/@(\w+)/g, '<span class="mention text-[var(--accent-color)] hover:underline cursor-pointer" data-user="$1">@$1</span>');
-            text = text.replace(/#(\w+)/g, '<span class="hashtag text-[var(--accent-color)] hover:underline cursor-pointer" data-tag="$1">#$1</span>');
-            
-            Object.keys(urlMap).forEach(u => {
-                text = text.split(u).join(urlMap[u]);
-            });
+            // Render source text once. Query matches never touch generated markup,
+            // link destinations, data attributes, or escaped entity spellings.
+            const urlTokens = Object.keys(urlMap).map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+            const pattern = new RegExp([...urlTokens, '@\\w+', '#\\w+'].join('|'), 'g');
+            const ranges = highlightSearch ? this.searchMatchRanges(text) : [];
+            let html = '', offset = 0;
+            for (const match of text.matchAll(pattern)) {
+                html += this.highlightSearchText(text.slice(offset, match.index), highlightSearch, ranges, offset);
+                const token = match[0];
+                if (Object.hasOwn(urlMap, token)) html += urlMap[token];
+                else {
+                    const mention = token.startsWith('@');
+                    html += `<span class="${mention ? 'mention' : 'hashtag'} text-[var(--accent-color)] hover:underline cursor-pointer" data-${mention ? 'user' : 'tag'}="${token.slice(1)}">${this.highlightSearchText(token, highlightSearch, ranges, match.index)}</span>`;
+                }
+                offset = match.index + token.length;
+            }
+            text = html + this.highlightSearchText(text.slice(offset), highlightSearch, ranges, offset);
             
             if (isTruncated) {
                 text += `<span class="text-[var(--accent-color)] hover:underline cursor-pointer block mt-1 expand-tweet" data-id="${this.escapeHTML(tweetId)}">Show more</span>`;
@@ -4833,8 +4894,8 @@ function tweetApp() {
         // callers pass the text element, which anchors the profile card as the
         // handler's currentTarget does for an element's own listener.
         handleTextClick(e, textElement = e.currentTarget) {
-            const target = e.target;
-            if (target.tagName !== 'SPAN') return false;
+            const target = e.target.closest?.('span.mention, span.hashtag, span.expand-tweet') || e.target;
+            if (target.tagName !== 'SPAN' || !textElement?.contains(target)) return false;
             if (target.classList.contains('mention')) {
                 e.stopPropagation();
                 const username = target.dataset.user;
