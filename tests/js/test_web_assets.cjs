@@ -2404,8 +2404,8 @@ test('thread reply surfaces render quoted tweets in both presentations', () => {
     assert.equal((html.match(/<template x-if="getQuoteTweet\(reply\)">/g) || []).length, 2);
     assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet\(child\)\)/g) || []).length, 2);
     assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet\(reply\)\)/g) || []).length, 2);
-    assert.equal((html.match(/formatText\(getQuoteTweet\(child\)\)/g) || []).length, 2);
-    assert.equal((html.match(/formatText\(getQuoteTweet\(reply\)\)/g) || []).length, 2);
+    assert.equal((html.match(/formatText\(getQuoteTweet\(child\), isMediaQuotingMedia\(child\)\)/g) || []).length, 2);
+    assert.equal((html.match(/formatText\(getQuoteTweet\(reply\), isMediaQuotingMedia\(reply\)\)/g) || []).length, 2);
     assert.equal((html.match(/renderMediaGrid\(child\.qt_media\)/g) || []).length, 2);
     assert.equal((html.match(/renderMediaGrid\(reply\.qt_media\)/g) || []).length, 2);
     assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(child\)\)\)/);
@@ -2767,6 +2767,69 @@ test('feed result bolding applies to quotes and Show more and keeps mention/hash
     assert.equal(text.querySelector('.expand-tweet'), null);
     assert.equal(text.querySelectorAll('strong').length, 83);
     assert.equal(list.children[0], card);
+});
+
+test('media quoting media is compact in lists and flush in the detail view', () => {
+    const { app, list } = feedListApp();
+    const author = { id: '2', username: 'a', display_name: 'A' };
+    const photo = { type: 'photo', download: { local_path: 'media/outer.jpg' } };
+    const video = {
+        type: 'video',
+        duration_millis: 21000,
+        download: { local_path: 'media/q.mp4', thumbnail_local_path: 'media/q.jpg' },
+    };
+    const quoted_tweet = { tweet_id: '3', text: `quote ${'word '.repeat(80)}`, author: { username: 'q', display_name: 'Q' } };
+    const doubleMedia = { tweet_id: '1', text: 'x', author, media: [photo], quoted_tweet, qt_media: [video] };
+
+    assert.equal(app.isMediaQuotingMedia(doubleMedia), true);
+    assert.equal(app.isMediaQuotingMedia({ media: [], qt_media: [video] }), false);
+    assert.equal(app.isMediaQuotingMedia({ media: [photo] }), false);
+    assert.equal(app.isMediaQuotingMedia(null), false);
+
+    // Lists: a thumbnail with the duration badge and clamped text, never Show more.
+    const compact = app.renderFeedCard(doubleMedia);
+    assert.match(compact, /cursor-pointer quote-compact" data-thread-id="3" data-action="quote"/);
+    assert.match(compact, /<div class="quote-media"><div class="quote-thumbnail"><img src="\/media\/q\.jpg" loading="lazy" decoding="async" alt=""><span class="quote-thumbnail-badge">0:21<\/span><\/div><\/div>/);
+    assert.match(compact, /class="quote-text text-\[15px\]/);
+    assert.doesNotMatch(compact, /media-video-player|expand-tweet/);
+
+    // A quote under a tweet without media keeps the full media grid.
+    const regular = app.renderFeedCard({ ...doubleMedia, tweet_id: '4', media: [] });
+    assert.doesNotMatch(regular, /quote-compact|quote-thumbnail/);
+    assert.match(regular, /media-video-player/);
+    assert.match(regular, /expand-tweet/);
+
+    // The thumbnail has no controls, so a click opens the quoted tweet.
+    app.tweets = [doubleMedia];
+    app.renderFeedList(app.tweets);
+    let opened;
+    app.openThread = id => { opened = id; };
+    dispatchFeed(list, 'click', list.children[0].querySelector('.quote-thumbnail img'));
+    assert.equal(opened, '3');
+
+    assert.match(
+        app.renderQuoteThumbnail([{ type: 'photo', download: { local_path: 'media/p.jpg' } }, video]),
+        /^<div class="quote-thumbnail"><img src="\/media\/p\.jpg"[^>]*><\/div>$/,
+    );
+    const gif = app.renderQuoteThumbnail([{ type: 'animated_gif', download: { local_path: 'media/g.mp4' } }]);
+    assert.match(gif, /<video src="\/media\/g\.mp4#t=0\.1" preload="metadata" muted playsinline><\/video><span class="quote-thumbnail-badge">GIF<\/span>/);
+    assert.doesNotMatch(gif, /autoplay|controls/);
+    assert.match(app.renderQuoteThumbnail([{ type: 'video' }]), /aria-label="Media not downloaded"/);
+    assert.equal(app.renderQuoteThumbnail([]), '');
+
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    for (const name of ['child', 'reply']) {
+        assert.equal(html.split(`:class="{ 'quote-compact': isMediaQuotingMedia(${name}) }"`).length - 1, 2);
+        assert.equal(html.split(`isMediaQuotingMedia(${name}) ? renderQuoteThumbnail(${name}.qt_media) : renderMediaGrid(${name}.qt_media)`).length - 1, 2);
+        assert.equal(html.split(`@click="if (!isMediaQuotingMedia(${name})) $event.stopPropagation()"`).length - 1, 2);
+    }
+    for (const main of ['threadData?.main', 'panelThreadData?.main']) {
+        assert.ok(html.includes(`:class="{ 'quote-media-flush': isMediaQuotingMedia(${main}) }"`));
+        assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media)" @click.stop></div>`));
+    }
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
+    assert.match(css, /\.quote-compact > \.quote-text \{[^}]*-webkit-line-clamp: 4;/);
+    assert.match(css, /\.quote-media-flush > \.quote-media \{[^}]*margin: 0 -12px;/);
 });
 
 test('result highlights follow the returned query rather than edits to the search box', async () => {

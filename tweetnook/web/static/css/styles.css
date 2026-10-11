@@ -2101,6 +2101,98 @@ body {
     display: block;
 }
 
+/* When a tweet with media quotes one with media, list views show the quote as X
+   does: byline, then a thumbnail beside the clamped text. Flex order puts the
+   thumbnail first without reordering the markup; later parts wrap below. */
+.quote-compact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+.quote-compact > * {
+    flex: 0 0 100%;
+    min-width: 0;
+}
+.quote-compact > .quote-media {
+    order: 1;
+    flex: 0 0 auto;
+    margin-right: 12px;
+}
+.quote-compact > .quote-text {
+    order: 2;
+    flex: 1 1 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    overflow: hidden;
+}
+.quote-compact > .quote-text ~ :not(.quote-media) {
+    order: 3;
+}
+.quote-thumbnail {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100px;
+    height: 100px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+}
+.quote-thumbnail img,
+.quote-thumbnail video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+.quote-thumbnail svg {
+    width: 28px;
+    height: 28px;
+    opacity: 0.5;
+}
+.quote-thumbnail-badge {
+    position: absolute;
+    left: 4px;
+    bottom: 4px;
+    padding: 0 4px;
+    border-radius: 4px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.78);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+}
+
+/* In the thread's main tweet, the same quote's media runs edge to edge, cancelling
+   the quote's 12px padding; videos letterbox like X's player. */
+.quote-media-flush {
+    overflow: hidden;
+}
+.quote-media-flush > .quote-media {
+    margin: 0 -12px;
+}
+.quote-media-flush > .quote-media:not(:has(~ :not(:empty))) {
+    margin-bottom: -12px;
+}
+.quote-media-flush > .quote-media > div {
+    width: 100% !important;
+    border: 0;
+    border-radius: 0;
+}
+.quote-media-flush > .quote-media video {
+    object-fit: contain;
+    background: #000;
+}
+
 /* Keep the previous list visible but subdued while a new filter or search loads. */
 .feed-refreshing {
     opacity: 0.55;

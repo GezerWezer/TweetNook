@@ -2368,7 +2368,9 @@ function tweetApp() {
                 const quoteAuthor = this.getQuoteAuthor(quote);
                 const quoteId = this.getTweetId(quote);
                 const quoteReplyTo = this.getReplyTo({ raw_json: quote });
-                quoteBlock = `<div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer"${quoteId ? ` data-thread-id="${escape(quoteId)}"` : ''} data-action="quote">`
+                // A compact quote's text is clamped by CSS, so it is rendered without Show more.
+                const compact = this.isMediaQuotingMedia(tweet);
+                quoteBlock = `<div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer${compact ? ' quote-compact' : ''}"${quoteId ? ` data-thread-id="${escape(quoteId)}"` : ''} data-action="quote">`
                     + '<div class="flex items-center space-x-1 text-[15px] mb-1">'
                     + '<div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">'
                     + `<span class="avatar-initial">${escape(quoteAuthor.initial)}</span>`
@@ -2379,8 +2381,10 @@ function tweetApp() {
                     + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(this.formatDate(quote.legacy?.created_at || quote.created_at))}</span>`
                     + '</div>'
                     + (quoteReplyTo ? replyLine(quoteReplyTo) : '')
-                    + `<div class="text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote, false, true)}</div>`
-                    + part(this.renderMediaGrid(tweet.qt_media), ' data-action="stop"')
+                    + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote, compact, true)}</div>`
+                    + (compact
+                        ? part(this.renderQuoteThumbnail(tweet.qt_media), ' class="quote-media"')
+                        : part(this.renderMediaGrid(tweet.qt_media), ' data-action="stop"'))
                     + part(this.renderCard({ raw_json: quote }), ' data-action="stop"')
                     + part(this.renderCommunityNote(quote, true), ' data-action="stop"')
                     + '</div>';
@@ -5163,18 +5167,49 @@ function tweetApp() {
             return `<span class="media-video-duration" data-video-duration ${visibility}>${duration}</span>`;
         },
 
+        // Like X, a quote is compact when both it and the tweet quoting it have media.
+        isMediaQuotingMedia(tweet) {
+            return Boolean(tweet?.media?.length && tweet?.qt_media?.length);
+        },
+
+        mediaSource(m) {
+            if (m.download?.local_path) return `/${m.download.local_path}`;
+            return this.isDemo ? (m.url || m.media_url || null) : null;
+        },
+
+        mediaPoster(m) {
+            if (m.download?.thumbnail_local_path) return `/${m.download.thumbnail_local_path}`;
+            return this.isDemo ? (m.thumbnail_url || null) : null;
+        },
+
+        // A compact quote's first media item as a still with its GIF or duration badge.
+        // It has no controls, so clicks fall through and open the quoted tweet.
+        renderQuoteThumbnail(mediaList) {
+            const m = mediaList?.[0];
+            if (!m) return '';
+            const isVideo = m.type === 'video' || m.type === 'animated_gif';
+            const src = this.mediaSource(m);
+            const still = isVideo ? this.mediaPoster(m) : src;
+            let preview;
+            if (still) {
+                preview = `<img src="${this.escapeHTML(still)}" loading="lazy" decoding="async" alt="">`;
+            } else if (src) {
+                // Without a poster, a video shows its first frame once metadata loads.
+                const frame = src.includes('#') ? src : `${src}#t=0.1`;
+                preview = `<video src="${this.escapeHTML(frame)}" preload="metadata" muted playsinline></video>`;
+            } else {
+                preview = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" role="img" aria-label="Media not downloaded"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>';
+            }
+            const label = m.type === 'animated_gif' ? 'GIF' : (isVideo ? this.formatMediaDuration(m.duration_millis) : '');
+            const badge = label ? `<span class="quote-thumbnail-badge">${label}</span>` : '';
+            return `<div class="quote-thumbnail">${preview}${badge}</div>`;
+        },
+
         renderMediaGrid(mediaList) {
             if (!mediaList || mediaList.length === 0) return '';
-            
-            const getSrc = (m) => {
-                if (m.download?.local_path) return `/${m.download.local_path}`;
-                return this.isDemo ? (m.url || m.media_url || null) : null;
-            };
 
-            const getPoster = (m) => {
-                if (m.download?.thumbnail_local_path) return `/${m.download.thumbnail_local_path}`;
-                return this.isDemo ? (m.thumbnail_url || null) : null;
-            };
+            const getSrc = m => this.mediaSource(m);
+            const getPoster = m => this.mediaPoster(m);
 
             const allMedia = mediaList.map(m => {
                 const type = (m.type === 'video' || m.type === 'animated_gif') ? 'video' : 'photo';
