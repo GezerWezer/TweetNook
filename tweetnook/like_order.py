@@ -13,10 +13,14 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import Any, TypeVar
 
-from tweetnook.client.timelines import _iter_entries, parse_timeline_response
+from tweetnook.client.timelines import _extract_tweet_results_from_content
 
 LIKE_SORTS = frozenset({"liked_latest", "liked_earliest"})
 T = TypeVar("T")
+_UNAVAILABLE_TYPENAMES = frozenset({"TweetTombstone", "TweetUnavailable"})
+
+# One capture's ordered (tweet_id, sort_index, requires_membership) observations.
+PageObservations = tuple[tuple[str, int | None, bool], ...]
 
 
 def repair_archive_blocks(items: list[T]) -> list[T]:
@@ -128,19 +132,71 @@ def _capture_key(digest: str, operation: str, filename: str) -> str:
     return f"raw_capture:{hashed}"
 
 
-def _page_ids(payload: dict[str, Any], members: set[str]) -> list[str]:
-    observations: dict[str, int | None] = {}
-    for entry in _iter_entries(payload):
-        tweets, _ = parse_timeline_response(entry, "Likes")
-        for tweet in tweets:
-            observations.setdefault(tweet.tweet_id, _integer(tweet.sort_index))
+def _entry_spans(node: Any) -> list[list[Any]]:
+    """List timeline entries in pre-order, each with the end of its nested-entry run.
+
+    Matches the timeline parser's entry discovery in one walk. Scalars and tweet
+    bodies are skipped: a tweet result never contains timeline entries, and its JSON
+    is most of each page. An entry's nested entries are spans[index + 1 : end].
+    """
+    spans: list[list[Any]] = []
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            index = None
+            if "entryId" in value and "content" in value:
+                index = len(spans)
+                spans.append([value, 0])
+            for key, child in value.items():
+                if key != "tweet_results" and isinstance(child, dict | list):
+                    visit(child)
+            if index is not None:
+                spans[index][1] = len(spans)
+        else:
+            for child in value:
+                if isinstance(child, dict | list):
+                    visit(child)
+
+    if isinstance(node, dict | list):
+        visit(node)
+    return spans
+
+
+def page_observations(payload: dict[str, Any]) -> PageObservations:
+    """Extract one Likes page's tweet observations independently of current memberships.
+
+    Equivalent to parsing each entry (and its nested entries) as a Likes timeline,
+    without building full tweet records. Captures are immutable, so callers may
+    reuse the result across rebuilds.
+    """
+    spans = _entry_spans(payload)
+    observations: list[tuple[str, int | None, bool]] = []
+    for start, (entry, end) in enumerate(spans):
+        seen: set[str] = set()
+        for nested, _end in spans[start:end]:
+            sort_index = _integer(nested.get("sortIndex"))
+            for result in _extract_tweet_results_from_content(nested.get("content", {})):
+                tweet_id = result.get("rest_id")
+                if result.get("__typename") in _UNAVAILABLE_TYPENAMES or not tweet_id:
+                    continue
+                if tweet_id not in seen:
+                    seen.add(tweet_id)
+                    observations.append((tweet_id, sort_index, False))
         # An unavailable tweet can still have a usable Likes timeline entry. Only
         # retain such an ID if a membership already exists; don't fabricate tweets.
         entry_id = str(entry.get("entryId") or "")
-        if not tweets and entry_id.startswith("tweet-"):
+        if not seen and entry_id.startswith("tweet-"):
             tweet_id = entry_id.removeprefix("tweet-")
-            if tweet_id in members:
-                observations.setdefault(tweet_id, _integer(entry.get("sortIndex")))
+            observations.append((tweet_id, _integer(entry.get("sortIndex")), True))
+    return tuple(observations)
+
+
+def _page_ids(page: PageObservations, members: set[str]) -> list[str]:
+    observations: dict[str, int | None] = {}
+    for tweet_id, sort_index, requires_membership in page:
+        if requires_membership and tweet_id not in members:
+            continue
+        observations.setdefault(tweet_id, sort_index)
     indices = list(observations.values())
     if all(index is not None and index >= 0 for index in indices):
         if len(set(indices)) == len(indices):
@@ -158,6 +214,32 @@ class LikeOrder:
         if sort == "liked_earliest":
             known.reverse()
         return known + [tweet_id for tweet_id in self.ids if tweet_id in self.unknown]
+
+
+def _capture_pages(
+    store: Any, captures: list[Any]
+) -> dict[tuple[str, str | None], PageObservations | None]:
+    """Parse only captures not seen by an earlier rebuild on this store.
+
+    Live captures are append-only observations with unique keys. Keying by the
+    capture timestamp as well reparses a capture if a row is ever replaced.
+    """
+    cached = dict(getattr(store, "_like_capture_pages", None) or {})
+    keys = [(row["row_key"], row["captured_at"]) for row in captures]
+    missing = {row_key for row_key, captured_at in keys if (row_key, captured_at) not in cached}
+    if missing:
+        rows = store._rows_for_values(
+            "raw_capture", "row_key", list(missing), columns=["row_key", "captured_at", "raw_json"]
+        )
+        for row in rows:
+            payload = _payload(row)
+            cached[(row["row_key"], row["captured_at"])] = (
+                page_observations(payload) if isinstance(payload, dict) else None
+            )
+    pages = {key: cached[key] for key in keys if key in cached}
+    if not store.conn.in_transaction:
+        store._like_capture_pages = pages
+    return pages
 
 
 def load_like_order(store: Any) -> LikeOrder:
@@ -179,19 +261,21 @@ def load_like_order(store: Any) -> LikeOrder:
 
     # Join paginated captures by cursor, not by sortIndex magnitudes from different
     # requests. Some responses use request-relative indices rather than like IDs.
-    crawls: list[list[str]] = []
-    tails: dict[str, int] = {}
-    disconnected: list[bool] = []
-    for row in store.conn.execute(
-        "SELECT raw_json, cursor_in, cursor_out FROM archive "
+    captures = store.conn.execute(
+        "SELECT row_key, captured_at, cursor_in, cursor_out FROM archive "
         "WHERE record_type = 'raw_capture' AND operation = 'Likes' "
         "AND source = 'live_graphql' AND http_status = 200 "
         "ORDER BY captured_at, rowid"
-    ):
-        payload = _payload(row)
-        if not isinstance(payload, dict):
+    ).fetchall()
+    pages = _capture_pages(store, captures)
+    crawls: list[list[str]] = []
+    tails: dict[str, int] = {}
+    disconnected: list[bool] = []
+    for row in captures:
+        page = pages.get((row["row_key"], row["captured_at"]))
+        if page is None:
             continue
-        ids = _page_ids(payload, members)
+        ids = _page_ids(page, members)
         cursor_in = row["cursor_in"]
         crawl_index = tails.get(cursor_in) if cursor_in else None
         if crawl_index is None:

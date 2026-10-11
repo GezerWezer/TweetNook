@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from tweetnook.client.timelines import TimelineTweet, parse_tweet_detail_tweets
 from tweetnook.config import DatabaseConfig, XDGPaths
@@ -302,6 +303,20 @@ ENRICHMENT_INDEXES = {
     "idx_archive_capture_target": "record_type, cursor_in, captured_at DESC",
 }
 
+# Pages read by browsing and search: the contentless FTS index blobs, membership
+# rows, and the canonical objects that availability overlays onto them. LENGTH()
+# loads TEXT values, including overflow pages; FTS blobs are fetched instead.
+_WARM_READ_QUERIES = (
+    "SELECT block FROM archive_fts_data",
+    "SELECT SUM(LENGTH(raw_json)) FROM archive INDEXED BY idx_archive_membership "
+    "WHERE record_type = 'tweet'",
+    "SELECT SUM(LENGTH(object.raw_json)) "
+    "FROM archive AS membership INDEXED BY idx_archive_membership "
+    "JOIN archive AS object INDEXED BY idx_archive_tweet_id "
+    "ON object.tweet_id = membership.tweet_id "
+    "WHERE membership.record_type = 'tweet' AND object.record_type = 'tweet_object'",
+)
+
 SECONDARY_RECORD_TYPES = ("tweet_object", "tweet_relation", "media", "url", "url_ref", "article")
 LIVE_SOURCE = "live_graphql"
 ARCHIVE_SOURCE = "x_archive"
@@ -320,6 +335,7 @@ class ArchiveStore:
         self.db_path = db_path
         self._closed = False
         self._like_order_lock = threading.RLock()
+        self._warm_cancelled = False
         self._count_cache: dict[str, tuple[int, int]] = {}
         self._search_count_cache: dict[tuple, tuple[tuple[int, int], int]] = {}
         self.migration_report: MigrationReport | None = None
@@ -721,6 +737,7 @@ class ArchiveStore:
     def close(self) -> None:
         if self._closed:
             return
+        self.interrupt_warm_reads()
         try:
             # Read-only/current-schema opens stay cheap. Writers refresh planner
             # statistics at the end of their job, including direct SQL tag writes.
@@ -3121,6 +3138,35 @@ class ArchiveStore:
 
         with self._like_order_lock:
             return load_like_order(self)
+
+    def warm_like_order(self) -> None:
+        """Rebuild the derived like sequence and its paging table before a request needs it."""
+        with self._like_order_lock:
+            self._ensure_like_order_table()
+
+    def warm_read_cache(self) -> None:
+        """Read the pages Web browsing and search use so the OS page cache holds them.
+
+        Uses a separate read-only connection, so it never queues behind or holds the
+        shared connection. interrupt_warm_reads() and close() stop it mid-query.
+        """
+        if self._warm_cancelled:
+            return
+        conn = sqlite3.connect(f"file:{quote(str(self.db_path))}?mode=ro", uri=True)
+        # Polled while queries run, so a stop requested at any moment takes effect.
+        conn.set_progress_handler(lambda: self._warm_cancelled, 10_000)
+        try:
+            for sql in _WARM_READ_QUERIES:
+                for _row in conn.execute(sql):
+                    pass
+        except sqlite3.OperationalError:
+            pass  # Stopped, or the archive is busy; warming is best-effort.
+        finally:
+            conn.close()
+
+    def interrupt_warm_reads(self) -> None:
+        """Stop current and future warm_read_cache() calls promptly."""
+        self._warm_cancelled = True
 
     def _ensure_like_order_table(self) -> None:
         """Index the immutable derived sequence once per input revision/connection.

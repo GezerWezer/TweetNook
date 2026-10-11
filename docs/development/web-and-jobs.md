@@ -53,10 +53,20 @@ never modifies host services.
 1. initialize configuration, activity retention, notices, and `JobSupervisor`;
 2. read durable Setup state outside SQLite (missing state plus existing DB means completed);
 3. reconcile initialization and attach an existing ready archive with `create=False`;
-4. set up indexes/FTS and clear stats only when a store attaches;
+4. set up indexes/FTS, clear stats, and request an archive warm-up only when a store
+   attaches;
 5. start one scheduler only when both storage and completed Setup are available;
-6. on shutdown, stop scheduling, gracefully stop the managed worker, wait for FTS/stats,
-   and close storage.
+6. on shutdown, stop scheduling, gracefully stop the managed worker, stop the warm-up,
+   wait for FTS/stats, and close storage.
+
+`web/warmup.py`'s `ArchiveWarmer` runs off the request path in one daemon thread.
+Each pass rebuilds the derived like order and its paging table, then reads the FTS
+index, membership rows, and their canonical objects through a separate read-only
+connection so the OS page cache holds what browsing and search read first. The
+lifespan requests a pass when a store attaches and after every managed job
+finishes, because jobs change like-order inputs and evict cached pages. Requests
+during a pass coalesce into one follow-up pass. Shutdown interrupts the page reads
+(a SQLite progress handler) and waits for the pass before closing the store.
 
 `SetupCoordinator` persists worker intent/run IDs before launch, waits for local
 import plus successfully tested auth, and starts enrichment once. Failed or

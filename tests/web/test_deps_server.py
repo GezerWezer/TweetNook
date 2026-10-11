@@ -27,6 +27,20 @@ def _auth_app() -> FastAPI:
     return app
 
 
+def _recording_warmer(events: list[str]):
+    class Warmer:
+        def __init__(self, _store):
+            pass
+
+        def request(self):
+            events.append("warm")
+
+        def stop(self):
+            events.append("warm-stop")
+
+    return Warmer
+
+
 def _paths(tmp_path: Path) -> XDGPaths:
     paths = XDGPaths(
         config_dir=tmp_path / "config",
@@ -129,13 +143,14 @@ def test_lifespan_opens_indexes_and_closes_store(monkeypatch, tmp_path: Path) ->
         open_store,
     )
     monkeypatch.setattr(server.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(server, "ArchiveWarmer", _recording_warmer(events))
     app = FastAPI(lifespan=server.lifespan)
 
     with TestClient(app):
         assert server_state["store"] is store
-        assert events == ["scalar", "thread", "fts"]
+        assert events == ["scalar", "thread", "fts", "warm"]
 
-    assert events == ["scalar", "thread", "fts", "close"]
+    assert events == ["scalar", "thread", "fts", "warm", "warm-stop", "close"]
 
 
 def test_lifespan_without_paths_does_not_open_a_store(monkeypatch) -> None:
@@ -225,12 +240,13 @@ async def test_lifespan_closes_store_when_context_exits_with_error(
     server_state["paths"] = _paths(tmp_path)
     monkeypatch.setattr(server, "open_archive_store", lambda *_args, **_kwargs: store)
     monkeypatch.setattr(server.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(server, "ArchiveWarmer", _recording_warmer(events))
 
     with pytest.raises(RuntimeError, match="application failed"):
         async with server.lifespan(FastAPI()):
             raise RuntimeError("application failed")
 
-    assert events == ["scalar", "fts", "close"]
+    assert events == ["scalar", "fts", "warm", "warm-stop", "close"]
 
 
 def test_packaged_root_and_static_assets_are_served() -> None:
