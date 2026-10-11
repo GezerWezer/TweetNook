@@ -111,6 +111,18 @@ window.tweetNookSyncVideoUi = tweetNookSyncVideoUi;
 window.tweetNookShowVideoUi = tweetNookShowVideoUi;
 window.tweetNookLeaveVideoUi = tweetNookLeaveVideoUi;
 
+// Media lists travel in an HTML-escaped data attribute, so no field value is ever
+// parsed as script inside the inline handler.
+function tweetNookOpenLightbox(element, index) {
+    const holder = element?.closest?.('[data-lightbox-media]');
+    if (!holder) return;
+    window.dispatchEvent(new CustomEvent('open-lightbox', {
+        detail: { media: JSON.parse(holder.dataset.lightboxMedia), index },
+    }));
+}
+
+window.tweetNookOpenLightbox = tweetNookOpenLightbox;
+
 // Feed cards are plain markup handled by delegated listeners. Writing them while
 // Alpine's observer is paused keeps Alpine from walking (and binding) every card.
 function outsideAlpine(update) {
@@ -2201,29 +2213,6 @@ function tweetApp() {
             return tweetObj ? this.feedDisplayTweet(tweetObj) : null;
         },
 
-        // Re-render the cards showing a tweet whose data changed. Avatars the browser
-        // already has stay visible instead of falling back to initials for a frame.
-        refreshFeedCards(tweetId) {
-            const list = this.feedListElement();
-            if (!list || !tweetId) return;
-            for (const card of [...list.children]) {
-                if (card.dataset.tweetId !== tweetId && card.dataset.threadId !== tweetId) continue;
-                const tweetObj = this.tweets.find(tweet => String(tweet.tweet_id) === card.dataset.tweetId);
-                if (!tweetObj) continue;
-                let fresh = null;
-                outsideAlpine(() => {
-                    card.insertAdjacentHTML('beforebegin', this.renderFeedCard(tweetObj));
-                    fresh = card.previousElementSibling;
-                    card.remove();
-                });
-                for (const image of fresh.querySelectorAll('img.avatar-image')) {
-                    if (image.complete && image.naturalWidth) this.avatarLoaded(image);
-                }
-            }
-            this.syncListMenuButton();
-            this.placeListMenu();
-        },
-
         // Show more expands text in place, as x-html did, leaving media playing.
         expandFeedText(tweetId) {
             const list = this.feedListElement();
@@ -3376,7 +3365,6 @@ function tweetApp() {
             };
 
             for (const tweet of this.tweets) assign(tweet);
-            this.refreshFeedCards(tweetId);
             for (const tweet of this.quotesList) assign(tweet);
             for (const tweet of this.panelQuotesList) assign(tweet);
             visitThread(this.threadData);
@@ -4977,7 +4965,7 @@ function tweetApp() {
             if (allMedia.length === 0) return '';
             
             const downloadedMedia = allMedia.filter(x => x.src);
-            const jsonStr = JSON.stringify(downloadedMedia).replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+            const mediaAttr = `data-lightbox-media="${this.escapeHTML(JSON.stringify(downloadedMedia))}"`;
 
             const placeholderHtml = `
                 <div class="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
@@ -4999,8 +4987,8 @@ function tweetApp() {
                                 ${placeholderHtml}
                             </div>`;
                 } else if (type === 'photo') {
-                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block media-photo" style="${containerStyle}" @click.stop>
-                                <img src="${src}" loading="lazy" decoding="async" onclick="window.dispatchEvent(new CustomEvent('open-lightbox', { detail: { media: JSON.parse('${jsonStr}'), index: 0 } }))" class="w-full h-full object-cover cursor-pointer block">
+                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block media-photo" style="${containerStyle}" ${mediaAttr} @click.stop>
+                                <img src="${src}" loading="lazy" decoding="async" onclick="window.tweetNookOpenLightbox(this, 0)" class="w-full h-full object-cover cursor-pointer block">
                             </div>`;
                 } else {
                     const loopAttr = (isGif || isShort) ? 'loop' : '';
@@ -5021,7 +5009,7 @@ function tweetApp() {
             }
             
             let gridClass = allMedia.length === 2 ? 'grid-cols-2' : 'grid-cols-2 grid-rows-2';
-            let html = `<div class="mt-3 grid gap-[2px] rounded-2xl overflow-hidden border border-[var(--border-color)] aspect-[16/9] ${gridClass}" @click.stop>`;
+            let html = `<div class="mt-3 grid gap-[2px] rounded-2xl overflow-hidden border border-[var(--border-color)] aspect-[16/9] ${gridClass}" ${mediaAttr} @click.stop>`;
             
             let downloadedIdx = 0;
             allMedia.forEach((item, idx) => {
@@ -5036,7 +5024,7 @@ function tweetApp() {
                     const currentDlIdx = downloadedIdx++;
                     if (type === 'photo') {
                         html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass} media-photo">
-                                    <img src="${src}" loading="lazy" decoding="async" onclick="window.dispatchEvent(new CustomEvent('open-lightbox', { detail: { media: JSON.parse('${jsonStr}'), index: ${currentDlIdx} } }))" class="absolute inset-0 w-full h-full object-cover cursor-pointer">
+                                    <img src="${src}" loading="lazy" decoding="async" onclick="window.tweetNookOpenLightbox(this, ${currentDlIdx})" class="absolute inset-0 w-full h-full object-cover cursor-pointer">
                                 </div>`;
                     } else {
                         const loopAttr = (isGif || isShort) ? 'loop' : '';
@@ -5094,7 +5082,7 @@ function tweetApp() {
                 if (ent.ref?.urlType === 'ExternalUrl' && ent.ref?.url) {
                     html += this.escapeHTML(text.substring(lastIndex, ent.fromIndex));
                     const linkText = this.escapeHTML(text.substring(ent.fromIndex, ent.toIndex));
-                    const href = this.escapeHTML(ent.ref.url);
+                    const href = this.safeURL(ent.ref.url);
                     html += `<a href="${href}" target="_blank" class="text-[var(--accent-color)] hover:underline" @click.stop>${linkText}</a>`;
                     lastIndex = ent.toIndex;
                 }
