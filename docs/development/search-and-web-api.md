@@ -91,7 +91,12 @@ For Likes, `liked_latest` and `liked_earliest` use the derived like sequence.
 archive datasets; live observations win conflicts and unknown-order rows stay
 last. No timestamp is inferred from a sort index. Transactional input revisions
 invalidate the immutable cache across connections, while media/tag/content-only
-updates leave it reusable. A temporary table indexes both order directions for
+updates leave it reusable. Rebuilds parse only captures that an earlier rebuild on
+the same store has not seen: live Likes captures are append-only observations, so
+each page's extracted observations are kept per capture key and timestamp, and the
+capture list itself is read without `raw_json`. Extraction walks each page once and
+skips tweet bodies, which never contain timeline entries. The Web server rebuilds
+the order in the background at startup and after jobs (see [Web and Jobs](web-and-jobs.md)). A temporary table indexes both order directions for
 paging, without serializing the entire sequence on each request.
 
 Article search is a separate stored-article scan rather than membership FTS.

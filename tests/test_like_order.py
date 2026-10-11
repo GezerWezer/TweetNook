@@ -8,8 +8,10 @@ import pytest
 from tests.conftest import make_tweet_result
 from tests.test_storage import _tweet
 from tests.test_web_tweets_api import _list_tweets
+from tweetnook import like_order
 from tweetnook.archive_import import _import_likes
-from tweetnook.like_order import merge_missing, repair_archive_blocks
+from tweetnook.client.timelines import _iter_entries, parse_timeline_response
+from tweetnook.like_order import _integer, merge_missing, page_observations, repair_archive_blocks
 from tweetnook.search import SearchQueryError, search_posts
 from tweetnook.storage.backend import ARCHIVE_SOURCE, LIVE_SOURCE, ArchiveStore, _PageBuffer
 
@@ -388,3 +390,125 @@ def test_corrupt_capture_payload_does_not_break_unknown_order(store):
     )
     assert store.get_like_order().unknown == frozenset({"A"})
     assert json.loads(json.dumps(store.get_like_order().ordered_ids("liked_latest"))) == ["A"]
+
+
+def _reference_page_ids(payload, members):
+    """The full per-entry timeline parse that page_observations must reproduce."""
+    observations = {}
+    for entry in _iter_entries(payload):
+        tweets, _ = parse_timeline_response(entry, "Likes")
+        for tweet in tweets:
+            observations.setdefault(tweet.tweet_id, _integer(tweet.sort_index))
+        entry_id = str(entry.get("entryId") or "")
+        if not tweets and entry_id.startswith("tweet-"):
+            tweet_id = entry_id.removeprefix("tweet-")
+            if tweet_id in members:
+                observations.setdefault(tweet_id, _integer(entry.get("sortIndex")))
+    indices = list(observations.values())
+    if all(index is not None and index >= 0 for index in indices) and len(set(indices)) == len(
+        indices
+    ):
+        return sorted(observations, key=observations.__getitem__, reverse=True)
+    return list(observations)
+
+
+def _item(tweet_id, sort_index=None, result=None):
+    entry = {
+        "entryId": f"tweet-{tweet_id}",
+        "content": {
+            "itemContent": {
+                "tweet_results": {"result": result or make_tweet_result(tweet_id, "needle")}
+            }
+        },
+    }
+    if sort_index is not None:
+        entry["sortIndex"] = sort_index
+    return entry
+
+
+@pytest.mark.parametrize("members", [set(), {"D"}, {"D", "E", "H"}])
+@pytest.mark.parametrize("indexed", [True, False])
+def test_page_observations_reproduce_the_full_timeline_parse(members, indexed):
+    def index(value):
+        return value if indexed else None
+
+    module = {
+        "entryId": "profile-conversation-1",
+        "sortIndex": index("20"),
+        "content": {
+            "items": [
+                {"entryId": "profile-conversation-1-tweet-B", "item": _item("B")["content"]},
+                {
+                    "entryId": "profile-conversation-1-tweet-C",
+                    "item": {
+                        "itemContent": {
+                            "tweet_results": {
+                                "result": {
+                                    "__typename": "TweetWithVisibilityResults",
+                                    "tweet": make_tweet_result("C", "needle"),
+                                }
+                            }
+                        }
+                    },
+                },
+            ]
+        },
+    }
+    wrapper = {
+        "entryId": "tweet-H",
+        "sortIndex": index("15"),
+        "content": {"wrapper": _item("G", index("40"))},
+    }
+    entries = [
+        _item("A", index("30")),
+        module,
+        wrapper,
+        _item("D", index("10"), {"__typename": "TweetTombstone"}),
+        _item("E", index("5"), {"__typename": "TweetUnavailable"}),
+        _item("A", index("1")),
+        _item("F", index("bad"), {"legacy": {}}),
+        _item("H", index("3"), {"__typename": "TweetUnavailable"}),
+        {"entryId": "cursor-bottom-1", "sortIndex": index("0"), "content": {"value": "c"}},
+    ]
+    payload = {"data": {"timeline": {"instructions": [{"entries": entries}]}}}
+
+    assert like_order._page_ids(page_observations(payload), members) == _reference_page_ids(
+        payload, members
+    )
+
+
+def test_rebuilds_parse_only_captures_added_since_the_last_rebuild(store, monkeypatch):
+    parsed = []
+    original = like_order.page_observations
+
+    def counting(payload):
+        parsed.append(payload)
+        return original(payload)
+
+    monkeypatch.setattr(like_order, "page_observations", counting)
+    for tweet_id in "ABC":
+        membership(store, tweet_id)
+    capture(store, ["B", "A"], cursor_out="older")
+    assert store.get_like_order().ordered_ids("liked_latest") == ["B", "A", "C"]
+    assert len(parsed) == 1
+
+    capture(store, ["C", "B"])
+    assert store.get_like_order().ordered_ids("liked_latest") == ["C", "B", "A"]
+    assert len(parsed) == 2
+
+    store.conn.execute("DELETE FROM archive WHERE record_type = 'raw_capture'")
+    store.conn.commit()
+    assert store.get_like_order().unknown == frozenset("ABC")
+    assert store._like_capture_pages == {}
+
+
+def test_warm_like_order_builds_the_sequence_and_paging_table(store):
+    for tweet_id in "AB":
+        membership(store, tweet_id)
+    capture(store, ["B", "A"])
+
+    store.warm_like_order()
+
+    order = store._like_order_cache[1]
+    assert store._indexed_like_order is order
+    assert order.ordered_ids("liked_latest") == ["B", "A"]

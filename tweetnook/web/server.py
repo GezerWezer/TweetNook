@@ -36,6 +36,7 @@ from tweetnook.web.routes.tags import router as tags_router
 from tweetnook.web.routes.tweets import router as tweets_router
 from tweetnook.web.setup_coordinator import SetupCoordinator
 from tweetnook.web.stats_cache import web_stats_cache
+from tweetnook.web.warmup import ArchiveWarmer
 
 
 def _build_fts_in_background(store) -> None:
@@ -75,6 +76,9 @@ def attach_archive_store() -> bool:
         thread = threading.Thread(target=_build_fts_in_background, args=(store,), daemon=True)
         server_state["fts_thread"] = thread
         thread.start()
+        warmer = ArchiveWarmer(store)
+        server_state["archive_warmer"] = warmer
+        warmer.request()
         web_stats_cache.clear()
         return True
 
@@ -127,8 +131,15 @@ def stop_avatar_cache_manager() -> None:
         manager.stop()
 
 
+def request_archive_warmup() -> None:
+    if warmer := server_state.get("archive_warmer"):
+        warmer.request()
+
+
 def detach_archive_store() -> None:
     stop_scheduler()
+    if warmer := server_state.pop("archive_warmer", None):
+        warmer.stop()
     if thread := server_state.pop("fts_thread", None):
         if hasattr(thread, "join"):
             thread.join()
@@ -165,6 +176,8 @@ async def lifespan(app: FastAPI):
             def on_job_complete(run_id: str, exit_code: int) -> None:
                 server_state.pop("activity_worker_started_at", None)
                 web_stats_cache.clear()
+                # Jobs change like-order inputs and churn the page cache.
+                request_archive_warmup()
                 coordinator = server_state.get("setup_coordinator")
                 run = read_run(paths.data_dir, run_id) or {}
                 setup_job = coordinator and run_id in {

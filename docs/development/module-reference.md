@@ -114,6 +114,7 @@ routes; there is no separate manual-tag service module.
 | [tweetnook/web/deps.py](../../tweetnook/web/deps.py) | Process-global state and HTTP Basic password verification | [Web and Jobs](web-and-jobs.md); deps/server tests |
 | [tweetnook/web/server.py](../../tweetnook/web/server.py) | FastAPI app/lifespan, routes/static/media, supervisor/scheduler/stats cleanup, Uvicorn | [Web and Jobs](web-and-jobs.md); deps/server/Web tests |
 | [tweetnook/web/stats_cache.py](../../tweetnook/web/stats_cache.py) | Five-minute stale-while-revalidate snapshot cache | [Search and Web API](search-and-web-api.md); stats-cache tests |
+| [tweetnook/web/warmup.py](../../tweetnook/web/warmup.py) | Coalesced background like-order rebuild and hot-page reads | [Web and Jobs](web-and-jobs.md); `test_warmup.py` |
 
 ## Web routes
 

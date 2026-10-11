@@ -118,6 +118,31 @@ def test_upgrade_recognizes_existing_sqlite(first_run):
         assert server_state["schedule_manager"] is scheduler
 
 
+def test_attached_archive_warms_at_start_and_after_each_job(first_run, monkeypatch):
+    events = []
+
+    class Warmer:
+        def __init__(self, _store):
+            events.append("init")
+
+        def request(self):
+            events.append("request")
+
+        def stop(self):
+            events.append("stop")
+
+    monkeypatch.setattr(server, "ArchiveWarmer", Warmer)
+    open_archive_store(first_run, create=True).close()
+    with TestClient(server.app):
+        assert events == ["init", "request"]
+        supervisor = server_state["job_supervisor"]
+        supervisor.start(kind="sync", title="Sync", cli_args=["sync"], origin="web")
+        supervisor.finish()
+        assert events == ["init", "request", "request"]
+
+    assert events == ["init", "request", "request", "stop"]
+
+
 @pytest.fixture
 def coordinator(first_run, monkeypatch):
     supervisor = Supervisor(first_run, server_state["config"])
