@@ -4682,8 +4682,8 @@ function tweetApp() {
                                 ${placeholderHtml}
                             </div>`;
                 } else if (type === 'photo') {
-                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block" style="${containerStyle}" @click.stop>
-                                <img src="${src}" loading="lazy" decoding="async" onclick="window.dispatchEvent(new CustomEvent('open-lightbox', { detail: { media: JSON.parse('${jsonStr}'), index: 0 } }))" class="w-full h-full object-cover cursor-pointer hover:opacity-90 transition block">
+                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block media-photo" style="${containerStyle}" @click.stop>
+                                <img src="${src}" loading="lazy" decoding="async" onclick="window.dispatchEvent(new CustomEvent('open-lightbox', { detail: { media: JSON.parse('${jsonStr}'), index: 0 } }))" class="w-full h-full object-cover cursor-pointer block">
                             </div>`;
                 } else {
                     const loopAttr = (isGif || isShort) ? 'loop' : '';
@@ -4718,8 +4718,8 @@ function tweetApp() {
                 } else {
                     const currentDlIdx = downloadedIdx++;
                     if (type === 'photo') {
-                        html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass}">
-                                    <img src="${src}" loading="lazy" decoding="async" onclick="window.dispatchEvent(new CustomEvent('open-lightbox', { detail: { media: JSON.parse('${jsonStr}'), index: ${currentDlIdx} } }))" class="absolute inset-0 w-full h-full object-cover cursor-pointer hover:opacity-90 transition">
+                        html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass} media-photo">
+                                    <img src="${src}" loading="lazy" decoding="async" onclick="window.dispatchEvent(new CustomEvent('open-lightbox', { detail: { media: JSON.parse('${jsonStr}'), index: ${currentDlIdx} } }))" class="absolute inset-0 w-full h-full object-cover cursor-pointer">
                                 </div>`;
                     } else {
                         const loopAttr = (isGif || isShort) ? 'loop' : '';
