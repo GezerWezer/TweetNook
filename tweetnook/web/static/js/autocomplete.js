@@ -303,6 +303,32 @@ function searchAutocomplete() {
                 + this.escapeHtml(text.substring(idx + cleanQuery.length));
         },
 
+        highlightTagMatch(text, query) {
+            if (!text) return '';
+            const folded = text.toLowerCase();
+            const ranges = (query || '').toLowerCase().split(/\s+/).filter(Boolean)
+                .map(fragment => [folded.indexOf(fragment), fragment.length])
+                .filter(([start]) => start !== -1)
+                .map(([start, length]) => [start, start + length])
+                .sort((a, b) => a[0] - b[0]);
+            // Merge overlapping fragments before adding markup, and escape
+            // every slice of the original label.
+            const merged = [];
+            for (const [start, end] of ranges) {
+                const previous = merged[merged.length - 1];
+                if (previous && start <= previous[1]) previous[1] = Math.max(previous[1], end);
+                else merged.push([start, end]);
+            }
+            let html = '';
+            let cursor = 0;
+            for (const [start, end] of merged) {
+                html += this.escapeHtml(text.substring(cursor, start))
+                    + '<b>' + this.escapeHtml(text.substring(start, end)) + '</b>';
+                cursor = end;
+            }
+            return html + this.escapeHtml(text.substring(cursor));
+        },
+
         escapeHtml(unsafe) {
             return (unsafe || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         },

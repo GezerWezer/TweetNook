@@ -285,7 +285,10 @@ GET /api/tags/stats
 
 Author search returns at most 10 local matches; blank input is empty. Tag
 autocomplete returns tag/count entries and also supports blank input for popular
-tags.
+tags. Every whitespace-separated query fragment must appear in the same tag,
+case-insensitively and literally (including `%` and `_`). Counts and limits are
+unchanged; the dropdown highlights the matching fragments. For example, `rem D`
+matches `REM (Deadlock)`. The static demo follows the same matching rules.
 
 Tag mutation routes:
 

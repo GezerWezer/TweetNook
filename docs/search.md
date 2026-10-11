@@ -46,6 +46,8 @@ controlling groups.
 In the web app, `tag:` and `description:` values are editable capsules. Type
 spaces inside them without adding quotes, then press **Escape** to continue
 after the capsule. Copied queries include the quotes needed by the terminal.
+Tag suggestions match each space-separated fragment anywhere in the tag,
+ignoring case: typing `tag:rem D` suggests **REM** (**D**eadlock).
 
 ## People
 

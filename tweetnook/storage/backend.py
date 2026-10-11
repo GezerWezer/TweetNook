@@ -3934,9 +3934,11 @@ class ArchiveStore:
           AND json_each.type = 'text'
         """
         params = []
-        if query:
-            sql += " AND LOWER(json_each.value) LIKE ?"
-            params.append(f"%{query.lower()}%")
+        # Each fragment must occur in the same tag; punctuation between them
+        # does not prevent a match. instr keeps %, _ and other input literal.
+        for fragment in query.lower().split():
+            sql += " AND instr(LOWER(json_each.value), ?) > 0"
+            params.append(fragment)
 
         sql += " GROUP BY LOWER(json_each.value) ORDER BY count DESC LIMIT ?"
         params.append(limit)

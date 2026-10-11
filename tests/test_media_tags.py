@@ -418,6 +418,22 @@ def test_tag_counts_support_query_and_unlimited_results(paths) -> None:
     store.close()
 
 
+def test_tag_counts_match_all_partial_fragments_literally(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    store.update_media_tags("1", ["REM (Deadlock)", "REM (Sleep)", "Deadlock"])
+    store.update_media_tags("2", ["REM (Deadlock)", "100%_literal [tag]"])
+
+    for query in ("rem D", " REM   d ", "D\tREM", "em dead"):
+        assert store.get_tag_counts(query=query) == [{"tag": "REM (Deadlock)", "count": 2}]
+    assert store.get_tag_counts(query="rem absent") == []
+    assert store.get_tag_counts(query="%_ [") == [{"tag": "100%_literal [tag]", "count": 1}]
+    assert store.get_tag_counts(query="REM (Deadlock)") == [{"tag": "REM (Deadlock)", "count": 2}]
+    assert store.get_tag_counts(query=" \t ") == store.get_tag_counts()
+    assert len(store.get_tag_counts(query="d", limit=1)) == 1
+    store.close()
+
+
 def test_export_includes_media_tags_only_for_tagged_tweets(paths) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None

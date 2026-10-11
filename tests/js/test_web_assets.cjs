@@ -573,6 +573,50 @@ test('autocomplete highlighting escapes API-provided labels', () => {
     assert.equal(component.highlightMatch('<script>', ''), '&lt;script&gt;');
 });
 
+test('tag autocomplete highlights partial fragments and escapes labels', () => {
+    const { searchAutocomplete } = loadScripts(
+        browserContext(), ['autocomplete.js'], '({searchAutocomplete})',
+    );
+    const component = searchAutocomplete();
+    assert.equal(component.highlightTagMatch('REM (Deadlock)', 'rem D'), '<b>REM</b> (<b>D</b>eadlock)');
+    assert.equal(component.highlightTagMatch('REM (Deadlock)', ' D\t rem '), '<b>REM</b> (<b>D</b>eadlock)');
+    assert.equal(component.highlightTagMatch('REM REM', 'em re'), '<b>REM</b> REM');
+    assert.equal(component.highlightTagMatch('<img> 100%_ [tag]', '%_ ['), '&lt;img&gt; 100<b>%_</b> <b>[</b>tag]');
+    assert.equal(component.highlightTagMatch('<script>', ' \t '), '&lt;script&gt;');
+    assert.equal(component.highlightTagMatch('<img>', 'missing'), '&lt;img&gt;');
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.ok(html.includes('x-html="highlightTagMatch(opt.value, opt.query)"'));
+});
+
+test('autocomplete requests partial tag fragments together and selects the complete tag', async () => {
+    const context = browserContext();
+    const calls = [];
+    context.fetch = async url => {
+        calls.push(url);
+        return { ok: true, json: async () => ({ tags: [{ tag: 'REM (Deadlock)', count: 2 }] }) };
+    };
+    const { searchAutocomplete, SEARCH_CARET, BOX_START, BOX_END } = loadScripts(
+        context, ['autocomplete.js'], '({searchAutocomplete, SEARCH_CARET, BOX_START, BOX_END})',
+    );
+    const component = immediateComponent(searchAutocomplete());
+    const typed = component.serializeSearchParts(component.parseSearchParts(
+        `${BOX_START}tag:rem D${SEARCH_CARET}${BOX_END}`,
+    ));
+    component.searchQuery = typed.query;
+    component.$refs.searchInput = {
+        isContentEditable: false, selectionStart: typed.caret,
+        focus() {}, setSelectionRange() {},
+    };
+    component.handleInput();
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.deepEqual(calls, ['/api/tags/autocomplete?q=rem%20d']);
+    assert.equal(component.options[0].value, 'REM (Deadlock)');
+    assert.equal(component.options[0].query, 'rem d');
+    component.handleInput = () => {};
+    component.selectOption(0);
+    assert.equal(component.searchQuery, 'tag:"REM (Deadlock)" ');
+});
+
 test('autocomplete separates attached content from post types and states', () => {
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
