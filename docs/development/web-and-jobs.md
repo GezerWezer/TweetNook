@@ -79,9 +79,17 @@ derived index is not repaired by these startup calls.
 The shared SQLite connection uses `check_same_thread=False` and disables Python's
 prepared-statement cache to avoid inconsistent concurrent cursor results
 ([CPython issue 118172](https://github.com/python/cpython/issues/118172)). SQLite's
-configured data page cache and mmap remain enabled. Stats report
-collection serializes itself with an in-process lock; general route use relies
-on SQLite and route behavior.
+configured data page cache and mmap remain enabled. General route use relies on
+SQLite and route behavior.
+
+SQLite holds a connection's mutex while each statement steps, so one long
+aggregate on the shared connection stalls every other request. Stats report and
+section collection therefore run on a private read-only connection from
+`ArchiveStore.open_reader()`, closed when collection ends, and take no
+process-wide lock: header and banner polls keep answering while Analytics
+collects. A caller with uncommitted writes on its own connection collects there
+instead, since a separate reader would not see those writes. The archive warmer's
+page reads use their own read-only connection for the same reason.
 
 The async avatar route runs its cache check, source lookup, and remote fetch on a
 dedicated eight-thread executor, so slow avatar downloads never occupy the shared

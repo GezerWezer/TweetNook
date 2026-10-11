@@ -553,6 +553,37 @@ def test_database_pragmas_use_configured_values(paths) -> None:
     store.close()
 
 
+def test_reader_reads_committed_rows_on_its_own_read_only_connection(paths) -> None:
+    config = AppConfig(database=DatabaseConfig(cache_size_kb=321, mmap_size_bytes=4096))
+    store = open_archive_store(paths, create=True, config=config)
+    assert store is not None
+    store._merge_records(
+        [
+            _membership(
+                store,
+                "1",
+                collection="bookmark",
+                text="committed",
+                created_at=CREATED_2026,
+                created_at_ts=1,
+                sort_index="1",
+            )
+        ]
+    )
+
+    reader = store.open_reader()
+    try:
+        assert reader.conn is not store.conn
+        assert reader.conn.execute("PRAGMA cache_size").fetchone()[0] == -321
+        assert reader._count("record_type = 'tweet'") == 1
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            reader.conn.execute("DELETE FROM archive")
+    finally:
+        reader.close()
+    assert store._count("record_type = 'tweet'") == 1
+    store.close()
+
+
 def test_database_pragmas_use_application_defaults(paths) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None

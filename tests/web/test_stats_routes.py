@@ -308,7 +308,12 @@ def test_collections_formats_names_and_backfill_states(make_web_client) -> None:
             ArchiveCollectionStats(collection_type="custom", post_count=4),
         ]
     )
-    store = SimpleNamespace(archive_stats=lambda: archive_stats)
+    store = SimpleNamespace(
+        archive_stats=lambda: archive_stats,
+        conn=SimpleNamespace(in_transaction=False),
+        close=lambda: None,
+    )
+    store.open_reader = lambda: store
     client = make_web_client(stats_routes.router, store=store)
 
     response = client.get("/api/stats/collections")

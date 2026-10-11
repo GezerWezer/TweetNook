@@ -180,7 +180,9 @@ def _storage_store(tmp_path: Path) -> SimpleNamespace:
     (media_dir / "core-poster.jpg").write_bytes(b"p" * 5)
     (media_dir / "context.mp4").write_bytes(b"v" * 13)
     (media_dir / "avatars" / "a1.jpg").write_bytes(b"a" * 7)
-    return SimpleNamespace(conn=conn, db_path=db_path)
+    store = SimpleNamespace(conn=conn, db_path=db_path, close=lambda: None)
+    store.open_reader = lambda: store
+    return store
 
 
 def test_storage_breakdown_accounts_for_database_media_and_avatars(
