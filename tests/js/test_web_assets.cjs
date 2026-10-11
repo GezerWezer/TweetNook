@@ -4801,6 +4801,41 @@ test('feed list replaces pages, appends only new tweets, and ignores stale respo
     assert.deepEqual(ids(), []);
 });
 
+test('profile search replaces feed cards after its Alpine template closes', async () => {
+    const context = browserContext();
+    const pending = [];
+    context.fetch = url => new Promise(resolve => pending.push({ url, resolve }));
+    const { app, list } = feedListApp(context);
+    const tweet = (id, username) => ({
+        tweet_id: id, text: `Tweet ${id}`,
+        author: { id: username, username, display_name: username },
+    });
+    const original = [tweet('1', 'alice'), tweet('2', 'bob')];
+    app.tweets = original;
+    app.renderFeedList(original);
+    app.profileCard = { username: 'bob' };
+    let searched;
+    const fetchTweets = app.fetchTweets;
+    app.fetchTweets = () => (searched = fetchTweets.call(app));
+
+    app.searchFrom(app.profileCard.username);
+    app.closeProfileCard();
+    // Alpine resolves magic refs through the initiating element. Removing the
+    // profile's x-if template leaves the async search with an empty refs scope.
+    app.$refs = {};
+    assert.match(pending[0].url, /q=from%3Abob/);
+    pending[0].resolve({ ok: true, status: 200, json: async () => ({
+        tweets: [tweet('2', 'bob')], page: 1, pages: 1, total: 1, has_more: false,
+    }) });
+    await searched;
+
+    assert.equal(app.profileCard, null);
+    assert.equal(app.searchQuery, 'from:bob');
+    assert.equal(app.total, 1);
+    assert.deepEqual(list.children.map(card => card.dataset.tweetId), ['2']);
+    assert.deepEqual(Array.from(app.tweets, item => item.tweet_id), ['2']);
+});
+
 test('feed clicks are delegated by data-action like the per-card handlers', () => {
     const { app, list } = feedListApp();
     const opened = [];
