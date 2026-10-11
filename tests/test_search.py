@@ -104,7 +104,9 @@ def test_parser_preserves_text_and_filter_negation() -> None:
     ]
 
 
-@pytest.mark.parametrize("query", ["OR cats", "cats OR", "cats AND", "unknown:value"])
+@pytest.mark.parametrize(
+    "query", ["OR cats", "cats OR", "cats AND", "unknown:value", 'description:"* *"']
+)
 def test_parser_rejects_malformed_or_unknown_operators(query: str) -> None:
     with pytest.raises(SearchQueryError):
         parse_search_query(query)
@@ -906,3 +908,49 @@ def test_hidden_tweets_are_left_out_unless_the_query_names_is_hidden(tmp_path):
     assert search_posts(store, None).total == 3
     assert ids("is:hidden") == []
     store.close()
+
+
+def test_description_filter_matches_media_tag_descriptions_only(tmp_path) -> None:
+    store = _real_store(
+        tmp_path,
+        [
+            _row("1", "Weekend photo"),
+            _row("2", "Pet picture"),
+            _row("3", "A red car I saw"),
+            _row("4", "Quoting the photo"),
+        ],
+    )
+    store._merge_records(
+        [
+            store._record(
+                row_key="tweet_relation:4:quote_of:1",
+                record_type="tweet_relation",
+                tweet_id="4",
+                relation_type="quote_of",
+                target_tweet_id="1",
+            )
+        ]
+    )
+    store.update_media_tags("1", ["cars"], description="A red car parked by the sea")
+    store.update_media_tags("2", ["pets"], description="Cat asleep on a sofa")
+
+    def ids(query: str) -> list[str]:
+        return sorted(row["tweet_id"] for row in search_posts(store, query).rows)
+
+    assert ids("description:car") == ["1", "4"]
+    assert ids('description:"Sea RED"') == ["1", "4"]
+    assert ids('description:"car sofa"') == []
+    assert ids('description:"car OR sofa"') == []
+    assert ids("description:ca*") == ["1", "2", "4"]
+    assert ids("-description:car") == ["2", "3"]
+    assert ids("description:sofa OR from:nobody") == ["2"]
+    assert ids("red") == ["3"]
+
+    store.update_media_tags("2", ["pets"], description="Dog on a rug")
+    assert ids("description:sofa") == []
+    assert ids("description:dog") == ["2"]
+    store.update_media_tags("2", ["pets"])
+    assert ids("description:dog") == ["2"]
+    store.delete_media_tag("2")
+    assert ids("description:dog") == []
+    assert store.conn.execute("SELECT COUNT(*) FROM archive_description_fts").fetchone()[0] == 1

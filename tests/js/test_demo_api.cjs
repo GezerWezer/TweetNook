@@ -88,6 +88,11 @@ async function main() {
 
     assert.deepEqual(await resultIds(store, '"something I tweeted"'), [ids.ownerRoot]);
     assert.deepEqual(await resultIds(store, 'tag:anything'), []);
+    const fishDescriptions = await resultIds(store, 'description:"Board fish"');
+    assert.deepEqual(fishDescriptions, [ids.gifQuotesVideo]);
+    assert.deepEqual(await resultIds(store, 'description:fis*'), fishDescriptions);
+    assert.deepEqual(await resultIds(store, 'description:"fish cat"'), []);
+    assert.equal((await resultIds(store, '-description:fish')).includes(ids.gifQuotesVideo), false);
     assert.deepEqual(await resultIds(store, '#anything'), []);
     assert.deepEqual(await resultIds(store, 'has:links'), []);
 

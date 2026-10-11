@@ -38,6 +38,7 @@ _FILTER_KEYS = frozenset(
         "source",
         "card_name",
         "tag",
+        "description",
         "hashtag",
     }
 )
@@ -187,6 +188,8 @@ def _validate_filter(key: str, value: str) -> None:
     if allowed is not None and value not in allowed:
         choices = ", ".join(sorted(allowed))
         raise SearchQueryError(f"Unsupported {key}: value {value!r}. Expected one of: {choices}.")
+    if key == "description" and not _description_match(value):
+        raise SearchQueryError("Search filter description: requires a word to match.")
     if key in {"since", "until"} and _parse_twitter_date(value) is None:
         raise SearchQueryError(f"Search filter {key}: expects YYYY-MM-DD.")
     if key in _NUMERIC_FILTERS:
@@ -290,6 +293,36 @@ def _fact_list_contains(column: str, value: str) -> str:
     if "\x1f" in value:
         return "0"
     return f"instr({_fact(column)}, char(31) || {_sql_quote(value)} || char(31)) > 0"
+
+
+def _description_match(value: str) -> str:
+    """FTS5 query matching every word of a description: value, in any order.
+
+    Each word is quoted so FTS operators are matched literally; a trailing * keeps
+    prefix matching.
+    """
+    phrases = []
+    for word in value.split():
+        prefix = "*" if word.endswith("*") else ""
+        word = word.rstrip("*")
+        if word:
+            phrases.append('"' + word.replace('"', '""') + '"' + prefix)
+    return " ".join(phrases)
+
+
+def _media_tag_match(matching_tweet_ids: str) -> str:
+    """Match tweets selected from media_tag rows, and tweets that quote them."""
+    return (
+        "archive.tweet_id IN ("
+        f"WITH matching_tags(tweet_id) AS MATERIALIZED ({matching_tweet_ids}) "
+        "SELECT tweet_id FROM matching_tags "
+        "UNION SELECT relation.tweet_id FROM matching_tags "
+        "CROSS JOIN archive relation INDEXED BY idx_archive_target_tweet_id "
+        "WHERE relation.target_tweet_id = matching_tags.tweet_id "
+        "AND relation.record_type = 'tweet_relation' "
+        "AND relation.relation_type = 'quote_of' "
+        ")"
+    )
 
 
 def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> str | None:
@@ -398,23 +431,20 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
         expression = f"{_fact('card_name')} = {_sql_quote(value)}"
     elif key == "tag":
         normalized_value = _sql_quote(value.lower())
-        expression = (
-            "archive.tweet_id IN ("
-            "WITH matching_tags(tweet_id) AS MATERIALIZED ("
+        expression = _media_tag_match(
             "SELECT DISTINCT tagged.tweet_id "
             "FROM archive tagged INDEXED BY idx_archive_media_tag_lookup "
             "JOIN json_each(CASE WHEN json_valid(tagged.raw_json) "
             "THEN tagged.raw_json ELSE '{}' END, '$.tags') AS media_tag "
             "WHERE tagged.record_type = 'media_tag' "
             "AND media_tag.type = 'text' "
-            f"AND LOWER(CAST(media_tag.value AS TEXT)) = {normalized_value}) "
-            "SELECT tweet_id FROM matching_tags "
-            "UNION SELECT relation.tweet_id FROM matching_tags "
-            "CROSS JOIN archive relation INDEXED BY idx_archive_target_tweet_id "
-            "WHERE relation.target_tweet_id = matching_tags.tweet_id "
-            "AND relation.record_type = 'tweet_relation' "
-            "AND relation.relation_type = 'quote_of' "
-            ")"
+            f"AND LOWER(CAST(media_tag.value AS TEXT)) = {normalized_value}"
+        )
+    elif key == "description":
+        expression = _media_tag_match(
+            "SELECT DISTINCT described.tweet_id FROM archive_description_fts "
+            "JOIN archive described ON described.rowid = archive_description_fts.rowid "
+            f"WHERE archive_description_fts MATCH {_sql_quote(_description_match(value))}"
         )
     elif key == "hashtag":
         expression = _fact_list_contains("hashtags", value.replace("#", "").lower())
