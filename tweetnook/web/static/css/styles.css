@@ -1274,6 +1274,47 @@ body {
     padding-left: 2px;
 }
 
+/* description: and tag: capsules. Their value is plain text, and the caret stays
+   inside while typing so spaces belong to the value. While the value is being
+   edited, is empty, or names an unknown tag, the capsule takes the incomplete look. */
+.filter-box {
+    display: inline;
+    border-radius: 4px;
+    padding: 2px 0px;
+    font-size: 0.9em;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    background-color: color-mix(in srgb, var(--accent-color) 15%, transparent);
+    color: var(--accent-color);
+}
+.filter-box .capsule-key {
+    padding-left: 6px;
+    font-weight: 600;
+}
+.filter-box .capsule-value {
+    padding-right: 6px;
+    caret-color: var(--text-primary);
+}
+.filter-box.negative {
+    background-color: color-mix(in srgb, var(--danger-color) 15%, transparent);
+    color: var(--danger-color);
+}
+.filter-box.is-editing,
+.filter-box.is-empty,
+.filter-box.is-unknown {
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+.filter-box.negative.is-editing .capsule-key,
+.filter-box.negative.is-empty .capsule-key,
+.filter-box.negative.is-unknown .capsule-key {
+    color: var(--danger-color);
+}
+.filter-box.is-editing .capsule-value,
+.filter-box.is-unknown .capsule-value {
+    color: var(--text-primary);
+}
+
 /* Multi-Word Quote Suppression */
 .hidden-quote {
     display: inline-block;

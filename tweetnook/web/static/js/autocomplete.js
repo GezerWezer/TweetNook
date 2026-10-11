@@ -5,6 +5,16 @@
 // Suggestions are requested once typing pauses this long.
 const SUGGESTION_DELAY_MS = 100;
 
+// Filters whose value is edited inside its capsule, so spaces stay part of the
+// value without typing quotes.
+const BOX_FILTER_KEYS = ['description', 'tag'];
+
+// Private-use markers for the caret and capsule edges while the editor is
+// read back and re-rendered.
+const SEARCH_CARET = '\uE000';
+const BOX_START = '\uE001';
+const BOX_END = '\uE002';
+
 function searchAutocomplete() {
     return {
         suggestionRequest: 0,
@@ -20,11 +30,9 @@ function searchAutocomplete() {
         
         init() {
             this.$watch('searchQuery', (val) => {
-                if (this.$refs.searchInput && !this.isComposing) {
-                    const currentText = this.$refs.searchInput.textContent.replace(/\u00A0/g, ' ');
-                    if (currentText !== (val || '')) {
-                        this.formatRichText(val || '');
-                    }
+                const input = this.$refs.searchInput;
+                if (input && !this.isComposing && this.editorSearchQuery(input) !== (val || '')) {
+                    this.formatRichText(val || '');
                 }
             });
             this.$nextTick(() => {
@@ -32,6 +40,8 @@ function searchAutocomplete() {
                     this.formatRichText(this.searchQuery || '');
                 }
             });
+            // Arrow keys and clicks move the caret without input events.
+            document.addEventListener('selectionchange', () => this.syncEditingState());
         },
         
         allFilters: [
@@ -42,7 +52,8 @@ function searchAutocomplete() {
             { prefix: 'since:', desc: 'After a specific date (YYYY-MM-DD)' },
             { prefix: 'until:', desc: 'Before a specific date (YYYY-MM-DD)' },
             { prefix: 'url:', desc: 'Contains a specific URL' },
-            { prefix: 'tag:', desc: 'Matches media tag' }
+            { prefix: 'tag:', desc: 'Matches media tag' },
+            { prefix: 'description:', desc: 'Words in a tag description' }
         ],
         
         hasOptions: [
@@ -75,7 +86,19 @@ function searchAutocomplete() {
             }
             return tokenStart;
         },
-        
+
+        // A picked filter value replaces the rest of the value being edited:
+        // up to the closing quote, or to the end of an unquoted value.
+        currentSearchTokenEnd(text, cursor, tokenStart) {
+            const token = text.substring(tokenStart, cursor);
+            if (!token.includes(':')) return cursor;
+            if ((token.match(/"/g) || []).length % 2 === 1) {
+                const closingQuote = text.indexOf('"', cursor);
+                return closingQuote === -1 ? cursor : closingQuote + 1;
+            }
+            return cursor + text.substring(cursor).match(/^[^\s"]*/)[0].length;
+        },
+
         // A response that arrives after newer input is discarded instead of
         // replacing the current suggestions.
         fetchSuggestions(url, toOptions) {
@@ -105,26 +128,16 @@ function searchAutocomplete() {
             clearTimeout(this.suggestionTimer);
             const input = this.$refs.searchInput;
             
-            // If it's the rich input, we must sync the contenteditable text to Alpine state
+            // The rich input is read back with its caret marked, so the query and
+            // caret position stay correct when capsules hide their quotes.
             if (input.isContentEditable) {
-                // Get caret offset relative to textContent
-                let caretOffset = 0;
-                const sel = window.getSelection();
-                if (sel.rangeCount > 0) {
-                    const range = sel.getRangeAt(0);
-                    const preCaretRange = range.cloneRange();
-                    preCaretRange.selectNodeContents(input);
-                    preCaretRange.setEnd(range.endContainer, range.endOffset);
-                    caretOffset = preCaretRange.toString().length;
-                }
-                
-                const text = input.textContent.replace(/\u00A0/g, ' '); // Normalize non-breaking spaces
-                this.searchQuery = text;
-                this.cursorPos = caretOffset;
-                
+                const parts = this.parseSearchParts(this.extractMarkedSearch(input));
+                const { query, caret } = this.serializeSearchParts(parts);
+                this.searchQuery = query;
+                this.cursorPos = caret === -1 ? query.length : caret;
+
                 if (!this.isComposing) {
-                    this.formatRichText(text);
-                    this.restoreCaret(caretOffset);
+                    this.renderSearchParts(parts);
                 }
             } else {
                 this.cursorPos = input.selectionStart;
@@ -174,15 +187,18 @@ function searchAutocomplete() {
                         this.showDropdown = false;
                     }
                 } else if (basePrefix === 'tag:') {
-                    this.fetchSuggestions(`/api/tags/autocomplete?q=${encodeURIComponent(val)}`, data => (
-                        (data.tags || []).map(t => ({
+                    this.fetchSuggestions(`/api/tags/autocomplete?q=${encodeURIComponent(val)}`, data => {
+                        const tags = data.tags || [];
+                        if (!this.knownTags) this.knownTags = new Set();
+                        tags.forEach(t => this.knownTags.add(t.tag.toLowerCase()));
+                        return tags.map(t => ({
                             isTag: true,
                             prefix: rawPrefix,
                             value: t.tag,
                             count: t.count.toLocaleString(),
                             query: val
-                        }))
-                    ));
+                        }));
+                    });
                 } else {
                     this.options = [];
                     this.showDropdown = false;
@@ -227,14 +243,19 @@ function searchAutocomplete() {
         },
         
         selectOption() {
-            if (!this.showDropdown || this.options.length === 0) return;
-            
+            if (!this.showDropdown || this.options.length === 0) {
+                // With nothing to pick, Tab finishes the capsule being edited.
+                const current = this.caretFilterBox();
+                if (current && current.inValue) this.leaveFilterBox(current.box);
+                return;
+            }
+
             const opt = this.options[this.selectedIndex];
             if (opt.isDatePicker) return; // Prevent enter key from closing if it's the date picker itself
-            
+
             const textToCursor = this.searchQuery.substring(0, this.cursorPos);
-            const textAfterCursor = this.searchQuery.substring(this.cursorPos);
             const tokenStart = this.currentSearchTokenStart(textToCursor);
+            const textAfterCursor = this.searchQuery.substring(this.currentSearchTokenEnd(this.searchQuery, this.cursorPos, tokenStart));
             
             let valueToInsert = opt.value;
             if (valueToInsert && valueToInsert.includes(' ')) {
@@ -247,19 +268,24 @@ function searchAutocomplete() {
             this.searchQuery = newTextToCursor + textAfterCursor;
             
             this.showDropdown = false;
-            
+            const refreshSuggestions = Boolean(opt.value || opt.prefix.endsWith(':'));
+
+            const input = this.$refs.searchInput;
+            if (input && input.isContentEditable) {
+                // Rendered now, before the searchQuery watcher runs, so keys typed
+                // right after picking an option land at the caret.
+                input.focus();
+                this.formatRichText(newTextToCursor + SEARCH_CARET + textAfterCursor);
+                if (refreshSuggestions) this.handleInput();
+                return;
+            }
+
             this.$nextTick(() => {
                 const input = this.$refs.searchInput;
                 input.focus();
-                
-                if (input.isContentEditable) {
-                    this.formatRichText(this.searchQuery);
-                    this.restoreCaret(newTextToCursor.length);
-                } else {
-                    input.setSelectionRange(newTextToCursor.length, newTextToCursor.length);
-                }
-                
-                if (opt.value || opt.prefix.endsWith(':')) {
+                input.setSelectionRange(newTextToCursor.length, newTextToCursor.length);
+
+                if (refreshSuggestions) {
                     this.handleInput();
                 }
             });
@@ -332,35 +358,284 @@ function searchAutocomplete() {
             return validOffsets;
         },
 
+        // Renders query text. Text containing SEARCH_CARET also gets the caret there.
         formatRichText(text) {
             const input = this.$refs.searchInput;
             if (!input) return;
-            
+
             if (text.length === 0) {
                 input.innerHTML = '';
                 return;
             }
 
+            input.innerHTML = this.searchPartsHtml(this.parseSearchParts(text));
+            if (text.includes(SEARCH_CARET)) this.placeMarkedCaret(input);
+        },
+
+        // Re-renders the editor from its own content, keeping the caret.
+        refreshEditor() {
+            const input = this.$refs.searchInput;
+            if (input && input.isContentEditable && document.activeElement === input) {
+                this.renderSearchParts(this.parseSearchParts(this.extractMarkedSearch(input)));
+            } else {
+                this.formatRichText(this.searchQuery || '');
+            }
+        },
+
+        renderSearchParts(parts) {
+            const input = this.$refs.searchInput;
+            input.innerHTML = this.searchPartsHtml(parts);
+            this.placeMarkedCaret(input);
+            this.syncEditingState();
+        },
+
+        // Editor content as text: capsules wrapped in BOX_START/BOX_END and the
+        // caret marked, ready for parseSearchParts.
+        extractMarkedSearch(input, withCaret = true) {
+            const sel = withCaret ? window.getSelection() : null;
+            const anchor = sel && sel.rangeCount && input.contains(sel.anchorNode)
+                ? { node: sel.anchorNode, offset: sel.anchorOffset } : null;
+            const walk = node => {
+                if (node.nodeType === 3) {
+                    let data = node.data;
+                    if (anchor && anchor.node === node) {
+                        data = data.slice(0, anchor.offset) + SEARCH_CARET + data.slice(anchor.offset);
+                    }
+                    return data.replace(/\u00A0/g, ' ');
+                }
+                if (node.nodeType !== 1) return '';
+                let text = '';
+                node.childNodes.forEach((child, index) => {
+                    if (anchor && anchor.node === node && anchor.offset === index) text += SEARCH_CARET;
+                    text += walk(child);
+                });
+                if (anchor && anchor.node === node && anchor.offset === node.childNodes.length) text += SEARCH_CARET;
+                return node !== input && node.classList.contains('filter-box') ? BOX_START + text + BOX_END : text;
+            };
+            return walk(input);
+        },
+
+        // The query the editor currently shows.
+        editorSearchQuery(input) {
+            if (!input.isContentEditable) return (input.textContent || '').replace(/\u00A0/g, ' ');
+            return this.serializeSearchParts(this.parseSearchParts(this.extractMarkedSearch(input, false))).query;
+        },
+
+        // Splits query text (optionally marked) into text parts and capsules
+        // ({ neg, key, value, caret }), where caret is an offset in value or -1.
+        parseSearchParts(marked) {
+            const keys = BOX_FILTER_KEYS.join('|');
+            const raw = [];
+            for (let index = 0; index < marked.length;) {
+                if (marked[index] === BOX_START) {
+                    let end = marked.indexOf(BOX_END, index);
+                    if (end === -1) end = marked.length;
+                    raw.push({ box: marked.slice(index + 1, end) });
+                    index = end + 1;
+                } else {
+                    let end = marked.indexOf(BOX_START, index);
+                    if (end === -1) end = marked.length;
+                    raw.push({ text: marked.slice(index, end).split(BOX_END).join('') });
+                    index = end;
+                }
+            }
+
+            // A capsule whose key was edited away goes back to plain text.
+            const merged = [];
+            const keyPattern = new RegExp(`^(-?)(${keys}):`, 'i');
+            for (const part of raw) {
+                let box = null;
+                if (part.box !== undefined) {
+                    const plain = part.box.replace(SEARCH_CARET, '');
+                    const match = plain.match(keyPattern);
+                    if (match) {
+                        const caretAt = part.box.indexOf(SEARCH_CARET);
+                        const keyLength = match[0].length;
+                        let rawValue = plain.slice(keyLength);
+                        if (caretAt >= keyLength) {
+                            rawValue = rawValue.slice(0, caretAt - keyLength) + SEARCH_CARET + rawValue.slice(caretAt - keyLength);
+                        }
+                        box = this.filterBoxPart(match[1], match[2], rawValue);
+                        // A caret inside the key (from arrowing or clicking) stays there.
+                        if (caretAt !== -1 && caretAt < keyLength) box.keyCaret = caretAt;
+                    }
+                }
+                const last = merged[merged.length - 1];
+                if (box) merged.push(box);
+                else if (last && last.text !== undefined) last.text += part.text ?? part.box;
+                else merged.push({ text: part.text ?? part.box });
+            }
+
+            // Typed, pasted, or loaded filters in plain text become capsules. A caret
+            // right after the colon opens the new capsule for editing.
+            const parts = [];
+            const tokenPattern = new RegExp(`(^|\\s|${SEARCH_CARET})(-?)(${keys}):("[^"]*(?:"|$)|[^\\s"]*)`, 'gi');
+            for (const part of merged) {
+                if (part.text === undefined) {
+                    parts.push(part);
+                    continue;
+                }
+                let last = 0;
+                let match;
+                tokenPattern.lastIndex = 0;
+                while ((match = tokenPattern.exec(part.text)) !== null) {
+                    const start = match.index + match[1].length;
+                    parts.push({ text: part.text.slice(last, start) });
+                    parts.push(this.filterBoxPart(match[2], match[3], match[4]));
+                    last = match.index + match[0].length;
+                }
+                parts.push({ text: part.text.slice(last) });
+            }
+            return this.joinGluedSearchText(parts.filter(part => part.text !== ''));
+        },
+
+        // A capsule from its raw value, which may hold quotes and the caret marker.
+        filterBoxPart(neg, key, rawValue) {
+            const caretAt = rawValue.indexOf(SEARCH_CARET);
+            return {
+                neg,
+                key: key.toLowerCase(),
+                value: rawValue.replace(SEARCH_CARET, '').replace(/"/g, ''),
+                caret: caretAt === -1 ? -1 : rawValue.slice(0, caretAt).replace(/"/g, '').length,
+                keyCaret: -1,
+            };
+        },
+
+        // A capsule's key and value as marked text, keeping its caret.
+        filterBoxText(part) {
+            let key = `${part.neg}${part.key}:`;
+            if (part.keyCaret !== -1) key = key.slice(0, part.keyCaret) + SEARCH_CARET + key.slice(part.keyCaret);
+            const value = part.caret === -1
+                ? part.value
+                : part.value.slice(0, part.caret) + SEARCH_CARET + part.value.slice(part.caret);
+            return { key, value };
+        },
+
+        // Capsules follow the same rules as plain query text. Text typed directly
+        // against the end of a capsule is part of its value (so a caret on that edge
+        // belongs to the capsule), and text directly against its start means it is
+        // no longer a filter.
+        joinGluedSearchText(parts) {
+            for (let index = 0; index < parts.length; index += 1) {
+                const box = parts[index];
+                if (box.text !== undefined) continue;
+                const next = parts[index + 1];
+                const glued = next && next.text !== undefined ? next.text.match(/^\S+/) : null;
+                if (glued) {
+                    const caretAt = glued[0].indexOf(SEARCH_CARET);
+                    if (caretAt !== -1) {
+                        box.caret = box.value.length + glued[0].slice(0, caretAt).replace(/"/g, '').length;
+                    }
+                    box.value += glued[0].replace(SEARCH_CARET, '').replace(/"/g, '');
+                    next.text = next.text.slice(glued[0].length);
+                }
+                const prev = parts[index - 1];
+                if (prev && prev.text !== undefined && /\S$/.test(prev.text.replace(SEARCH_CARET, ''))) {
+                    const { key, value } = this.filterBoxText(box);
+                    prev.text += key + value;
+                    parts.splice(index, 1);
+                    index -= 1;
+                }
+            }
+            return parts.reduce((joined, part) => {
+                const last = joined[joined.length - 1];
+                if (part.text !== undefined && last && last.text !== undefined) last.text += part.text;
+                else if (part.text !== '') joined.push(part);
+                return joined;
+            }, []);
+        },
+
+        // A capsule's query token: key:word or key:"several words". Values are
+        // trimmed here, so spaces still being typed never reach the server.
+        filterBoxToken(part) {
+            const prefix = `${part.neg}${part.key}:`;
+            const value = part.value.replace(/\s+/g, ' ').trim();
+            const quoted = value.includes(' ');
+            let caret = part.keyCaret ?? -1;
+            if (part.caret >= 0) {
+                const before = part.value.slice(0, part.caret).replace(/\s+/g, ' ').trimStart();
+                caret = prefix.length + (quoted ? 1 : 0) + Math.min(before.length, value.length);
+            }
+            return { token: prefix + (quoted ? `"${value}"` : value), caret };
+        },
+
+        // Query text for parts, with the caret's offset in it (-1 if none) and
+        // where each part starts.
+        serializeSearchParts(parts) {
+            let query = '';
+            let caret = -1;
+            const starts = [];
+            parts.forEach(part => {
+                starts.push(query.length);
+                if (part.text !== undefined) {
+                    const caretAt = part.text.indexOf(SEARCH_CARET);
+                    if (caretAt !== -1) caret = query.length + caretAt;
+                    query += part.text.replace(SEARCH_CARET, '');
+                } else {
+                    const token = this.filterBoxToken(part);
+                    if (token.caret !== -1) caret = query.length + token.caret;
+                    query += token.token;
+                }
+            });
+            return { query, caret, starts };
+        },
+
+        searchPartsHtml(parts) {
+            const { query, starts } = this.serializeSearchParts(parts);
+            const validBooleanOffsets = this.validBooleanOperatorOffsets(query);
+            return parts.map((part, index) => (
+                part.text !== undefined
+                    ? this.plainSearchHtml(part.text, starts[index], validBooleanOffsets)
+                    : this.filterBoxHtml(part)
+            )).join('');
+        },
+
+        // A description: or tag: capsule. Its value is plain text, so the caret moves
+        // through it like any other text. Quotes are left out of the display.
+        filterBoxHtml(part) {
+            const { key, value } = this.filterBoxText(part);
+            let classes = 'filter-box';
+            if (part.neg) classes += ' negative';
+            if (!part.value.trim()) {
+                classes += ' is-empty';
+            } else if (part.key === 'tag' && !this.isKnownTag(part.value)) {
+                classes += ' is-unknown';
+                this.validateTagAsync(part.value.trim());
+            }
+            // An empty value has no text node, so its caret goes right after the colon.
+            const keyCaret = part.caret !== -1 && !part.value ? SEARCH_CARET : '';
+            return `<span class="${classes}"><span class="capsule-key">${key}${keyCaret}</span>`
+                + `<span class="capsule-value">${part.value ? this.escapeHtml(value).replace(/ /g, '&nbsp;') : ''}</span></span>`;
+        },
+
+        // Plain query text starting at `start` in the full query, with capsules for
+        // the other filters and valid boolean operators.
+        plainSearchHtml(text, start, validBooleanOffsets) {
             let html = '';
-            const validBooleanOffsets = this.validBooleanOperatorOffsets(text);
-            
+
             // Regex to parse operators vs normal text, preserving quotes and whitespace
-            const regex = /(\s+)|(?:(-?(?:from|to|has|is|filter|since|until|url|tag):)("[^"]*(?:"|$)|[^\s]*))|([^\s]+)/gi;
+            const regex = /(\s+)|(?:(-?(?:from|to|has|is|filter|since|until|url):)("[^"]*(?:"|$)|[^\s]*))|([^\s]+)/gi;
             let match;
-            
+
             while ((match = regex.exec(text)) !== null) {
                 if (match[1]) {
                     // whitespace (preserve spaces for caret using non-breaking space)
                     html += match[1].replace(/ /g, '&nbsp;');
                 } else if (match[2]) {
                     const prefix = match[2];
-                    const value = match[3] || '';
-                    
+                    let value = match[3] || '';
+                    // A caret at the end of the value stays after the capsule.
+                    let trailingCaret = '';
+                    if (value.endsWith(SEARCH_CARET)) {
+                        value = value.slice(0, -1);
+                        trailingCaret = SEARCH_CARET;
+                    }
+
                     if (value) {
                         let isValid = true;
-                        let cleanValue = value;
-                        if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
-                            cleanValue = value.substring(1, value.length - 1);
+                        let cleanValue = value.replace(SEARCH_CARET, '');
+                        if (cleanValue.startsWith('"') && cleanValue.endsWith('"') && cleanValue.length >= 2) {
+                            cleanValue = cleanValue.substring(1, cleanValue.length - 1);
                         }
 
                         if (prefix.toLowerCase().endsWith('has:')) {
@@ -369,10 +644,6 @@ function searchAutocomplete() {
                             isValid = ['reply', 'quote', 'retweet', 'thread', 'verified', 'resurrected'].includes(cleanValue.toLowerCase());
                         } else if (prefix.toLowerCase().endsWith('filter:')) {
                             isValid = ['articles', 'media', 'images', 'videos', 'native_video', 'links', 'replies', 'quote', 'nativeretweets', 'self_threads', 'threads', 'verified'].includes(cleanValue.toLowerCase());
-                        } else if (prefix.toLowerCase().endsWith('tag:')) {
-                            if (Array.isArray(this.globalTags)) {
-                                isValid = this.globalTags.some(t => t.tag.toLowerCase() === cleanValue.toLowerCase());
-                            }
                         } else if (prefix.toLowerCase().endsWith('from:') || prefix.toLowerCase().endsWith('to:')) {
                             if (this.knownAuthors && this.knownAuthors.has(cleanValue.toLowerCase())) {
                                 isValid = true;
@@ -386,12 +657,12 @@ function searchAutocomplete() {
                             isValid = /^\d{4}-\d{2}-\d{2}$/.test(cleanValue);
                         }
                         // url, etc are dynamic, so assume valid if there is a value
-                        
+
                         const isNegative = prefix.startsWith('-');
                         const negativeClass = isNegative ? ' negative-capsule' : '';
 
                         if (isValid) {
-                            if (value.startsWith('"') && value.endsWith('"')) {
+                            if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
                                 const innerValue = value.substring(1, value.length - 1);
                                 html += `<span class="search-capsule valid-capsule${negativeClass}"><span class="capsule-key">${prefix}</span><span class="hidden-quote">"</span><span class="capsule-value">${this.escapeHtml(innerValue).replace(/ /g, '&nbsp;')}</span><span class="hidden-quote">"</span></span>`;
                             } else {
@@ -405,26 +676,170 @@ function searchAutocomplete() {
                         const negativeClass = isNegative ? ' negative-capsule' : '';
                         html += `<span class="search-capsule incomplete-capsule${negativeClass}"><span class="capsule-key">${prefix}</span></span>`;
                     }
+                    html += trailingCaret;
                 } else if (match[4]) {
-                    if (validBooleanOffsets.has(match.index)) {
+                    const caretBefore = text.slice(0, match.index).includes(SEARCH_CARET) ? 1 : 0;
+                    if (validBooleanOffsets.has(start + match.index - caretBefore)) {
                         html += `<span class="search-capsule boolean-capsule">${this.escapeHtml(match[4])}</span>`;
                     } else {
                         html += this.escapeHtml(match[4]);
                     }
                 }
             }
-            
-            input.innerHTML = html;
+            return html;
+        },
+
+        // Moves the caret to the SEARCH_CARET marker left in the rendered editor.
+        placeMarkedCaret(input) {
+            const walker = document.createTreeWalker(input, NodeFilter.SHOW_TEXT);
+            let node;
+            while ((node = walker.nextNode())) {
+                const index = node.data.indexOf(SEARCH_CARET);
+                if (index === -1) continue;
+                node.data = node.data.slice(0, index) + node.data.slice(index + 1);
+                const range = document.createRange();
+                range.setStart(node, index);
+                range.collapse(true);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                return;
+            }
+        },
+
+        // The capsule holding the caret, whether the caret is in its value (after
+        // the colon), and whether it is at the end of the value.
+        caretFilterBox() {
+            const input = this.$refs.searchInput;
+            if (!input || !input.isContentEditable) return null;
+            const sel = window.getSelection();
+            if (!sel || !sel.rangeCount || !input.contains(sel.anchorNode)) return null;
+            const element = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+            const box = element && element.closest('.filter-box');
+            if (!box || !input.contains(box)) return null;
+            const before = document.createRange();
+            before.selectNodeContents(box);
+            before.setEnd(sel.anchorNode, sel.anchorOffset);
+            const keyLength = (box.querySelector('.capsule-key')?.textContent || '').length;
+            const offset = before.toString().length - keyLength;
+            const valueLength = (box.querySelector('.capsule-value')?.textContent || '').length;
+            return { box, inValue: offset >= 0, atEnd: sel.isCollapsed && offset === valueLength };
+        },
+
+        // Finishing a capsule moves the caret past the space after it, adding one
+        // if needed. An empty capsule stays, like an unfinished from:.
+        leaveFilterBox(box) {
+            let next = box.nextSibling;
+            if (!next || next.nodeType !== 3 || !/^\s/.test(next.data)) {
+                next = document.createTextNode('\u00A0');
+                box.after(next);
+            }
+            const range = document.createRange();
+            range.setStart(next, 1);
+            range.collapse(true);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            this.handleInput();
+        },
+
+        // A capsule shows its editing style while the caret is in its value.
+        syncEditingState() {
+            const input = this.$refs.searchInput;
+            if (!input || !input.isContentEditable) return;
+            const current = document.activeElement === input ? this.caretFilterBox() : null;
+            input.querySelectorAll('.filter-box').forEach(box => {
+                box.classList.toggle('is-editing', Boolean(current && current.inValue && box === current.box));
+            });
+        },
+
+        handleEscape() {
+            const current = this.caretFilterBox();
+            if (current && current.inValue) this.leaveFilterBox(current.box);
+            else this.showDropdown = false;
+        },
+
+        // At the very end of the search, → has nowhere to go, so it finishes the capsule.
+        handleArrowRight(event) {
+            const current = this.caretFilterBox();
+            if (!current || !current.inValue || !current.atEnd) return;
+            const next = current.box.nextSibling;
+            if (next && next.textContent.replace(/\u00A0/g, ' ').length > 0) return;
+            event.preventDefault();
+            this.leaveFilterBox(current.box);
+        },
+
+        // Quotes would end a capsule's value early, so they are not typed into one.
+        handleBeforeInput(event) {
+            if (!event.data || !event.data.includes('"')) return;
+            const current = this.caretFilterBox();
+            if (!current || !current.inValue) return;
+            event.preventDefault();
+            const text = event.data.replace(/"/g, '');
+            if (text) document.execCommand('insertText', false, text);
+        },
+
+        // Copying gives query text, so capsules with spaces come out quoted.
+        handleCopy(event) {
+            const sel = window.getSelection();
+            if (!sel.rangeCount || sel.isCollapsed) return;
+            event.preventDefault();
+            event.clipboardData.setData('text/plain', this.fragmentSearchQuery(sel.getRangeAt(0).cloneContents()).trim());
+            if (event.type === 'cut') document.execCommand('delete');
+        },
+
+        fragmentSearchQuery(root) {
+            let text = '';
+            root.childNodes.forEach(node => {
+                if (node.nodeType === 3) {
+                    text += node.data.replace(/\u00A0/g, ' ');
+                } else if (node.nodeType === 1 && node.classList.contains('filter-box') && node.querySelector('.capsule-key')) {
+                    text += this.parseSearchParts(node.textContent.replace(/\u00A0/g, ' '))
+                        .map(part => (part.text !== undefined ? part.text : this.filterBoxToken(part).token))
+                        .join('');
+                } else if (node.nodeType === 1) {
+                    text += this.fragmentSearchQuery(node);
+                }
+            });
+            return text;
+        },
+
+        // Tags are known from the loaded tag list or from tag suggestions.
+        isKnownTag(value) {
+            const tag = value.trim().toLowerCase();
+            if (this.knownTags && this.knownTags.has(tag)) return true;
+            return Array.isArray(this.globalTags) && this.globalTags.some(t => t.tag.toLowerCase() === tag);
+        },
+
+        validateTagAsync(tag) {
+            if (!this.knownTags) this.knownTags = new Set();
+            if (!this.pendingTagValidations) this.pendingTagValidations = new Set();
+
+            const lower = tag.toLowerCase();
+            if (this.pendingTagValidations.has(lower)) return;
+            this.pendingTagValidations.add(lower);
+
+            fetch(`/api/tags/autocomplete?q=${encodeURIComponent(tag)}`)
+                .then(res => res.ok ? res.json() : null)
+                .then(data => {
+                    const tags = (data && data.tags) || [];
+                    tags.forEach(t => this.knownTags.add(t.tag.toLowerCase()));
+                    if (this.knownTags.has(lower)) this.refreshEditor();
+                })
+                .catch(() => {})
+                .finally(() => {
+                    this.pendingTagValidations.delete(lower);
+                });
         },
 
         validateAuthorAsync(username) {
             if (!this.knownAuthors) this.knownAuthors = new Set();
             if (!this.pendingAuthorValidations) this.pendingAuthorValidations = new Set();
-            
+
             const lower = username.toLowerCase();
             if (this.pendingAuthorValidations.has(lower)) return;
             this.pendingAuthorValidations.add(lower);
-            
+
             fetch(`/api/authors/search?q=${encodeURIComponent(username)}`)
                 .then(res => res.ok ? res.json() : null)
                 .then(data => {
@@ -436,54 +851,13 @@ function searchAutocomplete() {
                         });
                     }
                     if (found) {
-                        this.formatRichText(this.searchQuery);
+                        this.refreshEditor();
                     }
                 })
                 .catch(() => {})
                 .finally(() => {
                     this.pendingAuthorValidations.delete(lower);
                 });
-        },
-
-        restoreCaret(targetOffset) {
-            const input = this.$refs.searchInput;
-            if (!input) return;
-            
-            const sel = window.getSelection();
-            const range = document.createRange();
-            
-            let currentOffset = 0;
-            let nodeFound = false;
-            
-            function traverseNodes(node) {
-                if (nodeFound) return;
-                
-                if (node.nodeType === 3) { // Text node
-                    const nextOffset = currentOffset + node.length;
-                    if (targetOffset <= nextOffset) {
-                        range.setStart(node, targetOffset - currentOffset);
-                        range.collapse(true);
-                        nodeFound = true;
-                    } else {
-                        currentOffset = nextOffset;
-                    }
-                } else {
-                    for (let i = 0; i < node.childNodes.length; i++) {
-                        traverseNodes(node.childNodes[i]);
-                    }
-                }
-            }
-            
-            traverseNodes(input);
-            
-            if (!nodeFound) {
-                // If target offset is beyond content, focus at end
-                range.selectNodeContents(input);
-                range.collapse(false);
-            }
-            
-            sel.removeAllRanges();
-            sel.addRange(range);
         },
 
         initDatePicker(val) {
