@@ -2137,7 +2137,9 @@ function tweetApp() {
         // renderFeedCard(), a page is a single DOM write, and listeners on the list
         // handle every card. this.tweets remains the data source.
         feedListElement() {
-            const list = this.$refs?.feedList;
+            // A profile search outlives the x-if card that initiated it, so its
+            // Alpine magic refs may disappear before the response renders.
+            const list = this.$refs?.feedList || boundFeedList;
             if (list && list !== boundFeedList) {
                 this.bindFeedList(list);
                 boundFeedList = list;
