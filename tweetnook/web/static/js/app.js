@@ -5,6 +5,9 @@
 const statsSuspendedVideos = new Set();
 const AVATAR_URL_VERSION = 3;
 const VIDEO_UI_HIDE_DELAY_MS = 3000;
+// Replies (including nested ones) rendered per batch in a thread; a saved reply tree
+// can hold 250 tweets, and rendering them all at once delays the first paint.
+const THREAD_REPLY_BATCH = 30;
 const videoUiHideTimers = new WeakMap();
 
 function formatMediaDuration(durationMillis) {
@@ -211,6 +214,7 @@ function tweetApp() {
         showScrollTop: false,
 
         threadData: null,
+        threadReplyLimit: THREAD_REPLY_BATCH,
         loadingThread: false,
         threadCache: new Map(),
         threadCacheTtlMs: 60000,
@@ -240,6 +244,7 @@ function tweetApp() {
         panelStack: [],
         panelMode: null,        // 'thread' | 'quotes' | null
         panelThreadData: null,
+        panelReplyLimit: THREAD_REPLY_BATCH,
         panelLoadingThread: false,
         panelQuotesTweetId: null,
         panelQuotesList: [],
@@ -1459,7 +1464,6 @@ function tweetApp() {
                 Promise.all([
                     this.fetchTweets(),
                     this.fetchStats(),
-                    this.fetchGlobalTags(),
                     this.fetchArchiveEnrichmentStatus(),
                     this.fetchAutomatedTagging(),
                 ]).then(() => {
@@ -1495,11 +1499,16 @@ function tweetApp() {
                         if (this.archiveReady) this.fetchScheduleSettings();
                         if (!this.isDemo) this.fetchActivityRuns();
                         this.fetchAutomatedTagging();
+                        if (this.settingsTab === 'tags') this.fetchGlobalTags();
                     }
                 } else {
                     this.showAutomatedTaggingSpendModal = false;
                     if (!this.showSetupModal && !this.lightboxOpen) this.unlockModalScroll();
                 }
+            });
+            // The full tag list is only shown in Tag Management; load it there.
+            this.$watch('settingsTab', tab => {
+                if (tab === 'tags' && this.showSettingsModal) this.fetchGlobalTags();
             });
             this.$watch('showSetupModal', val => {
                 if (val) this.lockModalScroll();
@@ -2235,6 +2244,7 @@ function tweetApp() {
                 this.panelQuotesList = [];
                 if (entry.data) {
                     this.panelThreadData = entry.data;
+                    this.panelReplyLimit = THREAD_REPLY_BATCH;
                     this.panelLoadingThread = false;
                     return;
                 }
@@ -2243,7 +2253,10 @@ function tweetApp() {
                 try {
                     const data = await this.loadThread(route.tweetId);
                     entry.data = data;
-                    if (this.panelStack.at(-1) === entry) this.panelThreadData = data;
+                    if (this.panelStack.at(-1) === entry) {
+                        this.panelThreadData = data;
+                        this.panelReplyLimit = THREAD_REPLY_BATCH;
+                    }
                 } catch (error) {
                     console.error(error);
                     if (this.panelStack.at(-1) === entry) this.goBack();
@@ -2274,6 +2287,7 @@ function tweetApp() {
                 const data = await this.loadThread(tweetId);
                 if (this.routeKey(this.activeRoute) === `thread:${tweetId}` && !this.shouldUseSplitPanel()) {
                     this.threadData = data;
+                    this.threadReplyLimit = THREAD_REPLY_BATCH;
                 }
             } catch (error) {
                 console.error(error);
@@ -2341,6 +2355,27 @@ function tweetApp() {
         loadMore() {
             if (this.loadingMore || this.loading || !this.hasMore) return;
             return this.fetchTweets(true);
+        },
+
+        visibleReplies(children, limit) {
+            const visible = [];
+            let shown = 0;
+            for (const child of children || []) {
+                const size = 1 + (child.op_replies?.length || 0);
+                if (visible.length && shown + size > limit) break;
+                visible.push(child);
+                shown += size;
+            }
+            return visible;
+        },
+
+        hasHiddenReplies(children, limit) {
+            return this.visibleReplies(children, limit).length < (children?.length || 0);
+        },
+
+        showMoreReplies(panel = false) {
+            if (panel) this.panelReplyLimit += THREAD_REPLY_BATCH;
+            else this.threadReplyLimit += THREAD_REPLY_BATCH;
         },
 
         async loadThread(tweetId) {
@@ -3687,7 +3722,7 @@ function tweetApp() {
                 }
                 if (this.archiveReady && !this.setupForced && !this.archiveResourcesLoaded) {
                     this.archiveResourcesLoaded = true;
-                    await Promise.all([this.fetchTweets(), this.fetchStats(), this.fetchGlobalTags(),
+                    await Promise.all([this.fetchTweets(), this.fetchStats(),
                         this.fetchArchiveEnrichmentStatus(), this.fetchAutomatedTagging()]);
                     const pendingRoute = this.pendingRoute;
                     const pendingRouteState = this.pendingRouteState;
