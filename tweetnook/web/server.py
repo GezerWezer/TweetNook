@@ -1,5 +1,6 @@
 """FastAPI Web server for TweetNook."""
 
+import hashlib
 import re
 import threading
 from contextlib import asynccontextmanager
@@ -8,9 +9,11 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi import Path as PathParameter
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from rich.console import Console
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from tweetnook.activity_history import cleanup_runs, read_run
 from tweetnook.config import AppConfig, XDGPaths
@@ -272,36 +275,130 @@ app.include_router(notices_router)
 
 app.include_router(automated_tagging_router)
 
+
+class TextGZipMiddleware:
+    """Gzip JSON, documents, and scripts/styles; pass media and avatars through.
+
+    Images and video are already compressed, and compressing their (possibly
+    ranged) file responses would only cost CPU and break byte ranges.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        self.gzip = GZipMiddleware(app, minimum_size=1024, compresslevel=5)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and _compressible_path(scope.get("path", "")):
+            await self.gzip(scope, receive, send)
+        else:
+            await self.app(scope, receive, send)
+
+
+def _compressible_path(path: str) -> bool:
+    if path.startswith(("/media/", "/api/avatar/")):
+        return False
+    if path.startswith("/static/"):
+        return path.endswith((".js", ".css", ".html", ".json", ".svg", ".txt"))
+    return True
+
+
+app.add_middleware(TextGZipMiddleware)
+
+WEB_ROOT = Path(__file__).parent
+static_dir = WEB_ROOT / "static"
+_STATIC_REFERENCE = re.compile(r'((?:href|src)="/static/([^"?]+))(")')
+_IMMUTABLE = "public, max-age=31536000, immutable"
+_index_lock = threading.Lock()
+_index_cache: tuple[tuple[tuple[Path, int], ...], bytes, str, dict[str, str]] | None = None
+
+
+def _versioned_index() -> tuple[bytes, str, dict[str, str]]:
+    """Return index.html with content-hashed asset URLs, its ETag, and asset versions.
+
+    Rebuilt whenever the document or a referenced asset changes on disk, so an
+    upgrade or edit never serves stale cached scripts or styles.
+    """
+    global _index_cache
+    with _index_lock:
+        cached = _index_cache
+        if cached is not None and _unchanged(cached[0]):
+            return cached[1], cached[2], cached[3]
+        html_path = WEB_ROOT / "index.html"
+        stamps = [(html_path, html_path.stat().st_mtime_ns)]
+        versions: dict[str, str] = {}
+
+        def version(match: re.Match[str]) -> str:
+            asset = match.group(2)
+            path = static_dir / asset
+            try:
+                stamp = path.stat().st_mtime_ns
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+            except OSError:
+                return match.group(0)
+            stamps.append((path, stamp))
+            versions[asset] = digest
+            return f"{match.group(1)}?v={digest}{match.group(3)}"
+
+        body = _STATIC_REFERENCE.sub(version, html_path.read_text(encoding="utf-8")).encode()
+        etag = f'"{hashlib.sha256(body).hexdigest()[:32]}"'
+        _index_cache = (tuple(stamps), body, etag, versions)
+        return body, etag, versions
+
+
+def _unchanged(stamps: tuple[tuple[Path, int], ...]) -> bool:
+    try:
+        return all(path.stat().st_mtime_ns == stamp for path, stamp in stamps)
+    except OSError:
+        return False
+
+
+class VersionedStaticFiles(StaticFiles):
+    """Cache content-hashed asset URLs for a year; revalidate all others."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        if response.status_code in {200, 304}:
+            query = scope.get("query_string", b"").decode("latin-1")
+            current = _index_cache[3].get(path) if _index_cache is not None else None
+            versioned = current is not None and f"v={current}" in query.split("&")
+            response.headers["Cache-Control"] = _IMMUTABLE if versioned else "no-cache"
+        return response
+
+
 # Mount static assets directory if available
-static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    app.mount("/static", VersionedStaticFiles(directory=static_dir), name="static")
 
 
-def _serve_web_app() -> FileResponse:
-    html_path = Path(__file__).parent / "index.html"
-    return FileResponse(html_path)
+def _serve_web_app(request: Request) -> Response:
+    body, etag, _versions = _versioned_index()
+    headers = {"Cache-Control": "no-cache", "ETag": etag}
+    if etag in request.headers.get("if-none-match", ""):
+        return Response(status_code=304, headers=headers)
+    return HTMLResponse(body, headers=headers)
 
 
 @app.get("/", response_class=HTMLResponse)
-def read_root(_auth: Annotated[bool, Depends(verify_credentials)]):
-    return _serve_web_app()
+def read_root(request: Request, _auth: Annotated[bool, Depends(verify_credentials)]):
+    return _serve_web_app(request)
 
 
 @app.get("/post/{tweet_id}", response_class=HTMLResponse)
 def read_post(
+    request: Request,
     tweet_id: Annotated[str, PathParameter(pattern=r"^\d+$")],
     _auth: Annotated[bool, Depends(verify_credentials)],
 ):
-    return _serve_web_app()
+    return _serve_web_app(request)
 
 
 @app.get("/post/{tweet_id}/quotes", response_class=HTMLResponse)
 def read_post_quotes(
+    request: Request,
     tweet_id: Annotated[str, PathParameter(pattern=r"^\d+$")],
     _auth: Annotated[bool, Depends(verify_credentials)],
 ):
-    return _serve_web_app()
+    return _serve_web_app(request)
 
 
 @app.get("/media/{media_path:path}", response_class=FileResponse)
@@ -318,7 +415,8 @@ def read_media(
     target = (media_dir / media_path).resolve()
     if not target.is_relative_to(media_dir) or not target.is_file():
         raise HTTPException(status_code=404, detail="Media file not found")
-    return FileResponse(target)
+    # Downloaded media keeps its path for life; avoid a revalidation per image.
+    return FileResponse(target, headers={"Cache-Control": "private, max-age=2592000"})
 
 
 def run_server(
