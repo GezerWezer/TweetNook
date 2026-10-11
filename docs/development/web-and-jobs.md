@@ -124,6 +124,14 @@ traversal, symlink escape, and non-files.
 There is no TLS, session/cookie auth, CSRF/origin validation, CORS middleware,
 login throttling, CSP/security-header middleware, or authorization roles.
 
+## Frontend loading
+
+The thread and split-panel views render direct replies in batches of about 30
+tweets, counting each reply's flattened descendants (`visibleReplies()`); an
+intersection sentinel and a **Show more replies** button extend the batch, and
+opening another thread resets it. The full tag list (`/api/tags/stats`) loads when
+Settings → Tags opens rather than at startup.
+
 ## Response encoding and caching
 
 `TextGZipMiddleware` applies Starlette's gzip (level 5, responses of at least

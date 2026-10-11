@@ -3576,10 +3576,10 @@ test('first-run gating loads archive resources only after completion and preserv
     assert.deepEqual(calls, []);
     required = false;
     await app.fetchSetup();
-    assert.equal(calls.length, 5);
+    assert.deepEqual(calls, ['fetchTweets', 'fetchStats', 'fetchArchiveEnrichmentStatus', 'fetchAutomatedTagging']);
     assert.equal(appliedDeepLinks, 1);
     await app.fetchSetup();
-    assert.equal(calls.length, 5);
+    assert.equal(calls.length, 4);
     assert.equal(appliedDeepLinks, 1);
     const before = JSON.stringify(app.setupData);
     app.rerunSetup();
@@ -3834,6 +3834,60 @@ test('copy raw prefers the stored document prefetched when the menu opens', asyn
     context.fetch = async () => ({ ok: false, json: async () => ({}) });
     await app.copyRawTweet({ tweet_id: '8', raw_json: { rest_id: '8', abbreviated: true } });
     assert.equal(JSON.parse(copiedText).abbreviated, true);
+});
+
+test('large threads render replies in batches of nested tweets', async () => {
+    const context = browserContext('/post/1');
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const child = (id, nested) => ({
+        tweet_id: id,
+        op_replies: Array.from({ length: nested }, (_, index) => ({ tweet_id: `${id}-${index}` })),
+    });
+    const children = [child('a', 20), child('b', 5), child('c', 0), child('d', 40)];
+
+    assert.deepEqual(Array.from(app.visibleReplies(children, 30), item => item.tweet_id), ['a', 'b', 'c']);
+    assert.deepEqual(Array.from(app.visibleReplies([child('big', 99)], 30), item => item.tweet_id), ['big']);
+    assert.equal(app.hasHiddenReplies(children, 30), true);
+    app.showMoreReplies();
+    assert.equal(app.hasHiddenReplies(children, app.threadReplyLimit), true);
+    app.showMoreReplies();
+    assert.equal(app.hasHiddenReplies(children, app.threadReplyLimit), false);
+    app.showMoreReplies(true);
+    assert.equal(app.panelReplyLimit, 60);
+
+    app.activeRoute = { viewMode: 'thread', tweetId: '1' };
+    app.loadThread = async () => ({ main: { tweet_id: '1' }, parents: [], children });
+    await app.showFullThread('1');
+    assert.equal(app.threadReplyLimit, 30);
+
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    assert.ok(html.includes('x-for="child in visibleReplies(threadData.children, threadReplyLimit)"'));
+    assert.ok(html.includes('x-for="child in visibleReplies(panelThreadData.children, panelReplyLimit)"'));
+    assert.ok(html.includes('x-intersect="showMoreReplies()"'));
+    assert.ok(html.includes('x-intersect="showMoreReplies(true)"'));
+});
+
+test('the full tag list loads only when Tag Management opens', () => {
+    const context = browserContext();
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const watchers = {};
+    let loads = 0;
+    app.$watch = (key, callback) => { watchers[key] = callback; };
+    for (const method of ['fetchSetup', 'fetchNotices', 'fetchActivityStatus', 'fetchConfig', 'fetchScheduleSettings', 'fetchActivityRuns', 'fetchAutomatedTagging']) {
+        app[method] = async () => {};
+    }
+    app.fetchGlobalTags = async () => { loads++; };
+    app.initApp();
+
+    watchers.settingsTab('tags');
+    assert.equal(loads, 0);
+    app.showSettingsModal = true;
+    watchers.settingsTab('appearance');
+    watchers.settingsTab('tags');
+    assert.equal(loads, 1);
+    app.settingsTab = 'tags';
+    watchers.showSettingsModal(true);
+    assert.equal(loads, 2);
 });
 
 async function main() {

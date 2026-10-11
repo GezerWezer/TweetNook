@@ -507,7 +507,7 @@
                     </div>
 
                     <!-- CHILDREN / REPLIES -->
-                    <template x-for="child in threadData.children" :key="child.tweet_id">
+                    <template x-for="child in visibleReplies(threadData.children, threadReplyLimit)" :key="child.tweet_id">
                         <div class="tweet-border">
                             <!-- Direct Reply Card -->
                             <div class="px-4 py-3 flex relative cursor-pointer hover-bg" @click="openThread(child.tweet_id)">
@@ -665,6 +665,9 @@
                             </template>
                         </div>
                     </template>
+                    <div x-show="hasHiddenReplies(threadData.children, threadReplyLimit)" x-intersect="showMoreReplies()" class="p-6 text-center">
+                        <button type="button" @click="showMoreReplies()" class="text-[var(--accent-color)] hover:underline">Show more replies</button>
+                    </div>
                     <template x-if="threadData.reply_tree_truncated">
                         <div class="px-4 py-3 text-[13px] text-[var(--text-secondary)] border-t border-[var(--border-color)]">
                             This conversation has more saved replies than can be shown at once. Open a later reply to continue.
@@ -910,7 +913,7 @@
                     </div>
 
                     <!-- CHILDREN / REPLIES -->
-                    <template x-for="child in panelThreadData.children" :key="child.tweet_id">
+                    <template x-for="child in visibleReplies(panelThreadData.children, panelReplyLimit)" :key="child.tweet_id">
                         <div class="tweet-border">
                             <div class="px-4 py-3 flex relative cursor-pointer hover-bg" @click="openThread(child.tweet_id, false, true)">
                                 <template x-if="child.op_replies && child.op_replies.length > 0">
@@ -1052,6 +1055,9 @@
                             </template>
                         </div>
                     </template>
+                    <div x-show="hasHiddenReplies(panelThreadData.children, panelReplyLimit)" x-intersect="showMoreReplies(true)" class="p-6 text-center">
+                        <button type="button" @click="showMoreReplies(true)" class="text-[var(--accent-color)] hover:underline">Show more replies</button>
+                    </div>
                     <template x-if="panelThreadData.reply_tree_truncated">
                         <div class="px-4 py-3 text-[13px] text-[var(--text-secondary)] border-t border-[var(--border-color)]">
                             This conversation has more saved replies than can be shown at once. Open a later reply to continue.
