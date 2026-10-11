@@ -3129,6 +3129,26 @@
                             Search
                         </button>
                     </div>
+                    <template x-if="profileCard?.snapshots?.length > 1">
+                        <div class="flex items-center justify-between mb-2 text-[13px] text-[var(--text-secondary)]">
+                            <button type="button" class="p-1 rounded-full hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    aria-label="Older profile capture" title="Older profile capture"
+                                    :disabled="profileCard?.snapshotIndex >= profileCard?.snapshots?.length - 1"
+                                    @click="showProfileSnapshot(profileCard?.snapshotIndex + 1)">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"></path></svg>
+                            </button>
+                            <span class="truncate" :title="formatDate(profileCard?.syncDate, true)">
+                                Fetched <span x-text="formatRelativeDate(profileCard?.syncDate)"></span>
+                                · <span x-text="profileCard?.snapshots?.length - profileCard?.snapshotIndex"></span> of <span x-text="profileCard?.snapshots?.length"></span>
+                            </span>
+                            <button type="button" class="p-1 rounded-full hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    aria-label="Newer profile capture" title="Newer profile capture"
+                                    :disabled="profileCard?.snapshotIndex <= 0"
+                                    @click="showProfileSnapshot(profileCard?.snapshotIndex - 1)">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path></svg>
+                            </button>
+                        </div>
+                    </template>
                     <div class="flex flex-col mb-3">
                         <span class="font-bold text-[17px] text-[var(--text-primary)] leading-tight truncate" x-text="profileCard?.name"></span>
                         <span class="text-[15px] text-[var(--text-secondary)] truncate" x-text="'@' + profileCard?.username"></span>

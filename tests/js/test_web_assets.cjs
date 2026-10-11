@@ -1251,6 +1251,86 @@ test('reply-recipient links open an anchored profile card without searching', ()
     assert.deepEqual([app.profileCard.x, app.profileCard.y], [40, 58]);
 });
 
+test('profile cards show the newest captured profile and cycle through older ones', async () => {
+    const context = browserContext();
+    const requests = [];
+    const pending = [];
+    const snapshots = [
+        { display_name: 'Alice Renamed', username: 'alice', description: 'New bio', followers_count: 20, following_count: 6, fetched_at: '2026-06-01T00:00:00Z' },
+        { display_name: 'Alice', username: 'alice', description: 'Old bio', followers_count: 10, following_count: 5, fetched_at: '2026-01-01T00:00:00Z' },
+    ];
+    context.fetch = url => {
+        requests.push(url);
+        return new Promise(resolve => pending.push(() => resolve({
+            ok: true,
+            async json() { return { author_id: '42', snapshots }; },
+        })));
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const anchor = { getBoundingClientRect: () => ({ left: 0, right: 10, top: 0, bottom: 10 }) };
+    const settle = async () => { pending.shift()(); await new Promise(resolve => setTimeout(resolve, 0)); };
+    const tweet = {
+        author: { id: '42', username: 'alice', display_name: 'Alice' },
+        synced_at: '2025-12-01T00:00:00Z',
+        raw_json: { core: { user_results: { result: { legacy: { description: 'Tweet bio', followers_count: 1 } } } } },
+    };
+
+    app.openProfileCard({ currentTarget: anchor }, tweet, false, true);
+    assert.equal(app.profileCard.description, 'Tweet bio');
+    await settle();
+    assert.equal(requests[0], '/api/authors/profile?author_id=42');
+    assert.equal(app.profileCard.name, 'Alice Renamed');
+    assert.equal(app.profileCard.description, 'New bio');
+    assert.equal(app.profileCard.followersCount, 20);
+    assert.equal(app.profileCard.syncDate, '2026-06-01T00:00:00Z');
+
+    app.showProfileSnapshot(1);
+    assert.equal(app.profileCard.snapshotIndex, 1);
+    assert.equal(app.profileCard.description, 'Old bio');
+    assert.equal(app.profileCard.followingCount, 5);
+    assert.equal(app.profileCard.syncDate, '2026-01-01T00:00:00Z');
+    app.showProfileSnapshot(2);
+    assert.equal(app.profileCard.snapshotIndex, 1);
+
+    // Mentions resolve their handle and pick up the author's avatar ID.
+    app.openUsernameProfileCard({ currentTarget: anchor }, 'alice');
+    await settle();
+    assert.equal(requests[1], '/api/authors/profile?username=alice');
+    assert.equal(app.profileCard.id, '42');
+    assert.equal(app.profileCard.description, 'New bio');
+
+    // A response for a card that was replaced or closed is ignored.
+    app.openProfileCard({ currentTarget: anchor }, tweet, false, true);
+    app.closeProfileCard();
+    await settle();
+    assert.equal(app.profileCard, null);
+
+    // Profile cards near the bottom open above their anchor, then keep their
+    // top while cycling so the arrows stay put, unless they would overflow.
+    let cardHeight = 200;
+    context.window.innerHeight = 600;
+    context.document.getElementById = id => (id === 'profile-card-modal'
+        ? { getBoundingClientRect: () => ({ width: 300, height: cardHeight }) }
+        : null);
+    const lowAnchor = { getBoundingClientRect: () => ({ left: 0, right: 10, top: 500, bottom: 520 }) };
+    app.openProfileCard({ currentTarget: lowAnchor }, tweet, false, true);
+    assert.equal(app.profileCard.y, 292);
+    await settle();
+    assert.equal(app.profileCard.y, 292);
+    cardHeight = 150;
+    app.showProfileSnapshot(1);
+    assert.equal(app.profileCard.y, 292);
+    cardHeight = 400;
+    app.showProfileSnapshot(0);
+    assert.equal(app.profileCard.y, 192);
+
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.ok(html.includes('@click="showProfileSnapshot(profileCard?.snapshotIndex + 1)"'));
+    assert.ok(html.includes('@click="showProfileSnapshot(profileCard?.snapshotIndex - 1)"'));
+    assert.ok(html.includes('aria-label="Older profile capture"'));
+});
+
 test('analytics uses one cached snapshot and retains it during manual refresh', async () => {
     const context = browserContext();
     const calls = [];
@@ -4345,7 +4425,7 @@ test('abbreviated raw tweet JSON renders exactly like the stored document', () =
     });
     const profile = (tweet, isQuote) => {
         app.openProfileCard(event(), tweet, isQuote);
-        const { x, y, ...card } = app.profileCard;
+        const { x, y, request, ...card } = app.profileCard;
         app.closeProfileCard();
         return card;
     };

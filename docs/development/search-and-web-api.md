@@ -306,11 +306,20 @@ prove current availability.
 
 ```http
 GET /api/authors/search?q=...
+GET /api/authors/profile?author_id=...|username=...&limit=50
 GET /api/tags/autocomplete?q=...
 GET /api/tags/stats
 ```
 
-Author search returns at most 10 local matches; blank input is empty. Tag
+Author search returns at most 10 local matches; blank input is empty. Author
+profile returns `{author_id, snapshots}`: distinct profile states (name, handle,
+bio, follower/following counts) from the author's `tweet` and `tweet_object` rows,
+ordered by fetch time (`last_seen_at`, newest first) rather than tweet age, at most
+`limit` (1–100). Rows without bio or follower data, such as archive imports, are
+skipped. `author_id` wins over `username`; a username resolves through saved
+(`tweet`) rows only, so unknown handles return `{author_id: null, snapshots: []}`.
+Both lookups use existing indexes, so no schema change is needed. The profile card
+shows snapshot 0 and lets the user cycle through the rest. Tag
 autocomplete returns tag/count entries and also supports blank input for popular
 tags. Every whitespace-separated query fragment must appear in the same tag,
 case-insensitively and literally (including `%` and `_`). Counts and limits are
