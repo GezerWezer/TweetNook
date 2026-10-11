@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from tweetnook.export.common import normalize_collection_name
 from tweetnook.search import SearchCursorExpiredError, SearchQueryError, search_posts
-from tweetnook.web.availability import annotate_web_tweets, missing_web_tweet
+from tweetnook.web.availability import annotate_web_tweets, missing_web_tweet, slim_web_tweets
 from tweetnook.web.deps import require_store, verify_credentials
 
 router = APIRouter()
@@ -171,6 +171,7 @@ def api_tweets(
         )
         paginated_tweets = result.rows
         annotate_web_tweets(store, paginated_tweets)
+        slim_web_tweets(paginated_tweets)
 
         return _json(
             {
@@ -517,6 +518,7 @@ def api_tweet_thread(
             return int(raw.get("legacy", {}).get("favorite_count", 0))
 
         children.sort(key=lambda x: (len(x.get("op_replies", [])) > 0, get_likes(x)), reverse=True)
+        slim_web_tweets(formatted.values())
 
         return _json(
             {
@@ -573,6 +575,7 @@ def api_tweet_quotes(
         paginated_ids = [r.get("tweet_id") for r in rows if r.get("tweet_id")]
         paginated_tweets = store.fetch_tweets_by_ids(paginated_ids)
         annotate_web_tweets(store, paginated_tweets)
+        slim_web_tweets(paginated_tweets)
 
         return _json({"tweets": paginated_tweets, "total": total, "page": page, "limit": limit})
     except Exception as e:
@@ -580,6 +583,36 @@ def api_tweet_quotes(
 
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/api/tweets/{tweet_id}/raw")
+def api_tweet_raw(
+    tweet_id: str,
+    store=Depends(require_store),  # noqa: B008
+    _auth: bool = Depends(verify_credentials),
+):
+    """Return the complete stored tweet JSON that list and thread views abbreviate.
+
+    A collection tweet returns the same canonical document the list shows; other
+    archived tweets return their stored object.
+    """
+    tweets = store.fetch_tweets_by_ids([tweet_id])
+    if tweets:
+        annotate_web_tweets(store, tweets)
+        raw_json = tweets[0].get("raw_json")
+    else:
+        objects = store._rows_for_values(
+            "tweet_object", "tweet_id", [tweet_id], columns=["tweet_id", "raw_json"]
+        )
+        raw_json = None
+        if objects and objects[0].get("raw_json"):
+            try:
+                raw_json = json.loads(objects[0]["raw_json"])
+            except (TypeError, json.JSONDecodeError):
+                raw_json = None
+    if not isinstance(raw_json, dict):
+        raise HTTPException(status_code=404, detail="No stored JSON for this tweet")
+    return _json({"tweet_id": tweet_id, "raw_json": raw_json})
 
 
 @router.get("/api/authors/search")

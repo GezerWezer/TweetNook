@@ -118,6 +118,10 @@ function tweetApp() {
     let activityClockTimer = null;
     let activityVisibilityHandler = null;
     let lightboxMotionTimer = null;
+    // Lists and threads send abbreviated raw JSON. Copy raw reads the stored document,
+    // prefetched when a tweet menu opens so the copy usually stays in the click gesture.
+    const rawTweetRequests = new Map();
+    const rawTweetValues = new Map();
 
     return {
         isDemo: window.TWEETNOOK_DEMO === true,
@@ -2717,6 +2721,31 @@ function tweetApp() {
         toggleTweetMenu(menuKey) {
             if (Date.now() < this.tweetMenuClickBlockedUntil) return;
             this.tweetMenuOpen = this.tweetMenuOpen === menuKey ? null : menuKey;
+            if (this.tweetMenuOpen) this.fullRawTweet({ tweet_id: menuKey.slice(menuKey.indexOf(':') + 1) });
+        },
+
+        fullRawTweet(tweet) {
+            const tweetId = this.getTweetId(tweet);
+            if (this.isDemo || typeof globalThis.fetch !== 'function' || !/^\d+$/.test(tweetId || '')) {
+                return Promise.resolve(null);
+            }
+            if (!rawTweetRequests.has(tweetId)) {
+                rawTweetRequests.set(tweetId, globalThis.fetch(`/api/tweets/${tweetId}/raw`)
+                    .then(response => (response.ok ? response.json() : null))
+                    .then(data => data?.raw_json || null)
+                    .catch(() => null)
+                    .then(raw => {
+                        if (raw) rawTweetValues.set(tweetId, raw);
+                        else rawTweetRequests.delete(tweetId);
+                        return raw;
+                    }));
+                if (rawTweetRequests.size > 50) {
+                    const oldest = rawTweetRequests.keys().next().value;
+                    rawTweetRequests.delete(oldest);
+                    rawTweetValues.delete(oldest);
+                }
+            }
+            return rawTweetRequests.get(tweetId);
         },
 
         closeTweetMenu(menuKey = null) {
@@ -2767,11 +2796,13 @@ function tweetApp() {
 
         async copyRawTweet(tweet) {
             this.closeTweetMenu();
-            if (!tweet?.raw_json) {
+            const tweetId = this.getTweetId(tweet);
+            const raw = rawTweetValues.get(tweetId) || (await this.fullRawTweet(tweet)) || tweet?.raw_json;
+            if (!raw) {
                 alert('No raw tweet data is available.');
                 return;
             }
-            const rawText = JSON.stringify(tweet.raw_json, null, 2);
+            const rawText = JSON.stringify(raw, null, 2);
             try {
                 if (globalThis.navigator?.clipboard?.writeText) {
                     try {

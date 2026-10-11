@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+import copy
 import json
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from tweetnook.storage.backend import ArchiveStore
-from tweetnook.web.availability import annotate_web_tweets, availability_for_tweet
+from tweetnook.web.availability import (
+    annotate_web_tweets,
+    availability_for_tweet,
+    slim_raw_tweet,
+    slim_web_tweets,
+)
+from tweetnook.web.deps import get_store
+from tweetnook.web.routes.tweets import router as tweets_router
 
 
 def _web_tweet(tweet_id: str, raw_json: dict | None = None) -> dict:
@@ -236,3 +248,90 @@ def test_raw_media_and_unfetched_quote_get_presentation_placeholders(tmp_path) -
     assert quote["availability"]["placeholder"] is True
     assert marker_only_quote["quoted_tweet"]["availability"]["state"] == "not_archived"
     store.close()
+
+
+FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "web_raw_tweets.json"
+
+
+def test_abbreviated_fixture_matches_the_current_raw_json_pruning() -> None:
+    fixture = json.loads(FIXTURE.read_text())
+    tweets = copy.deepcopy(fixture["full"])
+
+    slim_web_tweets(tweets)
+
+    # The JS asset suite renders both sides of this fixture and requires identical output.
+    assert tweets == fixture["slim"]
+
+
+def test_slim_raw_tweet_drops_unrendered_fields_and_keeps_shape() -> None:
+    raw = {
+        "__typename": "Tweet",
+        "rest_id": "1",
+        "edit_control": {"edit_tweet_ids": ["1"]},
+        "views": {"count": "5", "state": "EnabledWithCount"},
+        "core": {
+            "user_results": {"result": {"rest_id": "9", "avatar": {}, "legacy": {"name": "A"}}}
+        },
+        "legacy": {
+            "full_text": "hi",
+            "lang": "en",
+            "entities": {"hashtags": [{"text": "x"}], "urls": [{"url": "u", "indices": [0, 1]}]},
+            "retweeted_status_result": {"result": {"rest_id": "2", "source": "web"}},
+        },
+        "quoted_status_result": {"result": {"rest_id": "3", "is_translatable": False}},
+    }
+
+    assert slim_raw_tweet(raw) == {
+        "__typename": "Tweet",
+        "rest_id": "1",
+        "views": {"count": "5"},
+        "core": {"user_results": {"result": {"rest_id": "9", "legacy": {"name": "A"}}}},
+        "legacy": {
+            "full_text": "hi",
+            "entities": {"urls": [{"url": "u"}]},
+            "retweeted_status_result": {"result": {"rest_id": "2"}},
+        },
+        "quoted_status_result": {"result": {"rest_id": "3"}},
+    }
+    assert slim_raw_tweet(None) is None and slim_raw_tweet("text") == "text"
+
+
+def test_lists_abbreviate_raw_json_and_raw_endpoint_returns_stored_documents(tmp_path) -> None:
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    member_raw = {"rest_id": "1", "edit_control": {"x": 1}, "legacy": {"full_text": "member"}}
+    object_raw = {"rest_id": "2", "edit_control": {"x": 2}, "legacy": {"full_text": "context"}}
+    store._merge_records(
+        [
+            store._record(
+                row_key="tweet:like::1",
+                record_type="tweet",
+                tweet_id="1",
+                collection_type="like",
+                text="member",
+                created_at_ts=1,
+                raw_json=json.dumps(member_raw),
+            ),
+            store._record(
+                row_key="tweet_object:2",
+                record_type="tweet_object",
+                tweet_id="2",
+                raw_json=json.dumps(object_raw),
+            ),
+        ]
+    )
+    app = FastAPI()
+    app.include_router(tweets_router)
+    app.dependency_overrides[get_store] = lambda: store
+    try:
+        with TestClient(app) as client:
+            listed = client.get("/api/tweets?collection=all&sort=newest").json()["tweets"]
+            member = client.get("/api/tweets/1/raw")
+            context = client.get("/api/tweets/2/raw")
+            missing = client.get("/api/tweets/3/raw")
+    finally:
+        store.close()
+
+    assert listed[0]["raw_json"] == {"rest_id": "1", "legacy": {"full_text": "member"}}
+    assert member.json() == {"tweet_id": "1", "raw_json": member_raw}
+    assert context.json() == {"tweet_id": "2", "raw_json": object_raw}
+    assert missing.status_code == 404

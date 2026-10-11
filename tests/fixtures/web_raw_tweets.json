@@ -1,0 +1,4062 @@
+{
+ "full": [
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": {
+    "author": {
+     "display_name": "Carol",
+     "id": "12",
+     "username": "carol"
+    },
+    "availability": {
+     "placeholder": false,
+     "state": "available"
+    },
+    "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+    "media": [],
+    "media_tags": null,
+    "raw_json": {
+     "__typename": "Tweet",
+     "birdwatch_pivot": {
+      "destinationUrl": "https://x.com/i/birdwatch",
+      "shorttitle": "Readers added context",
+      "subtitle": {
+       "entities": [
+        {
+         "fromIndex": 4,
+         "ref": {
+          "type": "TimelineUrl",
+          "url": "https://example.test",
+          "urlType": "ExternalUrl"
+         },
+         "toIndex": 24
+        }
+       ],
+       "text": "See https://example.test for context."
+      },
+      "title": "Context"
+     },
+     "card": {
+      "legacy": {
+       "binding_values": [
+        {
+         "key": "title",
+         "value": {
+          "string_value": "A <story>",
+          "type": "STRING"
+         }
+        },
+        {
+         "key": "description",
+         "value": {
+          "string_value": "Details & more",
+          "type": "STRING"
+         }
+        },
+        {
+         "key": "vanity_url",
+         "value": {
+          "string_value": "example.test",
+          "type": "STRING"
+         }
+        },
+        {
+         "key": "card_url",
+         "value": {
+          "string_value": "https://t.co/card",
+          "type": "STRING"
+         }
+        },
+        {
+         "key": "thumbnail_image_original",
+         "value": {
+          "image_value": {
+           "height": 419,
+           "url": "https://pbs.twimg.com/card.jpg",
+           "width": 800
+          },
+          "type": "IMAGE"
+         }
+        }
+       ],
+       "name": "summary_large_image",
+       "url": "https://t.co/card"
+      },
+      "rest_id": "card://1"
+     },
+     "core": {
+      "user_results": {
+       "result": {
+        "__typename": "User",
+        "avatar": {
+         "image_url": "https://pbs.twimg.com/profile_images/12/a_normal.jpg"
+        },
+        "core": {
+         "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+         "name": "Carol",
+         "screen_name": "carol"
+        },
+        "is_blue_verified": true,
+        "legacy": {
+         "description": "About Carol",
+         "entities": {
+          "description": {
+           "urls": []
+          }
+         },
+         "followers_count": 1234,
+         "friends_count": 56,
+         "name": "Carol",
+         "pinned_tweet_ids_str": [
+          "1"
+         ],
+         "profile_banner_url": "https://pbs.twimg.com/b",
+         "screen_name": "carol"
+        },
+        "rest_id": "12"
+       }
+      }
+     },
+     "edit_control": {
+      "edit_tweet_ids": [
+       "200"
+      ],
+      "editable_until_msecs": "1"
+     },
+     "is_translatable": false,
+     "legacy": {
+      "bookmark_count": 7,
+      "conversation_id_str": "200",
+      "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+      "entities": {
+       "hashtags": [
+        {
+         "indices": [
+          0,
+          4
+         ],
+         "text": "tag"
+        }
+       ],
+       "media": [
+        {
+         "display_url": "pic.x.com/x",
+         "expanded_url": "https://x.com/i/photo/1",
+         "ext_media_availability": {
+          "status": "Available"
+         },
+         "id_str": "90",
+         "media_key": "3_90",
+         "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+         "original_info": {
+          "focus_rects": [],
+          "height": 800,
+          "width": 1200
+         },
+         "sizes": {
+          "large": {
+           "h": 800,
+           "resize": "fit",
+           "w": 1200
+          }
+         },
+         "type": "photo",
+         "url": "https://t.co/media"
+        }
+       ],
+       "symbols": [],
+       "urls": [
+        {
+         "display_url": "example.test/story",
+         "expanded_url": "https://example.test/story",
+         "indices": [
+          10,
+          20
+         ],
+         "url": "https://t.co/link"
+        }
+       ],
+       "user_mentions": [
+        {
+         "id_str": "11",
+         "indices": [
+          5,
+          9
+         ],
+         "name": "Bob",
+         "screen_name": "bob"
+        }
+       ]
+      },
+      "extended_entities": {
+       "media": [
+        {
+         "display_url": "pic.x.com/x",
+         "expanded_url": "https://x.com/i/photo/1",
+         "ext_media_availability": {
+          "status": "Available"
+         },
+         "id_str": "90",
+         "media_key": "3_90",
+         "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+         "original_info": {
+          "focus_rects": [],
+          "height": 800,
+          "width": 1200
+         },
+         "sizes": {
+          "large": {
+           "h": 800,
+           "resize": "fit",
+           "w": 1200
+          }
+         },
+         "type": "photo",
+         "url": "https://t.co/media"
+        }
+       ]
+      },
+      "favorite_count": 999950,
+      "favorited": false,
+      "full_text": "Quoted #tag @bob https://t.co/link https://t.co/media",
+      "id_str": "200",
+      "lang": "en",
+      "quote_count": 2,
+      "reply_count": 3,
+      "retweet_count": 1500,
+      "user_id_str": "12"
+     },
+     "rest_id": "200",
+     "source": "<a>Twitter Web App</a>",
+     "views": {
+      "count": "123456",
+      "state": "EnabledWithCount"
+     }
+    },
+    "synced_at": null,
+    "text": "Quoted #tag @bob https://t.co/link https://t.co/media",
+    "tweet_id": "200"
+   },
+   "raw_json": {
+    "__typename": "Tweet",
+    "birdwatch_pivot": {
+     "destinationUrl": "https://x.com/i/birdwatch",
+     "shorttitle": "Readers added context",
+     "subtitle": {
+      "entities": [
+       {
+        "fromIndex": 4,
+        "ref": {
+         "type": "TimelineUrl",
+         "url": "https://example.test",
+         "urlType": "ExternalUrl"
+        },
+        "toIndex": 24
+       }
+      ],
+      "text": "See https://example.test for context."
+     },
+     "title": "Context"
+    },
+    "card": {
+     "legacy": {
+      "binding_values": [
+       {
+        "key": "title",
+        "value": {
+         "string_value": "A <story>",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "description",
+        "value": {
+         "string_value": "Details & more",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "vanity_url",
+        "value": {
+         "string_value": "example.test",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "card_url",
+        "value": {
+         "string_value": "https://t.co/card",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "thumbnail_image_original",
+        "value": {
+         "image_value": {
+          "height": 419,
+          "url": "https://pbs.twimg.com/card.jpg",
+          "width": 800
+         },
+         "type": "IMAGE"
+        }
+       }
+      ],
+      "name": "summary_large_image",
+      "url": "https://t.co/card"
+     },
+     "rest_id": "card://1"
+    },
+    "core": {
+     "user_results": {
+      "result": {
+       "__typename": "User",
+       "avatar": {
+        "image_url": "https://pbs.twimg.com/profile_images/10/a_normal.jpg"
+       },
+       "core": {
+        "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "is_blue_verified": true,
+       "legacy": {
+        "description": "About Alice",
+        "entities": {
+         "description": {
+          "urls": []
+         }
+        },
+        "followers_count": 1234,
+        "friends_count": 56,
+        "name": "Alice",
+        "pinned_tweet_ids_str": [
+         "1"
+        ],
+        "profile_banner_url": "https://pbs.twimg.com/b",
+        "screen_name": "alice"
+       },
+       "rest_id": "10"
+      }
+     }
+    },
+    "edit_control": {
+     "edit_tweet_ids": [
+      "100"
+     ],
+     "editable_until_msecs": "1"
+    },
+    "is_translatable": false,
+    "legacy": {
+     "bookmark_count": 7,
+     "conversation_id_str": "100",
+     "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+     "entities": {
+      "hashtags": [
+       {
+        "indices": [
+         0,
+         4
+        ],
+        "text": "tag"
+       }
+      ],
+      "media": [
+       {
+        "display_url": "pic.x.com/x",
+        "expanded_url": "https://x.com/i/photo/1",
+        "ext_media_availability": {
+         "status": "Available"
+        },
+        "id_str": "90",
+        "media_key": "3_90",
+        "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+        "original_info": {
+         "focus_rects": [],
+         "height": 800,
+         "width": 1200
+        },
+        "sizes": {
+         "large": {
+          "h": 800,
+          "resize": "fit",
+          "w": 1200
+         }
+        },
+        "type": "photo",
+        "url": "https://t.co/media"
+       }
+      ],
+      "symbols": [],
+      "urls": [
+       {
+        "display_url": "example.test/story",
+        "expanded_url": "https://example.test/story",
+        "indices": [
+         10,
+         20
+        ],
+        "url": "https://t.co/link"
+       }
+      ],
+      "user_mentions": [
+       {
+        "id_str": "11",
+        "indices": [
+         5,
+         9
+        ],
+        "name": "Bob",
+        "screen_name": "bob"
+       }
+      ]
+     },
+     "extended_entities": {
+      "media": [
+       {
+        "display_url": "pic.x.com/x",
+        "expanded_url": "https://x.com/i/photo/1",
+        "ext_media_availability": {
+         "status": "Available"
+        },
+        "id_str": "90",
+        "media_key": "3_90",
+        "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+        "original_info": {
+         "focus_rects": [],
+         "height": 800,
+         "width": 1200
+        },
+        "sizes": {
+         "large": {
+          "h": 800,
+          "resize": "fit",
+          "w": 1200
+         }
+        },
+        "type": "photo",
+        "url": "https://t.co/media"
+       }
+      ]
+     },
+     "favorite_count": 999950,
+     "favorited": false,
+     "full_text": "#tag @bob https://t.co/link https://t.co/media https://t.co/quote long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text ",
+     "id_str": "100",
+     "in_reply_to_screen_name": "Dave",
+     "in_reply_to_status_id_str": "99",
+     "is_quote_status": true,
+     "lang": "en",
+     "quote_count": 2,
+     "quoted_status_permalink": {
+      "display": "x.com/carol/status/200",
+      "expanded": "https://x.com/carol/status/200",
+      "url": "https://t.co/quote"
+     },
+     "reply_count": 3,
+     "retweet_count": 1500,
+     "user_id_str": "10"
+    },
+    "quoted_status_result": {
+     "result": {
+      "__typename": "TweetWithVisibilityResults",
+      "birdwatch_pivot": {
+       "destinationUrl": "https://x.com/i/birdwatch",
+       "shorttitle": "Readers added context",
+       "subtitle": {
+        "entities": [
+         {
+          "fromIndex": 4,
+          "ref": {
+           "type": "TimelineUrl",
+           "url": "https://example.test",
+           "urlType": "ExternalUrl"
+          },
+          "toIndex": 24
+         }
+        ],
+        "text": "See https://example.test for context."
+       },
+       "title": "Context"
+      },
+      "tweet": {
+       "__typename": "Tweet",
+       "birdwatch_pivot": {
+        "destinationUrl": "https://x.com/i/birdwatch",
+        "shorttitle": "Readers added context",
+        "subtitle": {
+         "entities": [
+          {
+           "fromIndex": 4,
+           "ref": {
+            "type": "TimelineUrl",
+            "url": "https://example.test",
+            "urlType": "ExternalUrl"
+           },
+           "toIndex": 24
+          }
+         ],
+         "text": "See https://example.test for context."
+        },
+        "title": "Context"
+       },
+       "card": {
+        "legacy": {
+         "binding_values": [
+          {
+           "key": "title",
+           "value": {
+            "string_value": "A <story>",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "description",
+           "value": {
+            "string_value": "Details & more",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "vanity_url",
+           "value": {
+            "string_value": "example.test",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "card_url",
+           "value": {
+            "string_value": "https://t.co/card",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "thumbnail_image_original",
+           "value": {
+            "image_value": {
+             "height": 419,
+             "url": "https://pbs.twimg.com/card.jpg",
+             "width": 800
+            },
+            "type": "IMAGE"
+           }
+          }
+         ],
+         "name": "summary_large_image",
+         "url": "https://t.co/card"
+        },
+        "rest_id": "card://1"
+       },
+       "core": {
+        "user_results": {
+         "result": {
+          "__typename": "User",
+          "avatar": {
+           "image_url": "https://pbs.twimg.com/profile_images/12/a_normal.jpg"
+          },
+          "core": {
+           "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+           "name": "Carol",
+           "screen_name": "carol"
+          },
+          "is_blue_verified": true,
+          "legacy": {
+           "description": "About Carol",
+           "entities": {
+            "description": {
+             "urls": []
+            }
+           },
+           "followers_count": 1234,
+           "friends_count": 56,
+           "name": "Carol",
+           "pinned_tweet_ids_str": [
+            "1"
+           ],
+           "profile_banner_url": "https://pbs.twimg.com/b",
+           "screen_name": "carol"
+          },
+          "rest_id": "12"
+         }
+        }
+       },
+       "edit_control": {
+        "edit_tweet_ids": [
+         "200"
+        ],
+        "editable_until_msecs": "1"
+       },
+       "is_translatable": false,
+       "legacy": {
+        "bookmark_count": 7,
+        "conversation_id_str": "200",
+        "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+        "entities": {
+         "hashtags": [
+          {
+           "indices": [
+            0,
+            4
+           ],
+           "text": "tag"
+          }
+         ],
+         "media": [
+          {
+           "display_url": "pic.x.com/x",
+           "expanded_url": "https://x.com/i/photo/1",
+           "ext_media_availability": {
+            "status": "Available"
+           },
+           "id_str": "90",
+           "media_key": "3_90",
+           "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+           "original_info": {
+            "focus_rects": [],
+            "height": 800,
+            "width": 1200
+           },
+           "sizes": {
+            "large": {
+             "h": 800,
+             "resize": "fit",
+             "w": 1200
+            }
+           },
+           "type": "photo",
+           "url": "https://t.co/media"
+          }
+         ],
+         "symbols": [],
+         "urls": [
+          {
+           "display_url": "example.test/story",
+           "expanded_url": "https://example.test/story",
+           "indices": [
+            10,
+            20
+           ],
+           "url": "https://t.co/link"
+          }
+         ],
+         "user_mentions": [
+          {
+           "id_str": "11",
+           "indices": [
+            5,
+            9
+           ],
+           "name": "Bob",
+           "screen_name": "bob"
+          }
+         ]
+        },
+        "extended_entities": {
+         "media": [
+          {
+           "display_url": "pic.x.com/x",
+           "expanded_url": "https://x.com/i/photo/1",
+           "ext_media_availability": {
+            "status": "Available"
+           },
+           "id_str": "90",
+           "media_key": "3_90",
+           "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+           "original_info": {
+            "focus_rects": [],
+            "height": 800,
+            "width": 1200
+           },
+           "sizes": {
+            "large": {
+             "h": 800,
+             "resize": "fit",
+             "w": 1200
+            }
+           },
+           "type": "photo",
+           "url": "https://t.co/media"
+          }
+         ]
+        },
+        "favorite_count": 999950,
+        "favorited": false,
+        "full_text": "Quoted #tag @bob https://t.co/link https://t.co/media",
+        "id_str": "200",
+        "lang": "en",
+        "quote_count": 2,
+        "reply_count": 3,
+        "retweet_count": 1500,
+        "user_id_str": "12"
+       },
+       "rest_id": "200",
+       "source": "<a>Twitter Web App</a>",
+       "views": {
+        "count": "123456",
+        "state": "EnabledWithCount"
+       }
+      }
+     }
+    },
+    "rest_id": "100",
+    "source": "<a>Twitter Web App</a>",
+    "views": {
+     "count": "123456",
+     "state": "EnabledWithCount"
+    }
+   },
+   "retweeted_tweet": null,
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "#tag @bob https://t.co/link https://t.co/media https://t.co/quote long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text ",
+   "tweet_id": "100",
+   "urls": []
+  },
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": null,
+   "raw_json": {
+    "__typename": "Tweet",
+    "birdwatch_pivot": {
+     "destinationUrl": "https://x.com/i/birdwatch",
+     "shorttitle": "Readers added context",
+     "subtitle": {
+      "entities": [
+       {
+        "fromIndex": 4,
+        "ref": {
+         "type": "TimelineUrl",
+         "url": "https://example.test",
+         "urlType": "ExternalUrl"
+        },
+        "toIndex": 24
+       }
+      ],
+      "text": "See https://example.test for context."
+     },
+     "title": "Context"
+    },
+    "card": {
+     "legacy": {
+      "binding_values": [
+       {
+        "key": "title",
+        "value": {
+         "string_value": "A <story>",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "description",
+        "value": {
+         "string_value": "Details & more",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "vanity_url",
+        "value": {
+         "string_value": "example.test",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "card_url",
+        "value": {
+         "string_value": "https://t.co/card",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "thumbnail_image_original",
+        "value": {
+         "image_value": {
+          "height": 419,
+          "url": "https://pbs.twimg.com/card.jpg",
+          "width": 800
+         },
+         "type": "IMAGE"
+        }
+       }
+      ],
+      "name": "summary_large_image",
+      "url": "https://t.co/card"
+     },
+     "rest_id": "card://1"
+    },
+    "core": {
+     "user_results": {
+      "result": {
+       "__typename": "User",
+       "avatar": {
+        "image_url": "https://pbs.twimg.com/profile_images/10/a_normal.jpg"
+       },
+       "core": {
+        "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "is_blue_verified": true,
+       "legacy": {
+        "description": "About Alice",
+        "entities": {
+         "description": {
+          "urls": []
+         }
+        },
+        "followers_count": 1234,
+        "friends_count": 56,
+        "name": "Alice",
+        "pinned_tweet_ids_str": [
+         "1"
+        ],
+        "profile_banner_url": "https://pbs.twimg.com/b",
+        "screen_name": "alice"
+       },
+       "rest_id": "10"
+      }
+     }
+    },
+    "edit_control": {
+     "edit_tweet_ids": [
+      "100"
+     ],
+     "editable_until_msecs": "1"
+    },
+    "is_translatable": false,
+    "legacy": {
+     "bookmark_count": 7,
+     "conversation_id_str": "100",
+     "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+     "entities": {
+      "hashtags": [
+       {
+        "indices": [
+         0,
+         4
+        ],
+        "text": "tag"
+       }
+      ],
+      "media": [
+       {
+        "display_url": "pic.x.com/x",
+        "expanded_url": "https://x.com/i/photo/1",
+        "ext_media_availability": {
+         "status": "Available"
+        },
+        "id_str": "90",
+        "media_key": "3_90",
+        "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+        "original_info": {
+         "focus_rects": [],
+         "height": 800,
+         "width": 1200
+        },
+        "sizes": {
+         "large": {
+          "h": 800,
+          "resize": "fit",
+          "w": 1200
+         }
+        },
+        "type": "photo",
+        "url": "https://t.co/media"
+       }
+      ],
+      "symbols": [],
+      "urls": [
+       {
+        "display_url": "example.test/story",
+        "expanded_url": "https://example.test/story",
+        "indices": [
+         10,
+         20
+        ],
+        "url": "https://t.co/link"
+       }
+      ],
+      "user_mentions": [
+       {
+        "id_str": "11",
+        "indices": [
+         5,
+         9
+        ],
+        "name": "Bob",
+        "screen_name": "bob"
+       }
+      ]
+     },
+     "extended_entities": {
+      "media": [
+       {
+        "display_url": "pic.x.com/x",
+        "expanded_url": "https://x.com/i/photo/1",
+        "ext_media_availability": {
+         "status": "Available"
+        },
+        "id_str": "90",
+        "media_key": "3_90",
+        "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+        "original_info": {
+         "focus_rects": [],
+         "height": 800,
+         "width": 1200
+        },
+        "sizes": {
+         "large": {
+          "h": 800,
+          "resize": "fit",
+          "w": 1200
+         }
+        },
+        "type": "photo",
+        "url": "https://t.co/media"
+       }
+      ]
+     },
+     "favorite_count": 999950,
+     "favorited": false,
+     "full_text": "#tag @bob https://t.co/link https://t.co/media https://t.co/quote long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text ",
+     "id_str": "100",
+     "in_reply_to_screen_name": "Dave",
+     "in_reply_to_status_id_str": "99",
+     "is_quote_status": true,
+     "lang": "en",
+     "quote_count": 2,
+     "quoted_status_permalink": {
+      "display": "x.com/carol/status/200",
+      "expanded": "https://x.com/carol/status/200",
+      "url": "https://t.co/quote"
+     },
+     "reply_count": 3,
+     "retweet_count": 1500,
+     "user_id_str": "10"
+    },
+    "quoted_status_result": {
+     "result": {
+      "__typename": "TweetWithVisibilityResults",
+      "birdwatch_pivot": {
+       "destinationUrl": "https://x.com/i/birdwatch",
+       "shorttitle": "Readers added context",
+       "subtitle": {
+        "entities": [
+         {
+          "fromIndex": 4,
+          "ref": {
+           "type": "TimelineUrl",
+           "url": "https://example.test",
+           "urlType": "ExternalUrl"
+          },
+          "toIndex": 24
+         }
+        ],
+        "text": "See https://example.test for context."
+       },
+       "title": "Context"
+      },
+      "tweet": {
+       "__typename": "Tweet",
+       "birdwatch_pivot": {
+        "destinationUrl": "https://x.com/i/birdwatch",
+        "shorttitle": "Readers added context",
+        "subtitle": {
+         "entities": [
+          {
+           "fromIndex": 4,
+           "ref": {
+            "type": "TimelineUrl",
+            "url": "https://example.test",
+            "urlType": "ExternalUrl"
+           },
+           "toIndex": 24
+          }
+         ],
+         "text": "See https://example.test for context."
+        },
+        "title": "Context"
+       },
+       "card": {
+        "legacy": {
+         "binding_values": [
+          {
+           "key": "title",
+           "value": {
+            "string_value": "A <story>",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "description",
+           "value": {
+            "string_value": "Details & more",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "vanity_url",
+           "value": {
+            "string_value": "example.test",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "card_url",
+           "value": {
+            "string_value": "https://t.co/card",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "thumbnail_image_original",
+           "value": {
+            "image_value": {
+             "height": 419,
+             "url": "https://pbs.twimg.com/card.jpg",
+             "width": 800
+            },
+            "type": "IMAGE"
+           }
+          }
+         ],
+         "name": "summary_large_image",
+         "url": "https://t.co/card"
+        },
+        "rest_id": "card://1"
+       },
+       "core": {
+        "user_results": {
+         "result": {
+          "__typename": "User",
+          "avatar": {
+           "image_url": "https://pbs.twimg.com/profile_images/12/a_normal.jpg"
+          },
+          "core": {
+           "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+           "name": "Carol",
+           "screen_name": "carol"
+          },
+          "is_blue_verified": true,
+          "legacy": {
+           "description": "About Carol",
+           "entities": {
+            "description": {
+             "urls": []
+            }
+           },
+           "followers_count": 1234,
+           "friends_count": 56,
+           "name": "Carol",
+           "pinned_tweet_ids_str": [
+            "1"
+           ],
+           "profile_banner_url": "https://pbs.twimg.com/b",
+           "screen_name": "carol"
+          },
+          "rest_id": "12"
+         }
+        }
+       },
+       "edit_control": {
+        "edit_tweet_ids": [
+         "200"
+        ],
+        "editable_until_msecs": "1"
+       },
+       "is_translatable": false,
+       "legacy": {
+        "bookmark_count": 7,
+        "conversation_id_str": "200",
+        "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+        "entities": {
+         "hashtags": [
+          {
+           "indices": [
+            0,
+            4
+           ],
+           "text": "tag"
+          }
+         ],
+         "media": [
+          {
+           "display_url": "pic.x.com/x",
+           "expanded_url": "https://x.com/i/photo/1",
+           "ext_media_availability": {
+            "status": "Available"
+           },
+           "id_str": "90",
+           "media_key": "3_90",
+           "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+           "original_info": {
+            "focus_rects": [],
+            "height": 800,
+            "width": 1200
+           },
+           "sizes": {
+            "large": {
+             "h": 800,
+             "resize": "fit",
+             "w": 1200
+            }
+           },
+           "type": "photo",
+           "url": "https://t.co/media"
+          }
+         ],
+         "symbols": [],
+         "urls": [
+          {
+           "display_url": "example.test/story",
+           "expanded_url": "https://example.test/story",
+           "indices": [
+            10,
+            20
+           ],
+           "url": "https://t.co/link"
+          }
+         ],
+         "user_mentions": [
+          {
+           "id_str": "11",
+           "indices": [
+            5,
+            9
+           ],
+           "name": "Bob",
+           "screen_name": "bob"
+          }
+         ]
+        },
+        "extended_entities": {
+         "media": [
+          {
+           "display_url": "pic.x.com/x",
+           "expanded_url": "https://x.com/i/photo/1",
+           "ext_media_availability": {
+            "status": "Available"
+           },
+           "id_str": "90",
+           "media_key": "3_90",
+           "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+           "original_info": {
+            "focus_rects": [],
+            "height": 800,
+            "width": 1200
+           },
+           "sizes": {
+            "large": {
+             "h": 800,
+             "resize": "fit",
+             "w": 1200
+            }
+           },
+           "type": "photo",
+           "url": "https://t.co/media"
+          }
+         ]
+        },
+        "favorite_count": 999950,
+        "favorited": false,
+        "full_text": "Quoted #tag @bob https://t.co/link https://t.co/media",
+        "id_str": "200",
+        "lang": "en",
+        "quote_count": 2,
+        "reply_count": 3,
+        "retweet_count": 1500,
+        "user_id_str": "12"
+       },
+       "rest_id": "200",
+       "source": "<a>Twitter Web App</a>",
+       "views": {
+        "count": "123456",
+        "state": "EnabledWithCount"
+       }
+      }
+     }
+    },
+    "rest_id": "100",
+    "source": "<a>Twitter Web App</a>",
+    "views": {
+     "count": "123456",
+     "state": "EnabledWithCount"
+    }
+   },
+   "retweeted_tweet": null,
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "#tag @bob https://t.co/link https://t.co/media https://t.co/quote long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text ",
+   "tweet_id": "100",
+   "urls": []
+  },
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": null,
+   "raw_json": {
+    "__typename": "Tweet",
+    "core": {
+     "user_results": {
+      "result": {
+       "__typename": "User",
+       "avatar": {
+        "image_url": "https://pbs.twimg.com/profile_images/10/a_normal.jpg"
+       },
+       "core": {
+        "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "is_blue_verified": true,
+       "legacy": {
+        "description": "About Alice",
+        "entities": {
+         "description": {
+          "urls": []
+         }
+        },
+        "followers_count": 1234,
+        "friends_count": 56,
+        "name": "Alice",
+        "pinned_tweet_ids_str": [
+         "1"
+        ],
+        "profile_banner_url": "https://pbs.twimg.com/b",
+        "screen_name": "alice"
+       },
+       "rest_id": "10"
+      }
+     }
+    },
+    "edit_control": {
+     "edit_tweet_ids": [
+      "301"
+     ],
+     "editable_until_msecs": "1"
+    },
+    "is_translatable": false,
+    "legacy": {
+     "bookmark_count": 7,
+     "conversation_id_str": "301",
+     "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+     "entities": {
+      "hashtags": [
+       {
+        "indices": [
+         0,
+         4
+        ],
+        "text": "tag"
+       }
+      ],
+      "media": [
+       {
+        "display_url": "pic.x.com/x",
+        "expanded_url": "https://x.com/i/photo/1",
+        "ext_media_availability": {
+         "status": "Available"
+        },
+        "id_str": "90",
+        "media_key": "3_90",
+        "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+        "original_info": {
+         "focus_rects": [],
+         "height": 800,
+         "width": 1200
+        },
+        "sizes": {
+         "large": {
+          "h": 800,
+          "resize": "fit",
+          "w": 1200
+         }
+        },
+        "type": "photo",
+        "url": "https://t.co/media"
+       }
+      ],
+      "symbols": [],
+      "urls": [
+       {
+        "display_url": "example.test/story",
+        "expanded_url": "https://example.test/story",
+        "indices": [
+         10,
+         20
+        ],
+        "url": "https://t.co/link"
+       }
+      ],
+      "user_mentions": [
+       {
+        "id_str": "11",
+        "indices": [
+         5,
+         9
+        ],
+        "name": "Bob",
+        "screen_name": "bob"
+       }
+      ]
+     },
+     "extended_entities": {
+      "media": [
+       {
+        "display_url": "pic.x.com/x",
+        "expanded_url": "https://x.com/i/photo/1",
+        "ext_media_availability": {
+         "status": "Available"
+        },
+        "id_str": "90",
+        "media_key": "3_90",
+        "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+        "original_info": {
+         "focus_rects": [],
+         "height": 800,
+         "width": 1200
+        },
+        "sizes": {
+         "large": {
+          "h": 800,
+          "resize": "fit",
+          "w": 1200
+         }
+        },
+        "type": "photo",
+        "url": "https://t.co/media"
+       }
+      ]
+     },
+     "favorite_count": 999950,
+     "favorited": false,
+     "full_text": "RT @erin: Original",
+     "id_str": "301",
+     "lang": "en",
+     "quote_count": 2,
+     "reply_count": 3,
+     "retweet_count": 1500,
+     "retweeted_status_result": {
+      "result": {
+       "__typename": "Tweet",
+       "card": {
+        "binding_values": {
+         "choice1_count": {
+          "string_value": "30"
+         },
+         "choice1_label": {
+          "string_value": "Yes"
+         },
+         "choice2_count": {
+          "string_value": "10"
+         },
+         "choice2_label": {
+          "string_value": "No"
+         },
+         "counts_are_final": {
+          "boolean_value": true
+         }
+        },
+        "name": "poll2choice_text_only",
+        "url": "https://t.co/poll"
+       },
+       "core": {
+        "user_results": {
+         "result": {
+          "__typename": "User",
+          "avatar": {
+           "image_url": "https://pbs.twimg.com/profile_images/13/a_normal.jpg"
+          },
+          "core": {
+           "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+           "name": "Erin",
+           "screen_name": "erin"
+          },
+          "is_blue_verified": true,
+          "legacy": {
+           "description": "About Erin",
+           "entities": {
+            "description": {
+             "urls": []
+            }
+           },
+           "followers_count": 1234,
+           "friends_count": 56,
+           "name": "Erin",
+           "pinned_tweet_ids_str": [
+            "1"
+           ],
+           "profile_banner_url": "https://pbs.twimg.com/b",
+           "screen_name": "erin"
+          },
+          "rest_id": "13"
+         }
+        }
+       },
+       "edit_control": {
+        "edit_tweet_ids": [
+         "300"
+        ],
+        "editable_until_msecs": "1"
+       },
+       "is_translatable": false,
+       "legacy": {
+        "bookmark_count": 7,
+        "conversation_id_str": "300",
+        "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+        "entities": {
+         "hashtags": [
+          {
+           "indices": [
+            0,
+            4
+           ],
+           "text": "tag"
+          }
+         ],
+         "media": [
+          {
+           "display_url": "pic.x.com/x",
+           "expanded_url": "https://x.com/i/photo/1",
+           "ext_media_availability": {
+            "status": "Available"
+           },
+           "id_str": "90",
+           "media_key": "3_90",
+           "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+           "original_info": {
+            "focus_rects": [],
+            "height": 800,
+            "width": 1200
+           },
+           "sizes": {
+            "large": {
+             "h": 800,
+             "resize": "fit",
+             "w": 1200
+            }
+           },
+           "type": "photo",
+           "url": "https://t.co/media"
+          }
+         ],
+         "symbols": [],
+         "urls": [
+          {
+           "display_url": "example.test/story",
+           "expanded_url": "https://example.test/story",
+           "indices": [
+            10,
+            20
+           ],
+           "url": "https://t.co/link"
+          }
+         ],
+         "user_mentions": [
+          {
+           "id_str": "11",
+           "indices": [
+            5,
+            9
+           ],
+           "name": "Bob",
+           "screen_name": "bob"
+          }
+         ]
+        },
+        "extended_entities": {
+         "media": [
+          {
+           "display_url": "pic.x.com/x",
+           "expanded_url": "https://x.com/i/photo/1",
+           "ext_media_availability": {
+            "status": "Available"
+           },
+           "id_str": "90",
+           "media_key": "3_90",
+           "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+           "original_info": {
+            "focus_rects": [],
+            "height": 800,
+            "width": 1200
+           },
+           "sizes": {
+            "large": {
+             "h": 800,
+             "resize": "fit",
+             "w": 1200
+            }
+           },
+           "type": "photo",
+           "url": "https://t.co/media"
+          }
+         ]
+        },
+        "favorite_count": 999950,
+        "favorited": false,
+        "full_text": "Original @bob https://t.co/link",
+        "id_str": "300",
+        "lang": "en",
+        "quote_count": 2,
+        "reply_count": 3,
+        "retweet_count": 1500,
+        "user_id_str": "13"
+       },
+       "rest_id": "300",
+       "source": "<a>Twitter Web App</a>",
+       "views": {
+        "count": "123456",
+        "state": "EnabledWithCount"
+       }
+      }
+     },
+     "user_id_str": "10"
+    },
+    "rest_id": "301",
+    "source": "<a>Twitter Web App</a>",
+    "views": {
+     "count": "123456",
+     "state": "EnabledWithCount"
+    }
+   },
+   "retweeted_tweet": {
+    "author": {
+     "display_name": "Erin",
+     "id": "13",
+     "username": "erin"
+    },
+    "availability": {
+     "placeholder": false,
+     "state": "available"
+    },
+    "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+    "media": [],
+    "media_tags": null,
+    "raw_json": {
+     "__typename": "Tweet",
+     "card": {
+      "binding_values": {
+       "choice1_count": {
+        "string_value": "30"
+       },
+       "choice1_label": {
+        "string_value": "Yes"
+       },
+       "choice2_count": {
+        "string_value": "10"
+       },
+       "choice2_label": {
+        "string_value": "No"
+       },
+       "counts_are_final": {
+        "boolean_value": true
+       }
+      },
+      "name": "poll2choice_text_only",
+      "url": "https://t.co/poll"
+     },
+     "core": {
+      "user_results": {
+       "result": {
+        "__typename": "User",
+        "avatar": {
+         "image_url": "https://pbs.twimg.com/profile_images/13/a_normal.jpg"
+        },
+        "core": {
+         "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+         "name": "Erin",
+         "screen_name": "erin"
+        },
+        "is_blue_verified": true,
+        "legacy": {
+         "description": "About Erin",
+         "entities": {
+          "description": {
+           "urls": []
+          }
+         },
+         "followers_count": 1234,
+         "friends_count": 56,
+         "name": "Erin",
+         "pinned_tweet_ids_str": [
+          "1"
+         ],
+         "profile_banner_url": "https://pbs.twimg.com/b",
+         "screen_name": "erin"
+        },
+        "rest_id": "13"
+       }
+      }
+     },
+     "edit_control": {
+      "edit_tweet_ids": [
+       "300"
+      ],
+      "editable_until_msecs": "1"
+     },
+     "is_translatable": false,
+     "legacy": {
+      "bookmark_count": 7,
+      "conversation_id_str": "300",
+      "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+      "entities": {
+       "hashtags": [
+        {
+         "indices": [
+          0,
+          4
+         ],
+         "text": "tag"
+        }
+       ],
+       "media": [
+        {
+         "display_url": "pic.x.com/x",
+         "expanded_url": "https://x.com/i/photo/1",
+         "ext_media_availability": {
+          "status": "Available"
+         },
+         "id_str": "90",
+         "media_key": "3_90",
+         "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+         "original_info": {
+          "focus_rects": [],
+          "height": 800,
+          "width": 1200
+         },
+         "sizes": {
+          "large": {
+           "h": 800,
+           "resize": "fit",
+           "w": 1200
+          }
+         },
+         "type": "photo",
+         "url": "https://t.co/media"
+        }
+       ],
+       "symbols": [],
+       "urls": [
+        {
+         "display_url": "example.test/story",
+         "expanded_url": "https://example.test/story",
+         "indices": [
+          10,
+          20
+         ],
+         "url": "https://t.co/link"
+        }
+       ],
+       "user_mentions": [
+        {
+         "id_str": "11",
+         "indices": [
+          5,
+          9
+         ],
+         "name": "Bob",
+         "screen_name": "bob"
+        }
+       ]
+      },
+      "extended_entities": {
+       "media": [
+        {
+         "display_url": "pic.x.com/x",
+         "expanded_url": "https://x.com/i/photo/1",
+         "ext_media_availability": {
+          "status": "Available"
+         },
+         "id_str": "90",
+         "media_key": "3_90",
+         "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+         "original_info": {
+          "focus_rects": [],
+          "height": 800,
+          "width": 1200
+         },
+         "sizes": {
+          "large": {
+           "h": 800,
+           "resize": "fit",
+           "w": 1200
+          }
+         },
+         "type": "photo",
+         "url": "https://t.co/media"
+        }
+       ]
+      },
+      "favorite_count": 999950,
+      "favorited": false,
+      "full_text": "Original @bob https://t.co/link",
+      "id_str": "300",
+      "lang": "en",
+      "quote_count": 2,
+      "reply_count": 3,
+      "retweet_count": 1500,
+      "user_id_str": "13"
+     },
+     "rest_id": "300",
+     "source": "<a>Twitter Web App</a>",
+     "views": {
+      "count": "123456",
+      "state": "EnabledWithCount"
+     }
+    },
+    "synced_at": null,
+    "text": "Original @bob https://t.co/link",
+    "tweet_id": "300"
+   },
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "RT @erin: Original",
+   "tweet_id": "301",
+   "urls": []
+  },
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": null,
+   "raw_json": {
+    "__typename": "Tweet",
+    "core": {
+     "user_results": {
+      "result": {
+       "__typename": "User",
+       "avatar": {
+        "image_url": "https://pbs.twimg.com/profile_images/10/a_normal.jpg"
+       },
+       "core": {
+        "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "is_blue_verified": true,
+       "legacy": {
+        "description": "About Alice",
+        "entities": {
+         "description": {
+          "urls": []
+         }
+        },
+        "followers_count": 1234,
+        "friends_count": 56,
+        "name": "Alice",
+        "pinned_tweet_ids_str": [
+         "1"
+        ],
+        "profile_banner_url": "https://pbs.twimg.com/b",
+        "screen_name": "alice"
+       },
+       "rest_id": "10"
+      }
+     }
+    },
+    "edit_control": {
+     "edit_tweet_ids": [
+      "301"
+     ],
+     "editable_until_msecs": "1"
+    },
+    "is_translatable": false,
+    "legacy": {
+     "bookmark_count": 7,
+     "conversation_id_str": "301",
+     "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+     "entities": {
+      "hashtags": [
+       {
+        "indices": [
+         0,
+         4
+        ],
+        "text": "tag"
+       }
+      ],
+      "media": [
+       {
+        "display_url": "pic.x.com/x",
+        "expanded_url": "https://x.com/i/photo/1",
+        "ext_media_availability": {
+         "status": "Available"
+        },
+        "id_str": "90",
+        "media_key": "3_90",
+        "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+        "original_info": {
+         "focus_rects": [],
+         "height": 800,
+         "width": 1200
+        },
+        "sizes": {
+         "large": {
+          "h": 800,
+          "resize": "fit",
+          "w": 1200
+         }
+        },
+        "type": "photo",
+        "url": "https://t.co/media"
+       }
+      ],
+      "symbols": [],
+      "urls": [
+       {
+        "display_url": "example.test/story",
+        "expanded_url": "https://example.test/story",
+        "indices": [
+         10,
+         20
+        ],
+        "url": "https://t.co/link"
+       }
+      ],
+      "user_mentions": [
+       {
+        "id_str": "11",
+        "indices": [
+         5,
+         9
+        ],
+        "name": "Bob",
+        "screen_name": "bob"
+       }
+      ]
+     },
+     "extended_entities": {
+      "media": [
+       {
+        "display_url": "pic.x.com/x",
+        "expanded_url": "https://x.com/i/photo/1",
+        "ext_media_availability": {
+         "status": "Available"
+        },
+        "id_str": "90",
+        "media_key": "3_90",
+        "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+        "original_info": {
+         "focus_rects": [],
+         "height": 800,
+         "width": 1200
+        },
+        "sizes": {
+         "large": {
+          "h": 800,
+          "resize": "fit",
+          "w": 1200
+         }
+        },
+        "type": "photo",
+        "url": "https://t.co/media"
+       }
+      ]
+     },
+     "favorite_count": 999950,
+     "favorited": false,
+     "full_text": "RT @erin: Original",
+     "id_str": "301",
+     "lang": "en",
+     "quote_count": 2,
+     "reply_count": 3,
+     "retweet_count": 1500,
+     "retweeted_status_result": {
+      "result": {
+       "__typename": "Tweet",
+       "card": {
+        "binding_values": {
+         "choice1_count": {
+          "string_value": "30"
+         },
+         "choice1_label": {
+          "string_value": "Yes"
+         },
+         "choice2_count": {
+          "string_value": "10"
+         },
+         "choice2_label": {
+          "string_value": "No"
+         },
+         "counts_are_final": {
+          "boolean_value": true
+         }
+        },
+        "name": "poll2choice_text_only",
+        "url": "https://t.co/poll"
+       },
+       "core": {
+        "user_results": {
+         "result": {
+          "__typename": "User",
+          "avatar": {
+           "image_url": "https://pbs.twimg.com/profile_images/13/a_normal.jpg"
+          },
+          "core": {
+           "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+           "name": "Erin",
+           "screen_name": "erin"
+          },
+          "is_blue_verified": true,
+          "legacy": {
+           "description": "About Erin",
+           "entities": {
+            "description": {
+             "urls": []
+            }
+           },
+           "followers_count": 1234,
+           "friends_count": 56,
+           "name": "Erin",
+           "pinned_tweet_ids_str": [
+            "1"
+           ],
+           "profile_banner_url": "https://pbs.twimg.com/b",
+           "screen_name": "erin"
+          },
+          "rest_id": "13"
+         }
+        }
+       },
+       "edit_control": {
+        "edit_tweet_ids": [
+         "300"
+        ],
+        "editable_until_msecs": "1"
+       },
+       "is_translatable": false,
+       "legacy": {
+        "bookmark_count": 7,
+        "conversation_id_str": "300",
+        "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+        "entities": {
+         "hashtags": [
+          {
+           "indices": [
+            0,
+            4
+           ],
+           "text": "tag"
+          }
+         ],
+         "media": [
+          {
+           "display_url": "pic.x.com/x",
+           "expanded_url": "https://x.com/i/photo/1",
+           "ext_media_availability": {
+            "status": "Available"
+           },
+           "id_str": "90",
+           "media_key": "3_90",
+           "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+           "original_info": {
+            "focus_rects": [],
+            "height": 800,
+            "width": 1200
+           },
+           "sizes": {
+            "large": {
+             "h": 800,
+             "resize": "fit",
+             "w": 1200
+            }
+           },
+           "type": "photo",
+           "url": "https://t.co/media"
+          }
+         ],
+         "symbols": [],
+         "urls": [
+          {
+           "display_url": "example.test/story",
+           "expanded_url": "https://example.test/story",
+           "indices": [
+            10,
+            20
+           ],
+           "url": "https://t.co/link"
+          }
+         ],
+         "user_mentions": [
+          {
+           "id_str": "11",
+           "indices": [
+            5,
+            9
+           ],
+           "name": "Bob",
+           "screen_name": "bob"
+          }
+         ]
+        },
+        "extended_entities": {
+         "media": [
+          {
+           "display_url": "pic.x.com/x",
+           "expanded_url": "https://x.com/i/photo/1",
+           "ext_media_availability": {
+            "status": "Available"
+           },
+           "id_str": "90",
+           "media_key": "3_90",
+           "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+           "original_info": {
+            "focus_rects": [],
+            "height": 800,
+            "width": 1200
+           },
+           "sizes": {
+            "large": {
+             "h": 800,
+             "resize": "fit",
+             "w": 1200
+            }
+           },
+           "type": "photo",
+           "url": "https://t.co/media"
+          }
+         ]
+        },
+        "favorite_count": 999950,
+        "favorited": false,
+        "full_text": "Original @bob https://t.co/link",
+        "id_str": "300",
+        "lang": "en",
+        "quote_count": 2,
+        "reply_count": 3,
+        "retweet_count": 1500,
+        "user_id_str": "13"
+       },
+       "rest_id": "300",
+       "source": "<a>Twitter Web App</a>",
+       "views": {
+        "count": "123456",
+        "state": "EnabledWithCount"
+       }
+      }
+     },
+     "user_id_str": "10"
+    },
+    "rest_id": "301",
+    "source": "<a>Twitter Web App</a>",
+    "views": {
+     "count": "123456",
+     "state": "EnabledWithCount"
+    }
+   },
+   "retweeted_tweet": null,
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "RT @erin: Original",
+   "tweet_id": "301",
+   "urls": []
+  },
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "collections": [
+    "bookmark"
+   ],
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": null,
+   "raw_json": {
+    "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+    "full_text": "Legacy v1 @bob",
+    "id_str": "400",
+    "in_reply_to_screen_name": "frank",
+    "quoted_status": {
+     "__typename": "Tweet",
+     "core": {
+      "user_results": {
+       "result": {
+        "__typename": "User",
+        "avatar": {
+         "image_url": "https://pbs.twimg.com/profile_images/15/a_normal.jpg"
+        },
+        "core": {
+         "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+         "name": "Hank",
+         "screen_name": "hank"
+        },
+        "is_blue_verified": true,
+        "legacy": {
+         "description": "About Hank",
+         "entities": {
+          "description": {
+           "urls": []
+          }
+         },
+         "followers_count": 1234,
+         "friends_count": 56,
+         "name": "Hank",
+         "pinned_tweet_ids_str": [
+          "1"
+         ],
+         "profile_banner_url": "https://pbs.twimg.com/b",
+         "screen_name": "hank"
+        },
+        "rest_id": "15"
+       }
+      }
+     },
+     "edit_control": {
+      "edit_tweet_ids": [
+       "401"
+      ],
+      "editable_until_msecs": "1"
+     },
+     "is_translatable": false,
+     "legacy": {
+      "bookmark_count": 7,
+      "conversation_id_str": "401",
+      "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+      "entities": {
+       "hashtags": [
+        {
+         "indices": [
+          0,
+          4
+         ],
+         "text": "tag"
+        }
+       ],
+       "media": [
+        {
+         "display_url": "pic.x.com/x",
+         "expanded_url": "https://x.com/i/photo/1",
+         "ext_media_availability": {
+          "status": "Available"
+         },
+         "id_str": "90",
+         "media_key": "3_90",
+         "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+         "original_info": {
+          "focus_rects": [],
+          "height": 800,
+          "width": 1200
+         },
+         "sizes": {
+          "large": {
+           "h": 800,
+           "resize": "fit",
+           "w": 1200
+          }
+         },
+         "type": "photo",
+         "url": "https://t.co/media"
+        }
+       ],
+       "symbols": [],
+       "urls": [
+        {
+         "display_url": "example.test/story",
+         "expanded_url": "https://example.test/story",
+         "indices": [
+          10,
+          20
+         ],
+         "url": "https://t.co/link"
+        }
+       ],
+       "user_mentions": [
+        {
+         "id_str": "11",
+         "indices": [
+          5,
+          9
+         ],
+         "name": "Bob",
+         "screen_name": "bob"
+        }
+       ]
+      },
+      "extended_entities": {
+       "media": [
+        {
+         "display_url": "pic.x.com/x",
+         "expanded_url": "https://x.com/i/photo/1",
+         "ext_media_availability": {
+          "status": "Available"
+         },
+         "id_str": "90",
+         "media_key": "3_90",
+         "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+         "original_info": {
+          "focus_rects": [],
+          "height": 800,
+          "width": 1200
+         },
+         "sizes": {
+          "large": {
+           "h": 800,
+           "resize": "fit",
+           "w": 1200
+          }
+         },
+         "type": "photo",
+         "url": "https://t.co/media"
+        }
+       ]
+      },
+      "favorite_count": 999950,
+      "favorited": false,
+      "full_text": "v1 quoted",
+      "id_str": "401",
+      "lang": "en",
+      "quote_count": 2,
+      "reply_count": 3,
+      "retweet_count": 1500,
+      "user_id_str": "15"
+     },
+     "rest_id": "401",
+     "source": "<a>Twitter Web App</a>",
+     "views": {
+      "count": "123456",
+      "state": "EnabledWithCount"
+     }
+    },
+    "retweeted_status": null,
+    "user": {
+     "description": "v1 user",
+     "followers_count": 5,
+     "friends_count": 6,
+     "id_str": "14",
+     "name": "Gina",
+     "profile_image_url_https": "x",
+     "screen_name": "gina"
+    }
+   },
+   "retweeted_tweet": null,
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "Legacy v1 @bob",
+   "tweet_id": "400",
+   "urls": []
+  },
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": {
+    "author": {
+     "display_name": null,
+     "id": null,
+     "username": null
+    },
+    "availability": {
+     "message": "This tweet is unavailable.",
+     "placeholder": true,
+     "state": "unavailable"
+    },
+    "media": [],
+    "raw_json": {
+     "__typename": "TweetTombstone",
+     "tombstone": {
+      "__typename": "TextTombstone",
+      "text": {
+       "entities": [],
+       "text": "This Post is unavailable."
+      }
+     }
+    },
+    "text": "",
+    "tweet_id": ""
+   },
+   "raw_json": {
+    "__typename": "Tweet",
+    "core": {
+     "user_results": {
+      "result": {
+       "__typename": "User",
+       "avatar": {
+        "image_url": "https://pbs.twimg.com/profile_images/10/a_normal.jpg"
+       },
+       "core": {
+        "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "is_blue_verified": true,
+       "legacy": {
+        "description": "About Alice",
+        "entities": {
+         "description": {
+          "urls": []
+         }
+        },
+        "followers_count": 1234,
+        "friends_count": 56,
+        "name": "Alice",
+        "pinned_tweet_ids_str": [
+         "1"
+        ],
+        "profile_banner_url": "https://pbs.twimg.com/b",
+        "screen_name": "alice"
+       },
+       "rest_id": "10"
+      }
+     }
+    },
+    "edit_control": {
+     "edit_tweet_ids": [
+      "500"
+     ],
+     "editable_until_msecs": "1"
+    },
+    "is_translatable": false,
+    "legacy": {
+     "bookmark_count": 7,
+     "conversation_id_str": "500",
+     "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+     "entities": {
+      "hashtags": [
+       {
+        "indices": [
+         0,
+         4
+        ],
+        "text": "tag"
+       }
+      ],
+      "media": [
+       {
+        "display_url": "pic.x.com/x",
+        "expanded_url": "https://x.com/i/photo/1",
+        "ext_media_availability": {
+         "status": "Available"
+        },
+        "id_str": "90",
+        "media_key": "3_90",
+        "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+        "original_info": {
+         "focus_rects": [],
+         "height": 800,
+         "width": 1200
+        },
+        "sizes": {
+         "large": {
+          "h": 800,
+          "resize": "fit",
+          "w": 1200
+         }
+        },
+        "type": "photo",
+        "url": "https://t.co/media"
+       }
+      ],
+      "symbols": [],
+      "urls": [
+       {
+        "display_url": "example.test/story",
+        "expanded_url": "https://example.test/story",
+        "indices": [
+         10,
+         20
+        ],
+        "url": "https://t.co/link"
+       }
+      ],
+      "user_mentions": [
+       {
+        "id_str": "11",
+        "indices": [
+         5,
+         9
+        ],
+        "name": "Bob",
+        "screen_name": "bob"
+       }
+      ]
+     },
+     "extended_entities": {
+      "media": [
+       {
+        "display_url": "pic.x.com/x",
+        "expanded_url": "https://x.com/i/photo/1",
+        "ext_media_availability": {
+         "status": "Available"
+        },
+        "id_str": "90",
+        "media_key": "3_90",
+        "media_url_https": "https://pbs.twimg.com/media/90.jpg",
+        "original_info": {
+         "focus_rects": [],
+         "height": 800,
+         "width": 1200
+        },
+        "sizes": {
+         "large": {
+          "h": 800,
+          "resize": "fit",
+          "w": 1200
+         }
+        },
+        "type": "photo",
+        "url": "https://t.co/media"
+       }
+      ]
+     },
+     "favorite_count": 999950,
+     "favorited": false,
+     "full_text": "Quote of a deleted tweet",
+     "id_str": "500",
+     "is_quote_status": true,
+     "lang": "en",
+     "quote_count": 2,
+     "reply_count": 3,
+     "retweet_count": 1500,
+     "user_id_str": "10"
+    },
+    "rest_id": "500",
+    "source": "<a>Twitter Web App</a>",
+    "views": {
+     "count": "123456",
+     "state": "EnabledWithCount"
+    }
+   },
+   "retweeted_tweet": null,
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "Quote of a deleted tweet",
+   "tweet_id": "500",
+   "urls": []
+  }
+ ],
+ "slim": [
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": {
+    "author": {
+     "display_name": "Carol",
+     "id": "12",
+     "username": "carol"
+    },
+    "availability": {
+     "placeholder": false,
+     "state": "available"
+    },
+    "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+    "media": [],
+    "media_tags": null,
+    "raw_json": {
+     "__typename": "Tweet",
+     "birdwatch_pivot": {
+      "destinationUrl": "https://x.com/i/birdwatch",
+      "shorttitle": "Readers added context",
+      "subtitle": {
+       "entities": [
+        {
+         "fromIndex": 4,
+         "ref": {
+          "type": "TimelineUrl",
+          "url": "https://example.test",
+          "urlType": "ExternalUrl"
+         },
+         "toIndex": 24
+        }
+       ],
+       "text": "See https://example.test for context."
+      },
+      "title": "Context"
+     },
+     "card": {
+      "legacy": {
+       "binding_values": [
+        {
+         "key": "title",
+         "value": {
+          "string_value": "A <story>",
+          "type": "STRING"
+         }
+        },
+        {
+         "key": "description",
+         "value": {
+          "string_value": "Details & more",
+          "type": "STRING"
+         }
+        },
+        {
+         "key": "vanity_url",
+         "value": {
+          "string_value": "example.test",
+          "type": "STRING"
+         }
+        },
+        {
+         "key": "card_url",
+         "value": {
+          "string_value": "https://t.co/card",
+          "type": "STRING"
+         }
+        },
+        {
+         "key": "thumbnail_image_original",
+         "value": {
+          "image_value": {
+           "height": 419,
+           "url": "https://pbs.twimg.com/card.jpg",
+           "width": 800
+          },
+          "type": "IMAGE"
+         }
+        }
+       ],
+       "name": "summary_large_image",
+       "url": "https://t.co/card"
+      },
+      "rest_id": "card://1"
+     },
+     "core": {
+      "user_results": {
+       "result": {
+        "core": {
+         "name": "Carol",
+         "screen_name": "carol"
+        },
+        "legacy": {
+         "description": "About Carol",
+         "followers_count": 1234,
+         "friends_count": 56,
+         "name": "Carol",
+         "screen_name": "carol"
+        },
+        "rest_id": "12"
+       }
+      }
+     },
+     "legacy": {
+      "bookmark_count": 7,
+      "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+      "entities": {
+       "media": [
+        {
+         "url": "https://t.co/media"
+        }
+       ],
+       "urls": [
+        {
+         "display_url": "example.test/story",
+         "expanded_url": "https://example.test/story",
+         "url": "https://t.co/link"
+        }
+       ]
+      },
+      "extended_entities": {
+       "media": [
+        {
+         "url": "https://t.co/media"
+        }
+       ]
+      },
+      "favorite_count": 999950,
+      "full_text": "Quoted #tag @bob https://t.co/link https://t.co/media",
+      "quote_count": 2,
+      "reply_count": 3,
+      "retweet_count": 1500
+     },
+     "rest_id": "200",
+     "views": {
+      "count": "123456"
+     }
+    },
+    "synced_at": null,
+    "text": "Quoted #tag @bob https://t.co/link https://t.co/media",
+    "tweet_id": "200"
+   },
+   "raw_json": {
+    "__typename": "Tweet",
+    "birdwatch_pivot": {
+     "destinationUrl": "https://x.com/i/birdwatch",
+     "shorttitle": "Readers added context",
+     "subtitle": {
+      "entities": [
+       {
+        "fromIndex": 4,
+        "ref": {
+         "type": "TimelineUrl",
+         "url": "https://example.test",
+         "urlType": "ExternalUrl"
+        },
+        "toIndex": 24
+       }
+      ],
+      "text": "See https://example.test for context."
+     },
+     "title": "Context"
+    },
+    "card": {
+     "legacy": {
+      "binding_values": [
+       {
+        "key": "title",
+        "value": {
+         "string_value": "A <story>",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "description",
+        "value": {
+         "string_value": "Details & more",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "vanity_url",
+        "value": {
+         "string_value": "example.test",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "card_url",
+        "value": {
+         "string_value": "https://t.co/card",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "thumbnail_image_original",
+        "value": {
+         "image_value": {
+          "height": 419,
+          "url": "https://pbs.twimg.com/card.jpg",
+          "width": 800
+         },
+         "type": "IMAGE"
+        }
+       }
+      ],
+      "name": "summary_large_image",
+      "url": "https://t.co/card"
+     },
+     "rest_id": "card://1"
+    },
+    "core": {
+     "user_results": {
+      "result": {
+       "core": {
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "legacy": {
+        "description": "About Alice",
+        "followers_count": 1234,
+        "friends_count": 56,
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "rest_id": "10"
+      }
+     }
+    },
+    "legacy": {
+     "bookmark_count": 7,
+     "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+     "entities": {
+      "media": [
+       {
+        "url": "https://t.co/media"
+       }
+      ],
+      "urls": [
+       {
+        "display_url": "example.test/story",
+        "expanded_url": "https://example.test/story",
+        "url": "https://t.co/link"
+       }
+      ]
+     },
+     "extended_entities": {
+      "media": [
+       {
+        "url": "https://t.co/media"
+       }
+      ]
+     },
+     "favorite_count": 999950,
+     "full_text": "#tag @bob https://t.co/link https://t.co/media https://t.co/quote long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text ",
+     "in_reply_to_screen_name": "Dave",
+     "in_reply_to_status_id_str": "99",
+     "quote_count": 2,
+     "quoted_status_permalink": {
+      "display": "x.com/carol/status/200",
+      "expanded": "https://x.com/carol/status/200",
+      "url": "https://t.co/quote"
+     },
+     "reply_count": 3,
+     "retweet_count": 1500
+    },
+    "quoted_status_result": {
+     "result": {
+      "__typename": "TweetWithVisibilityResults",
+      "birdwatch_pivot": {
+       "destinationUrl": "https://x.com/i/birdwatch",
+       "shorttitle": "Readers added context",
+       "subtitle": {
+        "entities": [
+         {
+          "fromIndex": 4,
+          "ref": {
+           "type": "TimelineUrl",
+           "url": "https://example.test",
+           "urlType": "ExternalUrl"
+          },
+          "toIndex": 24
+         }
+        ],
+        "text": "See https://example.test for context."
+       },
+       "title": "Context"
+      },
+      "tweet": {
+       "__typename": "Tweet",
+       "birdwatch_pivot": {
+        "destinationUrl": "https://x.com/i/birdwatch",
+        "shorttitle": "Readers added context",
+        "subtitle": {
+         "entities": [
+          {
+           "fromIndex": 4,
+           "ref": {
+            "type": "TimelineUrl",
+            "url": "https://example.test",
+            "urlType": "ExternalUrl"
+           },
+           "toIndex": 24
+          }
+         ],
+         "text": "See https://example.test for context."
+        },
+        "title": "Context"
+       },
+       "card": {
+        "legacy": {
+         "binding_values": [
+          {
+           "key": "title",
+           "value": {
+            "string_value": "A <story>",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "description",
+           "value": {
+            "string_value": "Details & more",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "vanity_url",
+           "value": {
+            "string_value": "example.test",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "card_url",
+           "value": {
+            "string_value": "https://t.co/card",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "thumbnail_image_original",
+           "value": {
+            "image_value": {
+             "height": 419,
+             "url": "https://pbs.twimg.com/card.jpg",
+             "width": 800
+            },
+            "type": "IMAGE"
+           }
+          }
+         ],
+         "name": "summary_large_image",
+         "url": "https://t.co/card"
+        },
+        "rest_id": "card://1"
+       },
+       "core": {
+        "user_results": {
+         "result": {
+          "core": {
+           "name": "Carol",
+           "screen_name": "carol"
+          },
+          "legacy": {
+           "description": "About Carol",
+           "followers_count": 1234,
+           "friends_count": 56,
+           "name": "Carol",
+           "screen_name": "carol"
+          },
+          "rest_id": "12"
+         }
+        }
+       },
+       "legacy": {
+        "bookmark_count": 7,
+        "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+        "entities": {
+         "media": [
+          {
+           "url": "https://t.co/media"
+          }
+         ],
+         "urls": [
+          {
+           "display_url": "example.test/story",
+           "expanded_url": "https://example.test/story",
+           "url": "https://t.co/link"
+          }
+         ]
+        },
+        "extended_entities": {
+         "media": [
+          {
+           "url": "https://t.co/media"
+          }
+         ]
+        },
+        "favorite_count": 999950,
+        "full_text": "Quoted #tag @bob https://t.co/link https://t.co/media",
+        "quote_count": 2,
+        "reply_count": 3,
+        "retweet_count": 1500
+       },
+       "rest_id": "200",
+       "views": {
+        "count": "123456"
+       }
+      }
+     }
+    },
+    "rest_id": "100",
+    "views": {
+     "count": "123456"
+    }
+   },
+   "retweeted_tweet": null,
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "#tag @bob https://t.co/link https://t.co/media https://t.co/quote long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text ",
+   "tweet_id": "100",
+   "urls": []
+  },
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": null,
+   "raw_json": {
+    "__typename": "Tweet",
+    "birdwatch_pivot": {
+     "destinationUrl": "https://x.com/i/birdwatch",
+     "shorttitle": "Readers added context",
+     "subtitle": {
+      "entities": [
+       {
+        "fromIndex": 4,
+        "ref": {
+         "type": "TimelineUrl",
+         "url": "https://example.test",
+         "urlType": "ExternalUrl"
+        },
+        "toIndex": 24
+       }
+      ],
+      "text": "See https://example.test for context."
+     },
+     "title": "Context"
+    },
+    "card": {
+     "legacy": {
+      "binding_values": [
+       {
+        "key": "title",
+        "value": {
+         "string_value": "A <story>",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "description",
+        "value": {
+         "string_value": "Details & more",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "vanity_url",
+        "value": {
+         "string_value": "example.test",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "card_url",
+        "value": {
+         "string_value": "https://t.co/card",
+         "type": "STRING"
+        }
+       },
+       {
+        "key": "thumbnail_image_original",
+        "value": {
+         "image_value": {
+          "height": 419,
+          "url": "https://pbs.twimg.com/card.jpg",
+          "width": 800
+         },
+         "type": "IMAGE"
+        }
+       }
+      ],
+      "name": "summary_large_image",
+      "url": "https://t.co/card"
+     },
+     "rest_id": "card://1"
+    },
+    "core": {
+     "user_results": {
+      "result": {
+       "core": {
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "legacy": {
+        "description": "About Alice",
+        "followers_count": 1234,
+        "friends_count": 56,
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "rest_id": "10"
+      }
+     }
+    },
+    "legacy": {
+     "bookmark_count": 7,
+     "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+     "entities": {
+      "media": [
+       {
+        "url": "https://t.co/media"
+       }
+      ],
+      "urls": [
+       {
+        "display_url": "example.test/story",
+        "expanded_url": "https://example.test/story",
+        "url": "https://t.co/link"
+       }
+      ]
+     },
+     "extended_entities": {
+      "media": [
+       {
+        "url": "https://t.co/media"
+       }
+      ]
+     },
+     "favorite_count": 999950,
+     "full_text": "#tag @bob https://t.co/link https://t.co/media https://t.co/quote long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text ",
+     "in_reply_to_screen_name": "Dave",
+     "in_reply_to_status_id_str": "99",
+     "quote_count": 2,
+     "quoted_status_permalink": {
+      "display": "x.com/carol/status/200",
+      "expanded": "https://x.com/carol/status/200",
+      "url": "https://t.co/quote"
+     },
+     "reply_count": 3,
+     "retweet_count": 1500
+    },
+    "quoted_status_result": {
+     "result": {
+      "__typename": "TweetWithVisibilityResults",
+      "birdwatch_pivot": {
+       "destinationUrl": "https://x.com/i/birdwatch",
+       "shorttitle": "Readers added context",
+       "subtitle": {
+        "entities": [
+         {
+          "fromIndex": 4,
+          "ref": {
+           "type": "TimelineUrl",
+           "url": "https://example.test",
+           "urlType": "ExternalUrl"
+          },
+          "toIndex": 24
+         }
+        ],
+        "text": "See https://example.test for context."
+       },
+       "title": "Context"
+      },
+      "tweet": {
+       "__typename": "Tweet",
+       "birdwatch_pivot": {
+        "destinationUrl": "https://x.com/i/birdwatch",
+        "shorttitle": "Readers added context",
+        "subtitle": {
+         "entities": [
+          {
+           "fromIndex": 4,
+           "ref": {
+            "type": "TimelineUrl",
+            "url": "https://example.test",
+            "urlType": "ExternalUrl"
+           },
+           "toIndex": 24
+          }
+         ],
+         "text": "See https://example.test for context."
+        },
+        "title": "Context"
+       },
+       "card": {
+        "legacy": {
+         "binding_values": [
+          {
+           "key": "title",
+           "value": {
+            "string_value": "A <story>",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "description",
+           "value": {
+            "string_value": "Details & more",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "vanity_url",
+           "value": {
+            "string_value": "example.test",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "card_url",
+           "value": {
+            "string_value": "https://t.co/card",
+            "type": "STRING"
+           }
+          },
+          {
+           "key": "thumbnail_image_original",
+           "value": {
+            "image_value": {
+             "height": 419,
+             "url": "https://pbs.twimg.com/card.jpg",
+             "width": 800
+            },
+            "type": "IMAGE"
+           }
+          }
+         ],
+         "name": "summary_large_image",
+         "url": "https://t.co/card"
+        },
+        "rest_id": "card://1"
+       },
+       "core": {
+        "user_results": {
+         "result": {
+          "core": {
+           "name": "Carol",
+           "screen_name": "carol"
+          },
+          "legacy": {
+           "description": "About Carol",
+           "followers_count": 1234,
+           "friends_count": 56,
+           "name": "Carol",
+           "screen_name": "carol"
+          },
+          "rest_id": "12"
+         }
+        }
+       },
+       "legacy": {
+        "bookmark_count": 7,
+        "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+        "entities": {
+         "media": [
+          {
+           "url": "https://t.co/media"
+          }
+         ],
+         "urls": [
+          {
+           "display_url": "example.test/story",
+           "expanded_url": "https://example.test/story",
+           "url": "https://t.co/link"
+          }
+         ]
+        },
+        "extended_entities": {
+         "media": [
+          {
+           "url": "https://t.co/media"
+          }
+         ]
+        },
+        "favorite_count": 999950,
+        "full_text": "Quoted #tag @bob https://t.co/link https://t.co/media",
+        "quote_count": 2,
+        "reply_count": 3,
+        "retweet_count": 1500
+       },
+       "rest_id": "200",
+       "views": {
+        "count": "123456"
+       }
+      }
+     }
+    },
+    "rest_id": "100",
+    "views": {
+     "count": "123456"
+    }
+   },
+   "retweeted_tweet": null,
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "#tag @bob https://t.co/link https://t.co/media https://t.co/quote long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text ",
+   "tweet_id": "100",
+   "urls": []
+  },
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": null,
+   "raw_json": {
+    "__typename": "Tweet",
+    "core": {
+     "user_results": {
+      "result": {
+       "core": {
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "legacy": {
+        "description": "About Alice",
+        "followers_count": 1234,
+        "friends_count": 56,
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "rest_id": "10"
+      }
+     }
+    },
+    "legacy": {
+     "bookmark_count": 7,
+     "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+     "entities": {
+      "media": [
+       {
+        "url": "https://t.co/media"
+       }
+      ],
+      "urls": [
+       {
+        "display_url": "example.test/story",
+        "expanded_url": "https://example.test/story",
+        "url": "https://t.co/link"
+       }
+      ]
+     },
+     "extended_entities": {
+      "media": [
+       {
+        "url": "https://t.co/media"
+       }
+      ]
+     },
+     "favorite_count": 999950,
+     "full_text": "RT @erin: Original",
+     "quote_count": 2,
+     "reply_count": 3,
+     "retweet_count": 1500,
+     "retweeted_status_result": {
+      "result": {
+       "__typename": "Tweet",
+       "card": {
+        "binding_values": {
+         "choice1_count": {
+          "string_value": "30"
+         },
+         "choice1_label": {
+          "string_value": "Yes"
+         },
+         "choice2_count": {
+          "string_value": "10"
+         },
+         "choice2_label": {
+          "string_value": "No"
+         },
+         "counts_are_final": {
+          "boolean_value": true
+         }
+        },
+        "name": "poll2choice_text_only",
+        "url": "https://t.co/poll"
+       },
+       "core": {
+        "user_results": {
+         "result": {
+          "core": {
+           "name": "Erin",
+           "screen_name": "erin"
+          },
+          "legacy": {
+           "description": "About Erin",
+           "followers_count": 1234,
+           "friends_count": 56,
+           "name": "Erin",
+           "screen_name": "erin"
+          },
+          "rest_id": "13"
+         }
+        }
+       },
+       "legacy": {
+        "bookmark_count": 7,
+        "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+        "entities": {
+         "media": [
+          {
+           "url": "https://t.co/media"
+          }
+         ],
+         "urls": [
+          {
+           "display_url": "example.test/story",
+           "expanded_url": "https://example.test/story",
+           "url": "https://t.co/link"
+          }
+         ]
+        },
+        "extended_entities": {
+         "media": [
+          {
+           "url": "https://t.co/media"
+          }
+         ]
+        },
+        "favorite_count": 999950,
+        "full_text": "Original @bob https://t.co/link",
+        "quote_count": 2,
+        "reply_count": 3,
+        "retweet_count": 1500
+       },
+       "rest_id": "300",
+       "views": {
+        "count": "123456"
+       }
+      }
+     }
+    },
+    "rest_id": "301",
+    "views": {
+     "count": "123456"
+    }
+   },
+   "retweeted_tweet": {
+    "author": {
+     "display_name": "Erin",
+     "id": "13",
+     "username": "erin"
+    },
+    "availability": {
+     "placeholder": false,
+     "state": "available"
+    },
+    "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+    "media": [],
+    "media_tags": null,
+    "raw_json": {
+     "__typename": "Tweet",
+     "card": {
+      "binding_values": {
+       "choice1_count": {
+        "string_value": "30"
+       },
+       "choice1_label": {
+        "string_value": "Yes"
+       },
+       "choice2_count": {
+        "string_value": "10"
+       },
+       "choice2_label": {
+        "string_value": "No"
+       },
+       "counts_are_final": {
+        "boolean_value": true
+       }
+      },
+      "name": "poll2choice_text_only",
+      "url": "https://t.co/poll"
+     },
+     "core": {
+      "user_results": {
+       "result": {
+        "core": {
+         "name": "Erin",
+         "screen_name": "erin"
+        },
+        "legacy": {
+         "description": "About Erin",
+         "followers_count": 1234,
+         "friends_count": 56,
+         "name": "Erin",
+         "screen_name": "erin"
+        },
+        "rest_id": "13"
+       }
+      }
+     },
+     "legacy": {
+      "bookmark_count": 7,
+      "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+      "entities": {
+       "media": [
+        {
+         "url": "https://t.co/media"
+        }
+       ],
+       "urls": [
+        {
+         "display_url": "example.test/story",
+         "expanded_url": "https://example.test/story",
+         "url": "https://t.co/link"
+        }
+       ]
+      },
+      "extended_entities": {
+       "media": [
+        {
+         "url": "https://t.co/media"
+        }
+       ]
+      },
+      "favorite_count": 999950,
+      "full_text": "Original @bob https://t.co/link",
+      "quote_count": 2,
+      "reply_count": 3,
+      "retweet_count": 1500
+     },
+     "rest_id": "300",
+     "views": {
+      "count": "123456"
+     }
+    },
+    "synced_at": null,
+    "text": "Original @bob https://t.co/link",
+    "tweet_id": "300"
+   },
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "RT @erin: Original",
+   "tweet_id": "301",
+   "urls": []
+  },
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": null,
+   "raw_json": {
+    "__typename": "Tweet",
+    "core": {
+     "user_results": {
+      "result": {
+       "core": {
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "legacy": {
+        "description": "About Alice",
+        "followers_count": 1234,
+        "friends_count": 56,
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "rest_id": "10"
+      }
+     }
+    },
+    "legacy": {
+     "bookmark_count": 7,
+     "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+     "entities": {
+      "media": [
+       {
+        "url": "https://t.co/media"
+       }
+      ],
+      "urls": [
+       {
+        "display_url": "example.test/story",
+        "expanded_url": "https://example.test/story",
+        "url": "https://t.co/link"
+       }
+      ]
+     },
+     "extended_entities": {
+      "media": [
+       {
+        "url": "https://t.co/media"
+       }
+      ]
+     },
+     "favorite_count": 999950,
+     "full_text": "RT @erin: Original",
+     "quote_count": 2,
+     "reply_count": 3,
+     "retweet_count": 1500,
+     "retweeted_status_result": {
+      "result": {
+       "__typename": "Tweet",
+       "card": {
+        "binding_values": {
+         "choice1_count": {
+          "string_value": "30"
+         },
+         "choice1_label": {
+          "string_value": "Yes"
+         },
+         "choice2_count": {
+          "string_value": "10"
+         },
+         "choice2_label": {
+          "string_value": "No"
+         },
+         "counts_are_final": {
+          "boolean_value": true
+         }
+        },
+        "name": "poll2choice_text_only",
+        "url": "https://t.co/poll"
+       },
+       "core": {
+        "user_results": {
+         "result": {
+          "core": {
+           "name": "Erin",
+           "screen_name": "erin"
+          },
+          "legacy": {
+           "description": "About Erin",
+           "followers_count": 1234,
+           "friends_count": 56,
+           "name": "Erin",
+           "screen_name": "erin"
+          },
+          "rest_id": "13"
+         }
+        }
+       },
+       "legacy": {
+        "bookmark_count": 7,
+        "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+        "entities": {
+         "media": [
+          {
+           "url": "https://t.co/media"
+          }
+         ],
+         "urls": [
+          {
+           "display_url": "example.test/story",
+           "expanded_url": "https://example.test/story",
+           "url": "https://t.co/link"
+          }
+         ]
+        },
+        "extended_entities": {
+         "media": [
+          {
+           "url": "https://t.co/media"
+          }
+         ]
+        },
+        "favorite_count": 999950,
+        "full_text": "Original @bob https://t.co/link",
+        "quote_count": 2,
+        "reply_count": 3,
+        "retweet_count": 1500
+       },
+       "rest_id": "300",
+       "views": {
+        "count": "123456"
+       }
+      }
+     }
+    },
+    "rest_id": "301",
+    "views": {
+     "count": "123456"
+    }
+   },
+   "retweeted_tweet": null,
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "RT @erin: Original",
+   "tweet_id": "301",
+   "urls": []
+  },
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "collections": [
+    "bookmark"
+   ],
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": null,
+   "raw_json": {
+    "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+    "full_text": "Legacy v1 @bob",
+    "id_str": "400",
+    "in_reply_to_screen_name": "frank",
+    "quoted_status": {
+     "__typename": "Tweet",
+     "core": {
+      "user_results": {
+       "result": {
+        "core": {
+         "name": "Hank",
+         "screen_name": "hank"
+        },
+        "legacy": {
+         "description": "About Hank",
+         "followers_count": 1234,
+         "friends_count": 56,
+         "name": "Hank",
+         "screen_name": "hank"
+        },
+        "rest_id": "15"
+       }
+      }
+     },
+     "legacy": {
+      "bookmark_count": 7,
+      "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+      "entities": {
+       "media": [
+        {
+         "url": "https://t.co/media"
+        }
+       ],
+       "urls": [
+        {
+         "display_url": "example.test/story",
+         "expanded_url": "https://example.test/story",
+         "url": "https://t.co/link"
+        }
+       ]
+      },
+      "extended_entities": {
+       "media": [
+        {
+         "url": "https://t.co/media"
+        }
+       ]
+      },
+      "favorite_count": 999950,
+      "full_text": "v1 quoted",
+      "quote_count": 2,
+      "reply_count": 3,
+      "retweet_count": 1500
+     },
+     "rest_id": "401",
+     "views": {
+      "count": "123456"
+     }
+    },
+    "retweeted_status": null,
+    "user": {
+     "description": "v1 user",
+     "followers_count": 5,
+     "friends_count": 6,
+     "id_str": "14",
+     "name": "Gina",
+     "screen_name": "gina"
+    }
+   },
+   "retweeted_tweet": null,
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "Legacy v1 @bob",
+   "tweet_id": "400",
+   "urls": []
+  },
+  {
+   "article": null,
+   "author": {
+    "display_name": "Alice",
+    "id": "10",
+    "username": "alice"
+   },
+   "availability": {
+    "placeholder": false,
+    "state": "available"
+   },
+   "collection": {
+    "added_at": null,
+    "folder_id": null,
+    "sort_index": "1",
+    "synced_at": "2026-03-15T00:00:00Z",
+    "type": "like"
+   },
+   "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+   "media": [
+    {
+     "download": {
+      "local_path": "media/100/90.jpg",
+      "thumbnail_local_path": null
+     },
+     "duration_millis": null,
+     "height": 800,
+     "type": "photo",
+     "url": "https://pbs.twimg.com/media/90.jpg",
+     "width": 1200
+    }
+   ],
+   "media_tags": null,
+   "qt_media": [],
+   "qt_media_tags": null,
+   "quoted_tweet": {
+    "author": {
+     "display_name": null,
+     "id": null,
+     "username": null
+    },
+    "availability": {
+     "message": "This tweet is unavailable.",
+     "placeholder": true,
+     "state": "unavailable"
+    },
+    "media": [],
+    "raw_json": {
+     "__typename": "TweetTombstone",
+     "tombstone": {
+      "__typename": "TextTombstone",
+      "text": {
+       "entities": [],
+       "text": "This Post is unavailable."
+      }
+     }
+    },
+    "text": "",
+    "tweet_id": ""
+   },
+   "raw_json": {
+    "__typename": "Tweet",
+    "core": {
+     "user_results": {
+      "result": {
+       "core": {
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "legacy": {
+        "description": "About Alice",
+        "followers_count": 1234,
+        "friends_count": 56,
+        "name": "Alice",
+        "screen_name": "alice"
+       },
+       "rest_id": "10"
+      }
+     }
+    },
+    "legacy": {
+     "bookmark_count": 7,
+     "created_at": "Sat Mar 14 12:00:00 +0000 2026",
+     "entities": {
+      "media": [
+       {
+        "url": "https://t.co/media"
+       }
+      ],
+      "urls": [
+       {
+        "display_url": "example.test/story",
+        "expanded_url": "https://example.test/story",
+        "url": "https://t.co/link"
+       }
+      ]
+     },
+     "extended_entities": {
+      "media": [
+       {
+        "url": "https://t.co/media"
+       }
+      ]
+     },
+     "favorite_count": 999950,
+     "full_text": "Quote of a deleted tweet",
+     "quote_count": 2,
+     "reply_count": 3,
+     "retweet_count": 1500
+    },
+    "rest_id": "500",
+    "views": {
+     "count": "123456"
+    }
+   },
+   "retweeted_tweet": null,
+   "synced_at": "2026-03-15T00:00:00Z",
+   "text": "Quote of a deleted tweet",
+   "tweet_id": "500",
+   "urls": []
+  }
+ ]
+}
