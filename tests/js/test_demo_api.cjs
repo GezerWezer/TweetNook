@@ -242,6 +242,19 @@ async function main() {
 
     await request(store, `https://example.test/api/tags/${ids.ownerRoot}`, {
         method: 'PUT',
+        body: JSON.stringify({tags: ['REM (Deadlock)', 'REM (Sleep)', '100%_literal [tag]']}),
+    });
+    for (const query of ['rem D', ' D\tREM ', 'em dead']) {
+        const matches = await request(store, `https://example.test/api/tags/autocomplete?q=${encodeURIComponent(query)}`);
+        assert.deepEqual(matches.body.tags, [{tag: 'REM (Deadlock)', count: 1}]);
+    }
+    const literalTags = await request(store, `https://example.test/api/tags/autocomplete?q=${encodeURIComponent('%_ [')}`);
+    assert.deepEqual(literalTags.body.tags, [{tag: '100%_literal [tag]', count: 1}]);
+    const absentTags = await request(store, 'https://example.test/api/tags/autocomplete?q=rem%20absent');
+    assert.deepEqual(absentTags.body.tags, []);
+
+    await request(store, `https://example.test/api/tags/${ids.ownerRoot}`, {
+        method: 'PUT',
         body: JSON.stringify({tags: ['example', 'fresh'], description: 'Changed for this session.'}),
     });
     const changedTags = await request(store, 'https://example.test/api/tags/stats');

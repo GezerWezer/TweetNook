@@ -162,7 +162,7 @@
                             <template x-if="opt.isTag">
                                 <div class="flex w-full justify-between items-center">
                                     <div class="flex items-center space-x-2">
-                                        <span class="text-[var(--text-primary)]" x-html="highlightMatch(opt.value, opt.query)"></span>
+                                        <span class="text-[var(--text-primary)]" x-html="highlightTagMatch(opt.value, opt.query)"></span>
                                     </div>
                                     <span class="text-[var(--text-secondary)] text-sm bg-[var(--bg-tertiary)] px-2 py-0.5 rounded-full font-medium" x-text="opt.count"></span>
                                 </div>

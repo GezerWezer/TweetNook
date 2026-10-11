@@ -462,7 +462,7 @@
         }
 
         function tagCounts(query = '') {
-            const folded = query.toLowerCase();
+            const fragments = query.toLowerCase().split(/\s+/).filter(Boolean);
             const counts = new Map();
             for (const tweet of state.tweets) {
                 for (const tag of tweet.tags || []) {
@@ -471,7 +471,7 @@
                 }
             }
             return [...counts.entries()]
-                .filter(([tag]) => tag.toLowerCase().includes(folded))
+                .filter(([tag]) => fragments.every(fragment => tag.toLowerCase().includes(fragment)))
                 .map(([tag, count]) => ({tag, count}))
                 .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag));
         }
