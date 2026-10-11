@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import struct
+import threading
 import zlib
 from pathlib import Path
 from types import SimpleNamespace
@@ -671,3 +672,23 @@ def test_exhausted_fetch_budget_stops_attempts(monkeypatch, make_web_client, tmp
 
     assert response.content == avatars.TRANSPARENT_PNG
     assert len(calls) == 1
+
+
+def test_avatar_work_runs_outside_the_request_thread_pool(
+    monkeypatch, make_web_client, tmp_path: Path
+) -> None:
+    paths = _paths(tmp_path)
+    server_state.update({"paths": paths, "config": AppConfig()})
+    threads = []
+
+    class Store:
+        def avatar_source_urls(self, _author_id, *, limit):
+            threads.append(threading.current_thread().name)
+            return []
+
+    client = make_web_client(avatars.router, store=Store())
+
+    response = client.get("/api/avatar/42")
+
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert len(threads) == 1 and threads[0].startswith("tweetnook-avatar")
