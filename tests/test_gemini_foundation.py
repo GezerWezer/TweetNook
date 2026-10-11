@@ -900,3 +900,40 @@ def test_daily_unknown_billing_is_rebuilt_and_scoped_to_the_calendar_day(tmp_pat
     rebuilt = ledger.rebuild()
     assert rebuilt["daily"]["2026-08-15"]["unknown_cost_requests"] == 1
     assert rebuilt["daily"]["2026-08-15"]["unpriced_requests"] == 0
+
+
+def test_capacity_reserves_and_legacy_uncertainty_survive_summary_upgrade(tmp_path):
+    ledger = AIUsageLedger(tmp_path / "ai-usage")
+    for kind in ("capacity", None):
+        ledger.append(
+            replace(
+                usage_record(
+                    "unknown",
+                    timestamp="2026-08-15T12:00:00+00:00",
+                    cost=None,
+                    status="billing_unknown",
+                ),
+                failure_kind=kind,
+                error_code=503,
+                reserved_cost_usd="0.02",
+            )
+        )
+    # Version 3 summaries do not know the new counter. Upgrade must derive it
+    # from records without exempting historical 503s lacking classification.
+    old = ledger.summary()
+    old["version"] = 3
+    old["daily"]["2026-08-15"].pop("capacity_unknown_cost_requests")
+    ledger.summary_path.write_text(json.dumps(old), encoding="utf-8")
+    now = datetime(2026, 8, 15, tzinfo=UTC)
+    budget = AIUsageLedger(ledger.root).daily_budget_usage(now=now)
+    assert budget == {
+        "spend": Decimal("0"),
+        "reserved": Decimal("0.04"),
+        "unknown": 2,
+        "capacity_unknown": 1,
+        "unreserved": 0,
+        "unpriced": 0,
+    }
+    assert ledger.summary()["version"] == 4
+    assert ledger.statistics(now=now)["today_unknown_cost_requests"] == 2
+    assert ledger.daily_budget_usage(now=datetime(2026, 8, 16, tzinfo=UTC))["capacity_unknown"] == 0

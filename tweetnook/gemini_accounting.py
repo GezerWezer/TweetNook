@@ -22,7 +22,7 @@ from .gemini_pricing import (
 )
 
 SEARCH_MONTHLY_ALLOWANCE = 5_000
-LEDGER_VERSION = 3
+LEDGER_VERSION = 4
 _WRITE_LOCK = threading.Lock()
 
 
@@ -111,6 +111,7 @@ class UsageRecord:
     error_code: int | None = None
     error_message: str | None = None
     failure_phase: str | None = None
+    failure_kind: Literal["capacity"] | None = None
 
 
 def new_request_id() -> str:
@@ -734,12 +735,17 @@ def _apply_record(summary: dict[str, Any], record: dict[str, Any]) -> None:
             "cost_usd": "0",
             "requests": 0,
             "unknown_cost_requests": 0,
+            "capacity_unknown_cost_requests": 0,
             "unpriced_requests": 0,
         },
     )
     if billing_unknown:
         summary["unknown_cost_requests"] = int(summary.get("unknown_cost_requests", 0)) + 1
         daily["unknown_cost_requests"] = int(daily.get("unknown_cost_requests", 0)) + 1
+        if record.get("failure_kind") == "capacity":
+            daily["capacity_unknown_cost_requests"] = (
+                int(daily.get("capacity_unknown_cost_requests", 0)) + 1
+            )
         try:
             reserved = Decimal(str(record.get("reserved_cost_usd", "0")))
             if not reserved.is_finite() or reserved <= 0:
@@ -815,6 +821,7 @@ class AIUsageLedger:
         if any(
             not isinstance(bucket, dict)
             or "unknown_cost_requests" not in bucket
+            or "capacity_unknown_cost_requests" not in bucket
             or "unpriced_requests" not in bucket
             for bucket in value["daily"].values()
         ):
@@ -958,6 +965,9 @@ class AIUsageLedger:
             "search_allowance": SEARCH_MONTHLY_ALLOWANCE,
             "unknown_cost_requests": int(summary.get("unknown_cost_requests", 0)),
             "today_unknown_cost_requests": int(today.get("unknown_cost_requests", 0)),
+            "today_capacity_unknown_cost_requests": int(
+                today.get("capacity_unknown_cost_requests", 0)
+            ),
             "today_unknown_reserved_cost_usd": str(today.get("unknown_reserved_cost_usd", "0")),
             "today_unreserved_unknown_cost_requests": int(
                 today.get("unreserved_unknown_cost_requests", 0)
@@ -981,6 +991,7 @@ class AIUsageLedger:
             "spend": Decimal(stats["today_cost_usd"]),
             "reserved": Decimal(stats["today_unknown_reserved_cost_usd"]),
             "unknown": stats["today_unknown_cost_requests"],
+            "capacity_unknown": stats["today_capacity_unknown_cost_requests"],
             "unreserved": stats["today_unreserved_unknown_cost_requests"],
             "unpriced": stats["today_unpriced_requests"],
         }

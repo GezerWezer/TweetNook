@@ -143,15 +143,28 @@ Requests specify:
 - optional Google Search tool.
 
 Transient 429/503/resource/timeout/unavailable/deadline failures retry with
-exponential delays. Attempts share one logical request ID but are separately
-accounted.
+exponential delays. Explicit 503 overload responses add ±20% jitter to the
+15/30/60/120-second waits. Five consecutive provider failures, or 15 minutes of
+sustained failures, stop the run; a successful response resets the streak.
+Attempts share one logical request ID but are separately accounted.
+
+An explicit HTTP 503 with `service_unavailable` in its structured error, or the
+provider's "currently experiencing high demand" message, is classified as
+`failure_kind="capacity"` only when no usage, interaction ID, output or steps
+are present. It remains `billing_unknown`, retains its reserve, and contributes
+to the total unknown count. The summary separately counts these capacity
+attempts so reserve policy can exclude them from the daily unknown-attempt
+stop. Generic 503s and timeouts are not exempt. Strict policy and monetary
+budget checks still apply to all uncertainty. Ledger summary version 4 rebuilds
+from history; unclassified historical failures are not retroactively exempted.
 
 Finite-budget preflight/execution stops when:
 
 - the daily estimate limit is reached;
 - pricing required for a finite decision is unavailable;
 - known minimum input cost exceeds remaining budget;
-- a dispatched request returns unknown billing cost.
+- strict policy encounters unknown billing, or reserve policy reaches the daily
+  unknown-attempt cap (excluding explicitly classified capacity responses).
 
 Unlimited mode can continue through unknown/unpriced usage and therefore must
 remain an explicit opt-in.
