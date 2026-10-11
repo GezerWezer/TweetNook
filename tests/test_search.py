@@ -304,7 +304,8 @@ def test_real_store_pushes_normalized_filters_into_sql(tmp_path) -> None:
     store.conn.set_trace_callback(None)
     traced_sql = " ".join(statements)
     assert "related INDEXED BY idx_archive_search_attachment" in traced_sql
-    assert "json_extract(raw_json, '$.legacy.in_reply_to_status_id_str')" in traced_sql
+    assert "SELECT facts.is_reply FROM archive_tweet_facts" in traced_sql
+    assert "json_extract" not in traced_sql.split("SELECT archive.tweet_id, MAX(")[1]
 
     text_media = search_posts(store, "needle has:media")
     assert {row["tweet_id"] for row in text_media.rows} == {"1", "2"}
@@ -724,3 +725,134 @@ def test_tag_search_matches_tags_on_a_quoted_original(tmp_path) -> None:
     assert "SEARCH relation USING INDEX idx_archive_target_tweet_id (target_tweet_id=?)" in plan
     assert "SCAN relation USING INDEX idx_archive_tweet_id" not in plan
     store.close()
+
+
+def _facts_store(tmp_path) -> ArchiveStore:
+    raw_rows = {
+        "1": {
+            "source": "<a>Twitter for iPhone</a>",
+            "card": {"name": "summary"},
+            "core": {"user_results": {"result": {"is_blue_verified": True}}},
+            "legacy": {
+                "in_reply_to_status_id_str": "9",
+                "in_reply_to_screen_name": "Alice",
+                "is_quote_status": True,
+                "quoted_status_id_str": "77",
+                "favorite_count": 1500,
+                "retweet_count": "12",
+                "reply_count": 3,
+                "entities": {
+                    "user_mentions": [{"screen_name": "Bob"}, {"screen_name": "carol"}],
+                    "hashtags": [{"text": "Python"}],
+                },
+            },
+        },
+        "2": None,
+        "3": {},
+        "4": {
+            "source": "Twitter Web App",
+            "core": {"user_results": {"result": {"legacy": {"verified": True}}}},
+            "legacy": {
+                "in_reply_to_status_id_str": "",
+                "retweeted_status_id_str": "5",
+                "is_quote_status": False,
+                "favorite_count": 0,
+                "entities": {
+                    "user_mentions": [],
+                    "hashtags": [{"text": "python"}, {"text": "Rust"}],
+                },
+            },
+        },
+        "5": {
+            "legacy": {
+                "in_reply_to_screen_name": "someone",
+                "entities": {
+                    "user_mentions": [{"id": 1}],
+                    "hashtags": [{"text": "a"}, {"text": "b"}],
+                },
+            }
+        },
+    }
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    store._merge_records(
+        [
+            store._record(
+                row_key=f"tweet:like::{tweet_id}",
+                record_type="tweet",
+                tweet_id=tweet_id,
+                collection_type="like",
+                author_username="alice",
+                created_at_ts=int(tweet_id),
+                text="facts",
+                raw_json=None if raw is None else json.dumps(raw),
+            )
+            for tweet_id, raw in raw_rows.items()
+        ]
+    )
+    return store
+
+
+# The JSON expressions each filter evaluated before archive_tweet_facts existed.
+_JSON_FILTER_SEMANTICS = {
+    "is:reply": "NULLIF(json_extract(raw_json, '$.legacy.in_reply_to_status_id_str'), '') "
+    "IS NOT NULL",
+    "is:quote": "COALESCE(json_extract(raw_json, '$.legacy.is_quote_status'), 0) != 0",
+    "is:retweet": "NULLIF(json_extract(raw_json, '$.legacy.retweeted_status_id_str'), '') "
+    "IS NOT NULL",
+    "is:thread": "NULLIF(json_extract(raw_json, '$.legacy.in_reply_to_screen_name'), '') "
+    "IS NOT NULL AND LOWER(json_extract(raw_json, '$.legacy.in_reply_to_screen_name')) = "
+    "LOWER(COALESCE(author_username, ''))",
+    "is:verified": "COALESCE(json_extract(raw_json, "
+    "'$.core.user_results.result.is_blue_verified'), json_extract(raw_json, "
+    "'$.core.user_results.result.legacy.verified'), 0) != 0",
+    "min_faves:0": "CAST(COALESCE(json_extract(raw_json, '$.legacy.favorite_count'), 0) "
+    "AS INTEGER) >= 0",
+    "min_faves:1000": "CAST(COALESCE(json_extract(raw_json, '$.legacy.favorite_count'), 0) "
+    "AS INTEGER) >= 1000",
+    "min_retweets:12": "CAST(COALESCE(json_extract(raw_json, '$.legacy.retweet_count'), 0) "
+    "AS INTEGER) >= 12",
+    "min_replies:3": "CAST(COALESCE(json_extract(raw_json, '$.legacy.reply_count'), 0) "
+    "AS INTEGER) >= 3",
+    "quoted_tweet_id:77": "json_extract(raw_json, '$.legacy.quoted_status_id_str') = '77'",
+    "source:iphone": "LOWER(COALESCE(json_extract(raw_json, '$.source'), '')) LIKE '%iphone%'",
+    "source:twitter_web": "LOWER(COALESCE(json_extract(raw_json, '$.source'), '')) "
+    "LIKE '%twitter web%'",
+    "card_name:summary": "json_extract(raw_json, '$.card.name') = 'summary'",
+    "to:alice": "LOWER(COALESCE(json_extract(raw_json, "
+    "'$.legacy.in_reply_to_screen_name'), '')) = 'alice'",
+    "to:@": "LOWER(COALESCE(json_extract(raw_json, '$.legacy.in_reply_to_screen_name'), '')) = ''",
+    **{
+        query: "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(raw_json) THEN raw_json "
+        f"ELSE '{{}}' END, '$.legacy.entities.{path}') AS item WHERE "
+        f"LOWER(COALESCE(json_extract(item.value, '$.{field}'), '')) = '{value}')"
+        for query, path, field, value in [
+            ("mentions:bob", "user_mentions", "screen_name", "bob"),
+            ("mentions:@", "user_mentions", "screen_name", ""),
+            ("#python", "hashtags", "text", "python"),
+            ("hashtag:rust", "hashtags", "text", "rust"),
+            ('hashtag:"a b"', "hashtags", "text", "a b"),
+        ]
+    },
+}
+
+
+@pytest.mark.parametrize("query", sorted(_JSON_FILTER_SEMANTICS))
+@pytest.mark.parametrize("negated", [False, True])
+def test_fact_filters_match_their_json_semantics(tmp_path, query: str, negated: bool) -> None:
+    store = _facts_store(tmp_path)
+    try:
+        expression = _JSON_FILTER_SEMANTICS[query]
+        if negated:
+            expression = f"NOT (COALESCE(({expression}), 0))"
+        expected = {
+            row[0]
+            for row in store.conn.execute(
+                f"SELECT tweet_id FROM archive WHERE record_type = 'tweet' AND ({expression})"
+            )
+        }
+        actual = search_posts(store, ("-" if negated else "") + query, limit=20)
+
+        assert {row["tweet_id"] for row in actual.rows} == expected
+        assert actual.total == len(expected)
+    finally:
+        store.close()

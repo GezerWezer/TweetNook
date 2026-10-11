@@ -4,7 +4,7 @@
 [Archive Import](archive-import.md) · [Search and Web API](search-and-web-api.md)
 
 `ArchiveStore` owns database access, schema upgrades, and record merging. It uses
-SQLite schema version 8 with FTS5 search. Collection memberships, shared tweet
+SQLite schema version 9 with FTS5 search. Collection memberships, shared tweet
 content, and raw captures have distinct roles within the same archive table.
 The optional `legacy-migration` extra provides LanceDB for the legacy importer;
 PyArrow is installed transitively with it.
@@ -19,7 +19,7 @@ Opening the store:
 - requests negative `cache_size` in KiB and configured `mmap_size`;
 - checks `PRAGMA user_version` and migrates when required.
 
-A current v8 database takes the cheap version path; it does not run integrity
+A current v9 database takes the cheap version path; it does not run integrity
 checks or derived-index repair on every open.
 
 The single wide table is:
@@ -90,6 +90,16 @@ Scalar/partial indexes cover membership deduplication/counts, normalized author
 equality, profile aggregation, tweet IDs, relation targets, collection/date/sort
 pagination, attachment presence, tags, enrichment eligibility/due dates, and raw
 capture targets.
+
+`archive_tweet_facts` (a `WITHOUT ROWID` table keyed by membership `row_key`) holds
+the values structured search filters read from a membership's `raw_json`: reply
+target and reply/quote/retweet/verified flags, retweet/like/reply counts, quoted
+ID, lowercased source, card name, and `char(31)`-wrapped lowercased mention and
+hashtag lists. `TWEET_FACT_EXPRESSIONS` defines each value as the JSON expression
+the filter used to evaluate, so results are unchanged. Insert, delete, and
+`UPDATE OF row_key, record_type, raw_json` triggers keep it in step for every
+write path, including direct SQL. NULL JSON evaluates like absent keys; malformed
+JSON stores NULL facts instead of failing the write.
 
 ## Atomic page persistence
 
@@ -178,22 +188,21 @@ Open behavior by source version:
 
 | Source | Migration |
 |---|---|
-| no archive table | create latest table, FTS, indexes, set v8 |
-| v3–v5 | transactionally rebuild derived FTS/triggers/indexes, removing old replacement orphans; validate membership count, no backup |
-| v6–v7 | add any missing partial indexes and cache-revision triggers; refresh planner statistics; no FTS rebuild or backup |
-| older/unknown legacy | quick-check, validated SQLite backup, add fields, backfill timestamps/scheduler, rebuild, targeted legacy-terminal repair, validate, set v8 |
-| > v8 | reject as newer than supported |
+| no archive table | create latest table, FTS, indexes, search facts, set v9 |
+| v5 (0.0.9, 0.1.0) | transactionally rebuild derived FTS/triggers/indexes and search facts, removing old replacement orphans; validate membership count |
+| v8 (0.1.1–0.1.6) | transactionally create and backfill search facts and their triggers; validate membership count; FTS and canonical rows unchanged |
+| other versions below v9 | reject as a pre-release schema, unchanged |
+| > v9 | reject as newer than supported |
 
-Legacy backup naming is `archive.db.pre-schema-v8.<UTC>.bak`, with collision
-suffixes. SQLite's backup API writes a temporary file, quick-checks it, then
-atomically renames it.
+Migrations run inside one `BEGIN IMMEDIATE` transaction; a failure leaves the
+source version and its data untouched. No backup copy is written.
 
 Opening a mismatched database through `open_archive_store()` acquires
 `sync.lock`. A current-version read open does not.
 
 ## Legacy LanceDB migration
 
-`storage/migrate.py` looks for `<data>/archive.lancedb`, creates/opens SQLite v8,
+`storage/migrate.py` looks for `<data>/archive.lancedb`, creates/opens the latest SQLite schema,
 and reads source ranges in isolated subprocess workers. Source failures split
 ranges recursively so a bad row can be isolated; destination/worker-launch
 failures abort. Destination inserts use `INSERT OR IGNORE`, enabling reruns that
@@ -240,7 +249,7 @@ data directory.
 
 ## Derived query caches
 
-Schema v8 tracks membership and like-order input revisions with transactional SQL
+The schema tracks membership and like-order input revisions with transactional SQL
 triggers. Unfiltered collection counts reuse the membership revision. Like-order
 reconstruction ignores content-only membership changes, tagging, and media writes;
 new/changed observations and memberships invalidate it across connections. Reads

@@ -76,6 +76,11 @@ repair for database corruption.
 
 ## Upgrade or migrate an older archive
 
+Updating TweetNook upgrades an existing SQLite archive automatically the first time
+it opens. Archives from 0.1.1–0.1.6 gain derived search-filter data in one
+transaction; tweets and saved responses are not changed, and a failure leaves the
+archive as it was. This takes a few seconds on large archives.
+
 For the older/upstream LanceDB format, keep `archive.lancedb` in the data folder.
 Before migrating, install the one-time migration support:
 
