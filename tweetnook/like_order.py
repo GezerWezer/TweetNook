@@ -8,11 +8,11 @@ not use the third-party sequence-alignment implementation.
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass
 from itertools import pairwise
 from typing import Any, TypeVar
 
+from tweetnook import fastjson
 from tweetnook.client.timelines import _extract_tweet_results_from_content
 
 LIKE_SORTS = frozenset({"liked_latest", "liked_earliest"})
@@ -97,7 +97,7 @@ def _integer(value: Any) -> int | None:
 
 def _payload(row: Any) -> Any:
     try:
-        return json.loads(row["raw_json"] or "null")
+        return fastjson.loads(row["raw_json"] or "null")
     except (TypeError, ValueError):
         return None
 
