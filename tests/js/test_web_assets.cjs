@@ -506,12 +506,13 @@ test('autocomplete formats valid, invalid, negative, quoted, and escaped capsule
     component.knownAuthors = new Set(['alice']);
 
     component.formatRichText(
-        'from:alice -has:video tag:"Night Sky" filter:nope <img src=x>',
+        'from:alice -has:video url:"a b" tag:"Night Sky" filter:nope <img src=x>',
     );
 
     assert.match(input.innerHTML, /valid-capsule/);
     assert.match(input.innerHTML, /negative-capsule/);
     assert.match(input.innerHTML, /hidden-quote/);
+    assert.match(input.innerHTML, /<span class="filter-box"><span class="capsule-key">tag:<\/span><span class="capsule-value">Night&nbsp;Sky<\/span><\/span>/);
     assert.match(input.innerHTML, /invalid-capsule/);
     assert.match(input.innerHTML, /&lt;img/);
     assert.doesNotMatch(input.innerHTML, /<img src=x>/);
@@ -657,7 +658,98 @@ test('autocomplete keeps unfinished quoted values together across spaces', async
 
     component.formatRichText('tag:"word 1');
     assert.equal((component.$refs.searchInput.innerHTML.match(/capsule-key/g) || []).length, 1);
-    assert.match(component.$refs.searchInput.innerHTML, /&quot;word 1/);
+    assert.match(component.$refs.searchInput.innerHTML, /capsule-value">word&nbsp;1</);
+});
+
+test('autocomplete keeps description and tag values in capsules without quotes', async () => {
+    const context = browserContext();
+    const tagLookups = [];
+    context.fetch = async url => {
+        tagLookups.push(url);
+        return { ok: true, json: async () => ({ tags: [{ tag: 'Known Later', count: 1 }] }) };
+    };
+    const { searchAutocomplete, SEARCH_CARET, BOX_START, BOX_END } = loadScripts(
+        context,
+        ['autocomplete.js'],
+        '({searchAutocomplete, SEARCH_CARET, BOX_START, BOX_END})',
+    );
+    const component = immediateComponent(searchAutocomplete());
+    const read = marked => component.serializeSearchParts(component.parseSearchParts(marked));
+    const box = text => BOX_START + text + BOX_END;
+
+    assert.ok(component.allFilters.some(option => option.prefix === 'description:'));
+
+    // Typing the colon opens an empty capsule with the caret inside.
+    const opened = component.parseSearchParts(`cat tag:${SEARCH_CARET}`);
+    assert.equal(opened[1].key, 'tag');
+    assert.equal(opened[1].value, '');
+    assert.equal(opened[1].caret, 0);
+    assert.equal(read(`cat tag:${SEARCH_CARET}`).query, 'cat tag:');
+    assert.equal(read(`cat tag:${SEARCH_CARET}`).caret, 8);
+
+    // Spaces stay in the value; the query gets quotes and trimmed values.
+    assert.equal(read(`${box(`description:red car${SEARCH_CARET}`)} after`).query, 'description:"red car" after');
+    assert.equal(read(`${box(`description:red car${SEARCH_CARET}`)}`).caret, 'description:"red car'.length);
+    assert.equal(read(box(`tag:cars ${SEARCH_CARET}`)).query, 'tag:cars');
+    assert.equal(read(box('-tag:  street   photography ')).query, '-tag:"street photography"');
+
+    // Text typed against the end of a capsule joins its value, so the caret
+    // there stays inside; text against its start means it is not a filter.
+    const glued = component.parseSearchParts(`${box('tag:car')}s${SEARCH_CARET} dog`);
+    assert.equal(glued[0].value, 'cars');
+    assert.equal(glued[0].caret, 4);
+    assert.equal(read(`x${box('tag:cars')}`).query, 'xtag:cars');
+
+    // Deleting the colon turns the capsule back into plain text.
+    const unwrapped = component.parseSearchParts(box(`tag${SEARCH_CARET}cars`));
+    assert.equal(unwrapped.length, 1);
+    assert.equal(unwrapped[0].text, `tag${SEARCH_CARET}cars`);
+
+    // A caret inside the key stays there.
+    assert.equal(read(box(`ta${SEARCH_CARET}g:cars`)).caret, 2);
+
+    // Loaded queries render as capsules without visible quotes.
+    const input = { innerHTML: '' };
+    component.$refs.searchInput = input;
+    component.globalTags = [{ tag: 'cars' }];
+    component.formatRichText('tag:cars OR tag:"no such" -description:"red car" tag: x');
+    assert.match(input.innerHTML, /<span class="filter-box"><span class="capsule-key">tag:<\/span><span class="capsule-value">cars<\/span>/);
+    assert.match(input.innerHTML, /boolean-capsule">OR</);
+    assert.match(input.innerHTML, /filter-box is-unknown"><span class="capsule-key">tag:<\/span><span class="capsule-value">no&nbsp;such</);
+    assert.match(input.innerHTML, /filter-box negative"><span class="capsule-key">-description:<\/span><span class="capsule-value">red&nbsp;car</);
+    assert.match(input.innerHTML, /filter-box is-empty"><span class="capsule-key">tag:<\/span><span class="capsule-value"><\/span>/);
+    assert.doesNotMatch(input.innerHTML, /&quot;/);
+
+    // Unknown tags are looked up once; a tag the archive has turns blue.
+    assert.deepEqual(tagLookups, ['/api/tags/autocomplete?q=no%20such']);
+    component.formatRichText('tag:"known later"');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    component.formatRichText('tag:"known later"');
+    assert.match(input.innerHTML, /<span class="filter-box"><span class="capsule-key">tag:/);
+});
+
+test('autocomplete replaces the whole capsule value when a tag is picked', () => {
+    const context = browserContext();
+    const { searchAutocomplete } = loadScripts(
+        context,
+        ['autocomplete.js'],
+        '({searchAutocomplete})',
+    );
+    const component = immediateComponent(searchAutocomplete());
+    component.searchQuery = 'tag:"street ph" after';
+    component.cursorPos = 'tag:"street'.length;
+    component.showDropdown = true;
+    component.options = [{ prefix: 'tag:', value: 'Street Photography' }];
+    component.$refs.searchInput = {
+        isContentEditable: false,
+        focus() {},
+        setSelectionRange() {},
+    };
+    component.handleInput = () => {};
+
+    component.selectOption();
+
+    assert.equal(component.searchQuery, 'tag:"Street Photography"  after');
 });
 
 test('autocomplete fetches author and tag suggestions with encoded queries', async () => {
