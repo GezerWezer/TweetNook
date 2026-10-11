@@ -394,8 +394,16 @@ _UNSET = object()
 class ArchiveStore:
     TABLE_NAME = "archive"
 
-    def __init__(self, db_path: Path, *, create: bool, config: AppConfig | None = None) -> None:
+    def __init__(
+        self,
+        db_path: Path,
+        *,
+        create: bool,
+        config: AppConfig | None = None,
+        read_only: bool = False,
+    ) -> None:
         self.db_path = db_path
+        self.config = config
         self._closed = False
         self._like_order_lock = threading.RLock()
         self._warm_cancelled = False
@@ -406,13 +414,19 @@ class ArchiveStore:
             db_path.parent.mkdir(parents=True, exist_ok=True)
 
         db_file = str(db_path)
-        # Shared Web readers can race CPython's prepared-statement cache even
-        # with serialized SQLite (python/cpython#118172). Keep the database page
-        # cache, but prepare independent statements for concurrent cursors.
-        self.conn = sqlite3.connect(db_file, check_same_thread=False, cached_statements=0)
+        if read_only:
+            # A private reader for one thread; the writer that opened the
+            # archive already chose WAL and migrated the schema.
+            self.conn = sqlite3.connect(f"file:{quote(db_file)}?mode=ro", uri=True)
+        else:
+            # Shared Web readers can race CPython's prepared-statement cache even
+            # with serialized SQLite (python/cpython#118172). Keep the database page
+            # cache, but prepare independent statements for concurrent cursors.
+            self.conn = sqlite3.connect(db_file, check_same_thread=False, cached_statements=0)
         self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA recursive_triggers=ON")
+        if not read_only:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA recursive_triggers=ON")
 
         database_config = config.database if config is not None else DatabaseConfig()
         self.conn.execute(
@@ -420,7 +434,7 @@ class ArchiveStore:
         )  # Negative for kibibytes
         self.conn.execute(f"PRAGMA mmap_size = {database_config.mmap_size_bytes}")
 
-        if create or db_path.exists():
+        if not read_only and (create or db_path.exists()):
             try:
                 self._migrate_schema()
             except BaseException:
@@ -3351,6 +3365,15 @@ class ArchiveStore:
         else:
             self._count_cache.clear()
         return count
+
+    def open_reader(self) -> ArchiveStore:
+        """Open a read-only store on its own connection for long multi-query reads.
+
+        SQLite holds a connection's mutex while each statement steps, so a long
+        aggregate on the shared connection stalls every other Web request. The
+        caller owns the reader and must close it.
+        """
+        return ArchiveStore(self.db_path, create=False, config=self.config, read_only=True)
 
     def get_like_order(self):
         """Return the derived order independently of tweet content/source updates."""

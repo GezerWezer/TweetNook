@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from threading import RLock
 from typing import Any
 
 from tweetnook.stats.models import (
@@ -29,11 +30,22 @@ UNAVAILABLE_REASON_LABELS = (
     ("archive_deleted", "Deleted in archive"),
 )
 
-# The Web UI loads its legacy statistics endpoints in parallel. They share one
-# ArchiveStore/SQLite connection, so serialize multi-query snapshots rather than
-# interleaving cursor use across FastAPI worker threads. RLock is required because
-# the archive-status collector also uses the lightweight enrichment aggregate.
-_STATS_LOCK = RLock()
+
+@contextmanager
+def _collection_store(store: ArchiveStore) -> Iterator[ArchiveStore]:
+    """Yield a private read-only store so collection never holds the shared connection.
+
+    A caller with uncommitted writes keeps its own connection, since a separate
+    reader would not see them.
+    """
+    if store.conn.in_transaction:
+        yield store
+        return
+    reader = store.open_reader()
+    try:
+        yield reader
+    finally:
+        reader.close()
 
 
 @dataclass(slots=True)
@@ -63,23 +75,21 @@ def format_bytes(size: float) -> str:
 
 def get_enrichment_incomplete_count(store: ArchiveStore) -> int:
     """Return the lightweight banner count without collecting the full report."""
-    with _STATS_LOCK:
-        row = store.conn.execute(
-            """
-            SELECT count(*) FROM archive
-            WHERE record_type = 'tweet_object'
-              AND enrichment_state IN ('pending', 'transient_failure')
-            """
-        ).fetchone()
+    row = store.conn.execute(
+        """
+        SELECT count(*) FROM archive
+        WHERE record_type = 'tweet_object'
+          AND enrichment_state IN ('pending', 'transient_failure')
+        """
+    ).fetchone()
     return int(row[0] or 0) if row else 0
 
 
 def get_latest_sync_at(store: ArchiveStore) -> str | None:
     """Return the latest sync timestamp without collecting archive statistics."""
-    with _STATS_LOCK:
-        row = store.conn.execute(
-            "SELECT max(updated_at) FROM archive WHERE record_type = 'sync_state'"
-        ).fetchone()
+    row = store.conn.execute(
+        "SELECT max(updated_at) FROM archive WHERE record_type = 'sync_state'"
+    ).fetchone()
     if row and isinstance(row[0], str) and row[0]:
         return row[0]
     return None
@@ -852,8 +862,8 @@ def build_stats_section(store: ArchiveStore, section_id: str) -> StatsSection:
     spec = next((spec for spec in STATS_SECTION_SPECS if spec.id == section_id), None)
     if spec is None:
         raise KeyError(f"unknown statistics section: {section_id}")
-    with _STATS_LOCK:
-        return _collect_registered_section(_StatsContext(store), spec)
+    with _collection_store(store) as reader:
+        return _collect_registered_section(_StatsContext(reader), spec)
 
 
 def build_stats_report(
@@ -866,8 +876,8 @@ def build_stats_report(
     unknown = selected - {spec.id for spec in STATS_SECTION_SPECS}
     if unknown:
         raise KeyError(f"unknown statistics sections: {', '.join(sorted(unknown))}")
-    with _STATS_LOCK:
-        context = _StatsContext(store)
+    with _collection_store(store) as reader:
+        context = _StatsContext(reader)
         sections = [
             _collect_registered_section(context, spec)
             for spec in STATS_SECTION_SPECS

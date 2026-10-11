@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 
@@ -17,6 +16,8 @@ from tweetnook.stats import (
     TableColumn,
     build_stats_report,
     build_stats_section,
+    get_enrichment_incomplete_count,
+    get_latest_sync_at,
 )
 from tweetnook.stats import service as stats_service
 from tweetnook.stats.render_cli import render_stats_report
@@ -117,33 +118,50 @@ def test_report_can_collect_one_registered_section(tmp_path) -> None:
     store.close()
 
 
-def test_shared_collectors_serialize_parallel_web_snapshots(tmp_path, monkeypatch) -> None:
+def test_collection_leaves_the_shared_connection_free_for_other_requests(
+    tmp_path, monkeypatch
+) -> None:
     store = _seed_stats_store(tmp_path)
     original = stats_service._COLLECTORS["overview"]
-    state_lock = threading.Lock()
-    active = 0
-    maximum_active = 0
+    entered = threading.Event()
+    release = threading.Event()
+    collected_on = []
 
-    def observed_collector(context):
-        nonlocal active, maximum_active
-        with state_lock:
-            active += 1
-            maximum_active = max(maximum_active, active)
+    def blocking_collector(context):
+        collected_on.append(context.store)
+        entered.set()
+        assert release.wait(5)
+        return original(context)
+
+    latest_sync = get_latest_sync_at(store)
+    monkeypatch.setitem(stats_service._COLLECTORS, "overview", blocking_collector)
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        report = executor.submit(build_stats_report, store, include={"overview"})
         try:
-            time.sleep(0.03)
-            return original(context)
+            assert entered.wait(5)
+            # Header and banner polls answer while the report is still collecting.
+            assert executor.submit(get_latest_sync_at, store).result(timeout=2) == latest_sync
+            assert executor.submit(get_enrichment_incomplete_count, store).result(timeout=2) == 0
         finally:
-            with state_lock:
-                active -= 1
+            release.set()
+        assert report.result(timeout=5).section("overview").data["unique_posts"] == 1
 
-    monkeypatch.setitem(stats_service._COLLECTORS, "overview", observed_collector)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        reports = list(
-            executor.map(lambda _index: build_stats_section(store, "overview"), range(2))
-        )
+    reader = collected_on[0]
+    assert reader is not store and reader.conn is not store.conn
+    assert reader._closed and not store._closed
+    store.close()
 
-    assert [report.data["unique_posts"] for report in reports] == [1, 1]
-    assert maximum_active == 1
+
+def test_collection_with_uncommitted_writes_reads_the_callers_connection(tmp_path) -> None:
+    store = _seed_stats_store(tmp_path)
+    store.conn.execute(
+        "INSERT INTO archive (row_key, record_type, tweet_id, collection_type) "
+        "VALUES ('tweet:like::2', 'tweet', '2', 'like')"
+    )
+    assert store.conn.in_transaction
+
+    assert build_stats_section(store, "overview").data["unique_posts"] == 2
+    store.conn.rollback()
     store.close()
 
 
