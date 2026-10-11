@@ -150,6 +150,7 @@ Response shape:
   "pages": 1,
   "has_more": false,
   "next_cursor": null,
+  "highlight_terms": [],
   "truncated": false
 }
 ```
@@ -169,6 +170,14 @@ connection and skips sorting, ranking, like-order generation and hydration.
 The browser renders the list before requesting the count, retains it across
 appended pages and ignores counts from superseded searches. Complete first pages
 need no separate request; filter-only lists already include a total.
+
+List responses also supply `highlight_terms` from the parsed positive text and
+hashtag clauses. Phrase quotes and prefix `*` are retained; negated terms and other
+filters are excluded. Result cards use these terms, rather than unsubmitted input,
+to bold Unicode word/phrase matches in decoded source text before HTML escaping.
+Links, mentions and hashtags retain their attributes and click behavior. Bolding
+also applies to quoted text and in-place expansion, but not standalone detail
+pages or availability placeholders. The static demo supplies the same metadata.
 
 Unfiltered newest/oldest feeds seek through composite chronological indexes,
 including explicit NULL/tie ranges. Likes seek by indexed sequence position even

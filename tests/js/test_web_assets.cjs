@@ -2630,6 +2630,83 @@ test('tweet text decodes one entity layer before safe rendering and length check
     assert.equal(shortDecoded, 'A &amp; '.repeat(40).trim());
 });
 
+test('result text bolds words, phrases, prefixes and hashtags safely', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.searchHighlightTerms = ['gif', '"night sky"', 'archiv*', '#python', 'cafe'];
+    const tweet = {text: 'GIF gift gif night sky night blue sky Archives #Python python café Cafe\u0301 <gif> &amp; gif'};
+    const html = app.formatText(tweet, false, true);
+    assert.match(html, /^<strong>GIF<\/strong> gift <strong>gif<\/strong> <strong>night sky<\/strong> night blue sky <strong>Archives<\/strong>/);
+    assert.match(html, /data-tag="Python"><strong>#Python<\/strong><\/span> python <strong>café<\/strong> <strong>Cafe\u0301<\/strong>/);
+    assert.match(html, /&lt;<strong>gif<\/strong>&gt; &amp; <strong>gif<\/strong>/);
+    assert.doesNotMatch(html, /<gif>|<strong>gift|<strong>night blue sky/);
+    assert.doesNotMatch(app.formatText(tweet), /<strong>/); // Detail text stays plain.
+    app.searchHighlightTerms = ['gif', 'gif*'];
+    assert.equal(app.highlightSearchText('gif GIFS'), '<strong>gif</strong> <strong>GIFS</strong>');
+    app.searchHighlightTerms = ['"gif*"'];
+    assert.equal(app.highlightSearchText('gif gifts'), '<strong>gif</strong> gifts');
+    app.searchHighlightTerms = ['"hello alice"'];
+    assert.match(app.formatText({text: 'hello @alice'}, false, true), /<strong>hello <\/strong><span[^>]+><strong>@alice<\/strong>/);
+});
+
+test('result bolding preserves link destinations, attributes, entities and placeholders', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.searchHighlightTerms = ['gif', 'amp', 'class', 'script'];
+    const html = app.formatText({text: 'gif &amp; https://t.co/x', raw_json: {legacy: {entities: {urls: [{
+        url: 'https://t.co/x', expanded_url: 'https://example.com/gif?q=class&x=amp', display_url: 'example.com/gif<script>',
+    }]}}}}, false, true);
+    assert.match(html, /href="https:\/\/example.com\/gif\?q=class&amp;x=amp"/);
+    assert.match(html, />example.com\/<strong>gif<\/strong>&lt;<strong>script<\/strong>&gt;<\/a>/);
+    assert.doesNotMatch(html, /<script|&<strong>amp|class="<strong>|href="[^\"]*<strong>/);
+    assert.doesNotMatch(app.formatText({availability: {state: 'not_archived', message: 'gif not archived'}}, false, true), /<strong>/);
+});
+
+test('feed result bolding applies to quotes and Show more and keeps mention/hashtag clicks', () => {
+    const { app, list } = feedListApp();
+    app.searchHighlightTerms = ['long', 'alice', '#topic'];
+    app.tweets = [{tweet_id: '1', text: 'long @alice #topic ' + 'long '.repeat(80),
+        author: {id: '2', username: 'bob', display_name: 'Bob'},
+        quoted_tweet: {tweet_id: '3', text: 'long quote', author: {username: 'q', display_name: 'Q'}},
+    }];
+    app.renderFeedList(app.tweets);
+    const card = list.children[0];
+    assert.ok(card.querySelector('[data-action="quote"] strong'));
+    let profile;
+    app.openProfileCard = (event, tweet) => { profile = tweet.author.username; };
+    dispatchFeed(list, 'click', card.querySelector('.mention strong'));
+    assert.equal(profile, 'alice');
+    let searched;
+    app.search = () => { searched = app.searchQuery; };
+    dispatchFeed(list, 'click', card.querySelector('.hashtag strong'));
+    assert.equal(searched, '#topic');
+    const text = card.querySelector('[data-action="text"]');
+    dispatchFeed(list, 'click', text.querySelector('.expand-tweet'));
+    assert.equal(text.querySelector('.expand-tweet'), null);
+    assert.equal(text.querySelectorAll('strong').length, 83);
+    assert.equal(list.children[0], card);
+});
+
+test('result highlights follow the returned query rather than edits to the search box', async () => {
+    const { app, list, context } = feedListApp();
+    context.fetch = async () => ({ok: true, status: 200, json: async () => ({
+        tweets: [{tweet_id: '1', text: 'GIF cats', author: {username: 'a'}}],
+        page: 1, total: 1, pages: 1, has_more: false, highlight_terms: ['gif'],
+    })});
+    app.searchQuery = 'gif is:reply';
+    await app.fetchTweets();
+    assert.equal(list.children[0].querySelector('strong').textContent, 'GIF');
+    app.searchQuery = 'cats';
+    assert.match(app.formatText(app.tweets[0], false, true), /^<strong>GIF<\/strong> cats$/);
+    context.fetch = async () => ({ok: true, status: 200, json: async () => ({
+        tweets: app.tweets, page: 1, total: 1, pages: 1, has_more: false, highlight_terms: [],
+    })});
+    await app.fetchTweets();
+    assert.equal(list.children[0].querySelector('strong'), null);
+});
+
 test('text and card renderers escape HTML and reject active URL schemes', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(

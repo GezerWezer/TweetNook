@@ -1142,6 +1142,7 @@ def test_search_count_endpoint_uses_private_reader_and_closes_it(tmp_path):
     listing = client.get("/api/tweets", params={"q": "gif is:reply"}).json()
     assert listing["total"] is None
     assert listing["has_more"] is True
+    assert listing["highlight_terms"] == ["gif"]
     response = client.get(
         "/api/tweets/count", params={"q": "gif is:reply", "collection": "bookmarks"}
     )
