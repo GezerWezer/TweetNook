@@ -162,8 +162,14 @@ the data:
 1 KiB) to API JSON, document routes, and static JS/CSS/HTML/JSON/SVG/text. It
 passes `/media/` and `/api/avatar/` through untouched: images and video are
 already compressed, and gzipping ranged file responses would break byte ranges.
-Tweet list/detail/quote routes return `JSONResponse` directly, skipping FastAPI's
-per-value `jsonable_encoder` pass over large raw-JSON trees.
+Tweet list/detail/quote/raw routes return pre-serialized responses, skipping
+FastAPI's per-value `jsonable_encoder` pass over large raw-JSON trees. Those routes,
+storage hydration, availability overlays, and like-order rebuilds parse and write
+JSON through `tweetnook/fastjson.py` (orjson: about 1.8x faster parsing and 9x
+faster serialization on archive data). It falls back to the standard library for
+NaN/Infinity literals, integers beyond 64 bits, and non-string keys, so stored
+documents keep their meaning; non-finite numbers serialize as `null`. Write paths
+keep `json.dumps` so stored raw JSON keeps its exact formatting.
 
 The document routes (`/`, `/post/{id}`, `/post/{id}/quotes`) serve `index.html`
 with each `/static/...` reference rewritten to `?v=<content hash>`. The rendered

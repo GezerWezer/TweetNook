@@ -15,6 +15,7 @@ links to the code, its design guide, and relevant tests.
 | [tweetnook/cli.py](../../tweetnook/cli.py) | Root/nested command tree, rendering, command wiring, exit mapping, hidden daemon | [CLI reference](../cli-reference.md); `test_cli.py` |
 | [tweetnook/cli_web.py](../../tweetnook/cli_web.py) | Detached Web start/stop/restart/status/password lifecycle | [Web and Jobs](web-and-jobs.md); `test_cli_web.py` |
 | [tweetnook/exceptions.py](../../tweetnook/exceptions.py) | Domain error taxonomy for auth/API/storage/import/search/schedule | [Architecture](architecture.md); exercised throughout |
+| [tweetnook/fastjson.py](../../tweetnook/fastjson.py) | orjson parsing/serialization for read paths with standard-library fallbacks | [Web and Jobs](web-and-jobs.md); `test_fastjson.py` |
 | [tweetnook/interactive.py](../../tweetnook/interactive.py) | TTY-gated status and tqdm callbacks outside active pipeline | [Architecture](architecture.md); `test_interactive.py` |
 | [tweetnook/utils.py](../../tweetnook/utils.py) | UTC timestamp helper and query-ID resolution/refresh lifecycle | [Client and Sync](client-and-sync.md); `test_query_ids.py` |
 | [tweetnook/reminders.py](../../tweetnook/reminders.py) | Schema-migration and pending-enrichment user notices | [Storage](storage.md); CLI/storage tests |

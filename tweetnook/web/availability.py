@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from tweetnook import fastjson
 from tweetnook.extractor import (
     classify_tweet_unavailability,
     extract_author_fields,
@@ -46,7 +47,7 @@ def _json_dict(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, str) or not value:
         return None
     try:
-        parsed = json.loads(value)
+        parsed = fastjson.loads(value)
     except json.JSONDecodeError:
         return None
     return parsed if isinstance(parsed, dict) else None

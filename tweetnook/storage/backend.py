@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
+from tweetnook import fastjson
 from tweetnook.client.timelines import TimelineTweet, parse_tweet_detail_tweets
 from tweetnook.config import DatabaseConfig, XDGPaths
 from tweetnook.exceptions import ArchiveOwnerMismatchError
@@ -3167,7 +3168,7 @@ class ArchiveStore:
         return rows
 
     def _serialize_media_row(self, row: dict[str, Any]) -> dict[str, Any]:
-        variants = json.loads(row["variants_json"]) if row.get("variants_json") else []
+        variants = fastjson.loads(row["variants_json"]) if row.get("variants_json") else []
         return {
             "media_key": row.get("media_key"),
             "type": row.get("media_type"),
@@ -3580,7 +3581,7 @@ class ArchiveStore:
             if not isinstance(raw_tag_json, str) or not raw_tag_json:
                 continue
             try:
-                tag_payload = json.loads(raw_tag_json)
+                tag_payload = fastjson.loads(raw_tag_json)
             except json.JSONDecodeError:
                 continue
             if isinstance(tag_payload, dict):
@@ -3621,7 +3622,7 @@ class ArchiveStore:
                     "qt_media_tags": tags_by_tweet.get(
                         quoted_tweet_by_source.get(row["tweet_id"], "")
                     ),
-                    "raw_json": json.loads(row["raw_json"])
+                    "raw_json": fastjson.loads(row["raw_json"])
                     if include_raw_json and row.get("raw_json")
                     else None,
                 }

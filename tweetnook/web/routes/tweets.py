@@ -3,8 +3,9 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import Response
 
+from tweetnook import fastjson
 from tweetnook.export.common import normalize_collection_name
 from tweetnook.search import SearchCursorExpiredError, SearchQueryError, search_posts
 from tweetnook.web.availability import annotate_web_tweets, missing_web_tweet, slim_web_tweets
@@ -15,13 +16,13 @@ router = APIRouter()
 _THREAD_DESCENDANT_LIMIT = 250
 
 
-def _json(payload: dict) -> JSONResponse:
-    """Serialize plain JSON data directly, skipping FastAPI's per-value encoder.
+def _json(payload: dict) -> Response:
+    """Serialize plain JSON data directly with orjson, skipping FastAPI's encoder.
 
     Tweet payloads are large nested trees of JSON-native values; the generic
     encoder costs several times the serialization itself.
     """
-    return JSONResponse(payload)
+    return Response(fastjson.dumps(payload), media_type="application/json")
 
 
 def _sql_quote(value: object) -> str:
@@ -313,7 +314,7 @@ def api_tweet_thread(
             if not row.get("tweet_id") or not row.get("raw_json"):
                 continue
             try:
-                tags_dict[row["tweet_id"]] = json.loads(row["raw_json"])
+                tags_dict[row["tweet_id"]] = fastjson.loads(row["raw_json"])
             except (TypeError, json.JSONDecodeError):
                 continue
 
@@ -323,7 +324,7 @@ def api_tweet_thread(
             raw_json = None
             if obj.get("raw_json"):
                 try:
-                    parsed_raw = json.loads(obj["raw_json"])
+                    parsed_raw = fastjson.loads(obj["raw_json"])
                     if isinstance(parsed_raw, dict):
                         raw_json = parsed_raw
                 except (TypeError, json.JSONDecodeError):
@@ -380,7 +381,7 @@ def api_tweet_thread(
             raw_json = None
             if membership.get("raw_json"):
                 try:
-                    parsed_raw = json.loads(membership["raw_json"])
+                    parsed_raw = fastjson.loads(membership["raw_json"])
                     if isinstance(parsed_raw, dict):
                         raw_json = parsed_raw
                 except (TypeError, json.JSONDecodeError):
@@ -607,7 +608,7 @@ def api_tweet_raw(
         raw_json = None
         if objects and objects[0].get("raw_json"):
             try:
-                raw_json = json.loads(objects[0]["raw_json"])
+                raw_json = fastjson.loads(objects[0]["raw_json"])
             except (TypeError, json.JSONDecodeError):
                 raw_json = None
     if not isinstance(raw_json, dict):

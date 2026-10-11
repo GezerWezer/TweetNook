@@ -12,6 +12,7 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from tweetnook import fastjson  # noqa: E402
 from tweetnook.storage.backend import ArchiveStore  # noqa: E402
 from tweetnook.web.deps import get_store, server_state, verify_credentials  # noqa: E402
 from tweetnook.web.routes.tweets import (  # noqa: E402
@@ -916,14 +917,14 @@ def test_api_tweet_thread_parses_each_tweet_json_once_and_tolerates_malformed(mo
                 rows[0]["raw_json"] = "not-json"
             return rows
 
-    original_loads = json.loads
+    original_loads = fastjson.loads
     parsed_values: list[object] = []
 
-    def track_loads(value: object, *args: Any, **kwargs: Any) -> Any:
+    def track_loads(value: object) -> Any:
         parsed_values.append(value)
-        return original_loads(value, *args, **kwargs)
+        return original_loads(value)
 
-    monkeypatch.setattr("tweetnook.web.routes.tweets.json.loads", track_loads)
+    monkeypatch.setattr(fastjson, "loads", track_loads)
     response = api_tweet_thread("main", store=MalformedThreadStore(), _auth=True)
 
     assert len(parsed_values) == 10  # seven tweet objects and three direct/quoted media-tag rows
