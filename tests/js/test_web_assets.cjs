@@ -518,6 +518,29 @@ test('autocomplete formats valid, invalid, negative, quoted, and escaped capsule
     assert.doesNotMatch(input.innerHTML, /<img src=x>/);
 });
 
+test('autocomplete formats hidden search filters as valid capsules', () => {
+    const context = browserContext();
+    const { searchAutocomplete } = loadScripts(
+        context,
+        ['autocomplete.js'],
+        '({searchAutocomplete})',
+    );
+    const input = { innerHTML: '' };
+    const component = immediateComponent(searchAutocomplete());
+    component.$refs.searchInput = input;
+
+    for (const query of ['is:hidden', '-is:hidden', 'is:"hidden"', 'IS:HIDDEN']) {
+        component.formatRichText(query);
+        assert.match(input.innerHTML, /search-capsule valid-capsule/, query);
+        assert.match(input.innerHTML, /capsule-value">(?:hidden|HIDDEN)<\/span>/, query);
+        assert.doesNotMatch(input.innerHTML, /invalid-capsule|capsule-invalid-value/, query);
+        assert.equal(/negative-capsule/.test(input.innerHTML), query.startsWith('-'), query);
+    }
+
+    component.formatRichText('is:hidde');
+    assert.match(input.innerHTML, /invalid-capsule/);
+});
+
 test('autocomplete renders only valid uppercase boolean operators as neutral capsules', () => {
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
