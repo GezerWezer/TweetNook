@@ -1976,6 +1976,21 @@ body {
     }
 }
 
+/* Darken photos on hover with an overlay; animating the img's own opacity
+   promotes it to a compositor layer that resamples it with visible aliasing. */
+.media-photo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+}
+.media-photo:hover::after {
+    opacity: 0.1;
+}
+
 /* Twitter/X-style playback badges for archived video and animated GIF media. */
 .media-video-duration,
 .media-gif-indicator {
