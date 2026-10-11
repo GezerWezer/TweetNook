@@ -8,6 +8,14 @@ const VIDEO_UI_HIDE_DELAY_MS = 3000;
 // Replies (including nested ones) rendered per batch in a thread; a saved reply tree
 // can hold 250 tweets, and rendering them all at once delays the first paint.
 const THREAD_REPLY_BATCH = 30;
+// First feed pages stay reusable this long; finished jobs clear them sooner.
+const FEED_CACHE_MS = 5 * 60 * 1000;
+const FEED_CACHE_LIMIT = 12;
+// Load the next page while the end of the list is still this far below the viewport.
+const FEED_PREFETCH_MARGIN_PX = 1200;
+// Hovering a tweet this long starts loading its conversation.
+const THREAD_HOVER_PREFETCH_MS = 150;
+const DEFAULT_FEEDS = [['likes', 'liked_latest'], ['all', 'newest'], ['bookmarks', 'newest'], ['tweets', 'newest']];
 const videoUiHideTimers = new WeakMap();
 
 function formatMediaDuration(durationMillis) {
@@ -125,6 +133,10 @@ function tweetApp() {
     // prefetched when a tweet menu opens so the copy usually stays in the click gesture.
     const rawTweetRequests = new Map();
     const rawTweetValues = new Map();
+    // First pages by URL ({at, speculative, result, promise}) and the URL on screen.
+    const feedPages = new Map();
+    let feedListUrl = null;
+    let feedPrefetchScheduled = false;
 
     return {
         isDemo: window.TWEETNOOK_DEMO === true,
@@ -322,6 +334,11 @@ function tweetApp() {
                         this.activityStartPending = false;
                         this.activityStartingKind = null;
                     } else {
+                        // A finished job can change any list or conversation.
+                        if (this.activity) {
+                            feedPages.clear();
+                            this.threadCache.clear();
+                        }
                         const lastActivity = data.last_snapshot || this.activity || this.lastActivity;
                         this.lastActivity = this.lastActivity?.run_id === lastActivity?.run_id
                             ? reconcileActivityValue(this.lastActivity, lastActivity) : lastActivity;
@@ -1476,13 +1493,36 @@ function tweetApp() {
                     }
                 });
             } else {
+                // Ask for the first page and any linked conversation alongside setup
+                // status instead of after it; fetchTweets() reuses the request.
+                this.requestFeedPage(`${this.feedUrl(1)}&cursor=`, { speculative: true });
+                if (initialRoute?.viewMode === 'thread') this.prefetchThread(initialRoute.tweetId);
                 this.fetchSetup();
             }
-            setInterval(() => {
+            // Start loading a conversation on press or a short hover, so it is often
+            // ready by the time the click opens it.
+            let hoverTimer = null;
+            const threadTarget = event => event.target?.closest?.('[data-thread-id]')?.dataset.threadId;
+            document.addEventListener('pointerdown', event => this.prefetchThread(threadTarget(event)), { passive: true });
+            document.addEventListener('mouseover', event => {
+                clearTimeout(hoverTimer);
+                const tweetId = threadTarget(event);
+                if (tweetId) hoverTimer = setTimeout(() => this.prefetchThread(tweetId), THREAD_HOVER_PREFETCH_MS);
+            }, { passive: true });
+            // Background polling pauses while the tab is hidden and catches up on return.
+            const pollStatus = () => {
                 if (!this.isDemo) this.fetchSetup();
                 this.fetchNotices();
+            };
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) pollStatus();
+            });
+            setInterval(() => {
+                if (!document.hidden) pollStatus();
             }, 3000);
-            setInterval(() => { if (this.archiveResourcesLoaded) this.fetchArchiveEnrichmentStatus(); }, 60000);
+            setInterval(() => {
+                if (!document.hidden && this.archiveResourcesLoaded) this.fetchArchiveEnrichmentStatus();
+            }, 60000);
             setInterval(() => { this.statsAgeNow = Date.now(); }, 30000);
             this.startActivityPolling();
 
@@ -1868,21 +1908,8 @@ function tweetApp() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         },
 
-        async fetchTweets(append = false) {
-            if (this.archiveReady === false || this.setupForced) return;
-            const requestId = ++this.feedRequestId;
-            const requestedPage = append ? this.page + 1 : 1;
-            if (!append) {
-                this.loading = true;
-                this.tweets = [];
-                this.hasMore = false;
-                this.nextCursor = null;
-                window.scrollTo(0, 0);
-            } else {
-                this.loadingMore = true;
-            }
-            
-            let url = `/api/tweets?collection=${this.collectionFilter}&sort=${this.sortOrder}&page=${requestedPage}`;
+        feedUrl(page) {
+            let url = `/api/tweets?collection=${this.collectionFilter}&sort=${this.sortOrder}&page=${page}`;
             if (this.sortOrder === 'random') {
                 if (this.randomSeed === null) this.randomSeed = Math.floor(Math.random() * 2147483648);
                 url += `&random_seed=${this.randomSeed}`;
@@ -1890,28 +1917,116 @@ function tweetApp() {
             if (this.searchQuery.trim()) {
                 url += `&q=${encodeURIComponent(this.searchQuery)}`;
             }
-            if (!append || this.nextCursor !== null) {
-                url += `&cursor=${encodeURIComponent(this.nextCursor || '')}`;
+            return url;
+        },
+
+        // First pages are kept briefly by URL, so returning to a recent list, or opening
+        // one requested at startup or while idle, renders without waiting.
+        requestFeedPage(url, { speculative = false } = {}) {
+            const cached = feedPages.get(url);
+            if (cached && Date.now() - cached.at < FEED_CACHE_MS) return cached;
+            if (typeof globalThis.fetch !== 'function') return null;
+            const entry = { at: Date.now(), speculative, result: null, promise: null };
+            const forget = () => {
+                if (feedPages.get(url) === entry) feedPages.delete(url);
+            };
+            entry.promise = globalThis.fetch(url).then(async response => {
+                let data;
+                try {
+                    data = await response.json();
+                } catch (parseError) {
+                    throw new Error(`Invalid server response (${response.status}): Please check server logs.`);
+                }
+                const result = { ok: response.ok, status: response.status, data };
+                if (result.ok) entry.result = result;
+                else forget();
+                return result;
+            }, error => {
+                forget();
+                throw error;
+            });
+            entry.promise.catch(() => {});
+            feedPages.set(url, entry);
+            if (feedPages.size > FEED_CACHE_LIMIT) feedPages.delete(feedPages.keys().next().value);
+            return entry;
+        },
+
+        scheduleFeedPrefetch() {
+            if (feedPrefetchScheduled || typeof globalThis.fetch !== 'function') return;
+            feedPrefetchScheduled = true;
+            const prefetch = () => {
+                for (const [collection, sort] of DEFAULT_FEEDS) {
+                    this.requestFeedPage(`/api/tweets?collection=${collection}&sort=${sort}&page=1&cursor=`);
+                }
+            };
+            if (typeof globalThis.requestIdleCallback === 'function') globalThis.requestIdleCallback(prefetch, { timeout: 3000 });
+            else setTimeout(prefetch, 1500);
+        },
+
+        async fetchFeedPage(url) {
+            const response = await fetch(url);
+            let data;
+            try {
+                data = await response.json();
+            } catch (parseError) {
+                throw new Error(`Invalid server response (${response.status}): Please check server logs.`);
+            }
+            return { ok: response.ok, status: response.status, data };
+        },
+
+        // An appended page can leave the trigger inside the prefetch margin, where the
+        // observer does not fire again; keep loading until it is out of reach.
+        continueFeedPrefetch() {
+            const sentinel = this.$refs?.feedSentinel;
+            if (!sentinel || sentinel.offsetParent === null || !this.hasMore || this.loading || this.loadingMore) return;
+            if (sentinel.getBoundingClientRect().top < window.innerHeight + FEED_PREFETCH_MARGIN_PX) this.loadMore();
+        },
+
+        async fetchTweets(append = false) {
+            if (this.archiveReady === false || this.setupForced) return;
+            const requestId = ++this.feedRequestId;
+            const requestedPage = append ? this.page + 1 : 1;
+            let url = this.feedUrl(requestedPage);
+            if (!append) url += '&cursor=';
+            else if (this.nextCursor !== null) url += `&cursor=${encodeURIComponent(this.nextCursor)}`;
+
+            let entry = null;
+            if (!append) {
+                this.hasMore = false;
+                this.nextCursor = null;
+                window.scrollTo(0, 0);
+                // Reloading the list already on screen (retry, repeated search) asks again.
+                if (url === feedListUrl) feedPages.delete(url);
+                feedListUrl = url;
+                entry = this.requestFeedPage(url);
+                // Keep the previous list visible (dimmed) until the new one arrives.
+                if (!entry?.result) this.loading = true;
+            } else {
+                this.loadingMore = true;
             }
 
             try {
                 this.error = null;
-                const res = await fetch(url);
-
-                let data;
-                try {
-                    data = await res.json();
-                } catch (parseError) {
-                    throw new Error(`Invalid server response (${res.status}): Please check server logs.`);
+                let result;
+                if (append || !entry) {
+                    result = await this.fetchFeedPage(url);
+                } else {
+                    result = entry.result || await entry.promise;
+                    if (!result.ok && entry.speculative) {
+                        // The startup request can race setup; ask again now that it is ready.
+                        result = await this.fetchFeedPage(url);
+                    }
                 }
+                const data = result.data;
 
                 if (requestId !== this.feedRequestId) return;
-                if (res.status === 409 && append && this.nextCursor) {
+                if (result.status === 409 && append && this.nextCursor) {
                     // A new sync changed derived like order. Start a fresh list.
+                    feedPages.clear();
                     return await this.fetchTweets();
                 }
-                if (!res.ok) {
-                    throw new Error(data.detail || `Server error: ${res.status}`);
+                if (!result.ok) {
+                    throw new Error(data.detail || `Server error: ${result.status}`);
                 }
 
                 if (append) {
@@ -1923,6 +2038,7 @@ function tweetApp() {
                     })];
                 } else {
                     this.tweets = data.tweets;
+                    this.scheduleFeedPrefetch();
                 }
                 this.page = data.page;
                 this.totalPages = data.pages;
@@ -1933,14 +2049,16 @@ function tweetApp() {
                 if (requestId !== this.feedRequestId) return;
                 console.error(e);
                 this.error = e.message;
+                if (!append) this.tweets = [];
             } finally {
                 if (requestId === this.feedRequestId) {
                     this.loading = false;
                     this.loadingMore = false;
+                    this.$nextTick(() => this.continueFeedPrefetch());
                 }
             }
         },
-        
+
         applyTheme(key) {
             const theme = THEMES[key];
             if (!theme) return;
@@ -2154,7 +2272,7 @@ function tweetApp() {
             const top = this.panelStack[this.panelStack.length - 1];
             if (!top) return;
             top.scrollY = this.$refs.detailPanel?.scrollTop || 0;
-            if (this.panelMode === 'thread') top.data = this.panelThreadData;
+            if (this.panelMode === 'thread') top.data = this.panelThreadData?.partial ? null : this.panelThreadData;
             else if (this.panelMode === 'quotes') top.data = this.panelQuotesList;
         },
 
@@ -2248,14 +2366,15 @@ function tweetApp() {
                     this.panelLoadingThread = false;
                     return;
                 }
-                this.panelLoadingThread = true;
-                this.panelThreadData = null;
+                const seed = this.threadSeed(route.tweetId);
+                this.panelThreadData = seed;
+                this.panelReplyLimit = THREAD_REPLY_BATCH;
+                this.panelLoadingThread = !seed;
                 try {
                     const data = await this.loadThread(route.tweetId);
                     entry.data = data;
                     if (this.panelStack.at(-1) === entry) {
-                        this.panelThreadData = data;
-                        this.panelReplyLimit = THREAD_REPLY_BATCH;
+                        this.keepThreadMainInPlace(true, () => { this.panelThreadData = data; });
                     }
                 } catch (error) {
                     console.error(error);
@@ -2278,16 +2397,64 @@ function tweetApp() {
             await this.fetchPanelQuotes();
         },
 
+        // Render a tweet the page already shows while its conversation loads.
+        threadSeed(tweetId) {
+            const known = [];
+            const add = tweet => {
+                if (!tweet || typeof tweet !== 'object') return;
+                known.push(tweet);
+                if (tweet.quoted_tweet) known.push(tweet.quoted_tweet);
+                if (tweet.retweeted_tweet) known.push(tweet.retweeted_tweet);
+            };
+            this.tweets.forEach(add);
+            for (const data of [this.threadData, this.panelThreadData]) {
+                if (!data) continue;
+                add(data.main);
+                (data.parents || []).forEach(add);
+                for (const child of data.children || []) {
+                    add(child);
+                    (child.op_replies || []).forEach(add);
+                }
+            }
+            [...this.quotesList, ...this.panelQuotesList].forEach(add);
+            const match = known.find(tweet => tweet.tweet_id === tweetId && tweet.author && !this.isPlaceholderTweet(tweet));
+            if (!match) return null;
+            const { op_replies, thread_depth, parent_tweet_id, ...main } = match;
+            return { main, parents: [], children: [], reply_tree_truncated: false, partial: true };
+        },
+
+        prefetchThread(tweetId) {
+            if (typeof tweetId === 'string' && /^\d+$/.test(tweetId) && typeof globalThis.fetch === 'function') {
+                this.loadThread(tweetId).catch(() => {});
+            }
+        },
+
+        // Parents arrive above the tweet already on screen; keep it where it was.
+        keepThreadMainInPlace(panel, update) {
+            const root = panel ? this.$refs?.detailPanel : globalThis.document;
+            const main = () => root?.querySelector?.(`[data-thread-main="${panel ? 'panel' : 'page'}"]`);
+            const before = main()?.getBoundingClientRect().top;
+            update();
+            if (before === undefined) return;
+            this.$nextTick(() => {
+                const after = main()?.getBoundingClientRect().top;
+                if (after === undefined || after === before) return;
+                if (panel) root.scrollTop += after - before;
+                else window.scrollBy(0, after - before);
+            });
+        },
+
         async showFullThread(tweetId) {
             this.viewMode = 'thread';
-            this.loadingThread = true;
-            this.threadData = null;
+            const seed = this.threadSeed(tweetId);
+            this.threadData = seed;
+            this.threadReplyLimit = THREAD_REPLY_BATCH;
+            this.loadingThread = !seed;
             window.scrollTo(0, 0);
             try {
                 const data = await this.loadThread(tweetId);
                 if (this.routeKey(this.activeRoute) === `thread:${tweetId}` && !this.shouldUseSplitPanel()) {
-                    this.threadData = data;
-                    this.threadReplyLimit = THREAD_REPLY_BATCH;
+                    this.keepThreadMainInPlace(false, () => { this.threadData = data; });
                 }
             } catch (error) {
                 console.error(error);
@@ -4042,10 +4209,9 @@ function tweetApp() {
             if (!tweet.raw_json) return null;
             const quote = tweet.raw_json.quoted_status_result?.result;
             if (quote?.__typename === 'TweetWithVisibilityResults') {
-                if (quote.birdwatch_pivot && quote.tweet) {
-                    quote.tweet.birdwatch_pivot = quote.birdwatch_pivot;
-                }
-                return quote.tweet;
+                return quote.birdwatch_pivot && quote.tweet
+                    ? { ...quote.tweet, birdwatch_pivot: quote.birdwatch_pivot }
+                    : quote.tweet;
             }
             if (quote?.__typename === 'Tweet') return quote;
             if (quote?.__typename === 'TweetTombstone' || quote?.__typename === 'TweetUnavailable') return quote;
@@ -4156,8 +4322,9 @@ function tweetApp() {
             if (!tweet.raw_json) return null;
             const rt = tweet.raw_json.legacy?.retweeted_status_result?.result;
             if (rt?.__typename === 'TweetWithVisibilityResults') {
-                if (rt.birdwatch_pivot && rt.tweet) rt.tweet.birdwatch_pivot = rt.birdwatch_pivot;
-                return rt.tweet;
+                return rt.birdwatch_pivot && rt.tweet
+                    ? { ...rt.tweet, birdwatch_pivot: rt.birdwatch_pivot }
+                    : rt.tweet;
             }
             if (rt?.__typename === 'Tweet') return rt;
             if (tweet.raw_json.retweeted_status) return tweet.raw_json.retweeted_status;
@@ -4516,7 +4683,7 @@ function tweetApp() {
                             </div>`;
                 } else if (type === 'photo') {
                     return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block" style="${containerStyle}" @click.stop>
-                                <img src="${src}" onclick="window.dispatchEvent(new CustomEvent('open-lightbox', { detail: { media: JSON.parse('${jsonStr}'), index: 0 } }))" class="w-full h-full object-cover cursor-pointer hover:opacity-90 transition block">
+                                <img src="${src}" loading="lazy" decoding="async" onclick="window.dispatchEvent(new CustomEvent('open-lightbox', { detail: { media: JSON.parse('${jsonStr}'), index: 0 } }))" class="w-full h-full object-cover cursor-pointer hover:opacity-90 transition block">
                             </div>`;
                 } else {
                     const loopAttr = (isGif || isShort) ? 'loop' : '';
@@ -4530,7 +4697,7 @@ function tweetApp() {
                     const videoEvents = isGif ? '' : 'onloadedmetadata="window.tweetNookSyncVideoDuration(this)" ondurationchange="window.tweetNookSyncVideoDuration(this)" ontimeupdate="window.tweetNookSyncVideoDuration(this)" onended="window.tweetNookSyncVideoDuration(this)" onmouseenter="window.tweetNookSetVideoUiVisible(this, true)" onmouseleave="window.tweetNookSetVideoUiVisible(this, false)" onfocus="window.tweetNookSetVideoUiVisible(this, true)" onblur="window.tweetNookSetVideoUiVisible(this, false)" ontouchstart="window.tweetNookSetVideoUiVisible(this, true)" ontouchend="window.tweetNookSetVideoUiVisible(this, false)" ontouchcancel="window.tweetNookSetVideoUiVisible(this, false)"';
 
                     return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block ${isGif ? '' : 'media-video-player'}" style="${containerStyle}" @click.stop>
-                                <video src="${src}" poster="${poster || ''}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="w-full h-full object-cover outline-none block"></video>
+                                <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="w-full h-full object-cover outline-none block"></video>
                                 ${indicator}
                             </div>`;
                 }
@@ -4552,7 +4719,7 @@ function tweetApp() {
                     const currentDlIdx = downloadedIdx++;
                     if (type === 'photo') {
                         html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass}">
-                                    <img src="${src}" onclick="window.dispatchEvent(new CustomEvent('open-lightbox', { detail: { media: JSON.parse('${jsonStr}'), index: ${currentDlIdx} } }))" class="absolute inset-0 w-full h-full object-cover cursor-pointer hover:opacity-90 transition">
+                                    <img src="${src}" loading="lazy" decoding="async" onclick="window.dispatchEvent(new CustomEvent('open-lightbox', { detail: { media: JSON.parse('${jsonStr}'), index: ${currentDlIdx} } }))" class="absolute inset-0 w-full h-full object-cover cursor-pointer hover:opacity-90 transition">
                                 </div>`;
                     } else {
                         const loopAttr = (isGif || isShort) ? 'loop' : '';
@@ -4564,7 +4731,7 @@ function tweetApp() {
                         const videoEvents = isGif ? '' : 'onloadedmetadata="window.tweetNookSyncVideoDuration(this)" ondurationchange="window.tweetNookSyncVideoDuration(this)" ontimeupdate="window.tweetNookSyncVideoDuration(this)" onended="window.tweetNookSyncVideoDuration(this)" onmouseenter="window.tweetNookSetVideoUiVisible(this, true)" onmouseleave="window.tweetNookSetVideoUiVisible(this, false)" onfocus="window.tweetNookSetVideoUiVisible(this, true)" onblur="window.tweetNookSetVideoUiVisible(this, false)" ontouchstart="window.tweetNookSetVideoUiVisible(this, true)" ontouchend="window.tweetNookSetVideoUiVisible(this, false)" ontouchcancel="window.tweetNookSetVideoUiVisible(this, false)"';
                         const indicator = this.renderMediaPlaybackIndicator(item);
                         html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass} ${isGif ? '' : 'media-video-player'}">
-                                    <video src="${src}" poster="${poster || ''}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="absolute inset-0 w-full h-full object-cover outline-none"></video>
+                                    <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="absolute inset-0 w-full h-full object-cover outline-none"></video>
                                     ${indicator}
                                 </div>`;
                     }
@@ -4664,8 +4831,7 @@ function tweetApp() {
                 return `${Number(amount.toFixed(1))}${units[unit]}`;
             };
             
-            const collections = tweet.collections || [];
-            if (tweet.collection?.type) collections.push(tweet.collection.type);
+            const collections = [...(tweet.collections || []), ...(tweet.collection?.type ? [tweet.collection.type] : [])];
             const isLiked = collections.includes('like');
             const isBookmarked = collections.includes('bookmark');
             

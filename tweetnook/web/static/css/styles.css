@@ -2043,3 +2043,16 @@ body {
 .media-gif-indicator.is-paused .media-gif-play-icon {
     display: block;
 }
+
+/* Keep the previous list visible but subdued while a new filter or search loads. */
+.feed-refreshing {
+    opacity: 0.55;
+    transition: opacity 0.15s ease;
+}
+
+/* Skip layout and painting for off-screen feed tweets. A card with its menu open
+   opts out, because this containment would clip the menu to the card. */
+.feed-card:not(.feed-card-active) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 420px;
+}

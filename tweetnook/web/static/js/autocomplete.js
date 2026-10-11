@@ -2,8 +2,13 @@
  * Search autocomplete component for the TweetNook Web UI.
  */
 
+// Suggestions are requested once typing pauses this long.
+const SUGGESTION_DELAY_MS = 100;
+
 function searchAutocomplete() {
     return {
+        suggestionRequest: 0,
+        suggestionTimer: null,
         showDropdown: false,
         selectedIndex: 0,
         options: [],
@@ -70,7 +75,33 @@ function searchAutocomplete() {
             return tokenStart;
         },
         
+        // A response that arrives after newer input is discarded instead of
+        // replacing the current suggestions.
+        fetchSuggestions(url, toOptions) {
+            const request = ++this.suggestionRequest;
+            clearTimeout(this.suggestionTimer);
+            this.suggestionTimer = setTimeout(() => {
+                fetch(url)
+                    .then(res => res.ok ? res.json() : {})
+                    .then(data => {
+                        if (request !== this.suggestionRequest) return;
+                        this.options = toOptions(data || {});
+                        if (this.options.length === 0) {
+                            this.showDropdown = false;
+                        }
+                    })
+                    .catch(err => {
+                        if (request !== this.suggestionRequest) return;
+                        console.error(err);
+                        this.options = [];
+                        this.showDropdown = false;
+                    });
+            }, SUGGESTION_DELAY_MS);
+        },
+
         handleInput() {
+            this.suggestionRequest++;
+            clearTimeout(this.suggestionTimer);
             const input = this.$refs.searchInput;
             
             // If it's the rich input, we must sync the contenteditable text to Alpine state
@@ -124,55 +155,33 @@ function searchAutocomplete() {
                     }];
                 } else if (basePrefix === 'from:' || basePrefix === 'to:') {
                     if (val.length > 0) {
-                        fetch(`/api/authors/search?q=${encodeURIComponent(val)}`)
-                            .then(res => res.ok ? res.json() : { authors: [] })
-                            .then(data => {
-                                const authorsList = data && data.authors ? data.authors : [];
-                                if (!this.knownAuthors) this.knownAuthors = new Set();
-                                authorsList.forEach(a => this.knownAuthors.add(a.username.toLowerCase()));
-                                
-                                this.options = authorsList.map(a => ({
-                                    isAuthor: true,
-                                    prefix: rawPrefix,
-                                    value: a.username,
-                                    desc: a.display_name,
-                                    id: a.id,
-                                    query: val
-                                }));
-                                if (this.options.length === 0) {
-                                    this.showDropdown = false;
-                                }
-                            })
-                            .catch(err => {
-                                console.error(err);
-                                this.options = [];
-                                this.showDropdown = false;
-                            });
+                        this.fetchSuggestions(`/api/authors/search?q=${encodeURIComponent(val)}`, data => {
+                            const authorsList = data.authors || [];
+                            if (!this.knownAuthors) this.knownAuthors = new Set();
+                            authorsList.forEach(a => this.knownAuthors.add(a.username.toLowerCase()));
+                            return authorsList.map(a => ({
+                                isAuthor: true,
+                                prefix: rawPrefix,
+                                value: a.username,
+                                desc: a.display_name,
+                                id: a.id,
+                                query: val
+                            }));
+                        });
                     } else {
                         this.options = [];
                         this.showDropdown = false;
                     }
                 } else if (basePrefix === 'tag:') {
-                    fetch(`/api/tags/autocomplete?q=${encodeURIComponent(val)}`)
-                        .then(res => res.ok ? res.json() : { tags: [] })
-                        .then(data => {
-                            const tagsList = data && data.tags ? data.tags : [];
-                            this.options = tagsList.map(t => ({
-                                isTag: true,
-                                prefix: rawPrefix,
-                                value: t.tag,
-                                count: t.count.toLocaleString(),
-                                query: val
-                            }));
-                            if (this.options.length === 0) {
-                                this.showDropdown = false;
-                            }
-                        })
-                        .catch(err => {
-                            console.error(err);
-                            this.options = [];
-                            this.showDropdown = false;
-                        });
+                    this.fetchSuggestions(`/api/tags/autocomplete?q=${encodeURIComponent(val)}`, data => (
+                        (data.tags || []).map(t => ({
+                            isTag: true,
+                            prefix: rawPrefix,
+                            value: t.tag,
+                            count: t.count.toLocaleString(),
+                            query: val
+                        }))
+                    ));
                 } else {
                     this.options = [];
                     this.showDropdown = false;
