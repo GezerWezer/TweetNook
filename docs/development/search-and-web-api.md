@@ -72,6 +72,7 @@ The executor applies every Boolean, structured, and collection predicate in SQL,
 deduplicates logical tweet IDs, orders the matches, and fetches `limit + 1` IDs.
 Only the displayed page is hydrated. Text searches have no 1,000-result cap;
 `has_more` comes from the extra ID, and exact text totals/pages are omitted.
+The browser requests exact text totals separately from `/api/tweets/count`.
 Filter-only/feed totals remain exact and use bounded caches with write invalidation.
 
 Text clauses remain independent FTS relations so different membership documents
@@ -157,6 +158,17 @@ Start cursor scrolling with `cursor=` and send each returned `next_cursor` uncha
 on the next request, retaining the same query, collection, sort, seed, and limit.
 The response `page` advances from the token. Omitting `cursor` preserves explicit
 page/offset clients. Text totals/pages are `null`; `has_more` is authoritative.
+
+```http
+GET /api/tweets/count?q=...&collection=all
+```
+
+Returns `{"total": N}` using the same query compiler, hidden-tweet rules and
+logical-ID deduplication as the list endpoint. It uses a private read-only
+connection and skips sorting, ranking, like-order generation and hydration.
+The browser renders the list before requesting the count, retains it across
+appended pages and ignores counts from superseded searches. Complete first pages
+need no separate request; filter-only lists already include a total.
 
 Unfiltered newest/oldest feeds seek through composite chronological indexes,
 including explicit NULL/tie ranges. Likes seek by indexed sequence position even

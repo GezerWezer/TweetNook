@@ -1535,7 +1535,7 @@ test('tweet fetching encodes search state, hydrates pagination, appends, and rep
     assert.equal(app.hasMore, true);
     assert.equal(app.loading, false);
     app.total = null;
-    assert.equal(app.resultCountLabel(), 'Results');
+    assert.equal(app.resultCountLabel(), 'Counting… Results');
     app.total = 3482;
     assert.equal(app.resultCountLabel(), '3,482 Results');
 
@@ -1555,6 +1555,68 @@ test('tweet fetching encodes search state, hydrates pagination, appends, and rep
     await app.fetchTweets();
     assert.equal(app.error, 'temporarily unavailable');
     assert.deepEqual(Array.from(app.tweets), []);
+});
+
+test('text counts arrive independently, survive append, and ignore an older search', async () => {
+    const context = browserContext();
+    const counts = [];
+    context.fetch = async (url, options) => {
+        if (url.startsWith('/api/tweets/count?')) {
+            return new Promise(resolve => counts.push({url, options, resolve}));
+        }
+        return {ok: true, status: 200, json: async () => ({
+            tweets: [{tweet_id: url.includes('page=2') ? '2' : '1'}],
+            page: url.includes('page=2') ? 2 : 1, total: null, pages: null, has_more: true,
+        })};
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.searchQuery = 'gif is:reply';
+    await app.fetchTweets();
+    assert.equal(app.loading, false);
+    assert.equal(app.tweets.length, 1);
+    assert.equal(app.total, null);
+    assert.equal(counts[0].url, '/api/tweets/count?collection=likes&q=gif%20is%3Areply');
+    counts[0].resolve({ok: true, json: async () => ({total: 42})});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(app.resultCountLabel(), '42 Results');
+    await app.fetchTweets(true);
+    assert.equal(app.total, 42);
+    assert.equal(counts.length, 1);
+
+    await app.fetchTweets();
+    app.searchQuery = 'cats';
+    await app.fetchTweets();
+    assert.equal(counts[1].options.signal.aborted, true);
+    counts[2].resolve({ok: true, json: async () => ({total: 8})});
+    counts[1].resolve({ok: true, json: async () => ({total: 99})});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(app.total, 8);
+
+    await app.fetchTweets();
+    counts[3].resolve({ok: false, json: async () => ({detail: 'failed'})});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(app.resultCountLabel(), 'Count unavailable · Results');
+    assert.equal(app.tweets.length, 1);
+});
+
+test('a complete first text page supplies its own count, including zero', async () => {
+    const context = browserContext();
+    let tweets = [{tweet_id: '1'}];
+    const calls = [];
+    context.fetch = async url => {
+        calls.push(url);
+        return {ok: true, status: 200, json: async () => ({tweets, page: 1, total: null, pages: null, has_more: false})};
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.searchQuery = 'gif is:reply';
+    await app.fetchTweets();
+    assert.equal(app.resultCountLabel(), '1 Results');
+    tweets = [];
+    await app.fetchTweets();
+    assert.equal(app.resultCountLabel(), '0 Results');
+    assert.equal(calls.length, 2);
 });
 
 test('feed cursors survive retries and ignore duplicate membership results', async () => {

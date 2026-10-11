@@ -1106,6 +1106,55 @@ def _api_client(store: object) -> TestClient:
     return TestClient(app)
 
 
+def test_search_count_endpoint_uses_private_reader_and_closes_it(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    store._merge_records(
+        [
+            store._record(
+                row_key=f"tweet:bookmark::{i}",
+                record_type="tweet",
+                tweet_id=str(i),
+                collection_type="bookmark",
+                text="gif",
+                raw_json=json.dumps({"legacy": {"in_reply_to_status_id_str": "100"}}),
+            )
+            for i in range(1, 25)
+        ]
+    )
+    readers = []
+    closed = []
+    open_reader = store.open_reader
+
+    def reader():
+        result = open_reader()
+        readers.append(result)
+        close = result.close
+
+        def record_close():
+            closed.append(result)
+            close()
+
+        result.close = record_close
+        return result
+
+    store.open_reader = reader
+    client = _api_client(store)
+    listing = client.get("/api/tweets", params={"q": "gif is:reply"}).json()
+    assert listing["total"] is None
+    assert listing["has_more"] is True
+    response = client.get(
+        "/api/tweets/count", params={"q": "gif is:reply", "collection": "bookmarks"}
+    )
+    assert response.status_code == 200
+    assert response.json() == {"total": 24}
+    assert len(readers) == 1
+    assert closed == readers
+    assert client.get("/api/tweets/count?q=is:invalid").status_code == 400
+    assert len(readers) == 2
+    assert closed == readers
+    store.close()
+
+
 @pytest.mark.parametrize(
     "url",
     [

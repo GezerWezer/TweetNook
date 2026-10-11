@@ -4810,6 +4810,7 @@ class ArchiveStore:
         offset: int,
         random_seed: int | None = None,
         include_total: bool = False,
+        count_only: bool = False,
         after: dict[str, Any] | None = None,
         exclude_hidden: bool = False,
     ) -> tuple[list[dict[str, Any]], int | None]:
@@ -4819,6 +4820,9 @@ class ArchiveStore:
         are produced by the canonical query compiler, never by HTTP input directly.
         exclude_hidden leaves out tweets hidden with set_tweet_hidden().
         """
+        if count_only:
+            include_total = True
+            sort = "newest"  # Counts need neither BM25 nor like-order rebuilding.
         hidden_expr = f"archive.tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})" if exclude_hidden else ""
 
         self.ensure_fts_index()
@@ -4838,6 +4842,8 @@ class ArchiveStore:
             total = self.count_export_rows(collection) if include_total else None
             if total is not None and exclude_hidden:
                 total -= self._hidden_member_count(collection)
+            if count_only:
+                return [], total
             if sort in {"liked_latest", "liked_earliest"}:
                 rows = self.query_like_order_ids(
                     f"{filter_expr} AND {hidden_expr}" if hidden_expr else filter_expr,
@@ -5069,10 +5075,12 @@ class ArchiveStore:
         )
         page_params.extend([limit + 1, offset])
         like_sort = sort in {"liked_latest", "liked_earliest"}
-        with self._like_order_lock if like_sort else nullcontext():
-            if like_sort:
-                self._ensure_like_order_table()
-            rows = [dict(row) for row in self.conn.execute(page_sql, page_params).fetchall()]
+        rows = []
+        if not count_only:
+            with self._like_order_lock if like_sort else nullcontext():
+                if like_sort:
+                    self._ensure_like_order_table()
+                rows = [dict(row) for row in self.conn.execute(page_sql, page_params).fetchall()]
 
         total = None
         if include_total:

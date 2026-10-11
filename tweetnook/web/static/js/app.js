@@ -186,6 +186,8 @@ function tweetApp() {
         hasMore: false,
         nextCursor: null,
         feedRequestId: 0,
+        feedGeneration: 0,
+        countController: null,
         randomSeed: null,
         collectionFilter: 'likes',
         sortOrder: 'liked_latest',
@@ -217,7 +219,9 @@ function tweetApp() {
             return this.feedOptions(kind).find(option => option.value === this.feedValue(kind))?.label || 'Relevance';
         },
         resultCountLabel() {
-            if (this.searchQuery.trim() && this.total === null) return 'Results';
+            if (this.searchQuery.trim() && this.total === null) {
+                return this.countError ? 'Count unavailable · Results' : 'Counting… Results';
+            }
             const count = Number(this.total) || 0;
             const noun = this.searchQuery.trim()
                 ? 'Results'
@@ -253,6 +257,7 @@ function tweetApp() {
             if (changed) this.search();
         },
         searchQuery: '',
+        countError: false,
         error: null,
         showScrollTop: false,
 
@@ -2010,6 +2015,23 @@ function tweetApp() {
             return { ok: response.ok, status: response.status, data };
         },
 
+        async fetchResultCount(listUrl, generation) {
+            const params = new URL(listUrl, window.location.origin).searchParams;
+            const url = `/api/tweets/count?collection=${encodeURIComponent(params.get('collection'))}&q=${encodeURIComponent(params.get('q') || '')}`;
+            const controller = new AbortController();
+            this.countController = controller;
+            try {
+                const response = await fetch(url, { signal: controller.signal });
+                const data = await response.json();
+                if (!response.ok || !Number.isInteger(data.total) || data.total < 0) throw new Error('Count unavailable');
+                if (generation === this.feedGeneration) this.total = data.total;
+            } catch (error) {
+                if (generation === this.feedGeneration && !controller.signal.aborted) this.countError = true;
+            } finally {
+                if (this.countController === controller) this.countController = null;
+            }
+        },
+
         // An appended page can leave the trigger inside the prefetch margin, where the
         // observer does not fire again; keep loading until it is out of reach.
         continueFeedPrefetch() {
@@ -2028,6 +2050,10 @@ function tweetApp() {
 
             let entry = null;
             if (!append) {
+                this.feedGeneration += 1;
+                this.countController?.abort();
+                this.countError = false;
+                this.total = null;
                 this.hasMore = false;
                 this.nextCursor = null;
                 window.scrollTo(0, 0);
@@ -2081,9 +2107,13 @@ function tweetApp() {
                 }
                 this.page = data.page;
                 this.totalPages = data.pages;
-                this.total = data.total;
+                if (!append || data.total !== null) this.total = data.total;
                 this.hasMore = data.has_more === true;
                 this.nextCursor = data.next_cursor || null;
+                if (!append && data.total === null && new URL(url, window.location.origin).searchParams.get('q')) {
+                    if (!data.has_more) this.total = this.tweets.length;
+                    else this.fetchResultCount(url, this.feedGeneration);
+                }
             } catch (e) {
                 if (requestId !== this.feedRequestId) return;
                 console.error(e);

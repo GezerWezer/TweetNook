@@ -972,7 +972,7 @@
                 try { body = JSON.parse(bodyText); } catch (_) { body = {}; }
             }
 
-            if (path.endsWith('/api/tweets') && method === 'GET') {
+            if ((path.endsWith('/api/tweets') || path.endsWith('/api/tweets/count')) && method === 'GET') {
                 const collectionMap = {likes: 'like', bookmarks: 'bookmark', tweets: 'tweet'};
                 const collection = collectionMap[url.searchParams.get('collection')] || null;
                 const groups = parseQuery(url.searchParams.get('q') || '');
@@ -986,6 +986,7 @@
                     token.kind === 'filter' && token.key === 'is' && token.value.toLowerCase() === 'hidden'
                 )));
                 tweets = tweets.filter(tweet => (namesHidden || !tweet.hidden) && matchesQuery(tweet, groups));
+                if (path.endsWith('/count')) return jsonResponse({total: tweets.length});
                 tweets = sortedTweets(
                     tweets,
                     url.searchParams.get('sort') || 'default',

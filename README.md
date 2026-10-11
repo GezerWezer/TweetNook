@@ -148,6 +148,8 @@ In the web search box, edit `tag:` and `description:` values inside their
 capsules, including spaces. Press **Escape** to continue typing after a capsule;
 multiword values are quoted automatically.
 
+Search results show an exact count; text-search counts load after the first results.
+
 The same queries work in the terminal:
 
 ```bash

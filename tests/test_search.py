@@ -8,6 +8,7 @@ import pytest
 from tweetnook.search import (
     SearchQueryError,
     _parse_twitter_date,
+    count_posts,
     parse_search_query,
     search_posts,
 )
@@ -128,6 +129,47 @@ def test_grouped_search_requires_all_groups_and_any_or_alternative(tmp_path) -> 
 
     assert {row["tweet_id"] for row in result.rows} == {"1", "2"}
     assert result.total is None
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "gif is:reply",
+        "gif",
+        '"funny gif"',
+        "gif OR cats",
+        "NOT cats",
+        "-gif",
+        "from:alice gif",
+        "has:image",
+        "is:hidden",
+        "gif OR is:hidden",
+        "gif*",
+        "missing",
+        "",
+    ],
+)
+@pytest.mark.parametrize("collections", [None, {"bookmarks"}, {"likes"}])
+def test_exact_count_matches_search_without_paging_or_hydration(tmp_path, query, collections):
+    rows = [
+        _row("1", "funny gif"),
+        _row("2", "cats", media=[{"type": "photo"}]),
+        _row("3", "gifs", username="bob"),
+        _row("4", "funny gif"),
+    ]
+    rows[0]["raw_json"]["legacy"]["in_reply_to_status_id_str"] = "100"
+    store = _real_store(tmp_path, rows)
+    duplicate = store._query(expr="row_key = 'tweet:bookmark::1'")[0]
+    duplicate.update(row_key="tweet:like::1", collection_type="like")
+    store._merge_records([duplicate])
+    store.set_tweet_hidden("4", True)
+    expected = len(search_posts(store, query, collections=collections, limit=100).rows)
+    statements = []
+    store.conn.set_trace_callback(statements.append)
+    store.fetch_tweets_by_ids = lambda *_: pytest.fail("Counts must not hydrate tweets")
+    assert count_posts(store, query, collections=collections) == expected
+    assert not any("LIMIT 2 OFFSET" in sql or "bm25(" in sql for sql in statements)
     store.close()
 
 
