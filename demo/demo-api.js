@@ -7,7 +7,7 @@
         'from', 'to', 'mentions', 'since', 'until', 'since_time', 'until_time',
         'since_id', 'max_id', 'has', 'is', 'filter', 'min_retweets', 'min_faves',
         'min_replies', 'conversation_id', 'quoted_tweet_id', 'url', 'source',
-        'card_name', 'tag', 'hashtag',
+        'card_name', 'tag', 'description', 'hashtag',
     ]);
 
     // Captured from a production stats response and intentionally projected onto the
@@ -234,6 +234,14 @@
         if (key === 'source') return String(tweet.raw_json?.source || '').toLowerCase().includes(value.replaceAll('_', ' '));
         if (key === 'card_name') return String(tweet.raw_json?.card?.name || '').toLowerCase() === value;
         if (key === 'tag') return (tweet.media_tags?.tags || []).some(tag => tag.toLowerCase() === value);
+        if (key === 'description') {
+            // Every word must appear in the description; a trailing * matches a prefix.
+            const words = String(tweet.media_tags?.description || '').toLowerCase().match(/[\p{L}\p{N}_]+/gu) || [];
+            return value.split(/\s+/).filter(term => term.replace(/\*+$/, '')).every(term => {
+                const word = term.replace(/\*+$/, '');
+                return words.some(candidate => (term.endsWith('*') ? candidate.startsWith(word) : candidate === word));
+            });
+        }
         if (key === 'hashtag') return (tweet._demo?.hashtags || []).some(tag => tag.toLowerCase() === value);
         return false;
     }

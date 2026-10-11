@@ -132,6 +132,7 @@ Type words and filters together in the web app's search box:
 | Images from an author | `from:alice has:image` |
 | Tweets from January 2026 | `since:2026-01-01 until:2026-02-01` |
 | A local tag | `tag:"read later"` |
+| Words in a tag description | `description:"red car"` |
 | Links, excluding reposts | `has:links -is:retweet` |
 | Tweets you hid | `is:hidden` |
 

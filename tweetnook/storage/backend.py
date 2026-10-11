@@ -273,7 +273,7 @@ ARCHIVE_COLUMNS = [
     "value",
 ]
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 COLUMN_TYPES = {
     field: (
         "TEXT PRIMARY KEY"
@@ -317,6 +317,15 @@ _WARM_READ_QUERIES = (
     "ON object.tweet_id = membership.tweet_id "
     "WHERE membership.record_type = 'tweet' AND object.record_type = 'tweet_object'",
 )
+
+
+def _media_tag_description(raw: str) -> str:
+    """The text description stored in a media_tag payload, or ''."""
+    return (
+        f"COALESCE(CASE WHEN json_valid({raw}) THEN CASE "
+        f"WHEN json_type({raw}, '$.description') = 'text' "
+        f"THEN json_extract({raw}, '$.description') END END, '')"
+    )
 
 
 def _json_each_texts(raw: str, path: str, field: str) -> str:
@@ -432,8 +441,9 @@ class ArchiveStore:
             self._create_latest_schema()
             return
 
-        # Releases shipped schema 5 (0.0.9 and 0.1.0) and schema 8 (0.1.1 to 0.1.6).
-        if current_version == 8:
+        # Releases shipped schema 5 (0.0.9 and 0.1.0), schema 8 (0.1.1 to 0.1.6),
+        # and schema 9 (0.1.7 and 0.1.8).
+        if current_version in {8, 9}:
             self._migrate_search_facts(current_version)
             return
         if current_version != 5:
@@ -474,7 +484,10 @@ class ArchiveStore:
         )
 
     def _migrate_search_facts(self, current_version: int) -> None:
-        """Add derived search-filter values to a v8 archive; canonical rows are unchanged."""
+        """Add missing derived search tables to a v8/v9 archive; canonical rows are unchanged.
+
+        v8 lacks the search-filter facts; v8 and v9 lack the description index.
+        """
         with self.conn:
             self.conn.execute("BEGIN IMMEDIATE")
             self._create_archive_indexes()
@@ -485,6 +498,17 @@ class ArchiveStore:
             if actual != expected:
                 raise RuntimeError(
                     "Search-filter migration produced an unexpected row count: "
+                    f"expected={expected}, actual={actual}"
+                )
+            description = _media_tag_description("raw_json")
+            expected = self.conn.execute(
+                f"SELECT COUNT(*) FROM archive WHERE record_type = 'media_tag' "
+                f"AND {description} != ''"
+            ).fetchone()[0]
+            actual = self.conn.execute("SELECT COUNT(*) FROM archive_description_fts").fetchone()[0]
+            if actual != expected:
+                raise RuntimeError(
+                    "Description-index migration produced an unexpected row count: "
                     f"expected={expected}, actual={actual}"
                 )
             self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -632,6 +656,7 @@ class ArchiveStore:
             WHERE author_id IS NOT NULL AND author_id != ''
         """)
         self._create_tweet_facts()
+        self._create_description_fts()
         self._create_cache_revisions()
 
     def _create_tweet_facts(self) -> None:
@@ -674,6 +699,51 @@ class ArchiveStore:
             f"SELECT row_key, {_tweet_fact_values('raw_json')} "
             "FROM archive WHERE record_type = 'tweet' AND row_key IS NOT NULL"
         )
+
+    def _create_description_fts(self) -> None:
+        """Create, backfill, and maintain the full-text index of media-tag descriptions.
+
+        Rows share the media_tag archive row's rowid. The index stores its own copy
+        of each description, so triggers delete by rowid without the old text.
+        """
+        exists = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'archive_description_fts'"
+        ).fetchone()
+        self.conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS archive_description_fts USING fts5(description)"
+        )
+
+        def insert(row: str) -> str:
+            description = _media_tag_description(f"{row}.raw_json")
+            return (
+                "INSERT INTO archive_description_fts (rowid, description) "
+                f"SELECT {row}.rowid, {description} "
+                f"WHERE {row}.record_type = 'media_tag' AND {description} != ''"
+            )
+
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_description_ai AFTER INSERT ON archive "
+            f"WHEN new.record_type = 'media_tag' BEGIN {insert('new')}; END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_description_au "
+            "AFTER UPDATE OF record_type, raw_json ON archive "
+            "WHEN old.record_type = 'media_tag' OR new.record_type = 'media_tag' BEGIN "
+            "DELETE FROM archive_description_fts WHERE rowid = old.rowid; "
+            f"{insert('new')}; END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_description_ad AFTER DELETE ON archive "
+            "WHEN old.record_type = 'media_tag' BEGIN "
+            "DELETE FROM archive_description_fts WHERE rowid = old.rowid; END"
+        )
+        if not exists:
+            description = _media_tag_description("raw_json")
+            self.conn.execute(
+                "INSERT INTO archive_description_fts (rowid, description) "
+                f"SELECT rowid, {description} FROM archive "
+                f"WHERE record_type = 'media_tag' AND {description} != ''"
+            )
 
     def _create_cache_revisions(self) -> None:
         """Track derived-data inputs across processes, including direct SQL writes."""
@@ -5006,6 +5076,9 @@ class ArchiveStore:
         self.conn.execute("PRAGMA optimize=0x10002")
         with self.conn:
             self.conn.execute("INSERT INTO archive_fts(archive_fts) VALUES ('optimize')")
+            self.conn.execute(
+                "INSERT INTO archive_description_fts(archive_description_fts) VALUES ('optimize')"
+            )
 
 
 def open_archive_store(

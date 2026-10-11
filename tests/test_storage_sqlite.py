@@ -126,6 +126,10 @@ def test_schema_creates_fts_triggers_and_page_indexes(paths) -> None:
         ("trigger", "archive_ai"),
         ("trigger", "archive_au"),
         ("trigger", "archive_ad"),
+        ("table", "archive_description_fts"),
+        ("trigger", "archive_description_ai"),
+        ("trigger", "archive_description_au"),
+        ("trigger", "archive_description_ad"),
     } <= objects
     assert {
         ("index", "idx_archive_record_page"),
@@ -887,7 +891,7 @@ def test_schema_v8_upgrade_backfills_search_facts_and_reports(tmp_path: Path) ->
 
     migrated = ArchiveStore(db_path, create=False)
 
-    assert migrated.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 9
+    assert migrated.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 10
     assert migrated.migration_report.from_version == 8
     assert [row["tweet_id"] for row in search_posts(migrated, "is:reply").rows] == ["1"]
     assert [row["tweet_id"] for row in search_posts(migrated, "-is:reply").rows] == ["2"]
@@ -927,3 +931,45 @@ def test_failed_schema_v8_upgrade_leaves_the_archive_at_v8(tmp_path: Path, monke
             ).fetchone()
             is None
         )
+
+
+def test_schema_v9_upgrade_backfills_the_description_index(tmp_path: Path) -> None:
+    db_path = tmp_path / "archive.db"
+    initial = ArchiveStore(db_path, create=True)
+    initial._merge_records(
+        [
+            _membership(
+                initial,
+                tweet_id,
+                collection="like",
+                text="tweet text",
+                created_at=CREATED_2024,
+                created_at_ts=int(tweet_id),
+                sort_index=tweet_id,
+            )
+            for tweet_id in ("1", "2", "3")
+        ]
+    )
+    initial.update_media_tags("1", ["boats"], description="Sailboat at dusk")
+    initial.update_media_tags("2", ["untitled"])
+    initial.conn.execute(
+        "INSERT INTO archive (row_key, record_type, tweet_id, raw_json) "
+        "VALUES ('media_tag:3', 'media_tag', '3', 'not json')"
+    )
+    for trigger in ("archive_description_ai", "archive_description_au", "archive_description_ad"):
+        initial.conn.execute(f"DROP TRIGGER {trigger}")
+    initial.conn.execute("DROP TABLE archive_description_fts")
+    initial.conn.execute("PRAGMA user_version = 9")
+    initial.conn.commit()
+    initial.close()
+
+    migrated = ArchiveStore(db_path, create=False)
+
+    assert migrated.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    assert migrated.migration_report.from_version == 9
+    assert [row["tweet_id"] for row in search_posts(migrated, "description:sailboat").rows] == ["1"]
+    migrated.update_media_tags("2", ["untitled"], description="Harbor sailboat")
+    assert sorted(
+        row["tweet_id"] for row in search_posts(migrated, "description:sailboat").rows
+    ) == ["1", "2"]
+    migrated.close()

@@ -42,7 +42,7 @@ since until since_time until_time since_id max_id
 has is filter
 min_retweets min_faves min_replies
 conversation_id quoted_tweet_id
-url source card_name tag hashtag
+url source card_name tag description hashtag
 ```
 
 Enums:
@@ -59,6 +59,12 @@ seconds. `since_id` is strict greater-than; `max_id` is inclusive.
 
 Tag matching covers direct tags and direct quote-target tags, with result
 metadata indicating quoted provenance.
+
+`description:` matches the same tweet set (direct and quote target) from
+`archive_description_fts`. Each whitespace-separated word of the value becomes a
+quoted FTS5 string, ANDed, so FTS operators in the value are literal and a
+trailing `*` stays a prefix query. A value with no word is a `SearchQueryError`.
+Unfiltered text clauses do not search descriptions.
 
 ## Execution plan
 

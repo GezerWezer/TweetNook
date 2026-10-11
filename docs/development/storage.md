@@ -4,7 +4,7 @@
 [Archive Import](archive-import.md) · [Search and Web API](search-and-web-api.md)
 
 `ArchiveStore` owns database access, schema upgrades, and record merging. It uses
-SQLite schema version 9 with FTS5 search. Collection memberships, shared tweet
+SQLite schema version 10 with FTS5 search. Collection memberships, shared tweet
 content, and raw captures have distinct roles within the same archive table.
 The optional `legacy-migration` extra provides LanceDB for the legacy importer;
 PyArrow is installed transitively with it.
@@ -19,7 +19,7 @@ Opening the store:
 - requests negative `cache_size` in KiB and configured `mmap_size`;
 - checks `PRAGMA user_version` and migrates when required.
 
-A current v9 database takes the cheap version path; it does not run integrity
+A current v10 database takes the cheap version path; it does not run integrity
 checks or derived-index repair on every open.
 
 The single wide table is:
@@ -100,6 +100,13 @@ the filter used to evaluate, so results are unchanged. Insert, delete, and
 `UPDATE OF row_key, record_type, raw_json` triggers keep it in step for every
 write path, including direct SQL. NULL JSON evaluates like absent keys; malformed
 JSON stores NULL facts instead of failing the write.
+
+`archive_description_fts` is an ordinary (content-storing) FTS5 table with one
+`description` column, holding the non-empty string `$.description` of each
+`media_tag` row under that row's rowid. Storing the text lets the insert,
+`UPDATE OF record_type, raw_json`, and delete triggers remove an entry by rowid
+without the old value; malformed or non-string descriptions are not indexed.
+Only the `description:` search filter reads it.
 
 ## Atomic page persistence
 
@@ -188,11 +195,12 @@ Open behavior by source version:
 
 | Source | Migration |
 |---|---|
-| no archive table | create latest table, FTS, indexes, search facts, set v9 |
-| v5 (0.0.9, 0.1.0) | transactionally rebuild derived FTS/triggers/indexes and search facts, removing old replacement orphans; validate membership count |
-| v8 (0.1.1–0.1.6) | transactionally create and backfill search facts and their triggers; validate membership count; FTS and canonical rows unchanged |
-| other versions below v9 | reject as a pre-release schema, unchanged |
-| > v9 | reject as newer than supported |
+| no archive table | create latest table, FTS, indexes, search facts, description index, set v10 |
+| v5 (0.0.9, 0.1.0) | transactionally rebuild derived FTS/triggers/indexes, search facts, and the description index, removing old replacement orphans; validate membership count |
+| v8 (0.1.1–0.1.6) | transactionally create and backfill search facts, the description index, and their triggers; validate membership and described media-tag counts; FTS and canonical rows unchanged |
+| v9 (0.1.7–0.1.8) | transactionally create and backfill the description index and its triggers; validate described media-tag count; FTS, facts, and canonical rows unchanged |
+| other versions below v10 | reject as a pre-release schema, unchanged |
+| > v10 | reject as newer than supported |
 
 Migrations run inside one `BEGIN IMMEDIATE` transaction; a failure leaves the
 source version and its data untouched. No backup copy is written.

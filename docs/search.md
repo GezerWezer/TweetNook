@@ -98,9 +98,13 @@ includes hidden tweets alongside matches for `recipe`.
 |---|---|
 | `tag:recipe` | Tweets with the local tag `recipe` |
 | `tag:"street photography"` | Tweets with a multiword local tag |
+| `description:sailboat` | Tweets whose tag description contains `sailboat` |
+| `description:"red car"` | Tweets whose tag description contains every word |
 | `url:example.com` | Matching text in saved expanded or display URLs |
 
-Tag searches also include tags on a tweet's directly quoted original.
+Tag and description searches also include a tweet's directly quoted original.
+Plain words don't search descriptions; use `description:`. Its words can appear
+in any order, and a trailing `*` matches words that start with what you typed.
 [Tags](tags.md) explains how to add and edit them.
 
 ## Choose a collection and order
