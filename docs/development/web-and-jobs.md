@@ -141,6 +141,24 @@ the data:
 - **Paging:** the feed sentinel loads the next page 1,200 px before the end of the
   list (quote lists at 600 px), and keeps loading while an appended page leaves the
   sentinel within that margin.
+- **Feed cards:** list cards are not an Alpine template. `renderFeedCard()` builds
+  each card as one HTML string from the helpers the thread views use (escaping every
+  value they do not), and `fetchTweets()` writes a page with a single `innerHTML`
+  (new list) or `insertAdjacentHTML` (appended page) inside `Alpine.mutateDom()`,
+  so Alpine never walks the cards. `this.tweets` stays the data source for thread
+  seeds, tags, and Copy raw. Listeners on the list handle every card by `data-action`
+  (`thread`, `quote`, `profile`, `reply-profile`, `menu`, `text`, `stop`; links
+  navigate on their own); everything but `thread` stops propagation, as the old
+  per-element `@click.stop` handlers did. Capture listeners cover events that do not
+  bubble: avatar `load`/`error` and the overflow button's `pointerleave` (long press
+  opens Tags). One Alpine menu (`listMenu`) serves every card and is placed over the
+  button that opened it, following it on scroll and resize. **Show more** rewrites only
+  the affected text elements, leaving media playing; tag edits re-render the matching
+  cards in place (`refreshFeedCards()`). Theme, accent, and font changes need no
+  re-render because cards use CSS variables. Measured on a local archive (desktop,
+  including layout, same machine state): 20 cards take about 6.5–11 ms versus
+  17–21 ms with the former per-card Alpine template (8–17 ms versus 25–40 ms on a
+  cold page), and appending no longer re-diffs the whole list.
 - **Threads:** pressing a tweet, or hovering it for 150 ms, starts loading its
   conversation (`data-thread-id`, delegated listeners, the existing 60-second thread
   cache). Opening a thread shows the tweet the page already has as the main tweet,
@@ -150,8 +168,8 @@ the data:
   about 30 tweets, counting each reply's flattened descendants (`visibleReplies()`);
   an intersection sentinel and **Show more replies** extend the batch.
 - **Media and layout:** feed images load lazily with async decoding; videos with a
-  poster use `preload="none"`. Off-screen feed cards use `content-visibility: auto`
-  except while their menu is open, which the containment would otherwise clip.
+  poster use `preload="none"`. Off-screen feed cards use `content-visibility: auto`;
+  the shared list menu sits outside the cards, so the containment cannot clip it.
 - **Background work:** search suggestions are requested after a 100 ms pause and
   late responses are discarded; status polling pauses in hidden tabs and refreshes
   on return. The full tag list loads when Settings → Tags opens.
@@ -288,7 +306,9 @@ restricted to completed runs titled exactly `tweetnook sync`.
 
 ## Frontend
 
-`index.html` is a large Alpine template. Local script order is:
+`index.html` is a large Alpine template; feed list cards are the exception and
+render as plain markup from `app.js` (see [Frontend loading](#frontend-loading)).
+Local script order is:
 
 1. `themes.js`;
 2. `autocomplete.js`;

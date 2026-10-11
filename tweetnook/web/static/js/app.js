@@ -111,6 +111,12 @@ window.tweetNookSyncVideoUi = tweetNookSyncVideoUi;
 window.tweetNookShowVideoUi = tweetNookShowVideoUi;
 window.tweetNookLeaveVideoUi = tweetNookLeaveVideoUi;
 
+// Feed cards are plain markup handled by delegated listeners. Writing them while
+// Alpine's observer is paused keeps Alpine from walking (and binding) every card.
+function outsideAlpine(update) {
+    return window.Alpine?.mutateDom ? window.Alpine.mutateDom(update) : update();
+}
+
 // Status responses are JSON trees. Retain unchanged reactive objects so polling
 // doesn't invalidate every binding in the mounted (including hidden) tray pages.
 function reconcileActivityValue(current, next) {
@@ -146,6 +152,10 @@ function tweetApp() {
     const feedPages = new Map();
     let feedListUrl = null;
     let feedPrefetchScheduled = false;
+    // The list element whose delegated listeners are bound, and the card button
+    // currently covered by the shared list menu.
+    let boundFeedList = null;
+    let listMenuButton = null;
 
     return {
         isDemo: window.TWEETNOOK_DEMO === true,
@@ -275,6 +285,9 @@ function tweetApp() {
         panelQuotesLoadingMore: false,
 
         tweetMenuOpen: null,
+        // Feed cards share one overflow menu: the opening card's key and display
+        // tweet, and where its button sits within the list area.
+        listMenu: { key: 'list:', tweet: null, top: 0, right: 0 },
         tweetMenuPressTimer: null,
         tweetMenuClickBlockedUntil: 0,
 
@@ -1435,6 +1448,7 @@ function tweetApp() {
 
             window.addEventListener('scroll', () => {
                 this.showScrollTop = window.scrollY > 300;
+                this.placeListMenu();
             });
             
             const savedFontSize = localStorage.getItem('tvx-font-size');
@@ -1467,6 +1481,7 @@ function tweetApp() {
                 if (route) return this.applyRoute(route, { fromPopState: true, state: event.state });
             });
             window.addEventListener('resize', () => {
+                this.placeListMenu();
                 const usePanel = this.shouldUseSplitPanel();
                 if (usePanel === this.routeUsesPanel) return;
                 this.routeUsesPanel = usePanel;
@@ -2040,13 +2055,16 @@ function tweetApp() {
 
                 if (append) {
                     const seen = new Set(this.tweets.map(tweet => tweet.tweet_id));
-                    this.tweets = [...this.tweets, ...data.tweets.filter(tweet => {
+                    const added = data.tweets.filter(tweet => {
                         if (seen.has(tweet.tweet_id)) return false;
                         seen.add(tweet.tweet_id);
                         return true;
-                    })];
+                    });
+                    this.tweets = [...this.tweets, ...added];
+                    this.renderFeedList(added, { append: true });
                 } else {
                     this.tweets = data.tweets;
+                    this.renderFeedList(data.tweets);
                     this.scheduleFeedPrefetch();
                 }
                 this.page = data.page;
@@ -2058,7 +2076,10 @@ function tweetApp() {
                 if (requestId !== this.feedRequestId) return;
                 console.error(e);
                 this.error = e.message;
-                if (!append) this.tweets = [];
+                if (!append) {
+                    this.tweets = [];
+                    this.renderFeedList([]);
+                }
             } finally {
                 if (requestId === this.feedRequestId) {
                     this.loading = false;
@@ -2066,6 +2087,233 @@ function tweetApp() {
                     this.$nextTick(() => this.continueFeedPrefetch());
                 }
             }
+        },
+
+        // The feed list renders outside Alpine: each card is one HTML string built by
+        // renderFeedCard(), a page is a single DOM write, and listeners on the list
+        // handle every card. this.tweets remains the data source.
+        feedListElement() {
+            const list = this.$refs?.feedList;
+            if (list && list !== boundFeedList) {
+                this.bindFeedList(list);
+                boundFeedList = list;
+            }
+            return list || null;
+        },
+
+        renderFeedList(tweets, { append = false } = {}) {
+            const list = this.feedListElement();
+            if (!list) return;
+            // A new list closes the menu first, so no new card renders as its opener.
+            if (!append && this.tweetMenuOpen === this.listMenu.key) this.closeTweetMenu(this.listMenu.key);
+            const html = tweets.map(tweet => this.renderFeedCard(tweet)).join('');
+            outsideAlpine(() => {
+                if (append) list.insertAdjacentHTML('beforeend', html);
+                else list.innerHTML = html;
+            });
+        },
+
+        bindFeedList(list) {
+            const menuButton = event => event.target?.closest?.('[data-action="menu"]') || null;
+            list.addEventListener('click', event => this.handleFeedClick(event, list));
+            // Holding the overflow button opens Tags; pressing it must not prefetch the
+            // conversation (the document-level pointerdown listener).
+            list.addEventListener('pointerdown', event => {
+                const button = menuButton(event);
+                if (!button) return;
+                event.stopPropagation();
+                const tweet = this.feedCardTweet(button);
+                if (tweet) this.startTweetMenuPress(event, tweet.tweet_id, tweet.media_tags);
+            });
+            for (const type of ['pointerup', 'pointercancel']) {
+                list.addEventListener(type, event => {
+                    if (!menuButton(event)) return;
+                    event.stopPropagation();
+                    this.cancelTweetMenuPress();
+                });
+            }
+            list.addEventListener('contextmenu', event => {
+                if (menuButton(event)) event.preventDefault();
+            });
+            // pointerleave, load, and error do not bubble; catch them on the way down.
+            list.addEventListener('pointerleave', event => {
+                if (event.target?.dataset?.action === 'menu') this.cancelTweetMenuPress();
+            }, true);
+            list.addEventListener('load', event => {
+                if (event.target?.classList?.contains('avatar-image')) this.avatarLoaded(event.target);
+            }, true);
+            list.addEventListener('error', event => {
+                if (event.target?.classList?.contains('avatar-image')) this.avatarFailed(event.target);
+            }, true);
+        },
+
+        // Card regions declare their click behavior with data-action. The nearest one
+        // wins, and every action except opening the card's thread stops propagation,
+        // as the per-card template's @click.stop handlers did.
+        handleFeedClick(event, list) {
+            for (let element = event.target; element && element !== list; element = element.parentElement) {
+                // Links (tweet text, link cards, Open on X) navigate on their own.
+                if (element.tagName === 'A') {
+                    event.stopPropagation();
+                    return;
+                }
+                const action = element.dataset?.action;
+                if (!action) continue;
+                if (action === 'text') {
+                    if (this.handleTextClick(event, element)) return;
+                    continue;
+                }
+                if (action === 'thread') {
+                    this.openThread(element.dataset.threadId);
+                    return;
+                }
+                event.stopPropagation();
+                if (action === 'quote') {
+                    this.openThread(element.dataset.threadId);
+                } else if (action === 'profile') {
+                    const tweet = this.feedCardTweet(element);
+                    if (tweet) this.openProfileCard({ currentTarget: element }, tweet);
+                } else if (action === 'reply-profile') {
+                    this.openUsernameProfileCard({ currentTarget: element }, element.dataset.username);
+                } else if (action === 'menu') {
+                    this.toggleListTweetMenu(element);
+                }
+                return;
+            }
+        },
+
+        feedDisplayTweet(tweetObj) {
+            const retweet = this.getRetweet(tweetObj);
+            return retweet ? this.formatRetweetToTweet(tweetObj, retweet) : tweetObj;
+        },
+
+        feedCard(tweetId) {
+            for (const card of this.feedListElement()?.children || []) {
+                if (card.dataset.tweetId === tweetId) return card;
+            }
+            return null;
+        },
+
+        // The displayed tweet (a retweet's original) of the card containing an element.
+        feedCardTweet(element) {
+            const tweetId = element?.closest?.('.feed-card')?.dataset.tweetId;
+            const tweetObj = tweetId && this.tweets.find(tweet => String(tweet.tweet_id) === tweetId);
+            return tweetObj ? this.feedDisplayTweet(tweetObj) : null;
+        },
+
+        // Re-render the cards showing a tweet whose data changed. Avatars the browser
+        // already has stay visible instead of falling back to initials for a frame.
+        refreshFeedCards(tweetId) {
+            const list = this.feedListElement();
+            if (!list || !tweetId) return;
+            for (const card of [...list.children]) {
+                if (card.dataset.tweetId !== tweetId && card.dataset.threadId !== tweetId) continue;
+                const tweetObj = this.tweets.find(tweet => String(tweet.tweet_id) === card.dataset.tweetId);
+                if (!tweetObj) continue;
+                let fresh = null;
+                outsideAlpine(() => {
+                    card.insertAdjacentHTML('beforebegin', this.renderFeedCard(tweetObj));
+                    fresh = card.previousElementSibling;
+                    card.remove();
+                });
+                for (const image of fresh.querySelectorAll('img.avatar-image')) {
+                    if (image.complete && image.naturalWidth) this.avatarLoaded(image);
+                }
+            }
+            this.syncListMenuButton();
+            this.placeListMenu();
+        },
+
+        // Show more expands text in place, as x-html did, leaving media playing.
+        expandFeedText(tweetId) {
+            const list = this.feedListElement();
+            if (!list || !tweetId) return;
+            for (const toggle of list.querySelectorAll('.expand-tweet')) {
+                if (toggle.dataset.id !== tweetId) continue;
+                const text = toggle.closest('[data-action="text"]');
+                const tweet = this.feedCardTweet(text);
+                if (!text || !tweet) continue;
+                const source = text.closest('[data-action="quote"]') ? this.getQuoteTweet(tweet) : tweet;
+                outsideAlpine(() => { text.innerHTML = this.formatText(source); });
+            }
+            this.placeListMenu();
+        },
+
+        // One feed card, using the helpers the thread views render with. Values the
+        // helpers do not escape go through escapeHTML, as x-text did for the template.
+        renderFeedCard(tweetObj) {
+            const escape = value => this.escapeHTML(value);
+            const part = (html, attributes = '') => (html ? `<div${attributes}>${html}</div>` : '');
+            const replyLine = username => '<div class="text-[15px] text-[var(--text-secondary)] mb-1">Replying to '
+                + `<span class="text-[var(--accent-color)] hover:underline cursor-pointer" data-action="reply-profile" data-username="${escape(username)}">${escape(`@${username}`)}</span></div>`;
+            const retweet = this.getRetweet(tweetObj);
+            const tweet = retweet ? this.formatRetweetToTweet(tweetObj, retweet) : tweetObj;
+            const author = tweet.author || {};
+            const replyTo = this.getReplyTo(tweet);
+            const menuOpen = this.tweetMenuOpen === `list:${tweetObj.tweet_id}`;
+
+            const header = retweet
+                ? '<div class="text-[13px] text-[var(--text-secondary)] font-bold mb-1 flex items-center space-x-2 ml-8">'
+                    + '<svg viewBox="0 0 24 24" class="w-4 h-4 fill-current"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"></path></svg>'
+                    + `<span>${escape(`${tweetObj.author?.display_name || 'Unknown'} Reposted`)}</span></div>`
+                : '';
+            const avatar = '<div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden" data-action="profile">'
+                + `<span class="avatar-initial">${escape(this.getInitial(tweet))}</span>`
+                + `<img src="${escape(this.avatarUrl(author.id))}" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy"></div>`;
+            const byline = '<div class="flex items-start text-[15px]"><div class="flex items-center space-x-1 min-w-0">'
+                + `<span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" data-action="profile">${escape(author.display_name || 'Unknown')}</span>`
+                + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(`@${author.username || 'unknown'}`)}</span>`
+                + '<span class="text-[var(--text-secondary)]">·</span>'
+                + '<div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" data-action="stop"><div class="roll-inner">'
+                + `<span class="roll-item hover:underline">${escape(this.formatDate(tweet.created_at))}</span>`
+                + `<span class="roll-item text-[var(--accent-color)] text-[13px] font-medium">${escape(this.formatSyncDate(tweet))}</span>`
+                + '</div></div></div>'
+                + '<div class="relative ml-auto -mr-2 -mt-2 flex-shrink-0">'
+                + `<button type="button" class="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)] select-none touch-manipulation${menuOpen ? ' opacity-0' : ''}" aria-label="More actions" aria-haspopup="menu" aria-expanded="${menuOpen}" title="More actions (hold for Tags)" data-action="menu">`
+                + '<svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>'
+                + '</button></div></div>';
+
+            const quote = this.getQuoteTweet(tweet);
+            let quoteBlock = '';
+            if (quote && this.isTombstone(quote)) {
+                quoteBlock = part(this.renderQuotePlaceholder(quote), ' data-action="stop"');
+            } else if (quote) {
+                const quoteAuthor = this.getQuoteAuthor(quote);
+                const quoteId = this.getTweetId(quote);
+                const quoteReplyTo = this.getReplyTo({ raw_json: quote });
+                quoteBlock = `<div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer"${quoteId ? ` data-thread-id="${escape(quoteId)}"` : ''} data-action="quote">`
+                    + '<div class="flex items-center space-x-1 text-[15px] mb-1">'
+                    + '<div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">'
+                    + `<span class="avatar-initial">${escape(quoteAuthor.initial)}</span>`
+                    + `<img src="${escape(this.avatarUrl(quoteAuthor.id))}" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy"></div>`
+                    + `<span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name">${escape(quoteAuthor.name)}</span>`
+                    + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(`@${quoteAuthor.screen_name}`)}</span>`
+                    + '<span class="text-[var(--text-secondary)]">·</span>'
+                    + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(this.formatDate(quote.legacy?.created_at || quote.created_at))}</span>`
+                    + '</div>'
+                    + (quoteReplyTo ? replyLine(quoteReplyTo) : '')
+                    + `<div class="text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote)}</div>`
+                    + part(this.renderMediaGrid(tweet.qt_media), ' data-action="stop"')
+                    + part(this.renderCard({ raw_json: quote }), ' data-action="stop"')
+                    + part(this.renderCommunityNote(quote, true), ' data-action="stop"')
+                    + '</div>';
+            }
+
+            return `<div class="px-4 pt-3 pb-3 tweet-border feed-card hover-bg transition duration-200 cursor-pointer" data-tweet-id="${escape(tweetObj.tweet_id)}"`
+                + `${tweet.tweet_id ? ` data-thread-id="${escape(tweet.tweet_id)}"` : ''} data-action="thread">`
+                + header
+                + '<div class="flex space-x-2">'
+                + avatar
+                + '<div class="flex-1 min-w-0">'
+                + byline
+                + (replyTo ? replyLine(replyTo) : '')
+                + `<div class="text-[15px] -mt-2 whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(tweet)}</div>`
+                + part(this.renderMediaGrid(tweet.media), ' data-action="stop"')
+                + part(this.renderCard(tweet), ' data-action="stop"')
+                + quoteBlock
+                + part(this.renderCommunityNote(tweet.raw_json), ' data-action="stop"')
+                + part(this.renderActionBar(tweet))
+                + '</div></div></div>';
         },
 
         applyTheme(key) {
@@ -2933,6 +3181,54 @@ function tweetApp() {
             if (Date.now() < this.tweetMenuClickBlockedUntil) return;
             this.tweetMenuOpen = this.tweetMenuOpen === menuKey ? null : menuKey;
             if (this.tweetMenuOpen) this.fullRawTweet({ tweet_id: menuKey.slice(menuKey.indexOf(':') + 1) });
+            this.syncListMenuButton();
+        },
+
+        // Feed cards share one menu, keyed by the card and placed over the button that
+        // opened it, where each card's own menu used to open.
+        toggleListTweetMenu(button) {
+            if (Date.now() < this.tweetMenuClickBlockedUntil) return;
+            const card = button.closest('.feed-card');
+            const tweet = this.feedCardTweet(button);
+            if (!card || !tweet) return;
+            const key = `list:${card.dataset.tweetId}`;
+            if (this.tweetMenuOpen === key) {
+                this.closeTweetMenu(key);
+                return;
+            }
+            this.listMenu = { key, tweet, ...this.listMenuPosition(button) };
+            this.tweetMenuOpen = key;
+            this.fullRawTweet(tweet);
+            this.syncListMenuButton();
+        },
+
+        listMenuPosition(button) {
+            const area = this.$refs?.feedArea?.getBoundingClientRect();
+            const rect = button.getBoundingClientRect();
+            return area ? { top: rect.top - area.top, right: area.right - rect.right } : { top: 0, right: 0 };
+        },
+
+        // Keep the open list menu on its button when cards above it change height.
+        placeListMenu() {
+            if (!listMenuButton?.isConnected || this.tweetMenuOpen !== this.listMenu.key) return;
+            const { top, right } = this.listMenuPosition(listMenuButton);
+            if (top !== this.listMenu.top) this.listMenu.top = top;
+            if (right !== this.listMenu.right) this.listMenu.right = right;
+        },
+
+        // The open menu covers its button, which is hidden and marked expanded meanwhile.
+        syncListMenuButton() {
+            const open = this.tweetMenuOpen && this.tweetMenuOpen === this.listMenu.key
+                ? this.feedCard(this.tweetMenuOpen.slice('list:'.length))?.querySelector('[data-action="menu"]') || null
+                : null;
+            if (open === listMenuButton) return;
+            outsideAlpine(() => {
+                listMenuButton?.classList.remove('opacity-0');
+                listMenuButton?.setAttribute('aria-expanded', 'false');
+                open?.classList.add('opacity-0');
+                open?.setAttribute('aria-expanded', 'true');
+            });
+            listMenuButton = open;
         },
 
         fullRawTweet(tweet) {
@@ -2961,6 +3257,7 @@ function tweetApp() {
 
         closeTweetMenu(menuKey = null) {
             if (!menuKey || this.tweetMenuOpen === menuKey) this.tweetMenuOpen = null;
+            this.syncListMenuButton();
         },
 
         startTweetMenuPress(event, tweetId, tagsData) {
@@ -3079,6 +3376,7 @@ function tweetApp() {
             };
 
             for (const tweet of this.tweets) assign(tweet);
+            this.refreshFeedCards(tweetId);
             for (const tweet of this.quotesList) assign(tweet);
             for (const tweet of this.panelQuotesList) assign(tweet);
             visitThread(this.threadData);
@@ -4464,7 +4762,7 @@ function tweetApp() {
             });
             
             if (isTruncated) {
-                text += `<span class="text-[var(--accent-color)] hover:underline cursor-pointer block mt-1 expand-tweet" data-id="${tweetId}">Show more</span>`;
+                text += `<span class="text-[var(--accent-color)] hover:underline cursor-pointer block mt-1 expand-tweet" data-id="${this.escapeHTML(tweetId)}">Show more</span>`;
             }
             
             return text.trim();
@@ -4473,25 +4771,35 @@ function tweetApp() {
 
         expandedTweets: {},
 
-        handleTextClick(e) {
-            if (e.target.tagName === 'SPAN' && e.target.classList.contains('mention')) {
+        // Returns whether the click hit a mention, hashtag, or Show more. Delegated
+        // callers pass the text element, which anchors the profile card as the
+        // handler's currentTarget does for an element's own listener.
+        handleTextClick(e, textElement = e.currentTarget) {
+            const target = e.target;
+            if (target.tagName !== 'SPAN') return false;
+            if (target.classList.contains('mention')) {
                 e.stopPropagation();
-                const username = e.target.dataset.user;
+                const username = target.dataset.user;
                 const dummyTweet = {
                     author: { username: username, display_name: username, id: 'unknown' }
                 };
-                this.openProfileCard(e, dummyTweet);
-            } else if (e.target.tagName === 'SPAN' && e.target.classList.contains('hashtag')) {
+                this.openProfileCard({ currentTarget: textElement }, dummyTweet);
+            } else if (target.classList.contains('hashtag')) {
                 e.stopPropagation();
-                this.searchQuery = '#' + e.target.dataset.tag;
+                this.searchQuery = '#' + target.dataset.tag;
                 this.search();
-            } else if (e.target.tagName === 'SPAN' && e.target.classList.contains('expand-tweet')) {
+            } else if (target.classList.contains('expand-tweet')) {
                 e.stopPropagation();
-                const tid = e.target.dataset.id;
+                const tid = target.dataset.id;
                 if (tid) {
                     this.expandedTweets[tid] = true;
+                    // Feed cards render outside Alpine; expand their copies directly.
+                    this.expandFeedText(tid);
                 }
+            } else {
+                return false;
             }
+            return true;
         },
         
         renderCard(tweet) {
@@ -4877,7 +5185,7 @@ function tweetApp() {
                     <span class="text-[13px] ml-2 font-medium">${formatNum(viewCount)}</span>
                 </div>
                 <div class="flex items-center">
-                    <a href="https://x.com/${tweet.author?.username || 'i'}/status/${tweet.tweet_id}" target="_blank" @click.stop class="flex items-center" title="Open on Twitter/X">
+                    <a href="https://x.com/${this.escapeHTML(tweet.author?.username || 'i')}/status/${this.escapeHTML(tweet.tweet_id)}" target="_blank" @click.stop class="flex items-center" title="Open on Twitter/X">
                         <svg viewBox="0 0 24 24" class="w-[18.5px] h-[18.5px] fill-current hover:text-[#e7e9ea] transition"><path d="M18 19H6c-.55 0-1-.45-1-1V6c0-.55.45-1 1-1h5c.55 0 1-.45 1-1s-.45-1-1-1H6c-1.65 0-3 1.35-3 3v12c0 1.65 1.35 3 3 3h12c1.65 0 3-1.35 3-3v-5c0-.55-.45-1-1-1s-1 .45-1 1v5c0 .55-.45 1-1 1zM14 4c0 .55.45 1 1 1h2.59l-9.13 9.13c-.39.39-.39 1.02 0 1.41.19.19.45.29.71.29s.51-.1.71-.29L19 6.41V9c0 .55.45 1 1 1s1-.45 1-1V4c0-.55-.45-1-1-1h-5c-.55 0-1 .45-1 1z"></path></svg>
                     </a>
                 </div>

@@ -2066,9 +2066,9 @@ body {
     transition: opacity 0.15s ease;
 }
 
-/* Skip layout and painting for off-screen feed tweets. A card with its menu open
-   opts out, because this containment would clip the menu to the card. */
-.feed-card:not(.feed-card-active) {
+/* Skip layout and painting for off-screen feed tweets. The list's shared overflow
+   menu sits outside the cards, so this containment never clips it. */
+.feed-card {
     content-visibility: auto;
     contain-intrinsic-size: auto 420px;
 }

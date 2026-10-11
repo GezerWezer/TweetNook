@@ -136,9 +136,9 @@ routes; there is no separate manual-tag service module.
 
 | File | Responsibility | Principal tests |
 |---|---|---|
-| [tweetnook/web/index.html](../../tweetnook/web/index.html) | Alpine template for feed, details, settings, tags, stats, activity, AI | Python/JS asset tests and route contract tests |
+| [tweetnook/web/index.html](../../tweetnook/web/index.html) | Alpine template for the feed shell and shared list menu, details, settings, tags, stats, activity, AI | Python/JS asset tests and route contract tests |
 | [tweetnook/web/static/css/styles.css](../../tweetnook/web/static/css/styles.css) | Theme variables, cards/placeholders, drawers/modals/search/setup/responsive styling | asset harness plus manual visual QA |
-| [tweetnook/web/static/js/app.js](../../tweetnook/web/static/js/app.js) | State, API calls, rendering, navigation, media, settings, schedule, stats/activity | Python/JS asset tests |
+| [tweetnook/web/static/js/app.js](../../tweetnook/web/static/js/app.js) | State, API calls, rendering (including feed card markup and delegated list events), navigation, media, settings, schedule, stats/activity | Python/JS asset tests |
 | [tweetnook/web/static/js/autocomplete.js](../../tweetnook/web/static/js/autocomplete.js) | Contenteditable query formatting, suggestions, caret/keyboard/date behavior | Python/JS asset tests |
 | [tweetnook/web/static/js/themes.js](../../tweetnook/web/static/js/themes.js) | Theme catalog, accent/font sources, local preference helpers | Python/JS asset tests |
 
