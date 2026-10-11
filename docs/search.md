@@ -43,6 +43,10 @@ Write `AND`, `OR`, and `NOT` in uppercase. Put multiword filter values in double
 quotes, such as `tag:"machine learning"`. Parentheses are not supported for
 controlling groups.
 
+In the web app, `tag:` and `description:` values are editable capsules. Type
+spaces inside them without adding quotes, then press **Escape** to continue
+after the capsule. Copied queries include the quotes needed by the terminal.
+
 ## People
 
 | Filter | Finds |

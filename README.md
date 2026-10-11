@@ -96,6 +96,11 @@ sudo tweetnook update
 The command gracefully stops active Web and scheduled work, upgrades TweetNook in the exact Python
 environment recorded by the managed systemd service, and restarts the service afterward.
 
+Version 0.2.0 upgrades SQLite archives to schema 10 when first opened, adding an
+index for description searches. Back up your data folder before updating: no
+automatic backup or downgrade is provided. See the
+[archive upgrade guide](docs/maintenance.md#upgrade-or-migrate-an-older-archive).
+
 ### 3. Open TweetNook
 
 After the service starts, open the Web UI using the address shown by TweetNook, for example:
@@ -138,6 +143,10 @@ Type words and filters together in the web app's search box:
 
 **Hide** in a tweet's menu keeps it out of lists and searches until you choose
 **Unhide**; it stays in your archive.
+
+In the web search box, edit `tag:` and `description:` values inside their
+capsules, including spaces. Press **Escape** to continue typing after a capsule;
+multiword values are quoted automatically.
 
 The same queries work in the terminal:
 
