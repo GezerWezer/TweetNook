@@ -264,6 +264,7 @@ function tweetApp() {
 
         threadData: null,
         threadReplyLimit: THREAD_REPLY_BATCH,
+        threadOtherReplies: false,
         loadingThread: false,
         threadCache: new Map(),
         threadCacheTtlMs: 60000,
@@ -294,6 +295,7 @@ function tweetApp() {
         panelMode: null,        // 'thread' | 'quotes' | null
         panelThreadData: null,
         panelReplyLimit: THREAD_REPLY_BATCH,
+        panelOtherReplies: false,
         panelLoadingThread: false,
         panelQuotesTweetId: null,
         panelQuotesList: [],
@@ -2643,12 +2645,14 @@ function tweetApp() {
                 if (entry.data) {
                     this.panelThreadData = entry.data;
                     this.panelReplyLimit = THREAD_REPLY_BATCH;
+                    this.panelOtherReplies = false;
                     this.panelLoadingThread = false;
                     return;
                 }
                 const seed = this.threadSeed(route.tweetId);
                 this.panelThreadData = seed;
                 this.panelReplyLimit = THREAD_REPLY_BATCH;
+                this.panelOtherReplies = false;
                 this.panelLoadingThread = !seed;
                 try {
                     const data = await this.loadThread(route.tweetId);
@@ -2691,7 +2695,7 @@ function tweetApp() {
                 if (!data) continue;
                 add(data.main);
                 (data.parents || []).forEach(add);
-                for (const child of data.children || []) {
+                for (const child of [...(data.children || []), ...(data.other_children || [])]) {
                     add(child);
                     (child.op_replies || []).forEach(add);
                 }
@@ -2729,6 +2733,7 @@ function tweetApp() {
             const seed = this.threadSeed(tweetId);
             this.threadData = seed;
             this.threadReplyLimit = THREAD_REPLY_BATCH;
+            this.threadOtherReplies = false;
             this.loadingThread = !seed;
             window.scrollTo(0, 0);
             try {
@@ -2823,6 +2828,28 @@ function tweetApp() {
         showMoreReplies(panel = false) {
             if (panel) this.panelReplyLimit += THREAD_REPLY_BATCH;
             else this.threadReplyLimit += THREAD_REPLY_BATCH;
+        },
+
+        // Mention-only replies stay behind "Show other replies" until requested.
+        threadReplies(data, showOther) {
+            const children = data?.children || [];
+            return showOther ? [...children, ...(data?.other_children || [])] : children;
+        },
+
+        // Like X's "Show probable spam", the button waits until every regular reply is shown.
+        hasOtherReplies(data, limit, shown) {
+            return !shown && Boolean(data?.other_children?.length) && !this.hasHiddenReplies(data.children, limit);
+        },
+
+        // The revealed section starts with an "Other replies" heading, like X's "Probable spam".
+        firstOtherReplyId(data, shown) {
+            return shown ? data?.other_children?.[0]?.tweet_id ?? null : null;
+        },
+
+        showOtherReplies(panel = false) {
+            if (panel) this.panelOtherReplies = true;
+            else this.threadOtherReplies = true;
+            this.showMoreReplies(panel);
         },
 
         async loadThread(tweetId) {
@@ -3390,7 +3417,7 @@ function tweetApp() {
                 if (!thread) return;
                 assign(thread.main);
                 for (const tweet of thread.parents || []) assign(tweet);
-                for (const tweet of thread.children || []) {
+                for (const tweet of [...(thread.children || []), ...(thread.other_children || [])]) {
                     assign(tweet);
                     for (const reply of tweet.op_replies || []) assign(reply);
                 }

@@ -243,6 +243,11 @@ The route:
 - flattens each direct child's descendants depth-first under the compatibility field
   `op_replies`, with `thread_depth` and `parent_tweet_id` metadata;
 - sorts primary children by nested-reply presence then captured like count;
+- moves direct replies whose visible text is only @mentions of accounts other than
+  the conversation author into `other_children` (same shape as `children`). Replies
+  with media, links, hashtags, cashtags, quotes, cards, long-form text, at least
+  `OTHER_REPLY_LIKE_THRESHOLD` (5) likes, or a saved tweet anywhere in the branch
+  stay in `children`;
 - returns `reply_tree_truncated` when the descendant cap is reached;
 - adds `local_quote_count`.
 
@@ -253,6 +258,7 @@ Response:
   "main": {},
   "parents": [],
   "children": [],
+  "other_children": [],
   "reply_tree_truncated": false
 }
 ```

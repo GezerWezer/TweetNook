@@ -16,6 +16,7 @@ from tweetnook import fastjson  # noqa: E402
 from tweetnook.storage.backend import ArchiveStore  # noqa: E402
 from tweetnook.web.deps import get_store, server_state, verify_credentials  # noqa: E402
 from tweetnook.web.routes.tweets import (  # noqa: E402
+    _is_other_reply,
     _recursive_reply_rows,
     api_tweet_quotes,
     api_tweet_thread,
@@ -1008,6 +1009,104 @@ def test_api_tweet_thread_preserves_relation_only_placeholders(tmp_path):
     with pytest.raises(fastapi.HTTPException) as exc:
         api_tweet_thread("unknown", store=store, _auth=True)
     assert exc.value.status_code == 404
+    store.close()
+
+
+def _reply_tweet(text: str, *, author: str = "carol", likes: int = 0, **legacy: Any) -> dict:
+    prefix = "@alice "
+    return {
+        "author": {"username": author},
+        "collections": [],
+        "media": [],
+        "raw_json": {
+            "legacy": {
+                "full_text": prefix + text,
+                "display_text_range": [len(prefix), len(prefix + text)],
+                "favorite_count": likes,
+                "entities": legacy.pop("entities", {}),
+                **legacy,
+            }
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("tweet", "expected"),
+    [
+        (_reply_tweet("@grok"), True),
+        (_reply_tweet("@Grok @DownloaderBot !"), True),
+        (_reply_tweet("@grok\n\n@bot"), True),
+        (_reply_tweet("@alice"), False),
+        (_reply_tweet("@carol"), False),
+        (_reply_tweet(""), False),
+        (_reply_tweet("@grok is this true?"), False),
+        (_reply_tweet("@grok", likes=4), True),
+        (_reply_tweet("@grok", likes=5), False),
+        (_reply_tweet("@grok", entities={"urls": [{"url": "https://t.co/x"}]}), False),
+        (_reply_tweet("@grok", entities={"hashtags": [{"text": "tag"}]}), False),
+        (_reply_tweet("@grok", is_quote_status=True), False),
+        ({**_reply_tweet("@grok"), "media": [{"type": "photo"}]}, False),
+        ({**_reply_tweet("@grok"), "collections": ["bookmark"]}, False),
+        ({**_reply_tweet("@grok"), "op_replies": [{"collections": ["like"]}]}, False),
+        ({"author": {"username": "carol"}, "raw_json": None}, False),
+    ],
+)
+def test_is_other_reply_matches_only_low_like_mentions_of_other_accounts(tweet, expected):
+    assert _is_other_reply(tweet, "alice") is expected
+
+
+def test_api_tweet_thread_moves_mention_only_replies_to_other_children(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    tweets = {
+        "100": ("alice", "a real post", 0),
+        "200": ("carol", "@alice @grok", 0),
+        "300": ("dave", "@alice @grok", 9),
+        "400": ("erin", "@alice nice one", 0),
+    }
+    records = []
+    for tweet_id, (author, text, likes) in tweets.items():
+        start = len("@alice ") if tweet_id != "100" else 0
+        raw = {
+            "rest_id": tweet_id,
+            "legacy": {
+                "full_text": text,
+                "display_text_range": [start, len(text)],
+                "favorite_count": likes,
+                "conversation_id_str": "100",
+                "in_reply_to_status_id_str": None if tweet_id == "100" else "100",
+            },
+        }
+        records.append(
+            store._record(
+                row_key=f"tweet_object:{tweet_id}",
+                record_type="tweet_object",
+                tweet_id=tweet_id,
+                text=text,
+                author_id=f"id-{author}",
+                author_username=author,
+                author_display_name=author.title(),
+                created_at=f"2026-01-0{tweet_id[0]}T00:00:00Z",
+                raw_json=json.dumps(raw),
+                enrichment_state="done",
+            )
+        )
+        if tweet_id != "100":
+            records.append(
+                store._record(
+                    row_key=f"tweet_relation:{tweet_id}:reply_to:100",
+                    record_type="tweet_relation",
+                    tweet_id=tweet_id,
+                    relation_type="reply_to",
+                    target_tweet_id="100",
+                )
+            )
+    store._merge_records(records)
+
+    result = _decoded(api_tweet_thread("100", store=store, _auth=True))
+
+    assert [child["tweet_id"] for child in result["children"]] == ["300", "400"]
+    assert [child["tweet_id"] for child in result["other_children"]] == ["200"]
+    assert result["other_children"][0]["thread_depth"] == 1
     store.close()
 
 

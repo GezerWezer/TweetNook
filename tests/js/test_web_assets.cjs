@@ -4426,10 +4426,56 @@ test('large threads render replies in batches of nested tweets', async () => {
     assert.equal(app.threadReplyLimit, 30);
 
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
-    assert.ok(html.includes('x-for="child in visibleReplies(threadData.children, threadReplyLimit)"'));
-    assert.ok(html.includes('x-for="child in visibleReplies(panelThreadData.children, panelReplyLimit)"'));
+    assert.ok(html.includes('x-for="child in visibleReplies(threadReplies(threadData, threadOtherReplies), threadReplyLimit)"'));
+    assert.ok(html.includes('x-for="child in visibleReplies(threadReplies(panelThreadData, panelOtherReplies), panelReplyLimit)"'));
     assert.ok(html.includes('x-intersect="showMoreReplies()"'));
     assert.ok(html.includes('x-intersect="showMoreReplies(true)"'));
+});
+
+test('mention-only replies wait behind Show other replies until regular replies are shown', async () => {
+    const context = browserContext('/post/1');
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const reply = id => ({ tweet_id: id, op_replies: [] });
+    const data = {
+        main: { tweet_id: '1' },
+        parents: [],
+        children: Array.from({ length: 31 }, (_, index) => reply(`r${index}`)),
+        other_children: [reply('spam1'), reply('spam2')],
+    };
+    const ids = list => Array.from(list, item => item.tweet_id);
+
+    assert.deepEqual(ids(app.threadReplies(data, false)), ids(data.children));
+    assert.equal(app.firstOtherReplyId(data, false), null);
+    assert.equal(app.firstOtherReplyId(data, true), 'spam1');
+    assert.equal(app.hasOtherReplies(data, app.threadReplyLimit, app.threadOtherReplies), false);
+    app.showMoreReplies();
+    assert.equal(app.hasOtherReplies(data, app.threadReplyLimit, app.threadOtherReplies), true);
+
+    app.showOtherReplies();
+    assert.equal(app.threadOtherReplies, true);
+    assert.equal(app.hasOtherReplies(data, app.threadReplyLimit, app.threadOtherReplies), false);
+    assert.deepEqual(
+        ids(app.visibleReplies(app.threadReplies(data, app.threadOtherReplies), app.threadReplyLimit)).slice(-2),
+        ['spam1', 'spam2'],
+    );
+    assert.equal(app.hasOtherReplies({ children: [], other_children: [] }, 30, false), false);
+    assert.deepEqual(ids(app.threadReplies({ children: [reply('a')] }, true)), ['a']);
+
+    app.activeRoute = { viewMode: 'thread', tweetId: '1' };
+    app.loadThread = async () => data;
+    await app.showFullThread('1');
+    assert.equal(app.threadOtherReplies, false);
+
+    app.showOtherReplies(true);
+    assert.equal(app.panelOtherReplies, true);
+    assert.equal(app.panelReplyLimit, 60);
+
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    assert.ok(html.includes('x-show="hasOtherReplies(threadData, threadReplyLimit, threadOtherReplies)"'));
+    assert.ok(html.includes('x-show="hasOtherReplies(panelThreadData, panelReplyLimit, panelOtherReplies)"'));
+    assert.equal(html.split('>Show other replies</button>').length - 1, 2);
+    assert.equal(html.split('font-extrabold text-[var(--text-primary)]">Other replies</h2>').length - 1, 2);
+    assert.ok(html.includes('x-if="child.tweet_id === firstOtherReplyId(threadData, threadOtherReplies)"'));
 });
 
 test('the full tag list loads only when Tag Management opens', () => {

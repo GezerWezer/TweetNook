@@ -431,8 +431,11 @@
                     <template x-if="threadData.partial">
                         <div class="p-6 text-center text-[var(--text-secondary)]" role="status">Loading conversation...</div>
                     </template>
-                    <template x-for="child in visibleReplies(threadData.children, threadReplyLimit)" :key="child.tweet_id">
+                    <template x-for="child in visibleReplies(threadReplies(threadData, threadOtherReplies), threadReplyLimit)" :key="child.tweet_id">
                         <div class="tweet-border">
+                            <template x-if="child.tweet_id === firstOtherReplyId(threadData, threadOtherReplies)">
+                                <h2 class="px-4 pt-4 pb-1 text-xl font-extrabold text-[var(--text-primary)]">Other replies</h2>
+                            </template>
                             <!-- Direct Reply Card -->
                             <div class="px-4 py-3 flex relative cursor-pointer hover-bg" :data-thread-id="child.tweet_id" @click="openThread(child.tweet_id)">
                                 <!-- Connecting line down to nested replies (legacy op_replies key) -->
@@ -589,8 +592,11 @@
                             </template>
                         </div>
                     </template>
-                    <div x-show="hasHiddenReplies(threadData.children, threadReplyLimit)" x-intersect="showMoreReplies()" class="p-6 text-center">
+                    <div x-show="hasHiddenReplies(threadReplies(threadData, threadOtherReplies), threadReplyLimit)" x-intersect="showMoreReplies()" class="p-6 text-center">
                         <button type="button" @click="showMoreReplies()" class="text-[var(--accent-color)] hover:underline">Show more replies</button>
+                    </div>
+                    <div x-show="hasOtherReplies(threadData, threadReplyLimit, threadOtherReplies)" class="tweet-border">
+                        <button type="button" @click="showOtherReplies()" class="w-full px-4 py-4 text-center text-[15px] text-[var(--accent-color)] hover-bg">Show other replies</button>
                     </div>
                     <template x-if="threadData.reply_tree_truncated">
                         <div class="px-4 py-3 text-[13px] text-[var(--text-secondary)] border-t border-[var(--border-color)]">
@@ -846,8 +852,11 @@
                     <template x-if="panelThreadData.partial">
                         <div class="p-6 text-center text-[var(--text-secondary)]" role="status">Loading conversation...</div>
                     </template>
-                    <template x-for="child in visibleReplies(panelThreadData.children, panelReplyLimit)" :key="child.tweet_id">
+                    <template x-for="child in visibleReplies(threadReplies(panelThreadData, panelOtherReplies), panelReplyLimit)" :key="child.tweet_id">
                         <div class="tweet-border">
+                            <template x-if="child.tweet_id === firstOtherReplyId(panelThreadData, panelOtherReplies)">
+                                <h2 class="px-4 pt-4 pb-1 text-xl font-extrabold text-[var(--text-primary)]">Other replies</h2>
+                            </template>
                             <div class="px-4 py-3 flex relative cursor-pointer hover-bg" :data-thread-id="child.tweet_id" @click="openThread(child.tweet_id, false, true)">
                                 <template x-if="child.op_replies && child.op_replies.length > 0">
                                     <div class="w-0.5 bg-[var(--thread-line)] absolute top-[52px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
@@ -988,8 +997,11 @@
                             </template>
                         </div>
                     </template>
-                    <div x-show="hasHiddenReplies(panelThreadData.children, panelReplyLimit)" x-intersect="showMoreReplies(true)" class="p-6 text-center">
+                    <div x-show="hasHiddenReplies(threadReplies(panelThreadData, panelOtherReplies), panelReplyLimit)" x-intersect="showMoreReplies(true)" class="p-6 text-center">
                         <button type="button" @click="showMoreReplies(true)" class="text-[var(--accent-color)] hover:underline">Show more replies</button>
+                    </div>
+                    <div x-show="hasOtherReplies(panelThreadData, panelReplyLimit, panelOtherReplies)" class="tweet-border">
+                        <button type="button" @click="showOtherReplies(true)" class="w-full px-4 py-4 text-center text-[15px] text-[var(--accent-color)] hover-bg">Show other replies</button>
                     </div>
                     <template x-if="panelThreadData.reply_tree_truncated">
                         <div class="px-4 py-3 text-[13px] text-[var(--text-secondary)] border-t border-[var(--border-color)]">
