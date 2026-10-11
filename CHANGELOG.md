@@ -3,6 +3,34 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning while it is in the `0.x` series.
 
+## [0.1.8] - 2026-10-11
+
+### Changed
+
+- Made Web feed rendering and archive JSON processing faster, improving browsing,
+  search, and conversation response times.
+
+### Fixed
+
+- Showed saved quote tweets outside your collections and retained placeholders
+  for quotes whose content has not been archived.
+- Kept video time badges visible only while native playback controls are hidden.
+- Preserved photo sharpness when hovering over feed images.
+- Safely handled stored lightbox media and community-note links, and kept playing
+  feed media uninterrupted when editing tags.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff format --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync pytest -q`
+- `node --test tests/js/test_web_assets.cjs`
+- `node --test tests/js/test_demo_api.cjs`
+- `git diff --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv build /tmp/tweetnook-release-source-0.1.8 --out-dir /tmp/tweetnook-release-0.1.8`
+- `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools uvx --from twine twine check /tmp/tweetnook-release-0.1.8/tweetnook-0.1.8.tar.gz /tmp/tweetnook-release-0.1.8/tweetnook-0.1.8-py3-none-any.whl`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --isolated --no-project --with /tmp/tweetnook-release-0.1.8/tweetnook-0.1.8-py3-none-any.whl -- tweetnook --help`
+
 ## [0.1.7] - 2026-10-11
 
 ### Changed
@@ -302,6 +330,7 @@ semantic-style versioning while it is in the `0.x` series.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[0.1.8]: https://github.com/gezerwezer/tweetnook/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/gezerwezer/tweetnook/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/gezerwezer/tweetnook/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/gezerwezer/tweetnook/compare/v0.1.4...v0.1.5
