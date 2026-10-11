@@ -1,6 +1,9 @@
 """Tweet query, thread, and quote endpoints."""
 
+import html
 import json
+import re
+import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -20,6 +23,11 @@ from tweetnook.web.deps import require_store, verify_credentials
 router = APIRouter()
 
 _THREAD_DESCENDANT_LIMIT = 250
+# Direct replies that only @mention someone else move behind "Show other
+# replies" unless they have at least this many likes.
+OTHER_REPLY_LIKE_THRESHOLD = 5
+_MENTION_RE = re.compile(r"(?<![\w@])@(\w{1,15})", re.ASCII)
+_LEADING_MENTIONS_RE = re.compile(r"^(?:\s*@\w{1,15})+\s*", re.ASCII)
 
 
 def _json(payload: dict) -> Response:
@@ -144,6 +152,74 @@ def _recursive_reply_rows(
         depth += 1
 
     return normalized[:limit], len(normalized) > limit
+
+
+def _reply_body(legacy: dict) -> str:
+    """The text a reply shows, without the automatic leading @mentions."""
+    text = legacy.get("full_text")
+    if not isinstance(text, str):
+        return ""
+    bounds = legacy.get("display_text_range")
+    if (
+        isinstance(bounds, list)
+        and len(bounds) == 2
+        and all(isinstance(value, int) for value in bounds)
+        and 0 <= bounds[0] <= bounds[1] <= len(text)
+    ):
+        body = text[bounds[0] : bounds[1]]
+    else:
+        body = _LEADING_MENTIONS_RE.sub("", text)
+    return html.unescape(body)
+
+
+def _is_mention_only_reply(tweet: dict, op_username: str | None) -> bool:
+    """True for a low-like reply whose text only @mentions accounts other than OP."""
+    raw = tweet.get("raw_json")
+    legacy = raw.get("legacy") if isinstance(raw, dict) else None
+    if not isinstance(legacy, dict) or tweet.get("media"):
+        return False
+    try:
+        likes = int(legacy.get("favorite_count") or 0)
+    except (TypeError, ValueError):
+        likes = 0
+    if likes >= OTHER_REPLY_LIKE_THRESHOLD:
+        return False
+    entities = legacy.get("entities") or {}
+    if (
+        any(entities.get(key) for key in ("media", "urls", "hashtags", "symbols"))
+        or (legacy.get("extended_entities") or {}).get("media")
+        or legacy.get("is_quote_status")
+        or legacy.get("quoted_status_id_str")
+        or legacy.get("retweeted_status_id_str")
+        or any(raw.get(key) for key in ("quoted_status_result", "card", "note_tweet", "article"))
+    ):
+        return False
+    body = _reply_body(legacy)
+    mentions = {name.lower() for name in _MENTION_RE.findall(body)}
+    remainder = _MENTION_RE.sub("", body)
+    if not mentions or any(
+        not ch.isspace() and unicodedata.category(ch)[0] not in "PZ" for ch in remainder
+    ):
+        return False
+    ignored = {(tweet.get("author") or {}).get("username") or "", op_username or ""}
+    return bool(mentions - {name.lower() for name in ignored})
+
+
+def _is_other_reply(child: dict, op_username: str | None) -> bool:
+    """Hide a mention-only branch unless any tweet in it is saved to the archive."""
+    branch = [child, *child.get("op_replies", [])]
+    if any(tweet.get("collections") for tweet in branch):
+        return False
+    return _is_mention_only_reply(child, op_username)
+
+
+def _conversation_author(main: dict, parents: list[dict], formatted: dict) -> str | None:
+    raw = main.get("raw_json")
+    legacy = raw.get("legacy") if isinstance(raw, dict) else None
+    root_id = legacy.get("conversation_id_str") if isinstance(legacy, dict) else None
+    root = formatted.get(root_id) if root_id else None
+    root = root or (parents[0] if parents else main)
+    return (root.get("author") or {}).get("username")
 
 
 @router.get("/api/tweets")
@@ -551,6 +627,11 @@ def api_tweet_thread(
             return int(raw.get("legacy", {}).get("favorite_count", 0))
 
         children.sort(key=lambda x: (len(x.get("op_replies", [])) > 0, get_likes(x)), reverse=True)
+        op_username = _conversation_author(main_tweet, parents, formatted)
+        other_children = [child for child in children if _is_other_reply(child, op_username)]
+        if other_children:
+            other_ids = {child["tweet_id"] for child in other_children}
+            children = [child for child in children if child["tweet_id"] not in other_ids]
         slim_web_tweets(formatted.values())
 
         return _json(
@@ -558,6 +639,7 @@ def api_tweet_thread(
                 "main": main_tweet,
                 "parents": parents,
                 "children": children,
+                "other_children": other_children,
                 "reply_tree_truncated": reply_tree_truncated,
             }
         )
