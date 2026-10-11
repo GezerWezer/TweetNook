@@ -2406,13 +2406,14 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     assert.match(video, /aria-label="Remaining video duration 2:00">2:00<\/span>/);
     assert.match(video, /onloadedmetadata="window\.tweetNookSyncVideoDuration\(this\)"/);
     assert.match(video, /ontimeupdate="window\.tweetNookSyncVideoDuration\(this\)"/);
-    assert.match(video, /onended="window\.tweetNookSyncVideoDuration\(this\)"/);
-    assert.match(video, /onmouseenter="window\.tweetNookSetVideoUiVisible\(this, true\)"/);
-    assert.match(video, /onmouseleave="window\.tweetNookSetVideoUiVisible\(this, false\)"/);
-    assert.match(video, /onfocus="window\.tweetNookSetVideoUiVisible\(this, true\)"/);
-    assert.match(video, /onblur="window\.tweetNookSetVideoUiVisible\(this, false\)"/);
-    assert.match(video, /ontouchend="window\.tweetNookSetVideoUiVisible\(this, false\)"/);
-    assert.match(video, /ontouchcancel="window\.tweetNookSetVideoUiVisible\(this, false\)"/);
+    assert.match(video, /onended="window\.tweetNookSyncVideoDuration\(this\); window\.tweetNookSyncVideoUi\(this\)"/);
+    assert.match(video, /onplay="window\.tweetNookShowVideoUi\(this\)"/);
+    assert.match(video, /onpause="window\.tweetNookSyncVideoUi\(this\)"/);
+    assert.match(video, /onmousemove="window\.tweetNookShowVideoUi\(this\)"/);
+    assert.match(video, /onmouseleave="window\.tweetNookLeaveVideoUi\(this\)"/);
+    assert.match(video, /onkeydown="window\.tweetNookShowVideoUi\(this\)"/);
+    assert.match(video, /ontouchend="window\.tweetNookShowVideoUi\(this\)"/);
+    assert.doesNotMatch(video, /onfocus=|onblur=/);
     assert.equal(app.formatMediaDuration(3000), '0:03');
     assert.equal(app.formatMediaDuration(3723000), '1:02:03');
     assert.equal(app.formatMediaDuration(null), '');
@@ -2466,14 +2467,13 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
         'utf8',
     );
     assert.match(css, /\.media-video-duration,/);
-    assert.match(css, /\.media-video-player:hover \.media-video-duration,/);
-    assert.match(css, /\.media-video-player:focus-within \.media-video-duration,/);
-    assert.match(css, /\.media-video-player\.is-player-ui-visible \.media-video-duration/);
+    assert.match(css, /\.media-video-player\.is-native-ui-hidden \.media-video-duration \{/);
+    assert.doesNotMatch(css, /\.media-video-player:(hover|focus-within) \.media-video-duration/);
     assert.match(css, /\.media-gif-indicator \{/);
     assert.match(css, /\.media-gif-indicator\.is-paused \.media-gif-play-icon/);
 });
 
-test('video duration uses loaded media metadata and yields to the player UI', () => {
+test('video duration uses loaded media metadata and shows only while native controls are hidden', () => {
     const context = browserContext();
     const timers = new Map();
     let nextTimerId = 0;
@@ -2524,26 +2524,47 @@ test('video duration uses loaded media metadata and yields to the player UI', ()
     assert.equal(indicator.textContent, '0:00');
     assert.equal(attributes.get('aria-label'), 'Remaining video duration 0:00');
 
-    context.window.tweetNookSetVideoUiVisible(video, true);
-    assert.ok(classes.has('is-player-ui-visible'));
-    context.window.tweetNookSetVideoUiVisible(video, false);
-    assert.ok(classes.has('is-player-ui-visible'));
-    const firstTimer = timers.values().next().value;
-    assert.equal(firstTimer.delay, 3000);
-    firstTimer.callback();
-    assert.ok(!classes.has('is-player-ui-visible'));
+    const hidden = 'is-native-ui-hidden';
+    const fireTimers = () => [...timers.values()].forEach(timer => timer.callback());
 
-    context.window.tweetNookSetVideoUiVisible(video, true);
-    context.window.tweetNookSetVideoUiVisible(video, false);
+    // Native controls stay up while paused, so pointer activity alone never shows the badge.
+    video.paused = true;
+    context.window.tweetNookShowVideoUi(video);
+    fireTimers();
+    assert.ok(!classes.has(hidden));
+
+    // Playback starts with the controls up, then they fade after the idle delay.
+    video.paused = false;
+    context.window.tweetNookShowVideoUi(video);
+    assert.ok(!classes.has(hidden));
+    assert.equal(timers.size, 1);
+    assert.equal(timers.values().next().value.delay, 3000);
+    fireTimers();
+    assert.ok(classes.has(hidden));
+
+    // Moving the pointer again brings the controls back and restarts the idle delay.
+    context.window.tweetNookShowVideoUi(video);
     const canceledTimerId = timers.keys().next().value;
-    context.window.tweetNookSetVideoUiVisible(video, true);
+    assert.ok(!classes.has(hidden));
+    context.window.tweetNookShowVideoUi(video);
     assert.ok(!timers.has(canceledTimerId));
-    assert.ok(classes.has('is-player-ui-visible'));
-    context.window.tweetNookSetVideoUiVisible(video, false);
-    const [lastTimerId, lastTimer] = timers.entries().next().value;
-    lastTimer.callback();
-    assert.ok(!timers.has(lastTimerId));
-    assert.ok(!classes.has('is-player-ui-visible'));
+    assert.equal(timers.size, 1);
+
+    // Leaving the player hides the controls almost immediately.
+    context.window.tweetNookLeaveVideoUi(video);
+    assert.equal(timers.size, 1);
+    assert.equal(timers.values().next().value.delay, 300);
+    fireTimers();
+    assert.ok(classes.has(hidden));
+
+    // Pausing or ending brings the native controls back without pointer activity.
+    video.paused = true;
+    context.window.tweetNookSyncVideoUi(video);
+    assert.ok(!classes.has(hidden));
+    video.paused = false;
+    video.ended = true;
+    context.window.tweetNookSyncVideoUi(video);
+    assert.ok(!classes.has(hidden));
 });
 
 test('GIF indicator tracks playback state and toggles the archived animation', async () => {

@@ -4,7 +4,10 @@
 
 const statsSuspendedVideos = new Set();
 const AVATAR_URL_VERSION = 3;
-const VIDEO_UI_HIDE_DELAY_MS = 3000;
+// Native video controls fade this long after the last pointer/touch/key activity
+// during playback, and almost immediately once the pointer leaves the video.
+const VIDEO_UI_IDLE_MS = 3000;
+const VIDEO_UI_LEAVE_MS = 300;
 // Replies (including nested ones) rendered per batch in a thread; a saved reply tree
 // can hold 250 tweets, and rendering them all at once delays the first paint.
 const THREAD_REPLY_BATCH = 30;
@@ -17,6 +20,7 @@ const FEED_PREFETCH_MARGIN_PX = 1200;
 const THREAD_HOVER_PREFETCH_MS = 150;
 const DEFAULT_FEEDS = [['likes', 'liked_latest'], ['all', 'newest'], ['bookmarks', 'newest'], ['tweets', 'newest']];
 const videoUiHideTimers = new WeakMap();
+const VIDEO_PLAYER_EVENTS = 'onloadedmetadata="window.tweetNookSyncVideoDuration(this)" ondurationchange="window.tweetNookSyncVideoDuration(this)" ontimeupdate="window.tweetNookSyncVideoDuration(this)" onended="window.tweetNookSyncVideoDuration(this); window.tweetNookSyncVideoUi(this)" onplay="window.tweetNookShowVideoUi(this)" onpause="window.tweetNookSyncVideoUi(this)" onmouseenter="window.tweetNookShowVideoUi(this)" onmousemove="window.tweetNookShowVideoUi(this)" onmouseleave="window.tweetNookLeaveVideoUi(this)" onkeydown="window.tweetNookShowVideoUi(this)" ontouchstart="window.tweetNookShowVideoUi(this)" ontouchend="window.tweetNookShowVideoUi(this)" ontouchcancel="window.tweetNookShowVideoUi(this)"';
 
 function formatMediaDuration(durationMillis) {
     const millis = Number(durationMillis);
@@ -48,28 +52,31 @@ function tweetNookSyncVideoDuration(video) {
     }
 }
 
-function tweetNookSetVideoUiVisible(video, visible) {
+// The remaining-time badge sits under the native control bar, so it is shown only
+// while that bar is hidden: during playback, after the controls' idle fade-out.
+// Browsers keep the bar up whenever playback is paused or ended.
+function tweetNookSyncVideoUi(video) {
     const player = video?.parentElement;
     if (!player?.classList) return;
 
-    const pendingHide = videoUiHideTimers.get(player);
-    if (pendingHide !== undefined) {
-        clearTimeout(pendingHide);
-        videoUiHideTimers.delete(player);
-    }
+    const nativeUiVisible = Boolean(video.paused || video.ended) || videoUiHideTimers.has(player);
+    player.classList.toggle('is-native-ui-hidden', !nativeUiVisible);
+}
 
-    if (visible) {
-        player.classList.toggle('is-player-ui-visible', true);
-        return;
-    }
+function tweetNookShowVideoUi(video, holdMs = VIDEO_UI_IDLE_MS) {
+    const player = video?.parentElement;
+    if (!player?.classList) return;
 
-    // Native controls linger briefly after pointer/touch interaction, including while
-    // scrolling the player out of view. Keep the badge hidden through their fade-out.
-    const hideTimer = setTimeout(() => {
-        player.classList.toggle('is-player-ui-visible', false);
+    clearTimeout(videoUiHideTimers.get(player));
+    videoUiHideTimers.set(player, setTimeout(() => {
         videoUiHideTimers.delete(player);
-    }, VIDEO_UI_HIDE_DELAY_MS);
-    videoUiHideTimers.set(player, hideTimer);
+        tweetNookSyncVideoUi(video);
+    }, holdMs));
+    tweetNookSyncVideoUi(video);
+}
+
+function tweetNookLeaveVideoUi(video) {
+    tweetNookShowVideoUi(video, VIDEO_UI_LEAVE_MS);
 }
 
 function tweetNookSyncGifIndicator(video) {
@@ -100,7 +107,9 @@ function tweetNookToggleGif(event, indicator) {
 window.tweetNookSyncGifIndicator = tweetNookSyncGifIndicator;
 window.tweetNookToggleGif = tweetNookToggleGif;
 window.tweetNookSyncVideoDuration = tweetNookSyncVideoDuration;
-window.tweetNookSetVideoUiVisible = tweetNookSetVideoUiVisible;
+window.tweetNookSyncVideoUi = tweetNookSyncVideoUi;
+window.tweetNookShowVideoUi = tweetNookShowVideoUi;
+window.tweetNookLeaveVideoUi = tweetNookLeaveVideoUi;
 
 // Status responses are JSON trees. Retain unchanged reactive objects so polling
 // doesn't invalidate every binding in the mounted (including hidden) tray pages.
@@ -4694,7 +4703,7 @@ function tweetApp() {
                         : '';
                     const indicator = this.renderMediaPlaybackIndicator(item);
 
-                    const videoEvents = isGif ? '' : 'onloadedmetadata="window.tweetNookSyncVideoDuration(this)" ondurationchange="window.tweetNookSyncVideoDuration(this)" ontimeupdate="window.tweetNookSyncVideoDuration(this)" onended="window.tweetNookSyncVideoDuration(this)" onmouseenter="window.tweetNookSetVideoUiVisible(this, true)" onmouseleave="window.tweetNookSetVideoUiVisible(this, false)" onfocus="window.tweetNookSetVideoUiVisible(this, true)" onblur="window.tweetNookSetVideoUiVisible(this, false)" ontouchstart="window.tweetNookSetVideoUiVisible(this, true)" ontouchend="window.tweetNookSetVideoUiVisible(this, false)" ontouchcancel="window.tweetNookSetVideoUiVisible(this, false)"';
+                    const videoEvents = isGif ? '' : VIDEO_PLAYER_EVENTS;
 
                     return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block ${isGif ? '' : 'media-video-player'}" style="${containerStyle}" @click.stop>
                                 <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="w-full h-full object-cover outline-none block"></video>
@@ -4728,7 +4737,7 @@ function tweetApp() {
                         const gifEvents = isGif
                             ? 'data-animated-gif onplay="window.tweetNookSyncGifIndicator(this)" onpause="window.tweetNookSyncGifIndicator(this)" onloadeddata="window.tweetNookSyncGifIndicator(this)"'
                             : '';
-                        const videoEvents = isGif ? '' : 'onloadedmetadata="window.tweetNookSyncVideoDuration(this)" ondurationchange="window.tweetNookSyncVideoDuration(this)" ontimeupdate="window.tweetNookSyncVideoDuration(this)" onended="window.tweetNookSyncVideoDuration(this)" onmouseenter="window.tweetNookSetVideoUiVisible(this, true)" onmouseleave="window.tweetNookSetVideoUiVisible(this, false)" onfocus="window.tweetNookSetVideoUiVisible(this, true)" onblur="window.tweetNookSetVideoUiVisible(this, false)" ontouchstart="window.tweetNookSetVideoUiVisible(this, true)" ontouchend="window.tweetNookSetVideoUiVisible(this, false)" ontouchcancel="window.tweetNookSetVideoUiVisible(this, false)"';
+                        const videoEvents = isGif ? '' : VIDEO_PLAYER_EVENTS;
                         const indicator = this.renderMediaPlaybackIndicator(item);
                         html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass} ${isGif ? '' : 'media-video-player'}">
                                     <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="absolute inset-0 w-full h-full object-cover outline-none"></video>

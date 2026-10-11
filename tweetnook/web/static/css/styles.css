@@ -2011,13 +2011,14 @@ body {
     padding: 0 7px;
     pointer-events: none;
     font-variant-numeric: tabular-nums;
-    transition: opacity 100ms ease, visibility 100ms ease;
-}
-.media-video-player:hover .media-video-duration,
-.media-video-player:focus-within .media-video-duration,
-.media-video-player.is-player-ui-visible .media-video-duration {
     opacity: 0;
     visibility: hidden;
+    transition: opacity 100ms ease, visibility 100ms ease;
+}
+/* Only while the native control bar (which has its own time readout) is hidden. */
+.media-video-player.is-native-ui-hidden .media-video-duration {
+    opacity: 1;
+    visibility: visible;
 }
 .media-gif-indicator {
     display: inline-flex;
