@@ -153,9 +153,12 @@ the data:
   bubble: avatar `load`/`error` and the overflow button's `pointerleave` (long press
   opens Tags). One Alpine menu (`listMenu`) serves every card and is placed over the
   button that opened it, following it on scroll and resize. **Show more** rewrites only
-  the affected text elements, leaving media playing; tag edits re-render the matching
-  cards in place (`refreshFeedCards()`). Theme, accent, and font changes need no
-  re-render because cards use CSS variables. Measured on a local archive (desktop,
+  the affected text elements, leaving media playing. Cards do not display tags, so tag
+  edits only update `this.tweets`, which the menu and long press read when used.
+  Theme, accent, and font changes need no re-render because cards use CSS variables.
+  Media grids carry their lightbox list in an HTML-escaped `data-lightbox-media`
+  attribute read by `tweetNookOpenLightbox()`, and community-note links pass
+  `safeURL()`, so stored values never become script. Measured on a local archive (desktop,
   including layout, same machine state): 20 cards take about 6.5–11 ms versus
   17–21 ms with the former per-card Alpine template (8–17 ms versus 25–40 ms on a
   cold page), and appending no longer re-diffs the whole list.

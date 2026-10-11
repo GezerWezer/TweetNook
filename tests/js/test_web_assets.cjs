@@ -3461,7 +3461,9 @@ test('community notes escape headings, text, labels, and external links', () => 
         },
     });
     assert.match(note, /&lt;img onerror=x&gt;/);
-    assert.match(note, /href="&quot; onmouseover=&quot;x"/);
+    // Note links pass safeURL: no attribute breakout, and only http(s) targets.
+    assert.doesNotMatch(note, /onmouseover="/);
+    assert.match(note, /href="http:\/\/localhost\/%22%20onmouseover=%22x"/);
     assert.doesNotMatch(note, /<img onerror/);
 });
 
@@ -4573,7 +4575,7 @@ test('feed clicks are delegated by data-action like the per-card handlers', () =
     assert.equal(opened.length, openedCount);
 });
 
-test('feed Show more expands text in place and tag edits re-render the card', () => {
+test('feed Show more expands text in place and tag edits keep the card', () => {
     const { app, list } = feedListApp();
     app.tweets = [JSON.parse(JSON.stringify(WEB_FIXTURE.slim[0])), {
         tweet_id: '700', text: 'Quoting a long tweet',
@@ -4601,18 +4603,14 @@ test('feed Show more expands text in place and tag edits re-render the card', ()
     assert.equal(quotedText.querySelector('.expand-tweet'), null);
     assert.ok(quotedText.textContent.length > shortQuote);
 
-    // Tag edits replace only the matching card, at the same position.
-    const before = list.children[1];
+    // Cards do not display tags: an edit updates the data the menu and long press
+    // read, and leaves the card (and any playing media) in place.
     app.updateTweetTagData('100', { description: 'Edited', tags: ['Night'] });
-    const replaced = list.children[0];
-    assert.notEqual(replaced, card);
-    assert.equal(card.isConnected, false);
-    assert.equal(replaced.dataset.tweetId, '100');
-    assert.equal(list.children[1], before);
+    assert.equal(list.children[0], card);
+    assert.equal(card.querySelector('img.cursor-pointer'), media);
     assert.equal(app.tweets[0].media_tags.description, 'Edited');
+    assert.equal(app.feedCardTweet(card.querySelector('[data-action="menu"]')).media_tags.description, 'Edited');
     assert.equal(list.children.length, 2);
-    // Expanded text survives a re-render.
-    assert.equal(replaced.querySelector('[data-action="text"] .expand-tweet'), null);
 });
 
 test('feed cards share one overflow menu placed over the opening button', async () => {
@@ -4662,13 +4660,12 @@ test('feed cards share one overflow menu placed over the opening button', async 
     assert.equal(app.tweetMenuOpen, null);
     assert.equal(other.classList.contains('opacity-0'), false);
 
-    // A re-rendered card keeps the open state on its new button.
+    // Tag edits leave the card, and the open menu's button state, untouched.
     dispatchFeed(list, 'click', button);
     app.updateTweetTagData('300', null);
-    const rerendered = list.children[1].querySelector('[data-action="menu"]');
-    assert.notEqual(rerendered, button);
-    assert.equal(rerendered.getAttribute('aria-expanded'), 'true');
-    assert.ok(rerendered.classList.contains('opacity-0'));
+    assert.equal(list.children[1].querySelector('[data-action="menu"]'), button);
+    assert.equal(button.getAttribute('aria-expanded'), 'true');
+    assert.ok(button.classList.contains('opacity-0'));
 
     // Menu items act on the stored display tweet; a new list closes the menu.
     let tags = null;
@@ -4743,6 +4740,37 @@ test('feed overflow buttons keep the long-press Tags shortcut and avatars their 
     dispatchFeed(list, 'error', avatar);
     assert.equal(avatar.parentElement.classList.contains('avatar-loaded'), false);
     assert.ok(['load', 'error'].every(type => list.listeners.find(entry => entry.type === type).capture));
+});
+
+test('media lightbox data and community note links cannot inject script', () => {
+    const context = browserContext();
+    const events = [];
+    context.window.dispatchEvent = event => events.push(event);
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const hostile = "x'),alert(1),('\"<b>";
+    const photo = { type: 'photo', url: hostile, download: { local_path: 'media/1/p.jpg' } };
+    for (const html of [app.renderMediaGrid([photo]), app.renderMediaGrid([photo, photo])]) {
+        assert.doesNotMatch(html, /JSON\.parse\('/);
+        assert.match(html, /onclick="window\.tweetNookOpenLightbox\(this, \d\)"/);
+        const attribute = html.match(/data-lightbox-media="([^"]*)"/)[1];
+        assert.doesNotMatch(attribute, /['<>]/);
+        const decoded = attribute.replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+        const holder = { dataset: { lightboxMedia: decoded } };
+        context.tweetNookOpenLightbox({ closest: () => holder }, 1);
+        assert.equal(events.at(-1).detail.media[0].m.url, hostile);
+        assert.equal(events.at(-1).detail.index, 1);
+    }
+
+    const note = app.renderCommunityNote({ birdwatch_pivot: { subtitle: {
+        text: 'bad good',
+        entities: [
+            { fromIndex: 0, toIndex: 3, ref: { urlType: 'ExternalUrl', url: 'javascript:alert(1)' } },
+            { fromIndex: 4, toIndex: 8, ref: { urlType: 'ExternalUrl', url: 'https://example.test/a?b=1&c=2' } },
+        ],
+    } } });
+    assert.doesNotMatch(note, /javascript:/);
+    assert.match(note, /<a href="#"[^>]*>bad<\/a>/);
+    assert.match(note, /<a href="https:\/\/example\.test\/a\?b=1&amp;c=2"/);
 });
 
 async function main() {
