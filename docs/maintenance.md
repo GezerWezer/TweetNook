@@ -76,10 +76,20 @@ repair for database corruption.
 
 ## Upgrade or migrate an older archive
 
-Updating TweetNook upgrades an existing SQLite archive automatically the first time
-it opens. Archives from 0.1.1–0.1.6 gain derived search-filter data in one
-transaction; tweets and saved responses are not changed, and a failure leaves the
-archive as it was. This takes a few seconds on large archives.
+TweetNook 0.2.0 upgrades existing SQLite archives to schema 10 automatically the
+first time they open. Schema 9 archives (0.1.7–0.1.8) gain an index of tag
+descriptions; schema 8 archives (0.1.1–0.1.6) also gain derived search-filter
+data. Schema 5 archives (0.0.9–0.1.0) rebuild their derived search indexes too.
+Each upgrade runs in one transaction: tweets and saved responses are preserved,
+and a failure leaves the archive as it was. This can take a few seconds on large
+archives.
+
+No automatic backup or downgrade is provided. Stop archive jobs and back up the
+whole data folder before updating, including media, configuration, and activity
+history outside `archive.sqlite`. After updating, run `tweetnook db check` and
+verify collection counts, known tweets, and description searches. To return to
+an older release, stop the service and restore the pre-upgrade backup; a JSON
+export cannot restore an archive.
 
 For the older/upstream LanceDB format, keep `archive.lancedb` in the data folder.
 Before migrating, install the one-time migration support:
