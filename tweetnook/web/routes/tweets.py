@@ -3,6 +3,7 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 
 from tweetnook.export.common import normalize_collection_name
 from tweetnook.search import SearchCursorExpiredError, SearchQueryError, search_posts
@@ -12,6 +13,15 @@ from tweetnook.web.deps import require_store, verify_credentials
 router = APIRouter()
 
 _THREAD_DESCENDANT_LIMIT = 250
+
+
+def _json(payload: dict) -> JSONResponse:
+    """Serialize plain JSON data directly, skipping FastAPI's per-value encoder.
+
+    Tweet payloads are large nested trees of JSON-native values; the generic
+    encoder costs several times the serialization itself.
+    """
+    return JSONResponse(payload)
 
 
 def _sql_quote(value: object) -> str:
@@ -162,15 +172,17 @@ def api_tweets(
         paginated_tweets = result.rows
         annotate_web_tweets(store, paginated_tweets)
 
-        return {
-            "tweets": paginated_tweets,
-            "total": result.total,
-            "page": result.page,
-            "pages": result.pages,
-            "has_more": result.has_more,
-            "next_cursor": result.next_cursor,
-            "truncated": result.truncated,
-        }
+        return _json(
+            {
+                "tweets": paginated_tweets,
+                "total": result.total,
+                "page": result.page,
+                "pages": result.pages,
+                "has_more": result.has_more,
+                "next_cursor": result.next_cursor,
+                "truncated": result.truncated,
+            }
+        )
     except SearchCursorExpiredError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except SearchQueryError as exc:
@@ -506,12 +518,14 @@ def api_tweet_thread(
 
         children.sort(key=lambda x: (len(x.get("op_replies", [])) > 0, get_likes(x)), reverse=True)
 
-        return {
-            "main": main_tweet,
-            "parents": parents,
-            "children": children,
-            "reply_tree_truncated": reply_tree_truncated,
-        }
+        return _json(
+            {
+                "main": main_tweet,
+                "parents": parents,
+                "children": children,
+                "reply_tree_truncated": reply_tree_truncated,
+            }
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -560,7 +574,7 @@ def api_tweet_quotes(
         paginated_tweets = store.fetch_tweets_by_ids(paginated_ids)
         annotate_web_tweets(store, paginated_tweets)
 
-        return {"tweets": paginated_tweets, "total": total, "page": page, "limit": limit}
+        return _json({"tweets": paginated_tweets, "total": total, "page": page, "limit": limit})
     except Exception as e:
         import traceback
 

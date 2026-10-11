@@ -120,6 +120,26 @@ traversal, symlink escape, and non-files.
 There is no TLS, session/cookie auth, CSRF/origin validation, CORS middleware,
 login throttling, CSP/security-header middleware, or authorization roles.
 
+## Response encoding and caching
+
+`TextGZipMiddleware` applies Starlette's gzip (level 5, responses of at least
+1 KiB) to API JSON, document routes, and static JS/CSS/HTML/JSON/SVG/text. It
+passes `/media/` and `/api/avatar/` through untouched: images and video are
+already compressed, and gzipping ranged file responses would break byte ranges.
+Tweet list/detail/quote routes return `JSONResponse` directly, skipping FastAPI's
+per-value `jsonable_encoder` pass over large raw-JSON trees.
+
+The document routes (`/`, `/post/{id}`, `/post/{id}/quotes`) serve `index.html`
+with each `/static/...` reference rewritten to `?v=<content hash>`. The rendered
+document is cached in memory until the document or a referenced asset changes on
+disk, is sent with `Cache-Control: no-cache` and an ETag, and answers a matching
+`If-None-Match` with 304. `VersionedStaticFiles` marks a request whose `v` equals
+the current hash `public, max-age=31536000, immutable`; any other static request
+(unversioned, stale hash, fonts referenced from CSS) gets `no-cache` so it
+revalidates. Downloaded `/media` files are `private, max-age=2592000`. Cached
+avatars are `private, max-age=86400, stale-while-revalidate=604800`; the
+transparent fallback stays `no-store`.
+
 ## Route map
 
 | Area | Prefix/routes | Responsibility |

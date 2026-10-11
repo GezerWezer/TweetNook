@@ -19,7 +19,8 @@ from tweetnook.web.deps import get_server_state, require_store, verify_credentia
 router = APIRouter()
 AVATAR_CANDIDATE_LIMIT = 8
 AVATAR_FETCH_BUDGET_SECONDS = 20.0
-AVATAR_CACHE_HEADERS = {"Cache-Control": "no-cache"}
+# Avatars rarely change; reuse them for a day, then refresh in the background.
+AVATAR_CACHE_HEADERS = {"Cache-Control": "private, max-age=86400, stale-while-revalidate=604800"}
 TRANSPARENT_CACHE_HEADERS = {"Cache-Control": "no-store, max-age=0"}
 
 TRANSPARENT_PNG = (

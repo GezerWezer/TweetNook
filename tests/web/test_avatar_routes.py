@@ -104,6 +104,9 @@ def test_cached_avatar_is_returned_without_store_or_network(
     assert response.status_code == 200
     assert response.content == JPEG
     assert response.headers["content-type"] == "image/jpeg"
+    assert response.headers["cache-control"] == (
+        "private, max-age=86400, stale-while-revalidate=604800"
+    )
     assert avatar_path.stat().st_mtime > 1_000.0
 
 

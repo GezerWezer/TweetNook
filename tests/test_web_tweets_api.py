@@ -223,6 +223,11 @@ class ListingStore:
         return []
 
 
+def _decoded(response: Any) -> dict[str, Any]:
+    """Tweet routes return pre-serialized JSON responses; read them as data."""
+    return json.loads(response.body)
+
+
 def _list_tweets(
     store: ListingStore,
     *,
@@ -232,15 +237,17 @@ def _list_tweets(
     page: int = 1,
     limit: int = 20,
 ) -> dict[str, Any]:
-    return api_tweets(
-        q=q,
-        collection=collection,
-        sort=sort,
-        page=page,
-        limit=limit,
-        random_seed=None,
-        store=store,
-        _auth=True,
+    return _decoded(
+        api_tweets(
+            q=q,
+            collection=collection,
+            sort=sort,
+            page=page,
+            limit=limit,
+            random_seed=None,
+            store=store,
+            _auth=True,
+        )
     )
 
 
@@ -682,7 +689,7 @@ class ThreadStore:
 def test_api_tweet_thread_builds_parents_children_nested_replies_quotes_media_and_tags():
     store = ThreadStore()
 
-    result = api_tweet_thread("main", store=store, _auth=True)
+    result = _decoded(api_tweet_thread("main", store=store, _auth=True))
 
     assert result["main"]["collections"] == ["bookmark", "like"]
     assert result["main"]["local_quote_count"] == 2
@@ -825,7 +832,7 @@ def test_api_tweet_thread_recursively_loads_and_deduplicates_saved_reply_chain(t
 
     traced_sql: list[str] = []
     store.conn.set_trace_callback(traced_sql.append)
-    result = api_tweet_thread("100", store=store, _auth=True)
+    result = _decoded(api_tweet_thread("100", store=store, _auth=True))
     store.conn.set_trace_callback(None)
 
     assert [child["tweet_id"] for child in result["children"]] == ["200"]
@@ -917,10 +924,10 @@ def test_api_tweet_thread_parses_each_tweet_json_once_and_tolerates_malformed(mo
         return original_loads(value, *args, **kwargs)
 
     monkeypatch.setattr("tweetnook.web.routes.tweets.json.loads", track_loads)
-    result = api_tweet_thread("main", store=MalformedThreadStore(), _auth=True)
+    response = api_tweet_thread("main", store=MalformedThreadStore(), _auth=True)
 
-    assert result["main"]["raw_json"] is None
     assert len(parsed_values) == 10  # seven tweet objects and three direct/quoted media-tag rows
+    assert original_loads(response.body)["main"]["raw_json"] is None
 
 
 class CycleStore(ThreadStore):
@@ -950,7 +957,7 @@ class CycleStore(ThreadStore):
 
 def test_api_tweet_thread_stops_parent_cycles_before_depth_cap():
     store = CycleStore()
-    result = api_tweet_thread("main", store=store, _auth=True)
+    result = _decoded(api_tweet_thread("main", store=store, _auth=True))
     assert result["main"]["tweet_id"] == "main"
     assert store.relation_call < 10
 
@@ -981,8 +988,8 @@ def test_api_tweet_thread_preserves_relation_only_placeholders(tmp_path):
         ]
     )
 
-    result = api_tweet_thread("main", store=store, _auth=True)
-    missing_main = api_tweet_thread("missing-parent", store=store, _auth=True)
+    result = _decoded(api_tweet_thread("main", store=store, _auth=True))
+    missing_main = _decoded(api_tweet_thread("missing-parent", store=store, _auth=True))
 
     assert [parent["tweet_id"] for parent in result["parents"]] == ["missing-parent"]
     assert result["parents"][0]["availability"] == {
@@ -1068,7 +1075,7 @@ def test_api_tweet_quotes_parameterizes_count_and_paginates_distinct_ids():
     store = QuotesStore()
     payload = "target' OR 1=1 --"
 
-    result = api_tweet_quotes(payload, page=2, limit=2, store=store, _auth=True)
+    result = _decoded(api_tweet_quotes(payload, page=2, limit=2, store=store, _auth=True))
 
     assert [tweet["tweet_id"] for tweet in result["tweets"]] == ["q3", "q2"]
     assert all(tweet["availability"]["state"] == "incomplete" for tweet in result["tweets"])

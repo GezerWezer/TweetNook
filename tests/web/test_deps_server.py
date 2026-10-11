@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import re
 from pathlib import Path
 
 import pytest
@@ -318,6 +320,7 @@ def test_media_files_are_authenticated_and_path_contained(tmp_path: Path) -> Non
     assert authorized.status_code == 200
     assert authorized.content == b"private-media"
     assert authorized.headers["content-type"] == "image/jpeg"
+    assert authorized.headers["cache-control"] == "private, max-age=2592000"
     assert escaped.status_code == 404
     assert missing.status_code == 404
 
@@ -345,3 +348,71 @@ def test_run_server_sets_state_and_invokes_uvicorn(monkeypatch, tmp_path: Path) 
             {"host": "127.0.0.2", "port": 9123, "log_level": "info"},
         )
     ]
+
+
+def test_document_versions_assets_and_revalidates_with_etag() -> None:
+    with TestClient(server.app) as client:
+        root = client.get("/")
+        version = re.search(r'src="/static/js/app\.js\?v=([0-9a-f]{16})"', root.text)
+        assert version is not None
+        current = client.get(f"/static/js/app.js?v={version.group(1)}")
+        unversioned = client.get("/static/js/app.js")
+        stale = client.get("/static/js/app.js?v=0000000000000000")
+        revalidated = client.get("/", headers={"If-None-Match": root.headers["etag"]})
+
+    assert root.headers["cache-control"] == "no-cache"
+    assert 'href="/static/css/styles.css?v=' in root.text
+    assert current.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert unversioned.headers["cache-control"] == "no-cache"
+    assert stale.headers["cache-control"] == "no-cache"
+    assert current.content == unversioned.content
+    assert revalidated.status_code == 304
+    assert revalidated.content == b""
+
+
+def test_versioned_document_follows_asset_changes(monkeypatch, tmp_path: Path) -> None:
+    web_root = tmp_path / "web"
+    (web_root / "static").mkdir(parents=True)
+    (web_root / "index.html").write_text(
+        '<script src="/static/app.js"></script><img src="/static/missing.png">'
+    )
+    asset = web_root / "static" / "app.js"
+    asset.write_text("one")
+    monkeypatch.setattr(server, "WEB_ROOT", web_root)
+    monkeypatch.setattr(server, "static_dir", web_root / "static")
+    monkeypatch.setattr(server, "_index_cache", None)
+
+    first, first_etag, versions = server._versioned_index()
+    asset.write_text("two")
+    os.utime(asset, ns=(1, 1))
+    second, second_etag, _ = server._versioned_index()
+
+    assert b'src="/static/missing.png"' in first
+    assert set(versions) == {"app.js"}
+    assert first != second and first_etag != second_etag
+
+
+@pytest.mark.parametrize(
+    ("path", "compressed"),
+    [
+        ("/api/payload", True),
+        ("/static/js/app.js", True),
+        ("/media/photo.jpg", False),
+        ("/api/avatar/1", False),
+        ("/static/font.woff2", False),
+    ],
+)
+def test_text_gzip_compresses_only_text_routes(path: str, compressed: bool) -> None:
+    async def body(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"x" * 4096})
+
+    app = FastAPI()
+    app.add_middleware(server.TextGZipMiddleware)
+    app.mount("/", body)
+
+    with TestClient(app) as client:
+        response = client.get(path, headers={"Accept-Encoding": "gzip"})
+
+    assert (response.headers.get("content-encoding") == "gzip") is compressed
+    assert response.content == b"x" * 4096
