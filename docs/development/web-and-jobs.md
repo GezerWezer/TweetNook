@@ -83,6 +83,10 @@ configured data page cache and mmap remain enabled. Stats report
 collection serializes itself with an in-process lock; general route use relies
 on SQLite and route behavior.
 
+The async avatar route runs its cache check, source lookup, and remote fetch on a
+dedicated eight-thread executor, so slow avatar downloads never occupy the shared
+request thread pool that feed, search, and thread routes use.
+
 Uncached avatar lookups explicitly include the partial author index's nonempty
 predicate so candidate selection searches one author instead of scanning all
 tweet records. Disabling avatar fetching returns before database lookup when

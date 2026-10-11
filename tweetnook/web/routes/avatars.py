@@ -1,9 +1,11 @@
 """Avatar proxy endpoints."""
 
+import asyncio
 import re
 import struct
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import urlsplit, urlunsplit
@@ -22,6 +24,10 @@ AVATAR_FETCH_BUDGET_SECONDS = 20.0
 # Avatars rarely change; reuse them for a day, then refresh in the background.
 AVATAR_CACHE_HEADERS = {"Cache-Control": "private, max-age=86400, stale-while-revalidate=604800"}
 TRANSPARENT_CACHE_HEADERS = {"Cache-Control": "no-store, max-age=0"}
+# Remote avatar fetches can take seconds. Running avatar work on its own small
+# pool keeps a page of new authors from occupying the shared request threads
+# that feed, search, and thread requests need.
+_AVATAR_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="tweetnook-avatar")
 
 TRANSPARENT_PNG = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
@@ -98,11 +104,16 @@ def _avatar_urls(url: str) -> list[str]:
 
 
 @router.get("/api/avatar/{user_id}")
-def get_avatar(
+async def get_avatar(
     user_id: str,
     store: Annotated[Any, Depends(require_store)],
     _auth: Annotated[bool, Depends(verify_credentials)],
 ):
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_AVATAR_EXECUTOR, _avatar_response, user_id, store)
+
+
+def _avatar_response(user_id: str, store: Any):
     server_state = get_server_state()
     paths: XDGPaths = server_state["paths"]
     avatars_dir = paths.media_dir / "avatars"
