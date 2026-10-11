@@ -59,7 +59,8 @@ function searchAutocomplete() {
             { prefix: 'is:', value: 'retweet', desc: 'Native reposts' },
             { prefix: 'is:', value: 'thread', desc: 'Self-reply threads' },
             { prefix: 'is:', value: 'verified', desc: 'From verified users' },
-            { prefix: 'is:', value: 'resurrected', desc: 'Previously unavailable and recovered' }
+            { prefix: 'is:', value: 'resurrected', desc: 'Previously unavailable and recovered' },
+            { prefix: 'is:', value: 'hidden', desc: 'Tweets you hid from lists' }
         ],
 
         currentSearchTokenStart(text) {

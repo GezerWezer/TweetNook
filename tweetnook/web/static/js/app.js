@@ -299,7 +299,7 @@ function tweetApp() {
         tweetMenuOpen: null,
         // Feed cards share one overflow menu: the opening card's key and display
         // tweet, and where its button sits within the list area.
-        listMenu: { key: 'list:', tweet: null, top: 0, right: 0 },
+        listMenu: { key: 'list:', tweet: null, hidden: false, top: 0, right: 0 },
         tweetMenuPressTimer: null,
         tweetMenuClickBlockedUntil: 0,
 
@@ -3185,7 +3185,8 @@ function tweetApp() {
                 this.closeTweetMenu(key);
                 return;
             }
-            this.listMenu = { key, tweet, ...this.listMenuPosition(button) };
+            const hidden = Boolean(this.tweets.find(item => String(item.tweet_id) === card.dataset.tweetId)?.hidden);
+            this.listMenu = { key, tweet, hidden, ...this.listMenuPosition(button) };
             this.tweetMenuOpen = key;
             this.fullRawTweet(tweet);
             this.syncListMenuButton();
@@ -3346,13 +3347,10 @@ function tweetApp() {
             }, 300);
         },
 
-        updateTweetTagData(tweetId, tagData) {
+        // Calls update for every loaded copy of a tweet: the feed, quote lists, and threads.
+        updateLoadedTweet(tweetId, update) {
             const assign = tweet => {
-                if (!tweet || tweet.tweet_id !== tweetId) return;
-                tweet.media_tags = tagData ? {
-                    description: tagData.description,
-                    tags: [...tagData.tags],
-                } : null;
+                if (tweet && tweet.tweet_id === tweetId) update(tweet);
             };
             const visitThread = thread => {
                 if (!thread) return;
@@ -3375,6 +3373,48 @@ function tweetApp() {
                     for (const tweet of entry.data || []) assign(tweet);
                 }
             }
+        },
+
+        updateTweetTagData(tweetId, tagData) {
+            this.updateLoadedTweet(tweetId, tweet => {
+                tweet.media_tags = tagData ? {
+                    description: tagData.description,
+                    tags: [...tagData.tags],
+                } : null;
+            });
+        },
+
+        // A query that names is:hidden (not -is:hidden) lists hidden tweets.
+        searchShowsHidden() {
+            return /(^|\s)is:hidden(?=\s|$)/i.test(this.searchQuery);
+        },
+
+        async setTweetHidden(tweetId, hidden) {
+            this.closeTweetMenu();
+            if (!tweetId) return;
+            try {
+                const res = await fetch(`/api/tweets/${encodeURIComponent(tweetId)}/hidden`, {
+                    method: hidden ? 'PUT' : 'DELETE',
+                });
+                if (!res.ok) throw new Error(`Server error: ${res.status}`);
+            } catch (e) {
+                alert(`Could not ${hidden ? 'hide' : 'unhide'} the tweet: ${e.message}`);
+                return;
+            }
+            // Cached pages and threads predate the change.
+            feedPages.clear();
+            this.threadCache.clear();
+            this.updateLoadedTweet(tweetId, tweet => { tweet.hidden = hidden; });
+            if (hidden !== this.searchShowsHidden()) this.removeFeedTweet(tweetId);
+        },
+
+        // Drop a card from the current list without reloading it.
+        removeFeedTweet(tweetId) {
+            if (!this.tweets.some(tweet => tweet.tweet_id === tweetId)) return;
+            this.tweets = this.tweets.filter(tweet => tweet.tweet_id !== tweetId);
+            const card = this.feedCard(tweetId);
+            if (card) outsideAlpine(() => card.remove());
+            if (this.total) this.total -= 1;
         },
         
         async deleteTags() {

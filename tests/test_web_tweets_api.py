@@ -136,6 +136,7 @@ class ListingStore:
         offset,
         random_seed=None,
         include_total=False,
+        exclude_hidden=False,
     ):
         self.calls.append(
             (
@@ -148,6 +149,7 @@ class ListingStore:
                     "offset": offset,
                     "random_seed": random_seed,
                     "include_total": include_total,
+                    "exclude_hidden": exclude_hidden,
                 },
             )
         )
@@ -653,9 +655,7 @@ class ThreadStore:
         columns: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         assert field == "tweet_id"
-        if record_type == "tweet_object":
-            return []
-        if record_type == "tweet_relation":
+        if record_type in {"tweet_object", "tweet_relation", "tweet_hidden"}:
             return []
         if record_type == "media_tag":
             assert columns == ["tweet_id", "raw_json"]
@@ -1191,3 +1191,36 @@ def test_api_failures_are_mapped_to_http_500(method: Callable[[], object], expec
     with pytest.raises(fastapi.HTTPException) as exc:
         method()
     assert exc.value.status_code == expected_status
+
+
+def test_api_hide_and_unhide_tweet_controls_list_membership_and_flag(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    store._merge_records(
+        [
+            store._record(
+                row_key=f"tweet:bookmark::{tweet_id}",
+                record_type="tweet",
+                tweet_id=tweet_id,
+                collection_type="bookmark",
+                text=f"tweet {tweet_id}",
+                created_at_ts=int(tweet_id),
+                sort_index=tweet_id,
+                raw_json=json.dumps({"legacy": {}}),
+            )
+            for tweet_id in ("1", "2")
+        ]
+    )
+    client = _api_client(store)
+
+    assert client.put("/api/tweets/2/hidden").json() == {"hidden": True}
+    listed = client.get("/api/tweets").json()
+    hidden = client.get("/api/tweets", params={"q": "is:hidden"}).json()
+    assert [(tweet["tweet_id"], tweet["hidden"]) for tweet in listed["tweets"]] == [("1", False)]
+    assert listed["total"] == 1
+    assert [(tweet["tweet_id"], tweet["hidden"]) for tweet in hidden["tweets"]] == [("2", True)]
+    assert client.get("/api/tweets/2").json()["main"]["hidden"] is True
+
+    assert client.delete("/api/tweets/2/hidden").json() == {"hidden": False}
+    assert [tweet["tweet_id"] for tweet in client.get("/api/tweets").json()["tweets"]] == ["2", "1"]
+    assert client.get("/api/tweets/2").json()["main"]["hidden"] is False
+    store.close()

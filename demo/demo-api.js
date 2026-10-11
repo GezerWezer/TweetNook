@@ -219,6 +219,7 @@
             }
             if (normalized === 'verified') return Boolean(tweet._demo?.verified);
             if (normalized === 'resurrected') return tweet.enrichment_state === 'resurrected';
+            if (normalized === 'hidden') return Boolean(tweet.hidden);
         }
         if (key === 'min_retweets') return Number(engagement.retweets || 0) >= Number(rawValue);
         if (key === 'min_faves') return Number(engagement.likes || 0) >= Number(rawValue);
@@ -397,6 +398,7 @@
                     ? {tags: [...(source.tags || [])], description: source.description || ''}
                     : null,
                 qt_media_tags: null,
+                hidden: Boolean(source.hidden),
                 raw_json: raw,
                 _demo: {
                     liked_order: source.liked_order,
@@ -971,7 +973,11 @@
                 let tweets = currentTweets().filter(tweet => collection
                     ? tweet.collections.includes(collection)
                     : tweet.collections.length > 0);
-                tweets = tweets.filter(tweet => matchesQuery(tweet, groups));
+                // Hidden tweets stay out of results unless the query mentions is:hidden.
+                const namesHidden = groups.some(group => group.some(token => (
+                    token.kind === 'filter' && token.key === 'is' && token.value.toLowerCase() === 'hidden'
+                )));
+                tweets = tweets.filter(tweet => (namesHidden || !tweet.hidden) && matchesQuery(tweet, groups));
                 tweets = sortedTweets(
                     tweets,
                     url.searchParams.get('sort') || 'default',
@@ -1065,6 +1071,14 @@
                     tweet.description = String(body.description || '').trim();
                 }
                 return jsonResponse({success: true});
+            }
+
+            const hiddenMatch = path.match(/\/api\/tweets\/(\d+)\/hidden$/);
+            if (hiddenMatch && ['PUT', 'DELETE'].includes(method)) {
+                const tweet = findSource(hiddenMatch[1]);
+                if (!tweet) return errorResponse('Tweet not found', 404);
+                tweet.hidden = method === 'PUT';
+                return jsonResponse({hidden: tweet.hidden});
             }
 
             if (path.endsWith('/api/tags/merge') && method === 'POST') {

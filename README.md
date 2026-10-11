@@ -14,8 +14,8 @@ Want to see TweetNook before installing it? [View the live demo](https://gezerwe
 - **Import existing data:** bring in an official Twitter/X archive.
 - **Browse in your browser:** read saved threads, view photos and videos, and
   explore quoted tweets and articles.
-- **Search and organize:** combine search filters, add your own tags, and edit
-  local descriptions.
+- **Search and organize:** combine search filters, add your own tags, edit
+  local descriptions, and hide tweets you no longer want to see.
 - **Automated tagging:** with an optional add-on, you can use Gemini to suggest tags and describe media.
 - **Keep it up to date:** run a sync from the web app or terminal, or schedule
   regular syncs.
@@ -133,6 +133,10 @@ Type words and filters together in the web app's search box:
 | Tweets from January 2026 | `since:2026-01-01 until:2026-02-01` |
 | A local tag | `tag:"read later"` |
 | Links, excluding reposts | `has:links -is:retweet` |
+| Tweets you hid | `is:hidden` |
+
+**Hide** in a tweet's menu keeps it out of lists and searches until you choose
+**Unhide**; it stays in your archive.
 
 The same queries work in the terminal:
 

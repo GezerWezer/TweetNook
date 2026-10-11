@@ -249,6 +249,19 @@ async function main() {
     await request(store, 'https://example.test/api/tags/global/example', {method: 'DELETE'});
     assert.equal((await request(store, 'https://example.test/api/tags/stats')).body.tags.some(tag => tag.tag === 'example'), false);
 
+    const hideUrl = `https://example.test/api/tweets/${ids.ownerRoot}/hidden`;
+    assert.deepEqual((await request(store, hideUrl, {method: 'PUT'})).body, {hidden: true});
+    assert.equal((await resultIds(store, '')).includes(ids.ownerRoot), false);
+    assert.deepEqual(await resultIds(store, 'is:hidden'), [ids.ownerRoot]);
+    assert.equal((await resultIds(store, '-is:hidden')).includes(ids.ownerRoot), false);
+    assert.equal(
+        (await request(store, `https://example.test/api/tweets/${ids.ownerRoot}`)).body.main.hidden,
+        true,
+    );
+    await request(store, hideUrl, {method: 'DELETE'});
+    assert.equal((await resultIds(store, '')).includes(ids.ownerRoot), true);
+    assert.deepEqual(await resultIds(store, 'is:hidden'), []);
+
     const freshStore = api.createStore(fixture);
     assert.deepEqual(
         (await request(freshStore, 'https://example.test/api/tags/autocomplete?q=guide')).body.tags,

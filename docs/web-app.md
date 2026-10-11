@@ -94,6 +94,10 @@ Author and tag suggestions help you find values already in your archive.
 Open a tweet's menu to edit its tags and description. Use **Settings → Tags** to
 merge or delete a tag across the archive. See [Tags](tags.md) for examples.
 
+Choose **Hide** in a tweet's menu to keep it out of your lists and search
+results. It stays in your archive: search `is:hidden` to see hidden tweets, and
+choose **Unhide** in the menu to show one again.
+
 ## Run a sync and view progress
 
 Use the floating activity drawer to start a sync of bookmarks and likes. It

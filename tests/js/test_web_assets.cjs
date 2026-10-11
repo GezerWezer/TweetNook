@@ -2082,6 +2082,9 @@ test('tweet overflow menus are wired on list and detail surfaces', () => {
     assert.match(html, /copyRawTweet\(listMenu\.tweet\)/);
     assert.match(html, /copyRawTweet\(threadData\.main\)/);
     assert.match(html, /copyRawTweet\(panelThreadData\.main\)/);
+    assert.match(html, /setTweetHidden\(listMenu\.key\.slice\('list:'\.length\), !listMenu\.hidden\)/);
+    assert.match(html, /setTweetHidden\(threadData\.main\.tweet_id, !threadData\.main\.hidden\)/);
+    assert.match(html, /setTweetHidden\(panelThreadData\.main\.tweet_id, !panelThreadData\.main\.hidden\)/);
     assert.match(html, /startTweetMenuPress\(\$event, threadData\.main\.tweet_id/);
     assert.match(html, /startTweetMenuPress\(\$event, panelThreadData\.main\.tweet_id/);
     assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet/g) || []).length, 6);
@@ -4688,6 +4691,54 @@ test('feed cards share one overflow menu placed over the opening button', async 
     assert.match(menu, /x-transition:enter="transition ease-out duration-100"/);
     assert.match(menu, /@click\.stop="openTagsFromTweetMenu\(listMenu\.tweet\.tweet_id, listMenu\.tweet\.media_tags\)"/);
     assert.match(menu, /@click\.stop="copyRawTweet\(listMenu\.tweet\)"/);
+});
+
+test('hiding a tweet removes its card unless the search lists hidden tweets', async () => {
+    const context = browserContext();
+    const requests = [];
+    let ok = true;
+    context.fetch = async (url, options = {}) => {
+        requests.push([options.method || 'GET', url]);
+        return { ok, status: ok ? 200 : 500, json: async () => ({}) };
+    };
+    const alerts = [];
+    context.alert = message => alerts.push(message);
+    const { app, list } = feedListApp(context);
+    app.tweets = WEB_FIXTURE.slim.map(tweet => JSON.parse(JSON.stringify(tweet))).filter((_, index) => index === 0 || index === 2);
+    app.total = 2;
+    app.renderFeedList(app.tweets);
+    const [quoted, retweet] = list.children;
+
+    // The shared menu reads the card's hidden state and hides the card, not its display tweet.
+    dispatchFeed(list, 'click', retweet.querySelector('[data-action="menu"]'));
+    assert.equal(app.listMenu.hidden, false);
+    await app.setTweetHidden(app.listMenu.key.slice('list:'.length), !app.listMenu.hidden);
+    assert.deepEqual(requests.at(-1), ['PUT', '/api/tweets/301/hidden']);
+    assert.equal(app.tweetMenuOpen, null);
+    assert.deepEqual(app.tweets.map(tweet => tweet.tweet_id), ['100']);
+    assert.deepEqual(list.children, [quoted]);
+    assert.equal(app.total, 1);
+
+    // An is:hidden list keeps a newly hidden card and drops an unhidden one.
+    app.searchQuery = 'needle is:hidden';
+    await app.setTweetHidden('100', true);
+    assert.equal(app.tweets[0].hidden, true);
+    assert.deepEqual(list.children, [quoted]);
+    await app.setTweetHidden('100', false);
+    assert.deepEqual(requests.at(-1), ['DELETE', '/api/tweets/100/hidden']);
+    assert.deepEqual(app.tweets, []);
+    assert.equal(app.total, 0);
+
+    // -is:hidden does not list hidden tweets; a failed request changes nothing.
+    app.searchQuery = '-is:hidden';
+    assert.equal(app.searchShowsHidden(), false);
+    app.tweets = [JSON.parse(JSON.stringify(WEB_FIXTURE.slim[0]))];
+    app.renderFeedList(app.tweets);
+    ok = false;
+    await app.setTweetHidden('100', true);
+    assert.equal(alerts.length, 1);
+    assert.equal(app.tweets.length, 1);
+    assert.equal(app.tweets[0].hidden, undefined);
 });
 
 test('feed overflow buttons keep the long-press Tags shortcut and avatars their load state', () => {
