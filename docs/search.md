@@ -153,10 +153,12 @@ hydrating each page. The selected relevance, date, like, or random order is also
 applied before pagination, and a tweet saved in several collections still
 occupies one result slot.
 
-The web app does not calculate an exact total for text searches because counting
-every match would delay the first page. Its header therefore says **Results**
-without a number. Filter-only and ordinary collection feeds continue to show an
-exact total. Ordinary newest/oldest feeds and Likes use cursor scrolling to avoid
+The web app shows an exact result count. For text searches, results appear first
+and the header briefly says **Counting… Results** while a separate request counts
+the matches. A complete first page supplies its count immediately. Filter-only
+and ordinary collection feeds continue to show an exact total. If counting fails,
+the header says **Count unavailable · Results**; searching again retries it.
+Ordinary newest/oldest feeds and Likes use cursor scrolling to avoid
 skipping all earlier rows. Complex searches and explicit numbered pages can still
 take longer at large depths. If loading fails, use **Retry loading more**; the
 failed page is retried without advancing past it.

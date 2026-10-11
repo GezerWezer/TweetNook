@@ -480,30 +480,7 @@ def _hydrate_metadata(
     return rows
 
 
-def search_posts(
-    store: Any,
-    query: str | None,
-    *,
-    collections: set[str] | None = None,
-    sort: str = "default",
-    page: int = 1,
-    limit: int = 20,
-    random_seed: int | None = None,
-    cursor: str | None = None,
-) -> SearchPage:
-    """Search the complete logical archive and hydrate only the requested page."""
-    if page < 1:
-        raise ValueError("page must be at least 1")
-    if limit < 1:
-        raise ValueError("limit must be at least 1")
-    if collections:
-        collections = {normalize_collection_name(value) for value in collections}
-        collections.discard("all")
-        collections = collections or None
-    if sort in LIKE_SORTS and collections != {"like"}:
-        raise SearchQueryError("Like order is available only for the Likes collection.")
-
-    parsed = parse_search_query(query)
+def _compile_tweet_query(parsed: ParsedSearchQuery) -> tuple[tuple, bool]:
     # Hidden tweets stay out of results unless the query mentions is:hidden.
     exclude_hidden = not any(
         clause.key == "is" and clause.value == "hidden"
@@ -532,6 +509,52 @@ def search_posts(
                 }
             )
         query_groups.append(tuple(compiled_group))
+
+    return tuple(query_groups), exclude_hidden
+
+
+def count_posts(store, query: str | None, *, collections: set[str] | None = None) -> int:
+    """Count the same logical matches as search_posts, without sorting or hydration."""
+    if collections:
+        collections = {normalize_collection_name(value) for value in collections} - {"all"}
+    query_groups, exclude_hidden = _compile_tweet_query(parse_search_query(query))
+    _, total = store.search_tweet_ids(
+        query_groups,
+        collections=collections or None,
+        sort="newest",
+        limit=1,
+        offset=0,
+        count_only=True,
+        exclude_hidden=exclude_hidden,
+    )
+    return total
+
+
+def search_posts(
+    store: Any,
+    query: str | None,
+    *,
+    collections: set[str] | None = None,
+    sort: str = "default",
+    page: int = 1,
+    limit: int = 20,
+    random_seed: int | None = None,
+    cursor: str | None = None,
+) -> SearchPage:
+    """Search the complete logical archive and hydrate only the requested page."""
+    if page < 1:
+        raise ValueError("page must be at least 1")
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    if collections:
+        collections = {normalize_collection_name(value) for value in collections}
+        collections.discard("all")
+        collections = collections or None
+    if sort in LIKE_SORTS and collections != {"like"}:
+        raise SearchQueryError("Like order is available only for the Likes collection.")
+
+    parsed = parse_search_query(query)
+    query_groups, exclude_hidden = _compile_tweet_query(parsed)
 
     effective_sort = _effective_sort(sort, has_positive_text=parsed.has_positive_text)
     mode = "offset"

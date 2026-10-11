@@ -7,7 +7,7 @@ from fastapi.responses import Response
 
 from tweetnook import fastjson
 from tweetnook.export.common import normalize_collection_name
-from tweetnook.search import SearchCursorExpiredError, SearchQueryError, search_posts
+from tweetnook.search import SearchCursorExpiredError, SearchQueryError, count_posts, search_posts
 from tweetnook.web.availability import annotate_web_tweets, missing_web_tweet, slim_web_tweets
 from tweetnook.web.deps import require_store, verify_credentials
 
@@ -194,6 +194,31 @@ def api_tweets(
 
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/api/tweets/count")
+def api_tweets_count(
+    q: str | None = None,
+    collection: str = Query("all"),
+    store=Depends(require_store),  # noqa: B008
+    _auth: bool = Depends(verify_credentials),
+):
+    """Count a search separately so the first page can render immediately."""
+    try:
+        try:
+            internal_col = normalize_collection_name(collection)
+        except ValueError:
+            internal_col = "all"
+        reader = store.open_reader()
+        try:
+            total = count_posts(
+                reader, q, collections={internal_col} if internal_col != "all" else None
+            )
+        finally:
+            reader.close()
+        return {"total": total}
+    except SearchQueryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/api/tweets/{tweet_id}")
