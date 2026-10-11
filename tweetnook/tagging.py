@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import mimetypes
+import random
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field, replace
@@ -255,11 +256,32 @@ def _budget_pause(tag_config: Any, usage: dict[str, Any]) -> str | None:
         return "earlier billing uncertainty has no cost reservation"
     if usage["unknown"] and tag_config.unknown_billing_policy == "stop":
         return "billing usage is uncertain (strict policy)"
-    if usage["unknown"] >= tag_config.max_unknown_requests_per_day:
+    if (
+        usage["unknown"] - usage.get("capacity_unknown", 0)
+        >= tag_config.max_unknown_requests_per_day
+    ):
         return "the daily limit on billing-unknown requests was reached"
     if usage["unpriced"]:
         return "an earlier request has no price estimate"
     return None
+
+
+def _is_capacity_response(code: int | None, failure: Any, message: str) -> bool:
+    """Recognize an explicit overload rejection, without evidence of generation.
+
+    A generic 503 or a client timeout remains ambiguous. Even a capacity
+    rejection keeps its unknown billing and reserve; only retry policy differs.
+    """
+    if code != 503:
+        return False
+    for name in ("usage", "id", "outputs", "output", "output_text", "steps"):
+        value = failure.get(name) if isinstance(failure, dict) else getattr(failure, name, None)
+        if value is not None:
+            return False
+    error = failure.get("error") if isinstance(failure, dict) else None
+    return (
+        isinstance(error, dict) and error.get("code") == "service_unavailable"
+    ) or "currently experiencing high demand" in message.casefold()
 
 
 def _defer_tagging_failure(store: ArchiveStore, tweet_ids: list[str]) -> None:
@@ -1340,7 +1362,7 @@ async def tag_media_tweets(
                     if callable(getattr(failure, "json", None)):
                         try:
                             body = failure.json()
-                            if isinstance(body, dict) and ("usage" in body or "id" in body):
+                            if isinstance(body, dict):
                                 failure = body
                         except (ValueError, TypeError):
                             pass
@@ -1361,6 +1383,9 @@ async def tag_media_tweets(
                         usage is not None or interaction_id
                     )
                     billing_unknown = provider_started and not has_usage and not rejected
+                    capacity_failure = billing_unknown and _is_capacity_response(
+                        code, failure, message
+                    )
                     search = (
                         interaction_search_accounting(failure, search_enabled=attempt_use_search)
                         if provider_started and not rejected
@@ -1409,6 +1434,7 @@ async def tag_media_tweets(
                         error_code=code,
                         error_message=message,
                         failure_phase=phase,
+                        failure_kind="capacity" if capacity_failure else None,
                     )
                     append_usage(record)
                     # Provider availability errors do not identify a bad tweet.
@@ -1450,6 +1476,8 @@ async def tag_media_tweets(
                             return 0
                     if retryable and attempt < 4:
                         delay = 15 * (2**attempt)
+                        if capacity_failure:
+                            delay *= random.uniform(0.8, 1.2)
                         if paid_state.provider_failure_started is not None:
                             delay = max(
                                 0,
