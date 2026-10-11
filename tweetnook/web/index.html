@@ -236,6 +236,12 @@
                         <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M8 7V3h13v13h-4v5H3V7h5Zm2 0h7v7h2V5h-9v2Zm5 2H5v10h10V9Z"></path></svg>
                         <span>Copy raw</span>
                     </button>
+                    <button type="button" role="menuitem" @click.stop="setTweetHidden(listMenu.key.slice('list:'.length), !listMenu.hidden)"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg x-show="!listMenu.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.2M6.6 6.6C3.7 8.5 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"></path></svg>
+                        <svg x-show="listMenu.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        <span x-text="listMenu.hidden ? 'Unhide' : 'Hide'"></span>
+                    </button>
                 </div>
             </div>
 
@@ -342,6 +348,12 @@
                                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
                                         <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M8 7V3h13v13h-4v5H3V7h5Zm2 0h7v7h2V5h-9v2Zm5 2H5v10h10V9Z"></path></svg>
                                         <span>Copy raw</span>
+                                    </button>
+                                    <button type="button" role="menuitem" @click.stop="setTweetHidden(threadData.main.tweet_id, !threadData.main.hidden)"
+                                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                                        <svg x-show="!threadData.main.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.2M6.6 6.6C3.7 8.5 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"></path></svg>
+                                        <svg x-show="threadData.main.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                        <span x-text="threadData.main.hidden ? 'Unhide' : 'Hide'"></span>
                                     </button>
                                 </div>
                             </div>
@@ -756,6 +768,12 @@
                                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
                                         <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M8 7V3h13v13h-4v5H3V7h5Zm2 0h7v7h2V5h-9v2Zm5 2H5v10h10V9Z"></path></svg>
                                         <span>Copy raw</span>
+                                    </button>
+                                    <button type="button" role="menuitem" @click.stop="setTweetHidden(panelThreadData.main.tweet_id, !panelThreadData.main.hidden)"
+                                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                                        <svg x-show="!panelThreadData.main.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.2M6.6 6.6C3.7 8.5 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"></path></svg>
+                                        <svg x-show="panelThreadData.main.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                        <span x-text="panelThreadData.main.hidden ? 'Unhide' : 'Hide'"></span>
                                     </button>
                                 </div>
                             </div>

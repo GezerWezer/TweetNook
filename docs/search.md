@@ -83,8 +83,14 @@ since:2026-08-19 until:2026-08-20
 | `is:thread` | Tweets matching the archive's thread information |
 | `is:verified` | Tweets whose captured author data indicates verification |
 | `is:resurrected` | Tweets recovered after previously being unavailable |
+| `is:hidden` | Tweets you hid with **Hide** in the tweet menu |
 
 To exclude a type, put `-` before the filter: `has:media -is:retweet`.
+
+Hidden tweets are left out of every list and search, in the web app and the
+terminal, unless the query includes `is:hidden`. Combine it like any other filter:
+`is:hidden from:alice` finds Alice's hidden tweets, and `recipe OR is:hidden`
+includes hidden tweets alongside matches for `recipe`.
 
 ## Tags and links
 

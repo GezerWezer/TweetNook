@@ -83,6 +83,15 @@ thread/verified`, `min_*`, `quoted_tweet_id:`, `source:`, `card_name:`) read the
 trigger-maintained `archive_tweet_facts` row of each membership by primary key
 instead of parsing `raw_json` during the search (see [Storage](storage.md)).
 
+Hidden tweets have one `tweet_hidden` archive row each (`row_key`
+`tweet_hidden:{tweet_id}`, no other content). `search_posts()` passes
+`exclude_hidden=True` unless any clause is `is:hidden`, positive or negated; the
+store then adds `tweet_id NOT IN (HIDDEN_TWEET_IDS_SQL)` to the search `WHERE`,
+the ordinary feed, and the like-order filter, and subtracts hidden members from
+the cached feed total. `is:hidden` compiles to the matching `IN` predicate, so it
+combines with `OR`/`-` like other filters. Detail, quote, and raw routes still
+return hidden tweets.
+
 FTS values and cursor bounds are parameterized; structured SQL expressions come
 from the canonical compiler. Tests cover injection-shaped filters, malformed
 cursors, complete large result sets, and preserved relevance scores.
@@ -169,6 +178,17 @@ results), dropping full user profiles, media variants, and duplicated embeds.
 Responses are about a third of their former size. `tests/fixtures/web_raw_tweets.json`
 pairs full and abbreviated tweets; the JS asset suite requires both to render
 identically, and a Python test keeps the fixture in step with the pruning.
+
+```http
+PUT /api/tweets/{tweet_id}/hidden
+DELETE /api/tweets/{tweet_id}/hidden
+```
+
+Hide or show a tweet (`set_tweet_hidden()`); both are idempotent and return
+`{"hidden": bool}`. Annotated tweets in list, detail, quote, and raw responses
+carry a top-level `hidden` flag that the tweet menus read to offer Hide or Unhide.
+Hiding from a list removes its card, unless the query contains `is:hidden`;
+unhiding removes the card from such a list.
 
 ```http
 GET /api/tweets/{tweet_id}/raw

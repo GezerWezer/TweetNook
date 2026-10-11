@@ -623,6 +623,28 @@ def api_tweet_raw(
     return _json({"tweet_id": tweet_id, "raw_json": raw_json})
 
 
+@router.put("/api/tweets/{tweet_id}/hidden")
+def api_hide_tweet(
+    tweet_id: str,
+    store=Depends(require_store),  # noqa: B008
+    _auth: bool = Depends(verify_credentials),
+) -> dict[str, bool]:
+    """Hide a tweet from lists and searches; `is:hidden` still finds it."""
+    store.set_tweet_hidden(tweet_id, True)
+    return {"hidden": True}
+
+
+@router.delete("/api/tweets/{tweet_id}/hidden")
+def api_unhide_tweet(
+    tweet_id: str,
+    store=Depends(require_store),  # noqa: B008
+    _auth: bool = Depends(verify_credentials),
+) -> dict[str, bool]:
+    """Show a hidden tweet in lists and searches again."""
+    store.set_tweet_hidden(tweet_id, False)
+    return {"hidden": False}
+
+
 @router.get("/api/authors/search")
 def search_authors_api(
     q: str = Query(""),

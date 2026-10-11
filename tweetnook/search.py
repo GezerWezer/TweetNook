@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 from tweetnook.export.common import normalize_collection_name
 from tweetnook.like_order import LIKE_SORTS
+from tweetnook.storage.backend import HIDDEN_TWEET_IDS_SQL
 
 _FILTER_KEYS = frozenset(
     {
@@ -42,7 +43,7 @@ _FILTER_KEYS = frozenset(
 )
 _FILTER_VALUES = {
     "has": frozenset({"article", "media", "image", "video", "links"}),
-    "is": frozenset({"quote", "reply", "resurrected", "retweet", "thread", "verified"}),
+    "is": frozenset({"hidden", "quote", "reply", "resurrected", "retweet", "thread", "verified"}),
     "filter": frozenset(
         {
             "articles",
@@ -369,6 +370,8 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
         )
     elif (key, value) in {("is", "verified"), ("filter", "verified")}:
         expression = _fact("is_verified")
+    elif (key, value) == ("is", "hidden"):
+        expression = f"archive.tweet_id IN ({HIDDEN_TWEET_IDS_SQL})"
     elif key in {"min_retweets", "min_faves", "min_replies"}:
         count_field = {
             "min_retweets": "retweet_count",
@@ -471,6 +474,12 @@ def search_posts(
         raise SearchQueryError("Like order is available only for the Likes collection.")
 
     parsed = parse_search_query(query)
+    # Hidden tweets stay out of results unless the query mentions is:hidden.
+    exclude_hidden = not any(
+        clause.key == "is" and clause.value == "hidden"
+        for group in parsed.groups
+        for clause in group
+    )
     query_groups: list[tuple[dict[str, Any], ...]] = []
     for group in parsed.groups:
         compiled_group: list[dict[str, Any]] = []
@@ -532,6 +541,7 @@ def search_posts(
         offset=offset,
         random_seed=random_seed,
         include_total=not parsed.has_text,
+        exclude_hidden=exclude_hidden,
         **cursor_options,
     )
     if revision is not None and revision != store.cache_revision("like_order"):

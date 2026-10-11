@@ -374,6 +374,11 @@ SEARCH_KIND_POST = "post"
 SEARCH_KIND_ARTICLE = "article"
 SEARCH_COLLECTION_ORDER = ("bookmark", "like", "tweet")
 SEARCH_TEXT_FIELD = "text"
+# Tweets hidden from Web lists and searches; `is:hidden` still finds them.
+HIDDEN_TWEET_IDS_SQL = (
+    "SELECT hidden.tweet_id FROM archive AS hidden "
+    "WHERE hidden.record_type = 'tweet_hidden' AND hidden.tweet_id IS NOT NULL"
+)
 _UNSET = object()
 
 
@@ -2734,6 +2739,37 @@ class ArchiveStore:
         )
         self.conn.commit()
 
+    def set_tweet_hidden(self, tweet_id: str, hidden: bool) -> None:
+        """Hide a tweet from lists and searches, or show it again."""
+        if hidden:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO archive (row_key, record_type, tweet_id, updated_at) "
+                "VALUES (?, 'tweet_hidden', ?, ?)",
+                (f"tweet_hidden:{tweet_id}", tweet_id, str(time.time())),
+            )
+        else:
+            self.conn.execute(
+                "DELETE FROM archive WHERE record_type = 'tweet_hidden' AND tweet_id = ?",
+                (tweet_id,),
+            )
+        self.conn.commit()
+
+    def _hidden_member_count(self, collection: str) -> int:
+        """Count hidden tweets that are members of a collection ("all" for any)."""
+        membership = "member.record_type = 'tweet' AND member.tweet_id = hidden_ids.tweet_id"
+        params: tuple[str, ...] = ()
+        if collection != "all":
+            membership += " AND member.collection_type = ?"
+            params = (collection,)
+        return int(
+            self.conn.execute(
+                f"SELECT COUNT(*) FROM ({HIDDEN_TWEET_IDS_SQL}) AS hidden_ids "
+                "WHERE EXISTS (SELECT 1 FROM archive AS member "
+                f"INDEXED BY idx_archive_membership WHERE {membership})",
+                params,
+            ).fetchone()[0]
+        )
+
     def delete_global_tag(self, tag: str) -> None:
         """Delete a tag globally across all tweets."""
         sql = """
@@ -3349,6 +3385,7 @@ class ArchiveStore:
         sort: str = "newest",
         *,
         after: dict[str, Any] | None = None,
+        exclude_hidden: bool = False,
     ) -> list[dict[str, Any]]:
         if sort not in {"newest", "oldest", "random"}:
             raise ValueError(f"Unsupported sort order: {sort}")
@@ -3367,6 +3404,8 @@ class ArchiveStore:
             where.append("candidate.collection_type = ?")
             duplicate_where.append("duplicate.collection_type = ?")
             params.extend([collection, collection])
+        if exclude_hidden:
+            where.append(f"candidate.tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})")
 
         order_by = (
             "candidate.created_at_ts DESC, "
@@ -4674,12 +4713,16 @@ class ArchiveStore:
         random_seed: int | None = None,
         include_total: bool = False,
         after: dict[str, Any] | None = None,
+        exclude_hidden: bool = False,
     ) -> tuple[list[dict[str, Any]], int | None]:
         """Evaluate the Web tweet query in SQLite and return one lightweight page.
 
         Text clauses are independent FTS relations. The supplied filter expressions
         are produced by the canonical query compiler, never by HTTP input directly.
+        exclude_hidden leaves out tweets hidden with set_tweet_hidden().
         """
+        hidden_expr = f"archive.tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})" if exclude_hidden else ""
+
         self.ensure_fts_index()
         if limit < 1:
             raise ValueError("limit must be at least 1")
@@ -4695,9 +4738,11 @@ class ArchiveStore:
             if collection != "all":
                 filter_expr += f" AND collection_type = {_expr_quote(collection)}"
             total = self.count_export_rows(collection) if include_total else None
+            if total is not None and exclude_hidden:
+                total -= self._hidden_member_count(collection)
             if sort in {"liked_latest", "liked_earliest"}:
                 rows = self.query_like_order_ids(
-                    filter_expr,
+                    f"{filter_expr} AND {hidden_expr}" if hidden_expr else filter_expr,
                     sort=sort,
                     limit=limit + 1,
                     offset=offset,
@@ -4710,6 +4755,7 @@ class ArchiveStore:
                 offset=offset,
                 sort=sort,
                 after=after,
+                exclude_hidden=exclude_hidden,
             )
             return rows, total
 
@@ -4862,6 +4908,8 @@ class ArchiveStore:
         where = ["archive.record_type = 'tweet'"]
         if collection_expr:
             where.append(collection_expr)
+        if hidden_expr:
+            where.append(hidden_expr)
         where.extend(group_conditions)
         score_expr = " + ".join(group_scores) if group_scores else "0.0"
         ctes.append(

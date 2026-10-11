@@ -856,3 +856,53 @@ def test_fact_filters_match_their_json_semantics(tmp_path, query: str, negated: 
         assert actual.total == len(expected)
     finally:
         store.close()
+
+
+def test_hidden_tweets_are_left_out_unless_the_query_names_is_hidden(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    store._merge_records(
+        [
+            store._record(
+                row_key=f"tweet:{collection}::{tweet_id}",
+                record_type="tweet",
+                tweet_id=tweet_id,
+                collection_type=collection,
+                text=f"needle {tweet_id}",
+                author_id="alice",
+                author_username="alice",
+                created_at=f"2026-01-0{tweet_id}T00:00:00Z",
+                created_at_ts=int(tweet_id),
+                sort_index=tweet_id,
+                raw_json=json.dumps({"legacy": {}}),
+            )
+            for tweet_id in ("1", "2", "3")
+            for collection in ("bookmark", "like")
+        ]
+    )
+
+    def ids(query: str | None, **options: Any) -> list[str]:
+        return [row["tweet_id"] for row in search_posts(store, query, **options).rows]
+
+    store.set_tweet_hidden("2", True)
+    store.set_tweet_hidden("2", True)  # Hiding twice keeps one marker.
+
+    assert ids(None) == ["3", "1"]
+    assert search_posts(store, None).total == 2
+    assert search_posts(store, None, collections={"bookmark"}).total == 2
+    assert ids(None, sort="random", random_seed=3, collections={"bookmark", "like"}) != []
+    assert "2" not in ids(None, sort="random", random_seed=3, collections={"bookmark", "like"})
+    assert ids(None, collections={"like"}, sort="liked_latest") == ["3", "1"]
+    assert ids("needle", sort="newest") == ["3", "1"]
+    assert ids("from:alice", sort="newest") == ["3", "1"]
+    assert ids("is:hidden") == ["2"]
+    assert search_posts(store, "is:hidden").total == 1
+    assert ids("needle is:hidden") == ["2"]
+    assert ids("-is:hidden", sort="newest") == ["3", "1"]
+    assert ids("is:hidden OR needle", sort="newest") == ["3", "2", "1"]
+
+    store.set_tweet_hidden("2", False)
+
+    assert ids(None) == ["3", "2", "1"]
+    assert search_posts(store, None).total == 3
+    assert ids("is:hidden") == []
+    store.close()

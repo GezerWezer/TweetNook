@@ -324,9 +324,17 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
         "tweet_object", "tweet_id", tweet_ids, columns=_OBJECT_COLUMNS
     )
     objects_by_id = {str(row["tweet_id"]): row for row in object_rows if row.get("tweet_id")}
+    hidden_ids = {
+        str(row["tweet_id"])
+        for row in store._rows_for_values(
+            "tweet_hidden", "tweet_id", tweet_ids, columns=["tweet_id"]
+        )
+        if row.get("tweet_id")
+    }
 
     for tweet in tweets:
         tweet_id = str(tweet.get("tweet_id") or "")
+        tweet["hidden"] = tweet_id in hidden_ids
         object_row = objects_by_id.get(tweet_id)
         if not _use_canonical_object_content(object_row, tweet):
             continue
