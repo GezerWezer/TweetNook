@@ -2945,11 +2945,11 @@ function tweetApp() {
             this.statsAgeNow = Date.now();
         },
 
-        async fetchStatsSnapshot(revalidate = true) {
+        async fetchStatsSnapshot() {
             const showSkeletons = !this.statsGeneratedAt;
             if (showSkeletons) this.setStatsLoading(true);
             try {
-                const res = await fetch(`/api/stats/snapshot?revalidate=${revalidate}`);
+                const res = await fetch('/api/stats/snapshot');
                 if (!res.ok) throw new Error(`Statistics request failed (${res.status})`);
                 this.applyStatsSnapshot(await res.json());
                 if (this.statsRefreshing) {
@@ -3008,7 +3008,7 @@ function tweetApp() {
                 if (!res.ok) throw new Error(`Statistics refresh poll failed (${res.status})`);
                 const status = await res.json();
                 if (status.generated_at !== this.statsGeneratedAt) {
-                    await this.fetchStatsSnapshot(false);
+                    await this.fetchStatsSnapshot();
                     return;
                 }
                 this.applyStatsStatus(status);

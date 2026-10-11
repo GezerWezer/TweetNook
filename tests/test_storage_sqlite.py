@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -581,6 +583,34 @@ def test_reader_reads_committed_rows_on_its_own_read_only_connection(paths) -> N
     finally:
         reader.close()
     assert store._count("record_type = 'tweet'") == 1
+    store.close()
+
+
+def test_interrupting_the_archive_stops_running_reader_queries(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    endless = (
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n) SELECT COUNT(*) FROM n"
+    )
+    errors: list[Exception] = []
+
+    def run() -> None:
+        reader = store.open_reader()
+        try:
+            reader.conn.execute(endless).fetchone()
+        except sqlite3.OperationalError as error:
+            errors.append(error)
+        finally:
+            reader.close()
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    time.sleep(0.05)
+    store.interrupt_warm_reads()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert len(errors) == 1 and "interrupt" in str(errors[0])
     store.close()
 
 

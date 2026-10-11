@@ -247,8 +247,8 @@ See [Search](search.md) for examples and the full filter list.
 ## Statistics look outdated
 
 Choose **Refresh** in Stats and wait for it to finish, or run
-`tweetnook stats` for a fresh terminal report. Web statistics can be
-cached for up to 12 hours, including after tag edits.
+`tweetnook stats` for a fresh terminal report. Web statistics are rebuilt
+once a day, so they can miss later syncs and tag edits.
 
 Some storage categories are estimates. Differences between them and exact file
 sizes do not by themselves indicate corruption.

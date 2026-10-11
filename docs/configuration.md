@@ -129,6 +129,7 @@ values.
 | `fetch_avatars` | `true` | Boolean | Fetch/cache successful author avatars from captured URLs |
 | `avatar_cache_limit_enabled` | `true` | Boolean | Run weekly least-recently-used avatar cache cleanup |
 | `avatar_cache_limit_mb` | `512` | ≥1 | Maximum avatar cache size in MiB |
+| `analytics_refresh_time` | `05:00` | `HH:MM` | Local server time when Stats are rebuilt each day |
 
 Setup creates the initial password as its final action; no default password is
 created by `serve` or `web start`. `tweetnook web set-password` remains an

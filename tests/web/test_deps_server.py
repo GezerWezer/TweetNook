@@ -43,6 +43,20 @@ def _recording_warmer(events: list[str]):
     return Warmer
 
 
+def _recording_refresher(events: list[str]):
+    class Refresher:
+        def __init__(self, _store, refresh_time):
+            assert refresh_time == AppConfig().web.analytics_refresh_time
+
+        def start(self):
+            events.append("stats")
+
+        def stop(self):
+            events.append("stats-stop")
+
+    return Refresher
+
+
 def _paths(tmp_path: Path) -> XDGPaths:
     paths = XDGPaths(
         config_dir=tmp_path / "config",
@@ -146,13 +160,23 @@ def test_lifespan_opens_indexes_and_closes_store(monkeypatch, tmp_path: Path) ->
     )
     monkeypatch.setattr(server.threading, "Thread", ImmediateThread)
     monkeypatch.setattr(server, "ArchiveWarmer", _recording_warmer(events))
+    monkeypatch.setattr(server, "DailyStatsRefresher", _recording_refresher(events))
     app = FastAPI(lifespan=server.lifespan)
 
     with TestClient(app):
         assert server_state["store"] is store
-        assert events == ["scalar", "thread", "fts", "warm"]
+        assert events == ["scalar", "thread", "fts", "warm", "stats"]
 
-    assert events == ["scalar", "thread", "fts", "warm", "warm-stop", "close"]
+    assert events == [
+        "scalar",
+        "thread",
+        "fts",
+        "warm",
+        "stats",
+        "stats-stop",
+        "warm-stop",
+        "close",
+    ]
 
 
 def test_lifespan_without_paths_does_not_open_a_store(monkeypatch) -> None:
@@ -243,12 +267,13 @@ async def test_lifespan_closes_store_when_context_exits_with_error(
     monkeypatch.setattr(server, "open_archive_store", lambda *_args, **_kwargs: store)
     monkeypatch.setattr(server.threading, "Thread", ImmediateThread)
     monkeypatch.setattr(server, "ArchiveWarmer", _recording_warmer(events))
+    monkeypatch.setattr(server, "DailyStatsRefresher", _recording_refresher(events))
 
     with pytest.raises(RuntimeError, match="application failed"):
         async with server.lifespan(FastAPI()):
             raise RuntimeError("application failed")
 
-    assert events == ["scalar", "fts", "warm", "warm-stop", "close"]
+    assert events == ["scalar", "fts", "warm", "stats", "stats-stop", "warm-stop", "close"]
 
 
 def test_packaged_root_and_static_assets_are_served() -> None:

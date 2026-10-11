@@ -1258,7 +1258,6 @@ test('analytics uses one cached snapshot and retains it during manual refresh', 
     const snapshot = {
         generated_at: generatedAt,
         age_seconds: 0,
-        stale: false,
         refreshing: false,
         refresh_failed: false,
         summary: { unique_posts: 12, latest_sync: 'Aug 10, 2026' },
@@ -1291,7 +1290,7 @@ test('analytics uses one cached snapshot and retains it during manual refresh', 
     await app.openStatsModal();
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0][0], '/api/stats/snapshot?revalidate=true');
+    assert.equal(calls[0][0], '/api/stats/snapshot');
     assert.equal(app.statsSummary.unique_posts, 12);
     assert.equal(app.statsCollections[0].collection, 'Bookmarks');
     assert.equal(app.storageData.total_bytes, 42);

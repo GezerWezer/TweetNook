@@ -96,7 +96,6 @@ def _cached_snapshot_payload(cached: CachedStatsReport) -> dict[str, Any]:
     return {
         "generated_at": report.generated_at,
         "age_seconds": round(cached.age_seconds, 1),
-        "stale": cached.stale,
         "refreshing": cached.refreshing,
         "refresh_failed": cached.refresh_failed,
         "summary": _legacy_summary(report.section("overview").data),
@@ -112,7 +111,6 @@ def _cached_status_payload(cached: CachedStatsReport) -> dict[str, Any]:
     return {
         "generated_at": cached.report.generated_at,
         "age_seconds": round(cached.age_seconds, 1),
-        "stale": cached.stale,
         "refreshing": cached.refreshing,
         "refresh_failed": cached.refresh_failed,
     }
@@ -128,11 +126,10 @@ def get_stats_report(
 
 @router.get("/snapshot")
 def get_cached_stats_snapshot(
-    revalidate: bool = True,
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
 ) -> dict[str, Any]:
-    """Return the Web modal snapshot, revalidating stale data in the background."""
-    return _cached_snapshot_payload(web_stats_cache.get(store, revalidate=revalidate))
+    """Return the daily Web modal snapshot, waiting only for the first collection."""
+    return _cached_snapshot_payload(web_stats_cache.get(store))
 
 
 @router.get("/status")
@@ -140,7 +137,7 @@ def get_cached_stats_status(
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
 ) -> dict[str, Any]:
     """Return only cache state for inexpensive browser refresh polling."""
-    return _cached_status_payload(web_stats_cache.get(store, revalidate=False))
+    return _cached_status_payload(web_stats_cache.get(store))
 
 
 @router.post("/refresh")
