@@ -16,7 +16,7 @@ def print_archive_migration_report(console: Console, store: ArchiveStore) -> boo
         highlight=False,
     )
     console.print(
-        "Rebuilt the derived full-text index with searchable tweets only; "
+        "Rebuilt derived search data (the full-text index or search-filter values); "
         "canonical archive rows were unchanged.",
         highlight=False,
     )

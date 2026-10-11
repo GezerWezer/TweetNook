@@ -272,6 +272,25 @@ def _sql_quote(value: object) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+def _fact(column: str) -> str:
+    """Read a derived search value of the membership row being filtered.
+
+    archive_tweet_facts holds values extracted from raw_json by triggers, so
+    filters never parse each tweet's JSON during a search.
+    """
+    return (
+        f"(SELECT facts.{column} FROM archive_tweet_facts AS facts "
+        "WHERE facts.row_key = archive.row_key)"
+    )
+
+
+def _fact_list_contains(column: str, value: str) -> str:
+    # Lists are lowercased values wrapped in char(31); no stored value contains one.
+    if "\x1f" in value:
+        return "0"
+    return f"instr({_fact(column)}, char(31) || {_sql_quote(value)} || char(31)) > 0"
+
+
 def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> str | None:
     """Translate filters backed by archive columns or JSON into SQLite predicates."""
     condition = None
@@ -317,22 +336,13 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
         )
         return f"NOT (COALESCE(({expression}), 0))" if negated else expression
 
-    legacy_path = "$.legacy"
     expression = None
     if key == "from":
         expression = f"LOWER(COALESCE(author_username, '')) = {_sql_quote(value.replace('@', ''))}"
     elif key == "to":
-        expression = (
-            f"LOWER(COALESCE(json_extract(raw_json, '{legacy_path}.in_reply_to_screen_name'), "
-            f"'')) = {_sql_quote(value.replace('@', ''))}"
-        )
+        expression = f"COALESCE({_fact('reply_to')}, '') = {_sql_quote(value.replace('@', ''))}"
     elif key == "mentions":
-        expression = (
-            "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(archive.raw_json) "
-            "THEN archive.raw_json ELSE '{}' END, '$.legacy.entities.user_mentions') AS mention "
-            "WHERE LOWER(COALESCE(json_extract(mention.value, '$.screen_name'), '')) = "
-            f"{_sql_quote(value.replace('@', ''))})"
-        )
+        expression = _fact_list_contains("mentions", value.replace("@", ""))
     elif key in {"since", "since_time", "until", "until_time"}:
         boundary = _parse_twitter_date(value) if key in {"since", "until"} else float(value)
         comparison = ">=" if key in {"since", "since_time"} else "<"
@@ -342,49 +352,34 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
     elif key == "max_id":
         expression = f"CAST(archive.tweet_id AS INTEGER) <= {int(value)}"
     elif (key, value) in {("is", "reply"), ("filter", "replies")}:
-        expression = (
-            f"NULLIF(json_extract(raw_json, '{legacy_path}.in_reply_to_status_id_str'), "
-            "'') IS NOT NULL"
-        )
+        expression = _fact("is_reply")
     elif (key, value) in {("is", "quote"), ("filter", "quote")}:
-        expression = f"COALESCE(json_extract(raw_json, '{legacy_path}.is_quote_status'), 0) != 0"
+        expression = _fact("is_quote")
     elif (key, value) in {("is", "retweet"), ("filter", "nativeretweets")}:
-        expression = (
-            f"NULLIF(json_extract(raw_json, '{legacy_path}.retweeted_status_id_str'), "
-            "'') IS NOT NULL"
-        )
+        expression = _fact("is_retweet")
     elif (key, value) in {
         ("is", "thread"),
         ("filter", "self_threads"),
         ("filter", "threads"),
     }:
-        reply_path = f"{legacy_path}.in_reply_to_screen_name"
+        reply_to = _fact("reply_to")
         expression = (
-            f"NULLIF(json_extract(raw_json, '{reply_path}'), '') IS NOT NULL AND "
-            f"LOWER(json_extract(raw_json, '{reply_path}')) = "
-            "LOWER(COALESCE(author_username, ''))"
+            f"NULLIF({reply_to}, '') IS NOT NULL AND "
+            f"{reply_to} = LOWER(COALESCE(author_username, ''))"
         )
     elif (key, value) in {("is", "verified"), ("filter", "verified")}:
-        expression = (
-            "COALESCE(json_extract(raw_json, '$.core.user_results.result.is_blue_verified'), "
-            "json_extract(raw_json, '$.core.user_results.result.legacy.verified'), 0) != 0"
-        )
+        expression = _fact("is_verified")
     elif key in {"min_retweets", "min_faves", "min_replies"}:
         count_field = {
             "min_retweets": "retweet_count",
             "min_faves": "favorite_count",
             "min_replies": "reply_count",
         }[key]
-        expression = (
-            f"CAST(COALESCE(json_extract(raw_json, '{legacy_path}.{count_field}'), 0) "
-            f"AS INTEGER) >= {int(value)}"
-        )
+        expression = f"{_fact(count_field)} >= {int(value)}"
     elif key == "conversation_id":
         expression = f"conversation_id = {_sql_quote(value)}"
     elif key == "quoted_tweet_id":
-        expression = (
-            f"json_extract(raw_json, '{legacy_path}.quoted_status_id_str') = {_sql_quote(value)}"
-        )
+        expression = f"{_fact('quoted_status_id')} = {_sql_quote(value)}"
     elif key == "url":
         escaped = _sql_quote(f"%{value}%")
         expression = (
@@ -395,12 +390,9 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
             f"OR LOWER(COALESCE(related.display_url, '')) LIKE {escaped}))"
         )
     elif key == "source":
-        expression = (
-            "LOWER(COALESCE(json_extract(raw_json, '$.source'), '')) LIKE "
-            f"{_sql_quote('%' + value.replace('_', ' ') + '%')}"
-        )
+        expression = f"{_fact('source')} LIKE {_sql_quote('%' + value.replace('_', ' ') + '%')}"
     elif key == "card_name":
-        expression = f"json_extract(raw_json, '$.card.name') = {_sql_quote(value)}"
+        expression = f"{_fact('card_name')} = {_sql_quote(value)}"
     elif key == "tag":
         normalized_value = _sql_quote(value.lower())
         expression = (
@@ -422,12 +414,7 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
             ")"
         )
     elif key == "hashtag":
-        expression = (
-            "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(archive.raw_json) "
-            "THEN archive.raw_json ELSE '{}' END, '$.legacy.entities.hashtags') AS hashtag "
-            "WHERE LOWER(COALESCE(json_extract(hashtag.value, '$.text'), '')) = "
-            f"{_sql_quote(value.replace('#', '').lower())})"
-        )
+        expression = _fact_list_contains("hashtags", value.replace("#", "").lower())
 
     if expression is None:
         return None

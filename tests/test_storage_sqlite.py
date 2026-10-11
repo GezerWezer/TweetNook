@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import pytest
 
 import tweetnook.storage.backend as storage_backend
 from tweetnook.config import AppConfig, DatabaseConfig
+from tweetnook.search import search_posts
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import (
     ARCHIVE_COLUMNS,
@@ -794,3 +796,134 @@ def test_fts_native_rank_plan_does_not_materialize_a_temporary_sort(paths) -> No
     assert "archive_fts" in details
     assert "USE TEMP B-TREE" not in details
     store.close()
+
+
+def _facts(store: ArchiveStore) -> dict[str, tuple]:
+    return {
+        row["row_key"]: (row["is_reply"], row["favorite_count"], row["hashtags"])
+        for row in store.conn.execute("SELECT * FROM archive_tweet_facts")
+    }
+
+
+def test_tweet_facts_follow_insert_update_and_delete(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    reply = json.dumps(
+        {
+            "legacy": {
+                "in_reply_to_status_id_str": "9",
+                "favorite_count": 5,
+                "entities": {"hashtags": [{"text": "Py"}]},
+            }
+        }
+    )
+    row = _membership(
+        store,
+        "1",
+        collection="like",
+        text="first",
+        created_at=CREATED_2024,
+        created_at_ts=1,
+        sort_index="1",
+    )
+    store._merge_records([{**row, "raw_json": reply}])
+    key = row["row_key"]
+    assert _facts(store) == {key: (1, 5, "\x1fpy\x1f")}
+
+    store._merge_records([{**row, "raw_json": '{"legacy":{"favorite_count":"7"}}'}])
+    assert _facts(store) == {key: (0, 7, None)}
+
+    with store.conn:
+        store.conn.execute("UPDATE archive SET raw_json = 'not json' WHERE row_key = ?", (key,))
+    assert _facts(store) == {key: (None, None, None)}
+
+    with store.conn:
+        store.conn.execute(
+            "UPDATE archive SET record_type = 'tweet_object', raw_json = ? WHERE row_key = ?",
+            (reply, key),
+        )
+    assert _facts(store) == {}
+
+    store._merge_records([{**row, "row_key": "tweet:bookmark::1", "raw_json": None}])
+    assert _facts(store) == {"tweet:bookmark::1": (0, 0, None)}
+    with store.conn:
+        store.conn.execute("DELETE FROM archive WHERE record_type = 'tweet'")
+    assert _facts(store) == {}
+    store.close()
+
+
+def _v8_archive(db_path: Path) -> None:
+    initial = ArchiveStore(db_path, create=True)
+    initial._merge_records(
+        [
+            {
+                **_membership(
+                    initial,
+                    tweet_id,
+                    collection="like",
+                    text="facts sentinel",
+                    created_at=CREATED_2024,
+                    created_at_ts=int(tweet_id),
+                    sort_index=tweet_id,
+                ),
+                "raw_json": raw,
+            }
+            for tweet_id, raw in [
+                ("1", '{"legacy":{"in_reply_to_status_id_str":"9"}}'),
+                ("2", '{"legacy":{}}'),
+            ]
+        ]
+    )
+    for trigger in ("archive_facts_ai", "archive_facts_au", "archive_facts_ad"):
+        initial.conn.execute(f"DROP TRIGGER {trigger}")
+    initial.conn.execute("DROP TABLE archive_tweet_facts")
+    initial.conn.execute("PRAGMA user_version = 8")
+    initial.conn.commit()
+    initial.close()
+
+
+def test_schema_v8_upgrade_backfills_search_facts_and_reports(tmp_path: Path) -> None:
+    db_path = tmp_path / "archive.db"
+    _v8_archive(db_path)
+
+    migrated = ArchiveStore(db_path, create=False)
+
+    assert migrated.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 9
+    assert migrated.migration_report.from_version == 8
+    assert [row["tweet_id"] for row in search_posts(migrated, "is:reply").rows] == ["1"]
+    assert [row["tweet_id"] for row in search_posts(migrated, "-is:reply").rows] == ["2"]
+    migrated._merge_records(
+        [
+            _membership(
+                migrated,
+                "3",
+                collection="like",
+                text="after upgrade",
+                created_at=CREATED_2026,
+                created_at_ts=3,
+                sort_index="3",
+            )
+        ]
+    )
+    assert len(_facts(migrated)) == 3
+    migrated.close()
+
+
+def test_failed_schema_v8_upgrade_leaves_the_archive_at_v8(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "archive.db"
+    _v8_archive(db_path)
+
+    def fail(_store):
+        raise RuntimeError("injected facts failure")
+
+    monkeypatch.setattr(ArchiveStore, "_create_tweet_facts", fail)
+    with pytest.raises(RuntimeError, match="injected"):
+        ArchiveStore(db_path, create=False)
+
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
+        assert (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE name = 'archive_tweet_facts'"
+            ).fetchone()
+            is None
+        )

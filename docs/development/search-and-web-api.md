@@ -78,6 +78,11 @@ early intersection in a single FTS scan for relevance. Larger author sets fall
 back to full FTS-led execution. This threshold selects a plan, never a result cap.
 Other Boolean/OR predicates are still evaluated before pagination.
 
+Filters on tweet JSON (`to:`, `mentions:`, hashtags, `is:reply/quote/retweet/
+thread/verified`, `min_*`, `quoted_tweet_id:`, `source:`, `card_name:`) read the
+trigger-maintained `archive_tweet_facts` row of each membership by primary key
+instead of parsing `raw_json` during the search (see [Storage](storage.md)).
+
 FTS values and cursor bounds are parameterized; structured SQL expressions come
 from the canonical compiler. Tests cover injection-shaped filters, malformed
 cursors, complete large result sets, and preserved relevance scores.

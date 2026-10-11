@@ -272,7 +272,7 @@ ARCHIVE_COLUMNS = [
     "value",
 ]
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 COLUMN_TYPES = {
     field: (
         "TEXT PRIMARY KEY"
@@ -316,6 +316,54 @@ _WARM_READ_QUERIES = (
     "ON object.tweet_id = membership.tweet_id "
     "WHERE membership.record_type = 'tweet' AND object.record_type = 'tweet_object'",
 )
+
+
+def _json_each_texts(raw: str, path: str, field: str) -> str:
+    """Lowercased field values of a JSON array, joined and wrapped in char(31)."""
+    return (
+        "(SELECT char(31) || group_concat(LOWER(COALESCE(CASE WHEN item.type = 'object' "
+        f"THEN json_extract(item.value, '$.{field}') END, '')), char(31)) || char(31) "
+        f"FROM json_each({raw}, '{path}') AS item)"
+    )
+
+
+# Values that structured search filters read from a membership row's tweet JSON.
+# Triggers keep archive_tweet_facts in step with raw_json, so a filtered search
+# reads one small row per membership instead of parsing every tweet's JSON.
+TWEET_FACT_EXPRESSIONS = {
+    "reply_to": "LOWER(json_extract({raw}, '$.legacy.in_reply_to_screen_name'))",
+    "is_reply": (
+        "NULLIF(json_extract({raw}, '$.legacy.in_reply_to_status_id_str'), '') IS NOT NULL"
+    ),
+    "is_quote": "COALESCE(json_extract({raw}, '$.legacy.is_quote_status'), 0) != 0",
+    "is_retweet": (
+        "NULLIF(json_extract({raw}, '$.legacy.retweeted_status_id_str'), '') IS NOT NULL"
+    ),
+    "is_verified": (
+        "COALESCE(json_extract({raw}, '$.core.user_results.result.is_blue_verified'), "
+        "json_extract({raw}, '$.core.user_results.result.legacy.verified'), 0) != 0"
+    ),
+    "retweet_count": "CAST(COALESCE(json_extract({raw}, '$.legacy.retweet_count'), 0) AS INTEGER)",
+    "favorite_count": (
+        "CAST(COALESCE(json_extract({raw}, '$.legacy.favorite_count'), 0) AS INTEGER)"
+    ),
+    "reply_count": "CAST(COALESCE(json_extract({raw}, '$.legacy.reply_count'), 0) AS INTEGER)",
+    "quoted_status_id": "json_extract({raw}, '$.legacy.quoted_status_id_str')",
+    "source": "LOWER(COALESCE(json_extract({raw}, '$.source'), ''))",
+    "card_name": "json_extract({raw}, '$.card.name')",
+    "mentions": _json_each_texts("{raw}", "$.legacy.entities.user_mentions", "screen_name"),
+    "hashtags": _json_each_texts("{raw}", "$.legacy.entities.hashtags", "text"),
+}
+
+
+def _tweet_fact_values(raw: str) -> str:
+    # NULL JSON evaluates like an absent key. Malformed JSON yields NULL facts
+    # instead of failing the write that stored it.
+    return ", ".join(
+        f"CASE WHEN {raw} IS NULL OR json_valid({raw}) THEN {expression.format(raw=raw)} END"
+        for expression in TWEET_FACT_EXPRESSIONS.values()
+    )
+
 
 SECONDARY_RECORD_TYPES = ("tweet_object", "tweet_relation", "media", "url", "url_ref", "article")
 LIVE_SOURCE = "live_graphql"
@@ -378,7 +426,10 @@ class ArchiveStore:
             self._create_latest_schema()
             return
 
-        # Schema 5 is the only older version a release shipped (0.0.9 and 0.1.0).
+        # Releases shipped schema 5 (0.0.9 and 0.1.0) and schema 8 (0.1.1 to 0.1.6).
+        if current_version == 8:
+            self._migrate_search_facts(current_version)
+            return
         if current_version != 5:
             raise RuntimeError(
                 f"Archive schema version {current_version} comes from a pre-release build "
@@ -408,6 +459,26 @@ class ArchiveStore:
             if actual != expected:
                 raise RuntimeError(
                     "Search-index migration produced an unexpected row count: "
+                    f"expected={expected}, actual={actual}"
+                )
+            self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+        self.migration_report = MigrationReport(
+            from_version=current_version, to_version=SCHEMA_VERSION
+        )
+
+    def _migrate_search_facts(self, current_version: int) -> None:
+        """Add derived search-filter values to a v8 archive; canonical rows are unchanged."""
+        with self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
+            self._create_archive_indexes()
+            expected = self.conn.execute(
+                "SELECT COUNT(*) FROM archive WHERE record_type = 'tweet' AND row_key IS NOT NULL"
+            ).fetchone()[0]
+            actual = self.conn.execute("SELECT COUNT(*) FROM archive_tweet_facts").fetchone()[0]
+            if actual != expected:
+                raise RuntimeError(
+                    "Search-filter migration produced an unexpected row count: "
                     f"expected={expected}, actual={actual}"
                 )
             self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -554,7 +625,49 @@ class ArchiveStore:
             ON archive(author_id)
             WHERE author_id IS NOT NULL AND author_id != ''
         """)
+        self._create_tweet_facts()
         self._create_cache_revisions()
+
+    def _create_tweet_facts(self) -> None:
+        """Create, backfill, and maintain the derived search-filter values.
+
+        Membership writes always carry a row key; keyless rows (only possible through
+        direct SQL) get no facts instead of failing the write.
+        """
+        columns = ", ".join(TWEET_FACT_EXPRESSIONS)
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS archive_tweet_facts "
+            f"(row_key TEXT PRIMARY KEY, {columns}) WITHOUT ROWID"
+        )
+
+        def upsert(row: str) -> str:
+            return (
+                f"INSERT OR REPLACE INTO archive_tweet_facts (row_key, {columns}) "
+                f"SELECT {row}.row_key, {_tweet_fact_values(row + '.raw_json')}"
+            )
+
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_facts_ai AFTER INSERT ON archive "
+            "WHEN new.record_type = 'tweet' AND new.row_key IS NOT NULL "
+            f"BEGIN {upsert('new')}; END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_facts_au "
+            "AFTER UPDATE OF row_key, record_type, raw_json ON archive "
+            "WHEN old.record_type = 'tweet' OR new.record_type = 'tweet' BEGIN "
+            "DELETE FROM archive_tweet_facts WHERE row_key = old.row_key; "
+            f"{upsert('new')} WHERE new.record_type = 'tweet' AND new.row_key IS NOT NULL; END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_facts_ad AFTER DELETE ON archive "
+            "WHEN old.record_type = 'tweet' BEGIN "
+            "DELETE FROM archive_tweet_facts WHERE row_key = old.row_key; END"
+        )
+        self.conn.execute(
+            f"INSERT OR REPLACE INTO archive_tweet_facts (row_key, {columns}) "
+            f"SELECT row_key, {_tweet_fact_values('raw_json')} "
+            "FROM archive WHERE record_type = 'tweet' AND row_key IS NOT NULL"
+        )
 
     def _create_cache_revisions(self) -> None:
         """Track derived-data inputs across processes, including direct SQL writes."""
