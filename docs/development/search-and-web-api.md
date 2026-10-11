@@ -161,6 +161,24 @@ Hydrated rows can include author, collection membership, media, URLs, article,
 direct/quote tags, raw JSON, availability, quote/retweet attachments, and match
 score/type metadata.
 
+List, detail, and quote responses abbreviate `raw_json` (and attached quote/retweet
+`raw_json`) with `slim_raw_tweet()`: it keeps the same nested shape but only the
+fields the Web UI renders (text and entity URLs, counts, views, card, community
+note, author name/handle/profile counts, reply target, and nested quoted/retweeted
+results), dropping full user profiles, media variants, and duplicated embeds.
+Responses are about a third of their former size. `tests/fixtures/web_raw_tweets.json`
+pairs full and abbreviated tweets; the JS asset suite requires both to render
+identically, and a Python test keeps the fixture in step with the pruning.
+
+```http
+GET /api/tweets/{tweet_id}/raw
+```
+
+Returns `{"tweet_id", "raw_json"}` with the complete stored document: for a
+collection tweet, the same canonical document the list shows; otherwise the
+stored tweet object. 404 when neither exists. The browser's **Copy raw** action
+prefetches it when a tweet menu opens and falls back to the abbreviated copy.
+
 ## Detail assembly
 
 ```http

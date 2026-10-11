@@ -464,3 +464,107 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
         tweet["qt_media"] = quote.get("media", []) if isinstance(quote, dict) else []
         tweet["qt_media_tags"] = quote.get("media_tags") if isinstance(quote, dict) else None
     return tweets
+
+
+# The raw tweet fields the Web UI reads, by shape. Everything else in a stored
+# GraphQL tweet (full user profiles, media variants, entity indices, edit history,
+# and duplicate embedded quotes) is dropped from list and thread responses; the
+# full document stays available from the raw endpoint for "Copy raw".
+_USER_FIELDS = ("name", "screen_name", "id_str", "description", "followers_count", "friends_count")
+_LEGACY_FIELDS = (
+    "full_text",
+    "created_at",
+    "in_reply_to_status_id_str",
+    "in_reply_to_screen_name",
+    "reply_count",
+    "retweet_count",
+    "quote_count",
+    "favorite_count",
+    "bookmark_count",
+    "quoted_status_permalink",
+)
+_TWEET_FIELDS = (
+    "__typename",
+    "__typename__",
+    "__tombstone__",
+    "rest_id",
+    "id_str",
+    "text",
+    "full_text",
+    "created_at",
+    "in_reply_to_screen_name",
+    "synced_at",
+    "tombstone",
+    "card",
+    "birdwatch_pivot",
+)
+_NESTED_TWEETS = ("quoted_status", "retweeted_status", "raw_json", "tweet")
+
+
+def _pick(value: Any, fields: tuple[str, ...]) -> dict[str, Any]:
+    return {key: value[key] for key in fields if key in value} if isinstance(value, dict) else {}
+
+
+def _urls(items: Any, fields: tuple[str, ...]) -> list[Any]:
+    return [_pick(item, fields) for item in items] if isinstance(items, list) else items
+
+
+def slim_raw_tweet(raw: Any) -> Any:
+    """Keep only the raw tweet fields the Web UI renders, preserving their shape."""
+    if not isinstance(raw, dict):
+        return raw
+    slim = _pick(raw, _TWEET_FIELDS)
+    views = raw.get("views")
+    if isinstance(views, dict) and "count" in views:
+        slim["views"] = {"count": views["count"]}
+    if isinstance(raw.get("user"), dict):
+        slim["user"] = _pick(raw["user"], _USER_FIELDS)
+    user = ((raw.get("core") or {}).get("user_results") or {}).get("result")
+    if isinstance(user, dict):
+        slim_user = _pick(user, ("rest_id",))
+        if isinstance(user.get("legacy"), dict):
+            slim_user["legacy"] = _pick(user["legacy"], _USER_FIELDS)
+        if isinstance(user.get("core"), dict):
+            slim_user["core"] = _pick(user["core"], ("name", "screen_name"))
+        slim["core"] = {"user_results": {"result": slim_user}}
+    legacy = raw.get("legacy")
+    if isinstance(legacy, dict):
+        slim_legacy = _pick(legacy, _LEGACY_FIELDS)
+        entities = legacy.get("entities")
+        if isinstance(entities, dict):
+            slim_legacy["entities"] = {
+                key: _urls(entities[key], fields)
+                for key, fields in (
+                    ("urls", ("url", "expanded_url", "display_url")),
+                    ("media", ("url",)),
+                )
+                if key in entities
+            }
+        extended = legacy.get("extended_entities")
+        if isinstance(extended, dict) and "media" in extended:
+            slim_legacy["extended_entities"] = {"media": _urls(extended["media"], ("url",))}
+        retweeted = legacy.get("retweeted_status_result")
+        if isinstance(retweeted, dict):
+            slim_legacy["retweeted_status_result"] = {
+                "result": slim_raw_tweet(retweeted.get("result"))
+            }
+        slim["legacy"] = slim_legacy
+    quoted = raw.get("quoted_status_result")
+    if isinstance(quoted, dict):
+        slim["quoted_status_result"] = {"result": slim_raw_tweet(quoted.get("result"))}
+    for key in _NESTED_TWEETS:
+        if key in raw:
+            slim[key] = slim_raw_tweet(raw[key])
+    return slim
+
+
+def slim_web_tweets(tweets: Any) -> None:
+    """Prune raw JSON in place on annotated tweets and their quote/retweet attachments."""
+    for tweet in tweets:
+        if not isinstance(tweet, dict):
+            continue
+        tweet["raw_json"] = slim_raw_tweet(tweet.get("raw_json"))
+        for field in ("quoted_tweet", "retweeted_tweet"):
+            attached = tweet.get(field)
+            if isinstance(attached, dict):
+                attached["raw_json"] = slim_raw_tweet(attached.get("raw_json"))

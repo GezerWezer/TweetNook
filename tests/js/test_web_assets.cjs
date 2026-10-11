@@ -3765,6 +3765,77 @@ test('automated tagging saves uncertainty policies and exposes their controls', 
     assert.ok(html.includes('Five is not a provider limit'));
 });
 
+test('abbreviated raw tweet JSON renders exactly like the stored document', () => {
+    const fixture = JSON.parse(fs.readFileSync(
+        path.join(ROOT, 'tests', 'fixtures', 'web_raw_tweets.json'),
+        'utf8',
+    ));
+    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    const event = () => ({
+        currentTarget: {
+            classList: { contains: () => true },
+            closest: () => null,
+            getBoundingClientRect: () => ({ left: 0, top: 0, bottom: 0 }),
+        },
+    });
+    const profile = (tweet, isQuote) => {
+        app.openProfileCard(event(), tweet, isQuote);
+        const { x, y, ...card } = app.profileCard;
+        app.closeProfileCard();
+        return card;
+    };
+    const render = source => {
+        const tweetObj = JSON.parse(JSON.stringify(source));
+        const retweet = app.getRetweet(tweetObj);
+        const tweet = retweet ? app.formatRetweetToTweet(tweetObj, retweet) : tweetObj;
+        const quote = app.getQuoteTweet(tweet);
+        const copy = () => JSON.parse(JSON.stringify(tweet));
+        return JSON.stringify([
+            Boolean(retweet), app.getTweetId(tweet), app.formatText(tweet), app.formatText(tweet, true),
+            app.renderMediaGrid(tweet.media), app.renderCard(tweet), app.getReplyTo(tweet),
+            app.renderCommunityNote(tweet.raw_json), app.renderActionBar(copy()),
+            app.renderActionBar(copy(), true), app.getInitial(tweet), app.formatDate(tweet.created_at),
+            app.isTextPlaceholderTweet(tweet), profile(tweet, false),
+            quote && [
+                app.isTombstone(quote), app.renderQuotePlaceholder(quote), app.getQuoteAuthor(quote),
+                app.getTweetId(quote), app.formatDate(quote?.legacy?.created_at || quote?.created_at),
+                app.getReplyTo({ raw_json: quote }), app.formatText(quote),
+                app.renderCard({ raw_json: quote }), app.renderCommunityNote(quote, true),
+                profile(quote, true),
+            ],
+        ]);
+    };
+
+    assert.equal(fixture.full.length, fixture.slim.length);
+    fixture.full.forEach((tweet, index) => {
+        assert.ok(JSON.stringify(fixture.slim[index]).length < JSON.stringify(tweet).length);
+        assert.equal(render(fixture.slim[index]), render(tweet), `tweet ${index}`);
+    });
+});
+
+test('copy raw prefers the stored document prefetched when the menu opens', async () => {
+    const context = browserContext();
+    const requests = [];
+    let copiedText = null;
+    context.fetch = async url => {
+        requests.push(url);
+        return { ok: true, json: async () => ({ raw_json: { rest_id: '7', full: true } }) };
+    };
+    context.navigator = { clipboard: { async writeText(value) { copiedText = value; } } };
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+
+    app.toggleTweetMenu('list:7');
+    await app.fullRawTweet({ tweet_id: '7' });
+    await app.copyRawTweet({ tweet_id: '7', raw_json: { rest_id: '7' } });
+
+    assert.deepEqual(requests, ['/api/tweets/7/raw']);
+    assert.equal(JSON.parse(copiedText).full, true);
+
+    context.fetch = async () => ({ ok: false, json: async () => ({}) });
+    await app.copyRawTweet({ tweet_id: '8', raw_json: { rest_id: '8', abbreviated: true } });
+    assert.equal(JSON.parse(copiedText).abbreviated, true);
+});
+
 async function main() {
     let failures = 0;
     for (const { name, fn } of tests) {
