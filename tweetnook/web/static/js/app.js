@@ -324,6 +324,7 @@ function tweetApp() {
         
         showKeyboardShortcuts: false,
         profileCard: null,
+        profileCardRequest: 0,
         activity: null,
         lastActivity: null,
         activitySchedule: { configured: false, relative: 'Not configured', date: 'Use cron or a service timer' },
@@ -1228,8 +1229,6 @@ function tweetApp() {
             }
 
             const rect = anchor.getBoundingClientRect();
-            let x = rect.left;
-            let y = rect.bottom + 8;
 
             let name, username, id;
             let raw;
@@ -1251,8 +1250,10 @@ function tweetApp() {
             const legacy = userResult.legacy || raw.user || {};
             
             this.profileCard = {
-                x,
-                y,
+                x: rect.left,
+                y: rect.bottom + 8,
+                anchorRect: { left: rect.left, top: rect.top, bottom: rect.bottom },
+                request: ++this.profileCardRequest,
                 name,
                 username,
                 id,
@@ -1260,21 +1261,12 @@ function tweetApp() {
                 description: legacy.description || '',
                 followersCount: legacy.followers_count || 0,
                 followingCount: legacy.friends_count || 0,
-                syncDate: tweet.synced_at || (tweet.collection ? tweet.collection.synced_at : null) || raw.synced_at || null
+                syncDate: tweet.synced_at || (tweet.collection ? tweet.collection.synced_at : null) || raw.synced_at || null,
+                snapshots: [],
+                snapshotIndex: 0,
             };
-            
-            this.$nextTick(() => {
-                const card = document.getElementById('profile-card-modal');
-                if (card) {
-                    const cardRect = card.getBoundingClientRect();
-                    if (this.profileCard.x + cardRect.width > window.innerWidth) {
-                        this.profileCard.x = window.innerWidth - cardRect.width - 16;
-                    }
-                    if (this.profileCard.y + cardRect.height > window.innerHeight) {
-                        this.profileCard.y = rect.top - cardRect.height - 8;
-                    }
-                }
-            });
+            this.positionProfileCard();
+            this.loadProfileSnapshots();
 
             if (!this._profileMouseMoveHandler) {
                 this._profileMouseMoveHandler = (e) => {
@@ -1297,6 +1289,76 @@ function tweetApp() {
             window.addEventListener('mousemove', this._profileMouseMoveHandler);
         },
         
+        // The clicked tweet carries the profile as it was when that tweet was
+        // fetched. Replace it with the most recently fetched capture of the
+        // author, keeping older distinct captures to cycle through.
+        async loadProfileSnapshots() {
+            const card = this.profileCard;
+            if (!card) return;
+            const request = card.request;
+            let query;
+            if (card.id && card.id !== 'unknown') {
+                query = `author_id=${encodeURIComponent(card.id)}`;
+            } else if (card.username && card.username !== 'unknown') {
+                query = `username=${encodeURIComponent(card.username)}`;
+            } else {
+                return;
+            }
+            try {
+                const res = await fetch(`/api/authors/profile?${query}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                // The card may have closed or opened for someone else meanwhile.
+                if (this.profileCard?.request !== request) return;
+                if (data.author_id) this.profileCard.id = data.author_id;
+                if (!data.snapshots?.length) return;
+                this.profileCard.snapshots = data.snapshots;
+                this.showProfileSnapshot(0, false);
+            } catch (e) {
+                console.error('Failed to load profile snapshots:', e);
+            }
+        },
+
+        // Index 0 is the most recent capture; higher indexes are older. Cycling
+        // keeps the card's top fixed so the arrows stay under the pointer.
+        showProfileSnapshot(index, keepTop = true) {
+            const card = this.profileCard;
+            const snapshot = card?.snapshots?.[index];
+            if (!snapshot) return;
+            card.snapshotIndex = index;
+            card.name = snapshot.display_name || card.name;
+            card.username = snapshot.username || card.username;
+            card.initial = card.name.charAt(0).toUpperCase();
+            card.description = snapshot.description || '';
+            card.followersCount = snapshot.followers_count || 0;
+            card.followingCount = snapshot.following_count || 0;
+            card.syncDate = snapshot.fetched_at || card.syncDate;
+            this.positionProfileCard(keepTop);
+        },
+
+        // Places the card below its anchor, or above it when it would overflow.
+        // With keepTop, the card stays put unless it would leave the viewport.
+        positionProfileCard(keepTop = false) {
+            this.$nextTick(() => {
+                const card = document.getElementById('profile-card-modal');
+                if (!card || !this.profileCard) return;
+                const anchor = this.profileCard.anchorRect;
+                const cardRect = card.getBoundingClientRect();
+                let x = anchor.left;
+                let y = keepTop ? this.profileCard.y : anchor.bottom + 8;
+                if (x + cardRect.width > window.innerWidth) {
+                    x = window.innerWidth - cardRect.width - 16;
+                }
+                if (y + cardRect.height > window.innerHeight) {
+                    y = keepTop
+                        ? Math.max(8, window.innerHeight - cardRect.height - 8)
+                        : anchor.top - cardRect.height - 8;
+                }
+                this.profileCard.x = x;
+                this.profileCard.y = y;
+            });
+        },
+
         closeProfileCard() {
             this.profileCard = null;
             if (this._profileMouseMoveHandler) {

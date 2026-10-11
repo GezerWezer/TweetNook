@@ -1062,6 +1062,24 @@
                 return jsonResponse({authors: rows});
             }
 
+            if (path.endsWith('/api/authors/profile') && method === 'GET') {
+                const username = (url.searchParams.get('username') || '').replace(/^@/, '').toLowerCase();
+                const author = authors.get(url.searchParams.get('author_id') || '')
+                    || state.authors.find(candidate => username && candidate.username.toLowerCase() === username);
+                if (!author) return jsonResponse({author_id: null, snapshots: []});
+                return jsonResponse({
+                    author_id: author.id,
+                    snapshots: [{
+                        display_name: author.display_name,
+                        username: author.username,
+                        description: author.description || '',
+                        followers_count: author.followers_count || 0,
+                        following_count: author.following_count || 0,
+                        fetched_at: state.generated_at,
+                    }],
+                });
+            }
+
             if ((path.endsWith('/api/tags/autocomplete') || path.endsWith('/api/tags/stats')) && method === 'GET') {
                 return jsonResponse({tags: tagCounts(url.searchParams.get('q') || '')});
             }

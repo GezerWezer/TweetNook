@@ -774,3 +774,19 @@ def search_authors_api(
 
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/api/authors/profile")
+def author_profile_api(
+    author_id: str = Query("", description="Author user ID; takes precedence over username."),
+    username: str = Query("", description="Handle to resolve through saved tweets."),
+    limit: int = Query(50, ge=1, le=100, description="Most snapshots to return."),
+    store=Depends(require_store),  # noqa: B008
+    _auth: bool = Depends(verify_credentials),
+):
+    """Return an author's captured profile snapshots, most recently fetched first."""
+    resolved = author_id.strip() or (
+        store.resolve_author_id(username.strip()) if username.strip() else None
+    )
+    snapshots = store.author_profile_snapshots(resolved, limit=limit) if resolved else []
+    return {"author_id": resolved, "snapshots": snapshots}

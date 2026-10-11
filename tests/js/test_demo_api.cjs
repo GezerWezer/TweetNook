@@ -241,6 +241,14 @@ async function main() {
     );
     const owner = await request(store, 'https://example.test/api/authors/search?q=you');
     assert.deepEqual(owner.body.authors.map(author => author.username), ['demo_you']);
+    const profile = await request(store, 'https://example.test/api/authors/profile?username=@Demo_User1');
+    assert.equal(profile.body.author_id, '910000000000000002');
+    assert.deepEqual(
+        profile.body.snapshots.map(snapshot => [snapshot.username, snapshot.followers_count]),
+        [['demo_user1', 842]],
+    );
+    const missingProfile = await request(store, 'https://example.test/api/authors/profile?author_id=0');
+    assert.deepEqual(missingProfile.body, {author_id: null, snapshots: []});
     const initialTags = await request(store, 'https://example.test/api/tags/autocomplete?q=guide');
     assert.deepEqual(initialTags.body.tags, [{tag: 'guide tweet', count: 3}]);
 

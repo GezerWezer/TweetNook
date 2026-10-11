@@ -1284,6 +1284,94 @@ def test_authors_search_endpoint_forwards_query_and_limit():
     assert response.json()["authors"][0]["username"] == "alice"
 
 
+def _profile_raw(user: object) -> str:
+    return json.dumps({"core": {"user_results": {"result": user}}})
+
+
+def test_author_profile_returns_distinct_captures_by_fetch_time(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    old_profile = {
+        "rest_id": "42",
+        "legacy": {
+            "name": "Alice",
+            "screen_name": "alice",
+            "description": "Old bio",
+            "followers_count": 10,
+            "friends_count": 5,
+        },
+    }
+    # Newer GraphQL responses move name and handle into `core`.
+    new_profile = {
+        "rest_id": "42",
+        "core": {"name": "Alice Renamed", "screen_name": "alice"},
+        "legacy": {"description": "New bio", "followers_count": 20, "friends_count": 6},
+    }
+
+    def record(row_key, month, user, *, record_type="tweet", author_id="42", created=0):
+        return store._record(
+            row_key=row_key,
+            record_type=record_type,
+            tweet_id=row_key.rsplit(":", 1)[-1],
+            author_id=author_id,
+            author_username="Alice" if author_id == "42" else "bob",
+            created_at_ts=created,
+            last_seen_at=f"2026-{month:02d}-01T00:00:00Z",
+            raw_json=user if isinstance(user, str) else _profile_raw(user),
+        )
+
+    store._merge_records(
+        [
+            # The newest tweet was fetched first, so it carries the older profile.
+            record("tweet:like::new", 1, old_profile, created=2),
+            record("tweet_object:old", 6, new_profile, record_type="tweet_object", created=1),
+            record("tweet:bookmark::old", 3, new_profile, created=1),
+            # Captures without profile details or with unusable JSON are skipped.
+            record("tweet:like::import", 7, {"rest_id": "42"}),
+            record("tweet:like::scalar", 8, ["unavailable"]),
+            record("tweet:like::broken", 9, "{not json"),
+            record("tweet:like::other", 10, new_profile, author_id="99"),
+        ]
+    )
+    client = _api_client(store)
+    try:
+        expected = [
+            {
+                "display_name": "Alice Renamed",
+                "username": "alice",
+                "description": "New bio",
+                "followers_count": 20,
+                "following_count": 6,
+                "fetched_at": "2026-06-01T00:00:00Z",
+            },
+            {
+                "display_name": "Alice",
+                "username": "alice",
+                "description": "Old bio",
+                "followers_count": 10,
+                "following_count": 5,
+                "fetched_at": "2026-01-01T00:00:00Z",
+            },
+        ]
+        response = client.get("/api/authors/profile?author_id=42")
+        assert response.status_code == 200
+        assert response.json() == {"author_id": "42", "snapshots": expected}
+
+        by_handle = client.get("/api/authors/profile?username=@ALICE")
+        assert by_handle.json() == {"author_id": "42", "snapshots": expected}
+
+        limited = client.get("/api/authors/profile?author_id=42&limit=1")
+        assert limited.json()["snapshots"] == expected[:1]
+        assert client.get("/api/authors/profile?username=nobody").json() == {
+            "author_id": None,
+            "snapshots": [],
+        }
+        assert client.get("/api/authors/profile").json() == {"author_id": None, "snapshots": []}
+        assert client.get("/api/authors/profile?author_id=42&limit=0").status_code == 422
+        assert store.author_profile_snapshots("42' OR 1=1 --") == []
+    finally:
+        store.close()
+
+
 @pytest.mark.parametrize(
     "url",
     [
@@ -1291,6 +1379,7 @@ def test_authors_search_endpoint_forwards_query_and_limit():
         "/api/tweets/1",
         "/api/tweets/1/quotes",
         "/api/authors/search",
+        "/api/authors/profile",
     ],
 )
 def test_tweet_routes_require_authentication(url: str):

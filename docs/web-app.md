@@ -50,6 +50,14 @@ Tweet cards show the content, media, and counts captured in your archive. Like
 and bookmark icons show where you saved a tweet; they do not change anything on
 Twitter/X. Counts are saved values and may differ from Twitter/X today.
 
+Select an author's name, avatar, or an @mention to open their profile card. Each
+saved tweet carries the profile as it was when TweetNook fetched that tweet, so the
+card shows the most recently fetched profile among all of the author's saved tweets,
+which is not necessarily the newest tweet's. When the bio, name, or counts changed
+between fetches, use the arrows to step through older captures; the card shows when
+each one was fetched. An @mention shows a profile only if you saved a tweet by that
+account.
+
 Choose **Show more** to expand long text. Open a photo or video to view downloaded
 media at a larger size. In the fullscreen viewer, swipe left or right to move through
 a tweet's media, or swipe down to close it. **Media not downloaded** means the tweet
