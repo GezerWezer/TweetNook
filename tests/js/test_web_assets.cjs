@@ -447,7 +447,7 @@ test('autocomplete keeps unfinished quoted values together across spaces', async
     };
 
     component.handleInput();
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     assert.equal(calls[0], '/api/tags/autocomplete?q=word%201');
     assert.equal(component.options[0].value, 'Word 1');
@@ -501,14 +501,14 @@ test('autocomplete fetches author and tag suggestions with encoded queries', asy
     component.searchQuery = 'tag:night sky';
     component.cursorPos = component.searchQuery.length;
     component.handleInput();
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     assert.deepEqual(calls, []);
 
     component.searchQuery = 'from:ali';
     component.cursorPos = component.searchQuery.length;
     component.handleInput();
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 150));
     assert.equal(component.options[0].value, 'Alice');
     assert.ok(component.knownAuthors.has('alice'));
     assert.match(calls[0], /q=ali$/);
@@ -516,9 +516,32 @@ test('autocomplete fetches author and tag suggestions with encoded queries', asy
     component.searchQuery = 'tag:night';
     component.cursorPos = component.searchQuery.length;
     component.handleInput();
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 150));
     assert.equal(component.options[0].value, 'Night Sky');
     assert.equal(component.options[0].count, '1,200');
+
+    // Fast typing sends one request, and a late response never replaces newer input.
+    calls.length = 0;
+    let release;
+    context.fetch = url => {
+        calls.push(url);
+        return new Promise(resolve => {
+            release = () => resolve({ ok: true, json: async () => ({ tags: [{ tag: 'Stale', count: 1 }] }) });
+        });
+    };
+    for (const query of ['tag:n', 'tag:ni', 'tag:nig']) {
+        component.searchQuery = query;
+        component.cursorPos = query.length;
+        component.handleInput();
+    }
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.deepEqual(calls, ['/api/tags/autocomplete?q=nig']);
+    component.searchQuery = 'has:';
+    component.cursorPos = component.searchQuery.length;
+    component.handleInput();
+    release();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(component.options[0].value, 'media');
 });
 
 test('autocomplete calendar handles leap years and month boundaries', () => {
@@ -3888,6 +3911,182 @@ test('the full tag list loads only when Tag Management opens', () => {
     app.settingsTab = 'tags';
     watchers.showSettingsModal(true);
     assert.equal(loads, 2);
+});
+
+test('threads open on the tweet already shown while the conversation loads', async () => {
+    const context = browserContext();
+    const pending = [];
+    context.fetch = url => new Promise(resolve => pending.push({ url, resolve }));
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const feedTweet = {
+        tweet_id: '5', text: 'Shown in the feed', author: { id: '1', username: 'a', display_name: 'A' },
+        quoted_tweet: { tweet_id: '6', text: 'Quoted', author: { id: '2', username: 'b', display_name: 'B' } },
+    };
+    app.tweets = [feedTweet];
+    app.activeRoute = { viewMode: 'thread', tweetId: '5' };
+
+    const opening = app.showFullThread('5');
+    assert.equal(app.loadingThread, false);
+    assert.equal(app.threadData.partial, true);
+    assert.equal(app.threadData.main.text, 'Shown in the feed');
+    assert.equal(pending[0].url, '/api/tweets/5');
+    pending[0].resolve({ ok: true, json: async () => ({ main: { tweet_id: '5', text: 'Full' }, parents: [], children: [] }) });
+    await opening;
+    assert.equal(app.threadData.partial, undefined);
+    assert.equal(app.threadData.main.text, 'Full');
+
+    assert.equal(app.threadSeed('6').main.text, 'Quoted');
+    assert.equal(app.threadSeed('404'), null);
+    app.panelMode = 'thread';
+    app.panelStack = [{ routeKey: 'thread:6' }];
+    app.panelThreadData = app.threadSeed('6');
+    app.savePanelSnapshot();
+    assert.equal(app.panelStack[0].data, null);
+});
+
+test('pressing or hovering a tweet starts loading its conversation once', () => {
+    const context = browserContext();
+    const requests = [];
+    const timers = [];
+    context.fetch = url => {
+        requests.push(url);
+        return new Promise(() => {});
+    };
+    context.setTimeout = (callback, delay) => timers.push({ callback, delay });
+    context.clearTimeout = () => {};
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    app.fetchSetup = async () => {};
+    app.fetchNotices = async () => {};
+    app.fetchActivityStatus = async () => {};
+    app.initApp();
+    const target = id => ({ target: { closest: selector => (selector === '[data-thread-id]' ? { dataset: { threadId: id } } : null) } });
+
+    context.__state.events.get('document:pointerdown')(target('7'));
+    context.__state.events.get('document:mouseover')(target('7'));
+    timers.filter(timer => timer.delay === 150).forEach(timer => timer.callback());
+    context.__state.events.get('document:pointerdown')(target('not-a-tweet'));
+
+    assert.deepEqual(requests.filter(url => url.startsWith('/api/tweets/')), ['/api/tweets/7']);
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    assert.equal((html.match(/:data-thread-id="/g) || []).length, (html.match(/="openThread\(/g) || []).length);
+    assert.ok(html.includes('data-thread-main="page"') && html.includes('data-thread-main="panel"'));
+});
+
+test('feeds reuse recent first pages and keep the old list while loading', async () => {
+    const context = browserContext();
+    const requests = [];
+    const pending = new Map();
+    context.fetch = url => {
+        requests.push(url);
+        return new Promise(resolve => pending.set(url, data => resolve({ ok: true, status: 200, json: async () => data })));
+    };
+    let idle = null;
+    context.requestIdleCallback = callback => { idle = callback; };
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const page = ids => ({ tweets: ids.map(tweet_id => ({ tweet_id })), page: 1, pages: 1, total: ids.length, has_more: false });
+    const likes = '/api/tweets?collection=likes&sort=liked_latest&page=1&cursor=';
+    const all = '/api/tweets?collection=all&sort=newest&page=1&cursor=';
+
+    // A startup request made alongside setup is reused by the first load.
+    app.requestFeedPage(likes, { speculative: true });
+    const first = app.fetchTweets();
+    pending.get(likes)(page(['L1']));
+    await first;
+    assert.deepEqual(requests, [likes]);
+    assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['L1']);
+
+    // Idle time fetches the other collections' first pages once.
+    idle();
+    assert.deepEqual(requests.slice(1), [all,
+        '/api/tweets?collection=bookmarks&sort=newest&page=1&cursor=',
+        '/api/tweets?collection=tweets&sort=newest&page=1&cursor=']);
+
+    app.collectionFilter = 'all';
+    app.sortOrder = 'newest';
+    const switching = app.fetchTweets();
+    assert.equal(app.loading, true);
+    assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['L1']);
+    pending.get(all)(page(['A1']));
+    await switching;
+    assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['A1']);
+
+    // Returning to a recent list renders it at once, without a request or loading state.
+    app.collectionFilter = 'likes';
+    app.sortOrder = 'liked_latest';
+    const back = app.fetchTweets();
+    assert.equal(app.loading, false);
+    await back;
+    assert.equal(requests.length, 4);
+    assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['L1']);
+
+    // A finished job invalidates cached lists.
+    app.activity = { run_id: 'sync' };
+    context.fetch = async url => {
+        requests.push(url);
+        return { ok: true, status: 200, json: async () => (url.includes('activity') ? { active: false } : page(['A2'])) };
+    };
+    app.scheduleActivityPoll = () => {};
+    await app.fetchActivityStatus(true);
+    app.collectionFilter = 'all';
+    app.sortOrder = 'newest';
+    await app.fetchTweets();
+    assert.equal(requests.at(-1), all);
+    assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['A2']);
+});
+
+test('feed media loads lazily and tweets render without mutating their data', () => {
+    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    const photo = { type: 'photo', width: 10, height: 10, download: { local_path: 'media/1/p.jpg' } };
+    const video = { type: 'video', download: { local_path: 'media/1/v.mp4', thumbnail_local_path: 'media/1/v.jpg' } };
+    const bare = { type: 'video', download: { local_path: 'media/1/w.mp4' } };
+    assert.match(app.renderMediaGrid([photo]), /<img src="\/media\/1\/p\.jpg" loading="lazy" decoding="async"/);
+    assert.match(app.renderMediaGrid([photo, video]), /loading="lazy" decoding="async"/);
+    assert.match(app.renderMediaGrid([video]), /preload="none"/);
+    assert.match(app.renderMediaGrid([bare]), /preload="metadata"/);
+
+    const quoted = { rest_id: '2', legacy: { full_text: 'q' } };
+    const tweet = {
+        tweet_id: '1', collections: ['bookmark'], collection: { type: 'like' },
+        raw_json: { quoted_status_result: { result: { __typename: 'TweetWithVisibilityResults', birdwatch_pivot: { shorttitle: 'n' }, tweet: quoted } } },
+    };
+    assert.equal(app.getQuoteTweet(tweet).birdwatch_pivot.shorttitle, 'n');
+    assert.equal('birdwatch_pivot' in quoted, false);
+    app.renderActionBar(tweet);
+    app.renderActionBar(tweet);
+    assert.deepEqual(Array.from(tweet.collections), ['bookmark']);
+});
+
+test('feed layout hooks load early and skip off-screen work', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
+    assert.ok(html.includes('x-ref="feedSentinel" x-intersect.margin.1200px="loadMore()"'));
+    assert.equal((html.match(/x-intersect\.margin\.600px="if\(!(panelQ|q)uotesLoadingMore/g) || []).length, 2);
+    assert.ok(html.includes(":class=\"{ 'feed-card-active': tweetMenuOpen === 'list:' + tweet.tweet_id }\""));
+    assert.ok(html.includes(":class=\"{ 'feed-refreshing': loading && tweets.length > 0 }\""));
+    assert.match(css, /\.feed-card:not\(\.feed-card-active\) \{\s*content-visibility: auto;/);
+});
+
+test('status polling pauses in hidden tabs and refreshes on return', () => {
+    const context = browserContext();
+    const intervals = [];
+    context.setInterval = (callback, delay) => intervals.push({ callback, delay });
+    context.document.hidden = true;
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    let polls = 0;
+    app.fetchSetup = async () => { polls++; };
+    app.fetchNotices = async () => {};
+    app.fetchActivityStatus = async () => {};
+    app.archiveResourcesLoaded = true;
+    app.fetchArchiveEnrichmentStatus = () => { polls += 100; };
+    // The harness keeps one listener per event; the activity poller has its own.
+    app.startActivityPolling = () => {};
+    app.initApp();
+    const before = polls;
+    intervals.filter(interval => [3000, 60000].includes(interval.delay)).forEach(interval => interval.callback());
+    assert.equal(polls, before);
+    context.document.hidden = false;
+    context.__state.events.get('document:visibilitychange')();
+    assert.equal(polls, before + 1);
 });
 
 async function main() {

@@ -126,11 +126,35 @@ login throttling, CSP/security-header middleware, or authorization roles.
 
 ## Frontend loading
 
-The thread and split-panel views render direct replies in batches of about 30
-tweets, counting each reply's flattened descendants (`visibleReplies()`); an
-intersection sentinel and a **Show more replies** button extend the batch, and
-opening another thread resets it. The full tag list (`/api/tags/stats`) loads when
-Settings → Tags opens rather than at startup.
+The browser avoids waiting on the network where it already has, or can predict,
+the data:
+
+- **Startup:** the first feed page (and a linked conversation) is requested alongside
+  `/api/setup` instead of after it. If that speculative request loses a race with
+  Setup, `fetchTweets()` asks again.
+- **Lists:** first pages are kept by URL for five minutes (12 entries). Switching to
+  a recently shown list, or to a collection's default list prefetched once while
+  idle, renders without a request. Reloading the list already on screen (retry,
+  repeated search) always asks again, an expired like-order cursor clears the cache,
+  and the cache empties when an activity job finishes. While a new list loads, the
+  previous one stays visible, dimmed.
+- **Paging:** the feed sentinel loads the next page 1,200 px before the end of the
+  list (quote lists at 600 px), and keeps loading while an appended page leaves the
+  sentinel within that margin.
+- **Threads:** pressing a tweet, or hovering it for 150 ms, starts loading its
+  conversation (`data-thread-id`, delegated listeners, the existing 60-second thread
+  cache). Opening a thread shows the tweet the page already has as the main tweet,
+  with **Loading conversation...**, and keeps it at the same screen position when
+  parents load above it. Partial threads are never saved into the panel stack.
+- **Replies:** thread and split-panel views render direct replies in batches of
+  about 30 tweets, counting each reply's flattened descendants (`visibleReplies()`);
+  an intersection sentinel and **Show more replies** extend the batch.
+- **Media and layout:** feed images load lazily with async decoding; videos with a
+  poster use `preload="none"`. Off-screen feed cards use `content-visibility: auto`
+  except while their menu is open, which the containment would otherwise clip.
+- **Background work:** search suggestions are requested after a 100 ms pause and
+  late responses are discarded; status polling pauses in hidden tabs and refreshes
+  on return. The full tag list loads when Settings → Tags opens.
 
 ## Response encoding and caching
 

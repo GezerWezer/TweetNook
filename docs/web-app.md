@@ -63,7 +63,8 @@ followed by its saved reply tree regardless of author. Deeper replies are indent
 under each direct reply. To keep unusually large conversations responsive, one view
 shows up to 250 descendant replies and displays a notice when more are saved; select
 a later reply to continue from that point. Long reply trees appear about 30 replies at
-a time; more load as you reach the end, or select **Show more replies**. You can also browse saved tweets that quote
+a time; more load as you reach the end, or select **Show more replies**. A conversation
+opens at once on the tweet you selected and fills in its replies as they load. You can also browse saved tweets that quote
 the selected tweet.
 Tweet and quote views have copyable URLs (`/post/<tweet-id>` and
 `/post/<tweet-id>/quotes`), so they can be bookmarked, refreshed, or shared with
