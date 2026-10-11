@@ -48,7 +48,7 @@ url source card_name tag description hashtag
 Enums:
 
 - `has`: article, media, image, video, links;
-- `is`: quote, reply, resurrected, retweet, thread, verified;
+- `is`: hidden, quote, reply, resurrected, retweet, thread, verified;
 - `filter`: articles, images, links, media, native_video,
   nativeretweets, quote, replies, self_threads, threads, verified, videos.
 

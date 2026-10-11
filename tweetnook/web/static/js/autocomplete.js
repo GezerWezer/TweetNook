@@ -641,7 +641,7 @@ function searchAutocomplete() {
                         if (prefix.toLowerCase().endsWith('has:')) {
                             isValid = ['media', 'image', 'video', 'links', 'article'].includes(cleanValue.toLowerCase());
                         } else if (prefix.toLowerCase().endsWith('is:')) {
-                            isValid = ['reply', 'quote', 'retweet', 'thread', 'verified', 'resurrected'].includes(cleanValue.toLowerCase());
+                            isValid = this.isOptions.some(option => option.value === cleanValue.toLowerCase());
                         } else if (prefix.toLowerCase().endsWith('filter:')) {
                             isValid = ['articles', 'media', 'images', 'videos', 'native_video', 'links', 'replies', 'quote', 'nativeretweets', 'self_threads', 'threads', 'verified'].includes(cleanValue.toLowerCase());
                         } else if (prefix.toLowerCase().endsWith('from:') || prefix.toLowerCase().endsWith('to:')) {
