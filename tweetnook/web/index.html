@@ -214,129 +214,29 @@
             <template x-if="loading && tweets.length === 0 && !error"><div class="p-8 text-center text-gray-500">Loading...</div></template>
             <template x-if="archiveReady && !setupForced && !loading && tweets.length === 0 && !error"><div class="p-8 text-center text-gray-500">No tweets found in this collection.</div></template>
 
-            <!-- TWEET LOOP -->
-            <div :class="{ 'feed-refreshing': loading && tweets.length > 0 }">
-            <template x-for="tweetObj in tweets" :key="tweetObj.tweet_id">
-                <div x-data="{ 
-                    isRt: !!getRetweet(tweetObj), 
-                    tweet: getRetweet(tweetObj) ? formatRetweetToTweet(tweetObj, getRetweet(tweetObj)) : tweetObj 
-                }" class="px-4 pt-3 pb-3 tweet-border feed-card hover-bg transition duration-200 cursor-pointer" :class="{ 'feed-card-active': tweetMenuOpen === 'list:' + tweet.tweet_id }" :data-thread-id="tweet.tweet_id" @click="openThread(tweet.tweet_id)">
-                    
-                    <template x-if="isRt">
-                        <div class="text-[13px] text-[var(--text-secondary)] font-bold mb-1 flex items-center space-x-2 ml-8">
-                            <svg viewBox="0 0 24 24" class="w-4 h-4 fill-current"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"></path></svg>
-                            <span x-text="(tweetObj.author.display_name || 'Unknown') + ' Reposted'"></span>
-                        </div>
-                    </template>
-
-                    <div class="flex space-x-2">
-                        <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden" @click.stop="openProfileCard($event, tweet)">
-                            <span class="avatar-initial" x-text="getInitial(tweet)"></span>
-                            <img :src="avatarUrl(tweet.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
-                        </div>
-
-                        <div class="flex-1 min-w-0">
-                            <div class="flex items-start text-[15px]">
-                                <div class="flex items-center space-x-1 min-w-0">
-                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" x-text="tweet.author.display_name || 'Unknown'" @click.stop="openProfileCard($event, tweet)"></span>
-                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (tweet.author.username || 'unknown')"></span>
-                                    <span class="text-[var(--text-secondary)]">·</span>
-                                    <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
-                                        <div class="roll-inner">
-                                            <span class="roll-item hover:underline" x-text="formatDate(tweet.created_at)"></span>
-                                            <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(tweet)"></span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="relative ml-auto -mr-2 -mt-2 flex-shrink-0" @click.outside="closeTweetMenu('list:' + tweet.tweet_id)" @keydown.escape.window="closeTweetMenu('list:' + tweet.tweet_id)">
-                                    <button type="button"
-                                            class="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)] select-none touch-manipulation"
-                                            aria-label="More actions" aria-haspopup="menu"
-                                            :aria-expanded="tweetMenuOpen === 'list:' + tweet.tweet_id"
-                                            :class="{ 'opacity-0': tweetMenuOpen === 'list:' + tweet.tweet_id }"
-                                            title="More actions (hold for Tags)"
-                                            @pointerdown.stop="startTweetMenuPress($event, tweet.tweet_id, tweet.media_tags)"
-                                            @pointerup.stop="cancelTweetMenuPress()"
-                                            @pointercancel.stop="cancelTweetMenuPress()"
-                                            @pointerleave="cancelTweetMenuPress()"
-                                            @contextmenu.prevent
-                                            @click.stop="toggleTweetMenu('list:' + tweet.tweet_id)">
-                                        <svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
-                                    </button>
-                                    <div x-show="tweetMenuOpen === 'list:' + tweet.tweet_id" x-cloak
-                                         x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
-                                         x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
-                                         class="absolute right-0 top-0 z-50 w-56 origin-top-right overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--dropdown-bg)] shadow-2xl"
-                                         role="menu">
-                                        <button type="button" role="menuitem" @click.stop="openTagsFromTweetMenu(tweet.tweet_id, tweet.media_tags)"
-                                                class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
-                                            <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M20.95 13.05 10.9 3H3v7.9l10.05 10.05a1.5 1.5 0 0 0 2.12 0l5.78-5.78a1.5 1.5 0 0 0 0-2.12ZM7.5 9A1.5 1.5 0 1 1 7.5 6a1.5 1.5 0 0 1 0 3Z"></path></svg>
-                                            <span>Tags</span>
-                                        </button>
-                                        <button type="button" role="menuitem" @click.stop="copyRawTweet(tweet)"
-                                                class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
-                                            <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M8 7V3h13v13h-4v5H3V7h5Zm2 0h7v7h2V5h-9v2Zm5 2H5v10h10V9Z"></path></svg>
-                                            <span>Copy raw</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <template x-if="getReplyTo(tweet)">
-                                <div class="text-[15px] text-[var(--text-secondary)] mb-1">
-                                    Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(tweet))" x-text="'@' + getReplyTo(tweet)"></span>
-                                </div>
-                            </template>
-
-                            <div class="text-[15px] -mt-2 whitespace-pre-wrap leading-normal break-words" x-html="formatText(tweet)" @click="handleTextClick($event)"></div>
-                            
-                            <!-- Media -->
-                            <div x-html="renderMediaGrid(tweet.media)"></div>
-                            
-                            <!-- Card (Polls / Articles) -->
-                            <div x-html="renderCard(tweet)" @click.stop></div>
-
-                            <!-- Quote Tweet -->
-                            <template x-if="getQuoteTweet(tweet)">
-                                <div>
-                                    <template x-if="isTombstone(getQuoteTweet(tweet))">
-                                        <div x-html="renderQuotePlaceholder(getQuoteTweet(tweet))" @click.stop></div>
-                                    </template>
-                                    <template x-if="!isTombstone(getQuoteTweet(tweet))">
-                                        <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :data-thread-id="getTweetId(getQuoteTweet(tweet))" @click.stop="openThread(getTweetId(getQuoteTweet(tweet)))">
-                                            <div class="flex items-center space-x-1 text-[15px] mb-1">
-                                                <div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
-                                                    <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(tweet)).initial"></span>
-                                                    <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(tweet)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
-                                                </div>
-                                                <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(tweet)).name"></span>
-                                                <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + getQuoteAuthor(getQuoteTweet(tweet)).screen_name"></span>
-                                                <span class="text-[var(--text-secondary)]">·</span>
-                                                <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(tweet)?.legacy?.created_at || getQuoteTweet(tweet)?.created_at)"></span>
-                                            </div>
-                                            
-                                            <template x-if="getReplyTo({raw_json: getQuoteTweet(tweet)})">
-                                                <div class="text-[15px] text-[var(--text-secondary)] mb-1">
-                                                    Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(tweet)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(tweet)})"></span>
-                                                </div>
-                                            </template>
-
-                                            <div class="text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(tweet))" @click="handleTextClick($event)"></div>
-                                            <div x-html="renderMediaGrid(tweet.qt_media)" @click.stop></div>
-                                            <div x-html="renderCard({raw_json: getQuoteTweet(tweet)})" @click.stop></div>
-                                            <div x-html="renderCommunityNote(getQuoteTweet(tweet), true)" @click.stop></div>
-                                        </div>
-                                    </template>
-                                </div>
-                            </template>
-
-                            <div x-html="renderCommunityNote(tweet.raw_json)" @click.stop></div>
-                            <div x-html="renderActionBar(tweet)"></div>
-                        </div>
-                    </div>
+            <!-- TWEET LIST: cards are plain markup from renderFeedCard(), written outside
+                 Alpine and handled by listeners on the list (bindFeedList). -->
+            <div class="relative" x-ref="feedArea">
+                <div x-ref="feedList" :class="{ 'feed-refreshing': loading && tweets.length > 0 }"></div>
+                <!-- One overflow menu for every card, placed over the button that opened it. -->
+                <div x-show="tweetMenuOpen === listMenu.key" x-cloak
+                     x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+                     class="absolute z-50 w-56 origin-top-right overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--dropdown-bg)] shadow-2xl"
+                     :style="{ top: listMenu.top + 'px', right: listMenu.right + 'px' }"
+                     role="menu"
+                     @click.outside="closeTweetMenu(listMenu.key)" @keydown.escape.window="closeTweetMenu(listMenu.key)">
+                    <button type="button" role="menuitem" @click.stop="openTagsFromTweetMenu(listMenu.tweet.tweet_id, listMenu.tweet.media_tags)"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M20.95 13.05 10.9 3H3v7.9l10.05 10.05a1.5 1.5 0 0 0 2.12 0l5.78-5.78a1.5 1.5 0 0 0 0-2.12ZM7.5 9A1.5 1.5 0 1 1 7.5 6a1.5 1.5 0 0 1 0 3Z"></path></svg>
+                        <span>Tags</span>
+                    </button>
+                    <button type="button" role="menuitem" @click.stop="copyRawTweet(listMenu.tweet)"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M8 7V3h13v13h-4v5H3V7h5Zm2 0h7v7h2V5h-9v2Zm5 2H5v10h10V9Z"></path></svg>
+                        <span>Copy raw</span>
+                    </button>
                 </div>
-            </template>
-
             </div>
 
             <!-- Infinite Scroll Sentinel -->

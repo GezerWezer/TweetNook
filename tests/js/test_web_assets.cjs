@@ -213,6 +213,206 @@ function immediateComponent(component) {
     return component;
 }
 
+// A minimal DOM for feed-list tests: parses the renderer's markup and supports the
+// element APIs the list code uses (tag, class, and attribute selectors, descendant
+// combinators, and selector lists).
+const VOID_TAGS = new Set(['img', 'input', 'br', 'hr', 'source', 'meta', 'link']);
+const decodeEntities = text => text.replace(/&(amp|lt|gt|quot|#0?39);/g, (_, name) => (
+    { amp: '&', lt: '<', gt: '>', quot: '"', '#039': "'", '#39': "'" }[name]
+));
+
+function splitSelector(source, separator) {
+    const parts = [''];
+    let quoted = false;
+    for (const character of source) {
+        if (character === '"') quoted = !quoted;
+        if (character === separator && !quoted) parts.push('');
+        else parts[parts.length - 1] += character;
+    }
+    return parts.map(part => part.trim()).filter(Boolean);
+}
+
+function compoundMatcher(source) {
+    const tests = [];
+    const pattern = /([a-zA-Z][\w-]*)|\.([\w-]+)|\[([^\]=]+)(?:="([^"]*)")?\]/g;
+    let match;
+    let consumed = '';
+    while ((match = pattern.exec(source))) {
+        consumed += match[0];
+        const [, tag, className, attribute, value] = match;
+        if (tag) tests.push(element => element.tagName === tag.toUpperCase());
+        else if (className) tests.push(element => element.classList.contains(className));
+        else if (value === undefined) tests.push(element => element.hasAttribute(attribute));
+        else tests.push(element => element.getAttribute(attribute) === value);
+    }
+    assert.equal(consumed, source, `unsupported selector ${source}`);
+    return element => tests.every(test => test(element));
+}
+
+function selectorMatcher(selector) {
+    const alternatives = splitSelector(selector, ',').map(part => {
+        const compounds = splitSelector(part, ' ').map(compoundMatcher);
+        return element => {
+            if (!compounds.at(-1)(element)) return false;
+            let index = compounds.length - 2;
+            for (let current = element.parentElement; current && index >= 0; current = current.parentElement) {
+                if (compounds[index](current)) index -= 1;
+            }
+            return index < 0;
+        };
+    });
+    return element => alternatives.some(matches => matches(element));
+}
+
+class FakeElement {
+    constructor(tagName, attributes = []) {
+        this.tagName = tagName.toUpperCase();
+        this.attributeMap = new Map(attributes);
+        this.childNodes = [];
+        this.parentElement = null;
+        this.listeners = [];
+        this.rect = null;
+        this.connected = false;
+    }
+
+    get children() { return this.childNodes.filter(node => node instanceof FakeElement); }
+    get firstElementChild() { return this.children[0] || null; }
+    get previousElementSibling() {
+        const siblings = this.parentElement?.children || [];
+        return siblings[siblings.indexOf(this) - 1] || null;
+    }
+    get isConnected() {
+        let node = this;
+        while (node.parentElement) node = node.parentElement;
+        return node.connected;
+    }
+    get dataset() {
+        const data = {};
+        for (const [name, value] of this.attributeMap) {
+            if (name.startsWith('data-')) data[name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
+        }
+        return data;
+    }
+    get classList() {
+        const read = () => (this.getAttribute('class') || '').split(/\s+/).filter(Boolean);
+        const write = names => this.setAttribute('class', names.join(' '));
+        return {
+            contains: name => read().includes(name),
+            add: name => { if (!read().includes(name)) write([...read(), name]); },
+            remove: name => write(read().filter(value => value !== name)),
+            toggle: (name, force) => {
+                const enable = force ?? !read().includes(name);
+                if (enable) write([...new Set([...read(), name])]);
+                else write(read().filter(value => value !== name));
+                return enable;
+            },
+        };
+    }
+    get textContent() {
+        return this.childNodes.map(node => (node instanceof FakeElement ? node.textContent : node.text)).join('');
+    }
+    set innerHTML(html) {
+        this.childNodes.forEach(node => { node.parentElement = null; });
+        this.childNodes = [];
+        this.append(parseFakeHTML(html));
+    }
+
+    getAttribute(name) { return this.attributeMap.has(name) ? this.attributeMap.get(name) : null; }
+    setAttribute(name, value) { this.attributeMap.set(name, String(value)); }
+    hasAttribute(name) { return this.attributeMap.has(name); }
+    removeAttribute(name) { this.attributeMap.delete(name); }
+    append(nodes, index = this.childNodes.length) {
+        nodes.forEach(node => { node.parentElement = this; });
+        this.childNodes.splice(index, 0, ...nodes);
+    }
+    insertAdjacentHTML(position, html) {
+        if (position === 'beforeend') return this.append(parseFakeHTML(html));
+        assert.equal(position, 'beforebegin');
+        this.parentElement.append(parseFakeHTML(html), this.parentElement.childNodes.indexOf(this));
+    }
+    remove() {
+        if (!this.parentElement) return;
+        this.parentElement.childNodes.splice(this.parentElement.childNodes.indexOf(this), 1);
+        this.parentElement = null;
+    }
+    contains(node) {
+        for (let current = node; current; current = current.parentElement) if (current === this) return true;
+        return false;
+    }
+    matches(selector) { return selectorMatcher(selector)(this); }
+    closest(selector) {
+        const matches = selectorMatcher(selector);
+        for (let current = this; current; current = current.parentElement) if (matches(current)) return current;
+        return null;
+    }
+    querySelectorAll(selector) {
+        const matches = selectorMatcher(selector);
+        const found = [];
+        const visit = element => element.children.forEach(child => {
+            if (matches(child)) found.push(child);
+            visit(child);
+        });
+        visit(this);
+        return found;
+    }
+    querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+    addEventListener(type, listener, capture = false) { this.listeners.push({ type, listener, capture }); }
+    getBoundingClientRect() { return this.rect || { top: 0, right: 0, bottom: 0, left: 0, width: 0, height: 0 }; }
+}
+
+function parseFakeHTML(html) {
+    const root = new FakeElement('root');
+    const stack = [root];
+    const token = /<!--[\s\S]*?-->|<\/([a-zA-Z][\w-]*)\s*>|<([a-zA-Z][\w-]*)((?:\s+[^\s=>\/]+(?:="[^"]*")?)*)\s*(\/?)>|([^<]+)/g;
+    let match;
+    while ((match = token.exec(html))) {
+        const [, closing, tag, attributeSource, selfClosing, text] = match;
+        const parent = stack[stack.length - 1];
+        if (text !== undefined) {
+            parent.childNodes.push({ text: decodeEntities(text) });
+        } else if (tag) {
+            const attributes = [...attributeSource.matchAll(/([^\s=>\/]+)(?:="([^"]*)")?/g)]
+                .map(([, name, value]) => [name, decodeEntities(value ?? '')]);
+            const element = new FakeElement(tag, attributes);
+            parent.append([element]);
+            if (!selfClosing && !VOID_TAGS.has(tag.toLowerCase())) stack.push(element);
+        } else if (closing) {
+            const index = stack.map(element => element.tagName).lastIndexOf(closing.toUpperCase());
+            if (index > 0) stack.length = index;
+        }
+    }
+    const nodes = root.childNodes;
+    nodes.forEach(node => { node.parentElement = null; });
+    return nodes;
+}
+
+// Dispatches to listeners on the list itself, as a delegated event arrives there.
+function dispatchFeed(list, type, target, init = {}) {
+    const event = {
+        type, target, currentTarget: list, defaultPrevented: false, propagationStopped: false,
+        stopPropagation() { this.propagationStopped = true; },
+        preventDefault() { this.defaultPrevented = true; },
+        ...init,
+    };
+    list.listeners.filter(entry => entry.type === type).forEach(entry => entry.listener(event));
+    return event;
+}
+
+function feedListApp(context = browserContext()) {
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const list = new FakeElement('div');
+    list.connected = true;
+    const area = new FakeElement('div');
+    area.rect = { top: 100, right: 700, bottom: 5000, left: 100, width: 600, height: 4900 };
+    app.$refs = { feedList: list, feedArea: area };
+    return { app, list, context };
+}
+
+const WEB_FIXTURE = JSON.parse(fs.readFileSync(
+    path.join(ROOT, 'tests', 'fixtures', 'web_raw_tweets.json'),
+    'utf8',
+));
+
 const tests = [];
 function test(name, fn) {
     tests.push({ name, fn });
@@ -629,15 +829,22 @@ test('avatar load and error state hides initials only for real images and recove
 test('all avatar templates expose load and error handling, including reply and profile initials', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const images = html.match(/<img\b[^>]*:src="avatarUrl\([^>]*>/g) || [];
-    assert.equal(images.length, 22);
+    assert.equal(images.length, 20);
     for (const image of images) {
         assert.ok(image.includes('@load="avatarLoaded($el)"'));
         assert.ok(image.includes('@error="avatarFailed($el)"'));
         assert.ok(image.includes('class="avatar-image '));
     }
     const initialPairs = html.match(/<span[^>]*x-text="(?:getInitial\([^\"]*|getQuoteAuthor\([^\"]*\.initial|profileCard\?\.initial|\(opt\.desc[^\"]*)"[^>]*><\/span>\s*<img[^>]*:src="avatarUrl/g) || [];
-    assert.equal(initialPairs.length, 18);
+    assert.equal(initialPairs.length, 16);
     for (const pair of initialPairs) assert.ok(pair.includes('class="avatar-initial"'));
+    // Feed cards (main and quote avatars) render in app.js; capture listeners on the
+    // list handle their load and error events.
+    const { app } = feedListApp();
+    const card = parseFakeHTML(app.renderFeedCard(JSON.parse(JSON.stringify(WEB_FIXTURE.slim[0]))))[0];
+    const avatars = card.querySelectorAll('img.avatar-image');
+    assert.equal(avatars.length, 2);
+    for (const avatar of avatars) assert.ok(avatar.parentElement.firstElementChild.matches('span.avatar-initial'));
 });
 
 test('lightbox navigation moves through media and clamps at both ends', () => {
@@ -1869,15 +2076,19 @@ test('tweet overflow menus are wired on list and detail surfaces', () => {
         'utf8',
     );
 
-    assert.equal((html.match(/aria-label="More actions"/g) || []).length, 3);
-    assert.match(html, /copyRawTweet\(tweet\)/);
+    // Detail surfaces keep per-tweet menus; feed cards render their button in app.js
+    // and share one Alpine menu.
+    assert.equal((html.match(/aria-label="More actions"/g) || []).length, 2);
+    assert.match(html, /copyRawTweet\(listMenu\.tweet\)/);
     assert.match(html, /copyRawTweet\(threadData\.main\)/);
     assert.match(html, /copyRawTweet\(panelThreadData\.main\)/);
-    assert.match(html, /startTweetMenuPress\(\$event, tweet\.tweet_id, tweet\.media_tags\)/);
     assert.match(html, /startTweetMenuPress\(\$event, threadData\.main\.tweet_id/);
     assert.match(html, /startTweetMenuPress\(\$event, panelThreadData\.main\.tweet_id/);
-    assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet/g) || []).length, 7);
+    assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet/g) || []).length, 6);
     assert.match(html, /x-model="editableDescription"/);
+    const { app } = feedListApp();
+    const card = app.renderFeedCard({ tweet_id: '1', text: 'x', author: { id: '2', username: 'a', display_name: 'A' } });
+    assert.match(card, /aria-label="More actions" aria-haspopup="menu" aria-expanded="false" title="More actions \(hold for Tags\)" data-action="menu"/);
 });
 
 test('thread reply surfaces render quoted tweets in both presentations', () => {
@@ -1924,7 +2135,11 @@ test('reply-recipient markup opens profile cards on every tweet surface', () => 
         'utf8',
     );
 
-    assert.equal((html.match(/openUsernameProfileCard\(\$event, getReplyTo/g) || []).length, 18);
+    assert.equal((html.match(/openUsernameProfileCard\(\$event, getReplyTo/g) || []).length, 16);
+    // Feed cards and their quotes delegate reply targets (see the feed click test).
+    const { app } = feedListApp();
+    const card = app.renderFeedCard(JSON.parse(JSON.stringify(WEB_FIXTURE.slim[4])));
+    assert.match(card, /data-action="reply-profile" data-username="frank">@frank</);
 });
 
 test('config and stats requests update their matching UI state', async () => {
@@ -3717,10 +3932,14 @@ test('tweet bylines truncate names while keeping handles and dates on one line',
 
     assert.match(css, /\.tweet-byline-name\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
     assert.match(css, /\.tweet-byline-detail\s*\{[^}]*flex-shrink:\s*0;[^}]*white-space:\s*nowrap;/s);
-    assert.match(html, /class="[^"]*tweet-byline-name[^"]*"[^>]*x-text="tweet\.author\.display_name/);
-    assert.match(html, /class="[^"]*tweet-byline-detail[^"]*" x-text="'@' \+ \(tweet\.author\.username/);
+    assert.match(html, /class="[^"]*tweet-byline-name[^"]*"[^>]*x-text="parent\.author\.display_name/);
     assert.match(html, /class="roll-wrapper[^"]*tweet-byline-detail[^"]*"/);
     assert.match(html, /class="[^"]*tweet-byline-detail[^"]*" x-text="formatDate\(threadData\.main\.created_at\)"/);
+    const { app } = feedListApp();
+    const card = parseFakeHTML(app.renderFeedCard({ tweet_id: '1', text: 'x', author: { id: '2', username: 'a', display_name: 'A' } }))[0];
+    assert.equal(card.querySelector('.tweet-byline-name').textContent, 'A');
+    assert.equal(card.querySelector('.tweet-byline-detail').textContent, '@a');
+    assert.ok(card.querySelector('.roll-wrapper').classList.contains('tweet-byline-detail'));
 });
 
 test('floating analytics, settings, and sync controls are desktop-only', () => {
@@ -4082,9 +4301,10 @@ test('feed layout hooks load early and skip off-screen work', () => {
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
     assert.ok(html.includes('x-ref="feedSentinel" x-intersect.margin.1200px="loadMore()"'));
     assert.equal((html.match(/x-intersect\.margin\.600px="if\(!(panelQ|q)uotesLoadingMore/g) || []).length, 2);
-    assert.ok(html.includes(":class=\"{ 'feed-card-active': tweetMenuOpen === 'list:' + tweet.tweet_id }\""));
-    assert.ok(html.includes(":class=\"{ 'feed-refreshing': loading && tweets.length > 0 }\""));
-    assert.match(css, /\.feed-card:not\(\.feed-card-active\) \{\s*content-visibility: auto;/);
+    assert.ok(html.includes(`<div x-ref="feedList" :class="{ 'feed-refreshing': loading && tweets.length > 0 }"></div>`));
+    // The shared menu sits outside the cards, so every card can skip off-screen work.
+    assert.match(css, /\n\.feed-card \{\s*content-visibility: auto;/);
+    assert.doesNotMatch(css + html, /feed-card-active/);
 });
 
 test('status polling pauses in hidden tabs and refreshes on return', () => {
@@ -4108,6 +4328,421 @@ test('status polling pauses in hidden tabs and refreshes on return', () => {
     context.document.hidden = false;
     context.__state.events.get('document:visibilitychange')();
     assert.equal(polls, before + 1);
+});
+
+test('feed cards render each fixture tweet shape as plain markup', () => {
+    const { app } = feedListApp();
+    const render = tweet => parseFakeHTML(app.renderFeedCard(JSON.parse(JSON.stringify(tweet))))[0];
+    WEB_FIXTURE.slim.forEach((tweet, index) => {
+        // Abbreviated list JSON renders exactly like the stored document.
+        assert.equal(
+            app.renderFeedCard(JSON.parse(JSON.stringify(tweet))),
+            app.renderFeedCard(JSON.parse(JSON.stringify(WEB_FIXTURE.full[index]))),
+            `tweet ${index}`,
+        );
+    });
+    const [quoted, rawQuoted, retweet, rawRetweet, legacy, tombstoneQuote] = WEB_FIXTURE.slim.map(render);
+
+    for (const card of [quoted, rawQuoted, retweet, rawRetweet, legacy, tombstoneQuote]) {
+        assert.ok(card.classList.contains('feed-card'));
+        assert.equal(card.dataset.action, 'thread');
+        assert.equal(card.querySelectorAll('[data-action="profile"]').length, 2);
+        assert.equal(card.querySelector('[data-action="menu"]').getAttribute('aria-expanded'), 'false');
+        assert.equal(card.querySelector('[data-action="menu"]').getAttribute('aria-label'), 'More actions');
+        assert.ok(card.querySelector('.roll-wrapper').matches('[data-action="stop"]'));
+        assert.equal(card.querySelectorAll('img.avatar-image').length, card.querySelectorAll('.avatar-initial').length);
+    }
+
+    // Quote with a visibility wrapper: reply line, Show more, link card, notes on both tweets.
+    assert.equal(quoted.dataset.tweetId, '100');
+    assert.equal(quoted.dataset.threadId, '100');
+    assert.equal(quoted.querySelector('[data-action="reply-profile"]').dataset.username, 'Dave');
+    assert.equal(quoted.querySelector('[data-action="reply-profile"]').textContent, '@Dave');
+    const quote = quoted.querySelector('[data-action="quote"]');
+    assert.equal(quote.dataset.threadId, '200');
+    assert.equal(quote.querySelector('.tweet-byline-name').textContent, 'Carol');
+    assert.equal(quote.querySelector('.tweet-byline-detail').textContent, '@carol');
+    assert.equal(quote.querySelector('.avatar-initial').textContent, 'C');
+    assert.equal(quote.querySelector('img.avatar-image').getAttribute('src'), '/api/avatar/12?v=3');
+    assert.equal(quoted.querySelectorAll('.expand-tweet').length, 1);
+    assert.equal(quoted.querySelector('.expand-tweet').closest('[data-action="text"]').closest('[data-action="quote"]'), null);
+    assert.ok(quoted.querySelector('.hashtag') && quoted.querySelector('.mention'));
+    assert.match(quoted.querySelector('[data-action="text"] a').getAttribute('href'), /^https:\/\/example\.test\/story/);
+    assert.ok(quoted.querySelector('a.mt-3').closest('[data-action="stop"]'), 'link card');
+    assert.equal(quoted.textContent.match(/Readers added context/g).length, 2);
+    assert.ok(quote.querySelector('.-mx-3').closest('[data-action="stop"]'), 'quote note');
+    assert.equal(quoted.querySelector('[data-action="text"]').getAttribute('class'), 'text-[15px] -mt-2 whitespace-pre-wrap leading-normal break-words');
+
+    // Retweets show the original under a repost header and keep the list item id.
+    for (const card of [retweet, rawRetweet]) {
+        assert.equal(card.dataset.tweetId, '301');
+        assert.equal(card.dataset.threadId, '300');
+        assert.match(card.firstElementChild.textContent, /^Alice Reposted$/);
+        assert.equal(card.querySelector('.tweet-byline-name').textContent, 'Erin');
+        assert.match(card.textContent, /40 votes · Final results/);
+    }
+    assert.equal(quoted.textContent.includes('Reposted'), false);
+
+    // Legacy v1 tweets resolve their quote and reply target from the raw shape.
+    assert.equal(legacy.querySelector('[data-action="reply-profile"]').dataset.username, 'frank');
+    assert.equal(legacy.querySelector('[data-action="quote"]').dataset.threadId, '401');
+
+    // A tombstone quote renders the compact skeleton, which does not open a thread.
+    assert.equal(tombstoneQuote.querySelector('[data-action="quote"]'), null);
+    const skeleton = tombstoneQuote.querySelector('.tweet-skeleton-compact');
+    assert.ok(skeleton.closest('[data-action="stop"]'));
+    assert.equal(skeleton.closest('.feed-card'), tombstoneQuote);
+
+    // A placeholder list item keeps the card frame with a content skeleton and no actions.
+    const placeholder = render({
+        tweet_id: '900', text: 'stale', author: { id: null, username: null, display_name: null },
+        raw_json: null, media: [], availability: { placeholder: true, reason: 'deleted_by_author', message: 'Gone.' },
+    });
+    assert.equal(placeholder.dataset.threadId, '900');
+    assert.equal(placeholder.querySelector('.tweet-byline-name').textContent, 'Unknown');
+    assert.equal(placeholder.querySelector('.avatar-initial').textContent, '?');
+    assert.ok(placeholder.querySelector('[data-action="text"] .tweet-skeleton-content'));
+    assert.equal(placeholder.textContent.includes('stale'), false);
+    assert.equal(placeholder.querySelector('a[title="Open on Twitter/X"]'), null);
+});
+
+test('feed cards escape hostile names, handles, reply targets, dates, sync labels, and ids', () => {
+    const { app } = feedListApp();
+    const hostile = '<script>alert(1)</script>"\'&x';
+    app.formatDate = () => `<img src=x onerror=alert(1)>"&`;
+    app.formatSyncDate = () => `Synced <b>"&'`;
+    const tweet = {
+        tweet_id: '1"><script>x</script>',
+        text: 'Hello',
+        author: { id: '"><img>', username: hostile, display_name: hostile },
+        collection: { synced_at: '2026-01-01T00:00:00Z' },
+        raw_json: { legacy: { in_reply_to_screen_name: hostile, full_text: 'Hello' } },
+        quoted_tweet: {
+            tweet_id: '2"><b>', text: 'Quoted',
+            author: { id: '3', username: hostile, display_name: hostile },
+            raw_json: { legacy: { in_reply_to_screen_name: hostile } },
+        },
+        retweeted_tweet: null,
+    };
+    const html = app.renderFeedCard(tweet);
+    assert.doesNotMatch(html, /<script>|<img src=x|<b>|"><img>/);
+    assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;&quot;&#039;&amp;x/);
+
+    const card = parseFakeHTML(html)[0];
+    assert.equal(card.dataset.tweetId, tweet.tweet_id);
+    assert.equal(card.querySelector('.tweet-byline-name').textContent, hostile);
+    assert.equal(card.querySelector('.tweet-byline-detail').textContent, `@${hostile}`);
+    assert.equal(card.querySelector('.avatar-initial').textContent, '<');
+    assert.equal(card.querySelector('img.avatar-image').getAttribute('src'), '/api/avatar/%22%3E%3Cimg%3E?v=3');
+    assert.equal(card.querySelector('.roll-item').textContent, '<img src=x onerror=alert(1)>"&');
+    assert.equal(card.querySelectorAll('.roll-item')[1].textContent, `Synced <b>"&'`);
+    const replies = card.querySelectorAll('[data-action="reply-profile"]');
+    assert.equal(replies.length, 2);
+    for (const reply of replies) {
+        assert.equal(reply.dataset.username, hostile);
+        assert.equal(reply.textContent, `@${hostile}`);
+    }
+    const quote = card.querySelector('[data-action="quote"]');
+    assert.equal(quote.dataset.threadId, '2"><b>');
+    assert.equal(quote.querySelector('.tweet-byline-name').textContent, hostile);
+    // The Open on X link escapes its path segments too.
+    assert.match(html, /href="https:\/\/x\.com\/&lt;script&gt;alert\(1\)&lt;\/script&gt;&quot;&#039;&amp;x\/status\/1&quot;&gt;&lt;script&gt;x&lt;\/script&gt;"/);
+
+    // Retweet headers escape the reposting account's name.
+    const repost = app.renderFeedCard({
+        tweet_id: '5', author: { display_name: hostile },
+        retweeted_tweet: { tweet_id: '6', text: 'Original', author: { id: '7', username: 'o', display_name: 'O' } },
+    });
+    assert.equal(parseFakeHTML(repost)[0].firstElementChild.textContent, `${hostile} Reposted`);
+    assert.doesNotMatch(repost, /<script>/);
+});
+
+test('feed list replaces pages, appends only new tweets, and ignores stale responses', async () => {
+    const context = browserContext();
+    const pending = [];
+    context.fetch = url => new Promise(resolve => pending.push({ url, resolve }));
+    const { app, list } = feedListApp(context);
+    const tweet = id => ({ tweet_id: id, text: `Tweet ${id}`, author: { id: '1', username: 'a', display_name: 'A' } });
+    const respond = (index, data) => pending[index].resolve({ ok: true, status: 200, json: async () => data });
+    const ids = () => list.children.map(card => card.dataset.tweetId);
+
+    const first = app.fetchTweets();
+    respond(0, { tweets: [tweet('1'), tweet('2')], page: 1, pages: 2, total: 4, has_more: true, next_cursor: 'c' });
+    await first;
+    assert.deepEqual(ids(), ['1', '2']);
+    const firstCard = list.children[0];
+
+    const more = app.loadMore();
+    respond(1, { tweets: [tweet('2'), tweet('3')], page: 2, pages: 2, total: 4, has_more: false });
+    await more;
+    assert.deepEqual(ids(), ['1', '2', '3']);
+    assert.equal(list.children[0], firstCard, 'appending keeps existing cards');
+    assert.deepEqual(Array.from(app.tweets, item => item.tweet_id), ids());
+
+    // A superseded request renders nothing; the newer list replaces the old one.
+    const stale = app.fetchTweets();
+    app.searchQuery = 'new';
+    const fresh = app.fetchTweets();
+    assert.deepEqual(ids(), ['1', '2', '3'], 'the previous list stays while loading');
+    respond(2, { tweets: [tweet('old')], page: 1, pages: 1, total: 1, has_more: false });
+    await stale;
+    assert.deepEqual(ids(), ['1', '2', '3']);
+    respond(3, { tweets: [tweet('9')], page: 1, pages: 1, total: 1, has_more: false });
+    await fresh;
+    assert.deepEqual(ids(), ['9']);
+
+    // A failed list clears the cards along with the data.
+    context.fetch = async () => ({ ok: false, status: 500, json: async () => ({ detail: 'down' }) });
+    app.searchQuery = 'broken';
+    await app.fetchTweets();
+    assert.equal(app.error, 'down');
+    assert.deepEqual(ids(), []);
+});
+
+test('feed clicks are delegated by data-action like the per-card handlers', () => {
+    const { app, list } = feedListApp();
+    const opened = [];
+    const profiles = [];
+    app.openThread = id => opened.push(id);
+    app.openProfileCard = (event, tweet, isQt, useClickedAnchor) => profiles.push({ anchor: event.currentTarget, tweet, useClickedAnchor });
+    app.tweets = WEB_FIXTURE.slim.map(tweet => JSON.parse(JSON.stringify(tweet)));
+    app.tweets.splice(1, 2);  // one copy of each shape; list ids must be unique
+    app.renderFeedList(app.tweets);
+    const [quoted, retweet, legacy, tombstoneQuote] = list.children;
+    const click = target => dispatchFeed(list, 'click', target);
+
+    // The card body opens the displayed tweet and lets the click reach the document.
+    let event = click(quoted.querySelector('[data-action="text"]'));
+    assert.deepEqual(opened, ['100']);
+    assert.equal(event.propagationStopped, false);
+    click(retweet.querySelector('.tweet-byline-detail'));
+    assert.equal(opened.at(-1), '300');
+    click(quoted.querySelector('.group svg'));  // action bar icons open the thread as before
+    assert.equal(opened.at(-1), '100');
+
+    // The quote opens the quoted thread, including from its text.
+    event = click(quoted.querySelector('[data-action="quote"] .tweet-byline-name'));
+    assert.equal(opened.at(-1), '200');
+    assert.equal(event.propagationStopped, true);
+    click(legacy.querySelector('[data-action="quote"] [data-action="text"]'));
+    assert.equal(opened.at(-1), '401');
+    const openedCount = opened.length;
+
+    // Links, media, link cards, notes, dates, and tombstone quotes never open a thread.
+    for (const target of [
+        quoted.querySelector('[data-action="text"] a'),
+        quoted.querySelector('a.mt-3 div'),
+        quoted.querySelector('img.cursor-pointer'),
+        quoted.querySelector('.roll-item'),
+        quoted.querySelector('[data-action="quote"] .-mx-3 span'),
+        tombstoneQuote.querySelector('.tweet-skeleton-message'),
+        retweet.querySelector('[data-action="stop"] .truncate'),
+        quoted.querySelector('a[title="Open on Twitter/X"] svg'),
+    ]) {
+        assert.ok(target, 'target exists');
+        event = click(target);
+        assert.equal(event.propagationStopped, true);
+    }
+    assert.equal(opened.length, openedCount);
+
+    // Avatar and name open the profile card for the displayed tweet.
+    event = click(retweet.querySelector('.avatar-initial'));
+    assert.equal(profiles.at(-1).anchor, retweet.querySelector('.avatar'));
+    assert.equal(profiles.at(-1).tweet.author.username, 'erin');
+    assert.equal(event.propagationStopped, true);
+    click(quoted.querySelector('.tweet-byline-name'));
+    assert.equal(profiles.at(-1).anchor, quoted.querySelector('.tweet-byline-name'));
+    assert.equal(profiles.at(-1).tweet.tweet_id, '100');
+
+    // Reply targets anchor the card at the clicked name.
+    click(legacy.querySelector('[data-action="reply-profile"]'));
+    assert.equal(profiles.at(-1).anchor, legacy.querySelector('[data-action="reply-profile"]'));
+    assert.equal(profiles.at(-1).tweet.author.username, 'frank');
+    assert.equal(profiles.at(-1).useClickedAnchor, true);
+
+    // Mentions anchor at the card avatar through the text element; hashtags search.
+    const textElement = quoted.querySelector('[data-action="text"]');
+    event = click(quoted.querySelector('.mention'));
+    assert.equal(profiles.at(-1).anchor, textElement);
+    assert.equal(profiles.at(-1).tweet.author.username, 'bob');
+    assert.equal(event.propagationStopped, true);
+    let searched = null;
+    app.search = () => { searched = app.searchQuery; };
+    click(quoted.querySelector('.hashtag'));
+    assert.equal(searched, '#tag');
+    assert.equal(opened.length, openedCount);
+});
+
+test('feed Show more expands text in place and tag edits re-render the card', () => {
+    const { app, list } = feedListApp();
+    app.tweets = [JSON.parse(JSON.stringify(WEB_FIXTURE.slim[0])), {
+        tweet_id: '700', text: 'Quoting a long tweet',
+        author: { id: '1', username: 'q', display_name: 'Q' },
+        quoted_tweet: { tweet_id: '100', text: 'long '.repeat(80), author: { id: '10', username: 'alice', display_name: 'Alice' } },
+    }];
+    app.renderFeedList(app.tweets);
+    const [card, quoting] = list.children;
+    const text = card.querySelector('[data-action="text"]');
+    const quotedText = quoting.querySelector('[data-action="quote"] [data-action="text"]');
+    const media = card.querySelector('img.cursor-pointer');
+    const [shortText, shortQuote] = [text.textContent.length, quotedText.textContent.length];
+    assert.ok(text.querySelector('.expand-tweet'));
+    assert.ok(quotedText.querySelector('.expand-tweet'));
+
+    const event = dispatchFeed(list, 'click', text.querySelector('.expand-tweet'));
+    assert.equal(event.propagationStopped, true);
+    assert.equal(app.expandedTweets['100'], true);
+    assert.equal(list.children[0], card, 'the card and its media stay in place');
+    assert.equal(card.querySelector('img.cursor-pointer'), media);
+    assert.equal(card.querySelector('[data-action="text"]'), text);
+    assert.equal(text.querySelector('.expand-tweet'), null);
+    assert.ok(text.textContent.length > shortText);
+    // Every copy of the tweet in the list expands, as the reactive template did.
+    assert.equal(quotedText.querySelector('.expand-tweet'), null);
+    assert.ok(quotedText.textContent.length > shortQuote);
+
+    // Tag edits replace only the matching card, at the same position.
+    const before = list.children[1];
+    app.updateTweetTagData('100', { description: 'Edited', tags: ['Night'] });
+    const replaced = list.children[0];
+    assert.notEqual(replaced, card);
+    assert.equal(card.isConnected, false);
+    assert.equal(replaced.dataset.tweetId, '100');
+    assert.equal(list.children[1], before);
+    assert.equal(app.tweets[0].media_tags.description, 'Edited');
+    assert.equal(list.children.length, 2);
+    // Expanded text survives a re-render.
+    assert.equal(replaced.querySelector('[data-action="text"] .expand-tweet'), null);
+});
+
+test('feed cards share one overflow menu placed over the opening button', async () => {
+    const context = browserContext();
+    const requests = [];
+    context.fetch = async url => { requests.push(url); return { ok: true, json: async () => ({ raw_json: { rest_id: '300', full: true } }) }; };
+    const { app, list } = feedListApp(context);
+    app.tweets = WEB_FIXTURE.slim.map(tweet => JSON.parse(JSON.stringify(tweet))).filter((_, index) => index === 0 || index === 2);
+    app.renderFeedList(app.tweets);
+    const [quoted, retweet] = list.children;
+    const button = retweet.querySelector('[data-action="menu"]');
+    button.rect = { top: 420, right: 664, bottom: 456, left: 628, width: 36, height: 36 };
+
+    let event = dispatchFeed(list, 'click', button.querySelector('circle'));
+    assert.equal(event.propagationStopped, true, 'the opening click must not count as outside');
+    assert.equal(app.tweetMenuOpen, 'list:301');
+    assert.equal(app.listMenu.key, 'list:301');
+    assert.equal(app.listMenu.tweet.tweet_id, '300');
+    assert.deepEqual([app.listMenu.top, app.listMenu.right], [320, 36]);
+    assert.equal(button.getAttribute('aria-expanded'), 'true');
+    assert.ok(button.classList.contains('opacity-0'));
+    assert.deepEqual(requests, ['/api/tweets/300/raw'], 'menus prefetch the displayed tweet');
+
+    // The menu follows its button when content above it changes height.
+    button.rect = { ...button.rect, top: 520 };
+    app.placeListMenu();
+    assert.equal(app.listMenu.top, 420);
+
+    // Another card moves the menu; the first button is restored.
+    const other = quoted.querySelector('[data-action="menu"]');
+    other.rect = { top: 150, right: 664, bottom: 186, left: 628, width: 36, height: 36 };
+    dispatchFeed(list, 'click', other);
+    assert.equal(app.tweetMenuOpen, 'list:100');
+    assert.equal(app.listMenu.top, 50);
+    assert.equal(button.getAttribute('aria-expanded'), 'false');
+    assert.equal(button.classList.contains('opacity-0'), false);
+    assert.equal(other.getAttribute('aria-expanded'), 'true');
+
+    // Detail menus and unrelated keys leave it open; its own key and the same button close it.
+    app.closeTweetMenu('detail:100');
+    assert.equal(app.tweetMenuOpen, 'list:100');
+    dispatchFeed(list, 'click', other);
+    assert.equal(app.tweetMenuOpen, null);
+    assert.equal(other.getAttribute('aria-expanded'), 'false');
+    dispatchFeed(list, 'click', other);
+    app.closeTweetMenu(app.listMenu.key);
+    assert.equal(app.tweetMenuOpen, null);
+    assert.equal(other.classList.contains('opacity-0'), false);
+
+    // A re-rendered card keeps the open state on its new button.
+    dispatchFeed(list, 'click', button);
+    app.updateTweetTagData('300', null);
+    const rerendered = list.children[1].querySelector('[data-action="menu"]');
+    assert.notEqual(rerendered, button);
+    assert.equal(rerendered.getAttribute('aria-expanded'), 'true');
+    assert.ok(rerendered.classList.contains('opacity-0'));
+
+    // Menu items act on the stored display tweet; a new list closes the menu.
+    let tags = null;
+    app.openTagModal = (id, data) => { tags = [id, data]; app.closeTweetMenu(); };
+    app.openTagsFromTweetMenu(app.listMenu.tweet.tweet_id, app.listMenu.tweet.media_tags);
+    assert.deepEqual(tags, ['300', null]);
+    dispatchFeed(list, 'click', list.children[1].querySelector('[data-action="menu"]'));
+    assert.equal(app.tweetMenuOpen, 'list:301');
+    app.renderFeedList(app.tweets);
+    assert.equal(app.tweetMenuOpen, null);
+    const reloaded = list.children[1].querySelector('[data-action="menu"]');
+    assert.equal(reloaded.getAttribute('aria-expanded'), 'false');
+    assert.equal(reloaded.classList.contains('opacity-0'), false);
+
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const menu = html.slice(html.indexOf('x-show="tweetMenuOpen === listMenu.key"'));
+    assert.match(menu, /^x-show="tweetMenuOpen === listMenu\.key" x-cloak/);
+    assert.match(menu, /@click\.outside="closeTweetMenu\(listMenu\.key\)" @keydown\.escape\.window="closeTweetMenu\(listMenu\.key\)"/);
+    assert.match(menu, /:style="\{ top: listMenu\.top \+ 'px', right: listMenu\.right \+ 'px' \}"/);
+    assert.match(menu, /x-transition:enter="transition ease-out duration-100"/);
+    assert.match(menu, /@click\.stop="openTagsFromTweetMenu\(listMenu\.tweet\.tweet_id, listMenu\.tweet\.media_tags\)"/);
+    assert.match(menu, /@click\.stop="copyRawTweet\(listMenu\.tweet\)"/);
+});
+
+test('feed overflow buttons keep the long-press Tags shortcut and avatars their load state', () => {
+    const context = browserContext();
+    const timers = [];
+    context.setTimeout = (callback, delay) => { timers.push({ callback, delay }); return timers.length; };
+    context.clearTimeout = id => { if (timers[id - 1]) timers[id - 1].cleared = true; };
+    const { app, list } = feedListApp(context);
+    app.tweets = [JSON.parse(JSON.stringify(WEB_FIXTURE.slim[2]))];
+    app.tweets[0].retweeted_tweet.media_tags = { description: 'Kept', tags: ['Poll'] };
+    app.renderFeedList(app.tweets);
+    const card = list.children[0];
+    const button = card.querySelector('[data-action="menu"]');
+    const icon = button.querySelector('svg');
+
+    const down = dispatchFeed(list, 'pointerdown', icon, { pointerType: 'touch', button: 0 });
+    assert.equal(down.propagationStopped, true, 'pressing the button does not prefetch the thread');
+    const press = timers.at(-1);
+    assert.equal(press.delay, 1000);
+    press.callback();
+    assert.equal(app.tagModalOpen, true);
+    assert.equal(app.tagModalTweetId, '300');
+    assert.equal(app.tagModalData.description, 'Kept');
+    // The click that ends a long press does not open the menu.
+    dispatchFeed(list, 'click', button);
+    assert.equal(app.tweetMenuOpen, null);
+
+    for (const type of ['pointerup', 'pointercancel']) {
+        dispatchFeed(list, 'pointerdown', button, { pointerType: 'mouse', button: 0 });
+        const event = dispatchFeed(list, type, icon);
+        assert.equal(event.propagationStopped, true);
+        assert.equal(timers.at(-1).cleared, true, type);
+    }
+    dispatchFeed(list, 'pointerdown', button, { pointerType: 'touch', button: 0 });
+    dispatchFeed(list, 'pointerleave', icon);
+    assert.equal(timers.at(-1).cleared, undefined, 'leaving a child does not cancel');
+    dispatchFeed(list, 'pointerleave', button);
+    assert.equal(timers.at(-1).cleared, true);
+    assert.equal(dispatchFeed(list, 'contextmenu', icon).defaultPrevented, true);
+    assert.equal(dispatchFeed(list, 'contextmenu', card).defaultPrevented, false);
+    assert.equal(dispatchFeed(list, 'pointerdown', card, { pointerType: 'mouse', button: 0 }).propagationStopped, false);
+    assert.ok(list.listeners.some(entry => entry.type === 'pointerleave' && entry.capture));
+
+    // Image load and error events do not bubble; capture listeners handle avatars only.
+    const avatar = card.querySelector('img.avatar-image');
+    avatar.naturalWidth = 48;
+    dispatchFeed(list, 'load', avatar);
+    assert.ok(avatar.classList.contains('avatar-image-loaded'));
+    assert.ok(avatar.parentElement.classList.contains('avatar-loaded'));
+    dispatchFeed(list, 'error', avatar);
+    assert.equal(avatar.parentElement.classList.contains('avatar-loaded'), false);
+    assert.ok(['load', 'error'].every(type => list.listeners.find(entry => entry.type === type).capture));
 });
 
 async function main() {
