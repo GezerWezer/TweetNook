@@ -181,6 +181,47 @@ body {
     line-height: 24px;
 }
 
+.tweet-timestamp {
+    padding: 16px 0;
+    line-height: 20px;
+}
+
+.tweet-timestamp .roll-wrapper,
+.tweet-timestamp .roll-item {
+    height: 20px;
+}
+
+.tweet-actions {
+    height: 20px;
+}
+
+.tweet-actions svg {
+    width: 18.75px;
+    height: 18.75px;
+    flex-shrink: 0;
+}
+
+.tweet-action-count {
+    padding: 0 4px;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 16px;
+}
+
+.tweet-actions-main {
+    height: 48px;
+    padding: 0 4px;
+}
+
+.tweet-actions-main svg {
+    width: 22.5px;
+    height: 22.5px;
+}
+
+[data-thread-main]:has(.tweet-actions-main) {
+    padding-bottom: 0;
+}
+
 /* ── Missing tweet skeletons ─────────────────────────────────────── */
 
 .tweet-skeleton {
