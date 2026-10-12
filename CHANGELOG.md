@@ -3,6 +3,51 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning while it is in the `0.x` series.
 
+## [0.3.0] - 2026-10-12
+
+### Added
+
+- Added `sync.reply_linked_depth` (`--reply-linked-depth`,
+  `TWEETNOOK_REPLY_LINKED_DEPTH`) to optionally fetch statuses quoted or linked
+  by other people's replies in saved conversations, one hop only.
+- Followed links and quotes in a saved author's own thread, with
+  `sync.max_linked_depth` now a safety cap defaulting to `50`.
+- Showed the newest captured profile on profile cards, with arrows to step
+  through older captures, and resolved @mention cards through saved tweets.
+- Tucked mention-only replies behind **Show other replies** in threads.
+- Bolded matching query text in search results.
+- Showed media quoting media as compact quotes with tiled thumbnails, and
+  nested a quote's own quote like X.
+
+### Changed
+
+- Rebuilt Analytics in the background when the archive opens and once a day at
+  `web.analytics_refresh_time` (default 05:00 local) instead of on read.
+- Aligned tweet typography, author rows, action rows, quote cards, media frames,
+  badges, community notes, and thread reply connectors more closely with X.
+
+### Fixed
+
+- Kept Web requests responsive while Analytics collects.
+- Showed exact search totals without delaying results.
+- Matched partial fragments in tag autocomplete.
+- Formatted `is:hidden` as a valid search capsule.
+- Refreshed feed results after a profile search.
+- Ignored hidden thread scroll anchors and kept narrow tweet bylines clear of
+  menus.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff format --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync pytest -q`
+- `node --test tests/js/test_web_assets.cjs`
+- `node --test tests/js/test_demo_api.cjs`
+- `git diff --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv build /tmp/tweetnook-release-source-0.3.0 --out-dir /tmp/tweetnook-release-0.3.0`
+- `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools uvx --from twine twine check /tmp/tweetnook-release-0.3.0/tweetnook-0.3.0.tar.gz /tmp/tweetnook-release-0.3.0/tweetnook-0.3.0-py3-none-any.whl`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --isolated --no-project --with /tmp/tweetnook-release-0.3.0/tweetnook-0.3.0-py3-none-any.whl -- tweetnook --help`
+
 ## [0.2.0] - 2026-10-11
 
 ### Added
@@ -366,6 +411,7 @@ semantic-style versioning while it is in the `0.x` series.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[0.3.0]: https://github.com/gezerwezer/tweetnook/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/gezerwezer/tweetnook/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/gezerwezer/tweetnook/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/gezerwezer/tweetnook/compare/v0.1.6...v0.1.7
