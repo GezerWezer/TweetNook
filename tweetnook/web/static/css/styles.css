@@ -2290,12 +2290,14 @@ body {
 .quote-compact > .quote-text {
     grid-column: 2;
     grid-row: 3;
-    margin-top: 8px;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 4;
     line-clamp: 4;
     overflow: hidden;
+}
+.quote-compact:not(:has(> .quote-reply)) > .quote-text {
+    margin-top: 8px;
 }
 .quote-thumbnail {
     position: relative;
