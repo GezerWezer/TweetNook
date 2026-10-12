@@ -2841,6 +2841,8 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     for (const main of ['threadData?.main', 'panelThreadData?.main']) {
         const mainQuote = html.split(`:data-thread-id="getTweetId(getQuoteTweet(${main}))"`)[0].split('\n').at(-1);
         assert.match(mainQuote, /class="quote-card quote-card-detail /);
+        const mediaOwner = main === 'threadData?.main' ? 'threadData' : 'panelThreadData';
+        assert.ok(html.includes(`class="main-tweet-quote" :class="{ 'main-tweet-quote-after-single-media': (${mediaOwner}.main.media || []).length === 1 }"`));
         assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media)" @click.stop></div>`));
     }
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
@@ -3136,6 +3138,7 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
         },
     ]);
     assert.match(photo, /aspect-ratio: 2/);
+    assert.match(photo, /width: min\(100%, calc\(510px \* 2\)\); aspect-ratio: 2; max-height: 510px;/);
     assert.match(photo, /<img src="\/media\/a.jpg"/);
 
     const video = app.renderMediaGrid([

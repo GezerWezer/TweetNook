@@ -5283,8 +5283,8 @@ function tweetApp() {
                 const { src, poster, type, isGif, isShort } = item;
                 const aspect = allMedia[0].m.width && allMedia[0].m.height ? (allMedia[0].m.width / allMedia[0].m.height) : 0;
                 const containerStyle = aspect 
-                    ? `width: min(100%, calc(512px * ${aspect})); aspect-ratio: ${aspect}; max-height: 512px;`
-                    : 'width: 100%; max-height: 512px; aspect-ratio: 16/9;';
+                    ? `width: min(100%, calc(510px * ${aspect})); aspect-ratio: ${aspect}; max-height: 510px;`
+                    : 'width: 100%; max-height: 510px; aspect-ratio: 16/9;';
 
                 if (!src) {
                     return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block" style="${containerStyle}" @click.stop>

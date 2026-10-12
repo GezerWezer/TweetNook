@@ -377,7 +377,7 @@
 
                         <!-- Quote Tweet -->
                         <template x-if="getQuoteTweet(threadData?.main)">
-                            <div>
+                            <div class="main-tweet-quote" :class="{ 'main-tweet-quote-after-single-media': (threadData.main.media || []).length === 1 }">
                                 <template x-if="isTombstone(getQuoteTweet(threadData?.main))">
                                     <div x-html="renderQuotePlaceholder(getQuoteTweet(threadData?.main))" @click.stop></div>
                                 </template>
@@ -804,7 +804,7 @@
 
                         <!-- Quote Tweet -->
                         <template x-if="getQuoteTweet(panelThreadData?.main)">
-                            <div>
+                            <div class="main-tweet-quote" :class="{ 'main-tweet-quote-after-single-media': (panelThreadData.main.media || []).length === 1 }">
                                 <template x-if="isTombstone(getQuoteTweet(panelThreadData?.main))">
                                     <div x-html="renderQuotePlaceholder(getQuoteTweet(panelThreadData?.main))" @click.stop></div>
                                 </template>
