@@ -13,6 +13,7 @@ from tweetnook.extractor import (
     extract_tweet_unavailability_detail,
     unwrap_tweet_result,
 )
+from tweetnook.media_metadata import aspect_ratio_for_media
 
 UNAVAILABLE_MESSAGES = {
     "protected_account": "This tweet is from a protected account.",
@@ -226,8 +227,8 @@ def _legacy_target_id(raw: dict[str, Any] | None, relation_type: str) -> str | N
     return str(value) if value else None
 
 
-def _media_payload(row: dict[str, Any]) -> dict[str, Any]:
-    return {
+def _media_payload(row: dict[str, Any], raw_tweet: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = {
         "type": row.get("media_type"),
         "url": row.get("media_url"),
         "thumbnail_url": row.get("thumbnail_url"),
@@ -239,6 +240,10 @@ def _media_payload(row: dict[str, Any]) -> dict[str, Any]:
             "thumbnail_local_path": row.get("thumbnail_local_path"),
         },
     }
+    aspect_ratio = aspect_ratio_for_media(raw_tweet, row.get("position"), row.get("media_type"))
+    if aspect_ratio is not None:
+        payload["aspect_ratio"] = aspect_ratio
+    return payload
 
 
 def _raw_media_payloads(raw: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -252,24 +257,26 @@ def _raw_media_payloads(raw: dict[str, Any] | None) -> list[dict[str, Any]]:
         return []
 
     media: list[dict[str, Any]] = []
-    for item in raw_media:
+    for position, item in enumerate(raw_media):
         if not isinstance(item, dict):
             continue
         original = item.get("original_info") or {}
         large = (item.get("sizes") or {}).get("large") or {}
         video_info = item.get("video_info") or {}
-        media.append(
-            {
-                "type": item.get("type"),
-                "width": original.get("width") or large.get("w"),
-                "height": original.get("height") or large.get("h"),
-                "duration_millis": video_info.get("duration_millis"),
-                "download": {
-                    "local_path": None,
-                    "thumbnail_local_path": None,
-                },
-            }
-        )
+        payload = {
+            "type": item.get("type"),
+            "width": original.get("width") or large.get("w"),
+            "height": original.get("height") or large.get("h"),
+            "duration_millis": video_info.get("duration_millis"),
+            "download": {
+                "local_path": None,
+                "thumbnail_local_path": None,
+            },
+        }
+        aspect_ratio = aspect_ratio_for_media(raw, position, item.get("type"))
+        if aspect_ratio is not None:
+            payload["aspect_ratio"] = aspect_ratio
+        media.append(payload)
     return media
 
 
@@ -421,6 +428,7 @@ def _attach_targets(
         attached_ids,
         columns=[
             "tweet_id",
+            "position",
             "media_type",
             "media_url",
             "thumbnail_url",
@@ -434,7 +442,7 @@ def _attach_targets(
     media_by_id: dict[str, list[dict[str, Any]]] = {}
     for row in media_rows:
         if row.get("tweet_id"):
-            media_by_id.setdefault(str(row["tweet_id"]), []).append(_media_payload(row))
+            media_by_id.setdefault(str(row["tweet_id"]), []).append(row)
     tag_rows = store._rows_for_values(
         "media_tag", "tweet_id", attached_ids, columns=["tweet_id", "raw_json"]
     )
@@ -481,7 +489,12 @@ def _attach_targets(
                 attached["raw_json"] = None
                 attached["media"] = []
             elif target_id and media_by_id.get(target_id):
-                attached["media"] = media_by_id[target_id][:10]
+                media_source_raw = _json_dict((target_object or {}).get("raw_json"))
+                if media_source_raw is None:
+                    media_source_raw = attached.get("raw_json")
+                attached["media"] = [
+                    _media_payload(row, media_source_raw) for row in media_by_id[target_id][:10]
+                ]
             if target_id:
                 attached["media_tags"] = tags_by_id.get(target_id)
             tweet[field_name] = attached

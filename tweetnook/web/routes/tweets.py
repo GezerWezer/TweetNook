@@ -10,6 +10,7 @@ from fastapi.responses import Response
 
 from tweetnook import fastjson
 from tweetnook.export.common import normalize_collection_name
+from tweetnook.media_metadata import aspect_ratio_for_media
 from tweetnook.search import (
     SearchCursorExpiredError,
     SearchQueryError,
@@ -376,6 +377,7 @@ def api_tweet_thread(
             expr=f"record_type = 'media' AND tweet_id IN ({id_list})",
             cols=[
                 "tweet_id",
+                "position",
                 "media_type",
                 "media_url",
                 "thumbnail_url",
@@ -445,6 +447,26 @@ def api_tweet_thread(
             if row.get("tweet_id"):
                 media_by_tweet_id.setdefault(row["tweet_id"], []).append(row)
 
+        def thread_media_payload(row, raw_tweet):
+            payload = {
+                "type": row.get("media_type"),
+                "url": row.get("media_url"),
+                "thumbnail_url": row.get("thumbnail_url"),
+                "width": row.get("width"),
+                "height": row.get("height"),
+                "duration_millis": row.get("duration_millis"),
+                "download": {
+                    "local_path": row.get("local_path"),
+                    "thumbnail_local_path": row.get("thumbnail_local_path"),
+                },
+            }
+            aspect_ratio = aspect_ratio_for_media(
+                raw_tweet, row.get("position"), row.get("media_type")
+            )
+            if aspect_ratio is not None:
+                payload["aspect_ratio"] = aspect_ratio
+            return payload
+
         formatted = {}
         for obj in objs:
             tid = obj["tweet_id"]
@@ -462,21 +484,7 @@ def api_tweet_thread(
                 },
                 "created_at": obj.get("created_at"),
                 "synced_at": obj.get("synced_at"),
-                "media": [
-                    {
-                        "type": m.get("media_type"),
-                        "url": m.get("media_url"),
-                        "thumbnail_url": m.get("thumbnail_url"),
-                        "width": m.get("width"),
-                        "height": m.get("height"),
-                        "duration_millis": m.get("duration_millis"),
-                        "download": {
-                            "local_path": m.get("local_path"),
-                            "thumbnail_local_path": m.get("thumbnail_local_path"),
-                        },
-                    }
-                    for m in t_media
-                ],
+                "media": [thread_media_payload(m, raw_json) for m in t_media],
                 "raw_json": raw_json,
                 "qt_media": [],
                 "qt_media_tags": None,
@@ -506,19 +514,7 @@ def api_tweet_thread(
                 "created_at": membership.get("created_at"),
                 "synced_at": membership.get("synced_at"),
                 "media": [
-                    {
-                        "type": item.get("media_type"),
-                        "url": item.get("media_url"),
-                        "thumbnail_url": item.get("thumbnail_url"),
-                        "width": item.get("width"),
-                        "height": item.get("height"),
-                        "duration_millis": item.get("duration_millis"),
-                        "download": {
-                            "local_path": item.get("local_path"),
-                            "thumbnail_local_path": item.get("thumbnail_local_path"),
-                        },
-                    }
-                    for item in media_by_tweet_id.get(tid, [])
+                    thread_media_payload(item, raw_json) for item in media_by_tweet_id.get(tid, [])
                 ],
                 "raw_json": raw_json,
                 "qt_media": [],

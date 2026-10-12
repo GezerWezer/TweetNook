@@ -215,7 +215,10 @@ def test_raw_media_and_unfetched_quote_get_presentation_placeholders(tmp_path) -
                         {
                             "type": "animated_gif",
                             "original_info": {"width": 640, "height": 360},
-                            "video_info": {"duration_millis": 2400},
+                            "video_info": {
+                                "duration_millis": 2400,
+                                "aspect_ratio": [3, 4],
+                            },
                         }
                     ]
                 },
@@ -240,6 +243,7 @@ def test_raw_media_and_unfetched_quote_get_presentation_placeholders(tmp_path) -
             "height": 360,
             "duration_millis": 2400,
             "download": {"local_path": None, "thumbnail_local_path": None},
+            "aspect_ratio": [3, 4],
         }
     ]
     quote = tweet["quoted_tweet"]
@@ -260,7 +264,22 @@ def test_quotes_attach_their_own_quote_one_level_deeper(tmp_path) -> None:
                 tweet_id="stored-nested",
                 text="stored nested text",
                 author_username="carol",
-                raw_json=json.dumps({"rest_id": "stored-nested", "legacy": {}}),
+                raw_json=json.dumps(
+                    {
+                        "rest_id": "stored-nested",
+                        "legacy": {
+                            "extended_entities": {
+                                "media": [
+                                    {
+                                        "type": "video",
+                                        "original_info": {"width": 1600, "height": 900},
+                                        "video_info": {"aspect_ratio": [3, 4]},
+                                    }
+                                ]
+                            }
+                        },
+                    }
+                ),
                 enrichment_state="done",
             ),
             store._record(
@@ -268,7 +287,10 @@ def test_quotes_attach_their_own_quote_one_level_deeper(tmp_path) -> None:
                 record_type="media",
                 tweet_id="stored-nested",
                 media_key="m1",
-                media_type="photo",
+                media_type="video",
+                width=1600,
+                height=900,
+                duration_millis=1200,
                 local_path="media/nested.jpg",
                 position=0,
             ),
@@ -317,6 +339,7 @@ def test_quotes_attach_their_own_quote_one_level_deeper(tmp_path) -> None:
     stored = by_id["quoted_tweet"]["quoted_tweet"]
     assert (stored["text"], stored["author"]["username"]) == ("stored nested text", "carol")
     assert by_id["quoted_tweet"]["qt_media"][0]["download"]["local_path"] == "media/nested.jpg"
+    assert by_id["quoted_tweet"]["qt_media"][0]["aspect_ratio"] == [3, 4]
     retweet_quote = retweet["retweeted_tweet"]["quoted_tweet"]
     assert retweet_quote["quoted_tweet"]["tweet_id"] == "deepest-3"
 

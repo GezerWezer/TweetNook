@@ -29,6 +29,7 @@ from tweetnook.extractor import (
     extract_status_id_from_url,
     extract_thread_objects,
 )
+from tweetnook.media_metadata import aspect_ratio_for_media
 from tweetnook.utils import utc_now
 
 if TYPE_CHECKING:
@@ -3395,9 +3396,11 @@ class ArchiveStore:
         reply_ids = {str(row[0]) for row in rows if not row[1]}
         return self_thread_ids, reply_ids
 
-    def _serialize_media_row(self, row: dict[str, Any]) -> dict[str, Any]:
+    def _serialize_media_row(
+        self, row: dict[str, Any], raw_tweet: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         variants = fastjson.loads(row["variants_json"]) if row.get("variants_json") else []
-        return {
+        payload = {
             "media_key": row.get("media_key"),
             "type": row.get("media_type"),
             "source": row.get("source"),
@@ -3423,6 +3426,10 @@ class ArchiveStore:
                 "error": row.get("download_error"),
             },
         }
+        aspect_ratio = aspect_ratio_for_media(raw_tweet, row.get("position"), row.get("media_type"))
+        if aspect_ratio is not None:
+            payload["aspect_ratio"] = aspect_ratio
+        return payload
 
     def _serialize_article_row(self, row: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -3770,6 +3777,17 @@ class ArchiveStore:
         url_rows = self._rows_for_values("url", "url_hash", url_hashes, columns=url_cols)
 
         media_by_tweet: dict[str, list[dict[str, Any]]] = {}
+        raw_tweet_by_id: dict[str, dict[str, Any]] = {}
+        for row in sorted_rows:
+            raw_json = row.get("raw_json")
+            if not isinstance(raw_json, str) or not raw_json:
+                continue
+            try:
+                raw_tweet = fastjson.loads(raw_json)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(raw_tweet, dict) and row.get("tweet_id"):
+                raw_tweet_by_id[row["tweet_id"]] = raw_tweet
         for row in sorted(
             media_rows,
             key=lambda item: (
@@ -3777,7 +3795,9 @@ class ArchiveStore:
                 item.get("position") if item.get("position") is not None else 1_000_000,
             ),
         ):
-            media_by_tweet.setdefault(row["tweet_id"], []).append(self._serialize_media_row(row))
+            media_by_tweet.setdefault(row["tweet_id"], []).append(
+                self._serialize_media_row(row, raw_tweet_by_id.get(row["tweet_id"]))
+            )
 
         articles_by_tweet = {
             row["tweet_id"]: self._serialize_article_row(row)
