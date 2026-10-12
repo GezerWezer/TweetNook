@@ -2269,7 +2269,7 @@ body {
    (link card, note) follow at full width. */
 .quote-compact {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: calc((100% + 12px) / 5) minmax(0, 1fr);
     grid-template-rows: auto auto 1fr;
     column-gap: 12px;
     align-items: start;
@@ -2280,14 +2280,17 @@ body {
 .quote-compact > .quote-media {
     grid-column: 1;
     grid-row: 2 / span 2;
+    margin-top: 4px;
 }
 .quote-compact > .quote-reply {
     grid-column: 2;
     grid-row: 2;
+    margin-top: 4px;
 }
 .quote-compact > .quote-text {
     grid-column: 2;
     grid-row: 3;
+    margin-top: 8px;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 4;
@@ -2306,6 +2309,12 @@ body {
     border-radius: 12px;
     color: var(--text-secondary);
     background: var(--bg-secondary);
+}
+.quote-compact .quote-thumbnail {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    border-radius: 16px;
 }
 .quote-thumbnail img,
 .quote-thumbnail video {

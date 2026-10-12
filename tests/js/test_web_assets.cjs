@@ -2886,6 +2886,10 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     assert.equal((html.match(/renderMediaGrid\((?:threadData|panelThreadData)\.main\.media, 'detail'\)/g) || []).length, 2);
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
     assert.match(css, /\.quote-compact > \.quote-text \{[^}]*-webkit-line-clamp: 4;/);
+    assert.match(css, /\.quote-compact \{[^}]*grid-template-columns: calc\(\(100% \+ 12px\) \/ 5\) minmax\(0, 1fr\);/);
+    assert.match(css, /\.quote-compact > \.quote-media \{[^}]*margin-top: 4px;/);
+    assert.match(css, /\.quote-compact > \.quote-text \{[^}]*margin-top: 8px;/);
+    assert.match(css, /\.quote-compact \.quote-thumbnail \{[^}]*width: 100%;[^}]*aspect-ratio: 1;[^}]*border-radius: 16px;/);
     assert.match(css, /\.quote-compact > \.quote-reply \{[^}]*grid-row: 2;/);
     assert.match(css, /\.quote-thumbnail-cell:first-child:nth-last-child\(3\) \{[^}]*grid-row: span 2;/);
     assert.match(css, /\.quote-card:not\(\.quote-compact\) > \.quote-media:not\(:empty\) \{[^}]*margin: 16px -12px 0;/);
