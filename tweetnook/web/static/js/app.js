@@ -2775,11 +2775,18 @@ function tweetApp() {
         keepThreadMainInPlace(panel, update) {
             const root = panel ? this.$refs?.detailPanel : globalThis.document;
             const main = () => root?.querySelector?.(`[data-thread-main="${panel ? 'panel' : 'page'}"]`);
-            const before = main()?.getBoundingClientRect().top;
+            const visibleTop = () => {
+                const element = main();
+                if (!element || !element.getClientRects?.().length) return undefined;
+                const rect = element.getBoundingClientRect?.();
+                if (!rect || rect.width <= 0 || rect.height <= 0) return undefined;
+                return rect.top;
+            };
+            const before = visibleTop();
             update();
             if (before === undefined) return;
             this.$nextTick(() => {
-                const after = main()?.getBoundingClientRect().top;
+                const after = visibleTop();
                 if (after === undefined || after === before) return;
                 if (panel) root.scrollTop += after - before;
                 else window.scrollBy(0, after - before);
