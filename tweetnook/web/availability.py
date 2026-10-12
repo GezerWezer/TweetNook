@@ -499,6 +499,7 @@ def _attach_targets(
 _USER_FIELDS = ("name", "screen_name", "id_str", "description", "followers_count", "friends_count")
 _LEGACY_FIELDS = (
     "full_text",
+    "display_text_range",
     "created_at",
     "in_reply_to_status_id_str",
     "in_reply_to_screen_name",
@@ -563,6 +564,7 @@ def slim_raw_tweet(raw: Any) -> Any:
                 for key, fields in (
                     ("urls", ("url", "expanded_url", "display_url")),
                     ("media", ("url",)),
+                    ("user_mentions", ("screen_name", "indices")),
                 )
                 if key in entities
             }

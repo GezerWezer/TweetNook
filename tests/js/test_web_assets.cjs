@@ -2476,11 +2476,116 @@ test('reply-recipient markup opens profile cards on every tweet surface', () => 
         'utf8',
     );
 
-    assert.equal((html.match(/openUsernameProfileCard\(\$event, getReplyTo/g) || []).length, 16);
+    assert.equal((html.match(/renderReplyRecipientContent\(/g) || []).length, 16);
+    assert.equal((html.match(/getReplyRecipients\(child\)\.length > 1 \|\|/g) || []).length, 2);
+    assert.equal((html.match(/threadData\.parents\.length === 0/g) || []).length, 1);
+    assert.equal((html.match(/panelThreadData\.parents\.length === 0/g) || []).length, 1);
     // Feed cards and their quotes delegate reply targets (see the feed click test).
     const { app } = feedListApp();
     const card = app.renderFeedCard(JSON.parse(JSON.stringify(WEB_FIXTURE.slim[4])));
     assert.match(card, /data-action="reply-profile" data-username="frank">@frank</);
+});
+
+test('reply recipients use only the captured automatic prefix and retain safe labels', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const makeReply = (text, prefix, primary, mentions = null) => ({
+        text,
+        raw_json: { legacy: {
+            full_text: text,
+            in_reply_to_status_id_str: 'parent',
+            in_reply_to_screen_name: primary,
+            ...(prefix === null ? {} : { display_text_range: [prefix, text.length] }),
+            ...(mentions === null ? {} : { entities: { user_mentions: mentions } }),
+        } },
+    });
+    const mention = (text, name) => {
+        const start = text.indexOf(`@${name}`);
+        return { screen_name: name, indices: [start, start + name.length + 1] };
+    };
+    const twoText = '@first @second body @bodymention';
+    const two = makeReply(twoText, '@first @second '.length, 'first', [mention(twoText, 'bodymention'), mention(twoText, 'second'), mention(twoText, 'first')]);
+    assert.deepEqual(Array.from(app.getReplyRecipients(two)), ['first', 'second']);
+    assert.match(app.renderReplyRecipients(two), /Replying to .*@first<\/span> and .*@second<\/span>/);
+    assert.match(app.formatText(two), /^body <span[^>]+>@bodymention<\/span>$/);
+    const malformedIndices = makeReply(twoText, '@first @second '.length, 'first', [
+        { screen_name: 'first', indices: { start: 0, end: 6 } },
+        { screen_name: 'second', indices: 7 },
+    ]);
+    assert.deepEqual(Array.from(app.getReplyRecipients(malformedIndices)), ['first', 'second']);
+
+    const threeText = '@first @second @third body';
+    const three = makeReply(threeText, '@first @second @third '.length, 'first', [
+        mention(threeText, 'first'), mention(threeText, 'second'), mention(threeText, 'third'),
+    ]);
+    assert.deepEqual(Array.from(app.getReplyRecipients(three)), ['first', 'second', 'third']);
+    assert.match(app.renderReplyRecipients(three), /@first<\/span> .*@second<\/span> and .*@third<\/span>/);
+
+    const duplicateText = '@FIRST @second @first body';
+    const duplicates = makeReply(duplicateText, '@FIRST @second @first '.length, 'SECOND', [
+        mention(duplicateText, 'FIRST'), mention(duplicateText, 'second'), mention(duplicateText, 'first'),
+    ]);
+    assert.deepEqual(Array.from(app.getReplyRecipients(duplicates)), ['FIRST', 'second']);
+    assert.equal(app.getReplyTo(duplicates), 'SECOND', 'primary reply target compatibility');
+
+    const bodyLeading = makeReply('@body is intentional', 0, 'primary', []);
+    assert.deepEqual(Array.from(app.getReplyRecipients(bodyLeading)), ['primary']);
+    assert.match(app.formatText(bodyLeading), /^<span[^>]+>@body<\/span> is intentional$/);
+    assert.deepEqual(Array.from(app.getReplyRecipients({ text: '@ordinary mention', raw_json: { legacy: { full_text: '@ordinary mention' } } })), []);
+    const nonReply = {
+        text: '@ordinary @body',
+        raw_json: { legacy: {
+            full_text: '@ordinary @body', display_text_range: ['@ordinary '.length, 14],
+            entities: { user_mentions: [mention('@ordinary @body', 'ordinary')] },
+        } },
+    };
+    assert.deepEqual(Array.from(app.getReplyRecipients(nonReply)), []);
+
+    const legacy = makeReply('@old @primary body @notrecipient', null, 'primary');
+    assert.deepEqual(Array.from(app.getReplyRecipients(legacy)), ['old', 'primary']);
+    assert.match(app.formatText(legacy), /^body <span[^>]+>@notrecipient<\/span>$/);
+    const nameOnlyFlat = {
+        text: '@old @primary body',
+        raw_json: { full_text: '@old @primary body', in_reply_to_screen_name: 'primary' },
+    };
+    assert.equal(app.formatText(nameOnlyFlat), 'body', 'screen-name-only flat replies use the legacy prefix fallback');
+    const normalizedSource = {
+        text: '@body has an intentional leading mention',
+        raw_json: { legacy: {
+            full_text: '@first @second @body has an intentional leading mention',
+            display_text_range: ['@first @second '.length, '@first @second @body has an intentional leading mention'.length],
+            in_reply_to_status_id_str: 'parent',
+            in_reply_to_screen_name: 'first',
+        } },
+    };
+    assert.match(app.formatText(normalizedSource), /^<span[^>]+>@body<\/span> has an intentional leading mention$/,
+        'valid raw offsets do not strip a normalized source that has a different prefix');
+    assert.deepEqual(Array.from(app.getReplyRecipients({ legacy: three.raw_json.legacy })), ['first', 'second', 'third'], 'flat raw shape');
+    assert.deepEqual(Array.from(app.getReplyRecipients({
+        full_text: threeText,
+        display_text_range: three.raw_json.legacy.display_text_range,
+        in_reply_to_status_id_str: 'parent',
+        in_reply_to_screen_name: 'first',
+    })), ['first', 'second', 'third'], 'flat raw with missing mention entities');
+
+    const hostileText = '@<img src=x onerror=alert(1)> body';
+    const hostile = makeReply(hostileText, '@<img src=x onerror=alert(1)> '.length, '<img src=x onerror=alert(1)>', []);
+    const hostileHtml = app.renderReplyRecipients(hostile);
+    assert.doesNotMatch(hostileHtml, /<img/);
+    assert.match(hostileHtml, /&lt;img src=x onerror=alert\(1\)&gt;/);
+
+    let opened = null;
+    app.openUsernameProfileCard = (event, username) => { opened = { event, username }; };
+    const second = { dataset: { username: 'second' } };
+    const event = { target: { closest: selector => {
+        assert.equal(selector, '[data-action="reply-profile"][data-username]');
+        return second;
+    } }, stopPropagation() { this.stopped = true; } };
+    app.handleReplyRecipientClick(event);
+    assert.equal(opened.username, 'second');
+    assert.equal(opened.event.currentTarget, second);
+    assert.equal(event.stopped, true);
 });
 
 test('config and stats requests update their matching UI state', async () => {
@@ -2872,9 +2977,12 @@ test('media quoting media is compact in lists and flush in the detail view', () 
         assert.equal(html.split(`:class="{ 'quote-compact': isMediaQuotingMedia(${name}) }"`).length - 1, 2);
         assert.equal(html.split(`isMediaQuotingMedia(${name}) ? renderQuoteThumbnail(${name}.qt_media) : renderMediaGrid(${name}.qt_media, 'quote')`).length - 1, 2);
         assert.equal(html.split(`@click="if (!isMediaQuotingMedia(${name})) $event.stopPropagation()"`).length - 1, 2);
-        const replyLines = html.split(`<template x-if="getReplyTo({raw_json: getQuoteTweet(${name})})">`).slice(1);
+        const replyLines = html.split(`<template x-if="getReplyRecipients({raw_json: getQuoteTweet(${name})}).length">`).slice(1);
         assert.equal(replyLines.length, 2);
-        for (const line of replyLines) assert.match(line, /^\s*<div class="quote-reply tweet-reply-context text-\[15px\]/);
+        for (const line of replyLines) {
+            assert.ok(line.includes('class="quote-reply tweet-reply-context'));
+            assert.ok(line.includes(`renderReplyRecipientContent({raw_json: getQuoteTweet(${name})})`));
+        }
     }
     for (const main of ['threadData?.main', 'panelThreadData?.main']) {
         const mainQuote = html.split(`:data-thread-id="getTweetId(getQuoteTweet(${main}))"`)[0].split('\n').at(-1);

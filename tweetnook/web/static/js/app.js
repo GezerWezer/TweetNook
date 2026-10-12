@@ -2331,12 +2331,11 @@ function tweetApp() {
         renderFeedCard(tweetObj) {
             const escape = value => this.escapeHTML(value);
             const part = (html, attributes = '') => (html ? `<div${attributes}>${html}</div>` : '');
-            const replyLine = (username, className = '') => `<div class="${className}tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">Replying to `
-                + `<span class="text-[var(--accent-color)] hover:underline cursor-pointer" data-action="reply-profile" data-username="${escape(username)}">${escape(`@${username}`)}</span></div>`;
+            const replyLine = (source, className = '') => this.renderReplyRecipients(source, className);
             const retweet = this.getRetweet(tweetObj);
             const tweet = retweet ? this.formatRetweetToTweet(tweetObj, retweet) : tweetObj;
             const author = tweet.author || {};
-            const replyTo = this.getReplyTo(tweet);
+            const replyTo = this.getReplyRecipients(tweet);
             const menuOpen = this.tweetMenuOpen === `list:${tweetObj.tweet_id}`;
 
             const header = retweet
@@ -2366,12 +2365,12 @@ function tweetApp() {
                 quoteBlock = part(this.renderQuotePlaceholder(quote), ' data-action="stop"');
             } else if (quote) {
                 const quoteId = this.getTweetId(quote);
-                const quoteReplyTo = this.getReplyTo({ raw_json: quote });
+                const quoteReplyTo = this.getReplyRecipients({ raw_json: quote });
                 // A compact quote's text is clamped by CSS, so it is rendered without Show more.
                 const compact = this.isMediaQuotingMedia(tweet);
                 quoteBlock = `<div class="quote-card mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer${compact ? ' quote-compact' : ''}"${quoteId ? ` data-thread-id="${escape(quoteId)}"` : ''} data-action="quote">`
                     + this.renderQuoteByline(quote)
-                    + (quoteReplyTo ? replyLine(quoteReplyTo, 'quote-reply ') : '')
+                    + (quoteReplyTo.length ? replyLine({ raw_json: quote }, 'quote-reply ') : '')
                     + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote, compact, true)}</div>`
                     + (compact
                         ? part(this.renderQuoteThumbnail(tweet.qt_media), ' class="quote-media"')
@@ -2389,7 +2388,7 @@ function tweetApp() {
                 + avatar
                 + '<div class="flex-1 min-w-0">'
                 + byline
-                + (replyTo ? replyLine(replyTo) : '')
+                + (replyTo.length ? replyLine(tweet) : '')
                 + `<div class="tweet-text text-[15px] whitespace-pre-wrap break-words" data-action="text">${this.formatText(tweet, false, true)}</div>`
                 + part(this.renderMediaGrid(tweet.media), ' data-action="stop"')
                 + part(this.renderCard(tweet), ' data-action="stop"')
@@ -3738,6 +3737,83 @@ function tweetApp() {
             return null;
         },
 
+        getReplyRecipients(tweet) {
+            if (!tweet) return [];
+            const raw = tweet.raw_json?.raw_json || tweet.raw_json || tweet;
+            const legacy = raw?.legacy || raw || {};
+            const primary = this.getReplyTo({ raw_json: raw });
+            const text = legacy.full_text;
+            const range = legacy.display_text_range;
+            const validRange = Array.isArray(range) && range.length === 2
+                && Number.isInteger(range[0]) && Number.isInteger(range[1])
+                && range[0] >= 0 && range[1] >= range[0]
+                && typeof text === 'string' && range[1] <= text.length;
+            const prefixEnd = validRange ? range[0] : null;
+            const knownReply = Boolean(primary || legacy.in_reply_to_status_id_str || raw?.in_reply_to_status_id_str);
+            const recipients = [];
+            const seen = new Set();
+            const add = name => {
+                if (typeof name !== 'string' || !name) return;
+                const key = name.toLowerCase();
+                if (seen.has(key)) return;
+                seen.add(key);
+                recipients.push(name);
+            };
+            if (knownReply && validRange && prefixEnd > 0) {
+                const mentionNamesByStart = new Map();
+                const mentions = legacy.entities?.user_mentions;
+                if (Array.isArray(mentions)) {
+                    for (const mention of [...mentions].sort((a, b) => (a?.indices?.[0] ?? 0) - (b?.indices?.[0] ?? 0))) {
+                        const [start, end] = Array.isArray(mention?.indices) ? mention.indices : [];
+                        if (Number.isInteger(start) && Number.isInteger(end)
+                            && start >= 0 && end <= prefixEnd && end > start
+                            && text.slice(start, end).startsWith('@') && typeof mention.screen_name === 'string') {
+                            mentionNamesByStart.set(start, mention.screen_name);
+                        }
+                    }
+                }
+                // The captured prefix is the boundary; entities refine handle
+                // casing when present, while this also covers missing indices.
+                for (const match of text.slice(0, prefixEnd).matchAll(/@([\w]+)/g)) {
+                    add(mentionNamesByStart.get(match.index) || match[1]);
+                }
+            } else if (knownReply && !validRange && typeof text === 'string') {
+                // Older archives lack display_text_range; only a known reply may
+                // use the legacy leading-mention fallback.
+                for (const match of text.matchAll(/^(@([\w]+)\s+)+/g)) {
+                    for (const handle of match[0].matchAll(/@([\w]+)/g)) add(handle[1]);
+                }
+            }
+            if (primary) add(primary);
+            return recipients;
+        },
+
+        renderReplyRecipients(tweet, className = '') {
+            const recipients = this.getReplyRecipients(tweet);
+            if (!recipients.length) return '';
+            return `<div class="${className}tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">${this.renderReplyRecipientContent(tweet)}</div>`;
+        },
+
+        renderReplyRecipientContent(tweet) {
+            const recipients = this.getReplyRecipients(tweet);
+            if (!recipients.length) return '';
+            const escape = value => this.escapeHTML(value);
+            const links = recipients.map(username =>
+                `<span class="text-[var(--accent-color)] hover:underline cursor-pointer" data-action="reply-profile" data-username="${escape(username)}">${escape(`@${username}`)}</span>`
+            );
+            let names = links[0] || '';
+            if (links.length === 2) names += ` and ${links[1]}`;
+            else if (links.length > 2) names = `${links.slice(0, -1).join(' ')} and ${links.at(-1)}`;
+            return `Replying to ${names}`;
+        },
+
+        handleReplyRecipientClick(event) {
+            const target = event.target.closest?.('[data-action="reply-profile"][data-username]');
+            if (!target) return;
+            event.stopPropagation();
+            this.openUsernameProfileCard({ currentTarget: target }, target.dataset.username);
+        },
+
         nestedReplyIndent(tweet) {
             const depth = Number(tweet?.thread_depth);
             if (!Number.isFinite(depth)) return 0;
@@ -4906,7 +4982,28 @@ function tweetApp() {
             if (!tweet) return '';
             if (this.isPlaceholderTweet(tweet)) return this.renderTweetPlaceholder(tweet);
             const raw = tweet.raw_json?.raw_json || tweet.raw_json || tweet;
-            let text = this.decodeTweetText(tweet.text || raw?.legacy?.full_text || raw?.full_text || '');
+            const rawLegacy = raw?.legacy || raw || {};
+            let sourceText = tweet.text || rawLegacy.full_text || '';
+            const rawSourceText = rawLegacy.full_text;
+            const displayRange = rawLegacy.display_text_range;
+            const validDisplayRange = Array.isArray(displayRange) && displayRange.length === 2
+                && Number.isInteger(displayRange[0]) && Number.isInteger(displayRange[1])
+                && displayRange[0] >= 0 && displayRange[1] >= displayRange[0]
+                && typeof rawSourceText === 'string' && displayRange[1] <= rawSourceText.length;
+            const isReply = Boolean(
+                this.getReplyTo({ raw_json: raw })
+                || rawLegacy.in_reply_to_status_id_str
+                || raw?.in_reply_to_status_id_str
+            );
+            if (isReply && validDisplayRange) {
+                if (sourceText.startsWith(rawSourceText.slice(0, displayRange[0])) && displayRange[0] > 0) {
+                    sourceText = sourceText.slice(displayRange[0]);
+                }
+            } else if (isReply) {
+                // Keep the historical behavior for archives without valid bounds.
+                sourceText = sourceText.replace(/^(@\w+\s+)+/, '');
+            }
+            let text = this.decodeTweetText(sourceText);
             if (this.isTextPlaceholderTweet(tweet)) {
                 return this.renderContentPlaceholder(
                     'Tweet text was not captured in the local archive.',
@@ -4914,10 +5011,6 @@ function tweetApp() {
                 );
             }
             
-            if (raw && raw.legacy && raw.legacy.in_reply_to_status_id_str) {
-                text = text.replace(/^(@\w+\s+)+/, '');
-            }
-
             let isTruncated = false;
             let tweetId = tweet.tweet_id || (raw && raw.rest_id);
             

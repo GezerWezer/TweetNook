@@ -348,9 +348,14 @@ def test_slim_raw_tweet_drops_unrendered_fields_and_keeps_shape() -> None:
             "user_results": {"result": {"rest_id": "9", "avatar": {}, "legacy": {"name": "A"}}}
         },
         "legacy": {
-            "full_text": "hi",
+            "full_text": "@alice",
+            "display_text_range": [0, 6],
             "lang": "en",
-            "entities": {"hashtags": [{"text": "x"}], "urls": [{"url": "u", "indices": [0, 1]}]},
+            "entities": {
+                "hashtags": [{"text": "x"}],
+                "urls": [{"url": "u", "indices": [0, 1]}],
+                "user_mentions": [{"screen_name": "alice", "indices": [0, 6], "id": 9}],
+            },
             "retweeted_status_result": {"result": {"rest_id": "2", "source": "web"}},
         },
         "quoted_status_result": {"result": {"rest_id": "3", "is_translatable": False}},
@@ -362,8 +367,12 @@ def test_slim_raw_tweet_drops_unrendered_fields_and_keeps_shape() -> None:
         "views": {"count": "5"},
         "core": {"user_results": {"result": {"rest_id": "9", "legacy": {"name": "A"}}}},
         "legacy": {
-            "full_text": "hi",
-            "entities": {"urls": [{"url": "u"}]},
+            "full_text": "@alice",
+            "display_text_range": [0, 6],
+            "entities": {
+                "urls": [{"url": "u"}],
+                "user_mentions": [{"screen_name": "alice", "indices": [0, 6]}],
+            },
             "retweeted_status_result": {"result": {"rest_id": "2"}},
         },
         "quoted_status_result": {"result": {"rest_id": "3"}},

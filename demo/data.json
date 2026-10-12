@@ -223,7 +223,7 @@
     },
     {
       "tweet_id": "202602130005",
-      "text": "This is a GIF reply to User Two’s standalone post.",
+      "text": "@demo_user2 @demo_user1 This is a GIF reply to User Two’s standalone post, also addressed to User One.",
       "author_id": "910000000000000004",
       "created_at": "2026-02-13T15:04:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -238,7 +238,8 @@
       },
       "hashtags": [],
       "mentions": [
-        "demo_user2"
+        "demo_user2",
+        "demo_user1"
       ],
       "urls": [],
       "media": [
