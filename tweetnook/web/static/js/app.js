@@ -2375,7 +2375,7 @@ function tweetApp() {
                     + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote, compact, true)}</div>`
                     + (compact
                         ? part(this.renderQuoteThumbnail(tweet.qt_media), ' class="quote-media"')
-                        : part(this.renderMediaGrid(tweet.qt_media), ' class="quote-media" data-action="stop"'))
+                        : part(this.renderMediaGrid(tweet.qt_media, 'quote'), ' class="quote-media" data-action="stop"'))
                     + part(this.renderCard({ raw_json: quote }), ' data-action="stop"')
                     + this.renderNestedQuote(quote, true)
                     + part(this.renderCommunityNote(quote, true, false, Boolean(tweet.qt_media?.length)), ' data-action="stop"')
@@ -5259,7 +5259,7 @@ function tweetApp() {
             return `<div class="quote-thumbnail">${stills[0]}${badge}</div>`;
         },
 
-        renderMediaGrid(mediaList) {
+        renderMediaGrid(mediaList, context = 'feed') {
             if (!mediaList || mediaList.length === 0) return '';
 
             const getSrc = m => this.mediaSource(m);
@@ -5288,17 +5288,34 @@ function tweetApp() {
             if (allMedia.length === 1) {
                 const item = allMedia[0];
                 const { src, poster, type, isGif, isShort } = item;
-                const aspect = allMedia[0].m.width && allMedia[0].m.height ? (allMedia[0].m.width / allMedia[0].m.height) : 0;
-                const containerStyle = aspect 
-                    ? `width: min(100%, calc(510px * ${aspect})); aspect-ratio: ${aspect}; max-height: 510px;`
-                    : 'width: 100%; max-height: 510px; aspect-ratio: 16/9;';
+                const rawAspect = item.m.width && item.m.height ? item.m.width / item.m.height : 0;
+                // X constrains very wide photos to a 5:1 frame, and GIFs to at
+                // least 1:1. Their pixels are contained/cropped inside that frame.
+                const aspect = rawAspect
+                    ? (isGif ? Math.max(rawAspect, 1) : (type === 'photo' ? Math.min(rawAspect, 5) : rawAspect))
+                    : 0;
+                let containerStyle;
+                if (context === 'quote-detail' && type === 'photo' && aspect) {
+                    containerStyle = `width: 100%; aspect-ratio: ${aspect}; max-height: 510px;`;
+                } else if ((context === 'quote' || context === 'quote-detail') && type === 'video') {
+                    containerStyle = 'width: 100%; aspect-ratio: 16/9;';
+                } else if (aspect && context === 'detail' && type === 'photo') {
+                    containerStyle = `width: min(100%, calc(510px * ${aspect})); aspect-ratio: ${aspect};`;
+                } else if (aspect && context === 'detail' && type === 'video' && aspect < 1) {
+                    containerStyle = `width: min(100%, calc(510px * ${aspect})); aspect-ratio: ${aspect};`;
+                } else if (aspect) {
+                    containerStyle = `width: 100%; aspect-ratio: ${aspect};`;
+                } else {
+                    containerStyle = `width: 100%; aspect-ratio: ${isGif ? '1/1' : '16/9'};`;
+                }
+                const frameClass = `media-frame media-frame-${context}${isGif ? ' media-frame-gif' : ''}`;
 
                 if (!src) {
-                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block" style="${containerStyle}" @click.stop>
+                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block ${frameClass}" style="${containerStyle}" @click.stop>
                                 ${placeholderHtml}
                             </div>`;
                 } else if (type === 'photo') {
-                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block media-photo" style="${containerStyle}" ${mediaAttr} @click.stop>
+                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block media-photo ${frameClass}" style="${containerStyle}" ${mediaAttr} @click.stop>
                                 <img src="${src}" loading="lazy" decoding="async" onclick="window.tweetNookOpenLightbox(this, 0)" class="w-full h-full object-cover cursor-pointer block">
                             </div>`;
                 } else {
@@ -5312,8 +5329,8 @@ function tweetApp() {
 
                     const videoEvents = isGif ? '' : VIDEO_PLAYER_EVENTS;
 
-                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block ${isGif ? '' : 'media-video-player'}" style="${containerStyle}" @click.stop>
-                                <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="w-full h-full object-cover outline-none block"></video>
+                    return `<div class="mt-3 relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block ${isGif ? '' : 'media-video-player'} ${frameClass}" style="${containerStyle}" @click.stop>
+                                <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="w-full h-full ${isGif ? 'media-frame-gif-video' : 'media-frame-video'} outline-none block"></video>
                                 ${indicator}
                             </div>`;
                 }
