@@ -4462,19 +4462,25 @@ test('activity drawer animation isolates layout and transitions only geometry', 
     }
 });
 
-test('tweet bylines truncate names while keeping handles and dates on one line', () => {
+test('tweet bylines size dates from the visible label and truncate handles when needed', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
 
     assert.match(css, /\.tweet-byline-name\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
     assert.match(css, /\.tweet-byline-detail\s*\{[^}]*flex-shrink:\s*0;[^}]*white-space:\s*nowrap;/s);
+    assert.match(css, /\.tweet-byline \.roll-item:nth-child\(2\)\s*\{[^}]*position:\s*absolute;[^}]*top:\s*20px;/s);
+    assert.match(css, /\.tweet-byline \.roll-wrapper:hover \.roll-item:nth-child\(2\)\s*\{[^}]*position:\s*static;/s);
+    assert.match(css, /\.tweet-byline \.roll-wrapper:hover\s*\{[^}]*max-width:\s*100%;/s);
+    assert.match(css, /\.tweet-byline-handle\s*\{[^}]*flex-shrink:\s*1;[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;/s);
     assert.match(html, /class="[^"]*tweet-byline-name[^"]*"[^>]*x-text="parent\.author\.display_name/);
+    assert.match(html, /tweet-byline-detail tweet-byline-handle" x-text="'@' \+ \(parent\.author\.username/);
     assert.match(html, /class="roll-wrapper[^"]*tweet-byline-detail[^"]*"/);
     assert.match(html, /class="[^"]*tweet-byline-detail[^"]*" x-text="formatDate\(threadData\.main\.created_at\)"/);
     const { app } = feedListApp();
     const card = parseFakeHTML(app.renderFeedCard({ tweet_id: '1', text: 'x', author: { id: '2', username: 'a', display_name: 'A' } }))[0];
     assert.equal(card.querySelector('.tweet-byline-name').textContent, 'A');
     assert.equal(card.querySelector('.tweet-byline-detail').textContent, '@a');
+    assert.ok(card.querySelector('.tweet-byline-handle'));
     assert.ok(card.querySelector('.roll-wrapper').classList.contains('tweet-byline-detail'));
 });
 

@@ -2349,7 +2349,7 @@ function tweetApp() {
                 + `<img src="${escape(this.avatarUrl(author.id))}" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy"></div>`;
             const byline = '<div class="tweet-byline tweet-byline-feed flex items-start text-[15px]"><div class="flex items-center space-x-1 min-w-0">'
                 + `<span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" data-action="profile">${escape(author.display_name || 'Unknown')}</span>`
-                + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(`@${author.username || 'unknown'}`)}</span>`
+                + `<span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle">${escape(`@${author.username || 'unknown'}`)}</span>`
                 + '<span class="text-[var(--text-secondary)]">·</span>'
                 + '<div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" data-action="stop"><div class="roll-inner">'
                 + `<span class="roll-item hover:underline">${escape(this.formatDate(tweet.created_at))}</span>`
@@ -5173,7 +5173,7 @@ function tweetApp() {
                 + `<span class="avatar-initial">${escape(author.initial)}</span>`
                 + `<img src="${escape(this.avatarUrl(author.id))}" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy"></div>`
                 + `<span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name">${escape(author.name)}</span>`
-                + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(`@${author.screen_name}`)}</span>`
+                + `<span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle">${escape(`@${author.screen_name}`)}</span>`
                 + '<span class="text-[var(--text-secondary)]">·</span>'
                 + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(this.formatDate(quote.legacy?.created_at || quote.created_at))}</span>`
                 + '</div>';

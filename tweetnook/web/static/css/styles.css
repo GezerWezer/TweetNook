@@ -149,6 +149,32 @@ body {
     white-space: nowrap;
 }
 
+.tweet-byline .roll-inner {
+    position: relative;
+}
+
+.tweet-byline .roll-item:nth-child(2) {
+    position: absolute;
+    top: 20px;
+    left: 0;
+}
+
+.tweet-byline .roll-wrapper:hover .roll-item:nth-child(2) {
+    position: static;
+}
+
+.tweet-byline .roll-wrapper:hover {
+    max-width: 100%;
+}
+
+.tweet-byline-handle {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .tweet-text,
 .quote-text,
 .quote-byline,
