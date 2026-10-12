@@ -2347,7 +2347,7 @@ function tweetApp() {
             const avatar = '<div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden" data-action="profile">'
                 + `<span class="avatar-initial">${escape(this.getInitial(tweet))}</span>`
                 + `<img src="${escape(this.avatarUrl(author.id))}" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy"></div>`;
-            const byline = '<div class="flex items-start text-[15px]"><div class="flex items-center space-x-1 min-w-0">'
+            const byline = '<div class="tweet-byline tweet-byline-feed flex items-start text-[15px]"><div class="flex items-center space-x-1 min-w-0">'
                 + `<span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" data-action="profile">${escape(author.display_name || 'Unknown')}</span>`
                 + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(`@${author.username || 'unknown'}`)}</span>`
                 + '<span class="text-[var(--text-secondary)]">·</span>'
@@ -2355,7 +2355,7 @@ function tweetApp() {
                 + `<span class="roll-item hover:underline">${escape(this.formatDate(tweet.created_at))}</span>`
                 + `<span class="roll-item text-[var(--accent-color)] text-[13px] font-medium">${escape(this.formatSyncDate(tweet))}</span>`
                 + '</div></div></div>'
-                + '<div class="relative ml-auto -mr-2 -mt-2 flex-shrink-0">'
+                + '<div class="tweet-menu-trigger">'
                 + `<button type="button" class="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)] select-none touch-manipulation${menuOpen ? ' opacity-0' : ''}" aria-label="More actions" aria-haspopup="menu" aria-expanded="${menuOpen}" title="More actions (hold for Tags)" data-action="menu">`
                 + '<svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>'
                 + '</button></div></div>';
@@ -2390,7 +2390,7 @@ function tweetApp() {
                 + '<div class="flex-1 min-w-0">'
                 + byline
                 + (replyTo ? replyLine(replyTo) : '')
-                + `<div class="text-[15px] -mt-2 whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(tweet, false, true)}</div>`
+                + `<div class="tweet-text text-[15px] whitespace-pre-wrap break-words" data-action="text">${this.formatText(tweet, false, true)}</div>`
                 + part(this.renderMediaGrid(tweet.media), ' data-action="stop"')
                 + part(this.renderCard(tweet), ' data-action="stop"')
                 + quoteBlock
@@ -5168,7 +5168,7 @@ function tweetApp() {
         renderQuoteByline(quote, avatarSize = 'w-6 h-6') {
             const escape = value => this.escapeHTML(value);
             const author = this.getQuoteAuthor(quote);
-            return '<div class="flex items-center space-x-1 text-[15px] mb-1">'
+            return '<div class="quote-byline flex items-center space-x-1 text-[15px] mb-1">'
                 + `<div class="avatar ${avatarSize} rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">`
                 + `<span class="avatar-initial">${escape(author.initial)}</span>`
                 + `<img src="${escape(this.avatarUrl(author.id))}" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy"></div>`
