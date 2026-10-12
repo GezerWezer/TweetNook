@@ -5164,11 +5164,12 @@ function tweetApp() {
             return Boolean(tweet?.media?.length && tweet?.qt_media?.length);
         },
 
-        renderQuoteByline(quote) {
+        // X shows a quote's avatar at 24px and a nested quote's at 20px.
+        renderQuoteByline(quote, avatarSize = 'w-6 h-6') {
             const escape = value => this.escapeHTML(value);
             const author = this.getQuoteAuthor(quote);
             return '<div class="flex items-center space-x-1 text-[15px] mb-1">'
-                + '<div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">'
+                + `<div class="avatar ${avatarSize} rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">`
                 + `<span class="avatar-initial">${escape(author.initial)}</span>`
                 + `<img src="${escape(this.avatarUrl(author.id))}" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy"></div>`
                 + `<span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name">${escape(author.name)}</span>`
@@ -5187,7 +5188,7 @@ function tweetApp() {
             const id = this.getTweetId(nested);
             const media = quote.qt_media || nested.media || [];
             return `<div class="quote-nested${media.length ? ' quote-nested-media' : ''}"${id ? ` data-thread-id="${this.escapeHTML(id)}"` : ''} data-action="quote">`
-                + this.renderQuoteByline(nested)
+                + this.renderQuoteByline(nested, 'w-5 h-5')
                 + (media.length ? `<div class="quote-media">${this.renderQuoteThumbnail(media)}</div>` : '')
                 + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(nested, true, highlightSearch)}</div>`
                 + '</div>';

@@ -2878,6 +2878,8 @@ test('a quote shows its own quote nested inside it, as X does', () => {
     assert.ok(html.indexOf('quote-nested') < html.indexOf('middle note'));
     assert.doesNotMatch(html, /too deep|nested note|expand-tweet/);
     assert.equal((html.match(/class="quote-nested/g) || []).length, 1);
+    // Like X, the quote's avatar is 24px and the nested quote's 20px.
+    assert.deepEqual(html.match(/class="avatar w-\d h-\d/g), ['class="avatar w-6 h-6', 'class="avatar w-5 h-5']);
 
     // Without media it is text only; unavailable nested quotes are left out.
     const textOnly = app.renderNestedQuote({ ...quote, qt_media: [] });
