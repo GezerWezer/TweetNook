@@ -3272,7 +3272,60 @@ test('missing tweet skeletons cover terminal, relation, tombstone, and textless 
     assert.match(css, /\.tweet-skeleton-main \{[\s\S]*font-size: 0;[\s\S]*line-height: 0;/);
 });
 
-test('media renderer preserves dimensions and adds Twitter/X-style playback indicators', () => {
+test('single media layout distinguishes portraits, square boundaries, GIFs and quotes', () => {
+    const { app } = feedListApp();
+    const layout = (type, width, height, context = 'feed', extra = {}) =>
+        app.mediaFrameLayout({ type, width, height, ...extra }, context);
+
+    // Captured square and landscape photos must fill detail columns, even when
+    // their width/ratio would otherwise produce a height above 510px.
+    for (const context of ['feed', 'detail', 'quote', 'quote-detail']) {
+        assert.equal(layout('photo', 2400, 2400, context).maxWidth, null);
+        assert.equal(layout('photo', 1200, 1168, context).photoCapWidth, null);
+        assert.equal(layout('photo', 1200, 1168, context).maxWidth, null);
+        assert.equal(layout('video', 1080, 1080, context).maxWidth, null);
+    }
+    const portrait = layout('photo', '1028', '1275', 'detail');
+    assert.ok(Math.abs(portrait.maxWidth - 411.2) < 0.00001);
+    assert.equal(portrait.photoCapWidth, portrait.maxWidth);
+    assert.equal(layout('photo', 999, 1000, 'detail').maxWidth, 509.49);
+    assert.equal(layout('photo', 1000, 1000, 'detail').maxWidth, null);
+    assert.equal(layout('photo', 1001, 1000, 'detail').maxWidth, null);
+
+    // A quote's portrait pixels fit a capped image area in a full-width frame,
+    // independently of whether the quote belongs to a list or a main post.
+    for (const context of ['quote', 'quote-detail']) {
+        const quoted = layout('photo', 1536, 2048, context);
+        assert.equal(quoted.maxWidth, null);
+        assert.equal(quoted.photoCapWidth, 382.5);
+        assert.equal(quoted.frameAspect, 0.75);
+        assert.equal(layout('video', 720, 1280, context).frameAspect, 16 / 9);
+        assert.equal(layout('animated_gif', 498, 402, context).frameAspect, 16 / 9);
+    }
+    assert.ok(Math.abs(layout('video', 720, 742).maxWidth - 494.8787062) < 0.00001);
+    assert.equal(layout('video', 480, 472).maxWidth, null);
+    assert.equal(layout('animated_gif', 404, 512).frameAspect, 1);
+    assert.equal(layout('animated_gif', 404, 512).maxWidth, null);
+    assert.equal(layout('animated_gif', 746, 640).frameAspect, 1.165625);
+    assert.equal(layout('photo', 637, 130).frameAspect, 4.9);
+    assert.equal(layout('photo', 1634, 67).frameAspect, 5);
+
+    // Playback metadata can differ from a poster; missing or invalid dimensions
+    // must not leave a collapsed frame or produce invalid CSS values.
+    const playback = layout('video', 1600, 900, 'detail', { aspect_ratio: [3, 4] });
+    assert.equal(playback.sourceAspect, 0.75);
+    assert.equal(playback.maxWidth, 382.5);
+    assert.equal(layout('video', null, null, 'feed', { aspect_ratio: [3, 4] }).frameAspect, 0.75);
+    for (const dimensions of [[null, null], [0, 100], [-2, 100], ['bad', 100], [Infinity, 2]]) {
+        assert.equal(layout('photo', ...dimensions).frameAspect, 16 / 9);
+        assert.equal(layout('animated_gif', ...dimensions).frameAspect, 1);
+    }
+    for (const aspect_ratio of [[true, 1], [0, 1], [1, -1], [Infinity, 1], [1], '3:4']) {
+        assert.equal(layout('video', 16, 9, 'feed', { aspect_ratio }).frameAspect, 16 / 9);
+    }
+});
+
+test('media renderer preserves direct playback parents, placeholders and existing galleries', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
@@ -3289,23 +3342,8 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
             download: { local_path: 'media/a.jpg' },
         },
     ]);
-    assert.match(photo, /aspect-ratio: 2/);
-    assert.match(photo, /width: 100%; aspect-ratio: 2/);
     assert.match(photo, /media-frame-feed/);
     assert.match(photo, /<img src="\/media\/a.jpg"/);
-
-    const detailPhoto = app.renderMediaGrid([
-        { type: 'photo', width: 1200, height: 600, download: { local_path: 'media/detail.jpg' } },
-    ], 'detail');
-    assert.match(detailPhoto, /width: min\(100%, calc\(510px \* 2\)\); aspect-ratio: 2/);
-    const widePhoto = app.renderMediaGrid([
-        { type: 'photo', width: 1634, height: 67, download: { local_path: 'media/wide.jpg' } },
-    ]);
-    assert.match(widePhoto, /width: 100%; aspect-ratio: 5/);
-    const detailPortraitPhoto = app.renderMediaGrid([
-        { type: 'photo', width: 433, height: 880, download: { local_path: 'media/tall.jpg' } },
-    ], 'detail');
-    assert.match(detailPortraitPhoto, /width: min\(100%, calc\(510px \* 0\.492/);
 
     const video = app.renderMediaGrid([
         {
@@ -3322,7 +3360,10 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     assert.match(video, /class="[^"]*media-video-player[^"]*"/);
     assert.match(video, /class="media-video-duration" data-video-duration/);
     assert.match(video, /media-frame-video/);
-    assert.match(video, /width: 100%; aspect-ratio: 16\/9/);
+    const parsedVideo = parseFakeHTML(video)[0];
+    const player = parsedVideo.querySelector('video').parentElement;
+    assert.ok(player.classList.contains('media-video-player'));
+    assert.ok(player.querySelector('[data-video-duration]'));
     assert.match(video, /aria-label="Remaining video duration 2:00">2:00<\/span>/);
     assert.match(video, /onloadedmetadata="window\.tweetNookSyncVideoDuration\(this\)"/);
     assert.match(video, /ontimeupdate="window\.tweetNookSyncVideoDuration\(this\)"/);
@@ -3334,31 +3375,6 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     assert.match(video, /onkeydown="window\.tweetNookShowVideoUi\(this\)"/);
     assert.match(video, /ontouchend="window\.tweetNookShowVideoUi\(this\)"/);
     assert.doesNotMatch(video, /onfocus=|onblur=/);
-    const portraitDetailVideo = app.renderMediaGrid([
-        { type: 'video', width: 478, height: 850, download: { local_path: 'media/portrait.mp4' } },
-    ], 'detail');
-    assert.match(portraitDetailVideo, /width: min\(100%, calc\(510px \* 0\.562/);
-    const portraitFeedVideo = app.renderMediaGrid([
-        { type: 'video', width: 478, height: 850, download: { local_path: 'media/portrait.mp4' } },
-    ]);
-    assert.match(portraitFeedVideo, /width: min\(100%, calc\(510px \* 0\.562/);
-    const portraitFeedPhoto = app.renderMediaGrid([
-        { type: 'photo', width: 433, height: 880, download: { local_path: 'media/tall.jpg' } },
-    ]);
-    assert.match(portraitFeedPhoto, /width: min\(100%, calc\(510px \* 0\.492/);
-    const landscapeDetailVideo = app.renderMediaGrid([
-        { type: 'video', width: 1920, height: 1080, download: { local_path: 'media/landscape.mp4' } },
-    ], 'detail');
-    assert.match(landscapeDetailVideo, /width: 100%; aspect-ratio: 1\.777/);
-    const quotedPortraitVideo = app.renderMediaGrid([
-        { type: 'video', width: 720, height: 1280, download: { local_path: 'media/quoted-portrait.mp4' } },
-    ], 'quote');
-    assert.match(quotedPortraitVideo, /width: 100%; aspect-ratio: 16\/9/);
-    const detailQuotedPortraitPhoto = app.renderMediaGrid([
-        { type: 'photo', width: 1536, height: 2048, download: { local_path: 'media/quoted-tall.jpg' } },
-    ], 'quote-detail');
-    assert.match(detailQuotedPortraitPhoto, /media-frame-quote-detail/);
-    assert.match(detailQuotedPortraitPhoto, /width: 100%; aspect-ratio: 0\.75; max-height: 510px/);
     assert.equal(app.formatMediaDuration(3000), '0:03');
     assert.equal(app.formatMediaDuration(3723000), '1:02:03');
     assert.equal(app.formatMediaDuration(null), '');
@@ -3375,16 +3391,14 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     assert.match(gif, /data-gif-toggle aria-label="Pause GIF"/);
     assert.match(gif, /media-gif-pause-icon/);
     assert.match(gif, /media-gif-play-icon/);
-    assert.match(gif, /aspect-ratio: 1/);
     assert.match(gif, /media-frame-gif-video/);
-    const quotedGif = app.renderMediaGrid([
-        { type: 'animated_gif', width: 498, height: 402, download: { local_path: 'media/quoted.gif.mp4' } },
-    ], 'quote');
-    assert.match(quotedGif, /aspect-ratio: 16\/9/);
+    const gifPlayer = parseFakeHTML(gif)[0].querySelector('video').parentElement;
+    assert.ok(gifPlayer.querySelector('[data-gif-toggle]'));
     assert.doesNotMatch(gif, /media-video-duration/);
 
     const missing = app.renderMediaGrid([{ type: 'photo', width: 4, height: 3 }]);
     assert.match(missing, /Media not downloaded/);
+    assert.ok(parseFakeHTML(missing)[0].querySelector('.media-frame-placeholder'));
 
     const grid = app.renderMediaGrid([
         { type: 'photo', download: { local_path: 'media/1.jpg' } },
