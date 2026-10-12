@@ -3351,6 +3351,50 @@ class ArchiveStore:
             rows.extend(dict(row) for row in self.conn.execute(query, chunk).fetchall())
         return rows
 
+    def list_saved_conversation_tweet_ids(self) -> tuple[set[str], set[str]]:
+        """Split archived tweets in saved conversations into self-thread and reply ids.
+
+        Returns ``(self_thread_ids, reply_ids)``: archived tweet objects sharing a
+        conversation with a saved tweet, split by whether they are authored by a saved
+        tweet's author in that conversation. Saved tweets themselves are included and are
+        left to the caller to exclude. A saved tweet's own object supplies its
+        conversation and author, falling back to the membership row.
+
+        One pass over tweet objects; the IN subqueries are materialized once as
+        ephemeral indexes, so the cost stays linear on large archives.
+        """
+        rows = self.conn.execute(
+            """
+            WITH saved AS MATERIALIZED (
+                SELECT DISTINCT
+                    COALESCE(NULLIF(object.conversation_id, ''), membership.conversation_id)
+                        AS conversation_id,
+                    COALESCE(NULLIF(object.author_id, ''), membership.author_id) AS author_id
+                FROM archive AS membership INDEXED BY idx_archive_membership
+                LEFT JOIN archive AS object INDEXED BY idx_archive_tweet_id
+                  ON object.tweet_id = membership.tweet_id
+                 AND object.record_type = 'tweet_object'
+                WHERE membership.record_type = 'tweet'
+            )
+            SELECT peer.tweet_id,
+                   MAX(
+                       (peer.conversation_id, peer.author_id)
+                       IN (SELECT conversation_id, author_id FROM saved)
+                   ) AS is_self_thread
+            FROM archive AS peer
+            WHERE peer.record_type = 'tweet_object'
+              AND peer.tweet_id IS NOT NULL AND peer.tweet_id != ''
+              AND peer.conversation_id IN (
+                  SELECT conversation_id FROM saved
+                  WHERE conversation_id IS NOT NULL AND conversation_id != ''
+              )
+            GROUP BY peer.tweet_id
+            """
+        ).fetchall()
+        self_thread_ids = {str(row[0]) for row in rows if row[1]}
+        reply_ids = {str(row[0]) for row in rows if not row[1]}
+        return self_thread_ids, reply_ids
+
     def _serialize_media_row(self, row: dict[str, Any]) -> dict[str, Any]:
         variants = fastjson.loads(row["variants_json"]) if row.get("variants_json") else []
         return {

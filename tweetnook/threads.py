@@ -395,23 +395,25 @@ async def expand_threads(
                 if isinstance(source_id, str) and target_id:
                     url_edges.setdefault(source_id, []).append(target_id)
 
+            reply_linked_depth = config.sync.reply_linked_depth
             depths = {tweet_id: 0 for tweet_id in membership_ids if tweet_id}
             discovery_kinds: dict[str, str] = {}
             quote_reachable_targets: set[str] = set()
             reachable_quote_count = 0
             reachable_link_count = 0
-            for depth in range(1, max_linked_depth + 1):
-                frontier = [
-                    tweet_id for tweet_id, known_depth in depths.items() if known_depth == depth - 1
-                ]
+
+            def follow_edges(sources: list[str], depth: int) -> list[str]:
+                """Record unseen quote/link targets of ``sources`` at ``depth``."""
+                nonlocal reachable_quote_count, reachable_link_count
                 quote_edges: dict[str, list[str]] = {}
-                for row in store.list_quote_relation_rows(set(frontier)):
+                for row in store.list_quote_relation_rows(set(sources)):
                     source_id = row.get("tweet_id")
                     target_id = row.get("target_tweet_id")
                     if isinstance(source_id, str) and isinstance(target_id, str) and target_id:
                         quote_edges.setdefault(source_id, []).append(target_id)
 
-                for source_id in frontier:
+                reached: list[str] = []
+                for source_id in sources:
                     candidates = [
                         *(("quote", target_id) for target_id in quote_edges.get(source_id, [])),
                         *(("linked", target_id) for target_id in url_edges.get(source_id, [])),
@@ -422,14 +424,38 @@ async def expand_threads(
                             quote_reachable_targets.add(target_id)
                         else:
                             reachable_link_count += 1
-                        if target_id == source_id:
-                            result.skipped += 1
-                            continue
-                        if target_id in depths:
+                        if target_id == source_id or target_id in depths:
                             result.skipped += 1
                             continue
                         depths[target_id] = depth
                         discovery_kinds[target_id] = kind
+                        reached.append(target_id)
+                return reached
+
+            # The saved author's own continuation of a saved tweet's conversation counts
+            # as saved (depth 0): its quotes/links are followed, but the tweets are
+            # already archived, so depth-0 entries are never queued for fetching.
+            self_thread_ids: list[str] = []
+            reply_ids: list[str] = []
+            if max_linked_depth > 0:
+                _log_threads(console, "loading saved-conversation self-threads and replies...")
+                self_thread_set, reply_set = store.list_saved_conversation_tweet_ids()
+                self_thread_ids = sorted(self_thread_set - depths.keys())
+                reply_ids = sorted(reply_set - depths.keys())
+                depths.update(dict.fromkeys(self_thread_ids, 0))
+
+            frontier = list(depths)
+            for depth in range(1, max_linked_depth + 1):
+                if not frontier:
+                    break
+                frontier = follow_edges(frontier, depth)
+
+            # Other people's tweets in saved conversations get at most one hop, run after
+            # the save path so its depths win. Reached targets are fetched but never join
+            # a frontier, so neither their replies nor their own links are followed.
+            reply_hop_count = 0
+            if max_linked_depth > 0 and reply_linked_depth > 0 and reply_ids:
+                reply_hop_count = len(follow_edges(reply_ids, 1))
 
             membership_id_set = set(membership_ids)
             for target_id, depth in depths.items():
@@ -453,7 +479,13 @@ async def expand_threads(
                 "related-status pass over "
                 f"{reachable_quote_count} quote relations and "
                 f"{reachable_link_count} reachable url refs "
-                f"(from {len(url_ref_rows)} total url refs, max depth {max_linked_depth})",
+                f"(from {len(url_ref_rows)} total url refs, max depth {max_linked_depth}; "
+                f"{len(self_thread_ids)} self-thread seeds; "
+                + (
+                    f"reply hop from {len(reply_ids)} replies reached {reply_hop_count} new)"
+                    if reply_linked_depth > 0
+                    else f"{len(reply_ids)} replies not followed)"
+                ),
             )
 
         pending_total = (

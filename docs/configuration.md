@@ -96,7 +96,8 @@ for copying session values from your browser.
 | `cooldown_threshold` | `3` | ≥ 1 | Consecutive headerless rate limits before long cooldown |
 | `cooldown_duration` | `300.0` | ≥ 0 seconds | Long cooldown duration |
 | `timeout` | `30.0` | ≥ 1 second | HTTP request timeout |
-| `max_linked_depth` | `1` | ≥ 0 | Default quote/linked-status traversal depth |
+| `max_linked_depth` | `50` | ≥ 0 | Safety cap on quote/linked-status hops followed from saved tweets and their author's own thread in the same conversation; `0` disables linked discovery |
+| `reply_linked_depth` | `0` | 0–1 | `1` also fetches statuses quoted or linked by other people's replies in saved conversations, one hop only (needs `max_linked_depth` ≥ 1) |
 
 Environment overrides:
 
@@ -111,6 +112,7 @@ TWEETNOOK_COOLDOWN_THRESHOLD
 TWEETNOOK_COOLDOWN_DURATION
 TWEETNOOK_TIMEOUT
 TWEETNOOK_MAX_LINKED_DEPTH
+TWEETNOOK_REPLY_LINKED_DEPTH
 ```
 
 Keep environment values within the same ranges shown in the table. Values outside
