@@ -40,6 +40,18 @@ body {
     visibility: visible;
 }
 
+.thread-connector-up {
+    height: 8px;
+}
+
+.thread-connector-down {
+    top: 56px;
+}
+
+.thread-nested-row {
+    padding-top: 12px;
+}
+
 .avatar.avatar-loaded {
     background-color: var(--bg-primary);
 }

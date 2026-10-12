@@ -272,10 +272,10 @@
                         <div class="px-4 pt-3 flex relative cursor-pointer hover-bg" :data-thread-id="parent.tweet_id" @click="openThread(parent.tweet_id)">
                             
                             <template x-if="index > 0">
-                                <div class="w-0.5 bg-[var(--thread-line)] absolute top-0 h-[12px] left-[36px] -translate-x-1/2 z-0"></div>
+                                <div class="thread-connector-up w-0.5 bg-[var(--thread-line)] absolute top-0 left-[36px] -translate-x-1/2 z-0"></div>
                             </template>
                             
-                            <div class="w-0.5 bg-[var(--thread-line)] absolute top-[52px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
+                            <div class="thread-connector-down w-0.5 bg-[var(--thread-line)] absolute bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
                             
                             <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, parent)">
                                 <span class="avatar-initial" x-text="getInitial(parent)"></span>
@@ -312,7 +312,7 @@
                     <!-- MAIN TWEET -->
                     <div class="px-4 pt-3 pb-3 tweet-border relative" data-thread-main="page">
                         <template x-if="threadData.parents.length > 0">
-                            <div class="absolute w-0.5 bg-[var(--thread-line)] top-0 h-[12px] left-[36px] -translate-x-1/2 z-0"></div>
+                            <div class="thread-connector-up absolute w-0.5 bg-[var(--thread-line)] top-0 left-[36px] -translate-x-1/2 z-0"></div>
                         </template>
 
                         <div class="tweet-detail-header flex space-x-2 relative z-10">
@@ -441,7 +441,7 @@
                             <div class="px-4 py-3 flex relative cursor-pointer hover-bg" :data-thread-id="child.tweet_id" @click="openThread(child.tweet_id)">
                                 <!-- Connecting line down to nested replies (legacy op_replies key) -->
                                 <template x-if="child.op_replies && child.op_replies.length > 0">
-                                    <div class="w-0.5 bg-[var(--thread-line)] absolute top-[52px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
+                                    <div class="thread-connector-down w-0.5 bg-[var(--thread-line)] absolute bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
                                 </template>
                                 
                                 <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, child)">
@@ -514,14 +514,14 @@
                             <template x-if="child.op_replies && child.op_replies.length > 0">
                                 <div>
                                     <template x-for="(reply, rIdx) in child.op_replies" :key="reply.tweet_id">
-                                        <div class="px-4 pb-3 pt-0 flex relative cursor-pointer hover-bg" :style="{ marginLeft: nestedReplyIndent(reply) + 'px' }" :data-thread-id="reply.tweet_id" @click="openThread(reply.tweet_id)">
+                                        <div class="thread-nested-row px-4 pb-3 flex relative cursor-pointer hover-bg" :style="{ marginLeft: nestedReplyIndent(reply) + 'px' }" :data-thread-id="reply.tweet_id" @click="openThread(reply.tweet_id)">
                                             
                                             <!-- Top Line Bridge from Child -->
-                                            <div class="w-0.5 bg-[var(--thread-line)] absolute top-0 h-[16px] left-[36px] -translate-x-1/2 z-0"></div>
+                                            <div class="thread-connector-up w-0.5 bg-[var(--thread-line)] absolute top-0 left-[36px] -translate-x-1/2 z-0"></div>
                                             
                                             <!-- Bottom line (only if more nested replies follow) -->
                                             <template x-if="rIdx < child.op_replies.length - 1">
-                                                <div class="w-0.5 bg-[var(--thread-line)] absolute top-[40px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
+                                                <div class="thread-connector-down w-0.5 bg-[var(--thread-line)] absolute bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
                                             </template>
                                             
                                             <!-- Avatar -->
@@ -708,9 +708,9 @@
                     <template x-for="(parent, index) in panelThreadData.parents" :key="parent.tweet_id">
                         <div class="px-4 pt-3 flex relative cursor-pointer hover-bg" :data-thread-id="parent.tweet_id" @click="openThread(parent.tweet_id, false, true)">
                             <template x-if="index > 0">
-                                <div class="w-0.5 bg-[var(--thread-line)] absolute top-0 h-[12px] left-[36px] -translate-x-1/2 z-0"></div>
+                                <div class="thread-connector-up w-0.5 bg-[var(--thread-line)] absolute top-0 left-[36px] -translate-x-1/2 z-0"></div>
                             </template>
-                            <div class="w-0.5 bg-[var(--thread-line)] absolute top-[52px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
+                            <div class="thread-connector-down w-0.5 bg-[var(--thread-line)] absolute bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
                             <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, parent)">
                                 <span class="avatar-initial" x-text="getInitial(parent)"></span>
                                 <img :src="avatarUrl(parent.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
@@ -743,7 +743,7 @@
                     <!-- MAIN TWEET -->
                     <div class="px-4 pt-3 pb-3 tweet-border relative" data-thread-main="panel">
                         <template x-if="panelThreadData.parents.length > 0">
-                            <div class="absolute w-0.5 bg-[var(--thread-line)] top-0 h-[12px] left-[36px] -translate-x-1/2 z-0"></div>
+                            <div class="thread-connector-up absolute w-0.5 bg-[var(--thread-line)] top-0 left-[36px] -translate-x-1/2 z-0"></div>
                         </template>
                         <div class="tweet-detail-header flex space-x-2 relative z-10">
                             <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden cursor-pointer" @click.stop="openProfileCard($event, panelThreadData.main)">
@@ -863,7 +863,7 @@
                             </template>
                             <div class="px-4 py-3 flex relative cursor-pointer hover-bg" :data-thread-id="child.tweet_id" @click="openThread(child.tweet_id, false, true)">
                                 <template x-if="child.op_replies && child.op_replies.length > 0">
-                                    <div class="w-0.5 bg-[var(--thread-line)] absolute top-[52px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
+                                    <div class="thread-connector-down w-0.5 bg-[var(--thread-line)] absolute bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
                                 </template>
                                 <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, child)">
                                     <span class="avatar-initial" x-text="getInitial(child)"></span>
@@ -931,10 +931,10 @@
                             <template x-if="child.op_replies && child.op_replies.length > 0">
                                 <div>
                                     <template x-for="(reply, rIdx) in child.op_replies" :key="reply.tweet_id">
-                                        <div class="px-4 pb-3 pt-0 flex relative cursor-pointer hover-bg" :style="{ marginLeft: nestedReplyIndent(reply) + 'px' }" :data-thread-id="reply.tweet_id" @click="openThread(reply.tweet_id, false, true)">
-                                            <div class="w-0.5 bg-[var(--thread-line)] absolute top-0 h-[16px] left-[36px] -translate-x-1/2 z-0"></div>
+                                        <div class="thread-nested-row px-4 pb-3 flex relative cursor-pointer hover-bg" :style="{ marginLeft: nestedReplyIndent(reply) + 'px' }" :data-thread-id="reply.tweet_id" @click="openThread(reply.tweet_id, false, true)">
+                                            <div class="thread-connector-up w-0.5 bg-[var(--thread-line)] absolute top-0 left-[36px] -translate-x-1/2 z-0"></div>
                                             <template x-if="rIdx < child.op_replies.length - 1">
-                                                <div class="w-0.5 bg-[var(--thread-line)] absolute top-[40px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
+                                                <div class="thread-connector-down w-0.5 bg-[var(--thread-line)] absolute bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
                                             </template>
                                             <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, reply)">
                                                 <span class="avatar-initial" x-text="getInitial(reply)"></span>
