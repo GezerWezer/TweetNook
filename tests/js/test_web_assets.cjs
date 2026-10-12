@@ -4852,6 +4852,36 @@ test('threads open on the tweet already shown while the conversation loads', asy
     assert.equal(app.panelStack[0].data, null);
 });
 
+test('thread main anchoring ignores hidden content and preserves visible content on page and panel', () => {
+    const context = browserContext();
+    const pageScrolls = [];
+    context.window.scrollBy = (...args) => pageScrolls.push(args);
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+
+    for (const panel of [false, true]) {
+        let visible = false;
+        let top = 0;
+        const main = {
+            getClientRects: () => visible ? [{}] : [],
+            getBoundingClientRect: () => ({ top, width: visible ? 598 : 0, height: visible ? 373 : 0 }),
+        };
+        const root = { scrollTop: 0, querySelector: () => main };
+        if (panel) app.$refs.detailPanel = root;
+        else context.document.querySelector = () => main;
+
+        app.keepThreadMainInPlace(panel, () => {
+            visible = true;
+            top = 69;
+        });
+        assert.equal(panel ? root.scrollTop : pageScrolls.length, 0, 'newly rendered content must not cause an anchor adjustment');
+
+        top = 100;
+        app.keepThreadMainInPlace(panel, () => { top = 160; });
+        if (panel) assert.equal(root.scrollTop, 60);
+        else assert.deepEqual(pageScrolls, [[0, 60]]);
+    }
+});
+
 test('pressing or hovering a tweet starts loading its conversation once', () => {
     const context = browserContext();
     const requests = [];
