@@ -2395,6 +2395,11 @@ body {
     background: #000;
 }
 
+.main-tweet-quote-after-single-media > .quote-card-detail,
+.main-tweet-quote-after-single-media > div > .tweet-skeleton-compact {
+    margin-top: 4px;
+}
+
 /* Keep the previous list visible but subdued while a new filter or search loads. */
 .feed-refreshing {
     opacity: 0.55;
