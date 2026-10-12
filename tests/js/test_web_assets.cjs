@@ -3230,6 +3230,14 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
         { type: 'video', width: 478, height: 850, download: { local_path: 'media/portrait.mp4' } },
     ], 'detail');
     assert.match(portraitDetailVideo, /width: min\(100%, calc\(510px \* 0\.562/);
+    const portraitFeedVideo = app.renderMediaGrid([
+        { type: 'video', width: 478, height: 850, download: { local_path: 'media/portrait.mp4' } },
+    ]);
+    assert.match(portraitFeedVideo, /width: min\(100%, calc\(510px \* 0\.562/);
+    const portraitFeedPhoto = app.renderMediaGrid([
+        { type: 'photo', width: 433, height: 880, download: { local_path: 'media/tall.jpg' } },
+    ]);
+    assert.match(portraitFeedPhoto, /width: min\(100%, calc\(510px \* 0\.492/);
     const landscapeDetailVideo = app.renderMediaGrid([
         { type: 'video', width: 1920, height: 1080, download: { local_path: 'media/landscape.mp4' } },
     ], 'detail');
