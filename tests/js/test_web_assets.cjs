@@ -2778,7 +2778,12 @@ test('media quoting media is compact in lists and flush in the detail view', () 
         duration_millis: 21000,
         download: { local_path: 'media/q.mp4', thumbnail_local_path: 'media/q.jpg' },
     };
-    const quoted_tweet = { tweet_id: '3', text: `quote ${'word '.repeat(80)}`, author: { username: 'q', display_name: 'Q' } };
+    const quoted_tweet = {
+        tweet_id: '3',
+        text: `quote ${'word '.repeat(80)}`,
+        author: { username: 'q', display_name: 'Q' },
+        raw_json: { in_reply_to_screen_name: 'frank' },
+    };
     const doubleMedia = { tweet_id: '1', text: 'x', author, media: [photo], quoted_tweet, qt_media: [video] };
 
     assert.equal(app.isMediaQuotingMedia(doubleMedia), true);
@@ -2786,9 +2791,11 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     assert.equal(app.isMediaQuotingMedia({ media: [photo] }), false);
     assert.equal(app.isMediaQuotingMedia(null), false);
 
-    // Lists: a thumbnail with the duration badge and clamped text, never Show more.
+    // Lists: a thumbnail with the duration badge beside the reply line and clamped
+    // text, never Show more.
     const compact = app.renderFeedCard(doubleMedia);
     assert.match(compact, /cursor-pointer quote-compact" data-thread-id="3" data-action="quote"/);
+    assert.match(compact, /<div class="quote-reply text-\[15px\][^"]*">Replying to <span[^>]*data-username="frank">@frank<\/span>/);
     assert.match(compact, /<div class="quote-media"><div class="quote-thumbnail"><img src="\/media\/q\.jpg" loading="lazy" decoding="async" alt=""><span class="quote-thumbnail-badge">0:21<\/span><\/div><\/div>/);
     assert.match(compact, /class="quote-text text-\[15px\]/);
     assert.doesNotMatch(compact, /media-video-player|expand-tweet/);
@@ -2807,10 +2814,15 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     dispatchFeed(list, 'click', list.children[0].querySelector('.quote-thumbnail img'));
     assert.equal(opened, '3');
 
+    // Several items tile in a small grid of up to four, without badges.
+    const pair = app.renderQuoteThumbnail([{ type: 'photo', download: { local_path: 'media/p.jpg' } }, video]);
     assert.match(
-        app.renderQuoteThumbnail([{ type: 'photo', download: { local_path: 'media/p.jpg' } }, video]),
-        /^<div class="quote-thumbnail"><img src="\/media\/p\.jpg"[^>]*><\/div>$/,
+        pair,
+        /^<div class="quote-thumbnail quote-thumbnail-grid"><div class="quote-thumbnail-cell"><img src="\/media\/p\.jpg"[^>]*><\/div><div class="quote-thumbnail-cell"><img src="\/media\/q\.jpg"[^>]*><\/div><\/div>$/,
     );
+    const videos = app.renderQuoteThumbnail(Array(5).fill(video));
+    assert.equal((videos.match(/class="quote-thumbnail-cell"/g) || []).length, 4);
+    assert.doesNotMatch(videos, /quote-thumbnail-badge/);
     const gif = app.renderQuoteThumbnail([{ type: 'animated_gif', download: { local_path: 'media/g.mp4' } }]);
     assert.match(gif, /<video src="\/media\/g\.mp4#t=0\.1" preload="metadata" muted playsinline><\/video><span class="quote-thumbnail-badge">GIF<\/span>/);
     assert.doesNotMatch(gif, /autoplay|controls/);
@@ -2822,6 +2834,9 @@ test('media quoting media is compact in lists and flush in the detail view', () 
         assert.equal(html.split(`:class="{ 'quote-compact': isMediaQuotingMedia(${name}) }"`).length - 1, 2);
         assert.equal(html.split(`isMediaQuotingMedia(${name}) ? renderQuoteThumbnail(${name}.qt_media) : renderMediaGrid(${name}.qt_media)`).length - 1, 2);
         assert.equal(html.split(`@click="if (!isMediaQuotingMedia(${name})) $event.stopPropagation()"`).length - 1, 2);
+        const replyLines = html.split(`<template x-if="getReplyTo({raw_json: getQuoteTweet(${name})})">`).slice(1);
+        assert.equal(replyLines.length, 2);
+        for (const line of replyLines) assert.match(line, /^\s*<div class="quote-reply text-\[15px\]/);
     }
     for (const main of ['threadData?.main', 'panelThreadData?.main']) {
         assert.ok(html.includes(`:class="{ 'quote-media-flush': isMediaQuotingMedia(${main}) }"`));
@@ -2829,6 +2844,8 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     }
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
     assert.match(css, /\.quote-compact > \.quote-text \{[^}]*-webkit-line-clamp: 4;/);
+    assert.match(css, /\.quote-compact > \.quote-reply \{[^}]*grid-row: 2;/);
+    assert.match(css, /\.quote-thumbnail-cell:first-child:nth-last-child\(3\) \{[^}]*grid-row: span 2;/);
     assert.match(css, /\.quote-media-flush > \.quote-media \{[^}]*margin: 0 -12px;/);
 });
 
