@@ -5255,7 +5255,7 @@ function tweetApp() {
             }
             const m = items[0];
             const label = m.type === 'animated_gif' ? 'GIF' : (m.type === 'video' ? this.formatMediaDuration(m.duration_millis) : '');
-            const badge = label ? `<span class="quote-thumbnail-badge">${label}</span>` : '';
+            const badge = label ? `<span class="quote-thumbnail-badge${m.type === 'video' ? ' quote-thumbnail-duration' : ''}">${label}</span>` : '';
             return `<div class="quote-thumbnail">${stills[0]}${badge}</div>`;
         },
 
