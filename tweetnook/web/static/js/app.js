@@ -16,6 +16,9 @@ const FEED_CACHE_MS = 5 * 60 * 1000;
 const FEED_CACHE_LIMIT = 12;
 // Load the next page while the end of the list is still this far below the viewport.
 const FEED_PREFETCH_MARGIN_PX = 1200;
+// Lazy images start loading this far outside the viewport, ahead of the browser's
+// own lazy-load distance, which on mobile is too short to hide the load.
+const MEDIA_PREFETCH_MARGIN_PX = 1600;
 // Hovering a tweet this long starts loading its conversation.
 const THREAD_HOVER_PREFETCH_MS = 150;
 const DEFAULT_FEEDS = [['likes', 'liked_latest'], ['all', 'newest'], ['bookmarks', 'newest'], ['tweets', 'newest']];
@@ -288,6 +291,7 @@ function tweetApp() {
         lightboxGestureAnimating: false,
         lightboxDismissPending: false,
         videoObserver: null,
+        mediaPrefetchObserver: null,
 
         // Split panel state
         splitPanel: false,
@@ -1681,18 +1685,47 @@ function tweetApp() {
                 });
             }, { threshold: 0.1 });
 
+            this.mediaPrefetchObserver = new IntersectionObserver((entries) => {
+                entries.forEach(e => {
+                    if (!e.isIntersecting) return;
+                    this.mediaPrefetchObserver.unobserve(e.target);
+                    this.prefetchMedia(e.target);
+                });
+            }, { rootMargin: `${MEDIA_PREFETCH_MARGIN_PX}px 0px` });
+
             const domObserver = new MutationObserver((mutations) => {
                 mutations.forEach(m => {
                     m.addedNodes.forEach(node => {
                         if (node.nodeType === 1) {
                             if (node.tagName === 'VIDEO') this.videoObserver.observe(node);
                             node.querySelectorAll('video').forEach(v => this.videoObserver.observe(v));
+                            this.observeMediaPrefetch(node);
                         }
                     });
                 });
             });
             domObserver.observe(document.body, { childList: true, subtree: true });
             
+        },
+
+        // Off-screen feed cards skip layout (content-visibility), so the images inside
+        // have no box to observe; watch the card instead and load all of its images.
+        observeMediaPrefetch(node) {
+            const images = node.tagName === 'IMG' ? [node] : node.querySelectorAll('img[loading="lazy"]');
+            images.forEach(image => {
+                if (image.loading !== 'lazy') return;
+                this.mediaPrefetchObserver.observe(image.closest('.feed-card') || image);
+            });
+        },
+
+        // Load and decode ahead of time, so the image paints with its card instead
+        // of a frame or more after it.
+        prefetchMedia(target) {
+            const images = target.tagName === 'IMG' ? [target] : target.querySelectorAll('img[loading="lazy"]');
+            images.forEach(image => {
+                image.loading = 'eager';
+                image.decode?.().catch(() => {});
+            });
         },
 
         pauseAllVideos() {
