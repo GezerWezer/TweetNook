@@ -137,6 +137,50 @@ body {
     white-space: nowrap;
 }
 
+.tweet-text,
+.quote-text,
+.quote-byline,
+.tweet-byline {
+    line-height: 20px;
+}
+
+.tweet-byline {
+    margin-bottom: 2px;
+}
+
+.tweet-byline .roll-wrapper,
+.tweet-byline .roll-item {
+    height: 20px;
+}
+
+/* The menu's larger hit area must not stretch the author row. */
+.tweet-byline-feed {
+    position: relative;
+    padding-right: 28px;
+}
+
+.tweet-menu-trigger {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+}
+
+/* Flex keeps the intentional gaps even when the tweet has no visible text. */
+[data-thread-main] {
+    display: flex;
+    flex-direction: column;
+}
+
+.tweet-detail-header {
+    margin-bottom: 2px;
+    line-height: 20px;
+}
+
+.tweet-text-detail {
+    margin-top: 12px;
+    line-height: 24px;
+}
+
 /* ── Missing tweet skeletons ─────────────────────────────────────── */
 
 .tweet-skeleton {

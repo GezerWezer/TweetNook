@@ -283,7 +283,7 @@
                             </div>
 
                             <div class="flex-1 min-w-0 z-10">
-                                <div class="flex items-center space-x-1 text-[15px]">
+                                <div class="tweet-byline flex items-center space-x-1 text-[15px]">
                                     <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, parent)" x-text="parent.author.display_name || 'Unknown'"></span>
                                     <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (parent.author.username || 'unknown')"></span>
                                     <span class="text-[var(--text-secondary)]">·</span>
@@ -301,7 +301,7 @@
                                     </div>
                                 </template>
 
-                                <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
+                                <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
                                 <div x-html="renderMediaGrid(parent.media)" @click.stop></div>
                                 <div x-html="renderCommunityNote(parent.raw_json)" @click.stop></div>
                                 <div x-html="renderActionBar(parent)"></div>
@@ -315,7 +315,7 @@
                             <div class="absolute w-0.5 bg-[var(--thread-line)] top-0 h-[12px] left-[36px] -translate-x-1/2 z-0"></div>
                         </template>
 
-                        <div class="flex space-x-2 mb-3 relative z-10">
+                        <div class="tweet-detail-header flex space-x-2 relative z-10">
                             <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden cursor-pointer" @click.stop="openProfileCard($event, threadData.main)">
                                 <span class="avatar-initial" x-text="getInitial(threadData.main)"></span>
                                 <img :src="avatarUrl(threadData.main.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
@@ -371,7 +371,7 @@
                             </div>
                         </template>
 
-                        <div class="text-[17px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
+                        <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
                         <div x-html="renderCard(threadData.main)" @click.stop></div>
                         <div x-html="renderMediaGrid(threadData.main.media)" @click.stop></div>
 
@@ -383,7 +383,7 @@
                                 </template>
                                 <template x-if="!isTombstone(getQuoteTweet(threadData?.main))">
                                     <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-media-flush': isMediaQuotingMedia(threadData?.main) }" :data-thread-id="getTweetId(getQuoteTweet(threadData?.main))" @click.stop="openThread(getTweetId(getQuoteTweet(threadData?.main)))">
-                                        <div class="flex items-center space-x-1 text-[15px] mb-1">
+                                        <div class="quote-byline flex items-center space-x-1 text-[15px] mb-1">
                                             <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                 <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(threadData?.main)).initial"></span>
                                                 <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(threadData?.main)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
@@ -450,7 +450,7 @@
                                 </div>
 
                                 <div class="flex-1 min-w-0 z-10">
-                                    <div class="flex items-center space-x-1 text-[15px]">
+                                    <div class="tweet-byline flex items-center space-x-1 text-[15px]">
                                         <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, child)" x-text="child.author.display_name || 'Unknown'"></span>
                                         <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (child.author.username || 'unknown')"></span>
                                         <span class="text-[var(--text-secondary)]">·</span>
@@ -468,7 +468,7 @@
                                         </div>
                                     </template>
 
-                                    <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(child)" @click="handleTextClick($event)"></div>
+                                    <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(child)" @click="handleTextClick($event)"></div>
                                     <div x-html="renderCard(child)" @click.stop></div>
                                     <div x-html="renderMediaGrid(child.media)" @click.stop></div>
 
@@ -480,7 +480,7 @@
                                             </template>
                                             <template x-if="!isTombstone(getQuoteTweet(child))">
                                                 <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-compact': isMediaQuotingMedia(child) }" :data-thread-id="getTweetId(getQuoteTweet(child))" @click.stop="openThread(getTweetId(getQuoteTweet(child)))">
-                                                    <div class="flex items-center space-x-1 text-[15px] mb-1">
+                                                    <div class="quote-byline flex items-center space-x-1 text-[15px] mb-1">
                                                         <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                             <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(child)).initial"></span>
                                                             <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(child)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
@@ -531,7 +531,7 @@
                                             </div>
 
                                             <div class="flex-1 min-w-0 z-10">
-                                                <div class="flex items-center space-x-1 text-[15px]">
+                                                <div class="tweet-byline flex items-center space-x-1 text-[15px]">
                                                     <span class="font-bold text-[#e7e9ea] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, reply)" x-text="reply.author.display_name || 'Unknown'"></span>
                                                     <span class="text-[#71767b] tweet-byline-detail" x-text="'@' + (reply.author.username || 'unknown')"></span>
                                                     <span class="text-[#71767b]">·</span>
@@ -549,7 +549,7 @@
                                                     </div>
                                                 </template>
 
-                                                <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(reply)" @click="handleTextClick($event)"></div>
+                                                <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(reply)" @click="handleTextClick($event)"></div>
                                                 <div x-html="renderCard(reply)" @click.stop></div>
                                                 <div x-html="renderMediaGrid(reply.media)" @click.stop></div>
 
@@ -561,7 +561,7 @@
                                                         </template>
                                                         <template x-if="!isTombstone(getQuoteTweet(reply))">
                                                             <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-compact': isMediaQuotingMedia(reply) }" :data-thread-id="getTweetId(getQuoteTweet(reply))" @click.stop="openThread(getTweetId(getQuoteTweet(reply)))">
-                                                                <div class="flex items-center space-x-1 text-[15px] mb-1">
+                                                                <div class="quote-byline flex items-center space-x-1 text-[15px] mb-1">
                                                                     <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                                         <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(reply)).initial"></span>
                                                                         <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(reply)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
@@ -628,14 +628,14 @@
                             </div>
                             <div class="flex-1 min-w-0 pb-1">
                                 <div class="flex items-center justify-between">
-                                    <div class="flex items-center space-x-1 overflow-hidden">
+                                    <div class="tweet-byline flex items-center space-x-1 overflow-hidden">
                                         <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="threadData.main.author.display_name" @click.stop="searchAuthor(threadData.main.author.username)"></span>
                                         <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + threadData.main.author.username"></span>
                                         <span class="text-[var(--text-secondary)] px-1">·</span>
                                         <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(threadData.main.created_at)"></span>
                                     </div>
                                 </div>
-                                <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
+                                <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
                                 <div x-html="renderMediaGrid(threadData.main.media)" @click.stop></div>
                             </div>
                         </div>
@@ -649,7 +649,7 @@
                         <img :src="avatarUrl(tweet.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image w-10 h-10 rounded-full flex-shrink-0 bg-[var(--bg-primary)]" loading="lazy">
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between">
-                                <div class="flex items-center space-x-1 overflow-hidden">
+                                <div class="tweet-byline flex items-center space-x-1 overflow-hidden">
                                     <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="tweet.author.display_name" @click.stop="searchAuthor(tweet.author.username)"></span>
                                     <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + tweet.author.username"></span>
                                     <span class="text-[var(--text-secondary)] px-1">·</span>
@@ -663,7 +663,7 @@
                                 </div>
                             </template>
 
-                            <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(tweet)" @click="handleTextClick($event)"></div>
+                            <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(tweet)" @click="handleTextClick($event)"></div>
                             <div x-html="renderCard(tweet)" @click.stop></div>
                             <div x-html="renderMediaGrid(tweet.media)" @click.stop></div>
                             <div x-html="renderCommunityNote(tweet.raw_json)" @click.stop></div>
@@ -716,7 +716,7 @@
                                 <img :src="avatarUrl(parent.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                             </div>
                             <div class="flex-1 min-w-0 z-10">
-                                <div class="flex items-center space-x-1 text-[15px]">
+                                <div class="tweet-byline flex items-center space-x-1 text-[15px]">
                                     <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, parent)" x-text="parent.author.display_name || 'Unknown'"></span>
                                     <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (parent.author.username || 'unknown')"></span>
                                     <span class="text-[var(--text-secondary)]">·</span>
@@ -732,7 +732,7 @@
                                         Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(parent))" x-text="'@' + getReplyTo(parent)"></span>
                                     </div>
                                 </template>
-                                <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
+                                <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
                                 <div x-html="renderMediaGrid(parent.media)" @click.stop></div>
                                 <div x-html="renderCommunityNote(parent.raw_json)" @click.stop></div>
                                 <div x-html="renderActionBar(parent)"></div>
@@ -745,7 +745,7 @@
                         <template x-if="panelThreadData.parents.length > 0">
                             <div class="absolute w-0.5 bg-[var(--thread-line)] top-0 h-[12px] left-[36px] -translate-x-1/2 z-0"></div>
                         </template>
-                        <div class="flex space-x-2 mb-3 relative z-10">
+                        <div class="tweet-detail-header flex space-x-2 relative z-10">
                             <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden cursor-pointer" @click.stop="openProfileCard($event, panelThreadData.main)">
                                 <span class="avatar-initial" x-text="getInitial(panelThreadData.main)"></span>
                                 <img :src="avatarUrl(panelThreadData.main.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
@@ -798,7 +798,7 @@
                                 Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(panelThreadData.main))" x-text="'@' + getReplyTo(panelThreadData.main)"></span>
                             </div>
                         </template>
-                        <div class="text-[17px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(panelThreadData.main)" @click="handleTextClick($event)"></div>
+                        <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(panelThreadData.main)" @click="handleTextClick($event)"></div>
                         <div x-html="renderCard(panelThreadData.main)" @click.stop></div>
                         <div x-html="renderMediaGrid(panelThreadData.main.media)" @click.stop></div>
 
@@ -810,7 +810,7 @@
                                 </template>
                                 <template x-if="!isTombstone(getQuoteTweet(panelThreadData?.main))">
                                     <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-media-flush': isMediaQuotingMedia(panelThreadData?.main) }" :data-thread-id="getTweetId(getQuoteTweet(panelThreadData?.main))" @click.stop="openThread(getTweetId(getQuoteTweet(panelThreadData?.main)), false, true)">
-                                        <div class="flex items-center space-x-1 text-[15px] mb-1">
+                                        <div class="quote-byline flex items-center space-x-1 text-[15px] mb-1">
                                             <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                 <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).initial"></span>
                                                 <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
@@ -870,7 +870,7 @@
                                     <img :src="avatarUrl(child.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                 </div>
                                 <div class="flex-1 min-w-0 z-10">
-                                    <div class="flex items-center space-x-1 text-[15px]">
+                                    <div class="tweet-byline flex items-center space-x-1 text-[15px]">
                                         <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, child)" x-text="child.author.display_name || 'Unknown'"></span>
                                         <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (child.author.username || 'unknown')"></span>
                                         <span class="text-[var(--text-secondary)]">·</span>
@@ -886,7 +886,7 @@
                                             Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(child))" x-text="'@' + getReplyTo(child)"></span>
                                         </div>
                                     </template>
-                                    <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(child)" @click="handleTextClick($event)"></div>
+                                    <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(child)" @click="handleTextClick($event)"></div>
                                     <div x-html="renderCard(child)" @click.stop></div>
                                     <div x-html="renderMediaGrid(child.media)" @click.stop></div>
 
@@ -898,7 +898,7 @@
                                             </template>
                                             <template x-if="!isTombstone(getQuoteTweet(child))">
                                                 <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-compact': isMediaQuotingMedia(child) }" :data-thread-id="getTweetId(getQuoteTweet(child))" @click.stop="openThread(getTweetId(getQuoteTweet(child)), false, true)">
-                                                    <div class="flex items-center space-x-1 text-[15px] mb-1">
+                                                    <div class="quote-byline flex items-center space-x-1 text-[15px] mb-1">
                                                         <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                             <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(child)).initial"></span>
                                                             <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(child)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
@@ -941,7 +941,7 @@
                                                 <img :src="avatarUrl(reply.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                             </div>
                                             <div class="flex-1 min-w-0 z-10">
-                                                <div class="flex items-center space-x-1 text-[15px]">
+                                                <div class="tweet-byline flex items-center space-x-1 text-[15px]">
                                                     <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, reply)" x-text="reply.author.display_name || 'Unknown'"></span>
                                                     <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (reply.author.username || 'unknown')"></span>
                                                     <span class="text-[var(--text-secondary)]">·</span>
@@ -957,7 +957,7 @@
                                                         Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(reply))" x-text="'@' + getReplyTo(reply)"></span>
                                                     </div>
                                                 </template>
-                                                <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(reply)" @click="handleTextClick($event)"></div>
+                                                <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(reply)" @click="handleTextClick($event)"></div>
                                                 <div x-html="renderCard(reply)" @click.stop></div>
                                                 <div x-html="renderMediaGrid(reply.media)" @click.stop></div>
 
@@ -969,7 +969,7 @@
                                                         </template>
                                                         <template x-if="!isTombstone(getQuoteTweet(reply))">
                                                             <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-compact': isMediaQuotingMedia(reply) }" :data-thread-id="getTweetId(getQuoteTweet(reply))" @click.stop="openThread(getTweetId(getQuoteTweet(reply)), false, true)">
-                                                                <div class="flex items-center space-x-1 text-[15px] mb-1">
+                                                                <div class="quote-byline flex items-center space-x-1 text-[15px] mb-1">
                                                                     <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                                         <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(reply)).initial"></span>
                                                                         <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(reply)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
@@ -1035,14 +1035,14 @@
                             </div>
                             <div class="flex-1 min-w-0 pb-1">
                                 <div class="flex items-center justify-between">
-                                    <div class="flex items-center space-x-1 overflow-hidden">
+                                    <div class="tweet-byline flex items-center space-x-1 overflow-hidden">
                                         <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="panelThreadData.main.author.display_name" @click.stop="searchAuthor(panelThreadData.main.author.username)"></span>
                                         <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + panelThreadData.main.author.username"></span>
                                         <span class="text-[var(--text-secondary)] px-1">·</span>
                                         <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(panelThreadData.main.created_at)"></span>
                                     </div>
                                 </div>
-                                <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(panelThreadData.main)" @click="handleTextClick($event)"></div>
+                                <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(panelThreadData.main)" @click="handleTextClick($event)"></div>
                                 <div x-html="renderMediaGrid(panelThreadData.main.media)" @click.stop></div>
                             </div>
                         </div>
@@ -1055,7 +1055,7 @@
                         <img :src="avatarUrl(tweet.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image w-10 h-10 rounded-full flex-shrink-0 bg-[var(--bg-primary)]" loading="lazy">
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between">
-                                <div class="flex items-center space-x-1 overflow-hidden">
+                                <div class="tweet-byline flex items-center space-x-1 overflow-hidden">
                                     <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="tweet.author.display_name" @click.stop="searchAuthor(tweet.author.username)"></span>
                                     <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + tweet.author.username"></span>
                                     <span class="text-[var(--text-secondary)] px-1">·</span>
@@ -1067,7 +1067,7 @@
                                     Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(tweet))" x-text="'@' + getReplyTo(tweet)"></span>
                                 </div>
                             </template>
-                            <div class="text-[15px] mt-1 whitespace-pre-wrap leading-normal break-words" x-html="formatText(tweet)" @click="handleTextClick($event)"></div>
+                            <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(tweet)" @click="handleTextClick($event)"></div>
                             <div x-html="renderCard(tweet)" @click.stop></div>
                             <div x-html="renderMediaGrid(tweet.media)" @click.stop></div>
                             <div x-html="renderCommunityNote(tweet.raw_json)" @click.stop></div>

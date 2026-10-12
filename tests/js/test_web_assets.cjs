@@ -4952,7 +4952,7 @@ test('feed cards render each fixture tweet shape as plain markup', () => {
     assert.ok(quoted.querySelector('a.mt-3').closest('[data-action="stop"]'), 'link card');
     assert.equal(quoted.textContent.match(/Readers added context/g).length, 2);
     assert.ok(quote.querySelector('.-mx-3').closest('[data-action="stop"]'), 'quote note');
-    assert.equal(quoted.querySelector('[data-action="text"]').getAttribute('class'), 'text-[15px] -mt-2 whitespace-pre-wrap leading-normal break-words');
+    assert.equal(quoted.querySelector('[data-action="text"]').getAttribute('class'), 'tweet-text text-[15px] whitespace-pre-wrap break-words');
 
     // Retweets show the original under a repost header and keep the list item id.
     for (const card of [retweet, rawRetweet]) {
