@@ -2378,7 +2378,7 @@ function tweetApp() {
                         : part(this.renderMediaGrid(tweet.qt_media), ' class="quote-media" data-action="stop"'))
                     + part(this.renderCard({ raw_json: quote }), ' data-action="stop"')
                     + this.renderNestedQuote(quote, true)
-                    + part(this.renderCommunityNote(quote, true), ' data-action="stop"')
+                    + part(this.renderCommunityNote(quote, true, false, Boolean(tweet.qt_media?.length)), ' data-action="stop"')
                     + '</div>';
             }
 
@@ -5372,10 +5372,10 @@ function tweetApp() {
             }
         },
 
-        formatCommunityNoteText(bw) {
-            let text = bw.subtitle?.text || '';
+        formatCommunityNoteText(content) {
+            let text = content?.text || '';
             if (!text) return '';
-            let entities = bw.subtitle?.entities || [];
+            let entities = content?.entities || [];
             
             entities = [...entities].sort((a, b) => a.fromIndex - b.fromIndex);
             
@@ -5387,7 +5387,7 @@ function tweetApp() {
                     html += this.escapeHTML(text.substring(lastIndex, ent.fromIndex));
                     const linkText = this.escapeHTML(text.substring(ent.fromIndex, ent.toIndex));
                     const href = this.safeURL(ent.ref.url);
-                    html += `<a href="${href}" target="_blank" class="text-[var(--accent-color)] hover:underline" @click.stop>${linkText}</a>`;
+                    html += `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-[var(--accent-color)] hover:underline" @click.stop>${linkText}</a>`;
                     lastIndex = ent.toIndex;
                 }
             }
@@ -5395,26 +5395,29 @@ function tweetApp() {
             return html;
         },
 
-        renderCommunityNote(raw_json, isQuote = false) {
+        renderCommunityNote(raw_json, isQuote = false, isDetail = false, quoteHasMedia = false) {
             raw_json = raw_json?.raw_json || raw_json;
             if (!raw_json || !raw_json.birdwatch_pivot) return '';
             const bw = raw_json.birdwatch_pivot;
-            if (!bw.subtitle || !bw.subtitle.text) return '';
+            if (!bw.subtitle?.text) return '';
             
-            const textHtml = this.formatCommunityNoteText(bw);
-            const containerClass = isQuote 
-                ? "-mx-3 -mb-3 p-3 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] rounded-b-xl text-left" 
-                : "mt-3 border border-[var(--border-color)] rounded-xl p-3 bg-[var(--bg-secondary)] hover-bg transition cursor-pointer text-left";
+            const textHtml = this.formatCommunityNoteText(bw.subtitle);
+            const title = isDetail ? (bw.title || bw.shorttitle || 'Readers added context') : (bw.shorttitle || 'Readers added context');
+            const containerClass = isQuote
+                ? `community-note community-note-quote${quoteHasMedia ? ' community-note-quote-media' : ' community-note-quote-spaced'}`
+                : isDetail
+                    ? 'community-note community-note-detail'
+                    : 'community-note community-note-feed';
 
             const iconSvg = `<svg viewBox="0 0 24 24" fill="var(--accent-color)" class="w-[18px] h-[18px]"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg>`;
             
             return `
             <div class="${containerClass}" ${!isQuote ? 'onclick="event.stopPropagation()"' : ''}>
-                <div class="flex items-center space-x-2 text-[15px] font-bold text-[var(--text-primary)] mb-1">
+                <div class="community-note-header">
                     ${iconSvg}
-                    <span>${this.escapeHTML(bw.shorttitle || 'Readers added context')}</span>
+                    <span>${this.escapeHTML(title)}</span>
                 </div>
-                <div class="text-[15px] text-[var(--text-primary)] whitespace-pre-wrap break-words leading-normal mt-2">${textHtml}</div>
+                <div class="community-note-body">${textHtml}</div>
             </div>`;
         },
 

@@ -729,6 +729,7 @@
       "reply_to_id": null,
       "reply_to_username": null,
       "quoted_tweet_id": null,
+      "community_note": "This is an example Community Note attached directly to a video post.",
       "tags": [
         "tabby cat",
         "computer desk",

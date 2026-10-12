@@ -192,12 +192,19 @@ async function main() {
 
     const notedTweet = await request(store, `https://example.test/api/tweets/${ids.quotedStandalone}`);
     assert.deepEqual(notedTweet.body.main.raw_json.birdwatch_pivot, {
+        title: 'Readers added context they thought people might want to know',
         shorttitle: 'Readers added context',
         subtitle: {
             text: 'community notes work too!',
             entities: [],
         },
     });
+
+    const videoNote = await request(store, `https://example.test/api/tweets/${ids.video}`);
+    assert.equal(
+        videoNote.body.main.raw_json.birdwatch_pivot.subtitle.text,
+        'This is an example Community Note attached directly to a video post.',
+    );
 
     const rootTweets = fixture.tweets.filter(tweet => tweet.reply_to_id === null);
     assert.equal(rootTweets.length, 26);
