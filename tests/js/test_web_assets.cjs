@@ -3264,6 +3264,7 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     assert.match(css, /\.media-gif-indicator \{/);
     assert.match(css, /\.media-gif-indicator\.is-paused \.media-gif-play-icon/);
     assert.match(css, /\.quote-thumbnail-badge\s*\{[^}]*display: inline-flex;[^}]*align-items: center;/s);
+    assert.match(css, /\.quote-thumbnail-duration\s*\{[^}]*background: rgba\(0, 0, 0, 0\.77\);/s);
 });
 
 test('video duration uses loaded media metadata and shows only while native controls are hidden', () => {

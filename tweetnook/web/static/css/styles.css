@@ -2362,6 +2362,7 @@ body {
 }
 .quote-thumbnail-duration {
     font-weight: 400;
+    background: rgba(0, 0, 0, 0.77);
 }
 
 /* A quote's own quote, nested as X shows it: a bar instead of a border. It sits as
