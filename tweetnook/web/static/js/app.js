@@ -2365,27 +2365,19 @@ function tweetApp() {
             if (quote && this.isTombstone(quote)) {
                 quoteBlock = part(this.renderQuotePlaceholder(quote), ' data-action="stop"');
             } else if (quote) {
-                const quoteAuthor = this.getQuoteAuthor(quote);
                 const quoteId = this.getTweetId(quote);
                 const quoteReplyTo = this.getReplyTo({ raw_json: quote });
                 // A compact quote's text is clamped by CSS, so it is rendered without Show more.
                 const compact = this.isMediaQuotingMedia(tweet);
                 quoteBlock = `<div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer${compact ? ' quote-compact' : ''}"${quoteId ? ` data-thread-id="${escape(quoteId)}"` : ''} data-action="quote">`
-                    + '<div class="flex items-center space-x-1 text-[15px] mb-1">'
-                    + '<div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">'
-                    + `<span class="avatar-initial">${escape(quoteAuthor.initial)}</span>`
-                    + `<img src="${escape(this.avatarUrl(quoteAuthor.id))}" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy"></div>`
-                    + `<span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name">${escape(quoteAuthor.name)}</span>`
-                    + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(`@${quoteAuthor.screen_name}`)}</span>`
-                    + '<span class="text-[var(--text-secondary)]">·</span>'
-                    + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(this.formatDate(quote.legacy?.created_at || quote.created_at))}</span>`
-                    + '</div>'
+                    + this.renderQuoteByline(quote)
                     + (quoteReplyTo ? replyLine(quoteReplyTo, 'quote-reply ') : '')
                     + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote, compact, true)}</div>`
                     + (compact
                         ? part(this.renderQuoteThumbnail(tweet.qt_media), ' class="quote-media"')
                         : part(this.renderMediaGrid(tweet.qt_media), ' data-action="stop"'))
                     + part(this.renderCard({ raw_json: quote }), ' data-action="stop"')
+                    + this.renderNestedQuote(quote, true)
                     + part(this.renderCommunityNote(quote, true), ' data-action="stop"')
                     + '</div>';
             }
@@ -5170,6 +5162,56 @@ function tweetApp() {
         // Like X, a quote is compact when both it and the tweet quoting it have media.
         isMediaQuotingMedia(tweet) {
             return Boolean(tweet?.media?.length && tweet?.qt_media?.length);
+        },
+
+        renderQuoteByline(quote) {
+            const escape = value => this.escapeHTML(value);
+            const author = this.getQuoteAuthor(quote);
+            return '<div class="flex items-center space-x-1 text-[15px] mb-1">'
+                + '<div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">'
+                + `<span class="avatar-initial">${escape(author.initial)}</span>`
+                + `<img src="${escape(this.avatarUrl(author.id))}" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy"></div>`
+                + `<span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name">${escape(author.name)}</span>`
+                + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(`@${author.screen_name}`)}</span>`
+                + '<span class="text-[var(--text-secondary)]">·</span>'
+                + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(this.formatDate(quote.legacy?.created_at || quote.created_at))}</span>`
+                + '</div>';
+        },
+
+        // A quote's own quote, nested inside it as X shows it: a bar beside the byline
+        // and two lines of text, with any media as a small thumbnail beside the text.
+        // Unavailable or uncaptured nested quotes are left out.
+        renderNestedQuote(quote, highlightSearch = false) {
+            const nested = this.getQuoteTweet(quote);
+            if (!nested || this.isTombstone(nested)) return '';
+            const id = this.getTweetId(nested);
+            const media = quote.qt_media || nested.media || [];
+            return `<div class="quote-nested${media.length ? ' quote-nested-media' : ''}"${id ? ` data-thread-id="${this.escapeHTML(id)}"` : ''} data-action="quote">`
+                + this.renderQuoteByline(nested)
+                + (media.length ? `<div class="quote-media">${this.renderQuoteThumbnail(media)}</div>` : '')
+                + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(nested, true, highlightSearch)}</div>`
+                + '</div>';
+        },
+
+        // Thread views render nested quotes with x-html; a click inside one opens it
+        // instead of the quote around it.
+        openNestedQuote(event) {
+            const nested = event.target.closest?.('.quote-nested');
+            if (!nested) return;
+            event.stopPropagation();
+            if (event.target.closest('a')) return;
+            const text = event.target.closest('[data-action="text"]');
+            if (text && this.handleTextClick(event, text)) return;
+            this.openThread(nested.dataset.threadId);
+        },
+
+        // Avatar load and error events do not bubble; x-html content catches them on
+        // the way down.
+        avatarEvent(event) {
+            const image = event.target;
+            if (!image?.classList?.contains('avatar-image')) return;
+            if (event.type === 'load') this.avatarLoaded(image);
+            else this.avatarFailed(image);
         },
 
         mediaSource(m) {

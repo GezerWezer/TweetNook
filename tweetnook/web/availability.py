@@ -203,7 +203,10 @@ def _embedded_result(raw: dict[str, Any] | None, relation_type: str) -> dict[str
     if not raw:
         return None
     if relation_type == "quote_of":
-        result = (raw.get("quoted_status_result") or {}).get("result")
+        # X embeds a quoted tweet's own quote as nested_quoted_tweet_results.
+        result = (
+            raw.get("quoted_status_result") or raw.get("nested_quoted_tweet_results") or {}
+        ).get("result")
         if result is None:
             result = raw.get("quoted_status")
     else:
@@ -341,16 +344,44 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
         _overlay_object_content(tweet, object_row)
         tweet["_relation_only"] = False
 
+    for tweet in tweets:
+        object_row = objects_by_id.get(str(tweet.get("tweet_id") or ""))
+        relation_only = bool(tweet.pop("_relation_only", False))
+        tweet["availability"] = availability_for_tweet(
+            tweet, object_row, relation_only=relation_only
+        )
+        if tweet["availability"]["placeholder"]:
+            tweet["media"] = []
+            tweet["raw_json"] = None
+        elif not tweet.get("media"):
+            tweet["media"] = _raw_media_payloads(_json_dict(tweet.get("raw_json")))
+
+    _attach_targets(store, tweets, ("quote_of", "retweet_of"))
+    # Like X, show one more level: a quote's own quote. A retweet displays its
+    # original, so the original's quote attaches first.
+    originals = [tweet["retweeted_tweet"] for tweet in tweets if tweet.get("retweeted_tweet")]
+    _attach_targets(store, originals, ("quote_of",))
+    quotes = [tweet["quoted_tweet"] for tweet in (*tweets, *originals) if tweet.get("quoted_tweet")]
+    _attach_targets(store, quotes, ("quote_of",))
+    return tweets
+
+
+def _attach_targets(
+    store: Any, tweets: list[dict[str, Any]], relation_types: tuple[str, ...]
+) -> None:
+    """Attach the normalized targets of annotated tweets' relations in bounded batches."""
+    sources = [tweet for tweet in tweets if not tweet["availability"]["placeholder"]]
+    source_ids = [str(tweet["tweet_id"]) for tweet in sources if tweet.get("tweet_id")]
     relation_rows = store._rows_for_values(
         "tweet_relation",
         "tweet_id",
-        tweet_ids,
+        source_ids,
         columns=["tweet_id", "target_tweet_id", "relation_type"],
     )
     relations: dict[tuple[str, str], str] = {}
     for row in relation_rows:
         relation_type = row.get("relation_type")
-        if relation_type not in {"quote_of", "retweet_of"}:
+        if relation_type not in relation_types:
             continue
         source_id = row.get("tweet_id")
         target_id = row.get("target_tweet_id")
@@ -359,10 +390,10 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
 
     attached_specs: dict[tuple[str, str], tuple[str | None, dict[str, Any] | None]] = {}
     attached_ids: list[str] = []
-    for tweet in tweets:
+    for tweet in sources:
         source_id = str(tweet.get("tweet_id") or "")
         raw = _json_dict(tweet.get("raw_json"))
-        for relation_type in ("quote_of", "retweet_of"):
+        for relation_type in relation_types:
             embedded = _embedded_result(raw, relation_type)
             legacy = (raw or {}).get("legacy") or {}
             target_id = (
@@ -415,22 +446,8 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
 
     for tweet in tweets:
         tweet_id = str(tweet.get("tweet_id") or "")
-        object_row = objects_by_id.get(tweet_id)
-        relation_only = bool(tweet.pop("_relation_only", False))
-        tweet["availability"] = availability_for_tweet(
-            tweet, object_row, relation_only=relation_only
-        )
-        if tweet["availability"]["placeholder"]:
-            tweet["media"] = []
-            tweet["qt_media"] = []
-            tweet["raw_json"] = None
-        elif not tweet.get("media"):
-            tweet["media"] = _raw_media_payloads(_json_dict(tweet.get("raw_json")))
-
-        for relation_type, field_name in (
-            ("quote_of", "quoted_tweet"),
-            ("retweet_of", "retweeted_tweet"),
-        ):
+        for relation_type in relation_types:
+            field_name = "quoted_tweet" if relation_type == "quote_of" else "retweeted_tweet"
             spec = attached_specs.get((tweet_id, relation_type))
             if spec is None or tweet["availability"]["placeholder"]:
                 tweet[field_name] = None
@@ -469,10 +486,10 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
                 attached["media_tags"] = tags_by_id.get(target_id)
             tweet[field_name] = attached
 
-        quote = tweet.get("quoted_tweet")
-        tweet["qt_media"] = quote.get("media", []) if isinstance(quote, dict) else []
-        tweet["qt_media_tags"] = quote.get("media_tags") if isinstance(quote, dict) else None
-    return tweets
+        if "quote_of" in relation_types:
+            quote = tweet.get("quoted_tweet")
+            tweet["qt_media"] = quote.get("media", []) if isinstance(quote, dict) else []
+            tweet["qt_media_tags"] = quote.get("media_tags") if isinstance(quote, dict) else None
 
 
 # The raw tweet fields the Web UI reads, by shape. Everything else in a stored
@@ -573,7 +590,8 @@ def slim_web_tweets(tweets: Any) -> None:
         if not isinstance(tweet, dict):
             continue
         tweet["raw_json"] = slim_raw_tweet(tweet.get("raw_json"))
-        for field in ("quoted_tweet", "retweeted_tweet"):
-            attached = tweet.get(field)
-            if isinstance(attached, dict):
-                attached["raw_json"] = slim_raw_tweet(attached.get("raw_json"))
+        slim_web_tweets(
+            attached
+            for field in ("quoted_tweet", "retweeted_tweet")
+            if isinstance(attached := tweet.get(field), dict)
+        )

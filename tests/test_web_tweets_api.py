@@ -658,6 +658,8 @@ class ThreadStore:
         assert field == "tweet_id"
         if record_type in {"tweet_object", "tweet_relation", "tweet_hidden"}:
             return []
+        if "quoted" not in values:
+            return []
         if record_type == "media_tag":
             assert columns == ["tweet_id", "raw_json"]
             return [
@@ -928,7 +930,8 @@ def test_api_tweet_thread_parses_each_tweet_json_once_and_tolerates_malformed(mo
     monkeypatch.setattr(fastjson, "loads", track_loads)
     response = api_tweet_thread("main", store=MalformedThreadStore(), _auth=True)
 
-    assert len(parsed_values) == 10  # seven tweet objects and three direct/quoted media-tag rows
+    # Seven tweet objects and two direct media-tag rows; the malformed main has no quote.
+    assert len(parsed_values) == 9
     assert original_loads(response.body)["main"]["raw_json"] is None
 
 

@@ -2197,6 +2197,51 @@ body {
     pointer-events: none;
 }
 
+/* A quote's own quote, nested as X shows it: a bar instead of a border. It sits as
+   far below the quote's content as the quote's 12px padding leaves below it. Text
+   is clamped to two lines, centred beside a 64px thumbnail when there is media. */
+.quote-nested {
+    position: relative;
+    margin-top: 12px;
+    padding: 8px 0 8px 15px;
+}
+/* Right after text, the last line's leading already leaves about 6px below the
+   baseline. Thread templates keep empty card and media slots between the two. */
+.quote-text + .quote-nested,
+.quote-text + :empty + .quote-media:empty + * > .quote-nested {
+    margin-top: 6px;
+}
+.quote-nested::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 3px;
+    border-radius: 3px;
+    background: var(--border-color);
+}
+.quote-nested > .quote-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+}
+.quote-nested-media {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: center;
+}
+.quote-nested-media > :first-child {
+    grid-column: 1 / -1;
+}
+.quote-nested .quote-thumbnail {
+    width: 64px;
+    height: 64px;
+}
+
 /* In the thread's main tweet, the same quote's media runs edge to edge, cancelling
    the quote's 12px padding; videos letterbox like X's player. */
 .quote-media-flush {
