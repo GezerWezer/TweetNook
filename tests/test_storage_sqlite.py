@@ -692,6 +692,71 @@ def test_fetch_tweets_preserves_requested_order_and_hydrates_tags(paths) -> None
     store.close()
 
 
+def test_fetch_tweets_serializes_valid_playback_aspect_ratio(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    raw = {
+        "legacy": {
+            "extended_entities": {
+                "media": [
+                    {"type": "photo", "original_info": {"width": 900, "height": 1600}},
+                    {
+                        "type": "video",
+                        "original_info": {"width": 1600, "height": 900},
+                        "video_info": {"aspect_ratio": [3, 4]},
+                    },
+                    {
+                        "type": "video",
+                        "original_info": {"width": 640, "height": 360},
+                        "video_info": {"aspect_ratio": [3, 4]},
+                    },
+                    {"type": "animated_gif", "video_info": {"aspect_ratio": [0, 4]}},
+                ]
+            }
+        }
+    }
+    store._merge_records(
+        [
+            store._record(
+                row_key="tweet:bookmark::aspect",
+                record_type="tweet",
+                tweet_id="aspect",
+                collection_type="bookmark",
+                text="media",
+                raw_json=json.dumps(raw),
+            ),
+            *[
+                store._record(
+                    row_key=f"media:aspect:{key}",
+                    record_type="media",
+                    tweet_id="aspect",
+                    media_key=key,
+                    media_type=media_type,
+                    position=position,
+                    width=width,
+                    height=height,
+                )
+                for key, media_type, position, width, height in [
+                    ("photo", "photo", 0, 900, 1600),
+                    ("video", "video", 1, 1600, 900),
+                    ("no-dimensions", "video", 2, None, None),
+                    ("malformed", "animated_gif", 3, None, None),
+                ]
+            ],
+        ]
+    )
+
+    media = store.fetch_tweets_by_ids(["aspect"])[0]["media"]
+
+    assert "aspect_ratio" not in media[0]
+    assert (media[1]["width"], media[1]["height"]) == ("1600", "900")
+    assert media[1]["aspect_ratio"] == [3, 4]
+    assert media[2]["width"] is None and media[2]["height"] is None
+    assert media[2]["aspect_ratio"] == [3, 4]
+    assert "aspect_ratio" not in media[3]
+    store.close()
+
+
 @pytest.mark.parametrize(
     ("query", "expected_ids"),
     [

@@ -531,12 +531,38 @@ def _thread_object(
     likes: int = 0,
     quote_id: str | None = None,
 ) -> dict[str, Any]:
-    raw: dict[str, Any] = {"legacy": {"favorite_count": likes}}
+    raw: dict[str, Any] = {
+        "legacy": {
+            "favorite_count": likes,
+            "extended_entities": {
+                "media": [
+                    {
+                        "type": "video",
+                        "original_info": {"width": 1600, "height": 900},
+                        "video_info": {"aspect_ratio": [3, 4]},
+                    }
+                ]
+            },
+        }
+    }
     if quote_id:
         raw["quoted_status_result"] = {
             "result": {
                 "__typename": "TweetWithVisibilityResults",
-                "tweet": {"rest_id": quote_id},
+                "tweet": {
+                    "rest_id": quote_id,
+                    "legacy": {
+                        "extended_entities": {
+                            "media": [
+                                {
+                                    "type": "video",
+                                    "original_info": {"width": 1600, "height": 900},
+                                    "video_info": {"aspect_ratio": [3, 4]},
+                                }
+                            ]
+                        }
+                    },
+                },
             }
         }
     return {
@@ -598,12 +624,22 @@ class ThreadStore:
         if "record_type = 'media'" in expr:
             return [
                 {
-                    "tweet_id": "main",
-                    "media_type": "photo",
-                    "width": 80,
-                    "height": 40,
-                    "local_path": "media/main.jpg",
+                    "tweet_id": tweet_id,
+                    "position": 0,
+                    "media_type": "video",
+                    "width": None,
+                    "height": None,
+                    "local_path": f"media/{tweet_id}.mp4",
                 }
+                for tweet_id in (
+                    "main",
+                    "parent",
+                    "child",
+                    "popular",
+                    "grandchild",
+                    "non-op-grandchild",
+                    "great-grandchild",
+                )
             ]
         if "record_type = 'tweet' AND" in expr:
             return [
@@ -671,6 +707,7 @@ class ThreadStore:
         assert record_type == "media"
         assert columns == [
             "tweet_id",
+            "position",
             "media_type",
             "media_url",
             "thumbnail_url",
@@ -683,7 +720,10 @@ class ThreadStore:
         return [
             {
                 "tweet_id": "quoted",
+                "position": 0,
                 "media_type": "video",
+                "width": 1600,
+                "height": 900,
                 "duration_millis": 12,
                 "local_path": "media/quote.mp4",
             }
@@ -700,8 +740,12 @@ def test_api_tweet_thread_builds_parents_children_nested_replies_quotes_media_an
     assert result["main"]["media_tags"] == {"tags": ["Night"]}
     assert result["main"]["qt_media_tags"] == {"tags": ["Quoted Topic"]}
     assert result["main"]["qt_media"][0]["download"]["local_path"] == "media/quote.mp4"
+    assert result["main"]["qt_media"][0]["aspect_ratio"] == [3, 4]
+    assert result["main"]["media"][0]["aspect_ratio"] == [3, 4]
     assert [tweet["tweet_id"] for tweet in result["parents"]] == ["parent"]
+    assert result["parents"][0]["media"][0]["aspect_ratio"] == [3, 4]
     assert [tweet["tweet_id"] for tweet in result["children"]] == ["child", "popular"]
+    assert result["children"][0]["media"][0]["aspect_ratio"] == [3, 4]
     assert [reply["tweet_id"] for reply in result["children"][0]["op_replies"]] == [
         "grandchild",
         "great-grandchild",
@@ -718,6 +762,7 @@ def test_api_tweet_thread_builds_parents_children_nested_replies_quotes_media_an
         "child",
     ]
     assert result["children"][0]["op_replies"][2]["author"]["id"] == "u3"
+    assert result["children"][0]["op_replies"][0]["media"][0]["aspect_ratio"] == [3, 4]
     assert result["reply_tree_truncated"] is False
     assert store.reply_frontier_calls
     first_frontier_sql, first_frontier_params = store.reply_frontier_calls[0]
@@ -760,6 +805,7 @@ def test_api_tweet_thread_builds_parents_children_nested_replies_quotes_media_an
         },
         "media": {
             "tweet_id",
+            "position",
             "media_type",
             "media_url",
             "thumbnail_url",
