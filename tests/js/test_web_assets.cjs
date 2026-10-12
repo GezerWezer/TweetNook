@@ -989,6 +989,37 @@ test('tweet app starts with coherent list, panel, modal, and theme state', () =>
     assert.equal(app.avatarUrl('user/42'), '/api/avatar/user%2F42?v=3');
 });
 
+test('lazy feed images are observed per card and loaded and decoded ahead of scrolling', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const observed = [];
+    app.mediaPrefetchObserver = { observe: node => observed.push(node) };
+    const image = card => {
+        const img = { tagName: 'IMG', loading: 'lazy', decoded: 0, closest: () => card };
+        img.decode = () => { img.decoded += 1; return Promise.resolve(); };
+        return img;
+    };
+    const card = { tagName: 'DIV' };
+    const images = [image(card), image(card)];
+    card.querySelectorAll = () => images;
+    const threadImage = image(null);
+
+    app.observeMediaPrefetch(card);
+    app.observeMediaPrefetch(threadImage);
+    assert.deepEqual(observed, [card, card, threadImage]);
+
+    app.prefetchMedia(card);
+    app.prefetchMedia(threadImage);
+    for (const img of [...images, threadImage]) {
+        assert.equal(img.loading, 'eager');
+        assert.equal(img.decoded, 1);
+    }
+    observed.length = 0;
+    app.observeMediaPrefetch(threadImage);
+    assert.deepEqual(observed, []);
+});
+
 test('avatar load and error state hides initials only for real images and recovers on reuse', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
