@@ -2440,8 +2440,11 @@ body {
     border: 0;
     border-radius: 0;
 }
-.quote-card:not(.quote-card-detail) > .quote-media > .media-photo {
-    max-height: none !important;
+.quote-card:not(.quote-compact) > .quote-media > .media-single > .media-frame {
+    width: 100%;
+    border: 0;
+    border-radius: 0;
+    --media-border-size: 0px;
 }
 .quote-card:not(.quote-compact) > .quote-media img {
     object-fit: contain;
@@ -2451,8 +2454,35 @@ body {
     background: #000;
 }
 
-/* Feed videos keep their source ratio. GIFs and videos inside regular quotes use
-   the quote's fixed landscape frame and letterbox against black. */
+/* Measure the column separately from a narrow portrait frame. The ratio belongs
+   to the media area; the frame's border adds to its height. Portrait photos on X
+   use a 510px image area, including when quoted, while square/landscape photos
+   and GIF frames can exceed that height. */
+.media-single {
+    container-type: inline-size;
+}
+.media-frame {
+    width: min(100%, var(--media-max-width, 100%));
+    --media-border-size: 2px;
+}
+.media-frame-image,
+.media-frame-video,
+.media-frame-gif-video,
+.media-frame-placeholder {
+    width: 100%;
+    height: auto;
+    aspect-ratio: var(--media-frame-aspect);
+}
+.media-frame-portrait-photo > .media-frame-image,
+.media-frame-portrait-photo > .media-frame-placeholder {
+    width: min(calc(100cqw - var(--media-border-size)), var(--media-photo-cap-width));
+    max-width: none;
+}
+.quote-media .media-frame-portrait-photo > .media-frame-image,
+.quote-media .media-frame-portrait-photo > .media-frame-placeholder {
+    margin-inline: auto;
+}
+/* Playback pixels are contained independently of the source/poster dimensions. */
 .media-frame-video,
 .media-frame-gif-video {
     object-fit: contain;
