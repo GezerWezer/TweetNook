@@ -2440,6 +2440,14 @@ body {
     background: #000;
 }
 
+/* Feed videos keep their source ratio. GIFs and videos inside regular quotes use
+   the quote's fixed landscape frame and letterbox against black. */
+.media-frame-video,
+.media-frame-gif-video {
+    object-fit: contain;
+    background: #000;
+}
+
 .main-tweet-quote-after-single-media > .quote-card-detail,
 .main-tweet-quote-after-single-media > div > .tweet-skeleton-compact {
     margin-top: 4px;

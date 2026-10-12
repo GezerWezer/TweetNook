@@ -2444,8 +2444,8 @@ test('thread reply surfaces render quoted tweets in both presentations', () => {
     assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet\(reply\)\)/g) || []).length, 2);
     assert.equal((html.match(/formatText\(getQuoteTweet\(child\), isMediaQuotingMedia\(child\)\)/g) || []).length, 2);
     assert.equal((html.match(/formatText\(getQuoteTweet\(reply\), isMediaQuotingMedia\(reply\)\)/g) || []).length, 2);
-    assert.equal((html.match(/renderMediaGrid\(child\.qt_media\)/g) || []).length, 2);
-    assert.equal((html.match(/renderMediaGrid\(reply\.qt_media\)/g) || []).length, 2);
+    assert.equal((html.match(/renderMediaGrid\(child\.qt_media, 'quote'\)/g) || []).length, 2);
+    assert.equal((html.match(/renderMediaGrid\(reply\.qt_media, 'quote'\)/g) || []).length, 2);
     assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(child\)\)\)/);
     assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(child\)\), false, true\)/);
     assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(reply\)\)\)/);
@@ -2870,7 +2870,7 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     for (const name of ['child', 'reply']) {
         assert.equal(html.split(`:class="{ 'quote-compact': isMediaQuotingMedia(${name}) }"`).length - 1, 2);
-        assert.equal(html.split(`isMediaQuotingMedia(${name}) ? renderQuoteThumbnail(${name}.qt_media) : renderMediaGrid(${name}.qt_media)`).length - 1, 2);
+        assert.equal(html.split(`isMediaQuotingMedia(${name}) ? renderQuoteThumbnail(${name}.qt_media) : renderMediaGrid(${name}.qt_media, 'quote')`).length - 1, 2);
         assert.equal(html.split(`@click="if (!isMediaQuotingMedia(${name})) $event.stopPropagation()"`).length - 1, 2);
         const replyLines = html.split(`<template x-if="getReplyTo({raw_json: getQuoteTweet(${name})})">`).slice(1);
         assert.equal(replyLines.length, 2);
@@ -2881,8 +2881,9 @@ test('media quoting media is compact in lists and flush in the detail view', () 
         assert.match(mainQuote, /class="quote-card quote-card-detail /);
         const mediaOwner = main === 'threadData?.main' ? 'threadData' : 'panelThreadData';
         assert.ok(html.includes(`class="main-tweet-quote" :class="{ 'main-tweet-quote-after-single-media': (${mediaOwner}.main.media || []).length === 1 }"`));
-        assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media)" @click.stop></div>`));
+        assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media, 'quote-detail')" @click.stop></div>`));
     }
+    assert.equal((html.match(/renderMediaGrid\((?:threadData|panelThreadData)\.main\.media, 'detail'\)/g) || []).length, 2);
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
     assert.match(css, /\.quote-compact > \.quote-text \{[^}]*-webkit-line-clamp: 4;/);
     assert.match(css, /\.quote-compact > \.quote-reply \{[^}]*grid-row: 2;/);
@@ -3177,8 +3178,22 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
         },
     ]);
     assert.match(photo, /aspect-ratio: 2/);
-    assert.match(photo, /width: min\(100%, calc\(510px \* 2\)\); aspect-ratio: 2; max-height: 510px;/);
+    assert.match(photo, /width: 100%; aspect-ratio: 2/);
+    assert.match(photo, /media-frame-feed/);
     assert.match(photo, /<img src="\/media\/a.jpg"/);
+
+    const detailPhoto = app.renderMediaGrid([
+        { type: 'photo', width: 1200, height: 600, download: { local_path: 'media/detail.jpg' } },
+    ], 'detail');
+    assert.match(detailPhoto, /width: min\(100%, calc\(510px \* 2\)\); aspect-ratio: 2/);
+    const widePhoto = app.renderMediaGrid([
+        { type: 'photo', width: 1634, height: 67, download: { local_path: 'media/wide.jpg' } },
+    ]);
+    assert.match(widePhoto, /width: 100%; aspect-ratio: 5/);
+    const detailPortraitPhoto = app.renderMediaGrid([
+        { type: 'photo', width: 433, height: 880, download: { local_path: 'media/tall.jpg' } },
+    ], 'detail');
+    assert.match(detailPortraitPhoto, /width: min\(100%, calc\(510px \* 0\.492/);
 
     const video = app.renderMediaGrid([
         {
@@ -3194,6 +3209,8 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     assert.doesNotMatch(video, /autoplay muted/);
     assert.match(video, /class="[^"]*media-video-player[^"]*"/);
     assert.match(video, /class="media-video-duration" data-video-duration/);
+    assert.match(video, /media-frame-video/);
+    assert.match(video, /width: 100%; aspect-ratio: 16\/9/);
     assert.match(video, /aria-label="Remaining video duration 2:00">2:00<\/span>/);
     assert.match(video, /onloadedmetadata="window\.tweetNookSyncVideoDuration\(this\)"/);
     assert.match(video, /ontimeupdate="window\.tweetNookSyncVideoDuration\(this\)"/);
@@ -3205,6 +3222,23 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     assert.match(video, /onkeydown="window\.tweetNookShowVideoUi\(this\)"/);
     assert.match(video, /ontouchend="window\.tweetNookShowVideoUi\(this\)"/);
     assert.doesNotMatch(video, /onfocus=|onblur=/);
+    const portraitDetailVideo = app.renderMediaGrid([
+        { type: 'video', width: 478, height: 850, download: { local_path: 'media/portrait.mp4' } },
+    ], 'detail');
+    assert.match(portraitDetailVideo, /width: min\(100%, calc\(510px \* 0\.562/);
+    const landscapeDetailVideo = app.renderMediaGrid([
+        { type: 'video', width: 1920, height: 1080, download: { local_path: 'media/landscape.mp4' } },
+    ], 'detail');
+    assert.match(landscapeDetailVideo, /width: 100%; aspect-ratio: 1\.777/);
+    const quotedPortraitVideo = app.renderMediaGrid([
+        { type: 'video', width: 720, height: 1280, download: { local_path: 'media/quoted-portrait.mp4' } },
+    ], 'quote');
+    assert.match(quotedPortraitVideo, /width: 100%; aspect-ratio: 16\/9/);
+    const detailQuotedPortraitPhoto = app.renderMediaGrid([
+        { type: 'photo', width: 1536, height: 2048, download: { local_path: 'media/quoted-tall.jpg' } },
+    ], 'quote-detail');
+    assert.match(detailQuotedPortraitPhoto, /media-frame-quote-detail/);
+    assert.match(detailQuotedPortraitPhoto, /width: 100%; aspect-ratio: 0\.75; max-height: 510px/);
     assert.equal(app.formatMediaDuration(3000), '0:03');
     assert.equal(app.formatMediaDuration(3723000), '1:02:03');
     assert.equal(app.formatMediaDuration(null), '');
@@ -3221,6 +3255,12 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     assert.match(gif, /data-gif-toggle aria-label="Pause GIF"/);
     assert.match(gif, /media-gif-pause-icon/);
     assert.match(gif, /media-gif-play-icon/);
+    assert.match(gif, /aspect-ratio: 1/);
+    assert.match(gif, /media-frame-gif-video/);
+    const quotedGif = app.renderMediaGrid([
+        { type: 'animated_gif', width: 498, height: 402, download: { local_path: 'media/quoted.gif.mp4' } },
+    ], 'quote');
+    assert.match(quotedGif, /aspect-ratio: 16\/9/);
     assert.doesNotMatch(gif, /media-video-duration/);
 
     const missing = app.renderMediaGrid([{ type: 'photo', width: 4, height: 3 }]);
@@ -3265,6 +3305,7 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
     assert.match(css, /\.media-gif-indicator\.is-paused \.media-gif-play-icon/);
     assert.match(css, /\.quote-thumbnail-badge\s*\{[^}]*display: inline-flex;[^}]*align-items: center;/s);
     assert.match(css, /\.quote-thumbnail-duration\s*\{[^}]*background: rgba\(0, 0, 0, 0\.77\);/s);
+    assert.match(css, /\.media-frame-video,[\s\S]*object-fit: contain;[\s\S]*background: #000;/);
 });
 
 test('video duration uses loaded media metadata and shows only while native controls are hidden', () => {
