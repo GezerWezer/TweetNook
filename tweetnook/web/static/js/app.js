@@ -5452,33 +5452,33 @@ function tweetApp() {
                 `<svg viewBox="0 0 24 24" class="w-[18.5px] h-[18.5px] fill-[var(--accent-color)]"><path d="M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5z"></path></svg>` : 
                 `<svg viewBox="0 0 24 24" class="w-[18.5px] h-[18.5px] fill-current"><path d="M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5zM6.5 4c-.276 0-.5.22-.5.5v14.56l6-4.29 6 4.29V4.5c0-.28-.224-.5-.5-.5H6.5z"></path></svg>`;
 
-            const margin = isMain ? 'pt-3 pb-0 border-t border-[var(--border-color)] w-full' : 'mt-3 w-full';
+            const margin = isMain ? 'tweet-actions-main border-t border-[var(--border-color)]' : 'mt-3';
             
             return `
-            <div class="flex items-center justify-between text-[var(--text-secondary)] w-full ${margin}">
+            <div class="tweet-actions flex items-center justify-between text-[var(--text-secondary)] w-full ${margin}">
                 <div class="flex items-center">
                     <svg viewBox="0 0 24 24" class="w-[18.5px] h-[18.5px] fill-current"><path d="M1.751 10c0-4.42 3.584-8 8.005-8h4.366c4.49 0 8.129 3.64 8.129 8.13 0 2.96-1.607 5.68-4.196 7.11l-8.054 4.46v-3.69h-.067c-4.49.1-8.183-3.51-8.183-8.01zm8.005-6c-3.317 0-6.005 2.69-6.005 6 0 3.37 2.77 6.08 6.138 6.01l.351-.01h1.761v2.3l5.087-2.81c1.951-1.08 3.163-3.13 3.163-5.36 0-3.39-2.744-6.13-6.129-6.13H9.756z"></path></svg>
-                    <span class="text-[13px] ml-2 font-medium">${formatNum(replyCount)}</span>
+                    <span class="tweet-action-count">${formatNum(replyCount)}</span>
                 </div>
                 <div class="flex items-center">
                     <svg viewBox="0 0 24 24" class="w-[18.5px] h-[18.5px] fill-current"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"></path></svg>
-                    <span class="text-[13px] ml-2 font-medium">${formatNum(retweetCount)}</span>
+                    <span class="tweet-action-count">${formatNum(retweetCount)}</span>
                 </div>
                 <div class="flex items-center group cursor-pointer ${isLiked ? 'text-[var(--danger-color)]' : 'hover:text-[var(--danger-color)]'}">
                     ${likeIcon}
-                    <span class="text-[13px] ml-2 font-medium">${formatNum(likeCount)}</span>
-                </div>
-                <div class="flex items-center group cursor-pointer ${isBookmarked ? 'text-[var(--accent-color)]' : 'hover:text-[var(--accent-color)]'}">
-                    ${bmkIcon}
-                    <span class="text-[13px] ml-2 font-medium">${formatNum(bmkCount)}</span>
+                    <span class="tweet-action-count">${formatNum(likeCount)}</span>
                 </div>
                 <div class="flex items-center">
                     <svg viewBox="0 0 24 24" class="w-[18.5px] h-[18.5px] fill-current"><path d="M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21l.004-10h2L6 21H4zm9.248 0v-7h2v7h-2z"></path></svg>
-                    <span class="text-[13px] ml-2 font-medium">${formatNum(viewCount)}</span>
+                    <span class="tweet-action-count">${formatNum(viewCount)}</span>
+                </div>
+                <div class="flex items-center group cursor-pointer ${isBookmarked ? 'text-[var(--accent-color)]' : 'hover:text-[var(--accent-color)]'}">
+                    ${bmkIcon}
+                    <span class="tweet-action-count">${formatNum(bmkCount)}</span>
                 </div>
                 <div class="flex items-center">
                     <a href="https://x.com/${this.escapeHTML(tweet.author?.username || 'i')}/status/${this.escapeHTML(tweet.tweet_id)}" target="_blank" @click.stop class="flex items-center" title="Open on Twitter/X">
-                        <svg viewBox="0 0 24 24" class="w-[18.5px] h-[18.5px] fill-current hover:text-[#e7e9ea] transition"><path d="M18 19H6c-.55 0-1-.45-1-1V6c0-.55.45-1 1-1h5c.55 0 1-.45 1-1s-.45-1-1-1H6c-1.65 0-3 1.35-3 3v12c0 1.65 1.35 3 3 3h12c1.65 0 3-1.35 3-3v-5c0-.55-.45-1-1-1s-1 .45-1 1v5c0 .55-.45 1-1 1zM14 4c0 .55.45 1 1 1h2.59l-9.13 9.13c-.39.39-.39 1.02 0 1.41.19.19.45.29.71.29s.51-.1.71-.29L19 6.41V9c0 .55.45 1 1 1s1-.45 1-1V4c0-.55-.45-1-1-1h-5c-.55 0-1 .45-1 1z"></path></svg>
+                        <svg viewBox="0 0 24 24" class="w-[18.5px] h-[18.5px] fill-current blue-hover transition"><path d="M18 19H6c-.55 0-1-.45-1-1V6c0-.55.45-1 1-1h5c.55 0 1-.45 1-1s-.45-1-1-1H6c-1.65 0-3 1.35-3 3v12c0 1.65 1.35 3 3 3h12c1.65 0 3-1.35 3-3v-5c0-.55-.45-1-1-1s-1 .45-1 1v5c0 .55-.45 1-1 1zM14 4c0 .55.45 1 1 1h2.59l-9.13 9.13c-.39.39-.39 1.02 0 1.41.19.19.45.29.71.29s.51-.1.71-.29L19 6.41V9c0 .55.45 1 1 1s1-.45 1-1V4c0-.55-.45-1-1-1h-5c-.55 0-1 .45-1 1z"></path></svg>
                     </a>
                 </div>
             </div>`;

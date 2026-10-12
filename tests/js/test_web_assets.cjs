@@ -442,7 +442,7 @@ test('action bar counts use compact units and promote rounded boundaries', () =>
                     views: { count },
                 },
             }, isMain);
-            const labels = [...html.matchAll(/<span class="text-\[13px\] ml-2 font-medium">([^<]*)<\/span>/g)]
+            const labels = [...html.matchAll(/<span class="tweet-action-count">([^<]*)<\/span>/g)]
                 .map(match => match[1]);
             assert.deepEqual(labels, Array(5).fill(expected), `count ${count}, main ${isMain}`);
         }
@@ -452,7 +452,7 @@ test('action bar counts use compact units and promote rounded boundaries', () =>
         text: 'Archived tweet',
         raw_json: { legacy: { retweet_count: 600000, quote_count: 400000 } },
     });
-    assert.match(html, /font-medium">1M<\/span>/);
+    assert.match(html, /tweet-action-count">1M<\/span>/);
 });
 
 test('theme color helpers and catalog generate complete deterministic themes', () => {
