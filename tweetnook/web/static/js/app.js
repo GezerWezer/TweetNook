@@ -2369,13 +2369,13 @@ function tweetApp() {
                 const quoteReplyTo = this.getReplyTo({ raw_json: quote });
                 // A compact quote's text is clamped by CSS, so it is rendered without Show more.
                 const compact = this.isMediaQuotingMedia(tweet);
-                quoteBlock = `<div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer${compact ? ' quote-compact' : ''}"${quoteId ? ` data-thread-id="${escape(quoteId)}"` : ''} data-action="quote">`
+                quoteBlock = `<div class="quote-card mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer${compact ? ' quote-compact' : ''}"${quoteId ? ` data-thread-id="${escape(quoteId)}"` : ''} data-action="quote">`
                     + this.renderQuoteByline(quote)
                     + (quoteReplyTo ? replyLine(quoteReplyTo, 'quote-reply ') : '')
                     + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote, compact, true)}</div>`
                     + (compact
                         ? part(this.renderQuoteThumbnail(tweet.qt_media), ' class="quote-media"')
-                        : part(this.renderMediaGrid(tweet.qt_media), ' data-action="stop"'))
+                        : part(this.renderMediaGrid(tweet.qt_media), ' class="quote-media" data-action="stop"'))
                     + part(this.renderCard({ raw_json: quote }), ' data-action="stop"')
                     + this.renderNestedQuote(quote, true)
                     + part(this.renderCommunityNote(quote, true), ' data-action="stop"')
