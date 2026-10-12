@@ -418,15 +418,15 @@ function test(name, fn) {
     tests.push({ name, fn });
 }
 
-test('action bar counts use compact units and promote rounded boundaries', () => {
+test('tweet counts use compact detail precision and whole feed units', () => {
     const context = browserContext();
     const app = loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')();
     const cases = [
         [0, ''], [null, ''], [undefined, ''], [-1, ''], ['invalid', ''],
-        [999, '999'], [1000, '1K'], [1250, '1.3K'], [999949, '999.9K'],
-        [999950, '1M'], [1000000, '1M'], [1250000, '1.3M'],
-        [999949999, '999.9M'], [999950000, '1B'], [1000000000, '1B'],
-        [1250000000, '1.3B'], [999950000000, '1T'], [1000000000000, '1T'],
+        [999, '999'], [1000, '1K'], [1250, '1.2K'], [999949, '999K'],
+        [999950, '999K'], [1000000, '1M'], [1250000, '1.2M'],
+        [999949999, '999M'], [999950000, '999M'], [1000000000, '1B'],
+        [1250000000, '1.2B'], [999950000000, '999B'], [1000000000000, '1T'],
         ['1000000', '1M'],
     ];
     for (const [count, expected] of cases) {
@@ -444,15 +444,53 @@ test('action bar counts use compact units and promote rounded boundaries', () =>
             }, isMain);
             const labels = [...html.matchAll(/<span class="tweet-action-count">([^<]*)<\/span>/g)]
                 .map(match => match[1]);
-            assert.deepEqual(labels, Array(5).fill(expected), `count ${count}, main ${isMain}`);
+            assert.deepEqual(labels, Array(4).fill(expected), `count ${count}, main ${isMain}`);
+            assert.equal([...html.matchAll(/<div class="flex items-center/g)].length, isMain ? 5 : 6, `action groups, main ${isMain}`);
         }
     }
+    assert.equal(app.formatActionCount(11753), '11K');
+    assert.equal(app.formatActionCount(33119), '33K');
+    assert.equal(app.formatActionCount(57501), '57K');
+    assert.equal(app.formatActionCount(915225), '915K');
+    assert.equal(app.formatActionCount(87610), '87K');
+    assert.equal(app.formatActionCount(7177), '7.1K');
+    assert.equal(app.formatActionCount(20656), '20K');
+    assert.equal(app.formatActionCount(1139), '1.1K');
+    assert.equal(app.formatActionCount(999950), '999K');
+    assert.equal(app.formatActionCount(1000000), '1M');
+    assert.equal(app.formatCompactCount(999500), '999.5K');
+    assert.equal(app.formatCompactCount(999950), '999.9K');
+    assert.equal(app.formatCompactCount(853200), '853.2K');
+    assert.equal(app.formatCompactCount(859320), '859.3K');
+    assert.equal(app.formatCompactCount(0), '');
     const html = app.renderActionBar({
         tweet_id: '123',
         text: 'Archived tweet',
         raw_json: { legacy: { retweet_count: 600000, quote_count: 400000 } },
     });
     assert.match(html, /tweet-action-count">1M<\/span>/);
+    const feed = app.renderActionBar({
+        tweet_id: '123', text: 'Archived tweet',
+        raw_json: { legacy: { bookmark_count: 12345 }, views: { count: 692000 } },
+    });
+    assert.match(feed, /title="12\.3K bookmarks" aria-label="12\.3K bookmarks"/);
+    assert.doesNotMatch(feed, /12K<\/span>/);
+    assert.match(feed, /tweet-action-count">692K<\/span>/);
+    for (const views of [undefined, { count: 0 }]) {
+        const detail = app.renderActionBar({ tweet_id: '123', text: 'Archived tweet', raw_json: { legacy: {}, ...(views ? { views } : {}) } }, true);
+        assert.equal([...detail.matchAll(/class="tweet-action-count"/g)].length, 4);
+        assert.doesNotMatch(detail, /tweet-action-count">(?:0|undefined)/);
+    }
+    const page = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    for (const prefix of ['threadData.main', 'panelThreadData.main']) {
+        const at = page.indexOf(`class="tweet-timestamp`, page.indexOf(`renderCommunityNote(${prefix}.raw_json, false, true)`));
+        const end = page.indexOf(`renderActionBar(${prefix}, true)`, at);
+        const timestamp = page.slice(at, end);
+        assert.match(timestamp, new RegExp(`formatCompactCount\\(${prefix}\\.raw_json\\.views\\.count\\)`));
+        assert.match(timestamp, /<span>Views<\/span>/);
+        assert.match(timestamp, /tweet-timestamp-meta[\s\S]*?roll-wrapper[\s\S]*?tweet-detail-views/);
+        assert.match(timestamp, /tweet-detail-quotes/);
+    }
 });
 
 test('theme color helpers and catalog generate complete deterministic themes', () => {

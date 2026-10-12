@@ -5421,6 +5421,29 @@ function tweetApp() {
             </div>`;
         },
 
+        formatCount(num, wholeLargeUnits = false) {
+            let amount = Number(num);
+            if (!Number.isFinite(amount) || amount <= 0) return '';
+            const units = ['', 'K', 'M', 'B', 'T'];
+            let unit = 0;
+            while (unit < units.length - 1 && amount >= 1000) {
+                amount /= 1000;
+                unit++;
+            }
+            amount = wholeLargeUnits && unit && amount >= 10
+                ? Math.floor(amount)
+                : Math.floor(amount * 10) / 10;
+            return `${Number(amount.toFixed(1))}${units[unit]}`;
+        },
+
+        formatCompactCount(num) {
+            return this.formatCount(num);
+        },
+
+        formatActionCount(num) {
+            return this.formatCount(num, true);
+        },
+
         renderActionBar(tweet, isMain = false) {
             if (this.isPlaceholderTweet(tweet) || this.isTextPlaceholderTweet(tweet)) return '';
             const legacy = tweet.raw_json?.legacy || {};
@@ -5429,19 +5452,9 @@ function tweetApp() {
             const likeCount = legacy.favorite_count || 0;
             const viewCount = tweet.raw_json?.views?.count || 0;
             const bmkCount = legacy.bookmark_count || 0;
+            const bookmarkLabel = `${this.formatCompactCount(bmkCount) || '0'} bookmarks`;
             
-            const formatNum = (num) => {
-                let amount = Number(num);
-                if (!Number.isFinite(amount) || amount <= 0) return '';
-                const units = ['', 'K', 'M', 'B', 'T'];
-                let unit = 0;
-                // Promote rounded values too, so 999,950 becomes 1M, not 1000K.
-                while (unit < units.length - 1 && Math.round(amount * 10) / 10 >= 1000) {
-                    amount /= 1000;
-                    unit++;
-                }
-                return `${Number(amount.toFixed(1))}${units[unit]}`;
-            };
+            const formatNum = this.formatActionCount.bind(this);
             
             const collections = [...(tweet.collections || []), ...(tweet.collection?.type ? [tweet.collection.type] : [])];
             const isLiked = collections.includes('like');
@@ -5471,13 +5484,13 @@ function tweetApp() {
                     ${likeIcon}
                     <span class="tweet-action-count">${formatNum(likeCount)}</span>
                 </div>
-                <div class="flex items-center">
+                ${isMain ? '' : `<div class="flex items-center">
                     <svg viewBox="0 0 24 24" class="w-[18.5px] h-[18.5px] fill-current"><path d="M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21l.004-10h2L6 21H4zm9.248 0v-7h2v7h-2z"></path></svg>
                     <span class="tweet-action-count">${formatNum(viewCount)}</span>
-                </div>
-                <div class="flex items-center group cursor-pointer ${isBookmarked ? 'text-[var(--accent-color)]' : 'hover:text-[var(--accent-color)]'}">
+                </div>`}
+                <div class="flex items-center group cursor-pointer ${isBookmarked ? 'text-[var(--accent-color)]' : 'hover:text-[var(--accent-color)]'}" ${!isMain ? `title="${this.escapeHTML(bookmarkLabel)}" aria-label="${this.escapeHTML(bookmarkLabel)}"` : ''}>
                     ${bmkIcon}
-                    <span class="tweet-action-count">${formatNum(bmkCount)}</span>
+                    ${isMain ? `<span class="tweet-action-count">${formatNum(bmkCount)}</span>` : ''}
                 </div>
                 <div class="flex items-center">
                     <a href="https://x.com/${this.escapeHTML(tweet.author?.username || 'i')}/status/${this.escapeHTML(tweet.tweet_id)}" target="_blank" @click.stop class="flex items-center" title="Open on Twitter/X">

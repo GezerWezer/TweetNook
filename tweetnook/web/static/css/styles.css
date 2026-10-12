@@ -224,6 +224,20 @@ body {
     line-height: 20px;
 }
 
+.tweet-detail-views {
+    white-space: nowrap;
+}
+
+.tweet-detail-views-count {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.tweet-detail-quotes {
+    margin-left: auto;
+    white-space: nowrap;
+}
+
 .tweet-timestamp .roll-wrapper,
 .tweet-timestamp .roll-item {
     height: 20px;
@@ -254,6 +268,12 @@ body {
 .tweet-actions-main svg {
     width: 22.5px;
     height: 22.5px;
+}
+
+@media (max-width: 360px) {
+    .tweet-actions:not(.tweet-actions-main) .tweet-action-count {
+        padding-inline: 2px;
+    }
 }
 
 [data-thread-main]:has(.tweet-actions-main) {
