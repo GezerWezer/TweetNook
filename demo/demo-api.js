@@ -338,7 +338,8 @@
             },
         };
 
-        function hydrate(source, attachQuote = true) {
+        // Quotes attach two levels deep: a quote and its own quote, as X nests them.
+        function hydrate(source, quoteLevels = 2) {
             if (!source) return null;
             const author = authors.get(String(source.author_id));
             const engagement = source.engagement || {};
@@ -416,8 +417,8 @@
                     mentions: [...(source.mentions || [])],
                 },
             };
-            if (attachQuote && source.quoted_tweet_id) {
-                const quoted = hydrate(sourceTweets.get(String(source.quoted_tweet_id)), false);
+            if (quoteLevels > 0 && source.quoted_tweet_id) {
+                const quoted = hydrate(sourceTweets.get(String(source.quoted_tweet_id)), quoteLevels - 1);
                 tweet.quoted_tweet = quoted;
                 tweet.qt_media = clone(quoted?.media || []);
                 tweet.qt_media_tags = clone(quoted?.media_tags || null);

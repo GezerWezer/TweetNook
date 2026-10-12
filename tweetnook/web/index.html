@@ -400,9 +400,10 @@
                                             </div>
                                         </template>
 
-                                        <div class="text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(threadData?.main))" @click="handleTextClick($event)"></div>
+                                        <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(threadData?.main))" @click="handleTextClick($event)"></div>
                                         <div x-html="renderCard({raw_json: getQuoteTweet(threadData?.main)})" @click.stop></div>
                                         <div class="quote-media" x-html="renderMediaGrid(threadData?.main?.qt_media)" @click.stop></div>
+                                        <div x-html="renderNestedQuote(getQuoteTweet(threadData?.main))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                         <div x-html="renderCommunityNote(getQuoteTweet(threadData?.main), true)" @click.stop></div>
                                     </div>
                                 </template>
@@ -497,6 +498,7 @@
                                                     <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(child), isMediaQuotingMedia(child))" @click="handleTextClick($event)"></div>
                                                     <div x-html="renderCard({raw_json: getQuoteTweet(child)})" @click.stop></div>
                                                     <div class="quote-media" x-html="isMediaQuotingMedia(child) ? renderQuoteThumbnail(child.qt_media) : renderMediaGrid(child.qt_media)" @click="if (!isMediaQuotingMedia(child)) $event.stopPropagation()"></div>
+                                                    <div x-html="renderNestedQuote(getQuoteTweet(child))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                                     <div x-html="renderCommunityNote(getQuoteTweet(child), true)" @click.stop></div>
                                                 </div>
                                             </template>
@@ -577,6 +579,7 @@
                                                                 <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(reply), isMediaQuotingMedia(reply))" @click="handleTextClick($event)"></div>
                                                                 <div x-html="renderCard({raw_json: getQuoteTweet(reply)})" @click.stop></div>
                                                                 <div class="quote-media" x-html="isMediaQuotingMedia(reply) ? renderQuoteThumbnail(reply.qt_media) : renderMediaGrid(reply.qt_media)" @click="if (!isMediaQuotingMedia(reply)) $event.stopPropagation()"></div>
+                                                                <div x-html="renderNestedQuote(getQuoteTweet(reply))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                                                 <div x-html="renderCommunityNote(getQuoteTweet(reply), true)" @click.stop></div>
                                                             </div>
                                                         </template>
@@ -822,9 +825,10 @@
                                                 Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(panelThreadData?.main)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(panelThreadData?.main)})"></span>
                                             </div>
                                         </template>
-                                        <div class="text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(panelThreadData?.main))" @click="handleTextClick($event)"></div>
+                                        <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(panelThreadData?.main))" @click="handleTextClick($event)"></div>
                                         <div x-html="renderCard({raw_json: getQuoteTweet(panelThreadData?.main)})" @click.stop></div>
                                         <div class="quote-media" x-html="renderMediaGrid(panelThreadData?.main?.qt_media)" @click.stop></div>
+                                        <div x-html="renderNestedQuote(getQuoteTweet(panelThreadData?.main))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                         <div x-html="renderCommunityNote(getQuoteTweet(panelThreadData?.main), true)" @click.stop></div>
                                     </div>
                                 </template>
@@ -912,6 +916,7 @@
                                                     <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(child), isMediaQuotingMedia(child))" @click="handleTextClick($event)"></div>
                                                     <div x-html="renderCard({raw_json: getQuoteTweet(child)})" @click.stop></div>
                                                     <div class="quote-media" x-html="isMediaQuotingMedia(child) ? renderQuoteThumbnail(child.qt_media) : renderMediaGrid(child.qt_media)" @click="if (!isMediaQuotingMedia(child)) $event.stopPropagation()"></div>
+                                                    <div x-html="renderNestedQuote(getQuoteTweet(child))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                                     <div x-html="renderCommunityNote(getQuoteTweet(child), true)" @click.stop></div>
                                                 </div>
                                             </template>
@@ -982,6 +987,7 @@
                                                                 <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(reply), isMediaQuotingMedia(reply))" @click="handleTextClick($event)"></div>
                                                                 <div x-html="renderCard({raw_json: getQuoteTweet(reply)})" @click.stop></div>
                                                                 <div class="quote-media" x-html="isMediaQuotingMedia(reply) ? renderQuoteThumbnail(reply.qt_media) : renderMediaGrid(reply.qt_media)" @click="if (!isMediaQuotingMedia(reply)) $event.stopPropagation()"></div>
+                                                                <div x-html="renderNestedQuote(getQuoteTweet(reply))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                                                 <div x-html="renderCommunityNote(getQuoteTweet(reply), true)" @click.stop></div>
                                                             </div>
                                                         </template>

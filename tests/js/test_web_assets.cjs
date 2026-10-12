@@ -2849,6 +2849,77 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     assert.match(css, /\.quote-media-flush > \.quote-media \{[^}]*margin: 0 -12px;/);
 });
 
+test('a quote shows its own quote nested inside it, as X does', () => {
+    const { app, list } = feedListApp();
+    const photo = { type: 'photo', download: { local_path: 'media/n.jpg' } };
+    const deepest = {
+        tweet_id: '9',
+        text: `nested ${'word '.repeat(80)}`,
+        author: { id: '7', username: 'n', display_name: 'N' },
+        created_at: 'Fri Oct 09 18:25:33 +0000 2026',
+        raw_json: { birdwatch_pivot: { subtitle: { text: 'nested note' } } },
+        quoted_tweet: { tweet_id: '10', text: 'too deep', author: { username: 'd' } },
+    };
+    const quote = {
+        tweet_id: '3',
+        text: 'middle',
+        author: { username: 'q', display_name: 'Q' },
+        raw_json: { birdwatch_pivot: { subtitle: { text: 'middle note' } } },
+        quoted_tweet: deepest,
+        qt_media: [photo],
+    };
+    const tweet = { tweet_id: '1', text: 'outer', author: { username: 'a' }, quoted_tweet: quote, qt_media: [] };
+
+    // A bar-marked block after the quote's content and before its note, with a
+    // small thumbnail beside clamped text; nothing deeper and no note of its own.
+    const html = app.renderFeedCard(tweet);
+    assert.match(html, /<div class="quote-nested quote-nested-media" data-thread-id="9" data-action="quote">/);
+    assert.match(html, /<div class="quote-nested[^>]*>.*@n<\/span>.*<div class="quote-media"><div class="quote-thumbnail"><img src="\/media\/n\.jpg"/);
+    assert.ok(html.indexOf('quote-nested') < html.indexOf('middle note'));
+    assert.doesNotMatch(html, /too deep|nested note|expand-tweet/);
+    assert.equal((html.match(/class="quote-nested/g) || []).length, 1);
+
+    // Without media it is text only; unavailable nested quotes are left out.
+    const textOnly = app.renderNestedQuote({ ...quote, qt_media: [] });
+    assert.match(textOnly, /^<div class="quote-nested" data-thread-id="9" data-action="quote">/);
+    assert.doesNotMatch(textOnly, /quote-thumbnail/);
+    const missing = { tweet_id: '9', availability: { placeholder: true } };
+    assert.equal(app.renderNestedQuote({ ...quote, quoted_tweet: missing }), '');
+    assert.equal(app.renderNestedQuote(null), '');
+
+    // In lists a click on the nested quote opens it, and elsewhere opens the quote.
+    app.tweets = [tweet];
+    app.renderFeedList(app.tweets);
+    let opened;
+    app.openThread = id => { opened = id; };
+    const card = list.children[0];
+    const [quoteText, nestedText] = card.querySelectorAll('.quote-text');
+    dispatchFeed(list, 'click', nestedText);
+    assert.equal(opened, '9');
+    dispatchFeed(list, 'click', quoteText);
+    assert.equal(opened, '3');
+
+    // Thread templates render it with x-html; their click handler opens it too.
+    opened = null;
+    const event = { target: nestedText, propagationStopped: false, stopPropagation() { this.propagationStopped = true; } };
+    app.openNestedQuote(event);
+    assert.equal(opened, '9');
+    assert.equal(event.propagationStopped, true);
+    app.openNestedQuote({ target: quoteText, stopPropagation() { throw new Error('outside'); } });
+
+    const template = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    for (const name of ['threadData?.main', 'panelThreadData?.main', 'child', 'reply']) {
+        const slot = `<div x-html="renderNestedQuote(getQuoteTweet(${name}))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>`;
+        assert.equal(template.split(slot).length - 1, name.endsWith('main') ? 1 : 2);
+        assert.ok(template.includes(`${slot}\n${' '.repeat(template.split(slot)[0].split('\n').at(-1).length)}<div x-html="renderCommunityNote(getQuoteTweet(${name}), true)"`));
+    }
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
+    assert.match(css, /\.quote-nested \{[^}]*margin-top: 12px;[^}]*padding: 8px 0 8px 15px;/);
+    assert.match(css, /\.quote-text \+ \.quote-nested,\n\.quote-text \+ :empty \+ \.quote-media:empty \+ \* > \.quote-nested \{[^}]*margin-top: 6px;/);
+    assert.match(css, /\.quote-nested > \.quote-text \{[^}]*-webkit-line-clamp: 2;/);
+    assert.match(css, /\.quote-nested \.quote-thumbnail \{[^}]*width: 64px;/);
+});
+
 test('result highlights follow the returned query rather than edits to the search box', async () => {
     const { app, list, context } = feedListApp();
     context.fetch = async () => ({ok: true, status: 200, json: async () => ({

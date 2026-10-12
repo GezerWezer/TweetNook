@@ -250,6 +250,81 @@ def test_raw_media_and_unfetched_quote_get_presentation_placeholders(tmp_path) -
     store.close()
 
 
+def test_quotes_attach_their_own_quote_one_level_deeper(tmp_path) -> None:
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    store._merge_records(
+        [
+            store._record(
+                row_key="tweet_object:stored-nested",
+                record_type="tweet_object",
+                tweet_id="stored-nested",
+                text="stored nested text",
+                author_username="carol",
+                raw_json=json.dumps({"rest_id": "stored-nested", "legacy": {}}),
+                enrichment_state="done",
+            ),
+            store._record(
+                row_key="media:stored-nested:m1",
+                record_type="media",
+                tweet_id="stored-nested",
+                media_key="m1",
+                media_type="photo",
+                local_path="media/nested.jpg",
+                position=0,
+            ),
+        ]
+    )
+
+    def tweet(tweet_id: str, nested: dict | None = None, **legacy) -> dict:
+        raw = {
+            "__typename": "Tweet",
+            "rest_id": tweet_id,
+            "edit_control": {"edit_tweet_ids": [tweet_id]},
+            "legacy": {"full_text": tweet_id, **legacy},
+        }
+        if nested is not None:
+            raw["nested_quoted_tweet_results"] = {"result": nested}
+        return raw
+
+    # X embeds the quote's own quote under nested_quoted_tweet_results.
+    deepest = tweet("deepest", tweet("too-deep"))
+    embedded = _web_tweet(
+        "embedded",
+        {"rest_id": "embedded", "quoted_status_result": {"result": tweet("middle", deepest)}},
+    )
+    # Older payloads only name it; the stored tweet and its media fill it in.
+    by_id = _web_tweet(
+        "by-id",
+        {
+            "rest_id": "by-id",
+            "quoted_status_result": {
+                "result": tweet("middle-2", quoted_status_id_str="stored-nested")
+            },
+        },
+    )
+    # A retweet shows its original, whose quote nests one more quote.
+    original = tweet("original")
+    original["quoted_status_result"] = {"result": tweet("middle-3", tweet("deepest-3"))}
+    retweet_legacy = {"retweeted_status_result": {"result": original}}
+    retweet = _web_tweet("retweet", {"rest_id": "retweet", "legacy": retweet_legacy})
+
+    annotate_web_tweets(store, [embedded, by_id, retweet])
+
+    middle = embedded["quoted_tweet"]
+    assert middle["quoted_tweet"]["tweet_id"] == "deepest"
+    assert middle["qt_media"] == middle["quoted_tweet"]["media"]
+    assert "quoted_tweet" not in middle["quoted_tweet"]
+    stored = by_id["quoted_tweet"]["quoted_tweet"]
+    assert (stored["text"], stored["author"]["username"]) == ("stored nested text", "carol")
+    assert by_id["quoted_tweet"]["qt_media"][0]["download"]["local_path"] == "media/nested.jpg"
+    retweet_quote = retweet["retweeted_tweet"]["quoted_tweet"]
+    assert retweet_quote["quoted_tweet"]["tweet_id"] == "deepest-3"
+
+    slim_web_tweets([embedded])
+    assert "edit_control" not in middle["quoted_tweet"]["raw_json"]
+    store.close()
+
+
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "web_raw_tweets.json"
 
 
