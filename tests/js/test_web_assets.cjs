@@ -2834,7 +2834,7 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     const compact = app.renderFeedCard(doubleMedia);
     assert.match(compact, /cursor-pointer quote-compact" data-thread-id="3" data-action="quote"/);
     assert.match(compact, /<div class="quote-reply tweet-reply-context text-\[15px\][^"]*">Replying to <span[^>]*data-username="frank">@frank<\/span>/);
-    assert.match(compact, /<div class="quote-media"><div class="quote-thumbnail"><img src="\/media\/q\.jpg" loading="lazy" decoding="async" alt=""><span class="quote-thumbnail-badge">0:21<\/span><\/div><\/div>/);
+    assert.match(compact, /<div class="quote-media"><div class="quote-thumbnail"><img src="\/media\/q\.jpg" loading="lazy" decoding="async" alt=""><span class="quote-thumbnail-badge quote-thumbnail-duration">0:21<\/span><\/div><\/div>/);
     assert.match(compact, /class="quote-text text-\[15px\]/);
     assert.doesNotMatch(compact, /media-video-player|expand-tweet/);
 
@@ -3258,10 +3258,12 @@ test('media renderer preserves dimensions and adds Twitter/X-style playback indi
         'utf8',
     );
     assert.match(css, /\.media-video-duration,/);
+    assert.match(css, /\.media-video-duration\s*\{[^}]*display: inline-flex;[^}]*align-items: center;/s);
     assert.match(css, /\.media-video-player\.is-native-ui-hidden \.media-video-duration \{/);
     assert.doesNotMatch(css, /\.media-video-player:(hover|focus-within) \.media-video-duration/);
     assert.match(css, /\.media-gif-indicator \{/);
     assert.match(css, /\.media-gif-indicator\.is-paused \.media-gif-play-icon/);
+    assert.match(css, /\.quote-thumbnail-badge\s*\{[^}]*display: inline-flex;[^}]*align-items: center;/s);
 });
 
 test('video duration uses loaded media metadata and shows only while native controls are hidden', () => {

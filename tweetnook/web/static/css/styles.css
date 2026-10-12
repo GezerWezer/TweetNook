@@ -2190,17 +2190,19 @@ body {
     left: 12px;
     bottom: 12px;
     z-index: 2;
-    min-height: 22px;
-    border-radius: 6px;
+    min-height: 20px;
+    border-radius: 4px;
     color: #fff;
-    background: rgba(0, 0, 0, 0.78);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
-    font-size: 15px;
+    background: rgba(0, 0, 0, 0.77);
+    font-size: 13px;
     font-weight: 700;
-    line-height: 22px;
+    line-height: 16px;
 }
 .media-video-duration {
-    padding: 0 7px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 8px;
+    font-weight: 400;
     pointer-events: none;
     font-variant-numeric: tabular-nums;
     opacity: 0;
@@ -2215,10 +2217,13 @@ body {
 .media-gif-indicator {
     display: inline-flex;
     align-items: stretch;
-    min-width: 60px;
+    gap: 2px;
+    min-width: 0;
     padding: 0;
     overflow: hidden;
+    border-radius: 0;
     border: 0;
+    background: transparent;
     font-family: inherit;
     cursor: pointer;
 }
@@ -2233,15 +2238,20 @@ body {
     justify-content: center;
 }
 .media-gif-action {
-    width: 29px;
-    border-right: 1px solid rgba(255, 255, 255, 0.22);
+    flex: 0 0 20px;
+    width: 20px;
+    min-height: 20px;
+    border-radius: 4px 0 0 4px;
+    background: rgba(0, 0, 0, 0.77);
 }
 .media-gif-label {
     padding: 0 8px;
+    border-radius: 0 4px 4px 0;
+    background: rgba(0, 0, 0, 0.3);
 }
 .media-gif-action svg {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     fill: currentColor;
 }
 .media-gif-play-icon,
@@ -2335,17 +2345,23 @@ body {
 }
 .quote-thumbnail-badge {
     position: absolute;
-    left: 4px;
-    bottom: 4px;
-    padding: 0 4px;
+    left: 12px;
+    bottom: 12px;
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 0 8px;
     border-radius: 4px;
     color: #fff;
-    background: rgba(0, 0, 0, 0.78);
+    background: rgba(0, 0, 0, 0.3);
     font-size: 13px;
     font-weight: 700;
-    line-height: 18px;
+    line-height: 16px;
     font-variant-numeric: tabular-nums;
     pointer-events: none;
+}
+.quote-thumbnail-duration {
+    font-weight: 400;
 }
 
 /* A quote's own quote, nested as X shows it: a bar instead of a border. It sits as
