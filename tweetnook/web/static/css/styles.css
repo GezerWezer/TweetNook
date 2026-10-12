@@ -2286,23 +2286,32 @@ body {
     height: 64px;
 }
 
-/* In the thread's main tweet, the same quote's media runs edge to edge, cancelling
-   the quote's 12px padding; videos letterbox like X's player. */
-.quote-media-flush {
+.quote-card {
+    border-radius: 16px;
     overflow: hidden;
 }
-.quote-media-flush > .quote-media {
-    margin: 0 -12px;
+
+/* Regular quotes share one border with their media. Compact thumbnails retain
+   their own border, and portrait detail media letterboxes within the full width. */
+.quote-card:not(.quote-compact) > .quote-media:not(:empty) {
+    margin: 16px -12px 0;
 }
-.quote-media-flush > .quote-media:not(:has(~ :not(:empty))) {
+.quote-card:not(.quote-compact) > .quote-media:not(:has(~ :not(:empty))) {
     margin-bottom: -12px;
 }
-.quote-media-flush > .quote-media > div {
+.quote-card:not(.quote-compact) > .quote-media > div {
     width: 100% !important;
+    margin-top: 0;
     border: 0;
     border-radius: 0;
 }
-.quote-media-flush > .quote-media video {
+.quote-card:not(.quote-card-detail) > .quote-media > .media-photo {
+    max-height: none !important;
+}
+.quote-card:not(.quote-compact) > .quote-media img {
+    object-fit: contain;
+}
+.quote-card:not(.quote-compact) > .quote-media video {
     object-fit: contain;
     background: #000;
 }

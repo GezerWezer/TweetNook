@@ -2839,14 +2839,15 @@ test('media quoting media is compact in lists and flush in the detail view', () 
         for (const line of replyLines) assert.match(line, /^\s*<div class="quote-reply text-\[15px\]/);
     }
     for (const main of ['threadData?.main', 'panelThreadData?.main']) {
-        assert.ok(html.includes(`:class="{ 'quote-media-flush': isMediaQuotingMedia(${main}) }"`));
+        const mainQuote = html.split(`:data-thread-id="getTweetId(getQuoteTweet(${main}))"`)[0].split('\n').at(-1);
+        assert.match(mainQuote, /class="quote-card quote-card-detail /);
         assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media)" @click.stop></div>`));
     }
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
     assert.match(css, /\.quote-compact > \.quote-text \{[^}]*-webkit-line-clamp: 4;/);
     assert.match(css, /\.quote-compact > \.quote-reply \{[^}]*grid-row: 2;/);
     assert.match(css, /\.quote-thumbnail-cell:first-child:nth-last-child\(3\) \{[^}]*grid-row: span 2;/);
-    assert.match(css, /\.quote-media-flush > \.quote-media \{[^}]*margin: 0 -12px;/);
+    assert.match(css, /\.quote-card:not\(\.quote-compact\) > \.quote-media:not\(:empty\) \{[^}]*margin: 16px -12px 0;/);
 });
 
 test('a quote shows its own quote nested inside it, as X does', () => {
