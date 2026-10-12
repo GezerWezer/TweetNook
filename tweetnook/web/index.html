@@ -454,7 +454,7 @@
                                         <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, child)" x-text="child.author.display_name || 'Unknown'"></span>
                                         <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (child.author.username || 'unknown')"></span>
                                         <span class="text-[var(--text-secondary)]">·</span>
-                                        <div class="roll-wrapper text-[#71767b] tweet-byline-detail" @click.stop>
+                                        <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
                                             <div class="roll-inner">
                                                 <span class="roll-item hover:underline" x-text="formatDate(child.created_at)"></span>
                                                 <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(child)"></span>
@@ -463,7 +463,7 @@
                                     </div>
 
                                     <template x-if="getReplyTo(child) && getReplyTo(child) !== (threadData?.main?.author?.username)">
-                                        <div class="text-[15px] text-[#71767b] mb-1">
+                                        <div class="text-[15px] text-[var(--text-secondary)] mb-1">
                                             Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(child))" x-text="'@' + getReplyTo(child)"></span>
                                         </div>
                                     </template>
@@ -517,11 +517,11 @@
                                         <div class="px-4 pb-3 pt-0 flex relative cursor-pointer hover-bg" :style="{ marginLeft: nestedReplyIndent(reply) + 'px' }" :data-thread-id="reply.tweet_id" @click="openThread(reply.tweet_id)">
                                             
                                             <!-- Top Line Bridge from Child -->
-                                            <div class="w-0.5 bg-[#333639] absolute top-0 h-[16px] left-[36px] -translate-x-1/2 z-0"></div>
+                                            <div class="w-0.5 bg-[var(--thread-line)] absolute top-0 h-[16px] left-[36px] -translate-x-1/2 z-0"></div>
                                             
                                             <!-- Bottom line (only if more nested replies follow) -->
                                             <template x-if="rIdx < child.op_replies.length - 1">
-                                                <div class="w-0.5 bg-[#333639] absolute top-[40px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
+                                                <div class="w-0.5 bg-[var(--thread-line)] absolute top-[40px] bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
                                             </template>
                                             
                                             <!-- Avatar -->
@@ -532,10 +532,10 @@
 
                                             <div class="flex-1 min-w-0 z-10">
                                                 <div class="tweet-byline flex items-center space-x-1 text-[15px]">
-                                                    <span class="font-bold text-[#e7e9ea] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, reply)" x-text="reply.author.display_name || 'Unknown'"></span>
-                                                    <span class="text-[#71767b] tweet-byline-detail" x-text="'@' + (reply.author.username || 'unknown')"></span>
-                                                    <span class="text-[#71767b]">·</span>
-                                                    <div class="roll-wrapper text-[#71767b] tweet-byline-detail" @click.stop>
+                                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, reply)" x-text="reply.author.display_name || 'Unknown'"></span>
+                                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="'@' + (reply.author.username || 'unknown')"></span>
+                                                    <span class="text-[var(--text-secondary)]">·</span>
+                                                    <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
                                                         <div class="roll-inner">
                                                             <span class="roll-item hover:underline" x-text="formatDate(reply.created_at)"></span>
                                                             <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(reply)"></span>
@@ -544,7 +544,7 @@
                                                 </div>
                                                 
                                                 <template x-if="getReplyTo(reply)">
-                                                    <div class="text-[15px] text-[#71767b] mb-1">
+                                                    <div class="text-[15px] text-[var(--text-secondary)] mb-1">
                                                         Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(reply))" x-text="'@' + getReplyTo(reply)"></span>
                                                     </div>
                                                 </template>
@@ -658,7 +658,7 @@
                             </div>
                             
                             <template x-if="getReplyTo(tweet)">
-                                <div class="text-[15px] text-[#71767b] mb-1">
+                                <div class="text-[15px] text-[var(--text-secondary)] mb-1">
                                     Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(tweet))" x-text="'@' + getReplyTo(tweet)"></span>
                                 </div>
                             </template>
