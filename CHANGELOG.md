@@ -3,6 +3,25 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning while it is in the `0.x` series.
 
+## [0.3.1] - 2026-10-12
+
+### Fixed
+
+- Capped single portrait videos and photos in lists at X's 510px frame height
+  instead of stretching them to full width.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff format --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync pytest -q`
+- `node --test tests/js/test_web_assets.cjs`
+- `node --test tests/js/test_demo_api.cjs`
+- `git diff --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv build /tmp/tweetnook-release-source-0.3.1 --out-dir /tmp/tweetnook-release-0.3.1`
+- `UV_CACHE_DIR=/tmp/uv-cache uvx --from twine twine check /tmp/tweetnook-release-0.3.1/tweetnook-0.3.1.tar.gz /tmp/tweetnook-release-0.3.1/tweetnook-0.3.1-py3-none-any.whl`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --isolated --no-project --with /tmp/tweetnook-release-0.3.1/tweetnook-0.3.1-py3-none-any.whl -- tweetnook --help`
+
 ## [0.3.0] - 2026-10-12
 
 ### Added
@@ -411,6 +430,7 @@ semantic-style versioning while it is in the `0.x` series.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[0.3.1]: https://github.com/gezerwezer/tweetnook/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/gezerwezer/tweetnook/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/gezerwezer/tweetnook/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/gezerwezer/tweetnook/compare/v0.1.7...v0.1.8
