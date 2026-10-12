@@ -186,6 +186,14 @@ body {
     margin-bottom: 2px;
 }
 
+.tweet-reply-context {
+    line-height: 20px;
+}
+
+.tweet-repost-context {
+    line-height: 16px;
+}
+
 .tweet-byline .roll-wrapper,
 .tweet-byline .roll-item {
     height: 20px;

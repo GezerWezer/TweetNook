@@ -2331,7 +2331,7 @@ function tweetApp() {
         renderFeedCard(tweetObj) {
             const escape = value => this.escapeHTML(value);
             const part = (html, attributes = '') => (html ? `<div${attributes}>${html}</div>` : '');
-            const replyLine = (username, className = '') => `<div class="${className}text-[15px] text-[var(--text-secondary)] mb-1">Replying to `
+            const replyLine = (username, className = '') => `<div class="${className}tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">Replying to `
                 + `<span class="text-[var(--accent-color)] hover:underline cursor-pointer" data-action="reply-profile" data-username="${escape(username)}">${escape(`@${username}`)}</span></div>`;
             const retweet = this.getRetweet(tweetObj);
             const tweet = retweet ? this.formatRetweetToTweet(tweetObj, retweet) : tweetObj;
@@ -2340,7 +2340,7 @@ function tweetApp() {
             const menuOpen = this.tweetMenuOpen === `list:${tweetObj.tweet_id}`;
 
             const header = retweet
-                ? '<div class="text-[13px] text-[var(--text-secondary)] font-bold mb-1 flex items-center space-x-2 ml-8">'
+                ? '<div class="tweet-repost-context text-[13px] text-[var(--text-secondary)] font-bold mb-1 flex items-center space-x-2 ml-8">'
                     + '<svg viewBox="0 0 24 24" class="w-4 h-4 fill-current"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"></path></svg>'
                     + `<span>${escape(`${tweetObj.author?.display_name || 'Unknown'} Reposted`)}</span></div>`
                 : '';

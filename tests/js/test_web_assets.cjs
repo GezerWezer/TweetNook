@@ -2833,7 +2833,7 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     // text, never Show more.
     const compact = app.renderFeedCard(doubleMedia);
     assert.match(compact, /cursor-pointer quote-compact" data-thread-id="3" data-action="quote"/);
-    assert.match(compact, /<div class="quote-reply text-\[15px\][^"]*">Replying to <span[^>]*data-username="frank">@frank<\/span>/);
+    assert.match(compact, /<div class="quote-reply tweet-reply-context text-\[15px\][^"]*">Replying to <span[^>]*data-username="frank">@frank<\/span>/);
     assert.match(compact, /<div class="quote-media"><div class="quote-thumbnail"><img src="\/media\/q\.jpg" loading="lazy" decoding="async" alt=""><span class="quote-thumbnail-badge">0:21<\/span><\/div><\/div>/);
     assert.match(compact, /class="quote-text text-\[15px\]/);
     assert.doesNotMatch(compact, /media-video-player|expand-tweet/);
@@ -2874,7 +2874,7 @@ test('media quoting media is compact in lists and flush in the detail view', () 
         assert.equal(html.split(`@click="if (!isMediaQuotingMedia(${name})) $event.stopPropagation()"`).length - 1, 2);
         const replyLines = html.split(`<template x-if="getReplyTo({raw_json: getQuoteTweet(${name})})">`).slice(1);
         assert.equal(replyLines.length, 2);
-        for (const line of replyLines) assert.match(line, /^\s*<div class="quote-reply text-\[15px\]/);
+        for (const line of replyLines) assert.match(line, /^\s*<div class="quote-reply tweet-reply-context text-\[15px\]/);
     }
     for (const main of ['threadData?.main', 'panelThreadData?.main']) {
         const mainQuote = html.split(`:data-thread-id="getTweetId(getQuoteTweet(${main}))"`)[0].split('\n').at(-1);
