@@ -375,6 +375,7 @@
             };
             if (source.community_note) {
                 raw.birdwatch_pivot = {
+                    title: 'Readers added context they thought people might want to know',
                     shorttitle: 'Readers added context',
                     subtitle: {
                         text: String(source.community_note),

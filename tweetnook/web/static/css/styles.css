@@ -2412,3 +2412,84 @@ body {
     content-visibility: auto;
     contain-intrinsic-size: auto 420px;
 }
+
+/* Community notes use distinct spacing in feeds, quotes, and detail views. */
+.community-note {
+    text-align: left;
+    color: var(--text-primary);
+}
+.community-note svg {
+    width: 18.75px;
+    height: 18.75px;
+    flex: 0 0 auto;
+}
+.community-note-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 20px;
+    font-size: 14px;
+    line-height: 16px;
+    font-weight: 700;
+}
+.community-note-header span {
+    padding: 2px 0;
+}
+.community-note-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 15px;
+    line-height: 20px;
+}
+.community-note-feed {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--bg-secondary);
+    cursor: pointer;
+    transition: background-color 150ms ease;
+}
+.community-note-feed .community-note-body {
+    margin-top: 8px;
+}
+.community-note-detail {
+    margin-top: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--bg-primary);
+}
+.community-note-detail .community-note-header {
+    padding: 12px;
+    background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+.community-note-detail .community-note-header span {
+    padding: 2px 0;
+}
+.community-note-detail .community-note-body {
+    padding: 12px;
+}
+.community-note-quote {
+    margin: 0 -12px -12px;
+    padding: 0 0 12px;
+    border-top: 1px solid var(--border-color);
+    border-radius: 0 0 16px 16px;
+    background: var(--bg-secondary);
+}
+.community-note-quote-spaced {
+    margin-top: 12px;
+}
+.community-note-quote-media {
+    margin-top: 0;
+}
+.quote-compact > div > .community-note-quote {
+    margin-top: 12px;
+}
+.community-note-quote .community-note-header {
+    padding: 12px 12px 0;
+}
+.community-note-quote .community-note-body {
+    margin-top: 12px;
+    padding: 0 12px;
+}

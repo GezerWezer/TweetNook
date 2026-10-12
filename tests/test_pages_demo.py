@@ -48,7 +48,13 @@ def test_synthetic_fixture_is_valid_and_contains_no_raw_payload() -> None:
         for tweet in data["tweets"]
         if tweet.get("community_note")
     ]
-    assert community_notes == [("202602130004", "community notes work too!")]
+    assert community_notes == [
+        ("202602130004", "community notes work too!"),
+        (
+            "202602090016",
+            "This is an example Community Note attached directly to a video post.",
+        ),
+    ]
     replies = [tweet for tweet in data["tweets"] if tweet["reply_to_id"]]
     roots = [tweet for tweet in data["tweets"] if not tweet["reply_to_id"]]
     assert len(roots) == 26

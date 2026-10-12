@@ -2915,8 +2915,9 @@ test('a quote shows its own quote nested inside it, as X does', () => {
     const template = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     for (const name of ['threadData?.main', 'panelThreadData?.main', 'child', 'reply']) {
         const slot = `<div x-html="renderNestedQuote(getQuoteTweet(${name}))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>`;
+        const hasMedia = name.endsWith('main') ? name.replace('?.main', '?.main?.qt_media?.length') : `${name}?.qt_media?.length`;
         assert.equal(template.split(slot).length - 1, name.endsWith('main') ? 1 : 2);
-        assert.ok(template.includes(`${slot}\n${' '.repeat(template.split(slot)[0].split('\n').at(-1).length)}<div x-html="renderCommunityNote(getQuoteTweet(${name}), true)"`));
+        assert.ok(template.includes(`${slot}\n${' '.repeat(template.split(slot)[0].split('\n').at(-1).length)}<div x-html="renderCommunityNote(getQuoteTweet(${name}), true, false, Boolean(${hasMedia}))"`));
     }
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
     assert.match(css, /\.quote-nested \{[^}]*margin-top: 12px;[^}]*padding: 8px 0 8px 15px;/);
@@ -4004,6 +4005,44 @@ test('community notes escape headings, text, labels, and external links', () => 
     assert.doesNotMatch(note, /<img onerror/);
 });
 
+test('community note detail uses captured title and omits footers, while feed and quote retain compact title', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const raw = { birdwatch_pivot: {
+        title: 'Full <b>title</b>',
+        shorttitle: 'Short title',
+        subtitle: { text: 'Note body\nsecond line', entities: [] },
+        footer: { text: 'Footer information', entities: [] },
+    } };
+    const feed = app.renderCommunityNote(raw);
+    const quote = app.renderCommunityNote(raw, true);
+    const detail = app.renderCommunityNote(raw, false, true);
+    const quoteWithMedia = app.renderCommunityNote(raw, true, false, true);
+    assert.match(feed, /Short title/);
+    assert.doesNotMatch(feed, /Footer information/);
+    assert.match(quote, /community-note-quote/);
+    assert.match(quote, /community-note-quote-spaced/);
+    assert.match(quoteWithMedia, /community-note-quote-media/);
+    assert.match(quote, /Short title/);
+    assert.match(detail, /Full &lt;b&gt;title&lt;\/b&gt;/);
+    assert.ok(detail.includes('Note body\nsecond line'));
+    assert.doesNotMatch(detail, /Footer information|community-note-footer/);
+    assert.doesNotMatch(quote, /Footer information/);
+    assert.doesNotMatch(detail, /<b>title<\/b>/);
+
+    const missingText = app.renderCommunityNote({ birdwatch_pivot: { shorttitle: 'No note text' } }, false, true);
+    assert.equal(missingText, '');
+
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    for (const prefix of ['threadData.main', 'panelThreadData.main']) {
+        const detailCall = `renderCommunityNote(${prefix}.raw_json, false, true)`;
+        const detailIndex = html.indexOf(detailCall);
+        const timestampIndex = html.indexOf('class="tweet-timestamp', detailIndex);
+        assert.ok(detailIndex >= 0 && timestampIndex > detailIndex, `${prefix} detail note precedes timestamp`);
+    }
+});
+
 test('automated tagging has a dedicated conditional Settings page', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     assert.match(html, /x-show="automatedTaggingInstalled"/);
@@ -4961,7 +5000,7 @@ test('feed cards render each fixture tweet shape as plain markup', () => {
     assert.match(quoted.querySelector('[data-action="text"] a').getAttribute('href'), /^https:\/\/example\.test\/story/);
     assert.ok(quoted.querySelector('a.mt-3').closest('[data-action="stop"]'), 'link card');
     assert.equal(quoted.textContent.match(/Readers added context/g).length, 2);
-    assert.ok(quote.querySelector('.-mx-3').closest('[data-action="stop"]'), 'quote note');
+    assert.ok(quote.querySelector('.community-note-quote').closest('[data-action="stop"]'), 'quote note');
     assert.equal(quoted.querySelector('[data-action="text"]').getAttribute('class'), 'tweet-text text-[15px] whitespace-pre-wrap break-words');
 
     // Retweets show the original under a repost header and keep the list item id.
@@ -5160,7 +5199,7 @@ test('feed clicks are delegated by data-action like the per-card handlers', () =
         quoted.querySelector('a.mt-3 div'),
         quoted.querySelector('img.cursor-pointer'),
         quoted.querySelector('.roll-item'),
-        quoted.querySelector('[data-action="quote"] .-mx-3 span'),
+        quoted.querySelector('[data-action="quote"] .community-note-quote span'),
         tombstoneQuote.querySelector('.tweet-skeleton-message'),
         retweet.querySelector('[data-action="stop"] .truncate'),
         quoted.querySelector('a[title="Open on Twitter/X"] svg'),
