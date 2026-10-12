@@ -63,7 +63,8 @@ class SyncConfig(BaseModel):
     cooldown_threshold: int = Field(default=3, ge=1)
     cooldown_duration: float = Field(default=300.0, ge=0)
     timeout: float = Field(default=30.0, ge=1.0)
-    max_linked_depth: int = Field(default=1, ge=0)
+    max_linked_depth: int = Field(default=50, ge=0)
+    reply_linked_depth: int = Field(default=0, ge=0, le=1)
 
 
 class WebConfig(BaseModel):
@@ -466,6 +467,7 @@ def load_config(env: Mapping[str, str] | None = None) -> tuple[AppConfig, XDGPat
         "cooldown_duration": _env_float(env, "TWEETNOOK_COOLDOWN_DURATION"),
         "timeout": _env_float(env, "TWEETNOOK_TIMEOUT"),
         "max_linked_depth": _env_int(env, "TWEETNOOK_MAX_LINKED_DEPTH"),
+        "reply_linked_depth": _env_int(env, "TWEETNOOK_REPLY_LINKED_DEPTH"),
     }
     sync_updates = {key: value for key, value in sync_updates.items() if value is not None}
 
@@ -585,6 +587,7 @@ def get_config_ui_schema() -> dict[str, Any]:
             "sync.cooldown_duration": "Cooldown Duration (s)",
             "sync.timeout": "Timeout (s)",
             "sync.max_linked_depth": "Max Linked Depth",
+            "sync.reply_linked_depth": "Reply Linked Depth",
             "web.host": "Host",
             "web.port": "Port",
             "web.fetch_avatars": "Fetch Avatars locally",
@@ -642,7 +645,12 @@ def get_config_ui_schema() -> dict[str, Any]:
             ),
             "sync.timeout": "How many seconds to wait before giving up on a slow network request.",
             "sync.max_linked_depth": (
-                "How deep to go when fetching nested tweet replies or quoted links."
+                "Safety cap on how many hops of quoted tweets and linked X posts to follow "
+                "from saved tweets and their author's own thread. 0 disables this. Default: 50."
+            ),
+            "sync.reply_linked_depth": (
+                "Set to 1 to also fetch tweets quoted or linked by other people's replies "
+                "in saved conversations (one hop, never further). Default: 0 (off)."
             ),
             "web.fetch_avatars": "Automatically download and cache user profile pictures.",
             "web.avatar_cache_limit_enabled": (

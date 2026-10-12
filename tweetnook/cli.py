@@ -164,7 +164,22 @@ SYNC_MAX_LINKED_DEPTH_OPTION = Annotated[
     int | None,
     typer.Option(
         "--max-linked-depth",
-        help="Maximum degrees of separation for linked-status discovery.",
+        help=(
+            "Safety cap on quote/linked-status hops followed from saved tweets and their "
+            "author's own thread (0 disables linked discovery; default 50)."
+        ),
+    ),
+]
+SYNC_REPLY_LINKED_DEPTH_OPTION = Annotated[
+    int | None,
+    typer.Option(
+        "--reply-linked-depth",
+        min=0,
+        max=1,
+        help=(
+            "Follow quotes/linked statuses from other people's replies in saved "
+            "conversations: 1 for one hop, 0 to skip (default 0)."
+        ),
     ),
 ]
 SEARCH_TYPE_HELP = "Comma-delimited search result types: post (default), article."
@@ -551,6 +566,7 @@ def _run_sync_all_command(
     skip_unfurl: bool,
     skip_threads: bool,
     max_linked_depth: int | None = None,
+    reply_linked_depth: int | None = None,
 ) -> None:
     followups = _sync_followup_plan(
         skip_resurrection=skip_resurrection,
@@ -568,6 +584,7 @@ def _run_sync_all_command(
             auth_bundle,
             runner_console,
             max_linked_depth,
+            reply_linked_depth,
             full,
             backfill,
             article_backfill,
@@ -588,6 +605,7 @@ def _run_with_depth(
     auth_bundle,
     runner_console,
     max_linked_depth,
+    reply_linked_depth,
     full,
     backfill,
     article_backfill,
@@ -597,6 +615,8 @@ def _run_with_depth(
 ):
     if max_linked_depth is not None:
         config.sync.max_linked_depth = max_linked_depth
+    if reply_linked_depth is not None:
+        config.sync.reply_linked_depth = reply_linked_depth
     return sync_all(
         full=full,
         backfill=backfill,
@@ -627,6 +647,7 @@ def sync_default(
     skip_unfurl: SYNC_SKIP_UNFURL_OPTION = False,
     skip_threads: SYNC_SKIP_THREADS_OPTION = False,
     max_linked_depth: SYNC_MAX_LINKED_DEPTH_OPTION = None,
+    reply_linked_depth: SYNC_REPLY_LINKED_DEPTH_OPTION = None,
 ) -> None:
     if ctx.invoked_subcommand is not None:
         return
@@ -642,6 +663,7 @@ def sync_default(
         skip_unfurl=skip_unfurl,
         skip_threads=skip_threads,
         max_linked_depth=max_linked_depth,
+        reply_linked_depth=reply_linked_depth,
     )
 
 
@@ -889,6 +911,7 @@ def sync_everything(
     skip_unfurl: SYNC_SKIP_UNFURL_OPTION = False,
     skip_threads: SYNC_SKIP_THREADS_OPTION = False,
     max_linked_depth: SYNC_MAX_LINKED_DEPTH_OPTION = None,
+    reply_linked_depth: SYNC_REPLY_LINKED_DEPTH_OPTION = None,
 ) -> None:
     _run_sync_all_command(
         full=full,
@@ -902,6 +925,7 @@ def sync_everything(
         skip_unfurl=skip_unfurl,
         skip_threads=skip_threads,
         max_linked_depth=max_linked_depth,
+        reply_linked_depth=reply_linked_depth,
     )
 
 
@@ -1031,6 +1055,7 @@ def expand_archive_threads(
         ),
     ] = False,
     max_linked_depth: SYNC_MAX_LINKED_DEPTH_OPTION = None,
+    reply_linked_depth: SYNC_REPLY_LINKED_DEPTH_OPTION = None,
 ) -> None:
     console = _configure_logging()
     try:
@@ -1046,6 +1071,8 @@ def expand_archive_threads(
             )
             if max_linked_depth is not None:
                 config.sync.max_linked_depth = max_linked_depth
+            if reply_linked_depth is not None:
+                config.sync.reply_linked_depth = reply_linked_depth
             auth_bundle = resolve_auth_bundle(config)
             result = asyncio.run(
                 expand_threads(

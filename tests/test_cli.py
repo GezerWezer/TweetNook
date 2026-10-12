@@ -153,6 +153,24 @@ def test_sync_help_lists_subcommand_descriptions() -> None:
     assert "--profile" not in result.stdout
 
 
+def test_linked_depth_options_are_documented_on_sync_and_threads() -> None:
+    for command in (["sync"], ["sync", "all"], ["threads", "expand"]):
+        result = runner.invoke(cli.app, [*command, "--help"])
+
+        assert result.exit_code == 0
+        normalized = " ".join(result.stdout.replace("│", " ").split())
+        assert "--max-linked-depth" in normalized
+        assert "default 50" in normalized
+        assert "--reply-linked-depth" in normalized
+        assert "other people's replies" in normalized
+
+
+def test_reply_linked_depth_rejects_values_above_one() -> None:
+    result = runner.invoke(cli.app, ["threads", "expand", "--reply-linked-depth", "2"])
+
+    assert result.exit_code == 2
+
+
 def test_stats_help_describes_detailed_view() -> None:
     result = runner.invoke(cli.app, ["stats", "--help"])
 
@@ -875,6 +893,29 @@ def test_expand_archive_threads_forwards_refresh_flag(paths, monkeypatch) -> Non
     cli.expand_archive_threads(["100"], refresh=True)
 
     assert "threads: 1 processed, 1 expanded, 0 skipped, 0 failed" in buffer.getvalue()
+
+
+def test_expand_archive_threads_forwards_linked_depth_overrides(paths, monkeypatch) -> None:
+    buffer = StringIO()
+    _capture_console(monkeypatch, buffer)
+    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    monkeypatch.setattr(
+        cli,
+        "resolve_auth_bundle",
+        lambda config: SimpleNamespace(auth_token="token", ct0="ct0"),
+    )
+    seen: dict[str, int] = {}
+
+    async def fake_expand_threads(**kwargs):
+        seen["max"] = kwargs["config"].sync.max_linked_depth
+        seen["reply"] = kwargs["config"].sync.reply_linked_depth
+        return SimpleNamespace(processed=0, expanded=0, skipped=0, failed=0)
+
+    monkeypatch.setattr(cli, "expand_threads", fake_expand_threads)
+
+    cli.expand_archive_threads(None, max_linked_depth=3, reply_linked_depth=1)
+
+    assert seen == {"max": 3, "reply": 1}
 
 
 def test_import_x_archive_reports_runner_result(paths, monkeypatch, tmp_path: Path) -> None:

@@ -184,6 +184,7 @@ mmap_size_bytes = 64
             "TWEETNOOK_PAGE_DELAY": "1.5",
             "TWEETNOOK_MAX_RETRIES": "4",
             "TWEETNOOK_MAX_LINKED_DEPTH": "7",
+            "TWEETNOOK_REPLY_LINKED_DEPTH": "1",
         }
     )
 
@@ -194,6 +195,7 @@ mmap_size_bytes = 64
     assert config.sync.page_delay == 1.5
     assert config.sync.max_retries == 4
     assert config.sync.max_linked_depth == 7
+    assert config.sync.reply_linked_depth == 1
     assert config.database.cache_size_kb == 32
 
 
@@ -306,6 +308,17 @@ def test_update_config_values_rejects_unknown_paths(paths: XDGPaths) -> None:
         update_config_values(paths, {"web.auto_start": True})
 
 
+def test_linked_depth_defaults_and_bounds() -> None:
+    sync = AppConfig().sync
+
+    assert sync.max_linked_depth == 50
+    assert sync.reply_linked_depth == 0
+    with pytest.raises(ValidationError):
+        sync.model_validate({"reply_linked_depth": 2})
+    with pytest.raises(ValidationError):
+        sync.model_validate({"max_linked_depth": -1})
+
+
 def test_database_defaults_are_fixed() -> None:
     assert DatabaseConfig().cache_size_kb == 524288
     assert DatabaseConfig().mmap_size_bytes == 1073741824
@@ -356,6 +369,7 @@ def test_config_ui_schema_only_references_real_fields_and_masks_secrets() -> Non
         "sync.cooldown_duration",
         "sync.timeout",
         "sync.max_linked_depth",
+        "sync.reply_linked_depth",
         "database.cache_size_kb",
         "database.mmap_size_bytes",
     } <= advanced
