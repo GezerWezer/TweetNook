@@ -490,7 +490,7 @@
                                                         <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
                                                     </div>
                                                     <template x-if="getReplyTo({raw_json: getQuoteTweet(child)})">
-                                                        <div class="text-[15px] text-[var(--text-secondary)] mb-1">
+                                                        <div class="quote-reply text-[15px] text-[var(--text-secondary)] mb-1">
                                                             Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(child)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(child)})"></span>
                                                         </div>
                                                     </template>
@@ -570,7 +570,7 @@
                                                                     <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
                                                                 </div>
                                                                 <template x-if="getReplyTo({raw_json: getQuoteTweet(reply)})">
-                                                                    <div class="text-[15px] text-[var(--text-secondary)] mb-1">
+                                                                    <div class="quote-reply text-[15px] text-[var(--text-secondary)] mb-1">
                                                                         Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(reply)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(reply)})"></span>
                                                                     </div>
                                                                 </template>
@@ -905,7 +905,7 @@
                                                         <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
                                                     </div>
                                                     <template x-if="getReplyTo({raw_json: getQuoteTweet(child)})">
-                                                        <div class="text-[15px] text-[var(--text-secondary)] mb-1">
+                                                        <div class="quote-reply text-[15px] text-[var(--text-secondary)] mb-1">
                                                             Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(child)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(child)})"></span>
                                                         </div>
                                                     </template>
@@ -975,7 +975,7 @@
                                                                     <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
                                                                 </div>
                                                                 <template x-if="getReplyTo({raw_json: getQuoteTweet(reply)})">
-                                                                    <div class="text-[15px] text-[var(--text-secondary)] mb-1">
+                                                                    <div class="quote-reply text-[15px] text-[var(--text-secondary)] mb-1">
                                                                         Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(reply)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(reply)})"></span>
                                                                     </div>
                                                                 </template>

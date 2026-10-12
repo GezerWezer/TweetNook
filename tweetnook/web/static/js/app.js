@@ -2331,7 +2331,7 @@ function tweetApp() {
         renderFeedCard(tweetObj) {
             const escape = value => this.escapeHTML(value);
             const part = (html, attributes = '') => (html ? `<div${attributes}>${html}</div>` : '');
-            const replyLine = username => '<div class="text-[15px] text-[var(--text-secondary)] mb-1">Replying to '
+            const replyLine = (username, className = '') => `<div class="${className}text-[15px] text-[var(--text-secondary)] mb-1">Replying to `
                 + `<span class="text-[var(--accent-color)] hover:underline cursor-pointer" data-action="reply-profile" data-username="${escape(username)}">${escape(`@${username}`)}</span></div>`;
             const retweet = this.getRetweet(tweetObj);
             const tweet = retweet ? this.formatRetweetToTweet(tweetObj, retweet) : tweetObj;
@@ -2380,7 +2380,7 @@ function tweetApp() {
                     + '<span class="text-[var(--text-secondary)]">·</span>'
                     + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(this.formatDate(quote.legacy?.created_at || quote.created_at))}</span>`
                     + '</div>'
-                    + (quoteReplyTo ? replyLine(quoteReplyTo) : '')
+                    + (quoteReplyTo ? replyLine(quoteReplyTo, 'quote-reply ') : '')
                     + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote, compact, true)}</div>`
                     + (compact
                         ? part(this.renderQuoteThumbnail(tweet.qt_media), ' class="quote-media"')
@@ -5182,27 +5182,31 @@ function tweetApp() {
             return this.isDemo ? (m.thumbnail_url || null) : null;
         },
 
-        // A compact quote's first media item as a still with its GIF or duration badge.
-        // It has no controls, so clicks fall through and open the quoted tweet.
+        // A compact quote's media as stills, laid out like the full grid. Only a single
+        // item gets X's GIF or duration badge. Stills have no controls, so clicks fall
+        // through and open the quoted tweet.
         renderQuoteThumbnail(mediaList) {
-            const m = mediaList?.[0];
-            if (!m) return '';
-            const isVideo = m.type === 'video' || m.type === 'animated_gif';
-            const src = this.mediaSource(m);
-            const still = isVideo ? this.mediaPoster(m) : src;
-            let preview;
-            if (still) {
-                preview = `<img src="${this.escapeHTML(still)}" loading="lazy" decoding="async" alt="">`;
-            } else if (src) {
-                // Without a poster, a video shows its first frame once metadata loads.
-                const frame = src.includes('#') ? src : `${src}#t=0.1`;
-                preview = `<video src="${this.escapeHTML(frame)}" preload="metadata" muted playsinline></video>`;
-            } else {
-                preview = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" role="img" aria-label="Media not downloaded"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>';
+            const items = (mediaList || []).slice(0, 4);
+            if (!items.length) return '';
+            const stills = items.map(m => {
+                const src = this.mediaSource(m);
+                const still = m.type === 'video' || m.type === 'animated_gif' ? this.mediaPoster(m) : src;
+                if (still) return `<img src="${this.escapeHTML(still)}" loading="lazy" decoding="async" alt="">`;
+                if (src) {
+                    // Without a poster, a video shows its first frame once metadata loads.
+                    const frame = src.includes('#') ? src : `${src}#t=0.1`;
+                    return `<video src="${this.escapeHTML(frame)}" preload="metadata" muted playsinline></video>`;
+                }
+                return '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" role="img" aria-label="Media not downloaded"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>';
+            });
+            if (items.length > 1) {
+                const cells = stills.map(still => `<div class="quote-thumbnail-cell">${still}</div>`).join('');
+                return `<div class="quote-thumbnail quote-thumbnail-grid">${cells}</div>`;
             }
-            const label = m.type === 'animated_gif' ? 'GIF' : (isVideo ? this.formatMediaDuration(m.duration_millis) : '');
+            const m = items[0];
+            const label = m.type === 'animated_gif' ? 'GIF' : (m.type === 'video' ? this.formatMediaDuration(m.duration_millis) : '');
             const badge = label ? `<span class="quote-thumbnail-badge">${label}</span>` : '';
-            return `<div class="quote-thumbnail">${preview}${badge}</div>`;
+            return `<div class="quote-thumbnail">${stills[0]}${badge}</div>`;
         },
 
         renderMediaGrid(mediaList) {
