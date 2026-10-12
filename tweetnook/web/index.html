@@ -384,7 +384,7 @@
                                 <template x-if="!isTombstone(getQuoteTweet(threadData?.main))">
                                     <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-media-flush': isMediaQuotingMedia(threadData?.main) }" :data-thread-id="getTweetId(getQuoteTweet(threadData?.main))" @click.stop="openThread(getTweetId(getQuoteTweet(threadData?.main)))">
                                         <div class="flex items-center space-x-1 text-[15px] mb-1">
-                                            <div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                            <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                 <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(threadData?.main)).initial"></span>
                                                 <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(threadData?.main)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                             </div>
@@ -481,7 +481,7 @@
                                             <template x-if="!isTombstone(getQuoteTweet(child))">
                                                 <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-compact': isMediaQuotingMedia(child) }" :data-thread-id="getTweetId(getQuoteTweet(child))" @click.stop="openThread(getTweetId(getQuoteTweet(child)))">
                                                     <div class="flex items-center space-x-1 text-[15px] mb-1">
-                                                        <div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                                        <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                             <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(child)).initial"></span>
                                                             <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(child)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                                         </div>
@@ -562,7 +562,7 @@
                                                         <template x-if="!isTombstone(getQuoteTweet(reply))">
                                                             <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-compact': isMediaQuotingMedia(reply) }" :data-thread-id="getTweetId(getQuoteTweet(reply))" @click.stop="openThread(getTweetId(getQuoteTweet(reply)))">
                                                                 <div class="flex items-center space-x-1 text-[15px] mb-1">
-                                                                    <div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                                                    <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                                         <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(reply)).initial"></span>
                                                                         <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(reply)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                                                     </div>
@@ -811,7 +811,7 @@
                                 <template x-if="!isTombstone(getQuoteTweet(panelThreadData?.main))">
                                     <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-media-flush': isMediaQuotingMedia(panelThreadData?.main) }" :data-thread-id="getTweetId(getQuoteTweet(panelThreadData?.main))" @click.stop="openThread(getTweetId(getQuoteTweet(panelThreadData?.main)), false, true)">
                                         <div class="flex items-center space-x-1 text-[15px] mb-1">
-                                            <div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                            <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                 <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).initial"></span>
                                                 <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                             </div>
@@ -899,7 +899,7 @@
                                             <template x-if="!isTombstone(getQuoteTweet(child))">
                                                 <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-compact': isMediaQuotingMedia(child) }" :data-thread-id="getTweetId(getQuoteTweet(child))" @click.stop="openThread(getTweetId(getQuoteTweet(child)), false, true)">
                                                     <div class="flex items-center space-x-1 text-[15px] mb-1">
-                                                        <div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                                        <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                             <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(child)).initial"></span>
                                                             <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(child)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                                         </div>
@@ -970,7 +970,7 @@
                                                         <template x-if="!isTombstone(getQuoteTweet(reply))">
                                                             <div class="mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-compact': isMediaQuotingMedia(reply) }" :data-thread-id="getTweetId(getQuoteTweet(reply))" @click.stop="openThread(getTweetId(getQuoteTweet(reply)), false, true)">
                                                                 <div class="flex items-center space-x-1 text-[15px] mb-1">
-                                                                    <div class="avatar w-5 h-5 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                                                    <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
                                                                         <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(reply)).initial"></span>
                                                                         <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(reply)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                                                                     </div>
