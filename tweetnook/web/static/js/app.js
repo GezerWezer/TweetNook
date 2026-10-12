@@ -5301,7 +5301,8 @@ function tweetApp() {
                     containerStyle = 'width: 100%; aspect-ratio: 16/9;';
                 } else if (aspect && context === 'detail' && type === 'photo') {
                     containerStyle = `width: min(100%, calc(510px * ${aspect})); aspect-ratio: ${aspect};`;
-                } else if (aspect && context === 'detail' && type === 'video' && aspect < 1) {
+                } else if (aspect && (context === 'detail' || context === 'feed') && aspect < 1) {
+                    // Portrait media is capped at X's 510px frame height in feeds and detail.
                     containerStyle = `width: min(100%, calc(510px * ${aspect})); aspect-ratio: ${aspect};`;
                 } else if (aspect) {
                     containerStyle = `width: 100%; aspect-ratio: ${aspect};`;
