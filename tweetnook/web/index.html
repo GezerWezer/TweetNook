@@ -295,10 +295,8 @@
                                     </div>
                                 </div>
                                 
-                                <template x-if="getReplyTo(parent)">
-                                    <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                        Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(parent))" x-text="'@' + getReplyTo(parent)"></span>
-                                    </div>
+                                <template x-if="getReplyRecipients(parent).length">
+                                    <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(parent)" @click="handleReplyRecipientClick($event)"></div>
                                 </template>
 
                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
@@ -365,10 +363,8 @@
                             </div>
                         </div>
                         
-                        <template x-if="getReplyTo(threadData.main) && threadData.parents.length === 0">
-                            <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-2">
-                                Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(threadData.main))" x-text="'@' + getReplyTo(threadData.main)"></span>
-                            </div>
+                        <template x-if="getReplyRecipients(threadData.main).length && threadData.parents.length === 0">
+                            <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-2" x-html="renderReplyRecipientContent(threadData.main)" @click="handleReplyRecipientClick($event)"></div>
                         </template>
 
                         <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
@@ -394,10 +390,8 @@
                                             <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(threadData?.main)?.legacy?.created_at || getQuoteTweet(threadData?.main)?.created_at)"></span>
                                         </div>
                                         
-                                        <template x-if="getReplyTo({raw_json: getQuoteTweet(threadData?.main)})">
-                                            <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                                Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(threadData?.main)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(threadData?.main)})"></span>
-                                            </div>
+                                        <template x-if="getReplyRecipients({raw_json: getQuoteTweet(threadData?.main)}).length">
+                                            <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(threadData?.main)})" @click="handleReplyRecipientClick($event)"></div>
                                         </template>
 
                                         <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(threadData?.main))" @click="handleTextClick($event)"></div>
@@ -467,10 +461,8 @@
                                         </div>
                                     </div>
 
-                                    <template x-if="getReplyTo(child) && getReplyTo(child) !== (threadData?.main?.author?.username)">
-                                        <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                            Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(child))" x-text="'@' + getReplyTo(child)"></span>
-                                        </div>
+                                    <template x-if="getReplyRecipients(child).length > 1 || (getReplyTo(child) && getReplyTo(child) !== threadData?.main?.author?.username)">
+                                        <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(child)" @click="handleReplyRecipientClick($event)"></div>
                                     </template>
 
                                     <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(child)" @click="handleTextClick($event)"></div>
@@ -495,10 +487,8 @@
                                                         <span class="text-[var(--text-secondary)]">·</span>
                                                         <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
                                                     </div>
-                                                    <template x-if="getReplyTo({raw_json: getQuoteTweet(child)})">
-                                                        <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                                            Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(child)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(child)})"></span>
-                                                        </div>
+                                                    <template x-if="getReplyRecipients({raw_json: getQuoteTweet(child)}).length">
+                                                        <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(child)})" @click="handleReplyRecipientClick($event)"></div>
                                                     </template>
                                                     <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(child), isMediaQuotingMedia(child))" @click="handleTextClick($event)"></div>
                                                     <div x-html="renderCard({raw_json: getQuoteTweet(child)})" @click.stop></div>
@@ -548,10 +538,8 @@
                                                     </div>
                                                 </div>
                                                 
-                                                <template x-if="getReplyTo(reply)">
-                                                    <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                                        Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(reply))" x-text="'@' + getReplyTo(reply)"></span>
-                                                    </div>
+                                                <template x-if="getReplyRecipients(reply).length">
+                                                    <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(reply)" @click="handleReplyRecipientClick($event)"></div>
                                                 </template>
 
                                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(reply)" @click="handleTextClick($event)"></div>
@@ -576,10 +564,8 @@
                                                                     <span class="text-[var(--text-secondary)]">·</span>
                                                                     <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
                                                                 </div>
-                                                                <template x-if="getReplyTo({raw_json: getQuoteTweet(reply)})">
-                                                                    <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                                                        Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(reply)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(reply)})"></span>
-                                                                    </div>
+                                                                <template x-if="getReplyRecipients({raw_json: getQuoteTweet(reply)}).length">
+                                                                    <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(reply)})" @click="handleReplyRecipientClick($event)"></div>
                                                                 </template>
                                                                 <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(reply), isMediaQuotingMedia(reply))" @click="handleTextClick($event)"></div>
                                                                 <div x-html="renderCard({raw_json: getQuoteTweet(reply)})" @click.stop></div>
@@ -662,10 +648,8 @@
                                 </div>
                             </div>
                             
-                            <template x-if="getReplyTo(tweet)">
-                                <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                    Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(tweet))" x-text="'@' + getReplyTo(tweet)"></span>
-                                </div>
+                            <template x-if="getReplyRecipients(tweet).length">
+                                <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(tweet)" @click="handleReplyRecipientClick($event)"></div>
                             </template>
 
                             <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(tweet)" @click="handleTextClick($event)"></div>
@@ -732,10 +716,8 @@
                                         </div>
                                     </div>
                                 </div>
-                                <template x-if="getReplyTo(parent)">
-                                    <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                        Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(parent))" x-text="'@' + getReplyTo(parent)"></span>
-                                    </div>
+                                <template x-if="getReplyRecipients(parent).length">
+                                    <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(parent)" @click="handleReplyRecipientClick($event)"></div>
                                 </template>
                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
                                 <div x-html="renderMediaGrid(parent.media)" @click.stop></div>
@@ -798,10 +780,8 @@
                                 </div>
                             </div>
                         </div>
-                        <template x-if="getReplyTo(panelThreadData.main) && panelThreadData.parents.length === 0">
-                            <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-2">
-                                Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(panelThreadData.main))" x-text="'@' + getReplyTo(panelThreadData.main)"></span>
-                            </div>
+                        <template x-if="getReplyRecipients(panelThreadData.main).length && panelThreadData.parents.length === 0">
+                            <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-2" x-html="renderReplyRecipientContent(panelThreadData.main)" @click="handleReplyRecipientClick($event)"></div>
                         </template>
                         <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(panelThreadData.main)" @click="handleTextClick($event)"></div>
                         <div x-html="renderCard(panelThreadData.main)" @click.stop></div>
@@ -825,10 +805,8 @@
                                             <span class="text-[var(--text-secondary)]">·</span>
                                             <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(panelThreadData?.main)?.legacy?.created_at || getQuoteTweet(panelThreadData?.main)?.created_at)"></span>
                                         </div>
-                                        <template x-if="getReplyTo({raw_json: getQuoteTweet(panelThreadData?.main)})">
-                                            <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                                Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(panelThreadData?.main)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(panelThreadData?.main)})"></span>
-                                            </div>
+                                        <template x-if="getReplyRecipients({raw_json: getQuoteTweet(panelThreadData?.main)}).length">
+                                            <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(panelThreadData?.main)})" @click="handleReplyRecipientClick($event)"></div>
                                         </template>
                                         <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(panelThreadData?.main))" @click="handleTextClick($event)"></div>
                                         <div x-html="renderCard({raw_json: getQuoteTweet(panelThreadData?.main)})" @click.stop></div>
@@ -891,10 +869,8 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <template x-if="getReplyTo(child) && getReplyTo(child) !== (panelThreadData?.main?.author?.username)">
-                                        <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                            Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(child))" x-text="'@' + getReplyTo(child)"></span>
-                                        </div>
+                                    <template x-if="getReplyRecipients(child).length > 1 || (getReplyTo(child) && getReplyTo(child) !== panelThreadData?.main?.author?.username)">
+                                        <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(child)" @click="handleReplyRecipientClick($event)"></div>
                                     </template>
                                     <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(child)" @click="handleTextClick($event)"></div>
                                     <div x-html="renderCard(child)" @click.stop></div>
@@ -918,10 +894,8 @@
                                                         <span class="text-[var(--text-secondary)]">·</span>
                                                         <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
                                                     </div>
-                                                    <template x-if="getReplyTo({raw_json: getQuoteTweet(child)})">
-                                                        <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                                            Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(child)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(child)})"></span>
-                                                        </div>
+                                                    <template x-if="getReplyRecipients({raw_json: getQuoteTweet(child)}).length">
+                                                        <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(child)})" @click="handleReplyRecipientClick($event)"></div>
                                                     </template>
                                                     <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(child), isMediaQuotingMedia(child))" @click="handleTextClick($event)"></div>
                                                     <div x-html="renderCard({raw_json: getQuoteTweet(child)})" @click.stop></div>
@@ -962,10 +936,8 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <template x-if="getReplyTo(reply)">
-                                                    <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                                        Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(reply))" x-text="'@' + getReplyTo(reply)"></span>
-                                                    </div>
+                                                <template x-if="getReplyRecipients(reply).length">
+                                                    <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(reply)" @click="handleReplyRecipientClick($event)"></div>
                                                 </template>
                                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(reply)" @click="handleTextClick($event)"></div>
                                                 <div x-html="renderCard(reply)" @click.stop></div>
@@ -989,10 +961,8 @@
                                                                     <span class="text-[var(--text-secondary)]">·</span>
                                                                     <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
                                                                 </div>
-                                                                <template x-if="getReplyTo({raw_json: getQuoteTweet(reply)})">
-                                                                    <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                                                        Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo({raw_json: getQuoteTweet(reply)}))" x-text="'@' + getReplyTo({raw_json: getQuoteTweet(reply)})"></span>
-                                                                    </div>
+                                                                <template x-if="getReplyRecipients({raw_json: getQuoteTweet(reply)}).length">
+                                                                    <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(reply)})" @click="handleReplyRecipientClick($event)"></div>
                                                                 </template>
                                                                 <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(reply), isMediaQuotingMedia(reply))" @click="handleTextClick($event)"></div>
                                                                 <div x-html="renderCard({raw_json: getQuoteTweet(reply)})" @click.stop></div>
@@ -1072,10 +1042,8 @@
                                     <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(tweet.created_at)"></span>
                                 </div>
                             </div>
-                            <template x-if="getReplyTo(tweet)">
-                                <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1">
-                                    Replying to <span class="text-[var(--accent-color)] hover:underline cursor-pointer" @click.stop="openUsernameProfileCard($event, getReplyTo(tweet))" x-text="'@' + getReplyTo(tweet)"></span>
-                                </div>
+                            <template x-if="getReplyRecipients(tweet).length">
+                                <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(tweet)" @click="handleReplyRecipientClick($event)"></div>
                             </template>
                             <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(tweet)" @click="handleTextClick($event)"></div>
                             <div x-html="renderCard(tweet)" @click.stop></div>
