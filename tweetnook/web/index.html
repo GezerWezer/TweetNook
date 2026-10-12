@@ -411,15 +411,20 @@
                         </template>
 
                         <div x-html="renderCommunityNote(threadData.main.raw_json, false, true)" @click.stop></div>
-                        <div class="tweet-timestamp text-[var(--text-secondary)] flex items-center justify-between">
-                            <div class="roll-wrapper cursor-default">
-                                <div class="roll-inner">
-                                    <span class="roll-item" x-text="formatDate(threadData.main.created_at, true)"></span>
-                                    <span class="roll-item text-[var(--accent-color)] font-medium" x-text="formatSyncDate(threadData.main)"></span>
+                        <div class="tweet-timestamp text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                            <div class="tweet-timestamp-meta flex flex-wrap items-center gap-x-1">
+                                <div class="roll-wrapper cursor-default">
+                                    <div class="roll-inner">
+                                        <span class="roll-item" x-text="formatDate(threadData.main.created_at, true)"></span>
+                                        <span class="roll-item text-[var(--accent-color)] font-medium" x-text="formatSyncDate(threadData.main)"></span>
+                                    </div>
                                 </div>
+                                <template x-if="Number(threadData.main.raw_json?.views?.count) > 0">
+                                    <span class="tweet-detail-views"><span>·</span> <span class="tweet-detail-views-count" x-text="formatCompactCount(threadData.main.raw_json.views.count)"></span> <span>Views</span></span>
+                                </template>
                             </div>
                             <template x-if="threadData?.main?.local_quote_count > 0">
-                                <button @click="openQuotes(threadData.main.tweet_id)" class="text-[var(--accent-color)] hover:underline text-[15px] font-medium transition ml-auto">
+                                <button @click="openQuotes(threadData.main.tweet_id)" class="tweet-detail-quotes text-[var(--accent-color)] hover:underline text-[15px] font-medium transition">
                                     Browse <span x-text="threadData.main.local_quote_count"></span> Quote Tweets
                                 </button>
                             </template>
@@ -836,15 +841,20 @@
                         </template>
 
                         <div x-html="renderCommunityNote(panelThreadData.main.raw_json, false, true)" @click.stop></div>
-                        <div class="tweet-timestamp text-[var(--text-secondary)] flex items-center justify-between">
-                            <div class="roll-wrapper cursor-default">
-                                <div class="roll-inner">
-                                    <span class="roll-item" x-text="formatDate(panelThreadData.main.created_at, true)"></span>
-                                    <span class="roll-item text-[var(--accent-color)] font-medium" x-text="formatSyncDate(panelThreadData.main)"></span>
+                        <div class="tweet-timestamp text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                            <div class="tweet-timestamp-meta flex flex-wrap items-center gap-x-1">
+                                <div class="roll-wrapper cursor-default">
+                                    <div class="roll-inner">
+                                        <span class="roll-item" x-text="formatDate(panelThreadData.main.created_at, true)"></span>
+                                        <span class="roll-item text-[var(--accent-color)] font-medium" x-text="formatSyncDate(panelThreadData.main)"></span>
+                                    </div>
                                 </div>
+                                <template x-if="Number(panelThreadData.main.raw_json?.views?.count) > 0">
+                                    <span class="tweet-detail-views"><span>·</span> <span class="tweet-detail-views-count" x-text="formatCompactCount(panelThreadData.main.raw_json.views.count)"></span> <span>Views</span></span>
+                                </template>
                             </div>
                             <template x-if="panelThreadData.main.local_quote_count > 0">
-                                <button @click="openQuotes(panelThreadData.main.tweet_id, true)" class="text-[var(--accent-color)] hover:underline text-[15px] font-medium transition ml-auto">
+                                <button @click="openQuotes(panelThreadData.main.tweet_id, true)" class="tweet-detail-quotes text-[var(--accent-color)] hover:underline text-[15px] font-medium transition">
                                     Browse <span x-text="panelThreadData.main.local_quote_count"></span> Quote Tweets
                                 </button>
                             </template>
