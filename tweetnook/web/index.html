@@ -120,14 +120,14 @@
                     </button>
                 </div>
                 
-                <div x-ref="dropdownMenu" x-show="showDropdown && options.length > 0" x-transition.opacity.duration.100ms class="absolute top-full left-4 right-4 mt-1 bg-[var(--dropdown-bg)] border border-[var(--border-color)] rounded-xl shadow-[0_0_15px_rgba(255,255,255,0.1)] overflow-y-auto max-h-[50vh] z-50">
+                <div x-ref="dropdownMenu" x-show="showDropdown && options.length > 0" x-transition.opacity.duration.100ms :class="options[0]?.isDatePicker ? 'w-[280px] rounded-2xl' : 'right-4 rounded-xl'" class="absolute top-full left-4 mt-1 bg-[var(--dropdown-bg)] border border-[var(--border-color)] shadow-[0_0_15px_rgba(255,255,255,0.1)] overflow-y-auto max-h-[50vh] z-50">
                     <template x-for="(opt, index) in options" :key="index">
                         <div @click="!opt.isDatePicker && selectOptionIndex(index)" 
                              @mouseenter="!opt.isDatePicker && (selectedIndex = index)" 
                              :class="{
                                  'bg-[var(--bg-tertiary)]': !opt.isDatePicker && selectedIndex === index,
                                  'px-4 py-3 cursor-pointer flex justify-between items-center': !opt.isDatePicker,
-                                 'p-3': opt.isDatePicker
+                                 'p-2': opt.isDatePicker
                              }">
                             <template x-if="opt.isAuthor">
                                 <div class="flex items-center space-x-3 w-full py-1">
@@ -169,22 +169,35 @@
                             </template>
                             <template x-if="opt.isDatePicker">
                                 <div class="w-full text-[var(--text-primary)] select-none" @mousedown.prevent>
-                                    <!-- Header -->
-                                    <div class="flex justify-between items-center mb-3 px-1">
-                                        <button type="button" @click.stop="dpPrevMonth()" class="w-8 h-8 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"></path></svg>
+                                    <div class="flex h-8 items-center ps-3">
+                                        <h2 class="min-w-0 flex-1 truncate text-[13px] leading-[18px] font-medium" x-text="new Date(dpYear, dpMonth, 1).toLocaleString('default', { month: 'long', year: 'numeric' })"></h2>
+                                        <button type="button" aria-label="Previous month" @click.stop="dpPrevMonth()" class="group w-8 h-8 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)] transition-colors">
+                                            <svg class="w-4 h-4 fill-current transition-transform duration-200 group-hover:scale-110" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.91 7.5 9.41 12l4.5 4.5-1.41 1.41L6.59 12l5.91-5.91z"></path></svg>
                                         </button>
-                                        <div class="font-bold text-[15px] text-[var(--text-primary)] tracking-wide" x-text="new Date(dpYear, dpMonth, 1).toLocaleString('default', { month: 'long', year: 'numeric' })"></div>
-                                        <button type="button" @click.stop="dpNextMonth()" class="w-8 h-8 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path></svg>
+                                        <button type="button" aria-label="Next month" @click.stop="dpNextMonth()" class="group w-8 h-8 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)] transition-colors">
+                                            <svg class="w-4 h-4 fill-current transition-transform duration-200 group-hover:scale-110" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.91 12 10 17.91 8.59 16.5l4.5-4.5-4.5-4.5L10 6.09z"></path></svg>
                                         </button>
                                     </div>
-
-                                    <!-- Weekday Headers -->
-                                    <div class="grid grid-cols-7 text-center mb-1 pb-1 border-b border-[var(--border-color)]">
-                                        <template x-for="day in ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']">
-                                            <div class="text-[12px] font-bold text-[var(--text-secondary)] py-1" x-text="day"></div>
-                                        </template>
+                                    <div role="grid" class="mt-1 px-1">
+                                        <div role="row" class="grid grid-cols-7">
+                                            <template x-for="day in ['S', 'M', 'T', 'W', 'T', 'F', 'S']">
+                                                <div role="columnheader" class="flex h-6 items-center justify-center text-[10px] font-medium opacity-30" x-text="day"></div>
+                                            </template>
+                                        </div>
+                                        <div class="grid grid-cols-7">
+                                            <template x-for="dayObj in dpGetDays()">
+                                                <div role="gridcell" class="flex h-7 items-center justify-center" :aria-selected="dpIsSelected(dayObj, opt)">
+                                                    <button type="button" tabindex="-1"
+                                                        class="flex w-6 h-6 items-center justify-center rounded-full text-[11px] font-normal transition-colors focus:outline-none"
+                                                        :class="dpIsSelected(dayObj, opt) ? 'bg-[var(--text-primary)] text-[var(--bg-primary)]' : (dayObj.isCurrentMonth ? 'hover:bg-[var(--bg-tertiary)]' : 'text-[color-mix(in_srgb,var(--text-primary)_30%,transparent)] hover:bg-[var(--bg-tertiary)]')"
+                                                        @click.stop="dpSelectDate(dayObj.dateStr, opt)"
+                                                        x-text="dayObj.day"></button>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
                                     </div>
 
                                     <!-- Days Grid -->
