@@ -980,6 +980,86 @@ test('autocomplete calendar handles leap years and month boundaries', () => {
     assert.equal(component.formatDateStr(2026, 7, 3), '2026-07-03');
 });
 
+test('autocomplete calendar inserts the picked date without mutating the picker option', () => {
+    const context = browserContext();
+    const { searchAutocomplete } = loadScripts(
+        context,
+        ['autocomplete.js'],
+        '({searchAutocomplete})',
+    );
+    const component = immediateComponent(searchAutocomplete());
+    component.searchQuery = 'since:';
+    component.cursorPos = component.searchQuery.length;
+    component.showDropdown = true;
+    const picker = { isDatePicker: true, prefix: 'since:', val: '' };
+    component.options = [picker];
+    component.$refs.searchInput = { isContentEditable: false, focus() {}, setSelectionRange() {} };
+    component.handleInput = () => {};
+
+    component.dpSelectDate('2026-10-13', picker);
+
+    assert.equal(component.searchQuery, 'since:2026-10-13 ');
+    assert.deepEqual({ ...picker }, { isDatePicker: true, prefix: 'since:', val: '' });
+});
+
+test('autocomplete calendar follows caret moves into and out of date filters', () => {
+    const context = browserContext();
+    const { searchAutocomplete } = loadScripts(
+        context,
+        ['autocomplete.js'],
+        '({searchAutocomplete})',
+    );
+    const component = immediateComponent(searchAutocomplete());
+    const input = { isContentEditable: true };
+    component.$refs.searchInput = input;
+    context.document.activeElement = input;
+    context.window.getSelection = () => ({ isCollapsed: true });
+    component.searchQuery = 'cats since:2026-10-13 dogs';
+    component.cursorPos = component.searchQuery.length;
+    let caret = component.cursorPos;
+    let refreshes = 0;
+    component.readEditorCaret = () => ({ query: component.searchQuery, caret });
+    component.handleInput = () => {
+        refreshes++;
+        component.cursorPos = caret;
+    };
+
+    caret = 'cats since:2026'.length;
+    component.syncDatePickerToCaret();
+    assert.equal(refreshes, 1);
+
+    component.syncDatePickerToCaret();
+    assert.equal(refreshes, 1, 'an unmoved caret does not refresh again');
+
+    caret = 2;
+    component.syncDatePickerToCaret();
+    assert.equal(refreshes, 1, 'plain words leave a closed dropdown alone');
+
+    component.showDropdown = true;
+    component.options = [{ isDatePicker: true, prefix: 'since:', val: '' }];
+    caret = component.searchQuery.length;
+    component.syncDatePickerToCaret();
+    assert.equal(refreshes, 2, 'leaving an open calendar refreshes the suggestions');
+});
+
+test('autocomplete calendar shows the whole date when the caret is inside it', () => {
+    const context = browserContext();
+    const { searchAutocomplete } = loadScripts(
+        context,
+        ['autocomplete.js'],
+        '({searchAutocomplete})',
+    );
+    const component = immediateComponent(searchAutocomplete());
+    component.$refs.searchInput = { isContentEditable: false, selectionStart: 0 };
+    component.searchQuery = 'cats since:2025-03-14 dogs';
+    for (const caret of ['cats since:'.length, 'cats since:2025'.length, 'cats since:2025-03-1'.length]) {
+        component.$refs.searchInput.selectionStart = caret;
+        component.handleInput();
+        assert.equal(component.options[0].val, '2025-03-14');
+        assert.deepEqual([component.dpYear, component.dpMonth], [2025, 2]);
+    }
+});
+
 test('tweet app starts with coherent list, panel, modal, and theme state', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(

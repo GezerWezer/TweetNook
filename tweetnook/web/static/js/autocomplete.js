@@ -41,7 +41,10 @@ function searchAutocomplete() {
                 }
             });
             // Arrow keys and clicks move the caret without input events.
-            document.addEventListener('selectionchange', () => this.syncEditingState());
+            document.addEventListener('selectionchange', () => {
+                this.syncEditingState();
+                this.syncDatePickerToCaret();
+            });
         },
         
         allFilters: [
@@ -161,11 +164,15 @@ function searchAutocomplete() {
                 } else if (basePrefix === 'is:') {
                     this.options = this.isOptions.filter(o => o.value.startsWith(val)).map(o => ({...o, prefix: rawPrefix}));
                 } else if (basePrefix === 'since:' || basePrefix === 'until:') {
-                    this.initDatePicker(val);
+                    // The whole date, so a caret inside it keeps the same day shown.
+                    const tokenEnd = this.currentSearchTokenEnd(this.searchQuery, this.cursorPos, tokenStart);
+                    const dateVal = this.searchQuery.substring(tokenStart + rawPrefix.length, tokenEnd)
+                        .replace(/^"/, '').replace(/"$/, '').toLowerCase();
+                    this.initDatePicker(dateVal);
                     this.options = [{
                         isDatePicker: true,
                         prefix: rawPrefix,
-                        val: val
+                        val: dateVal
                     }];
                 } else if (basePrefix === 'from:' || basePrefix === 'to:') {
                     if (val.length > 0) {
@@ -252,7 +259,10 @@ function searchAutocomplete() {
 
             const opt = this.options[this.selectedIndex];
             if (opt.isDatePicker) return; // Prevent enter key from closing if it's the date picker itself
+            this.insertOption(opt);
+        },
 
+        insertOption(opt) {
             const textToCursor = this.searchQuery.substring(0, this.cursorPos);
             const tokenStart = this.currentSearchTokenStart(textToCursor);
             const textAfterCursor = this.searchQuery.substring(this.currentSearchTokenEnd(this.searchQuery, this.cursorPos, tokenStart));
@@ -779,6 +789,26 @@ function searchAutocomplete() {
             });
         },
 
+        // The query and caret the editor shows; caret is -1 outside the input.
+        readEditorCaret(input) {
+            return this.serializeSearchParts(this.parseSearchParts(this.extractMarkedSearch(input)));
+        },
+
+        // Moving the caret into a since:/until: value reopens the calendar, and
+        // moving it away from an open calendar refreshes the suggestions. Typing
+        // already updated cursorPos through handleInput, so it is skipped here.
+        syncDatePickerToCaret() {
+            const input = this.$refs.searchInput;
+            if (!input || !input.isContentEditable || this.isComposing) return;
+            if (document.activeElement !== input || !window.getSelection().isCollapsed) return;
+            const { query, caret } = this.readEditorCaret(input);
+            if (caret === -1 || query !== this.searchQuery || caret === this.cursorPos) return;
+            const textToCursor = query.substring(0, caret);
+            const word = textToCursor.substring(this.currentSearchTokenStart(textToCursor));
+            const pickerOpen = this.showDropdown && this.options[0]?.isDatePicker;
+            if (pickerOpen || /^-?(since|until):/.test(word)) this.handleInput();
+        },
+
         handleEscape() {
             const current = this.caretFilterBox();
             if (current && current.inValue) this.leaveFilterBox(current.box);
@@ -968,17 +998,20 @@ function searchAutocomplete() {
             return days;
         },
         
+        // Like X, today stands in as the selection until a full date is typed.
+        dpIsSelected(dayObj, opt) {
+            return /^\d{4}-\d{2}-\d{2}$/.test(opt.val) ? dayObj.dateStr === opt.val : dayObj.isToday;
+        },
+
         formatDateStr(y, m, d) {
             return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         },
         
         dpSelectDate(dateStr, opt) {
-            opt.value = dateStr;
             this.selectedIndex = 0;
-            const originalIsDatePicker = opt.isDatePicker;
-            opt.isDatePicker = false; // Temporarily trick selectOption into submitting
-            this.selectOption();
-            opt.isDatePicker = originalIsDatePicker;
+            // Leave the picker option untouched: the insert replaces the options,
+            // and mutating the old row afterwards kept the calendar rendered.
+            this.insertOption({ prefix: opt.prefix, value: dateStr });
         }
     };
 }
