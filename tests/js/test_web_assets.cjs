@@ -1205,6 +1205,7 @@ test('lightbox drag-to-dismiss fades and scales before closing, while invalid dr
     assert.equal(app.lightboxGestureOffsetY, 70);
     assert.match(app.lightboxSlideStyle(0).transform, /scale\(0\.9\d+/);
     assert.match(app.lightboxBackdropStyle().backgroundColor, /rgba\(0, 0, 0, 0\.[0-8]/);
+    assert.equal(app.lightboxShadeStyle().opacity, app.lightboxBackdropStyle()['--lightbox-backdrop-opacity']); // The page shade follows the drag.
     app.endLightboxGesture(touchEvent(imageTarget, 105, 185, undefined, 190));
     assert.equal(app.lightboxOpen, true);
     assert.equal(app.lightboxDismissPending, true);
@@ -3916,7 +3917,7 @@ test('mobile video bounds wait for a playback frame, return to the feed, and res
         dispatchFeed(active, 'loadeddata', active);
         if (!reduced) {
             assert.equal(app.lightboxVideoMotionPhase, 'opening');
-            assert.match(motions[0].frames[0].transform, /translate3d\(60px,/);
+            assert.match(motions[0].frames[0].transform, /translate3d\(60\.09375px,/); // The contained feed picture, not its frame.
             assert.ok(parseFloat(motions[0].frames[0].borderRadius) > 0);
             assert.equal(Object.keys(motions[0].frames[1]).sort().join(','), 'borderRadius,transform');
             motions[0].complete();
@@ -3934,7 +3935,7 @@ test('mobile video bounds wait for a playback frame, return to the feed, and res
             assert.equal(app.lightboxVideoMotionPhase, 'closing');
             app.closeLightbox(); // Repeated close requests do not replace the return animation.
             assert.equal(motions.length, 2);
-            assert.match(motions[1].frames[1].transform, /translate3d\(60px,/);
+            assert.match(motions[1].frames[1].transform, /translate3d\(60\.09375px,/);
             assert.equal(origin.paused, true);
             motions[1].complete();
             await Promise.resolve(); await Promise.resolve();
@@ -3950,8 +3951,8 @@ test('mobile video bounds wait for a playback frame, return to the feed, and res
 });
 
 test('video motion holds its final surface for handoff and preserves cropped picture geometry', async () => {
-    for (const mode of ['quote', 'fill', 'occluded']) {
-        const fill = mode === 'fill', occluded = mode === 'occluded';
+    for (const mode of ['quote', 'grid', 'fill', 'occluded']) {
+        const fill = mode === 'fill', occluded = mode === 'occluded', quote = mode === 'quote', grid = mode === 'grid';
         const context = browserContext();
         context.window.innerWidth = 390;
         context.window.innerHeight = 844;
@@ -3974,7 +3975,11 @@ test('video motion holds its final surface for handoff and preserves cropped pic
             return {finished: new Promise(resolve => {complete = resolve;}), cancel() {}};
         };
         const {animateMobileMediaBounds} = loadScripts(context, ['app.js'], '({animateMobileMediaBounds})');
-        const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: occluded ? -120 : 200, width: 300, height: fill || occluded ? 533 : 168.75})};
+        const originValues = new Map();
+        const origin = {isConnected: true, style: style(originValues),
+            // The inline player's placeholder records how the feed drew its picture.
+            getAttribute: name => ({'data-feed-fit': grid ? 'cover' : 'contain', 'data-feed-background': 'rgb(0, 0, 0)'})[name],
+            getBoundingClientRect: () => ({left: 60, top: occluded ? -120 : 200, width: 300, height: fill || occluded ? 533 : 168.75})};
         const motion = animateMobileMediaBounds(video, origin, false, 280,
             {left: 0, top: fill ? 0 : (772 - 390 * 1280 / 720) / 2, width: 390, height: fill ? 772 : 390 * 1280 / 720});
         assert.ok(motion);
@@ -3982,9 +3987,18 @@ test('video motion holds its final surface for handoff and preserves cropped pic
         assert.equal(videoValues.get('height'), '100%');
         assert.equal(videoValues.get('object-fit'), 'contain');
         assert.ok(Math.abs(parseFloat(surfaceValues.get('width')) / parseFloat(surfaceValues.get('height')) - 720 / 1280) < .00001);
-        assert.ok(frames.some(frame => frame.clipPath)); // A quote crop or fill-screen crop belongs to the surface.
+        if (!quote) assert.ok(frames.some(frame => frame.clipPath)); // A grid crop or fill-screen crop belongs to the surface.
         if (fill) assert.match(frames[0].clipPath, /inset\(0px 22\.125px/); // Keep the current fill crop at dismissal start.
-        else if (!occluded) assert.match(frames[1].clipPath, /inset\(236\.9/); // Return to the wide quoted feed frame without stretching.
+        else if (grid) assert.match(frames[1].clipPath, /inset\(236\.9/); // Return to the wide cropped grid cell without stretching.
+        else if (quote) {
+            // A quoted portrait video is pillarboxed in its 16:9 frame: land on that picture, uncropped.
+            assert.ok(frames.every(frame => !frame.clipPath));
+            const [, x, , scale] = frames[1].transform.match(/translate3d\(([-\d.]+)px, ([-\d.]+)px, 0\) scale\(([-\d.]+)\)/).map(Number);
+            const width = 390 * scale;
+            assert.ok(Math.abs(width - 168.75 * 720 / 1280) < .001);
+            assert.ok(Math.abs(x - (60 + (300 - width) / 2)) < .001);
+            assert.equal(originValues.get('background-color'), 'rgb(0, 0, 0)'); // Its bars stay black during flight.
+        }
         else {
             const transform = frames[1].transform.match(/translate3d\(([-\d.]+)px, ([-\d.]+)px, 0\) scale\(([-\d.]+)\)/);
             const clip = frames[1].clipPath.match(/inset\(([\d.]+)px ([\d.]+)px ([\d.]+)px ([\d.]+)px/);
@@ -4007,6 +4021,7 @@ test('video motion holds its final surface for handoff and preserves cropped pic
         motion.cancel();
         assert.equal(surfaceValues.size, 0);
         assert.equal(videoValues.size, 0);
+        assert.equal(originValues.size, 0); // The placeholder's own look returns at handoff.
     }
 });
 
@@ -4044,7 +4059,7 @@ test('dismissal fades the page shade and lifts covering headers above the return
         const motion = animateMobileMediaBounds(video, origin, false, 280, null, shade);
         assert.deepEqual(hitPoint, [210, 65]); // Probe where the header covers the returning picture.
         const shadeFade = fades.find(fade => fade.target === 'shade');
-        assert.equal(shadeFade.frames.map(frame => frame.backgroundColor).join(' → '), 'rgba(0, 0, 0, 1) → rgba(0, 0, 0, 0)');
+        assert.equal(JSON.stringify(shadeFade.frames), '[{"opacity":1},{"opacity":0}]'); // Compositor opacity, not a repainted color.
         assert.equal(shadeFade.options.duration, 120); // The page returns before the picture lands.
         assert.equal(shadeFade.options.easing, 'ease-out');
         const headerFade = fades.find(fade => fade.target === 'header');
@@ -4083,7 +4098,8 @@ test('phone media viewer stays outside Safari toolbar sampling and backs itself 
     assert.match(mobile, /\.lightbox-viewer\.lightbox-overlay-enter,\s*\.lightbox-viewer\.lightbox-overlay-leave \{ transition: none; \}/);
     assert.match(mobile, /\.is-video-preparing \.lightbox-slide\.is-active \.lightbox-media \{ visibility: hidden; \}/);
     assert.match(css, /\.lightbox-shade \{[^}]*display: none;[^}]*position: absolute;[^}]*z-index: 99;[^}]*pointer-events: none;/s);
-    assert.match(html, /<\/div>\s*<div x-ref="lightboxShade" class="lightbox-shade" :style="lightboxBackdropStyle\(\)" aria-hidden="true"><\/div>\s*<!-- Tag Modal -->/);
+    assert.match(html, /<\/div>\s*<div x-ref="lightboxShade" class="lightbox-shade" :style="lightboxShadeStyle\(\)" aria-hidden="true"><\/div>\s*<!-- Tag Modal -->/);
+    assert.match(css, /\.lightbox-shade \{[^}]*background: #000;/s);
     assert.doesNotMatch(css, /is-video-closing/);
 });
 
@@ -4131,6 +4147,44 @@ function mediaMotionFixture(context) {
     return {styleOf, motions, record, viewer, stage, shade};
 }
 
+test('in-flight media joins the page so Safari draws it beneath its toolbars', async () => {
+    for (const opening of [true, false]) {
+        const context = browserContext();
+        context.window.scrollX = 0;
+        context.window.scrollY = 1200;
+        context.window.visualViewport = {offsetLeft: 0, offsetTop: 0, width: 390, height: 714};
+        const styleOf = values => ({getPropertyValue: name => values.get(name) || '',
+            setProperty: (name, value) => values.set(name, value), removeProperty: name => values.delete(name)});
+        const viewerValues = new Map(), stageValues = new Map();
+        const stage = {style: styleOf(stageValues), getBoundingClientRect: () => ({left: 0, top: 0, width: 390, height: 714})};
+        const viewer = {style: styleOf(viewerValues), querySelector: selector => selector === '.lightbox-stage' ? stage : null};
+        context.getComputedStyle = element => element === viewer ? {zIndex: '100'} : {objectFit: 'contain', borderRadius: '0px'};
+        let frames, complete;
+        const surface = {style: styleOf(new Map()), parentElement: {getBoundingClientRect: () => ({left: 0, top: 0})},
+            animate: keyframes => {frames = keyframes; return {finished: new Promise(resolve => {complete = resolve;}), cancel() {}};}};
+        const video = {parentElement: surface, style: styleOf(new Map()), videoWidth: 720, videoHeight: 1280,
+            getBoundingClientRect: () => ({left: 0, top: 0, width: 390, height: 650}), closest: () => viewer};
+        // The feed video's lower part sits beneath Safari's toolbar, past the 714px viewport.
+        const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: 500, width: 300, height: 300 * 1280 / 720})};
+        const {animateMobileMediaBounds} = loadScripts(context, ['app.js'], '({animateMobileMediaBounds})');
+        const motion = animateMobileMediaBounds(video, origin, opening, 280);
+        assert.equal(viewerValues.get('position'), 'absolute'); // In the page at the same screen position.
+        assert.equal(viewerValues.get('top'), '1200px');
+        assert.equal(viewerValues.get('left'), '0px');
+        assert.equal(viewerValues.get('width'), '390px');
+        assert.equal(viewerValues.get('height'), '714px');
+        assert.equal(viewerValues.get('--lightbox-bleed'), '0px');
+        assert.equal(stageValues.get('overflow'), 'visible');
+        assert.doesNotMatch(stageValues.get('contain'), /paint|strict/); // Paint containment would clip it again.
+        assert.equal(frames[opening ? 0 : 1].clipPath, undefined); // No crop at the viewport's bottom edge.
+        complete();
+        assert.equal(await motion.finished, true);
+        motion.cancel();
+        assert.equal(viewerValues.size, 0); // Back to the screen-fixed viewer once the motion ends.
+        assert.equal(stageValues.size, 0);
+    }
+});
+
 test('phone photos expand from their tile and return to the one on screen, or fade when it is gone', async () => {
     const context = browserContext();
     context.window.matchMedia = query => ({matches: !query.includes('prefers-reduced-motion')});
@@ -4147,6 +4201,7 @@ test('phone photos expand from their tile and return to the one on screen, or fa
     const tiles = feed.querySelectorAll('img');
     tiles[0].rect = {left: 51, top: 301, width: 149, height: 168};
     tiles[1].rect = {left: 202, top: 301, width: 149, height: 168};
+    const tileValues = tiles.map(tile => { const values = new Map(); tile.style = styleOf(values); return values; });
     const images = [0, 1].map(() => {
         const slide = new FakeElement('div', [['class', 'lightbox-slide']]);
         slide.style = {};
@@ -4161,7 +4216,7 @@ test('phone photos expand from their tile and return to the one on screen, or fa
     context.getComputedStyle = element => element === feed ? {borderTopLeftRadius: '16px', borderTopWidth: '1px'}
         : images.includes(element) ? {objectFit: 'contain', borderRadius: '0px'}
         : element === viewer ? {zIndex: '100'}
-        : element === shade ? {backgroundColor: 'rgba(0, 0, 0, 0.95)'} : {objectFit: 'cover'};
+        : element === shade ? {opacity: '0.95'} : {objectFit: 'cover'};
     Object.assign(app.$refs, {lightboxViewer: viewer, lightboxStage: stage, lightboxShade: shade});
 
     tweetNookOpenLightbox(tiles[1], 1);
@@ -4174,20 +4229,25 @@ test('phone photos expand from their tile and return to the one on screen, or fa
     assert.equal(images[1].style.getPropertyValue('position'), ''); // Its layout box is already the fitted picture.
     assert.match(expand.frames[0].clipPath, /^inset\([\d.]+px 0px [\d.]+px 0px round 0px [1-9][\d.]*px [1-9][\d.]*px 0px\)$/);
     assert.equal(app.lightboxVideoMotionPhase, 'opening');
+    assert.equal(tileValues[1].get('visibility'), 'hidden'); // One copy of the photo on screen at a time.
     expand.complete(); await Promise.resolve(); await Promise.resolve();
     assert.equal(app.lightboxVideoMotionPhase, '');
+    assert.equal(tileValues[1].size, 0);
 
     app.lightboxIndex = 0;
     show(0);
     app.closeLightbox();
     const land = motions.find(motion => motion.target === 'image' && motion !== expand);
     assert.ok(land, 'the photo now on screen returns');
+    assert.equal(tileValues[0].get('visibility'), 'hidden'); // Its own tile, not the one it opened from.
+    assert.equal(tileValues[1].size, 0);
     // The left tile meets the grid's rounded corners on its left only.
     assert.match(land.frames[1].clipPath, /round [1-9][\d.]*px 0px 0px [1-9][\d.]*px\)$/);
     const backdrop = motions.find(motion => motion.target === 'shade' && motion.options.duration === 120);
-    assert.equal(backdrop.frames.map(frame => frame.backgroundColor).join(' → '), 'rgba(0, 0, 0, 0.95) → rgba(0, 0, 0, 0)');
+    assert.equal(JSON.stringify(backdrop.frames), '[{"opacity":0.95},{"opacity":0}]');
     land.complete(); await Promise.resolve(); await Promise.resolve();
     assert.equal(app.lightboxOpen, false);
+    assert.equal(tileValues[0].size, 0); // Shown again in the same frame the viewer hides.
     assert.equal(viewer.style.display, 'none'); // Hidden at handoff, with no Alpine fade over the feed.
     tweetNookOpenLightbox(tiles[0], 0);
     assert.equal(opened.length, 1); // Safari's compatibility click after dismissal doesn't reopen it.
@@ -4376,7 +4436,7 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
         fades.push(fade); return fade;
     };
     context.getComputedStyle = element => element === shade
-        ? {opacity: '1', backgroundColor: 'rgba(0, 0, 0, 0.6)'} : {borderRadius: '16px', objectFit: 'contain'};
+        ? {opacity: '0.6'} : {borderRadius: '16px', objectFit: 'contain'};
     app.$refs.inlineVideoSlot = slot;
     slot.style = {display: 'none'};
     const originalParent = player.parentElement;
@@ -4425,8 +4485,7 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     assert.equal(shade.style.top, '-544px'); // It follows any scroll while the viewer is open.
     context.window.scrollY = 240;
     context.__state.events.get('scroll')();
-    assert.equal(fades[0].frames[0].backgroundColor, 'rgba(0, 0, 0, 0)');
-    assert.equal(fades[0].frames[1].backgroundColor, 'rgba(0, 0, 0, 1)');
+    assert.equal(JSON.stringify(fades[0].frames), '[{"opacity":0},{"opacity":1}]');
     assert.equal(fades[0].options.duration, 150); // The backdrop is dark well before the 300ms expansion lands.
     assert.equal(fades[0].options.easing, 'ease-out');
     assert.equal(slot.style.display, '');
@@ -4457,8 +4516,7 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     app.lightboxGestureOffsetY = 180;
     app.closeLightbox();
     assert.equal(fades[0].cancelled, true);
-    assert.equal(fades[1].frames[0].backgroundColor, 'rgba(0, 0, 0, 0.6)'); // Continue the visible color alpha, not the element opacity.
-    assert.equal(fades[1].frames[1].backgroundColor, 'rgba(0, 0, 0, 0)');
+    assert.equal(JSON.stringify(fades[1].frames), '[{"opacity":0.6},{"opacity":0}]'); // Continue from the dragged shade.
     assert.equal(slot.style.transform, 'translate3d(0, 0, 0)');
     assert.equal(viewerValues.size, 0); // The viewer stays fixed in place; only the page shade fades.
     assert.equal(fades[1].options.duration, 120);
