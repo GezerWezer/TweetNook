@@ -443,36 +443,34 @@ function fittedMediaRect(media, includeCrop = false) {
     return { left: frame.left + (frame.width - width) / 2, top: frame.top + (frame.height - height) / 2, width, height };
 }
 
-function videoFeedInsets(source, raised = []) {
+// A screen-fixed viewer stops at the visible viewport; one placed in the page
+// also paints beneath Safari's toolbars, as the feed picture does.
+function videoFeedInsets(source, raised = [], clipToViewport = true) {
     const viewport = window.visualViewport;
     const left = viewport?.offsetLeft || 0;
     let top = viewport?.offsetTop || 0;
     const right = left + (viewport?.width || window.innerWidth || Infinity);
     const bottom = top + (viewport?.height || window.innerHeight || Infinity);
+    let occluded = false;
     document.querySelectorAll('[data-video-occluder]').forEach(header => {
         if (raised.includes(header)) return;
         const rect = header.getBoundingClientRect();
         if (rect.width && rect.height && rect.left < source.left + source.width && rect.left + rect.width > source.left
-            && rect.top <= Math.max(top, source.top) && rect.top + rect.height > top) top = Math.max(top, rect.top + rect.height);
+            && rect.top <= Math.max(top, source.top) && rect.top + rect.height > top) {
+            top = Math.max(top, rect.top + rect.height);
+            occluded = true;
+        }
     });
-    return {top: Math.min(source.height, Math.max(0, top - source.top)),
-        bottom: Math.min(source.height, Math.max(0, source.top + source.height - bottom)),
-        left: Math.min(source.width, Math.max(0, left - source.left)),
-        right: Math.min(source.width, Math.max(0, source.left + source.width - right))};
-}
-
-function videoBackdropOpacity(backdrop) {
-    const style = getComputedStyle(backdrop);
-    const color = style.backgroundColor;
-    if (!color) return Number(style.opacity);
-    if (color === 'transparent') return 0;
-    return color?.startsWith('rgba(') ? Number(color.split(',')[3].replace(')', '')) : 1;
+    const edge = (clipped, value) => clipped ? value : 0;
+    return {top: edge(clipToViewport || occluded, Math.min(source.height, Math.max(0, top - source.top))),
+        bottom: edge(clipToViewport, Math.min(source.height, Math.max(0, source.top + source.height - bottom))),
+        left: edge(clipToViewport, Math.min(source.width, Math.max(0, left - source.left))),
+        right: edge(clipToViewport, Math.min(source.width, Math.max(0, source.left + source.width - right)))};
 }
 
 // Feed media is rounded by its own frame or by the grid around it, so only the
 // corners that meet that rounded edge are curved.
-function feedMediaRadii(element) {
-    const rect = element.getBoundingClientRect();
+function feedMediaRadii(element, rect = element.getBoundingClientRect()) {
     for (let node = element; node && node !== document.body; node = node.parentElement) {
         const style = getComputedStyle(node);
         const radius = parseFloat(style.borderTopLeftRadius || style.borderRadius) || 0;
@@ -487,16 +485,39 @@ function feedMediaRadii(element) {
     return [0, 0, 0, 0];
 }
 
+// Where the feed draws a picture. A photo or GIF is its own picture. The inline
+// player's placeholder keeps the player's frame, border included, and the
+// picture sits contained (letterboxed) or cropped inside it.
+function feedPicture(origin, aspect) {
+    if (origin.tagName === 'IMG' || origin.tagName === 'VIDEO') {
+        return {rect: fittedMediaRect(origin), box: origin.getBoundingClientRect(), holder: origin.parentElement,
+            background: getComputedStyle(origin).backgroundColor, element: origin};
+    }
+    const frame = origin.getBoundingClientRect();
+    const style = getComputedStyle(origin);
+    const [top, right, bottom, left] = ['Top', 'Right', 'Bottom', 'Left'].map(side => parseFloat(style[`border${side}Width`]) || 0);
+    const box = {left: frame.left + left, top: frame.top + top, width: frame.width - left - right, height: frame.height - top - bottom};
+    let rect = box;
+    if (origin.getAttribute?.('data-feed-fit') !== 'cover' && aspect) {
+        const width = Math.min(box.width, box.height * aspect), height = width / aspect;
+        rect = {left: box.left + (box.width - width) / 2, top: box.top + (box.height - height) / 2, width, height};
+    }
+    return {rect, box, holder: origin, background: origin.getAttribute?.('data-feed-background'), element: null};
+}
+
 // A video player moves its picture inside a wrapper while its controls stay put;
 // a photo or GIF moves itself.
 function animateMobileMediaBounds(media, origin, opening, duration, startBounds = null, shade = null) {
     const ownSurface = media?.tagName === 'IMG' || (media?.tagName === 'VIDEO' && !isVideoPlayer(media));
     const surface = ownSurface ? media : media?.parentElement;
     if (!surface?.animate || !origin?.isConnected || !duration) return null;
-    const source = origin.getBoundingClientRect();
+    const originRect = origin.getBoundingClientRect();
     const frame = media.getBoundingClientRect();
-    if (!source.width || !source.height || !frame.width || !frame.height) return null;
+    if (!originRect.width || !originRect.height || !frame.width || !frame.height) return null;
     const fitted = fittedMediaRect(media, true);
+    // Land exactly where the feed draws the picture, so nothing shifts at handoff.
+    const picture = feedPicture(origin, fitted.width / fitted.height);
+    const source = picture.rect;
     const saved = [];
     const style = (element, values) => {
         for (const [name, value] of values) {
@@ -526,11 +547,31 @@ function animateMobileMediaBounds(media, origin, opening, duration, startBounds 
             else header.style.removeProperty('z-index');
         });
     }
-    const feedInsets = videoFeedInsets(source, raised);
+    // Safari never draws a screen-fixed layer beneath its toolbars. While the
+    // picture travels, place the viewer in the page at the same screen position,
+    // so the part of the picture beneath a toolbar stays visible there.
+    const stage = viewer?.querySelector?.('.lightbox-stage');
+    const page = stage?.getBoundingClientRect();
+    const inPage = Boolean(page?.width && page.height);
+    if (inPage) {
+        style(viewer, [['position', 'absolute'], ['left', `${page.left + (window.scrollX || 0)}px`],
+            ['top', `${page.top + (window.scrollY || 0)}px`], ['right', 'auto'], ['bottom', 'auto'],
+            ['width', `${page.width}px`], ['height', `${page.height}px`], ['--lightbox-bleed', '0px'], ['overflow', 'visible']]);
+        style(stage, [['overflow', 'visible'], ['contain', 'size layout style']]);
+    }
+    // The feed copy hides while the viewer's copy is in flight; letterbox bars
+    // keep the feed's fill, so the frame looks the same before and after.
+    const letterboxed = picture.rect.width < picture.box.width - .5 || picture.rect.height < picture.box.height - .5;
+    if (letterboxed && picture.holder?.style && picture.background && !/^(transparent|rgba\(.*, 0\))$/.test(picture.background)) {
+        style(picture.holder, [['background-color', picture.background], ['background-clip', 'padding-box']]);
+    }
+    if (picture.element?.style) style(picture.element, [['visibility', 'hidden']]);
+    const feedInsets = videoFeedInsets(source, raised, !inPage);
     const crop = rect => {
         const scale = Math.max(rect.width / fitted.width, rect.height / fitted.height);
-        const cropX = Math.max(0, (fitted.width - rect.width / scale) / 2);
-        const cropY = Math.max(0, (fitted.height - rect.height / scale) / 2);
+        // Exact-aspect targets leave float dust (e.g. 6e-14) that CSS can't parse.
+        const cropX = Math.max(0, Math.round((fitted.width - rect.width / scale) / 2 * 1e4) / 1e4);
+        const cropY = Math.max(0, Math.round((fitted.height - rect.height / scale) / 2 * 1e4) / 1e4);
         return {scale, cropX, cropY};
     };
     const cropped = Object.values(feedInsets).some(value => value > .5) || [source, startBounds || fitted].some(rect => {
@@ -549,7 +590,7 @@ function animateMobileMediaBounds(media, origin, opening, duration, startBounds 
             ...(cropped ? {clipPath: `inset(${cropY + (insets.top || 0) / scale}px ${cropX + (insets.right || 0) / scale}px ${cropY + (insets.bottom || 0) / scale}px ${cropX + (insets.left || 0) / scale}px round ${corners})`} : {}),
         };
     };
-    const feed = bounds(source, feedMediaRadii(origin), feedInsets);
+    const feed = bounds(source, feedMediaRadii(origin, source), feedInsets);
     const fullscreen = bounds(startBounds || fitted, Array(4).fill(startBounds?.radius || 0));
     if (ownSurface) style(surface, [['transform-origin', '0 0'], ['will-change', 'transform']]);
     else {
@@ -562,7 +603,9 @@ function animateMobileMediaBounds(media, origin, opening, duration, startBounds 
     const fade = [opening ? 0 : startBounds?.backdropOpacity ?? 1, opening ? 1 : 0];
     // The backdrop settles well before the picture lands, in either direction.
     const fadeOptions = {...options, duration: Math.min(duration, opening ? 150 : 120), easing: 'ease-out'};
-    const backdrop = shade?.animate?.(fade.map(opacity => ({backgroundColor: `rgba(0, 0, 0, ${opacity})`})), fadeOptions);
+    // Opacity runs on the compositor; a color fade would repaint the shade,
+    // three screens tall, on every frame and stall the motion's first frames.
+    const backdrop = shade?.animate?.(fade.map(opacity => ({opacity})), fadeOptions);
     // Raised headers left the backdrop early, so they fade in with the page.
     const headerFades = raised.map(header => header.animate?.([{opacity: 1 - fade[0]}, {opacity: 1}], fadeOptions));
     let cleaned = false;
@@ -2442,7 +2485,7 @@ function tweetApp() {
             const shade = this.$refs.lightboxShade;
             const startBounds = animate ? {
                 ...(lightboxVideoMotion?.bounds() || {...fittedMediaRect(media), radius: 0}),
-                backdropOpacity: shade ? videoBackdropOpacity(shade) : Number(this.lightboxBackdropStyle()['--lightbox-backdrop-opacity']),
+                backdropOpacity: shade ? Number(getComputedStyle(shade).opacity) : Number(this.lightboxBackdropStyle()['--lightbox-backdrop-opacity']),
             } : null;
             this.resetLightboxMotion();
             const slide = lightboxInlineMount ? this.$refs.inlineVideoSlot : media?.closest?.('.lightbox-slide');
@@ -2497,6 +2540,9 @@ function tweetApp() {
             const player = tweetNookVideoPlayer(lightboxOriginVideo);
             if (!slot || !player) return;
             const placeholder = player.cloneNode(false);
+            const picture = getComputedStyle(lightboxOriginVideo);
+            placeholder.setAttribute('data-feed-fit', picture.objectFit || 'contain');
+            if (picture.backgroundColor) placeholder.setAttribute('data-feed-background', picture.backgroundColor);
             const frame = player.getBoundingClientRect();
             placeholder.style.setProperty('aspect-ratio', `${frame.width} / ${frame.height}`);
             placeholder.setAttribute('aria-hidden', 'true');
@@ -2593,9 +2639,12 @@ function tweetApp() {
 
         // A phone viewer without a feed picture to move to fades in or out instead.
         fadeLightbox(opening) {
-            const frames = opening ? [{opacity: 0}, {opacity: 1}] : [{opacity: 1}, {opacity: 0}];
             const options = {duration: this.lightboxMotionDuration(180), easing: 'ease-out', fill: 'both'};
-            const fades = [this.$refs.lightboxViewer, this.$refs.lightboxShade].map(element => element?.animate?.(frames, options)).filter(Boolean);
+            const fades = [this.$refs.lightboxViewer, this.$refs.lightboxShade].filter(element => element?.animate).map(element => {
+                // Closing continues from the shade's dragged opacity.
+                const current = opening ? 0 : Number(getComputedStyle(element).opacity ?? 1);
+                return element.animate([{opacity: Number.isFinite(current) ? current : 1}, {opacity: opening ? 1 : 0}], options);
+            });
             if (!fades.length || !options.duration) return false;
             this.runLightboxMotion({
                 cancel: () => fades.forEach(fade => fade.cancel()),
@@ -2713,6 +2762,12 @@ function tweetApp() {
                 '--lightbox-backdrop-opacity': String(opacity),
                 transition: transitionDuration ? `background-color ${transitionDuration}ms linear` : 'none',
             };
+        },
+
+        // The phone backdrop is a black page layer whose opacity follows the drag.
+        lightboxShadeStyle() {
+            const {transition, '--lightbox-backdrop-opacity': opacity} = this.lightboxBackdropStyle();
+            return {opacity, transition: transition.replace('background-color', 'opacity')};
         },
 
         lightboxChromeStyle() {

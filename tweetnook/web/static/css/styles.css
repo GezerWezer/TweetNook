@@ -2118,6 +2118,7 @@ body {
     right: 0;
     z-index: 99;
     pointer-events: none;
+    background: #000;
 }
 .lightbox-slide {
     will-change: transform;
