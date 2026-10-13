@@ -25,7 +25,7 @@ from tweetnook.reminders import (
 from tweetnook.scheduler import ScheduleManager
 from tweetnook.storage import open_archive_store
 from tweetnook.web.avatar_cache import AvatarCacheManager
-from tweetnook.web.deps import server_state, verify_credentials
+from tweetnook.web.deps import WebSessionMiddleware, server_state, verify_credentials
 from tweetnook.web.notices import NoticeStore
 from tweetnook.web.routes.activity import router as activity_router
 from tweetnook.web.routes.automated_tagging import router as automated_tagging_router
@@ -311,6 +311,7 @@ def _compressible_path(path: str) -> bool:
 
 
 app.add_middleware(TextGZipMiddleware)
+app.add_middleware(WebSessionMiddleware)
 
 WEB_ROOT = Path(__file__).parent
 static_dir = WEB_ROOT / "static"
