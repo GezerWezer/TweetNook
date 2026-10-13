@@ -301,6 +301,7 @@
 
                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
                                 <div x-html="renderMediaGrid(parent.media)" @click.stop></div>
+                                <div x-html="renderQuoteCard(parent)" @click.stop="handleThreadParentQuoteClick($event, parent)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                 <div x-html="renderCommunityNote(parent.raw_json)" @click.stop></div>
                                 <div x-html="renderActionBar(parent)"></div>
                             </div>
@@ -721,6 +722,7 @@
                                 </template>
                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
                                 <div x-html="renderMediaGrid(parent.media)" @click.stop></div>
+                                <div x-html="renderQuoteCard(parent)" @click.stop="handleThreadParentQuoteClick($event, parent)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                 <div x-html="renderCommunityNote(parent.raw_json)" @click.stop></div>
                                 <div x-html="renderActionBar(parent)"></div>
                             </div>

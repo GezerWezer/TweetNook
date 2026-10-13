@@ -2442,6 +2442,18 @@ function tweetApp() {
             }
         },
 
+        // Thread ancestors use the same quote markup and data-action map as feed
+        // cards. Their expanded quote text lives outside the feed list, so finish
+        // the Show more update in place after the shared click handling.
+        handleThreadParentQuoteClick(event, parent) {
+            const expanded = event.target?.closest?.('.expand-tweet');
+            const text = expanded?.closest?.('[data-action="text"]');
+            this.handleFeedClick(event, event.currentTarget);
+            if (!text || !text.contains(expanded)) return;
+            const quote = this.getQuoteTweet(parent);
+            if (quote) text.innerHTML = this.formatText(quote, false, true);
+        },
+
         feedDisplayTweet(tweetObj) {
             const retweet = this.getRetweet(tweetObj);
             return retweet ? this.formatRetweetToTweet(tweetObj, retweet) : tweetObj;
@@ -2474,6 +2486,33 @@ function tweetApp() {
                 outsideAlpine(() => { text.innerHTML = this.formatText(source, false, true); });
             }
             this.placeListMenu();
+        },
+
+        // Render the quoted post consistently in feed cards and thread ancestors.
+        // The owner tweet supplies the normalized quote, media, and compact-layout
+        // context; render helpers only read these values.
+        renderQuoteCard(tweet, { highlightSearch = true } = {}) {
+            const part = (html, attributes = '') => (html ? `<div${attributes}>${html}</div>` : '');
+            const quote = this.getQuoteTweet(tweet);
+            if (!quote) return '';
+            if (this.isTombstone(quote)) return part(this.renderQuotePlaceholder(quote), ' data-action="stop"');
+
+            const escape = value => this.escapeHTML(value);
+            const quoteId = this.getTweetId(quote);
+            const quoteReplyTo = this.getReplyRecipients({ raw_json: quote });
+            // A compact quote's text is clamped by CSS, so it is rendered without Show more.
+            const compact = this.isMediaQuotingMedia(tweet);
+            return `<div class="quote-card mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer${compact ? ' quote-compact' : ''}"${quoteId ? ` data-thread-id="${escape(quoteId)}"` : ''} data-action="quote">`
+                + this.renderQuoteByline(quote)
+                + (quoteReplyTo.length ? this.renderReplyRecipients({ raw_json: quote }, 'quote-reply ') : '')
+                + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote, compact, highlightSearch)}</div>`
+                + (compact
+                    ? part(this.renderQuoteThumbnail(tweet.qt_media), ' class="quote-media"')
+                    : part(this.renderMediaGrid(tweet.qt_media, 'quote'), ' class="quote-media" data-action="stop"'))
+                + part(this.renderCard({ raw_json: quote }), ' data-action="stop"')
+                + this.renderNestedQuote(quote, highlightSearch)
+                + part(this.renderCommunityNote(quote, true, false, Boolean(tweet.qt_media?.length)), ' data-action="stop"')
+                + '</div>';
         },
 
         // One feed card, using the helpers the thread views render with. Values the
@@ -2509,27 +2548,7 @@ function tweetApp() {
                 + '<svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>'
                 + '</button></div></div>';
 
-            const quote = this.getQuoteTweet(tweet);
-            let quoteBlock = '';
-            if (quote && this.isTombstone(quote)) {
-                quoteBlock = part(this.renderQuotePlaceholder(quote), ' data-action="stop"');
-            } else if (quote) {
-                const quoteId = this.getTweetId(quote);
-                const quoteReplyTo = this.getReplyRecipients({ raw_json: quote });
-                // A compact quote's text is clamped by CSS, so it is rendered without Show more.
-                const compact = this.isMediaQuotingMedia(tweet);
-                quoteBlock = `<div class="quote-card mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer${compact ? ' quote-compact' : ''}"${quoteId ? ` data-thread-id="${escape(quoteId)}"` : ''} data-action="quote">`
-                    + this.renderQuoteByline(quote)
-                    + (quoteReplyTo.length ? replyLine({ raw_json: quote }, 'quote-reply ') : '')
-                    + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote, compact, true)}</div>`
-                    + (compact
-                        ? part(this.renderQuoteThumbnail(tweet.qt_media), ' class="quote-media"')
-                        : part(this.renderMediaGrid(tweet.qt_media, 'quote'), ' class="quote-media" data-action="stop"'))
-                    + part(this.renderCard({ raw_json: quote }), ' data-action="stop"')
-                    + this.renderNestedQuote(quote, true)
-                    + part(this.renderCommunityNote(quote, true, false, Boolean(tweet.qt_media?.length)), ' data-action="stop"')
-                    + '</div>';
-            }
+            const quoteBlock = this.renderQuoteCard(tweet);
 
             return `<div class="px-4 pt-3 pb-3 tweet-border feed-card hover-bg transition duration-200 cursor-pointer" data-tweet-id="${escape(tweetObj.tweet_id)}"`
                 + `${tweet.tweet_id ? ` data-thread-id="${escape(tweet.tweet_id)}"` : ''} data-action="thread">`

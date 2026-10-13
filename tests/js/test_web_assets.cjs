@@ -2970,6 +2970,7 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     // Lists: a thumbnail with the duration badge beside the reply line and clamped
     // text, never Show more.
     const compact = app.renderFeedCard(doubleMedia);
+    assert.ok(compact.includes(app.renderQuoteCard(doubleMedia)), 'feed quote markup comes from the shared renderer');
     assert.match(compact, /cursor-pointer quote-compact" data-thread-id="3" data-action="quote"/);
     assert.match(compact, /<div class="quote-reply tweet-reply-context text-\[15px\][^"]*">Replying to <span[^>]*data-username="frank">@frank<\/span>/);
     assert.match(compact, /<div class="quote-media"><div class="quote-thumbnail"><img src="\/media\/q\.jpg" loading="lazy" decoding="async" alt=""><span class="quote-thumbnail-badge quote-thumbnail-duration">0:21<\/span><\/div><\/div>/);
@@ -3034,6 +3035,90 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     assert.match(css, /\.quote-compact > \.quote-reply \{[^}]*grid-row: 2;/);
     assert.match(css, /\.quote-thumbnail-cell:first-child:nth-last-child\(3\) \{[^}]*grid-row: span 2;/);
     assert.match(css, /\.quote-card:not\(\.quote-compact\) > \.quote-media:not\(:empty\) \{[^}]*margin: 16px -12px 0;/);
+});
+
+test('thread parents render shared quotes with the right layout, interactions, and source data intact', () => {
+    const { app } = feedListApp();
+    const video = {
+        type: 'video',
+        duration_millis: 21000,
+        download: { local_path: 'media/parent-quote.mp4', thumbnail_local_path: 'media/parent-quote.jpg' },
+    };
+    const quote = {
+        tweet_id: 'quoted-parent',
+        text: `A quoted post ${'word '.repeat(80)}`,
+        author: { id: 'quote-author', username: 'q', display_name: 'Quote Author' },
+        raw_json: {
+            in_reply_to_screen_name: 'frank',
+            birdwatch_pivot: {
+                shorttitle: 'Quoted note',
+                subtitle: { text: 'Context from the note', entities: [] },
+            },
+        },
+    };
+    const standaloneParent = {
+        tweet_id: 'parent-regular', text: 'Parent text', author: { username: 'p' },
+        media: [], quoted_tweet: quote, qt_media: [video],
+    };
+    const mediaParent = {
+        ...standaloneParent,
+        tweet_id: 'parent-media',
+        media: [{ type: 'photo', download: { local_path: 'media/parent.jpg' } }],
+    };
+    const originalPayloads = JSON.parse(JSON.stringify([standaloneParent, mediaParent]));
+
+    const regular = app.renderQuoteCard(standaloneParent);
+    assert.match(regular, /class="quote-card[^\"]*"[^>]*data-thread-id="quoted-parent" data-action="quote"/);
+    assert.doesNotMatch(regular, /quote-compact|quote-thumbnail/);
+    assert.match(regular, /media-video-player/);
+    assert.match(regular, /expand-tweet/);
+    assert.match(regular, /community-note-quote/);
+    assert.ok(regular.indexOf('class="quote-media"') < regular.indexOf('community-note-quote'));
+    const regularRoot = parseFakeHTML(regular)[0];
+    assert.equal(regularRoot.querySelector('.quote-media').parentElement, regularRoot);
+    assert.equal(regularRoot.querySelector('.quote-reply').parentElement, regularRoot);
+    const regularWrapper = parseFakeHTML(`<div>${regular}</div>`)[0];
+    app.handleThreadParentQuoteClick({
+        target: regularWrapper.querySelector('.expand-tweet'),
+        currentTarget: regularWrapper,
+        stopPropagation() {},
+    }, standaloneParent);
+    assert.equal(regularWrapper.querySelector('.expand-tweet'), null);
+    assert.equal(regularWrapper.querySelector('.quote-text').querySelectorAll('strong').length, 0);
+
+    const compact = app.renderQuoteCard(mediaParent);
+    assert.match(compact, /quote-card[^\"]*quote-compact/);
+    assert.match(compact, /class="quote-reply tweet-reply-context[^\"]*"[^>]*>Replying to/);
+    assert.match(compact, /class="quote-media"><div class="quote-thumbnail"><img src="\/media\/parent-quote.jpg"/);
+    assert.match(compact, /community-note-quote-media/);
+    assert.ok(compact.indexOf('class="quote-media"') < compact.indexOf('community-note-quote-media'));
+    const compactRoot = parseFakeHTML(compact)[0];
+    assert.equal(compactRoot.querySelector('.quote-media').parentElement, compactRoot);
+    assert.equal(compactRoot.querySelector('.quote-reply').parentElement, compactRoot);
+
+    // The same data-action delegation used by feed quotes opens a parent quote and
+    // routes reply mentions to profile cards.
+    let opened;
+    app.openThread = id => { opened = id; };
+    const wrapper = parseFakeHTML(`<div>${compact}</div>`)[0];
+    app.handleThreadParentQuoteClick({
+        target: wrapper.querySelector('.quote-thumbnail img'), currentTarget: wrapper, stopPropagation() {},
+    }, mediaParent);
+    assert.equal(opened, 'quoted-parent');
+    let profile;
+    app.openUsernameProfileCard = (_event, username) => { profile = username; };
+    let stopped = false;
+    app.handleThreadParentQuoteClick({
+        target: wrapper.querySelector('[data-action="reply-profile"]'), currentTarget: wrapper,
+        stopPropagation() { stopped = true; },
+    }, mediaParent);
+    assert.equal(profile, 'frank');
+    assert.equal(stopped, true);
+
+    assert.deepEqual([standaloneParent, mediaParent], originalPayloads);
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const parentRenderer = 'x-html="renderQuoteCard(parent)" @click.stop="handleThreadParentQuoteClick($event, parent)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"';
+    assert.equal(html.split(parentRenderer).length - 1, 2);
 });
 
 test('a quote shows its own quote nested inside it, as X does', () => {
