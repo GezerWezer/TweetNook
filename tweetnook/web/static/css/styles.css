@@ -2132,6 +2132,7 @@ body {
     top: max(16px, env(safe-area-inset-top));
     left: max(16px, env(safe-area-inset-left));
 }
+.lightbox-video-back-icon { display: none; }
 .lightbox-position {
     position: absolute;
     top: max(22px, calc(env(safe-area-inset-top) + 6px));
@@ -2213,6 +2214,324 @@ body {
 .media-video-player.is-native-ui-hidden .media-video-duration {
     opacity: 1;
     visibility: visible;
+}
+
+/* Measurements and SVG geometry come from X's live desktop/mobile player.
+   The 62px gradient holds a 20px seek hit area and a 40px control row. */
+.media-video-player { position: relative; container-type: inline-size; }
+.has-custom-controls > video { pointer-events: none; }
+.video-motion-surface { pointer-events: none; }
+.media-video-player [hidden] { display: none !important; }
+.video-control-bar {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 3;
+    padding: 0 4px 2px;
+    height: 62px;
+    color: #fff;
+    background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, .77));
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    transition: opacity 150ms ease, visibility 150ms ease;
+}
+.video-control-row { display: flex; align-items: center; height: 40px; gap: 0; }
+.video-button {
+    display: inline-flex;
+    flex: 0 0 32px;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+}
+.video-button svg { width: 18px; height: 18px; fill: currentColor; }
+.video-button[data-video-action="fullscreen"] svg { width: 18.75px; height: 18.75px; }
+.video-button:hover { background: rgba(255, 255, 255, .1); }
+.video-button:disabled { cursor: default; }
+.video-button:focus-visible, .video-seek:focus-visible, .video-volume:focus-visible,
+.media-video-player:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.video-time {
+    margin: 0 4px 0 auto;
+    padding-left: 4px;
+    white-space: nowrap;
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 400;
+    font-variant-numeric: normal;
+}
+.video-mobile-time { display: none; }
+.video-scrub-time { display: none; }
+.video-seek-wrap { position: relative; height: 20px; }
+.video-scrub-track {
+    display: block;
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    top: 9px;
+    height: 2px;
+    border-radius: 8px;
+    background: #333;
+    pointer-events: none;
+    opacity: 0;
+    transition: height 120ms ease, top 120ms ease, opacity 120ms ease;
+}
+.video-scrub-track > span {
+    display: block;
+    width: var(--video-progress, 0%);
+    height: 100%;
+    border-radius: inherit;
+    background: #fff;
+}
+.video-seek, .video-volume {
+    display: block;
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0;
+    border: 0;
+    cursor: pointer;
+    color: #fff;
+    background: transparent;
+    touch-action: none;
+}
+.video-seek { width: calc(100% - 8px); height: 20px; margin: 0 4px; --video-progress: 0%; }
+.video-seek:disabled { cursor: default; opacity: .5; }
+.video-seek::-webkit-slider-runnable-track {
+    height: 2px;
+    border-radius: 8px;
+    background: linear-gradient(to right, #fff var(--video-progress), rgba(255,255,255,.33) var(--video-progress));
+}
+.video-seek::-moz-range-track { height: 2px; border-radius: 8px; background: rgba(255,255,255,.33); }
+.video-seek::-moz-range-progress { height: 2px; background: #fff; border-radius: 8px; }
+.video-seek::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -7px;
+    border: 0;
+    border-radius: 9999px;
+    background: #fff;
+    opacity: 0;
+}
+.video-seek::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 9999px; background: #fff; opacity: 0; }
+.video-seek:hover::-webkit-slider-thumb, .video-seek:focus-visible::-webkit-slider-thumb,
+.video-seek:active::-webkit-slider-thumb { opacity: 1; }
+.video-seek:hover::-moz-range-thumb, .video-seek:focus-visible::-moz-range-thumb,
+.video-seek:active::-moz-range-thumb { opacity: 1; }
+.video-volume-group { display: flex; align-items: center; position: relative; }
+.video-volume {
+    position: absolute;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%);
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 32px;
+    height: 112px;
+    padding: 16px 14px;
+    border-radius: 16px;
+    background: rgba(0,0,0,.3);
+    visibility: hidden;
+}
+@media (hover: hover) and (pointer: fine) {
+    .video-volume-group:hover .video-volume, .video-volume-group:focus-within .video-volume { visibility: visible; }
+}
+.video-volume::-webkit-slider-runnable-track { width: 4px; background: rgba(255,255,255,.33); border-radius: 8px; }
+.video-volume::-moz-range-track { width: 4px; background: rgba(255,255,255,.33); border-radius: 8px; }
+.video-volume::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-left: -6px;
+    border: 0;
+    border-radius: 9999px;
+    background: #fff;
+}
+.video-volume::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 9999px; background: #fff; }
+.video-center-play {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 4;
+    width: 60px;
+    height: 61px;
+    transform: translate(-50%, -50%);
+}
+.video-center-play svg { width: 60px; height: 61px; }
+.video-center-play:hover { background: transparent; }
+.has-started .video-center-play { display: none; }
+.video-idle-mute {
+    display: none;
+    position: absolute;
+    right: 12px;
+    bottom: 10px;
+    z-index: 3;
+    width: 24px;
+    height: 24px;
+    background: rgba(0,0,0,.77);
+    opacity: 0;
+    visibility: hidden;
+}
+.video-idle-mute svg { width: 14px; height: 14px; }
+.has-custom-controls.is-native-ui-hidden .video-control-bar { opacity: 0; visibility: hidden; pointer-events: none; }
+.has-custom-controls:not(.has-started) .media-video-duration { opacity: 1; visibility: visible; }
+.has-custom-controls:not(.has-started) .video-control-bar { opacity: 0; visibility: hidden; pointer-events: none; }
+.has-custom-controls:not(.has-started):focus-within .video-control-bar { opacity: 1; visibility: visible; pointer-events: auto; }
+.lightbox-video-player {
+    width: min(90vw, calc(90dvh * var(--video-aspect, 1.777778)));
+    max-width: 90%;
+    aspect-ratio: var(--video-aspect, 1.777778);
+    background: #000;
+}
+.lightbox-video-player > video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.media-video-player:fullscreen { width: 100%; height: 100%; max-width: none; background: #000; border-radius: 0; }
+.media-video-player:fullscreen > video { width: 100%; height: 100%; object-fit: contain; }
+@container (min-width: 300px) {
+    .video-control-row .video-button { flex-basis: 36px; width: 36px; height: 36px; }
+    .video-control-row .video-button svg { width: 20px; height: 20px; }
+    .video-control-row .video-button[data-video-action="fullscreen"] svg { width: 18.75px; height: 18.75px; }
+    .video-time { font-size: 15px; }
+}
+/* The phone feed uses a sound badge; tapping the video opens its own viewer. */
+@media (max-width: 640px), (pointer: coarse) {
+    .media-video-player:not(.lightbox-video-player):not(:fullscreen) .video-control-bar { display: none; }
+    .media-video-player:not(.lightbox-video-player):not(:fullscreen) .video-idle-mute {
+        display: inline-flex;
+        width: 28px;
+        height: 28px;
+        bottom: 12px;
+        background: rgba(0, 0, 0, .55);
+        opacity: 1;
+        visibility: visible;
+    }
+    .video-idle-mute svg { width: 16px; height: 16px; }
+    .media-video-player:not(.lightbox-video-player):not(:fullscreen) .media-video-duration {
+        opacity: 1;
+        visibility: visible;
+    }
+    .lightbox-viewer.is-video-viewer { backdrop-filter: none; }
+    .is-video-viewer .lightbox-backdrop { background: transparent; }
+    /* During the page-positioned return, paint past the viewport's bottom edge.
+       Clipping here leaves an empty feed placeholder behind Safari's URL bar
+       until the live video is returned, which makes that area switch abruptly. */
+    .lightbox-viewer.is-video-closing { overflow: visible; }
+    .is-video-closing .lightbox-stage { overflow: visible; contain: size layout style; }
+    .is-video-closing .lightbox-backdrop {
+        top: 100%;
+        bottom: auto;
+        height: max(160px, calc(100lvh - 100svh + env(safe-area-inset-bottom)));
+        background-color: inherit;
+    }
+    /* Alpine's leave lifecycle lasts a frame after the bounds return completes. */
+    .lightbox-viewer.is-video-viewer.is-video-closed { visibility: hidden; pointer-events: none; }
+    .lightbox-viewer.is-video-viewer.lightbox-overlay-enter,
+    .lightbox-viewer.is-video-viewer.lightbox-overlay-leave { transition: none; }
+    .lightbox-viewer.is-video-viewer.lightbox-overlay-enter-start,
+    .lightbox-viewer.is-video-viewer.lightbox-overlay-leave-end { opacity: 1; }
+    /* Keep the backdrop color on the fixed viewer, which Safari samples at its
+       toolbar edge. The moving picture and controls add no separate black fill. */
+    .lightbox-video-player { background: transparent; }
+    .is-video-preparing .lightbox-video-player > video { visibility: hidden; }
+    .is-video-preparing [data-inline-video-slot] video { visibility: visible; }
+    .is-video-motion .lightbox-video-player .video-control-bar,
+    .is-video-motion .video-center-play { opacity: 0 !important; pointer-events: none !important; }
+    .is-video-viewer .lightbox-close-button {
+        width: 40px;
+        height: 40px;
+        padding: 8px;
+        background: rgba(255, 255, 255, .2);
+        transition: opacity 200ms ease, visibility 0s, background-color 150ms ease;
+    }
+    .is-video-viewer.is-video-controls-hidden .lightbox-close-button,
+    .is-video-viewer.is-video-controls-hidden .lightbox-chrome {
+        opacity: 0 !important;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 180ms ease, visibility 0s 180ms;
+    }
+    .is-video-viewer .lightbox-close-icon { display: none; }
+    .is-video-viewer .lightbox-video-back-icon { display: block; }
+    .lightbox-video-player {
+        /* Browser chrome already bounds the usable viewport. Standalone needs
+           the home-indicator inset as well (see the override below). */
+        --video-controls-bottom: 8px;
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        aspect-ratio: auto;
+        border: 0;
+        border-radius: 0;
+        overflow: visible;
+    }
+    .lightbox-video-player.is-video-fill > video { object-fit: cover; }
+    .lightbox-video-player > .video-motion-surface {
+        width: 100%;
+        height: calc(100% - 72px - var(--video-controls-bottom));
+    }
+    .video-motion-surface > video { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .lightbox-video-player.is-video-fill .video-motion-surface > video { object-fit: cover; }
+    .lightbox-video-player .media-video-duration { display: none; }
+    .lightbox-video-player > video { height: calc(100% - 72px - var(--video-controls-bottom)); }
+    .lightbox-video-player.has-custom-controls .video-control-bar {
+        height: calc(72px + var(--video-controls-bottom));
+        padding: 0 12px var(--video-controls-bottom);
+        background: transparent;
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: translateY(0);
+        transition: opacity 220ms ease, transform 220ms ease, visibility 0s;
+    }
+    .lightbox-video-player.has-custom-controls.is-native-ui-hidden .video-control-bar {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translateY(6px);
+        transition: opacity 180ms ease, transform 180ms ease, visibility 0s 180ms;
+    }
+    .lightbox-video-player .video-seek-wrap { width: calc(100% + 24px); margin: -10px -12px 0; }
+    .lightbox-video-player .video-seek { width: 100%; margin: 0; }
+    .lightbox-video-player .video-control-row { height: 62px; }
+    .lightbox-video-player [data-video-time] { display: none; }
+    .lightbox-video-player .video-mobile-time { display: inline; margin: 0 auto 0 8px; color: #999; transition: opacity 160ms ease; }
+    .lightbox-video-player .video-scrub-time {
+        display: block;
+        position: absolute;
+        bottom: calc(146px + var(--video-controls-bottom));
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 18px;
+        line-height: 24px;
+        opacity: 0;
+        transform: translateY(6px);
+        transition: opacity 120ms ease, transform 120ms ease;
+        pointer-events: none;
+    }
+    .lightbox-video-player.is-scrubbing .video-scrub-time { opacity: 1; transform: translateY(0); }
+    .lightbox-video-player .video-control-row { transition: opacity 120ms ease; }
+    .lightbox-video-player.is-scrubbing .video-control-row { opacity: .35; pointer-events: none; }
+    .lightbox-video-player.is-scrubbing .video-mobile-time { opacity: 0; }
+    .lightbox-video-player.is-scrubbing .video-seek::-webkit-slider-runnable-track { height: 8px; background: #333; }
+    .lightbox-video-player.is-scrubbing .video-seek::-moz-range-track { height: 8px; background: #333; }
+    .lightbox-video-player.is-scrubbing .video-seek::-moz-range-progress { height: 8px; border-radius: 8px; }
+    .lightbox-video-player.is-scrubbing .video-seek::-webkit-slider-thumb { opacity: 0; }
+    .lightbox-video-player.is-scrubbing .video-seek::-moz-range-thumb { opacity: 0; }
+    .lightbox-video-player .video-scrub-track { left: 0; right: 0; }
+    .lightbox-video-player.is-scrubbing .video-scrub-track { top: 6px; height: 8px; opacity: 1; }
+    .is-video-viewer:has(.is-scrubbing) .lightbox-close-button,
+    .is-video-viewer:has(.is-scrubbing) .lightbox-chrome { opacity: 0 !important; pointer-events: none; }
+}
+@media (max-width: 640px) and (display-mode: standalone), (pointer: coarse) and (display-mode: standalone) {
+    .lightbox-video-player { --video-controls-bottom: max(8px, env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .video-scrub-time, .video-control-row, .video-scrub-track, .video-mobile-time, .video-control-bar { transition: none !important; }
 }
 .media-gif-indicator {
     display: inline-flex;

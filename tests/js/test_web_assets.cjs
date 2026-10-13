@@ -117,7 +117,7 @@ function browserContext(pathname = '/') {
             },
             querySelectorAll(selector) {
                 if (selector === 'video') return videos;
-                if (selector === 'video[controls]') return videos.filter(video => video.hasAttribute?.('controls'));
+                if (selector === 'video[controls], video[data-video-custom], video[data-video-player]') return videos.filter(video => video.hasAttribute?.('controls') || video.hasAttribute?.('data-video-custom') || video.hasAttribute?.('data-video-player'));
                 return [];
             },
             getElementById() {
@@ -301,7 +301,7 @@ class FakeElement {
         return {
             contains: name => read().includes(name),
             add: name => { if (!read().includes(name)) write([...read(), name]); },
-            remove: name => write(read().filter(value => value !== name)),
+            remove: (...names) => write(read().filter(value => !names.includes(value))),
             toggle: (name, force) => {
                 const enable = force ?? !read().includes(name);
                 if (enable) write([...new Set([...read(), name])]);
@@ -313,6 +313,7 @@ class FakeElement {
     get textContent() {
         return this.childNodes.map(node => (node instanceof FakeElement ? node.textContent : node.text)).join('');
     }
+    set textContent(value) { this.childNodes = [{ text: String(value) }]; }
     set innerHTML(html) {
         this.childNodes.forEach(node => { node.parentElement = null; });
         this.childNodes = [];
@@ -337,6 +338,16 @@ class FakeElement {
         this.parentElement.childNodes.splice(this.parentElement.childNodes.indexOf(this), 1);
         this.parentElement = null;
     }
+    cloneNode() {
+        const clone = new FakeElement(this.tagName, [...this.attributeMap]);
+        clone.rect = this.rect;
+        const values = new Map();
+        clone.style = {setProperty: (name, value) => values.set(name, value), getPropertyValue: name => values.get(name) || '', removeProperty: name => values.delete(name)};
+        return clone;
+    }
+    appendChild(node) { node.remove(); this.append([node]); return node; }
+    insertBefore(node, before) { node.remove(); this.append([node], this.childNodes.indexOf(before)); }
+    replaceWith(node) { const parent = this.parentElement; parent.insertBefore(node, this); this.remove(); }
     contains(node) {
         for (let current = node; current; current = current.parentElement) if (current === this) return true;
         return false;
@@ -359,6 +370,7 @@ class FakeElement {
     }
     querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
     addEventListener(type, listener, capture = false) { this.listeners.push({ type, listener, capture }); }
+    removeEventListener(type, listener) { this.listeners = this.listeners.filter(entry => entry.type !== type || entry.listener !== listener); }
     getBoundingClientRect() { return this.rect || { top: 0, right: 0, bottom: 0, left: 0, width: 0, height: 0 }; }
 }
 
@@ -3508,10 +3520,6 @@ test('media renderer preserves direct playback parents, placeholders and existin
     assert.match(video, /onended="window\.tweetNookSyncVideoDuration\(this\); window\.tweetNookSyncVideoUi\(this\)"/);
     assert.match(video, /onplay="window\.tweetNookShowVideoUi\(this\)"/);
     assert.match(video, /onpause="window\.tweetNookSyncVideoUi\(this\)"/);
-    assert.match(video, /onmousemove="window\.tweetNookShowVideoUi\(this\)"/);
-    assert.match(video, /onmouseleave="window\.tweetNookLeaveVideoUi\(this\)"/);
-    assert.match(video, /onkeydown="window\.tweetNookShowVideoUi\(this\)"/);
-    assert.match(video, /ontouchend="window\.tweetNookShowVideoUi\(this\)"/);
     assert.doesNotMatch(video, /onfocus=|onblur=/);
     assert.equal(app.formatMediaDuration(3000), '0:03');
     assert.equal(app.formatMediaDuration(3723000), '1:02:03');
@@ -3580,7 +3588,7 @@ test('media renderer preserves direct playback parents, placeholders and existin
     assert.match(css, /\.media-frame-video,[\s\S]*object-fit: contain;[\s\S]*background: #000;/);
 });
 
-test('video duration uses loaded media metadata and shows only while native controls are hidden', () => {
+test('video duration uses loaded metadata and shows only while the control bar is hidden', () => {
     const context = browserContext();
     const timers = new Map();
     let nextTimerId = 0;
@@ -3674,6 +3682,677 @@ test('video duration uses loaded media metadata and shows only while native cont
     assert.ok(!classes.has(hidden));
 });
 
+test('custom players retain native fallback, seek, toggle sound, and isolate keyboard shortcuts', () => {
+    const context = browserContext();
+    context.setTimeout = () => 1;
+    context.clearTimeout = () => {};
+    const { tweetApp, tweetNookInitVideoPlayer, tweetNookSyncVideoDuration, isVideoPlayer } = loadScripts(
+        context, ['themes.js', 'app.js'],
+        '({tweetApp, tweetNookInitVideoPlayer, tweetNookSyncVideoDuration, isVideoPlayer})',
+    );
+    const app = immediateComponent(tweetApp());
+    const player = parseFakeHTML(app.renderMediaGrid([{type: 'video', download: {local_path: 'media/v.mp4'}}]))[0].querySelector('video').parentElement;
+    const video = player.querySelector('video');
+    const seek = player.querySelector('[data-video-seek]');
+    const volume = player.querySelector('[data-video-volume]');
+    for (const element of [player, seek]) element.style = { setProperty() {} };
+    Object.assign(video, { paused: true, ended: false, duration: NaN, currentTime: 0, volume: 1, muted: false,
+        play() { this.paused = false; return Promise.resolve(); }, pause() { this.paused = true; },
+    });
+    assert.equal(player.querySelector('[data-video-action="pip"]'), null);
+    assert.equal(player.querySelector('[data-video-action="settings"]'), null);
+    assert.ok(!video.hasAttribute('controls'));
+    assert.ok(video.hasAttribute('playsinline'));
+    assert.ok(video.hasAttribute('data-video-custom'));
+    tweetNookInitVideoPlayer(video);
+    assert.ok(!video.hasAttribute('controls'));
+    assert.ok(isVideoPlayer(video));
+    assert.equal(seek.disabled, true);
+    const listeners = player.listeners.length;
+    tweetNookInitVideoPlayer(video);
+    assert.equal(player.listeners.length, listeners);
+
+    video.duration = 120;
+    tweetNookSyncVideoDuration(video);
+    assert.equal(seek.disabled, false);
+    seek.value = 25;
+    dispatchFeed(player, 'input', seek);
+    assert.equal(video.currentTime, 30);
+    assert.equal(player.querySelector('[data-video-time]').textContent, '0:30 / 2:00');
+    assert.equal(seek.getAttribute('aria-valuetext'), '0:30 of 2:00');
+    seek.value = 150;
+    dispatchFeed(player, 'input', seek);
+    assert.equal(video.currentTime, 120);
+    dispatchFeed(player, 'keydown', player, {key: 'ArrowLeft'});
+    assert.equal(video.currentTime, 115);
+    const space = dispatchFeed(player, 'keydown', player, {key: ' '});
+    assert.ok(!video.paused && space.defaultPrevented && space.propagationStopped);
+    assert.equal(player.querySelector('[data-video-action="play"]').getAttribute('aria-label'), 'Pause video');
+    const sliderKey = dispatchFeed(player, 'keydown', seek, {key: 'ArrowLeft'});
+    assert.equal(video.currentTime, 115); // The slider keeps its own keyboard behavior.
+    assert.ok(sliderKey.propagationStopped && !sliderKey.defaultPrevented); // Do not navigate lightbox slides.
+    const mute = player.querySelector('[data-video-action="mute"]');
+    assert.ok(dispatchFeed(player, 'click', mute).propagationStopped);
+    assert.equal(video.muted, true);
+    assert.equal(mute.getAttribute('aria-label'), 'Unmute');
+    volume.value = 0.3;
+    dispatchFeed(player, 'input', volume);
+    assert.equal(video.volume, 0.3);
+    assert.equal(video.muted, false);
+    let fullscreen = 0;
+    player.requestFullscreen = () => { fullscreen++; return Promise.resolve(); };
+    dispatchFeed(player, 'keydown', player, {key: 'f'});
+    assert.equal(fullscreen, 1);
+    context.document.fullscreenElement = player;
+    context.document.exitFullscreen = () => { fullscreen--; return Promise.resolve(); };
+    dispatchFeed(player, 'click', player.querySelector('[data-video-action="fullscreen"]'));
+    assert.equal(fullscreen, 0);
+    // The seek thumb follows playback even after keyboard focus stays on it.
+    context.document.activeElement = seek;
+    video.currentTime = 60;
+    tweetNookSyncVideoDuration(video);
+    assert.equal(seek.value, 50);
+
+    const nativeVideo = new FakeElement('video', [['controls', '']]);
+    tweetNookInitVideoPlayer(nativeVideo);
+    assert.ok(nativeVideo.hasAttribute('controls'));
+});
+
+test('mobile feed taps open a video viewer, sound stays inline, and desktop clicks pause', () => {
+    const context = browserContext();
+    const timers = [];
+    context.setTimeout = callback => { timers.push(callback); return timers.length; };
+    context.clearTimeout = () => {};
+    context.window.matchMedia = () => ({matches: true});
+    const opened = [];
+    context.window.dispatchEvent = event => opened.push(event);
+    const { tweetApp, tweetNookInitVideoPlayer } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookInitVideoPlayer})');
+    const player = parseFakeHTML(tweetApp().renderMediaGrid([{type: 'video', download: {local_path: 'media/v.mp4'}}]))[0].querySelector('video').parentElement;
+    const video = player.querySelector('video');
+    for (const element of [player, player.querySelector('[data-video-seek]')]) element.style = {setProperty() {}};
+    Object.assign(video, {src: '/media/v.mp4', paused: false, duration: 10, currentTime: 3, volume: 1, muted: true, pause() {this.paused = true;}});
+    tweetNookInitVideoPlayer(video);
+    assert.ok(player.classList.contains('is-native-ui-hidden'));
+    dispatchFeed(player, 'pointerenter', player, {pointerType: 'touch'});
+    dispatchFeed(player, 'focusin', {matches: () => false});
+    assert.ok(player.classList.contains('is-native-ui-hidden'));
+    dispatchFeed(player, 'click', video);
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].type, 'open-lightbox');
+    assert.equal(opened[0].detail.originVideo, video);
+    assert.equal(opened[0].detail.media[0].src, '/media/v.mp4');
+    assert.equal(player.querySelector('[data-video-remaining-time]').textContent, '-0:07');
+    const sound = player.querySelector('.video-idle-mute');
+    assert.equal(sound.getAttribute('data-video-icon'), 'mobileMuted');
+    assert.equal(sound.querySelectorAll('path')[1].getAttribute('d'), 'm17 10 4 4m0-4-4 4');
+    dispatchFeed(player, 'click', sound);
+    assert.equal(video.muted, false);
+    assert.equal(opened.length, 1);
+    // Taps inside the viewer still reveal/dismiss chrome without pausing.
+    timers.at(-1)();
+    video.closest = selector => selector === '.lightbox-stage' ? {} : null;
+    dispatchFeed(player, 'click', video);
+    dispatchFeed(player, 'pointerleave', player, {pointerType: 'touch'});
+    assert.ok(!player.classList.contains('is-native-ui-hidden'));
+    assert.equal(video.paused, false);
+    dispatchFeed(player, 'click', video);
+    assert.ok(player.classList.contains('is-native-ui-hidden'));
+    assert.equal(video.paused, false);
+    context.window.matchMedia = () => ({matches: false});
+    dispatchFeed(player, 'click', video);
+    assert.equal(video.paused, true);
+});
+
+test('mobile viewer transfers playback position and sound back to the originating video', () => {
+    for (const readyState of [0, 1]) {
+        const context = browserContext();
+        const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const app = immediateComponent(tweetApp());
+        const origin = {currentTime: 3, muted: true, volume: .6, loop: true, isConnected: true,
+            pause() {this.paused = true;}, play() {this.paused = false; return Promise.resolve();}};
+        const active = new FakeElement('video', [['autoplay', ''], ['data-lightbox-index', '0']]);
+        Object.assign(active, {readyState, paused: true, ended: false, currentTime: 0, muted: false, volume: 1,
+            closest: () => ({classList: {contains: () => true}}),
+            pause() {this.paused = true;}, play() {this.paused = false; return Promise.resolve();}});
+        app.$refs.lightboxStage = {querySelectorAll: () => [active], querySelector: () => active};
+        app.openLightbox([{type: 'video', src: '/media/v.mp4', isGif: false}], 0, origin);
+        assert.equal(origin.paused, true);
+        assert.equal(app.lightboxMedia[0].loop, true);
+        if (!readyState) dispatchFeed(active, 'loadedmetadata', active);
+        assert.equal(active.currentTime, 3);
+        assert.equal(active.muted, true);
+        assert.equal(active.volume, .6);
+        active.currentTime = 7;
+        active.muted = false;
+        app.syncLightboxPlayback();
+        assert.equal(active.currentTime, 7); // Repeated syncing never resets progress.
+        if (!readyState) active.pause();
+        app.closeLightbox();
+        assert.equal(app.lightboxOpen, false);
+        assert.equal(active.paused, true);
+        assert.equal(origin.currentTime, 7);
+        assert.equal(origin.muted, false);
+        assert.equal(origin.paused, !readyState);
+    }
+});
+
+test('scrubbing holds playback, tracks preview time, resumes on release and restores on cancellation', () => {
+    const context = browserContext();
+    const {tweetApp, tweetNookInitVideoPlayer} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookInitVideoPlayer})');
+    const player = parseFakeHTML(tweetApp().renderMediaGrid([{type: 'video', download: {local_path: 'media/v.mp4'}}]))[0].querySelector('video').parentElement;
+    const video = player.querySelector('video');
+    const seek = player.querySelector('[data-video-seek]');
+    for (const element of [player, seek]) element.style = {setProperty() {}};
+    let plays = 0;
+    let root = player;
+    while (root.parentElement) root = root.parentElement;
+    root.connected = true;
+    Object.assign(video, {paused: false, duration: 10, currentTime: 3, volume: 1, muted: true,
+        pause() {this.paused = true;}, play() {plays++; this.paused = false; return Promise.resolve();}});
+    tweetNookInitVideoPlayer(video);
+    dispatchFeed(player, 'pointerdown', seek, {button: 0});
+    assert.equal(video.paused, true);
+    assert.ok(player.classList.contains('is-scrubbing'));
+    seek.value = 75;
+    dispatchFeed(player, 'input', seek);
+    assert.equal(video.currentTime, 7.5);
+    assert.equal(player.querySelector('[data-video-scrub-time]').textContent, '0:07 / 0:10');
+    context.__state.events.get('document:pointerup')();
+    assert.equal(video.paused, false);
+    assert.equal(plays, 1);
+    assert.ok(!player.classList.contains('is-scrubbing'));
+    assert.ok(!context.__state.events.has('document:pointercancel'));
+    dispatchFeed(player, 'pointerdown', seek, {button: 0});
+    seek.value = 20;
+    dispatchFeed(player, 'input', seek);
+    context.__state.events.get('document:pointercancel')();
+    assert.equal(video.currentTime, 7.5);
+    assert.equal(video.paused, false);
+    video.pause();
+    dispatchFeed(player, 'pointerdown', seek, {button: 0});
+    context.__state.events.get('document:pointerup')();
+    assert.equal(video.paused, true); // A paused video remains paused after seeking.
+    assert.equal(plays, 2);
+});
+
+test('mobile video bounds wait for a playback frame, return to the feed, and respect reduced motion', async () => {
+    for (const reduced of [false, true]) {
+        const context = browserContext();
+        context.window.matchMedia = query => ({matches: query.includes('prefers-reduced-motion') ? reduced : true});
+        context.getComputedStyle = () => ({borderRadius: '16px', objectFit: 'contain'});
+        const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const app = immediateComponent(tweetApp());
+        const origin = {currentTime: 3, muted: true, volume: .6, loop: true, isConnected: true,
+            parentElement: {}, getBoundingClientRect: () => ({left: 60, top: 200, width: 300, height: 533}),
+            pause() {this.paused = true;}, play() {this.paused = false; return Promise.resolve();}};
+        const values = new Map();
+        const surfaceValues = new Map();
+        const motions = [];
+        let backdropCancels = 0;
+        const viewer = {animate: () => ({cancel() {backdropCancels++;}})};
+        const active = new FakeElement('video', [['autoplay', ''], ['data-lightbox-index', '0']]);
+        Object.assign(active, {readyState: 0, paused: true, ended: false, currentTime: 0, muted: false, volume: 1,
+            videoWidth: 720, videoHeight: 1280,
+            style: {getPropertyValue: name => values.get(name) || '', setProperty: (name, value) => values.set(name, value), removeProperty: name => values.delete(name)},
+            getBoundingClientRect: () => ({left: 0, top: 0, width: 390, height: 772}),
+            parentElement: {parentElement: {getBoundingClientRect: () => ({left: 0, top: 0})},
+                style: {getPropertyValue: name => surfaceValues.get(name) || '', setProperty: (name, value) => surfaceValues.set(name, value), removeProperty: name => surfaceValues.delete(name)}},
+            closest: selector => selector === '.lightbox-viewer' ? viewer : selector === '.lightbox-slide' ? {classList: {contains: () => true}} : null,
+            pause() {this.paused = true;}, play() {this.paused = false; return Promise.resolve();},
+            animate(frames, options) {
+                let complete, reject;
+                const finished = new Promise((resolve, fail) => {complete = resolve; reject = fail;});
+                const motion = {frames, options, complete, finished, cancel() {reject(new Error('cancelled'));}};
+                motions.push(motion);
+                return motion;
+            }});
+        active.parentElement.animate = active.animate;
+        app.$refs.lightboxStage = {querySelectorAll: () => [active], querySelector: () => active};
+        app.openLightbox([{type: 'video', src: '/media/v.mp4', isGif: false}], 0, origin);
+        assert.equal(motions.length, 0); // Do not grow a black unloaded frame.
+        active.readyState = 2;
+        dispatchFeed(active, 'loadedmetadata', active);
+        dispatchFeed(active, 'loadeddata', active);
+        if (!reduced) {
+            assert.equal(app.lightboxVideoMotionPhase, 'opening');
+            assert.match(motions[0].frames[0].transform, /translate3d\(60px,/);
+            assert.ok(parseFloat(motions[0].frames[0].borderRadius) > 0);
+            assert.equal(Object.keys(motions[0].frames[1]).sort().join(','), 'borderRadius,transform');
+            motions[0].complete();
+            await Promise.resolve(); await Promise.resolve();
+            assert.equal(app.lightboxVideoMotionPhase, '');
+            assert.equal(values.size, 0); // Temporary sizing/crop styles are restored.
+            assert.equal(surfaceValues.size, 0);
+        }
+        active.currentTime = 7;
+        app.startLightboxGesture({target: active, touches: [{clientX: 100, clientY: 200}], timeStamp: 100});
+        assert.ok(app.lightboxGestureStart); // The enhanced video surface accepts dismissal drags.
+        app.endLightboxGesture({changedTouches: [{clientX: 100, clientY: 300}], timeStamp: 200});
+        if (!reduced) {
+            assert.equal(app.lightboxOpen, true);
+            assert.equal(app.lightboxVideoMotionPhase, 'closing');
+            app.closeLightbox(); // Repeated close requests do not replace the return animation.
+            assert.equal(motions.length, 2);
+            assert.match(motions[1].frames[1].transform, /translate3d\(60px,/);
+            assert.equal(origin.paused, true);
+            motions[1].complete();
+            await Promise.resolve(); await Promise.resolve();
+            assert.equal(backdropCancels, 2);
+        }
+        assert.equal(app.lightboxOpen, false);
+        assert.equal(origin.currentTime, 7);
+        assert.equal(origin.paused, false);
+        assert.equal(values.size, 0);
+        assert.equal(surfaceValues.size, 0);
+        assert.equal(motions.length, reduced ? 0 : 2);
+    }
+});
+
+test('video motion holds its final surface for handoff and preserves cropped picture geometry', async () => {
+    for (const mode of ['quote', 'fill', 'occluded']) {
+        const fill = mode === 'fill', occluded = mode === 'occluded';
+        const context = browserContext();
+        context.window.innerWidth = 390;
+        context.window.innerHeight = 844;
+        if (occluded) context.document.querySelectorAll = selector => selector === '[data-video-occluder]'
+            ? [{getBoundingClientRect: () => ({left: 0, top: 0, width: 390, height: 90})}] : [];
+        const surfaceValues = new Map(), videoValues = new Map();
+        const style = values => ({getPropertyValue: name => values.get(name) || '', setProperty: (name, value) => values.set(name, value), removeProperty: name => values.delete(name)});
+        let computedRadius = '0px', computedCrop = 'none';
+        const surface = {style: style(surfaceValues), parentElement: {getBoundingClientRect: () => ({left: 0, top: 0})},
+            getBoundingClientRect: () => ({left: 20, top: 80, width: 195, height: 347})};
+        const video = {parentElement: surface, style: style(videoValues), videoWidth: 720, videoHeight: 1280,
+            getBoundingClientRect: () => ({left: 0, top: 0, width: 390, height: 772}), closest: () => null,
+            animate() {throw new Error('Video animation would disturb the decoder surface.');}};
+        context.getComputedStyle = element => element === video
+            ? {objectFit: videoValues.get('object-fit') || (fill ? 'cover' : 'contain')}
+            : element === surface ? {borderRadius: computedRadius, clipPath: computedCrop} : {borderRadius: '16px'};
+        let complete, frames;
+        surface.animate = keyframes => {
+            frames = keyframes;
+            return {finished: new Promise(resolve => {complete = resolve;}), cancel() {}};
+        };
+        const {animateMobileVideoBounds} = loadScripts(context, ['app.js'], '({animateMobileVideoBounds})');
+        const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: occluded ? -120 : 200, width: 300, height: fill || occluded ? 533 : 168.75})};
+        const motion = animateMobileVideoBounds(video, origin, false, 280,
+            {left: 0, top: fill ? 0 : (772 - 390 * 1280 / 720) / 2, width: 390, height: fill ? 772 : 390 * 1280 / 720});
+        assert.ok(motion);
+        assert.equal(videoValues.get('width'), '100%');
+        assert.equal(videoValues.get('height'), '100%');
+        assert.equal(videoValues.get('object-fit'), 'contain');
+        assert.ok(Math.abs(parseFloat(surfaceValues.get('width')) / parseFloat(surfaceValues.get('height')) - 720 / 1280) < .00001);
+        assert.ok(frames.some(frame => frame.clipPath)); // A quote crop or fill-screen crop belongs to the surface.
+        if (fill) assert.match(frames[0].clipPath, /inset\(0px 22\.125px/); // Keep the current fill crop at dismissal start.
+        else if (!occluded) assert.match(frames[1].clipPath, /inset\(236\.9/); // Return to the wide quoted feed frame without stretching.
+        else {
+            const transform = frames[1].transform.match(/translate3d\(([-\d.]+)px, ([-\d.]+)px, 0\) scale\(([-\d.]+)\)/);
+            const clip = frames[1].clipPath.match(/inset\(([\d.]+)px ([\d.]+)px ([\d.]+)px ([\d.]+)px/);
+            const visibleTop = parseFloat(surfaceValues.get('top')) + Number(transform[2]) + Number(clip[1]) * Number(transform[3]);
+            assert.ok(Math.abs(visibleTop - 90) < .001); // Last frame matches the sticky header's occlusion, before DOM handoff.
+            assert.match(frames[1].clipPath, /round 0px 0px /); // The header cuts a straight edge, not new rounded corners.
+            const visibleBottom = parseFloat(surfaceValues.get('top')) + Number(transform[2])
+                + (parseFloat(surfaceValues.get('height')) - Number(clip[3])) * Number(transform[3]);
+            assert.ok(Math.abs(visibleBottom - 413) < .001); // The header clip must not recenter the picture.
+        }
+        computedRadius = '24px'; computedCrop = 'inset(20px 10px round 24px)';
+        const interrupted = motion.bounds();
+        const scale = 195 / parseFloat(surfaceValues.get('width'));
+        assert.equal(interrupted.left, 20 + 10 * scale);
+        assert.equal(interrupted.top, 80 + 20 * scale);
+        assert.equal(interrupted.radius, 24 * scale); // A mid-flight reversal preserves its visible corners.
+        complete();
+        assert.equal(await motion.finished, true);
+        assert.ok(surfaceValues.size > 0); // Don't reveal fullscreen before the caller restores the feed.
+        motion.cancel();
+        assert.equal(surfaceValues.size, 0);
+        assert.equal(videoValues.size, 0);
+    }
+});
+
+test('dismissal releases the fixed toolbar fill before the picture returns, without moving the viewer', async () => {
+    const context = browserContext();
+    context.window.scrollX = 12;
+    context.window.scrollY = 680;
+    const values = new Map([['top', '0px'], ['height', '100%']]);
+    const style = entries => ({getPropertyValue: name => entries.get(name) || '',
+        setProperty: (name, value) => entries.set(name, value), removeProperty: name => entries.delete(name)});
+    const classes = new Set();
+    let fadeOptions;
+    const viewer = {style: style(values), getBoundingClientRect: () => ({left: 0, top: 42, width: 390, height: 730}),
+        classList: {add: name => classes.add(name), remove: name => classes.delete(name)},
+        animate: (frames, options) => {fadeOptions = options; return {cancel() {}};}};
+    const surface = {style: style(new Map()), parentElement: {getBoundingClientRect: () => ({left: 0, top: 42})}};
+    const video = {parentElement: surface, style: style(new Map()), videoWidth: 720, videoHeight: 1280,
+        getBoundingClientRect: () => ({left: 0, top: 42, width: 390, height: 650}), closest: () => viewer};
+    context.getComputedStyle = () => ({objectFit: 'contain', borderRadius: '16px'});
+    let complete;
+    surface.animate = () => {
+        assert.ok(classes.has('is-video-closing')); // Enable painting behind the URL bar before motion starts.
+        assert.equal(values.get('position'), 'absolute'); // The release occurs before either animation starts.
+        assert.equal(values.get('left'), '12px');
+        assert.equal(values.get('top'), '722px'); // Page coordinates preserve the current visual viewport offset.
+        assert.equal(values.get('width'), '390px');
+        assert.equal(values.get('height'), '730px');
+        assert.equal(values.get('right'), 'auto');
+        assert.equal(values.get('bottom'), 'auto');
+        return {finished: new Promise(resolve => {complete = resolve;}), cancel() {}};
+    };
+    const {animateMobileVideoBounds} = loadScripts(context, ['app.js'], '({animateMobileVideoBounds})');
+    const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: 200, width: 300, height: 533})};
+    const motion = animateMobileVideoBounds(video, origin, false, 280);
+    assert.equal(fadeOptions.duration, 160); // Background finishes first, then holds transparency through handoff.
+    assert.equal(fadeOptions.easing, 'ease-out');
+    assert.equal(fadeOptions.fill, 'both');
+    complete();
+    assert.equal(await motion.finished, true);
+    assert.equal(values.get('position'), 'absolute'); // Remain released until the atomic DOM handoff.
+    motion.cancel();
+    assert.equal(classes.size, 0);
+    assert.deepEqual([...values], [['top', '0px'], ['height', '100%']]);
+    assert.equal(context.window.scrollY, 680);
+});
+
+test('video returning beneath the browser toolbar keeps its bottom pixels through handoff', async () => {
+    for (const opening of [true, false]) {
+        const context = browserContext();
+        context.window.visualViewport = {offsetLeft: 0, offsetTop: 42, width: 390, height: 730};
+        context.getComputedStyle = () => ({objectFit: 'contain', borderRadius: '16px'});
+        const style = () => ({getPropertyValue: () => '', setProperty() {}, removeProperty() {}});
+        let frames, complete;
+        const surface = {style: style(), parentElement: {getBoundingClientRect: () => ({left: 0, top: 42})},
+            animate: keyframes => {frames = keyframes; return {finished: new Promise(resolve => {complete = resolve;}), cancel() {}};}};
+        const video = {parentElement: surface, style: style(), videoWidth: 720, videoHeight: 1280,
+            getBoundingClientRect: () => ({left: 0, top: 42, width: 390, height: 650}), closest: () => null};
+        const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: 500, width: 300, height: 300 * 1280 / 720})};
+        const {animateMobileVideoBounds} = loadScripts(context, ['app.js'], '({animateMobileVideoBounds})');
+        const motion = animateMobileVideoBounds(video, origin, opening, 280);
+        const feedFrame = frames[opening ? 0 : 1];
+        if (opening) {
+            const insets = feedFrame.clipPath.match(/^inset\((.*?) round/)[1].split(' ').map(parseFloat);
+            assert.ok(insets[2] > 0);
+            assert.ok(Math.abs(insets[0]) < .001 && Math.abs(insets[1]) < .001 && Math.abs(insets[3]) < .001);
+        }
+        else assert.equal(feedFrame.clipPath, undefined); // The page return reaches the inline bottom at 1033px, past the 772px viewport.
+        complete();
+        assert.equal(await motion.finished, true);
+        motion.cancel();
+    }
+});
+
+test('mobile video keeps the page paintable under Safari chrome while blocking one-finger page pans', () => {
+    const context = browserContext();
+    context.window.matchMedia = () => ({matches: true});
+    context.window.scrollY = 500;
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const watchers = {};
+    app.$watch = (name, callback) => {watchers[name] = callback;};
+    app.fetchSetup = async () => {};
+    app.fetchNotices = async () => {};
+    app.fetchActivityStatus = async () => {};
+    app.initApp();
+    app.lightboxMedia = [{type: 'video', isGif: false}];
+    app.lightboxOpen = true;
+    context.document.body.style.overflow = 'auto';
+    watchers.lightboxOpen(true);
+    assert.equal(context.document.body.style.overflow, 'auto'); // Don't make Safari repaint its under-toolbar region on close.
+    let prevented = 0;
+    app.moveLightboxGesture({touches: [{}], preventDefault() {prevented++;}});
+    assert.equal(prevented, 1); // Block background pan even if the touch began on controls.
+    app.moveLightboxGesture({touches: [{}, {}], preventDefault() {prevented++;}});
+    assert.equal(prevented, 1); // Native pinch zoom remains available.
+    assert.equal(context.window.scrollY, 500);
+    app.lightboxOpen = false;
+    watchers.lightboxOpen(false);
+    assert.equal(context.document.body.style.overflow, 'auto');
+    app.lightboxMedia = [{type: 'photo'}];
+    watchers.lightboxOpen(true);
+    assert.equal(context.document.body.style.overflow, 'hidden'); // Existing photo/desktop modal locking is retained.
+    watchers.lightboxOpen(false);
+    assert.equal(context.document.body.style.overflow, 'auto');
+});
+
+test('ordinary feed and grid videos start inline without a native controls mount race', () => {
+    const context = browserContext();
+    const {tweetApp, tweetNookInitVideoPlayer} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookInitVideoPlayer})');
+    const media = {type: 'video', width: 720, height: 1280, download: {local_path: 'media/v.mp4'}};
+    for (const list of [[media], [media, media]]) {
+        const root = parseFakeHTML(tweetApp().renderMediaGrid(list))[0];
+        for (const video of root.querySelectorAll('video')) {
+            assert.ok(video.hasAttribute('playsinline'));
+            assert.ok(video.hasAttribute('data-video-custom'));
+            assert.equal(Number(video.dataset.videoAspect), 720 / 1280);
+            assert.ok(!video.hasAttribute('controls'));
+            const player = video.parentElement;
+            for (const element of [player, player.querySelector('[data-video-seek]')]) element.style = {setProperty() {}};
+            Object.assign(video, {paused: true, volume: 1, muted: true, currentTime: 0, duration: 10});
+            tweetNookInitVideoPlayer(video);
+            assert.equal(video.playsInline, true);
+            assert.ok(video.hasAttribute('webkit-playsinline'));
+            assert.ok(!video.hasAttribute('controls'));
+        }
+    }
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.doesNotMatch(html, /<video[^>]*\scontrols(?:\s|>)/);
+});
+
+test('mobile viewer reuses its inline player and rejects dismissal click-through without native fullscreen', async () => {
+    const context = browserContext();
+    context.window.matchMedia = query => ({matches: !query.includes('prefers-reduced-motion')});
+    context.getComputedStyle = () => ({borderRadius: '16px', objectFit: 'contain'});
+    let now = 1000;
+    context.Date = class extends Date { static now() {return now;} };
+    const uiTimers = [];
+    context.setTimeout = (callback, delay) => {uiTimers.push({callback, delay}); return uiTimers.length;};
+    context.clearTimeout = () => {};
+    const opened = [];
+    context.window.dispatchEvent = event => opened.push(event);
+    const {tweetApp, tweetNookInitVideoPlayer} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookInitVideoPlayer})');
+    const app = immediateComponent(tweetApp());
+    const pendingTicks = [];
+    app.$nextTick = callback => pendingTicks.push(callback);
+    const feed = parseFakeHTML(app.renderMediaGrid([{type: 'video', download: {local_path: 'media/v.mp4'}}]))[0];
+    feed.connected = true;
+    const video = feed.querySelector('video'), player = video.parentElement;
+    const stage = new FakeElement('div', [['class', 'lightbox-stage']]);
+    stage.connected = true;
+    const slide = new FakeElement('div', [['class', 'lightbox-slide is-active']]);
+    const slot = new FakeElement('div', [['data-inline-video-slot', '']]);
+    slide.appendChild(slot); stage.appendChild(slide);
+    app.$refs.lightboxStage = stage;
+    const viewer = new FakeElement('div', [['class', 'lightbox-viewer is-video-closed']]);
+    viewer.connected = true;
+    viewer.appendChild(stage);
+    const viewerValues = new Map();
+    viewer.style = {display: 'none', setProperty: (name, value) => viewerValues.set(name, value),
+        getPropertyValue: name => viewerValues.get(name) || '', removeProperty: name => viewerValues.delete(name)};
+    viewer.rect = {left: 0, top: 0, width: 390, height: 844};
+    context.window.innerHeight = 844;
+    context.window.scrollY = 240;
+    app.$refs.lightboxViewer = viewer;
+    const fades = [];
+    viewer.animate = (frames, options) => {
+        const fade = {frames, options, cancelled: false, cancel() {this.cancelled = true;}};
+        fades.push(fade); return fade;
+    };
+    context.getComputedStyle = element => element === viewer
+        ? {opacity: '1', backgroundColor: 'rgba(0, 0, 0, 0.6)'} : {borderRadius: '16px', objectFit: 'contain'};
+    app.$refs.inlineVideoSlot = slot;
+    slot.style = {display: 'none'};
+    const originalParent = player.parentElement;
+    player.rect = {left: 60, top: 200, width: 300, height: 533};
+    player.getBoundingClientRect = () => player.closest('.lightbox-stage') ? {left: 0, top: 0, width: 390, height: 844} : player.rect;
+    video.getBoundingClientRect = () => video.closest('.lightbox-stage') ? {left: 0, top: slot.style.transform?.includes('180') ? 180 : 0, width: 390, height: 772} : player.rect;
+    for (const element of [video, player, player.querySelector('[data-video-seek]')]) {
+        const values = new Map();
+        element.style = {setProperty: (name, value) => values.set(name, value), getPropertyValue: name => values.get(name) || '', removeProperty: name => values.delete(name)};
+    }
+    const motions = [];
+    let nativeFullscreen = 0;
+    let playParent;
+    Object.assign(video, {readyState: 0, paused: false, ended: false, currentTime: 3, volume: .6, muted: true,
+        videoWidth: 720, videoHeight: 1280, loop: true,
+        pause() {this.paused = true;}, play() {playParent = this.closest('.lightbox-stage'); this.paused = false; return Promise.resolve();},
+        webkitEnterFullscreen() {nativeFullscreen++;},
+        animate(frames) {
+            let complete;
+            const finished = new Promise(resolve => {complete = resolve;});
+            const motion = {frames, finished, complete, cancel() {}};
+            motions.push(motion); return motion;
+        }});
+    player.animate = video.animate;
+    context.document.createElement = tag => {
+        const surface = new FakeElement(tag).cloneNode(false);
+        surface.animate = player.animate;
+        surface.getBoundingClientRect = video.getBoundingClientRect;
+        return surface;
+    };
+    video.animate = () => {throw new Error('The decoder surface must not be animated.');};
+    player.requestFullscreen = () => {nativeFullscreen++; return Promise.resolve();};
+    tweetNookInitVideoPlayer(video);
+    app.openLightbox([{type: 'video', src: '/media/v.mp4', isGif: false}], 0, video);
+    assert.equal(playParent, stage); // Mount and play run in the original trusted tap.
+    assert.equal(app.activeLightboxVideo(), video);
+    assert.equal(feed.querySelectorAll('video').length, 0);
+    assert.equal(stage.querySelectorAll('video').length, 1);
+    assert.equal(video.currentTime, 3);
+    assert.equal(viewer.style.display, 'flex');
+    assert.equal(context.window.scrollY, 240); // The backdrop shares the screen-fixed viewer; it doesn't move the document.
+    assert.equal(fades[0].frames[0].backgroundColor, 'rgba(0, 0, 0, 0)');
+    assert.equal(fades[0].frames[1].backgroundColor, 'rgba(0, 0, 0, 1)');
+    assert.equal(slot.style.display, '');
+    assert.equal(app.lightboxVideoMotionPhase, 'opening'); // First frame is ready before Alpine's next tick.
+    assert.equal(motions.length, 1);
+    assert.ok(video.parentElement.classList.contains('video-motion-surface'));
+    assert.equal(player.querySelector('[data-video-controls]').parentElement, player); // Controls remain outside the animated picture.
+    assert.equal(player.style.getPropertyValue('height'), ''); // The fullscreen control anchor never resizes.
+    pendingTicks.shift()();
+    assert.equal(motions.length, 1); // The deferred overlay mount must not restart motion.
+    assert.equal(app.lightboxVideoMotionPhase, 'opening'); // No metadata/decoder wait for the existing poster.
+    motions[0].complete(); await Promise.resolve(); await Promise.resolve();
+    uiTimers.at(-1).callback();
+    assert.ok(player.classList.contains('is-native-ui-hidden'));
+    assert.ok(viewer.classList.contains('is-video-controls-hidden'));
+    dispatchFeed(player, 'pointermove', player, {pointerType: 'mouse'});
+    assert.ok(player.classList.contains('is-native-ui-hidden')); // Mobile tap visibility must not fight hover events.
+    dispatchFeed(player, 'click', player);
+    assert.ok(!player.classList.contains('is-native-ui-hidden'));
+    assert.ok(!viewer.classList.contains('is-video-controls-hidden'));
+    dispatchFeed(player, 'focusout', player);
+    assert.equal(uiTimers.at(-1).delay, 3000); // Touch focus changes keep the normal reading interval.
+    dispatchFeed(player, 'click', player.querySelector('[data-video-action="fullscreen"]'));
+    assert.ok(player.classList.contains('is-video-fill'));
+    assert.equal(nativeFullscreen, 0);
+    video.currentTime = 7;
+    slot.style.transform = 'translate3d(0, 180px, 0)';
+    app.lightboxGestureOffsetY = 180;
+    app.closeLightbox();
+    assert.equal(fades[0].cancelled, true);
+    assert.equal(fades[1].frames[0].backgroundColor, 'rgba(0, 0, 0, 0.6)'); // Continue the visible color alpha, not the element opacity.
+    assert.equal(fades[1].frames[1].backgroundColor, 'rgba(0, 0, 0, 0)');
+    assert.equal(slot.style.transform, 'translate3d(0, 0, 0)');
+    assert.equal(viewerValues.get('position'), 'absolute');
+    assert.ok(viewer.classList.contains('is-video-closing'));
+    assert.equal(viewerValues.get('top'), '240px');
+    assert.equal(fades[1].options.duration, 160);
+    assert.match(motions[1].frames[0].transform, /translate3d\(0px, 180px, 0\)/); // Continue from the finger, with no doubled/stale drag transform.
+    motions[1].complete(); await Promise.resolve(); await Promise.resolve();
+    assert.equal(app.lightboxOpen, false);
+    assert.equal(viewer.style.display, 'none');
+    assert.equal(viewerValues.size, 0); // The next opening uses its normal fixed host again.
+    assert.ok(!viewer.classList.contains('is-video-closing'));
+    assert.equal(context.window.scrollY, 240);
+    assert.equal(fades[1].cancelled, true);
+    assert.equal(player.parentElement, originalParent);
+    assert.equal(feed.querySelector('video'), video);
+    assert.equal(video.parentElement, player);
+    assert.equal(stage.querySelectorAll('video').length, 0);
+    assert.equal(video.currentTime, 7);
+    assert.equal(video.paused, false);
+    assert.ok(!player.classList.contains('is-video-fill'));
+    dispatchFeed(player, 'click', video); // Safari's compatibility click following dismissal.
+    assert.equal(opened.length, 0);
+    now += 1000;
+    dispatchFeed(player, 'click', video);
+    assert.equal(opened.length, 1); // A subsequent intentional tap still opens the viewer.
+    assert.equal(nativeFullscreen, 0);
+});
+
+test('touch scrub owns its pointer, coalesces decoder seeks and retains the pending preview', () => {
+    const context = browserContext();
+    const frames = new Map();
+    let nextFrame = 0;
+    context.window.requestAnimationFrame = callback => {frames.set(++nextFrame, callback); return nextFrame;};
+    context.window.cancelAnimationFrame = id => frames.delete(id);
+    const {tweetApp, tweetNookInitVideoPlayer, tweetNookSyncVideoDuration} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookInitVideoPlayer, tweetNookSyncVideoDuration})');
+    const root = parseFakeHTML(tweetApp().renderMediaGrid([{type: 'video', download: {local_path: 'media/v.mp4'}}]))[0];
+    root.connected = true;
+    const video = root.querySelector('video'), player = video.parentElement, seek = player.querySelector('[data-video-seek]');
+    const picture = new FakeElement('div', [['class', 'video-motion-surface']]);
+    player.insertBefore(picture, video);
+    picture.appendChild(video); // Fullscreen scrubbing still belongs to the outer control anchor.
+    for (const element of [player, seek]) element.style = {setProperty() {}};
+    seek.rect = {left: 10, width: 100};
+    let captured, released, time = 2, seeks = 0;
+    seek.setPointerCapture = id => {captured = id;};
+    seek.hasPointerCapture = id => captured === id;
+    seek.releasePointerCapture = id => {released = id; captured = null;};
+    Object.assign(video, {paused: false, duration: 10, muted: true, volume: 1, seeking: false,
+        pause() {this.paused = true;}, play() {this.paused = false; return Promise.resolve();}});
+    Object.defineProperty(video, 'currentTime', {get: () => time, set: value => {time = value; seeks++;}});
+    tweetNookInitVideoPlayer(video);
+    const down = dispatchFeed(player, 'pointerdown', seek, {button: 0, pointerType: 'touch', pointerId: 7, clientX: 40});
+    assert.ok(down.defaultPrevented);
+    assert.equal(captured, 7);
+    const move = context.__state.events.get('document:pointermove');
+    move({pointerId: 8, clientX: 100}); // A second finger must not steal the scrub.
+    assert.equal(seek.value, 30);
+    move({pointerId: 7, clientX: 90});
+    move({pointerId: 7, clientX: 80});
+    assert.equal(frames.size, 1);
+    assert.equal(seeks, 0);
+    frames.values().next().value(); frames.clear();
+    assert.equal(time, 7);
+    assert.equal(seeks, 1);
+    dispatchFeed(video, 'seeked', video);
+    frames.values().next().value(); frames.clear();
+    assert.equal(seeks, 1); // A settled finger must not create a decoder seek loop.
+    video.seeking = true;
+    move({pointerId: 7, clientX: 100});
+    tweetNookSyncVideoDuration(video); // An older decoded frame must not pull the thumb back.
+    assert.equal(seek.value, 90);
+    assert.equal(player.querySelector('[data-video-scrub-time]').textContent, '0:09 / 0:10');
+    assert.equal(frames.size, 0);
+    context.__state.events.get('document:pointerup')({pointerId: 7, clientX: 95});
+    assert.equal(time, 8.5); // Final position is exact, even if the last decode is pending.
+    assert.equal(video.paused, false);
+    assert.equal(released, 7);
+    assert.ok(!context.__state.events.has('document:pointermove'));
+});
+
+test('late lightbox observer and playback callbacks cannot restart a dismissed player', () => {
+    const context = browserContext();
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.fetchSetup = async () => {};
+    app.fetchNotices = async () => {};
+    app.fetchActivityStatus = async () => {};
+    app.initApp();
+    let plays = 0;
+    const video = {tagName: 'VIDEO', paused: true, hasAttribute: name => name === 'autoplay',
+        closest: selector => selector === '.lightbox-stage' ? {} : {classList: {contains: () => true}},
+        pause() {this.paused = true;}, play() {plays++; this.paused = false; return Promise.resolve();}};
+    app.$refs.lightboxStage = {querySelectorAll: () => [video], querySelector: () => video};
+    app.lightboxOpen = true;
+    app.syncLightboxPlayback();
+    assert.equal(plays, 1);
+    app.closeLightbox();
+    app.videoObserver.callback([{target: video, isIntersecting: true}]);
+    app.syncLightboxPlayback();
+    assert.equal(plays, 1);
+    assert.equal(video.paused, true);
+});
+
 test('GIF indicator tracks playback state and toggles the archived animation', async () => {
     const context = browserContext();
     loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
@@ -3735,14 +4414,14 @@ test('autoplay setting plays the topmost visible video muted and shares unmuting
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
     const app = immediateComponent(tweetApp());
     // Fake players dispatch their media events synchronously to the app handlers.
-    const player = (top, { lightbox = false } = {}) => {
+    const player = (top, { lightbox = false, custom = false } = {}) => {
         const video = {
             tagName: 'VIDEO',
             paused: true,
             isConnected: true,
             playCalls: 0,
             _muted: false,
-            hasAttribute: name => name === 'controls',
+            hasAttribute: name => name === (custom ? 'data-video-player' : 'controls'),
             closest: selector => (lightbox && selector === '.lightbox-stage' ? {} : null),
             getBoundingClientRect: () => ({ top }),
             get muted() { return this._muted; },
@@ -3766,7 +4445,7 @@ test('autoplay setting plays the topmost visible video muted and shares unmuting
         context.__state.videos.push(video);
         return video;
     };
-    const lower = player(400);
+    const lower = player(400, {custom: true});
     const upper = player(100);
     const lightbox = player(0, { lightbox: true });
 
