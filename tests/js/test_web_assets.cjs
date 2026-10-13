@@ -4427,6 +4427,8 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     context.__state.events.get('scroll')();
     assert.equal(fades[0].frames[0].backgroundColor, 'rgba(0, 0, 0, 0)');
     assert.equal(fades[0].frames[1].backgroundColor, 'rgba(0, 0, 0, 1)');
+    assert.equal(fades[0].options.duration, 150); // The backdrop is dark well before the 300ms expansion lands.
+    assert.equal(fades[0].options.easing, 'ease-out');
     assert.equal(slot.style.display, '');
     assert.equal(app.lightboxVideoMotionPhase, 'opening'); // First frame is ready before Alpine's next tick.
     assert.equal(motions.length, 1);
