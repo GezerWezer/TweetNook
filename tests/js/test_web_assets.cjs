@@ -3973,9 +3973,9 @@ test('video motion holds its final surface for handoff and preserves cropped pic
             frames = keyframes;
             return {finished: new Promise(resolve => {complete = resolve;}), cancel() {}};
         };
-        const {animateMobileVideoBounds} = loadScripts(context, ['app.js'], '({animateMobileVideoBounds})');
+        const {animateMobileMediaBounds} = loadScripts(context, ['app.js'], '({animateMobileMediaBounds})');
         const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: occluded ? -120 : 200, width: 300, height: fill || occluded ? 533 : 168.75})};
-        const motion = animateMobileVideoBounds(video, origin, false, 280,
+        const motion = animateMobileMediaBounds(video, origin, false, 280,
             {left: 0, top: fill ? 0 : (772 - 390 * 1280 / 720) / 2, width: 390, height: fill ? 772 : 390 * 1280 / 720});
         assert.ok(motion);
         assert.equal(videoValues.get('width'), '100%');
@@ -4040,8 +4040,8 @@ test('dismissal fades the page shade and lifts covering headers above the return
         const video = {parentElement: surface, style: style(new Map()), videoWidth: 720, videoHeight: 1280,
             getBoundingClientRect: () => ({left: 0, top: 0, width: 390, height: 772}), closest: () => viewer};
         const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: 40, width: 300, height: 300 * 1280 / 720})};
-        const {animateMobileVideoBounds} = loadScripts(context, ['app.js'], '({animateMobileVideoBounds})');
-        const motion = animateMobileVideoBounds(video, origin, false, 280, null, shade);
+        const {animateMobileMediaBounds} = loadScripts(context, ['app.js'], '({animateMobileMediaBounds})');
+        const motion = animateMobileMediaBounds(video, origin, false, 280, null, shade);
         assert.deepEqual(hitPoint, [210, 65]); // Probe where the header covers the returning picture.
         const shadeFade = fades.find(fade => fade.target === 'shade');
         assert.equal(shadeFade.frames.map(frame => frame.backgroundColor).join(' → '), 'rgba(0, 0, 0, 1) → rgba(0, 0, 0, 0)');
@@ -4067,18 +4067,21 @@ test('dismissal fades the page shade and lifts covering headers above the return
     }
 });
 
-test('mobile video viewer stays outside Safari toolbar sampling and backs itself with page content', () => {
+test('phone media viewer stays outside Safari toolbar sampling and backs itself with page content', () => {
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const mobile = css.slice(css.indexOf('/* The phone feed uses a sound badge'));
-    const viewer = mobile.match(/\.lightbox-viewer\.is-video-viewer \{([^}]*)\}/)[1];
-    const bleed = Number(viewer.match(/--video-viewer-bleed:\s*(\d+)px/)[1]);
+    const viewer = mobile.match(/\n    \.lightbox-viewer \{([^}]*)\}/)[1];
+    const bleed = Number(viewer.match(/--lightbox-bleed:\s*(\d+)px/)[1]);
     assert.ok(2 * bleed > .05 * 1366); // Over 105% of even a tall viewport, on every side.
-    assert.match(viewer, /inset:\s*calc\(-1 \* var\(--video-viewer-bleed\)\)/);
+    assert.match(viewer, /inset:\s*calc\(-1 \* var\(--lightbox-bleed\)\)/);
     assert.match(viewer, /background-color:\s*transparent !important/); // The fixed layer adds no sampled color.
-    assert.match(mobile, /\.is-video-viewer > \.lightbox-stage,\s*\.is-video-viewer > \.lightbox-chrome \{ inset: var\(--video-viewer-bleed\); \}/);
-    assert.match(mobile, /\.is-video-viewer \.lightbox-close-button \{\s*top: calc\(var\(--video-viewer-bleed\) \+/);
-    assert.match(mobile, /\.lightbox-viewer\.is-video-viewer:not\(\.is-video-closed\) \+ \.lightbox-shade \{ display: block; \}/);
+    assert.match(mobile, /\.lightbox-viewer > \.lightbox-stage,\s*\.lightbox-viewer > \.lightbox-chrome \{ inset: var\(--lightbox-bleed\); \}/);
+    assert.match(mobile, /\.lightbox-viewer \.lightbox-close-button \{\s*top: calc\(var\(--lightbox-bleed\) \+/);
+    assert.match(mobile, /\.lightbox-viewer:not\(\.is-video-closed\) \+ \.lightbox-shade \{ display: block; \}/);
+    // Photos and GIFs move or fade themselves on a phone, never with Alpine's overlay fade.
+    assert.match(mobile, /\.lightbox-viewer\.lightbox-overlay-enter,\s*\.lightbox-viewer\.lightbox-overlay-leave \{ transition: none; \}/);
+    assert.match(mobile, /\.is-video-preparing \.lightbox-slide\.is-active \.lightbox-media \{ visibility: hidden; \}/);
     assert.match(css, /\.lightbox-shade \{[^}]*display: none;[^}]*position: absolute;[^}]*z-index: 99;[^}]*pointer-events: none;/s);
     assert.match(html, /<\/div>\s*<div x-ref="lightboxShade" class="lightbox-shade" :style="lightboxBackdropStyle\(\)" aria-hidden="true"><\/div>\s*<!-- Tag Modal -->/);
     assert.doesNotMatch(css, /is-video-closing/);
@@ -4096,8 +4099,8 @@ test('video motion crops its feed frame at the visible viewport in both directio
         const video = {parentElement: surface, style: style(), videoWidth: 720, videoHeight: 1280,
             getBoundingClientRect: () => ({left: 0, top: 42, width: 390, height: 650}), closest: () => null};
         const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: 500, width: 300, height: 300 * 1280 / 720})};
-        const {animateMobileVideoBounds} = loadScripts(context, ['app.js'], '({animateMobileVideoBounds})');
-        const motion = animateMobileVideoBounds(video, origin, opening, 280);
+        const {animateMobileMediaBounds} = loadScripts(context, ['app.js'], '({animateMobileMediaBounds})');
+        const motion = animateMobileMediaBounds(video, origin, opening, 280);
         const insets = frames[opening ? 0 : 1].clipPath.match(/^inset\((.*?) round/)[1].split(' ').map(parseFloat);
         assert.ok(insets[2] > 0); // Safari never draws a fixed layer beneath its toolbar, so cut a straight edge there.
         assert.ok(Math.abs(insets[0]) < .001 && Math.abs(insets[1]) < .001 && Math.abs(insets[3]) < .001);
@@ -4107,9 +4110,169 @@ test('video motion crops its feed frame at the visible viewport in both directio
     }
 });
 
-test('mobile video keeps the page paintable under Safari chrome while blocking one-finger page pans', () => {
+function mediaMotionFixture(context) {
+    const styleOf = values => ({getPropertyValue: name => values.get(name) || '',
+        setProperty: (name, value) => values.set(name, value), removeProperty: name => values.delete(name)});
+    const motions = [];
+    const record = target => (frames, options) => {
+        let complete;
+        const motion = {target, frames, options, cancelled: false, complete: () => complete(),
+            finished: new Promise(resolve => {complete = resolve;}), cancel() {this.cancelled = true;}};
+        motions.push(motion);
+        return motion;
+    };
+    const viewer = new FakeElement('div', [['class', 'lightbox-viewer']]);
+    viewer.connected = true;
+    viewer.style = {};
+    viewer.animate = record('viewer');
+    const stage = new FakeElement('div', [['class', 'lightbox-stage']]);
+    viewer.appendChild(stage);
+    const shade = {style: {}, animate: record('shade')};
+    return {styleOf, motions, record, viewer, stage, shade};
+}
+
+test('phone photos expand from their tile and return to the one on screen, or fade when it is gone', async () => {
     const context = browserContext();
-    context.window.matchMedia = () => ({matches: true});
+    context.window.matchMedia = query => ({matches: !query.includes('prefers-reduced-motion')});
+    context.window.innerHeight = 844;
+    const opened = [];
+    context.window.dispatchEvent = event => opened.push(event.detail);
+    const {tweetApp, tweetNookOpenLightbox} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookOpenLightbox})');
+    const app = immediateComponent(tweetApp());
+    const {styleOf, motions, record, viewer, stage, shade} = mediaMotionFixture(context);
+    const photo = name => ({type: 'photo', download: {local_path: `media/${name}.jpg`}});
+    const feed = parseFakeHTML(app.renderMediaGrid([photo('a'), photo('b')]))[0];
+    feed.connected = true;
+    feed.rect = {left: 50, top: 300, width: 302, height: 170};
+    const tiles = feed.querySelectorAll('img');
+    tiles[0].rect = {left: 51, top: 301, width: 149, height: 168};
+    tiles[1].rect = {left: 202, top: 301, width: 149, height: 168};
+    const images = [0, 1].map(() => {
+        const slide = new FakeElement('div', [['class', 'lightbox-slide']]);
+        slide.style = {};
+        const image = new FakeElement('img', [['class', 'lightbox-media']]);
+        Object.assign(image, {complete: true, naturalWidth: 1200, naturalHeight: 1600, style: styleOf(new Map()),
+            rect: {left: 0, top: 162, width: 390, height: 520}, animate: record('image')});
+        slide.appendChild(image);
+        stage.appendChild(slide);
+        return image;
+    });
+    const show = index => stage.children.forEach((slide, slideIndex) => slide.classList.toggle('is-active', slideIndex === index));
+    context.getComputedStyle = element => element === feed ? {borderTopLeftRadius: '16px', borderTopWidth: '1px'}
+        : images.includes(element) ? {objectFit: 'contain', borderRadius: '0px'}
+        : element === viewer ? {zIndex: '100'}
+        : element === shade ? {backgroundColor: 'rgba(0, 0, 0, 0.95)'} : {objectFit: 'cover'};
+    Object.assign(app.$refs, {lightboxViewer: viewer, lightboxStage: stage, lightboxShade: shade});
+
+    tweetNookOpenLightbox(tiles[1], 1);
+    assert.equal(opened[0].origin, tiles[1]); // The tapped tile is where the photo expands from.
+    show(1);
+    app.openLightbox(opened[0].media, opened[0].index, null, opened[0].origin);
+    const expand = motions[0];
+    assert.equal(expand.target, 'image'); // The photo moves itself; it has no player wrapper.
+    assert.equal(images[1].style.getPropertyValue('transform-origin'), '0 0');
+    assert.equal(images[1].style.getPropertyValue('position'), ''); // Its layout box is already the fitted picture.
+    assert.match(expand.frames[0].clipPath, /^inset\([\d.]+px 0px [\d.]+px 0px round 0px [1-9][\d.]*px [1-9][\d.]*px 0px\)$/);
+    assert.equal(app.lightboxVideoMotionPhase, 'opening');
+    expand.complete(); await Promise.resolve(); await Promise.resolve();
+    assert.equal(app.lightboxVideoMotionPhase, '');
+
+    app.lightboxIndex = 0;
+    show(0);
+    app.closeLightbox();
+    const land = motions.find(motion => motion.target === 'image' && motion !== expand);
+    assert.ok(land, 'the photo now on screen returns');
+    // The left tile meets the grid's rounded corners on its left only.
+    assert.match(land.frames[1].clipPath, /round [1-9][\d.]*px 0px 0px [1-9][\d.]*px\)$/);
+    const backdrop = motions.find(motion => motion.target === 'shade' && motion.options.duration === 120);
+    assert.equal(backdrop.frames.map(frame => frame.backgroundColor).join(' → '), 'rgba(0, 0, 0, 0.95) → rgba(0, 0, 0, 0)');
+    land.complete(); await Promise.resolve(); await Promise.resolve();
+    assert.equal(app.lightboxOpen, false);
+    assert.equal(viewer.style.display, 'none'); // Hidden at handoff, with no Alpine fade over the feed.
+    tweetNookOpenLightbox(tiles[0], 0);
+    assert.equal(opened.length, 1); // Safari's compatibility click after dismissal doesn't reopen it.
+
+    show(1);
+    app.openLightbox(opened[0].media, 1, null, tiles[1]);
+    motions.at(-1).complete(); await Promise.resolve(); await Promise.resolve();
+    tiles.forEach(tile => { tile.rect = {...tile.rect, top: -400}; });
+    const before = motions.length;
+    app.closeLightbox();
+    const fades = motions.slice(before);
+    assert.deepEqual(fades.map(motion => motion.target).sort(), ['shade', 'viewer']); // Nothing to land on: fade.
+    assert.equal(JSON.stringify(fades[0].frames), '[{"opacity":1},{"opacity":0}]');
+    assert.equal(app.lightboxVideoMotionPhase, 'closing');
+    fades.forEach(fade => fade.complete());
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    assert.equal(app.lightboxOpen, false);
+});
+
+test('phone GIF taps open the viewer, which continues from the feed frame', async () => {
+    const context = browserContext();
+    let phone = false;
+    context.window.matchMedia = query => ({matches: phone && !query.includes('prefers-reduced-motion')});
+    const opened = [];
+    context.window.dispatchEvent = event => opened.push(event.detail);
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const {styleOf, motions, record, viewer, stage, shade} = mediaMotionFixture(context);
+    const feed = parseFakeHTML(app.renderMediaGrid([{type: 'animated_gif', download: {local_path: 'media/g.mp4'}}]))[0];
+    feed.connected = true;
+    const gif = feed.querySelector('video');
+    assert.match(gif.getAttribute('onclick'), /window\.tweetNookOpenGif\(event, this, 0\)/);
+    const click = {stopPropagation() {this.stopped = true;}};
+    context.window.tweetNookOpenGif(click, gif, 0);
+    assert.equal(opened.length, 0); // Desktop GIFs keep playing in place.
+    assert.ok(!click.stopped);
+    phone = true;
+    context.window.tweetNookOpenGif(click, gif, 0);
+    assert.ok(click.stopped); // The card behind it doesn't open the thread.
+    assert.equal(opened[0].origin, gif);
+    assert.equal(opened[0].media[0].isGif, true);
+
+    Object.assign(gif, {currentTime: 5.5, rect: {left: 60, top: 200, width: 300, height: 270}});
+    const slide = new FakeElement('div', [['class', 'lightbox-slide is-active']]);
+    slide.style = {};
+    const loop = new FakeElement('video', [['class', 'lightbox-media'], ['autoplay', ''], ['loop', '']]);
+    let time = 0;
+    Object.defineProperty(loop, 'currentTime', {get: () => time, set: value => { time = value; loop.seeking = true; }});
+    Object.assign(loop, {readyState: 1, duration: 4, seeking: false, paused: true, style: styleOf(new Map()),
+        rect: {left: 0, top: 233, width: 390, height: 351}, animate: record('gif'),
+        play() { this.paused = false; return Promise.resolve(); }, pause() { this.paused = true; }});
+    slide.appendChild(loop);
+    stage.appendChild(slide);
+    context.getComputedStyle = element => element === loop ? {objectFit: 'contain'} : element === viewer ? {zIndex: '100'} : {borderRadius: '16px'};
+    Object.assign(app.$refs, {lightboxViewer: viewer, lightboxStage: stage, lightboxShade: shade});
+    app.openLightbox(opened[0].media, 0, null, gif);
+    assert.equal(loop.currentTime, 1.5); // 5.5s into a 4s loop.
+    assert.equal(motions.length, 0); // Wait for the seeked frame rather than expanding frame 0.
+    Object.assign(loop, {readyState: 2, seeking: false});
+    dispatchFeed(loop, 'seeked', loop);
+    assert.equal(motions[0].target, 'gif');
+    assert.match(motions[0].frames[0].transform, /translate3d\(60px, -33px, 0\) scale\(0\.769/); // From the feed GIF's box.
+    assert.equal(loop.paused, false);
+});
+
+test('Home Screen apps are told apart from Safari tabs for bottom spacing', () => {
+    for (const standalone of [true, false]) {
+        const context = browserContext();
+        context.navigator = {standalone};
+        loadScripts(context, ['app.js'], 'null');
+        assert.equal(context.__state.rootClasses.has('ios-home-screen'), standalone);
+    }
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    // Safari tabs sit on the toolbar's reserved strip; Home Screen apps reach the screen edge.
+    assert.match(css, /\.lightbox-video-player \{[^}]*--video-controls-bottom: 0px;/s);
+    assert.match(css, /\.ios-home-screen \.lightbox-video-player \{ --video-controls-bottom: max\(8px, env\(safe-area-inset-bottom\)\); \}/);
+    assert.match(css, /:root:not\(\.ios-home-screen\) \.scroll-to-top \{ bottom: 12px; \}/);
+    assert.match(html, /class="scroll-to-top fixed bottom-6 left-6/);
+});
+
+test('phone media viewers keep the page paintable under Safari chrome while blocking one-finger page pans', () => {
+    const context = browserContext();
+    let phone = true;
+    context.window.matchMedia = () => ({matches: phone});
     context.window.scrollY = 500;
     const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
     const app = immediateComponent(tweetApp());
@@ -4134,8 +4297,15 @@ test('mobile video keeps the page paintable under Safari chrome while blocking o
     watchers.lightboxOpen(false);
     assert.equal(context.document.body.style.overflow, 'auto');
     app.lightboxMedia = [{type: 'photo'}];
+    app.lightboxOpen = true;
     watchers.lightboxOpen(true);
-    assert.equal(context.document.body.style.overflow, 'hidden'); // Existing photo/desktop modal locking is retained.
+    assert.equal(context.document.body.style.overflow, 'auto'); // Photos and GIFs use the same phone viewer.
+    app.moveLightboxGesture({touches: [{}], preventDefault() {prevented++;}});
+    assert.equal(prevented, 2);
+    watchers.lightboxOpen(false);
+    phone = false;
+    watchers.lightboxOpen(true);
+    assert.equal(context.document.body.style.overflow, 'hidden'); // Desktop modal locking is retained.
     watchers.lightboxOpen(false);
     assert.equal(context.document.body.style.overflow, 'auto');
 });

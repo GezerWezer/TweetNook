@@ -32,6 +32,10 @@ const DEFAULT_FEEDS = [['likes', 'liked_latest'], ['all', 'newest'], ['bookmarks
 const videoUiHideTimers = new WeakMap();
 const videoScrubStates = new WeakMap();
 let videoTapBlockedUntil = 0;
+// iOS opens a Home Screen web app without a manifest in the "browser" display
+// mode; only navigator.standalone tells it apart from a Safari tab, whose
+// toolbar reserves a strip at the bottom of the screen.
+if (globalThis.navigator?.standalone) document.documentElement.classList.add('ios-home-screen');
 const VIDEO_PLAYER_EVENTS = 'onloadedmetadata="window.tweetNookSyncVideoDuration(this)" ondurationchange="window.tweetNookSyncVideoDuration(this)" ontimeupdate="window.tweetNookSyncVideoDuration(this)" onended="window.tweetNookSyncVideoDuration(this); window.tweetNookSyncVideoUi(this)" onplay="window.tweetNookShowVideoUi(this)" onpause="window.tweetNookSyncVideoUi(this)"';
 
 function formatMediaDuration(durationMillis) {
@@ -427,12 +431,13 @@ function tweetNookInitVideoPlayer(video) {
     tweetNookSyncVideoUi(video);
 }
 
-// Keep the video decoder's surface at one size and move/crop it on the compositor.
-function fittedVideoRect(video, includeCrop = false) {
-    const frame = video.getBoundingClientRect();
-    const cover = getComputedStyle(video).objectFit === 'cover';
+// Keep a picture's surface (a video decoder, an image) at one size and move/crop it on the compositor.
+function fittedMediaRect(media, includeCrop = false) {
+    const frame = media.getBoundingClientRect();
+    const cover = getComputedStyle(media).objectFit === 'cover';
     if (cover && !includeCrop) return frame;
-    const ratio = video.videoWidth / video.videoHeight || Number(video.dataset?.videoAspect) || frame.width / frame.height;
+    const ratio = media.videoWidth / media.videoHeight || media.naturalWidth / media.naturalHeight
+        || Number(media.dataset?.videoAspect) || frame.width / frame.height;
     const width = cover ? Math.max(frame.width, frame.height * ratio) : Math.min(frame.width, frame.height * ratio);
     const height = width / ratio;
     return { left: frame.left + (frame.width - width) / 2, top: frame.top + (frame.height - height) / 2, width, height };
@@ -464,14 +469,34 @@ function videoBackdropOpacity(backdrop) {
     return color?.startsWith('rgba(') ? Number(color.split(',')[3].replace(')', '')) : 1;
 }
 
-function animateMobileVideoBounds(video, origin, opening, duration, startBounds = null, shade = null) {
-    const surface = video?.parentElement;
+// Feed media is rounded by its own frame or by the grid around it, so only the
+// corners that meet that rounded edge are curved.
+function feedMediaRadii(element) {
+    const rect = element.getBoundingClientRect();
+    for (let node = element; node && node !== document.body; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        const radius = parseFloat(style.borderTopLeftRadius || style.borderRadius) || 0;
+        if (!radius) continue;
+        const frame = node.getBoundingClientRect();
+        const border = parseFloat(style.borderTopWidth) || 0;
+        const near = (a, b) => Math.abs(a - b) < 2;
+        const left = near(rect.left, frame.left + border), right = near(rect.left + rect.width, frame.left + frame.width - border);
+        const top = near(rect.top, frame.top + border), bottom = near(rect.top + rect.height, frame.top + frame.height - border);
+        return [top && left, top && right, bottom && right, bottom && left].map(meets => meets ? Math.max(0, radius - border) : 0);
+    }
+    return [0, 0, 0, 0];
+}
+
+// A video player moves its picture inside a wrapper while its controls stay put;
+// a photo or GIF moves itself.
+function animateMobileMediaBounds(media, origin, opening, duration, startBounds = null, shade = null) {
+    const ownSurface = media?.tagName === 'IMG' || (media?.tagName === 'VIDEO' && !isVideoPlayer(media));
+    const surface = ownSurface ? media : media?.parentElement;
     if (!surface?.animate || !origin?.isConnected || !duration) return null;
     const source = origin.getBoundingClientRect();
-    const frame = video.getBoundingClientRect();
-    const parent = surface.parentElement.getBoundingClientRect();
+    const frame = media.getBoundingClientRect();
     if (!source.width || !source.height || !frame.width || !frame.height) return null;
-    const fitted = fittedVideoRect(video, true);
+    const fitted = fittedMediaRect(media, true);
     const saved = [];
     const style = (element, values) => {
         for (const [name, value] of values) {
@@ -479,7 +504,7 @@ function animateMobileVideoBounds(video, origin, opening, duration, startBounds 
             element.style.setProperty(name, value);
         }
     };
-    const viewer = video.closest('.lightbox-viewer');
+    const viewer = media.closest('.lightbox-viewer');
     // A returning picture passes beneath the sticky headers that cover it in the
     // feed. Cropping it at their edge instead makes the covered part reappear
     // behind their translucent glass after handoff. A header inside another
@@ -502,7 +527,6 @@ function animateMobileVideoBounds(video, origin, opening, duration, startBounds 
         });
     }
     const feedInsets = videoFeedInsets(source, raised);
-    const radius = parseFloat(getComputedStyle(origin.tagName === 'VIDEO' ? origin.parentElement : origin).borderRadius) || 0;
     const crop = rect => {
         const scale = Math.max(rect.width / fitted.width, rect.height / fitted.height);
         const cropX = Math.max(0, (fitted.width - rect.width / scale) / 2);
@@ -513,23 +537,26 @@ function animateMobileVideoBounds(video, origin, opening, duration, startBounds 
         const {cropX, cropY} = crop(rect);
         return cropX > .5 || cropY > .5;
     });
-    const bounds = (rect, borderRadius, insets = {}) => {
+    const bounds = (rect, radii, insets = {}) => {
         const {scale, cropX, cropY} = crop(rect);
-        const corner = borderRadius / scale;
         const corners = [insets.top || insets.left, insets.top || insets.right, insets.bottom || insets.right, insets.bottom || insets.left]
-            .map(clipped => `${clipped ? 0 : corner}px`).join(' ');
+            .map((clipped, index) => `${clipped ? 0 : radii[index] / scale}px`).join(' ');
         return {
             transform: `translate3d(${rect.left - fitted.left - cropX * scale}px, ${rect.top - fitted.top - cropY * scale}px, 0) scale(${scale})`,
-            borderRadius: `${borderRadius / scale}px`,
+            borderRadius: radii.map(radius => `${radius / scale}px`).join(' '),
             // Ordinary videos need only a rounded, overflow-hidden surface.
             // Grid/quoted crops use a clip on that surface, never on the video.
             ...(cropped ? {clipPath: `inset(${cropY + (insets.top || 0) / scale}px ${cropX + (insets.right || 0) / scale}px ${cropY + (insets.bottom || 0) / scale}px ${cropX + (insets.left || 0) / scale}px round ${corners})`} : {}),
         };
     };
-    const feed = bounds(source, radius, feedInsets);
-    const fullscreen = bounds(startBounds || fitted, startBounds?.radius || 0);
-    style(surface, [['position', 'absolute'], ['left', `${fitted.left - parent.left}px`], ['top', `${fitted.top - parent.top}px`], ['width', `${fitted.width}px`], ['height', `${fitted.height}px`], ['max-width', 'none'], ['aspect-ratio', 'auto'], ['overflow', 'hidden'], ['border', '0'], ['background', 'transparent'], ['transform-origin', '0 0'], ['will-change', 'transform']]);
-    style(video, [['position', 'absolute'], ['left', '0'], ['top', '0'], ['width', '100%'], ['height', '100%'], ['max-width', 'none'], ['max-height', 'none'], ['object-fit', 'contain']]);
+    const feed = bounds(source, feedMediaRadii(origin), feedInsets);
+    const fullscreen = bounds(startBounds || fitted, Array(4).fill(startBounds?.radius || 0));
+    if (ownSurface) style(surface, [['transform-origin', '0 0'], ['will-change', 'transform']]);
+    else {
+        const parent = surface.parentElement.getBoundingClientRect();
+        style(surface, [['position', 'absolute'], ['left', `${fitted.left - parent.left}px`], ['top', `${fitted.top - parent.top}px`], ['width', `${fitted.width}px`], ['height', `${fitted.height}px`], ['max-width', 'none'], ['aspect-ratio', 'auto'], ['overflow', 'hidden'], ['border', '0'], ['background', 'transparent'], ['transform-origin', '0 0'], ['will-change', 'transform']]);
+        style(media, [['position', 'absolute'], ['left', '0'], ['top', '0'], ['width', '100%'], ['height', '100%'], ['max-width', 'none'], ['max-height', 'none'], ['object-fit', 'contain']]);
+    }
     const options = { duration, easing: opening ? 'cubic-bezier(0.22, 0.75, 0.2, 1)' : 'cubic-bezier(0.22, 0.65, 0.3, 1)', fill: 'both' };
     const animation = surface.animate(opening ? [feed, fullscreen] : [fullscreen, feed], options);
     const fade = [opening ? 0 : startBounds?.backdropOpacity ?? 1, opening ? 1 : 0];
@@ -573,13 +600,22 @@ function animateMobileVideoBounds(video, origin, opening, duration, startBounds 
 // parsed as script inside the inline handler.
 function tweetNookOpenLightbox(element, index) {
     const holder = element?.closest?.('[data-lightbox-media]');
-    if (!holder) return;
+    // Ignore Safari's compatibility click that follows a dismissal gesture.
+    if (!holder || Date.now() < videoTapBlockedUntil) return;
     window.dispatchEvent(new CustomEvent('open-lightbox', {
-        detail: { media: JSON.parse(holder.dataset.lightboxMedia), index },
+        detail: { media: JSON.parse(holder.dataset.lightboxMedia), index, origin: element },
     }));
 }
 
+// GIFs play in place on desktop; a phone opens them in the viewer like photos.
+function tweetNookOpenGif(event, video, index) {
+    if (!window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches) return;
+    event?.stopPropagation?.();
+    tweetNookOpenLightbox(video, index);
+}
+
 window.tweetNookOpenLightbox = tweetNookOpenLightbox;
+window.tweetNookOpenGif = tweetNookOpenGif;
 
 // Feed cards are plain markup handled by delegated listeners. Writing them while
 // Alpine's observer is paused keeps Alpine from walking (and binding) every card.
@@ -616,6 +652,8 @@ function tweetApp() {
     let lightboxMotionTimer = null;
     // Mobile video viewing hands playback back to the original inline player.
     let lightboxOriginVideo = null;
+    // Photos and GIFs return to their tile in the post that opened them.
+    let lightboxOriginHolder = null;
     let lightboxInlineMount = null;
     let lightboxVideoMotion = null;
     let lightboxVideoReadyCancel = null;
@@ -2146,7 +2184,7 @@ function tweetApp() {
             this.$watch('lightboxOpen', val => {
                 // The mobile viewer blocks pan gestures itself. Changing body
                 // overflow makes Safari stop painting beneath its floating bar.
-                if (val) { if (!this.isMobileVideoViewer()) this.lockModalScroll(); }
+                if (val) { if (!this.isMobileViewer()) this.lockModalScroll(); }
                 else {
                     this.followLightboxShade(false);
                     if (!this.showStatsModal && !this.showSettingsModal && !this.showSetupModal) this.unlockModalScroll();
@@ -2154,7 +2192,7 @@ function tweetApp() {
             });
 
             window.addEventListener('open-lightbox', (e) => {
-                this.openLightbox(e.detail.media, e.detail.index, e.detail.originVideo);
+                this.openLightbox(e.detail.media, e.detail.index, e.detail.originVideo, e.detail.origin);
             });
             
             this.videoObserver = new IntersectionObserver((entries) => {
@@ -2352,13 +2390,14 @@ function tweetApp() {
             this.lightboxDismissPending = false;
         },
 
-        openLightbox(media, index = 0, originVideo = null) {
+        openLightbox(media, index = 0, originVideo = null, origin = null) {
             if (this.lightboxOpen && lightboxOriginVideo) return;
             this.resetLightboxMotion();
             this.lightboxMedia = Array.isArray(media) ? media : [];
             const lastIndex = Math.max(0, this.lightboxMedia.length - 1);
             this.lightboxIndex = Math.min(lastIndex, Math.max(0, Number(index) || 0));
             lightboxOriginVideo = originVideo;
+            lightboxOriginHolder = origin?.closest?.('[data-lightbox-media]') || null;
             if (originVideo && this.lightboxMedia[this.lightboxIndex]) {
                 const inlinePlayer = this.isMobileVideoViewer() && Boolean(tweetNookVideoPlayer(originVideo)?.cloneNode);
                 this.lightboxMedia = this.lightboxMedia.map((item, itemIndex) => itemIndex === this.lightboxIndex
@@ -2368,7 +2407,7 @@ function tweetApp() {
             }
             this.lightboxOpen = this.lightboxMedia.length > 0;
             this.followLightboxShade(this.lightboxOpen);
-            const animate = originVideo && this.isMobileVideoViewer() && this.lightboxMotionDuration(300) && originVideo.getBoundingClientRect;
+            const animate = this.isMobileViewer() && this.lightboxMotionDuration(300) && this.lightboxMotionOrigin()?.getBoundingClientRect;
             if (animate) this.lightboxVideoMotionPhase = 'preparing';
             // Reparent before play(), within the original tap's user activation.
             // iOS must not be asked to unlock an audible player in a later tick.
@@ -2395,25 +2434,49 @@ function tweetApp() {
             const preparing = this.lightboxVideoMotionPhase === 'preparing';
             const active = this.activeLightboxVideo();
             if (active) tweetNookFinishVideoScrub(active);
-            const animate = !preparing && lightboxOriginVideo && this.isMobileVideoViewer() && active?.parentElement?.animate;
+            const media = this.activeLightboxMedia();
+            // A phone close returns the picture to its feed position when that is
+            // on screen, and otherwise fades; it never hands off to Alpine's fade.
+            const mobile = !preparing && this.lightboxOpen && this.isMobileViewer() && this.lightboxMotionDuration(280);
+            const animate = mobile && media && this.lightboxReturnOrigin();
             const shade = this.$refs.lightboxShade;
             const startBounds = animate ? {
-                ...(lightboxVideoMotion?.bounds() || {...fittedVideoRect(active), radius: 0}),
+                ...(lightboxVideoMotion?.bounds() || {...fittedMediaRect(media), radius: 0}),
                 backdropOpacity: shade ? videoBackdropOpacity(shade) : Number(this.lightboxBackdropStyle()['--lightbox-backdrop-opacity']),
             } : null;
             this.resetLightboxMotion();
-            if (lightboxInlineMount && this.$refs.inlineVideoSlot) {
+            const slide = lightboxInlineMount ? this.$refs.inlineVideoSlot : media?.closest?.('.lightbox-slide');
+            if (slide?.style && (animate || lightboxInlineMount)) {
                 // The reactive drag transform updates later. Neutralize it now
                 // before measuring the destination for the return animation.
-                this.$refs.inlineVideoSlot.style.transform = 'translate3d(0, 0, 0)';
-                this.$refs.inlineVideoSlot.style.transition = 'none';
+                slide.style.transform = 'translate3d(0, 0, 0)';
+                slide.style.transition = 'none';
             }
-            if (animate && this.lightboxOpen && this.startLightboxVideoMotion(false, startBounds)) return;
+            if (animate && this.startLightboxVideoMotion(false, startBounds)) return;
+            if (mobile && this.fadeLightbox(false)) return;
             this.finishCloseLightbox();
         },
 
         activeLightboxVideo() {
             return this.$refs.lightboxStage?.querySelector?.('.lightbox-slide.is-active video[data-video-player]');
+        },
+
+        activeLightboxMedia() {
+            return this.activeLightboxVideo() || this.$refs.lightboxStage?.querySelector?.('.lightbox-slide.is-active .lightbox-media');
+        },
+
+        // The feed element the current picture expands from and returns to.
+        lightboxMotionOrigin() {
+            if (lightboxInlineMount) return lightboxInlineMount.placeholder;
+            if (lightboxOriginVideo) return lightboxOriginVideo;
+            const element = lightboxOriginHolder?.querySelectorAll?.('img, video')[this.lightboxIndex];
+            return element?.isConnected ? element : null;
+        },
+
+        lightboxReturnOrigin() {
+            const origin = this.lightboxMotionOrigin();
+            const rect = origin?.getBoundingClientRect?.();
+            return rect?.width && rect.height && rect.top < (window.innerHeight || Infinity) && rect.top + rect.height > 0 ? origin : null;
         },
 
         followLightboxShade(follow) {
@@ -2470,46 +2533,79 @@ function tweetApp() {
             lightboxInlineMount = null;
         },
 
-        isMobileVideoViewer() {
-            const media = this.lightboxMedia[this.lightboxIndex];
-            return media?.type === 'video' && !media.isGif
+        isMobileViewer() {
+            return Boolean(this.lightboxMedia[this.lightboxIndex])
                 && Boolean(window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches);
         },
 
+        isMobileVideoViewer() {
+            const media = this.lightboxMedia[this.lightboxIndex];
+            return media?.type === 'video' && !media.isGif && this.isMobileViewer();
+        },
+
         prepareLightboxVideoMotion() {
-            const video = this.activeLightboxVideo();
-            if (!video?.parentElement?.animate) { this.lightboxVideoMotionPhase = ''; return; }
+            const media = this.activeLightboxMedia();
+            if (!media) { this.lightboxVideoMotionPhase = ''; return; }
             // The portaled video already has its feed picture/poster. Expand it
             // immediately, including when a first tap is still loading metadata.
             if (lightboxInlineMount) {
                 if (!this.startLightboxVideoMotion(true)) this.lightboxVideoMotionPhase = '';
                 return;
             }
-            // Wait for the restored playback frame so the expanding surface never
-            // replaces the feed picture with a black, newly loaded video.
+            // Wait for the image or the restored playback frame so the expanding
+            // surface never replaces the feed picture with an empty or black frame.
+            const origin = this.lightboxMotionOrigin();
+            // A GIF carries on from the frame the feed was showing.
+            const gif = media.tagName === 'VIDEO' && !isVideoPlayer(media) && origin?.tagName === 'VIDEO';
+            const follow = () => {
+                if (gif && Number.isFinite(media.duration) && media.duration > 0) media.currentTime = (origin.currentTime || 0) % media.duration;
+            };
+            const events = ['load', 'loadeddata', 'seeked'];
             let timeout;
             const cleanup = () => {
                 clearTimeout(timeout);
-                video.removeEventListener('loadeddata', ready);
-                video.removeEventListener('seeked', ready);
+                media.removeEventListener('loadedmetadata', follow);
+                events.forEach(name => media.removeEventListener(name, ready));
             };
             const begin = () => {
                 cleanup();
                 lightboxVideoReadyCancel = null;
-                if (!this.startLightboxVideoMotion(true)) this.lightboxVideoMotionPhase = '';
+                if (!this.startLightboxVideoMotion(true) && !this.fadeLightbox(true)) this.lightboxVideoMotionPhase = '';
             };
-            const ready = () => { if (video.readyState >= 2 && !video.seeking) begin(); };
+            const ready = () => {
+                if (media.tagName === 'IMG' ? media.complete && media.naturalWidth : media.readyState >= 2 && !media.seeking) begin();
+            };
             lightboxVideoReadyCancel = cleanup;
-            video.addEventListener('loadeddata', ready);
-            video.addEventListener('seeked', ready);
+            events.forEach(name => media.addEventListener(name, ready));
+            if (gif && media.readyState >= 1) follow();
+            else if (gif) media.addEventListener('loadedmetadata', follow, {once: true});
             timeout = setTimeout(begin, 500);
             ready();
         },
 
         startLightboxVideoMotion(opening, startBounds = null) {
-            const motion = animateMobileVideoBounds(this.activeLightboxVideo(), lightboxInlineMount?.placeholder || lightboxOriginVideo, opening,
+            const motion = animateMobileMediaBounds(this.activeLightboxMedia(), this.lightboxMotionOrigin(), opening,
                 this.lightboxMotionDuration(opening ? 300 : 280), startBounds, this.$refs.lightboxShade);
             if (!motion) return false;
+            this.runLightboxMotion(motion, opening);
+            return true;
+        },
+
+        // A phone viewer without a feed picture to move to fades in or out instead.
+        fadeLightbox(opening) {
+            const frames = opening ? [{opacity: 0}, {opacity: 1}] : [{opacity: 1}, {opacity: 0}];
+            const options = {duration: this.lightboxMotionDuration(180), easing: 'ease-out', fill: 'both'};
+            const fades = [this.$refs.lightboxViewer, this.$refs.lightboxShade].map(element => element?.animate?.(frames, options)).filter(Boolean);
+            if (!fades.length || !options.duration) return false;
+            this.runLightboxMotion({
+                cancel: () => fades.forEach(fade => fade.cancel()),
+                bounds: () => null,
+                finished: Promise.all(fades.map(fade => fade.finished)).then(() => true, () => false),
+            }, opening);
+            return true;
+        },
+
+        runLightboxMotion(motion, opening) {
             lightboxVideoMotion = motion;
             this.lightboxVideoMotionPhase = opening ? 'opening' : 'closing';
             motion.finished.then(completed => {
@@ -2519,11 +2615,9 @@ function tweetApp() {
                 lightboxVideoMotion = null;
                 this.lightboxVideoMotionPhase = '';
                 this.$refs.lightboxViewer?.classList.remove('is-video-motion');
-                if (completed && opening) {
-                    tweetNookShowVideoUi(this.activeLightboxVideo());
-                }
+                const video = this.activeLightboxVideo();
+                if (completed && opening && video) tweetNookShowVideoUi(video);
             });
-            return true;
         },
 
         finishCloseLightbox() {
@@ -2538,9 +2632,9 @@ function tweetApp() {
             if (origin && !resume) heldAutoplayVideos.add(origin);
             this.lightboxOpen = false;
             videoTapBlockedUntil = Date.now() + 500;
-            if (lightboxInlineMount && this.$refs.lightboxViewer) {
-                // Hide the viewer and restore the inline surface in one handoff;
-                // never expose a fullscreen frame while Alpine schedules leave.
+            if ((lightboxInlineMount || this.isMobileViewer()) && this.$refs.lightboxViewer) {
+                // Hide the viewer and restore the feed in one handoff; never
+                // expose a fullscreen frame while Alpine schedules leave.
                 this.$refs.lightboxViewer.classList.add('is-video-closed');
                 this.$refs.lightboxViewer.classList.remove('is-video-controls-hidden');
                 this.$refs.lightboxViewer.style.display = 'none';
@@ -2715,7 +2809,7 @@ function tweetApp() {
         },
 
         moveLightboxGesture(event) {
-            if (this.lightboxOpen && this.isMobileVideoViewer() && event.touches?.length === 1) event.preventDefault?.();
+            if (this.lightboxOpen && this.isMobileViewer() && event.touches?.length === 1) event.preventDefault?.();
             if (!this.lightboxGestureStart) return;
             if (event.touches?.length !== 1) {
                 this.cancelLightboxGesture();
@@ -2796,7 +2890,7 @@ function tweetApp() {
         },
 
         animateLightboxDismiss() {
-            if (lightboxOriginVideo && this.isMobileVideoViewer()) { this.closeLightbox(); return; }
+            if (lightboxOriginVideo || (this.isMobileViewer() && this.lightboxReturnOrigin())) { this.closeLightbox(); return; }
             const duration = this.lightboxMotionDuration(180);
             this.lightboxGestureAnimating = true;
             this.lightboxDismissPending = true;
@@ -6296,8 +6390,8 @@ function tweetApp() {
 
                     const videoEvents = isGif ? '' : VIDEO_PLAYER_EVENTS;
 
-                    return wrap(`<div class="relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block ${isGif ? '' : 'media-video-player'} ${frameClass}" @click.stop>
-                                <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="${isGif ? 'media-frame-gif-video' : 'media-frame-video'} outline-none block"></video>
+                    return wrap(`<div class="relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block ${isGif ? '' : 'media-video-player'} ${frameClass}" ${isGif ? mediaAttr : ''} @click.stop>
+                                <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} ${isGif ? 'onclick="window.tweetNookOpenGif(event, this, 0)"' : ''} class="${isGif ? 'media-frame-gif-video' : 'media-frame-video'} outline-none block"></video>
                                 ${indicator}
                                 ${isGif ? '' : renderVideoControls()}
                             </div>`);
@@ -6327,7 +6421,7 @@ function tweetApp() {
                         const autoplayAttr = isGif ? 'autoplay muted playsinline' : 'playsinline';
                         const controlsAttr = isGif ? '' : `data-video-custom data-video-aspect="${this.mediaFrameLayout(item.m, context).sourceAspect}"`;
                         const gifEvents = isGif
-                            ? 'data-animated-gif onplay="window.tweetNookSyncGifIndicator(this)" onpause="window.tweetNookSyncGifIndicator(this)" onloadeddata="window.tweetNookSyncGifIndicator(this)"'
+                            ? `data-animated-gif onplay="window.tweetNookSyncGifIndicator(this)" onpause="window.tweetNookSyncGifIndicator(this)" onloadeddata="window.tweetNookSyncGifIndicator(this)" onclick="window.tweetNookOpenGif(event, this, ${currentDlIdx})"`
                             : '';
                         const videoEvents = isGif ? '' : VIDEO_PLAYER_EVENTS;
                         const indicator = this.renderMediaPlaybackIndicator(item);

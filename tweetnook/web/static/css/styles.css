@@ -2428,22 +2428,28 @@ body {
        105% of the viewport: oversize the viewer past every edge, and let the
        page-positioned shade carry the backdrop. Safari draws page content
        beneath its toolbars, so those areas fade with the rest of the screen. */
-    .lightbox-viewer.is-video-viewer {
-        --video-viewer-bleed: 160px;
-        inset: calc(-1 * var(--video-viewer-bleed));
+    .lightbox-viewer {
+        --lightbox-bleed: 160px;
+        inset: calc(-1 * var(--lightbox-bleed));
         background-color: transparent !important;
-        backdrop-filter: none;
     }
-    .is-video-viewer > .lightbox-stage,
-    .is-video-viewer > .lightbox-chrome { inset: var(--video-viewer-bleed); }
-    .lightbox-viewer.is-video-viewer:not(.is-video-closed) + .lightbox-shade { display: block; }
+    .lightbox-viewer > .lightbox-stage,
+    .lightbox-viewer > .lightbox-chrome { inset: var(--lightbox-bleed); }
+    .lightbox-viewer .lightbox-close-button {
+        top: calc(var(--lightbox-bleed) + max(16px, env(safe-area-inset-top)));
+        left: calc(var(--lightbox-bleed) + max(16px, env(safe-area-inset-left)));
+    }
+    .lightbox-viewer:not(.is-video-closed) + .lightbox-shade { display: block; }
     .is-video-viewer .lightbox-backdrop { background: transparent; }
-    /* Alpine's leave lifecycle lasts a frame after the bounds return completes. */
-    .lightbox-viewer.is-video-viewer.is-video-closed { visibility: hidden; pointer-events: none; }
-    .lightbox-viewer.is-video-viewer.lightbox-overlay-enter,
-    .lightbox-viewer.is-video-viewer.lightbox-overlay-leave { transition: none; }
-    .lightbox-viewer.is-video-viewer.lightbox-overlay-enter-start,
-    .lightbox-viewer.is-video-viewer.lightbox-overlay-leave-end { opacity: 1; }
+    /* Media expands from and returns to the feed (or fades) on its own, in
+       place of Alpine's overlay fade, whose leave lifecycle also lasts a frame
+       after the return completes. */
+    .lightbox-viewer.is-video-closed { visibility: hidden; pointer-events: none; }
+    .lightbox-viewer.lightbox-overlay-enter,
+    .lightbox-viewer.lightbox-overlay-leave { transition: none; }
+    .lightbox-viewer.lightbox-overlay-enter-start,
+    .lightbox-viewer.lightbox-overlay-leave-end { opacity: 1; }
+    .is-video-preparing .lightbox-slide.is-active .lightbox-media { visibility: hidden; }
     /* The shade is the only black fill; the moving picture and controls add none. */
     .lightbox-video-player { background: transparent; }
     .is-video-preparing .lightbox-video-player > video { visibility: hidden; }
@@ -2451,8 +2457,6 @@ body {
     .is-video-motion .lightbox-video-player .video-control-bar,
     .is-video-motion .video-center-play { opacity: 0 !important; pointer-events: none !important; }
     .is-video-viewer .lightbox-close-button {
-        top: calc(var(--video-viewer-bleed) + max(16px, env(safe-area-inset-top)));
-        left: calc(var(--video-viewer-bleed) + max(16px, env(safe-area-inset-left)));
         width: 40px;
         height: 40px;
         padding: 8px;
@@ -2469,9 +2473,10 @@ body {
     .is-video-viewer .lightbox-close-icon { display: none; }
     .is-video-viewer .lightbox-video-back-icon { display: block; }
     .lightbox-video-player {
-        /* Browser chrome already bounds the usable viewport. Standalone needs
-           the home-indicator inset as well (see the override below). */
-        --video-controls-bottom: 8px;
+        /* Safari keeps fixed content above the strip its toolbar reserves, so
+           the controls sit directly on it. Standalone reaches the screen's
+           edge and keeps clear of the home indicator (see the override below). */
+        --video-controls-bottom: 0px;
         width: 100%;
         height: 100%;
         max-width: none;
@@ -2538,6 +2543,12 @@ body {
     .lightbox-video-player.is-scrubbing .video-scrub-track { top: 6px; height: 8px; opacity: 1; }
     .is-video-viewer:has(.is-scrubbing) .lightbox-close-button,
     .is-video-viewer:has(.is-scrubbing) .lightbox-chrome { opacity: 0 !important; pointer-events: none; }
+}
+@media (max-width: 640px), (pointer: coarse) {
+    /* A Home Screen app reaches the screen's edge, where the home indicator sits. */
+    .ios-home-screen .lightbox-video-player { --video-controls-bottom: max(8px, env(safe-area-inset-bottom)); }
+    /* In a Safari tab, the toolbar's reserved strip already spaces it from the edge. */
+    :root:not(.ios-home-screen) .scroll-to-top { bottom: 12px; }
 }
 @media (max-width: 640px) and (display-mode: standalone), (pointer: coarse) and (display-mode: standalone) {
     .lightbox-video-player { --video-controls-bottom: max(8px, env(safe-area-inset-bottom)); }
