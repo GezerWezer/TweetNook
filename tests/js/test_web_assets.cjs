@@ -3713,6 +3713,13 @@ test('autoplay setting plays the topmost visible video muted and shares unmuting
     assert.ok(lower.paused);
     assert.ok(!upper.muted && !lower.muted && !lightbox.muted);
 
+    // Click to Play also keeps manual playback to one video at a time.
+    upper.play();
+    lower.play();
+    assert.ok(upper.paused && !lower.paused);
+    assert.equal(lower.muted, false);
+    lower.pause();
+
     const restoredPlayback = () => {
         const restored = immediateComponent(tweetApp());
         restored.fetchSetup = async () => {};

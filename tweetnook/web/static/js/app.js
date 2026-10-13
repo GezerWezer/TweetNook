@@ -1816,13 +1816,15 @@ function tweetApp() {
             });
         },
 
+        // Only one player runs at a time, however it was started.
         handleVideoPlay(video) {
-            if (this.videoPlayback !== 'autoplay' || !isVideoPlayer(video)) return;
-            heldAutoplayVideos.delete(video);
-            if (!forcedMuteVideos.has(video)) video.muted = this.videoMuted;
+            if (!isVideoPlayer(video)) return;
             document.querySelectorAll('video[controls]').forEach(other => {
                 if (other !== video && !other.paused) other.pause();
             });
+            if (this.videoPlayback !== 'autoplay') return;
+            heldAutoplayVideos.delete(video);
+            if (!forcedMuteVideos.has(video)) video.muted = this.videoMuted;
         },
 
         handleVideoPause(video) {
