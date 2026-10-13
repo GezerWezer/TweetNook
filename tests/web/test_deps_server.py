@@ -11,7 +11,12 @@ from fastapi.testclient import TestClient
 
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.web import server
+from tweetnook.web import deps
 from tweetnook.web.deps import (
+    SESSION_COOKIE,
+    SESSION_MAX_AGE,
+    SESSION_RENEW_AGE,
+    WebSessionMiddleware,
     get_server_state,
     get_store,
     server_state,
@@ -21,6 +26,7 @@ from tweetnook.web.deps import (
 
 def _auth_app() -> FastAPI:
     app = FastAPI()
+    app.add_middleware(WebSessionMiddleware)
 
     @app.get("/protected")
     def protected(_auth: bool = Depends(verify_credentials)):
@@ -98,6 +104,73 @@ def test_auth_accepts_correct_password_independent_of_username() -> None:
         response = client.get("/protected", auth=("any-user", "correct"))
 
     assert response.status_code == 200
+
+
+def test_password_login_is_remembered_by_a_session_cookie() -> None:
+    server_state["password_hash"] = hashlib.sha256(b"correct").hexdigest()
+
+    with TestClient(_auth_app()) as client:
+        login = client.get("/protected", auth=("any-user", "correct"))
+        token = client.cookies[SESSION_COOKIE]
+
+    assert login.status_code == 200
+    cookie = login.headers["set-cookie"]
+    assert f"Max-Age={SESSION_MAX_AGE}" in cookie
+    assert "HttpOnly" in cookie and "SameSite=Lax" in cookie and "Path=/" in cookie
+    assert "Secure" not in cookie  # A plain-HTTP server can't use a Secure cookie.
+    # A Home Screen web app relaunches with only the cookie, and isn't asked again.
+    with TestClient(_auth_app(), cookies={SESSION_COOKIE: token}) as client:
+        remembered = client.get("/protected")
+    assert remembered.status_code == 200
+    assert "set-cookie" not in remembered.headers  # Fresh sessions aren't reissued.
+
+    issued, _, signature = token.partition(".")
+    forged = f"{int(issued) + 1}.{signature}"
+    with TestClient(_auth_app(), cookies={SESSION_COOKIE: forged}) as client:
+        assert client.get("/protected").status_code == 401
+    server_state["password_hash"] = hashlib.sha256(b"changed").hexdigest()
+    with TestClient(_auth_app(), cookies={SESSION_COOKIE: token}) as client:
+        assert client.get("/protected").status_code == 401  # Changing the password signs out.
+
+
+def test_session_cookie_is_secure_over_https_and_absent_without_a_password() -> None:
+    server_state["password_hash"] = hashlib.sha256(b"correct").hexdigest()
+    with TestClient(_auth_app(), base_url="https://testserver") as client:
+        response = client.get("/protected", auth=("user", "correct"))
+    assert "; Secure" in response.headers["set-cookie"]
+
+    server_state.pop("password_hash")
+    with TestClient(_auth_app()) as client:
+        assert "set-cookie" not in client.get("/protected").headers
+
+
+def test_session_renews_after_a_week_and_expires_after_its_lifetime(monkeypatch) -> None:
+    server_state["password_hash"] = hashlib.sha256(b"correct").hexdigest()
+    now = [1_800_000_000]
+    monkeypatch.setattr(deps.time, "time", lambda: now[0])
+    token = deps.create_session_token(server_state["password_hash"])
+
+    now[0] += SESSION_RENEW_AGE
+    with TestClient(_auth_app(), cookies={SESSION_COOKIE: token}) as client:
+        renewed = client.get("/protected")
+    assert renewed.status_code == 200
+    assert renewed.headers["set-cookie"].startswith(f"{SESSION_COOKIE}={now[0]}.")
+
+    now[0] += SESSION_MAX_AGE
+    with TestClient(_auth_app(), cookies={SESSION_COOKIE: token}) as client:
+        assert client.get("/protected").status_code == 401
+
+
+def test_session_key_is_private_and_survives_restarts(tmp_path: Path) -> None:
+    server_state["paths"] = _paths(tmp_path)
+    server_state["password_hash"] = hashlib.sha256(b"correct").hexdigest()
+    token = deps.create_session_token(server_state["password_hash"])
+    key_file = server_state["paths"].web_session_key_file
+
+    assert key_file.stat().st_mode & 0o777 == 0o600
+    server_state.pop("session_key")  # A restarted server reads the same key.
+    assert deps.session_age(token, server_state["password_hash"]) is not None
+    assert deps.session_age("not-a-session", server_state["password_hash"]) is None
 
 
 def test_state_dependencies_return_shared_objects() -> None:

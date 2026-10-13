@@ -247,6 +247,10 @@ class XDGPaths(BaseModel):
         return self.data_dir / "notices.json"
 
     @property
+    def web_session_key_file(self) -> Path:
+        return self.data_dir / "web-session.key"
+
+    @property
     def schedule_state_file(self) -> Path:
         return self.data_dir / "schedule-state.json"
 
