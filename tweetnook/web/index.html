@@ -1108,22 +1108,22 @@
             </button>
 
             <div x-ref="lightboxStage" class="lightbox-stage absolute inset-0 z-10 overflow-hidden">
-                <template x-for="mediaIndex in lightboxVisibleIndices()" :key="lightboxMedia[mediaIndex].src + ':' + mediaIndex">
+                <template x-for="mediaIndex in lightboxVisibleIndices()" :key="lightboxMedia[mediaIndex]?.src + ':' + mediaIndex">
                     <div class="lightbox-slide lightbox-gesture-surface absolute inset-0 flex items-center justify-center"
                          :class="{ 'is-active': mediaIndex === lightboxIndex }"
                          :style="lightboxSlideStyle(mediaIndex)"
                          :aria-hidden="mediaIndex !== lightboxIndex">
-                    <template x-if="lightboxMedia[mediaIndex].type === 'photo'">
-                        <img :src="lightboxMedia[mediaIndex].src" class="lightbox-media max-w-full max-h-full object-contain lightbox-gesture-surface" draggable="false" @click.stop>
+                    <template x-if="lightboxMedia[mediaIndex]?.type === 'photo'">
+                        <img :src="lightboxMedia[mediaIndex]?.src" class="lightbox-media max-w-full max-h-full object-contain lightbox-gesture-surface" draggable="false" @click.stop>
                     </template>
-                    <template x-if="lightboxMedia[mediaIndex].type === 'video'">
+                    <template x-if="lightboxMedia[mediaIndex]?.type === 'video'">
                         <div style="display: contents">
-                            <template x-if="lightboxMedia[mediaIndex].isGif">
-                                <video :src="lightboxMedia[mediaIndex].src" :autoplay="lightboxOpen && mediaIndex === lightboxIndex" loop muted playsinline class="lightbox-media max-w-[90%] max-h-[90%] outline-none lightbox-gesture-surface" @click.stop></video>
+                            <template x-if="lightboxMedia[mediaIndex]?.isGif">
+                                <video :src="lightboxMedia[mediaIndex]?.src" :autoplay="lightboxOpen && mediaIndex === lightboxIndex" loop muted playsinline class="lightbox-media max-w-[90%] max-h-[90%] outline-none lightbox-gesture-surface" @click.stop></video>
                             </template>
-                            <template x-if="!lightboxMedia[mediaIndex].isGif && !lightboxMedia[mediaIndex].inlinePlayer">
+                            <template x-if="!lightboxMedia[mediaIndex]?.isGif && !lightboxMedia[mediaIndex]?.inlinePlayer">
                                 <div class="media-video-player lightbox-video-player" @click.stop>
-                                    <video :src="lightboxMedia[mediaIndex].src" :data-lightbox-index="mediaIndex" :loop="lightboxMedia[mediaIndex].loop || false" data-video-custom playsinline webkit-playsinline class="lightbox-media outline-none"></video>
+                                    <video :src="lightboxMedia[mediaIndex]?.src" :data-lightbox-index="mediaIndex" :loop="lightboxMedia[mediaIndex]?.loop || false" data-video-custom playsinline webkit-playsinline class="lightbox-media outline-none"></video>
                                     <div x-html="renderVideoControls()"></div>
                                 </div>
                             </template>
@@ -3481,7 +3481,7 @@
                 x-transition:leave-start="opacity-100 translate-y-0 scale-100"
                 x-transition:leave-end="opacity-0 translate-y-4 scale-95"
                 @click="scrollToTop()"
-                class="fixed bottom-6 left-6 z-40 p-3 bg-[var(--accent-color)] text-[var(--accent-text)] rounded-full shadow-lg hover:bg-[var(--accent-hover)] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent-color)] focus:ring-offset-2 flex items-center justify-center cursor-pointer group"
+                class="scroll-to-top fixed bottom-6 left-6 z-40 p-3 bg-[var(--accent-color)] text-[var(--accent-text)] rounded-full shadow-lg hover:bg-[var(--accent-hover)] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[var(--accent-color)] focus:ring-offset-2 flex items-center justify-center cursor-pointer group"
                 aria-label="Scroll to top"
                 title="Back to top">
             <svg class="w-5 h-5 group-hover:-translate-y-0.5 transition-transform duration-150" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
