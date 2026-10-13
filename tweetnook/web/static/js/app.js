@@ -560,8 +560,8 @@ function animateMobileMediaBounds(media, origin, opening, duration, startBounds 
     const options = { duration, easing: opening ? 'cubic-bezier(0.22, 0.75, 0.2, 1)' : 'cubic-bezier(0.22, 0.65, 0.3, 1)', fill: 'both' };
     const animation = surface.animate(opening ? [feed, fullscreen] : [fullscreen, feed], options);
     const fade = [opening ? 0 : startBounds?.backdropOpacity ?? 1, opening ? 1 : 0];
-    // Dismissal reveals the page quickly, then holds it while the picture lands.
-    const fadeOptions = {...options, duration: opening ? duration : Math.min(duration, 120), easing: opening ? 'linear' : 'ease-out'};
+    // The backdrop settles well before the picture lands, in either direction.
+    const fadeOptions = {...options, duration: Math.min(duration, opening ? 150 : 120), easing: 'ease-out'};
     const backdrop = shade?.animate?.(fade.map(opacity => ({backgroundColor: `rgba(0, 0, 0, ${opacity})`})), fadeOptions);
     // Raised headers left the backdrop early, so they fade in with the page.
     const headerFades = raised.map(header => header.animate?.([{opacity: 1 - fade[0]}, {opacity: 1}], fadeOptions));
