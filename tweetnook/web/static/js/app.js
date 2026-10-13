@@ -11,7 +11,7 @@ const heldAutoplayVideos = new WeakSet();
 // Players muted only because the browser refused audible autoplay.
 const forcedMuteVideos = new WeakSet();
 const AVATAR_URL_VERSION = 3;
-// Native video controls fade this long after the last pointer/touch/key activity
+// Video controls fade this long after the last pointer/touch/key activity
 // during playback, and almost immediately once the pointer leaves the video.
 const VIDEO_UI_IDLE_MS = 3000;
 const VIDEO_UI_LEAVE_MS = 300;
@@ -30,7 +30,9 @@ const MEDIA_PREFETCH_MARGIN_PX = 1600;
 const THREAD_HOVER_PREFETCH_MS = 150;
 const DEFAULT_FEEDS = [['likes', 'liked_latest'], ['all', 'newest'], ['bookmarks', 'newest'], ['tweets', 'newest']];
 const videoUiHideTimers = new WeakMap();
-const VIDEO_PLAYER_EVENTS = 'onloadedmetadata="window.tweetNookSyncVideoDuration(this)" ondurationchange="window.tweetNookSyncVideoDuration(this)" ontimeupdate="window.tweetNookSyncVideoDuration(this)" onended="window.tweetNookSyncVideoDuration(this); window.tweetNookSyncVideoUi(this)" onplay="window.tweetNookShowVideoUi(this)" onpause="window.tweetNookSyncVideoUi(this)" onmouseenter="window.tweetNookShowVideoUi(this)" onmousemove="window.tweetNookShowVideoUi(this)" onmouseleave="window.tweetNookLeaveVideoUi(this)" onkeydown="window.tweetNookShowVideoUi(this)" ontouchstart="window.tweetNookShowVideoUi(this)" ontouchend="window.tweetNookShowVideoUi(this)" ontouchcancel="window.tweetNookShowVideoUi(this)"';
+const videoScrubStates = new WeakMap();
+let videoTapBlockedUntil = 0;
+const VIDEO_PLAYER_EVENTS = 'onloadedmetadata="window.tweetNookSyncVideoDuration(this)" ondurationchange="window.tweetNookSyncVideoDuration(this)" ontimeupdate="window.tweetNookSyncVideoDuration(this)" onended="window.tweetNookSyncVideoDuration(this); window.tweetNookSyncVideoUi(this)" onplay="window.tweetNookShowVideoUi(this)" onpause="window.tweetNookSyncVideoUi(this)"';
 
 function formatMediaDuration(durationMillis) {
     const millis = Number(durationMillis);
@@ -45,8 +47,17 @@ function formatMediaDuration(durationMillis) {
     return `${Math.floor(totalMinutes / 60)}:${minutes}:${seconds}`;
 }
 
+function tweetNookVideoPlayer(video) {
+    return video?.closest?.('.media-video-player') || video?.parentElement;
+}
+
+function isMobileFullscreenVideo(video) {
+    return Boolean(video?.closest?.('.lightbox-stage') && window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches);
+}
+
 function tweetNookSyncVideoDuration(video) {
-    const indicator = video?.parentElement?.querySelector?.('[data-video-duration]');
+    tweetNookSyncPlayerControls(video);
+    const indicator = tweetNookVideoPlayer(video)?.querySelector?.('[data-video-duration]');
     const durationSeconds = Number(video?.duration);
     if (!indicator || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return;
 
@@ -62,19 +73,23 @@ function tweetNookSyncVideoDuration(video) {
     }
 }
 
-// The remaining-time badge sits under the native control bar, so it is shown only
-// while that bar is hidden: during playback, after the controls' idle fade-out.
-// Browsers keep the bar up whenever playback is paused or ended.
+// Keep the remaining-time badge separate from the full control bar.
 function tweetNookSyncVideoUi(video) {
-    const player = video?.parentElement;
+    const player = tweetNookVideoPlayer(video);
     if (!player?.classList) return;
 
-    const nativeUiVisible = Boolean(video.paused || video.ended) || videoUiHideTimers.has(player);
+    const nativeUiVisible = Boolean(video.paused || video.ended) || videoUiHideTimers.has(player)
+        || (document.activeElement?.matches?.(':focus-visible') && player.contains?.(document.activeElement));
     player.classList.toggle('is-native-ui-hidden', !nativeUiVisible);
+    const viewer = video.closest?.('.lightbox-viewer');
+    if (viewer && isMobileFullscreenVideo(video)) {
+        viewer.classList.toggle('is-video-controls-hidden', !nativeUiVisible);
+    }
+    tweetNookSyncPlayerControls(video);
 }
 
 function tweetNookShowVideoUi(video, holdMs = VIDEO_UI_IDLE_MS) {
-    const player = video?.parentElement;
+    const player = tweetNookVideoPlayer(video);
     if (!player?.classList) return;
 
     clearTimeout(videoUiHideTimers.get(player));
@@ -87,6 +102,85 @@ function tweetNookShowVideoUi(video, holdMs = VIDEO_UI_IDLE_MS) {
 
 function tweetNookLeaveVideoUi(video) {
     tweetNookShowVideoUi(video, VIDEO_UI_LEAVE_MS);
+}
+
+function tweetNookFinishVideoScrub(video, cancelled = false) {
+    const state = videoScrubStates.get(video);
+    if (!state) return;
+    videoScrubStates.delete(video);
+    state.cleanup();
+    tweetNookVideoPlayer(video).classList.remove('is-scrubbing');
+    video.currentTime = cancelled ? state.time : state.targetTime;
+    if (state.resume && video.isConnected) video.play()?.catch?.(() => {});
+    tweetNookSyncVideoDuration(video);
+    tweetNookShowVideoUi(video);
+}
+
+function tweetNookQueueScrubSeek(video, state) {
+    if (state.frame !== null || video.seeking) return;
+    const update = () => {
+        state.frame = null;
+        if (videoScrubStates.get(video) === state && !video.seeking && video.currentTime !== state.targetTime) video.currentTime = state.targetTime;
+    };
+    state.frame = window.requestAnimationFrame ? window.requestAnimationFrame(update) : setTimeout(update, 16);
+}
+
+function tweetNookStartVideoScrub(video, event = null) {
+    if (videoScrubStates.has(video) || !Number.isFinite(video.duration) || video.duration <= 0) return;
+    const seek = tweetNookVideoPlayer(video).querySelector('[data-video-seek]');
+    const pointerControlled = Number.isFinite(event?.clientX);
+    const state = {
+        resume: !video.paused && !video.ended,
+        time: video.currentTime,
+        targetTime: video.currentTime,
+        pointerControlled,
+        pointerId: event?.pointerId,
+        frame: null,
+        cleanup() {
+            if (state.frame !== null) {
+                if (window.cancelAnimationFrame) window.cancelAnimationFrame(state.frame);
+                else clearTimeout(state.frame);
+            }
+            document.removeEventListener('pointermove', move, true);
+            document.removeEventListener('pointerup', finish, true);
+            document.removeEventListener('pointercancel', cancel, true);
+            window.removeEventListener('blur', cancel);
+            video.removeEventListener('seeked', ready);
+            if (seek.hasPointerCapture?.(state.pointerId)) seek.releasePointerCapture(state.pointerId);
+        },
+    };
+    const samePointer = e => state.pointerId === undefined || e?.pointerId === state.pointerId;
+    const move = e => {
+        if (!pointerControlled || !samePointer(e) || !Number.isFinite(e?.clientX)) return;
+        e.preventDefault?.();
+        const rect = seek.getBoundingClientRect();
+        if (!rect.width) return;
+        state.targetTime = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * video.duration;
+        tweetNookSyncPlayerControls(video);
+        tweetNookQueueScrubSeek(video, state);
+    };
+    const finish = e => {
+        if (!samePointer(e)) return;
+        move(e);
+        tweetNookFinishVideoScrub(video);
+    };
+    const cancel = e => { if (e?.type === 'blur' || samePointer(e)) tweetNookFinishVideoScrub(video, true); };
+    const ready = () => tweetNookQueueScrubSeek(video, state);
+    videoScrubStates.set(video, state);
+    document.addEventListener('pointermove', move, {capture: true, passive: false});
+    document.addEventListener('pointerup', finish, true);
+    document.addEventListener('pointercancel', cancel, true);
+    window.addEventListener('blur', cancel);
+    video.addEventListener('seeked', ready);
+    tweetNookVideoPlayer(video).classList.add('is-scrubbing');
+    video.pause();
+    if (pointerControlled) {
+        event.preventDefault?.();
+        seek.focus?.({preventScroll: true});
+        seek.setPointerCapture?.(state.pointerId);
+        move(event);
+    }
+    tweetNookSyncVideoUi(video);
 }
 
 function tweetNookSyncGifIndicator(video) {
@@ -116,7 +210,7 @@ function tweetNookToggleGif(event, indicator) {
 
 // GIFs play without controls; every other video is a player.
 function isVideoPlayer(video) {
-    return video?.tagName === 'VIDEO' && video.hasAttribute('controls');
+    return video?.tagName === 'VIDEO' && (video.hasAttribute('controls') || video.hasAttribute('data-video-custom') || video.hasAttribute('data-video-player'));
 }
 
 function isFeedVideoPlayer(video) {
@@ -129,6 +223,345 @@ window.tweetNookSyncVideoDuration = tweetNookSyncVideoDuration;
 window.tweetNookSyncVideoUi = tweetNookSyncVideoUi;
 window.tweetNookShowVideoUi = tweetNookShowVideoUi;
 window.tweetNookLeaveVideoUi = tweetNookLeaveVideoUi;
+
+const VIDEO_PLAYER_SELECTOR = 'video[controls], video[data-video-custom], video[data-video-player]';
+// SVG geometry read from X's live player in Helium (2026-10-12).
+const VIDEO_ICONS = {
+    play: '<g><path d="M7.00 4.30L13.30 8.45L13.30 15.55L7.00 19.70Z" fill="currentcolor" stroke="currentcolor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><path d="M13.30 8.45L18.70 12.00L18.70 12.00L13.30 15.55Z" fill="currentcolor" stroke="currentcolor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></g>',
+    pause: '<g><path d="M6.00 6.00L9.00 6.00L9.00 18.00L6.00 18.00Z" fill="currentcolor" stroke="currentcolor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><path d="M15.00 6.00L18.00 6.00L18.00 18.00L15.00 18.00Z" fill="currentcolor" stroke="currentcolor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></g>',
+    sound: '<g><path clip-rule="evenodd" d="M14 22h-2.35l-.275-.219L6.648 18H4.5C2.567 18 1 16.433 1 14.5v-5C1 7.567 2.567 6 4.5 6h2.148l4.727-3.781.274-.219H14v20zM7.625 7.781L7.351 8H4.5C3.672 8 3 8.672 3 9.5v5c0 .828.672 1.5 1.5 1.5h2.85l.275.219 4.375 3.5V4.28l-4.375 3.5z" fill-rule="evenodd"/><path d="M20.817 5.098C22.192 7.05 23 9.432 23 12c0 2.568-.808 4.95-2.183 6.902l-1.634-1.152C20.328 16.124 21 14.142 21 12s-.672-4.124-1.817-5.75l1.634-1.152zm-3.252 2.33C18.47 8.724 19 10.302 19 12s-.53 3.276-1.435 4.572l-1.64-1.144C16.602 14.456 17 13.276 17 12c0-1.276-.398-2.456-1.075-3.428l1.64-1.144z"/></g>',
+    muted: '<g><path d="M16 22h-2.35l-.275-.219-3.842-3.073 1.424-1.424L14 19.72v-5.477l2-2V22z"/><path clip-rule="evenodd" d="M16 6.586l4.293-4.293 1.414 1.414-18 18-1.414-1.414 2.657-2.658C3.795 17.063 3 15.875 3 14.5v-5C3 7.567 4.567 6 6.5 6h2.148l4.727-3.781.274-.219H16v4.586zM9.625 7.78L9.351 8H6.5C5.672 8 5 8.672 5 9.5v5c0 .828.672 1.5 1.5 1.5h.086L14 8.586V4.28l-4.375 3.5z" fill-rule="evenodd"/></g>',
+    mobileMuted: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h4l5-4v14l-5-4H3z"/><path d="m17 10 4 4m0-4-4 4"/></g>',
+    mobileSound: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h4l5-4v14l-5-4H3z"/><path d="M16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></g>',
+    fullscreen: '<g><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"/></g>',
+    exitFullscreen: '<g><path d="M21.457 3.96L16.414 9H21v2h-8V3h2v4.59l5.043-5.05 1.414 1.42zM3 13h8v8H9v-4.59l-5.043 5.05-1.414-1.42L7.586 15H3v-2z"/></g>',
+    poster: '<g><circle cx="30" cy="30.4219" fill="#333333" opacity="0.6" r="30"/><path d="M22.2275 17.1971V43.6465L43.0304 30.4218L22.2275 17.1971Z" fill="white"/></g>',
+};
+function videoIcon(name) {
+    return `<svg viewBox="${name === 'poster' ? '0 0 60 61' : '0 0 24 24'}" aria-hidden="true">${VIDEO_ICONS[name]}</svg>`;
+}
+
+function renderVideoControls() {
+    const button = (action, label, icon, className = '') => `<button type="button" class="video-button ${className}" data-video-action="${action}" aria-label="${label}" title="${label}">${videoIcon(icon)}</button>`;
+    return `<div data-video-controls hidden>
+        ${button('play', 'Play video', 'poster', 'video-center-play')}
+        ${button('mute', 'Mute', 'mobileSound', 'video-idle-mute')}
+        <div class="video-control-bar">
+            <span class="video-scrub-time" data-video-scrub-time aria-hidden="true">0:00 / 0:00</span>
+            <div class="video-seek-wrap">
+                <input class="video-seek" data-video-seek type="range" min="0" max="100" step="0.1" value="0" aria-label="Seek video" disabled>
+                <span class="video-scrub-track" aria-hidden="true"><span></span></span>
+            </div>
+            <div class="video-control-row">
+                ${button('play', 'Play video', 'play')}
+                <span class="video-time" data-video-time>0:00 / 0:00</span>
+                <span class="video-time video-mobile-time" data-video-remaining-time>-0:00</span>
+                <div class="video-volume-group">${button('mute', 'Mute', 'sound')}
+                    <input class="video-volume" data-video-volume type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+                </div>
+                ${button('fullscreen', 'Full screen', 'fullscreen')}
+            </div>
+        </div>
+    </div>`;
+}
+
+function tweetNookSyncPlayerControls(video) {
+    if (!video?.hasAttribute?.('data-video-player')) return;
+    const player = tweetNookVideoPlayer(video);
+    const paused = video.paused || video.ended;
+    const muted = video.muted || video.volume === 0;
+    player.classList.toggle('is-paused', paused);
+    if (!paused || video.currentTime > 0) player.classList.add('has-started');
+    player.querySelectorAll('[data-video-action="play"]').forEach(button => {
+        const label = paused ? 'Play video' : 'Pause video';
+        if (button.getAttribute('aria-label') !== label) {
+            button.setAttribute('aria-label', label);
+            button.title = label;
+            if (!button.classList.contains('video-center-play')) button.innerHTML = videoIcon(paused ? 'play' : 'pause');
+        }
+    });
+    player.querySelectorAll('[data-video-action="mute"]').forEach(button => {
+        const label = muted ? 'Unmute' : 'Mute';
+        const mobile = button.classList.contains('video-idle-mute')
+            || (video.closest?.('.lightbox-stage') && window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches);
+        const icon = mobile ? (muted ? 'mobileMuted' : 'mobileSound') : (muted ? 'muted' : 'sound');
+        if (button.getAttribute('data-video-icon') !== icon) {
+            button.setAttribute('aria-label', label);
+            button.title = label;
+            button.setAttribute('data-video-icon', icon);
+            button.innerHTML = videoIcon(icon);
+        }
+    });
+    const duration = Number.isFinite(video.duration) ? Math.max(0, video.duration) : 0;
+    const time = Math.max(0, videoScrubStates.get(video)?.targetTime ?? video.currentTime ?? 0);
+    const seek = player.querySelector('[data-video-seek]');
+    seek.disabled = !duration;
+    seek.value = duration ? time / duration * 100 : 0;
+    player.style.setProperty('--video-progress', `${duration ? Math.min(100, time / duration * 100) : 0}%`);
+    seek.style.setProperty('--video-progress', `${duration ? Math.min(100, time / duration * 100) : 0}%`);
+    seek.setAttribute('aria-valuetext', `${formatMediaDuration(time * 1000) || '0:00'} of ${formatMediaDuration(duration * 1000) || '0:00'}`);
+    player.querySelector('[data-video-time]').textContent = `${formatMediaDuration(Math.round(time) * 1000) || '0:00'} / ${formatMediaDuration(Math.round(duration) * 1000) || '0:00'}`;
+    player.querySelector('[data-video-scrub-time]').textContent = `${formatMediaDuration(time * 1000) || '0:00'} / ${formatMediaDuration(duration * 1000) || '0:00'}`;
+    player.querySelector('[data-video-remaining-time]').textContent = `-${formatMediaDuration(Math.max(0, Math.round(duration - time)) * 1000) || '0:00'}`;
+    const volume = player.querySelector('[data-video-volume]');
+    if (document.activeElement !== volume) volume.value = muted ? 0 : video.volume;
+    const fullscreen = player.querySelector('[data-video-action="fullscreen"]');
+    const filled = player.classList.contains('is-video-fill');
+    const mobileViewer = video.closest?.('.lightbox-stage') && window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches;
+    const fullscreenLabel = document.fullscreenElement === player ? 'Exit full screen' : mobileViewer ? (filled ? 'Fit video' : 'Fill screen') : 'Full screen';
+    if (fullscreen.getAttribute('aria-label') !== fullscreenLabel) {
+        fullscreen.setAttribute('aria-label', fullscreenLabel);
+        fullscreen.title = fullscreenLabel;
+        fullscreen.innerHTML = videoIcon(document.fullscreenElement === player || filled ? 'exitFullscreen' : 'fullscreen');
+    }
+    if (video.videoWidth && video.videoHeight) player.style.setProperty('--video-aspect', video.videoWidth / video.videoHeight);
+}
+
+function isMobileInlineVideo(video) {
+    return Boolean(window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches)
+        && !video.closest?.('.lightbox-stage') && document.fullscreenElement !== tweetNookVideoPlayer(video);
+}
+
+function tweetNookOpenMobileVideo(video) {
+    if (Date.now() < videoTapBlockedUntil) return;
+    window.dispatchEvent(new CustomEvent('open-lightbox', {
+        detail: { media: [{ type: 'video', src: video.currentSrc || video.src, isGif: false }], index: 0, originVideo: video },
+    }));
+}
+
+function tweetNookPlayerAction(video, action) {
+    if (action === 'play') {
+        if (video.paused || video.ended) video.play()?.catch?.(() => tweetNookSyncVideoUi(video));
+        else video.pause();
+    } else if (action === 'mute') {
+        if (video.volume === 0) { video.volume = 1; video.muted = false; }
+        else video.muted = !video.muted;
+    } else if (action === 'fullscreen') {
+        if (document.fullscreenElement) document.exitFullscreen()?.catch?.(() => {});
+        else if (isMobileInlineVideo(video)) tweetNookOpenMobileVideo(video);
+        else if (video.closest?.('.lightbox-stage') && window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches) {
+            tweetNookVideoPlayer(video).classList.toggle('is-video-fill');
+        }
+        else if (tweetNookVideoPlayer(video).requestFullscreen) tweetNookVideoPlayer(video).requestFullscreen()?.catch?.(() => {});
+        else if (!video.closest?.('.lightbox-stage')) tweetNookOpenMobileVideo(video);
+    }
+    tweetNookShowVideoUi(video);
+}
+
+// Inline playback must be configured before any observer can start the video.
+function tweetNookInitVideoPlayer(video) {
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    if (video.hasAttribute('data-video-custom')) { video.controls = false; video.removeAttribute('controls'); }
+    const player = tweetNookVideoPlayer(video);
+    const controls = player?.querySelector?.('[data-video-controls]');
+    if (!controls || video.hasAttribute('data-video-player')) return;
+    video.setAttribute('data-video-player', '');
+    video.removeAttribute('controls');
+    controls.hidden = false;
+    player.classList.add('has-custom-controls');
+    player.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (isMobileInlineVideo(video) && Date.now() < videoTapBlockedUntil) return;
+        const button = event.target.closest('[data-video-action]');
+        const surface = event.target === video || event.target === player;
+        if (isMobileInlineVideo(video) && (surface || button?.dataset.videoAction === 'play')) tweetNookOpenMobileVideo(video);
+        else if (button) tweetNookPlayerAction(video, button.dataset.videoAction);
+        else if (surface) {
+            if (isMobileFullscreenVideo(video) && !video.paused) {
+                if (player.classList.contains('is-native-ui-hidden')) tweetNookShowVideoUi(video);
+                else { clearTimeout(videoUiHideTimers.get(player)); videoUiHideTimers.delete(player); tweetNookSyncVideoUi(video); }
+            } else tweetNookPlayerAction(video, 'play');
+        }
+    });
+    player.addEventListener('input', event => {
+        if (event.target.hasAttribute('data-video-seek') && Number.isFinite(video.duration)) {
+            const state = videoScrubStates.get(video);
+            if (state?.pointerControlled) return;
+            video.currentTime = Math.max(0, Math.min(video.duration, Number(event.target.value) / 100 * video.duration));
+            if (state) state.targetTime = video.currentTime;
+        } else if (event.target.hasAttribute('data-video-volume')) {
+            video.volume = Math.max(0, Math.min(1, Number(event.target.value)));
+            video.muted = video.volume === 0;
+        }
+        tweetNookShowVideoUi(video);
+        tweetNookSyncVideoDuration(video);
+    });
+    player.addEventListener('pointerdown', event => {
+        if (event.target.hasAttribute('data-video-seek') && !(event.button > 0)) tweetNookStartVideoScrub(video, event);
+    });
+    player.addEventListener('keydown', event => {
+        if (event.target.closest('input, button')) {
+            if (event.key !== 'Escape') event.stopPropagation();
+            return;
+        }
+        const action = { ' ': 'play', k: 'play', m: 'mute', f: 'fullscreen' }[event.key.toLowerCase()];
+        if (action) { event.preventDefault(); event.stopPropagation(); tweetNookPlayerAction(video, action); }
+        else if (['ArrowLeft', 'ArrowRight'].includes(event.key) && Number.isFinite(video.duration)) {
+            event.preventDefault(); event.stopPropagation();
+            video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + (event.key === 'ArrowRight' ? 5 : -5)));
+            tweetNookShowVideoUi(video);
+            tweetNookSyncVideoDuration(video);
+        }
+    });
+    player.tabIndex = 0;
+    player.setAttribute('role', 'group');
+    player.setAttribute('aria-label', 'Video player');
+    for (const name of ['pointermove', 'pointerenter']) player.addEventListener(name, event => {
+        if (event.pointerType !== 'touch' && !isMobileFullscreenVideo(video)) tweetNookShowVideoUi(video);
+    });
+    player.addEventListener('focusin', event => {
+        if (event.target.matches(':focus-visible')) tweetNookShowVideoUi(video);
+    });
+    player.addEventListener('pointerleave', event => {
+        if (event.pointerType !== 'touch' && !isMobileFullscreenVideo(video)) tweetNookLeaveVideoUi(video);
+    });
+    player.addEventListener('focusout', () => tweetNookShowVideoUi(video, isMobileFullscreenVideo(video) ? VIDEO_UI_IDLE_MS : VIDEO_UI_LEAVE_MS));
+    for (const name of ['loadedmetadata', 'durationchange', 'timeupdate', 'volumechange']) video.addEventListener(name, () => tweetNookSyncVideoDuration(video));
+    video.addEventListener('play', () => tweetNookShowVideoUi(video));
+    for (const name of ['pause', 'ended']) video.addEventListener(name, () => tweetNookSyncVideoUi(video));
+    player.addEventListener('fullscreenchange', () => tweetNookShowVideoUi(video));
+    tweetNookSyncVideoDuration(video);
+    tweetNookSyncVideoUi(video);
+}
+
+// Keep the video decoder's surface at one size and move/crop it on the compositor.
+function fittedVideoRect(video, includeCrop = false) {
+    const frame = video.getBoundingClientRect();
+    const cover = getComputedStyle(video).objectFit === 'cover';
+    if (cover && !includeCrop) return frame;
+    const ratio = video.videoWidth / video.videoHeight || Number(video.dataset?.videoAspect) || frame.width / frame.height;
+    const width = cover ? Math.max(frame.width, frame.height * ratio) : Math.min(frame.width, frame.height * ratio);
+    const height = width / ratio;
+    return { left: frame.left + (frame.width - width) / 2, top: frame.top + (frame.height - height) / 2, width, height };
+}
+
+function videoFeedInsets(source, clipBottom = true) {
+    const viewport = window.visualViewport;
+    const left = viewport?.offsetLeft || 0;
+    let top = viewport?.offsetTop || 0;
+    const right = left + (viewport?.width || window.innerWidth || Infinity);
+    const bottom = top + (viewport?.height || window.innerHeight || Infinity);
+    document.querySelectorAll('[data-video-occluder]').forEach(header => {
+        const rect = header.getBoundingClientRect();
+        if (rect.width && rect.height && rect.left < source.left + source.width && rect.left + rect.width > source.left
+            && rect.top <= Math.max(top, source.top) && rect.top + rect.height > top) top = Math.max(top, rect.top + rect.height);
+    });
+    return {top: Math.min(source.height, Math.max(0, top - source.top)),
+        bottom: clipBottom ? Math.min(source.height, Math.max(0, source.top + source.height - bottom)) : 0,
+        left: Math.min(source.width, Math.max(0, left - source.left)),
+        right: Math.min(source.width, Math.max(0, source.left + source.width - right))};
+}
+
+function videoBackdropOpacity(backdrop) {
+    const style = getComputedStyle(backdrop);
+    const color = style.backgroundColor;
+    if (!color) return Number(style.opacity);
+    if (color === 'transparent') return 0;
+    return color?.startsWith('rgba(') ? Number(color.split(',')[3].replace(')', '')) : 1;
+}
+
+function animateMobileVideoBounds(video, origin, opening, duration, startBounds = null) {
+    const surface = video?.parentElement;
+    if (!surface?.animate || !origin?.isConnected || !duration) return null;
+    const source = origin.getBoundingClientRect();
+    const frame = video.getBoundingClientRect();
+    const parent = surface.parentElement.getBoundingClientRect();
+    if (!source.width || !source.height || !frame.width || !frame.height) return null;
+    const fitted = fittedVideoRect(video, true);
+    // The page-positioned return must paint the same video pixels behind Safari's
+    // URL bar that the inline player will occupy after handoff.
+    const feedInsets = videoFeedInsets(source, opening);
+    const radius = parseFloat(getComputedStyle(origin.tagName === 'VIDEO' ? origin.parentElement : origin).borderRadius) || 0;
+    const crop = rect => {
+        const scale = Math.max(rect.width / fitted.width, rect.height / fitted.height);
+        const cropX = Math.max(0, (fitted.width - rect.width / scale) / 2);
+        const cropY = Math.max(0, (fitted.height - rect.height / scale) / 2);
+        return {scale, cropX, cropY};
+    };
+    const cropped = Object.values(feedInsets).some(value => value > .5) || [source, startBounds || fitted].some(rect => {
+        const {cropX, cropY} = crop(rect);
+        return cropX > .5 || cropY > .5;
+    });
+    const bounds = (rect, borderRadius, insets = {}) => {
+        const {scale, cropX, cropY} = crop(rect);
+        const corner = borderRadius / scale;
+        const corners = [insets.top || insets.left, insets.top || insets.right, insets.bottom || insets.right, insets.bottom || insets.left]
+            .map(clipped => `${clipped ? 0 : corner}px`).join(' ');
+        return {
+            transform: `translate3d(${rect.left - fitted.left - cropX * scale}px, ${rect.top - fitted.top - cropY * scale}px, 0) scale(${scale})`,
+            borderRadius: `${borderRadius / scale}px`,
+            // Ordinary videos need only a rounded, overflow-hidden surface.
+            // Grid/quoted crops use a clip on that surface, never on the video.
+            ...(cropped ? {clipPath: `inset(${cropY + (insets.top || 0) / scale}px ${cropX + (insets.right || 0) / scale}px ${cropY + (insets.bottom || 0) / scale}px ${cropX + (insets.left || 0) / scale}px round ${corners})`} : {}),
+        };
+    };
+    const feed = bounds(source, radius, feedInsets);
+    const fullscreen = bounds(startBounds || fitted, startBounds?.radius || 0);
+    const saved = [];
+    const style = (element, values) => {
+        for (const [name, value] of values) {
+            saved.push([element, name, element.style.getPropertyValue(name)]);
+            element.style.setProperty(name, value);
+        }
+    };
+    const viewer = video.closest('.lightbox-viewer');
+    let pageReturn = false;
+    if (!opening && viewer?.getBoundingClientRect) {
+        const rect = viewer.getBoundingClientRect();
+        // Release Safari's fixed-edge fill when dismissal starts. Keeping the
+        // viewer fixed until handoff delays the browser toolbar's own fade by
+        // the entire return animation. Keep the same screen bounds in the page.
+        if (rect.width && rect.height) {
+            pageReturn = true;
+            viewer.classList?.add('is-video-closing');
+            style(viewer, [['position', 'absolute'], ['left', `${rect.left + (window.scrollX || 0)}px`],
+                ['top', `${rect.top + (window.scrollY || 0)}px`], ['right', 'auto'], ['bottom', 'auto'],
+                ['width', `${rect.width}px`], ['height', `${rect.height}px`]]);
+        }
+    }
+    style(surface, [['position', 'absolute'], ['left', `${fitted.left - parent.left}px`], ['top', `${fitted.top - parent.top}px`], ['width', `${fitted.width}px`], ['height', `${fitted.height}px`], ['max-width', 'none'], ['aspect-ratio', 'auto'], ['overflow', 'hidden'], ['border', '0'], ['background', 'transparent'], ['transform-origin', '0 0'], ['will-change', 'transform']]);
+    style(video, [['position', 'absolute'], ['left', '0'], ['top', '0'], ['width', '100%'], ['height', '100%'], ['max-width', 'none'], ['max-height', 'none'], ['object-fit', 'contain']]);
+    const options = { duration, easing: opening ? 'cubic-bezier(0.22, 0.75, 0.2, 1)' : 'cubic-bezier(0.22, 0.65, 0.3, 1)', fill: 'both' };
+    const animation = surface.animate(opening ? [feed, fullscreen] : [fullscreen, feed], options);
+    const fade = [opening ? 0 : startBounds?.backdropOpacity ?? 1, opening ? 1 : 0];
+    // The opening viewer owns the fixed color and its fade. A separate absolute
+    // sibling behind a transparent fixed viewer misses Safari's toolbar sampling.
+    const backdrop = viewer?.animate?.(fade.map(opacity => ({backgroundColor: `rgba(0, 0, 0, ${opacity})`})), {
+        ...options, duration: opening ? duration : Math.min(duration, 160), easing: opening ? 'linear' : 'ease-out',
+    });
+    let cleaned = false;
+    const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        animation.cancel();
+        backdrop?.cancel();
+        if (pageReturn) viewer.classList?.remove('is-video-closing');
+        for (const [element, name, value] of saved) {
+            if (value) element.style.setProperty(name, value);
+            else element.style.removeProperty(name);
+        }
+    };
+    return {
+        cancel: cleanup,
+        bounds() {
+            const rect = surface.getBoundingClientRect();
+            const computed = getComputedStyle(surface);
+            const inset = computed.clipPath?.match(/^inset\(([\d.]+)px ([\d.]+)px(?: ([\d.]+)px ([\d.]+)px)?/);
+            const scale = rect.width / fitted.width;
+            const x = Number(inset?.[4] || inset?.[2] || 0) * scale;
+            const y = Number(inset?.[1] || 0) * scale;
+            return {left: rect.left + x, top: rect.top + y,
+                width: rect.width - x - Number(inset?.[2] || 0) * scale,
+                height: rect.height - y - Number(inset?.[3] || inset?.[1] || 0) * scale,
+                radius: (parseFloat(computed.borderRadius) || 0) * scale};
+        },
+        // Keep the last frame until the caller has handed the surface back.
+        finished: animation.finished.then(() => true, () => { cleanup(); return false; }),
+    };
+}
 
 // Media lists travel in an HTML-escaped data attribute, so no field value is ever
 // parsed as script inside the inline handler.
@@ -175,6 +608,11 @@ function tweetApp() {
     let activityClockTimer = null;
     let activityVisibilityHandler = null;
     let lightboxMotionTimer = null;
+    // Mobile video viewing hands playback back to the original inline player.
+    let lightboxOriginVideo = null;
+    let lightboxInlineMount = null;
+    let lightboxVideoMotion = null;
+    let lightboxVideoReadyCancel = null;
     // Lists and threads send abbreviated raw JSON. Copy raw reads the stored document,
     // prefetched when a tweet menu opens so the copy usually stays in the click gesture.
     const rawTweetRequests = new Map();
@@ -306,6 +744,7 @@ function tweetApp() {
         lightboxGestureTransition: 'none',
         lightboxGestureAnimating: false,
         lightboxDismissPending: false,
+        lightboxVideoMotionPhase: '',
         videoObserver: null,
         videoAutoplayObserver: null,
         mediaPrefetchObserver: null,
@@ -1688,17 +2127,25 @@ function tweetApp() {
                 else if (!this.showSettingsModal && !this.lightboxOpen) this.unlockModalScroll();
             });
             this.$watch('lightboxOpen', val => {
-                if (val) this.lockModalScroll();
+                // The mobile viewer blocks pan gestures itself. Changing body
+                // overflow makes Safari stop painting beneath its floating bar.
+                if (val) { if (!this.isMobileVideoViewer()) this.lockModalScroll(); }
                 else if (!this.showStatsModal && !this.showSettingsModal && !this.showSetupModal) this.unlockModalScroll();
             });
 
             window.addEventListener('open-lightbox', (e) => {
-                this.openLightbox(e.detail.media, e.detail.index);
+                this.openLightbox(e.detail.media, e.detail.index, e.detail.originVideo);
             });
             
             this.videoObserver = new IntersectionObserver((entries) => {
                 entries.forEach(e => {
                     if (e.target.tagName === 'VIDEO') {
+                        // The lightbox owns playback; observer callbacks arriving
+                        // after dismissal must never restart its hidden player.
+                        if (e.target.closest?.('.lightbox-stage')) {
+                            if (!this.lightboxOpen) e.target.pause();
+                            return;
+                        }
                         if (!e.isIntersecting) {
                             e.target.pause();
                         } else if (e.target.hasAttribute('autoplay')) {
@@ -1733,6 +2180,9 @@ function tweetApp() {
                         if (node.nodeType === 1) {
                             if (node.tagName === 'VIDEO') this.observeVideo(node);
                             node.querySelectorAll('video').forEach(v => this.observeVideo(v));
+                            const player = node.closest?.('.media-video-player');
+                            const video = player?.querySelector('video');
+                            if (video && isVideoPlayer(video)) tweetNookInitVideoPlayer(video);
                             this.observeMediaPrefetch(node);
                         }
                     });
@@ -1741,6 +2191,8 @@ function tweetApp() {
             domObserver.observe(document.body, { childList: true, subtree: true });
             
         },
+
+        renderVideoControls,
 
         // Off-screen feed cards skip layout (content-visibility), so the images inside
         // have no box to observe; watch the card instead and load all of its images.
@@ -1763,6 +2215,7 @@ function tweetApp() {
         },
 
         observeVideo(video) {
+            if (isVideoPlayer(video)) tweetNookInitVideoPlayer(video);
             this.videoObserver.observe(video);
             if (!isFeedVideoPlayer(video)) return;
             if (this.videoPlayback === 'autoplay') video.muted = this.videoMuted;
@@ -1774,7 +2227,7 @@ function tweetApp() {
             localStorage.setItem('tvx-video-playback', this.videoPlayback);
             const autoplay = this.videoPlayback === 'autoplay';
             this.videoMuted = true;
-            document.querySelectorAll('video[controls]').forEach(video => {
+            document.querySelectorAll(VIDEO_PLAYER_SELECTOR).forEach(video => {
                 video.muted = autoplay;
                 if (!autoplay && isFeedVideoPlayer(video)) video.pause();
             });
@@ -1782,6 +2235,7 @@ function tweetApp() {
         },
 
         updateAutoplayVisibility(video, visible) {
+            if (!isFeedVideoPlayer(video)) return;
             if (visible) {
                 autoplayVideos.add(video);
             } else {
@@ -1819,7 +2273,7 @@ function tweetApp() {
         // Only one player runs at a time, however it was started.
         handleVideoPlay(video) {
             if (!isVideoPlayer(video)) return;
-            document.querySelectorAll('video[controls]').forEach(other => {
+            document.querySelectorAll(VIDEO_PLAYER_SELECTOR).forEach(other => {
                 if (other !== video && !other.paused) other.pause();
             });
             if (this.videoPlayback !== 'autoplay') return;
@@ -1839,7 +2293,7 @@ function tweetApp() {
             }
             if (video.muted === this.videoMuted) return;
             this.videoMuted = video.muted;
-            document.querySelectorAll('video[controls]').forEach(other => {
+            document.querySelectorAll(VIDEO_PLAYER_SELECTOR).forEach(other => {
                 other.muted = this.videoMuted;
             });
         },
@@ -1862,6 +2316,11 @@ function tweetApp() {
         },
 
         resetLightboxMotion() {
+            lightboxVideoReadyCancel?.();
+            lightboxVideoReadyCancel = null;
+            lightboxVideoMotion?.cancel();
+            lightboxVideoMotion = null;
+            this.lightboxVideoMotionPhase = '';
             clearTimeout(lightboxMotionTimer);
             lightboxMotionTimer = null;
             this.lightboxGestureStart = null;
@@ -1873,19 +2332,191 @@ function tweetApp() {
             this.lightboxDismissPending = false;
         },
 
-        openLightbox(media, index = 0) {
+        openLightbox(media, index = 0, originVideo = null) {
+            if (this.lightboxOpen && lightboxOriginVideo) return;
             this.resetLightboxMotion();
             this.lightboxMedia = Array.isArray(media) ? media : [];
             const lastIndex = Math.max(0, this.lightboxMedia.length - 1);
             this.lightboxIndex = Math.min(lastIndex, Math.max(0, Number(index) || 0));
+            lightboxOriginVideo = originVideo;
+            if (originVideo && this.lightboxMedia[this.lightboxIndex]) {
+                const inlinePlayer = this.isMobileVideoViewer() && Boolean(tweetNookVideoPlayer(originVideo)?.cloneNode);
+                this.lightboxMedia = this.lightboxMedia.map((item, itemIndex) => itemIndex === this.lightboxIndex
+                    ? { ...item, currentTime: originVideo.currentTime, muted: originVideo.muted, volume: originVideo.volume, loop: originVideo.loop, inlinePlayer }
+                    : item);
+                if (!inlinePlayer) originVideo.pause();
+            }
             this.lightboxOpen = this.lightboxMedia.length > 0;
-            if (this.lightboxOpen) this.$nextTick(() => this.syncLightboxPlayback());
+            const animate = originVideo && this.isMobileVideoViewer() && this.lightboxMotionDuration(300) && originVideo.getBoundingClientRect;
+            if (animate) this.lightboxVideoMotionPhase = 'preparing';
+            // Reparent before play(), within the original tap's user activation.
+            // iOS must not be asked to unlock an audible player in a later tick.
+            this.mountInlineLightboxVideo();
+            // Alpine's overlay enter lifecycle otherwise hides the live surface
+            // for two animation frames. Install the first frame in the tap itself.
+            const inlineMotion = animate && lightboxInlineMount && this.$refs.lightboxViewer
+                && this.startLightboxVideoMotion(true);
+            if (this.lightboxMedia[this.lightboxIndex]?.inlinePlayer) {
+                tweetNookShowVideoUi(originVideo);
+                originVideo.play()?.catch?.(() => {});
+            }
+            if (this.lightboxOpen) this.$nextTick(() => {
+                if (!this.lightboxOpen) return;
+                this.mountInlineLightboxVideo();
+                this.syncLightboxPlayback();
+                if (animate && !inlineMotion) this.prepareLightboxVideoMotion();
+            });
         },
 
         closeLightbox() {
+            if (this.lightboxVideoMotionPhase === 'closing') return;
+            videoTapBlockedUntil = Date.now() + 600;
+            const preparing = this.lightboxVideoMotionPhase === 'preparing';
+            const active = this.activeLightboxVideo();
+            if (active) tweetNookFinishVideoScrub(active);
+            const animate = !preparing && lightboxOriginVideo && this.isMobileVideoViewer() && active?.parentElement?.animate;
+            const backdrop = this.$refs.lightboxViewer;
+            const startBounds = animate ? {
+                ...(lightboxVideoMotion?.bounds() || {...fittedVideoRect(active), radius: 0}),
+                backdropOpacity: backdrop ? videoBackdropOpacity(backdrop) : Number(this.lightboxBackdropStyle()['--lightbox-backdrop-opacity']),
+            } : null;
+            this.resetLightboxMotion();
+            if (lightboxInlineMount && this.$refs.inlineVideoSlot) {
+                // The reactive drag transform updates later. Neutralize it now
+                // before measuring the destination for the return animation.
+                this.$refs.inlineVideoSlot.style.transform = 'translate3d(0, 0, 0)';
+                this.$refs.inlineVideoSlot.style.transition = 'none';
+            }
+            if (animate && this.lightboxOpen && this.startLightboxVideoMotion(false, startBounds)) return;
+            this.finishCloseLightbox();
+        },
+
+        activeLightboxVideo() {
+            return this.$refs.lightboxStage?.querySelector?.('.lightbox-slide.is-active video[data-video-player]');
+        },
+
+        mountInlineLightboxVideo() {
+            if (!this.lightboxMedia[this.lightboxIndex]?.inlinePlayer || lightboxInlineMount) return;
+            const slot = this.$refs.inlineVideoSlot || this.$refs.lightboxStage?.querySelector?.('.lightbox-slide.is-active [data-inline-video-slot]');
+            const player = tweetNookVideoPlayer(lightboxOriginVideo);
+            if (!slot || !player) return;
+            const placeholder = player.cloneNode(false);
+            const frame = player.getBoundingClientRect();
+            placeholder.style.setProperty('aspect-ratio', `${frame.width} / ${frame.height}`);
+            placeholder.setAttribute('aria-hidden', 'true');
+            placeholder.removeAttribute('tabindex');
+            player.parentElement.insertBefore(placeholder, player);
+            // Only the picture travels between frames; controls stay anchored to
+            // the fullscreen player instead of shrinking/clipping with the video.
+            const surface = document.createElement('div');
+            surface.setAttribute('class', 'video-motion-surface');
+            player.insertBefore(surface, lightboxOriginVideo);
+            surface.appendChild(lightboxOriginVideo);
+            lightboxInlineMount = { player, placeholder, surface };
+            player.classList.add('lightbox-video-player');
+            slot.appendChild(player);
+            if (this.$refs.lightboxViewer) {
+                // Display/class changes must land before measuring the motion's
+                // destination, rather than waiting on x-show's enter frames.
+                const viewer = this.$refs.lightboxViewer;
+                viewer.classList.remove('is-video-closed');
+                viewer.classList.add('is-video-viewer');
+                if (this.lightboxVideoMotionPhase) viewer.classList.add('is-video-motion');
+                viewer.style.display = 'flex';
+                slot.style.display = '';
+                slot.classList.add('is-active');
+            }
+        },
+
+        restoreInlineLightboxVideo() {
+            if (!lightboxInlineMount) return;
+            const {player, placeholder, surface} = lightboxInlineMount;
+            surface.replaceWith(surface.querySelector('video'));
+            player.classList.remove('lightbox-video-player', 'is-video-fill');
+            placeholder.replaceWith(player);
+            lightboxInlineMount = null;
+        },
+
+        isMobileVideoViewer() {
+            const media = this.lightboxMedia[this.lightboxIndex];
+            return media?.type === 'video' && !media.isGif
+                && Boolean(window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches);
+        },
+
+        prepareLightboxVideoMotion() {
+            const video = this.activeLightboxVideo();
+            if (!video?.parentElement?.animate) { this.lightboxVideoMotionPhase = ''; return; }
+            // The portaled video already has its feed picture/poster. Expand it
+            // immediately, including when a first tap is still loading metadata.
+            if (lightboxInlineMount) {
+                if (!this.startLightboxVideoMotion(true)) this.lightboxVideoMotionPhase = '';
+                return;
+            }
+            // Wait for the restored playback frame so the expanding surface never
+            // replaces the feed picture with a black, newly loaded video.
+            let timeout;
+            const cleanup = () => {
+                clearTimeout(timeout);
+                video.removeEventListener('loadeddata', ready);
+                video.removeEventListener('seeked', ready);
+            };
+            const begin = () => {
+                cleanup();
+                lightboxVideoReadyCancel = null;
+                if (!this.startLightboxVideoMotion(true)) this.lightboxVideoMotionPhase = '';
+            };
+            const ready = () => { if (video.readyState >= 2 && !video.seeking) begin(); };
+            lightboxVideoReadyCancel = cleanup;
+            video.addEventListener('loadeddata', ready);
+            video.addEventListener('seeked', ready);
+            timeout = setTimeout(begin, 500);
+            ready();
+        },
+
+        startLightboxVideoMotion(opening, startBounds = null) {
+            const motion = animateMobileVideoBounds(this.activeLightboxVideo(), lightboxInlineMount?.placeholder || lightboxOriginVideo, opening,
+                this.lightboxMotionDuration(opening ? 300 : 280), startBounds);
+            if (!motion) return false;
+            lightboxVideoMotion = motion;
+            this.lightboxVideoMotionPhase = opening ? 'opening' : 'closing';
+            motion.finished.then(completed => {
+                if (lightboxVideoMotion !== motion) return;
+                if (completed && !opening) { this.finishCloseLightbox(); return; }
+                motion.cancel();
+                lightboxVideoMotion = null;
+                this.lightboxVideoMotionPhase = '';
+                this.$refs.lightboxViewer?.classList.remove('is-video-motion');
+                if (completed && opening) {
+                    tweetNookShowVideoUi(this.activeLightboxVideo());
+                }
+            });
+            return true;
+        },
+
+        finishCloseLightbox() {
+            const active = this.$refs.lightboxStage?.querySelector?.('.lightbox-slide.is-active video[data-video-player]');
+            const origin = lightboxOriginVideo;
+            const resume = Boolean(origin && active && !active.paused && !active.ended);
+            if (origin && active && origin !== active) {
+                origin.currentTime = active.currentTime;
+                origin.muted = active.muted;
+                origin.volume = active.volume;
+            }
+            if (origin && !resume) heldAutoplayVideos.add(origin);
+            this.lightboxOpen = false;
+            videoTapBlockedUntil = Date.now() + 500;
+            if (lightboxInlineMount && this.$refs.lightboxViewer) {
+                // Hide the viewer and restore the inline surface in one handoff;
+                // never expose a fullscreen frame while Alpine schedules leave.
+                this.$refs.lightboxViewer.classList.add('is-video-closed');
+                this.$refs.lightboxViewer.classList.remove('is-video-controls-hidden');
+                this.$refs.lightboxViewer.style.display = 'none';
+            }
+            this.restoreInlineLightboxVideo();
+            lightboxOriginVideo = null;
             this.pauseLightboxPlayback();
             this.resetLightboxMotion();
-            this.lightboxOpen = false;
+            if (resume && origin.isConnected && origin.paused) origin.play()?.catch?.(() => {});
             this.autoplayNextVideo();
         },
 
@@ -1896,14 +2527,30 @@ function tweetApp() {
         syncLightboxPlayback() {
             const stage = this.$refs.lightboxStage;
             if (!stage) return;
+            if (!this.lightboxOpen) { this.pauseLightboxPlayback(); return; }
+            if (this.lightboxVideoMotionPhase === 'closing') return;
             stage.querySelectorAll('video').forEach(video => {
                 const active = video.closest('.lightbox-slide')?.classList.contains('is-active');
                 if (!active) video.pause();
-                else if (video.hasAttribute('autoplay')) video.play().catch(() => {});
+                else {
+                    const media = this.lightboxMedia[Number(video.dataset?.lightboxIndex)];
+                    if (media && !media.inlinePlayer && Number.isFinite(media.currentTime) && !video.hasAttribute('data-playback-restored')) {
+                        video.setAttribute('data-playback-restored', '');
+                        video.muted = media.muted;
+                        video.volume = media.volume;
+                        const restore = () => {
+                            video.currentTime = media.currentTime;
+                        };
+                        if (video.readyState >= 1) restore();
+                        else video.addEventListener('loadedmetadata', restore, { once: true });
+                    }
+                    if ((video.hasAttribute('autoplay') || isVideoPlayer(video)) && video.paused !== false) video.play().catch(() => {});
+                }
             });
         },
 
         lightboxVisibleIndices() {
+            if (this.lightboxMedia[this.lightboxIndex]?.inlinePlayer) return [];
             const first = Math.max(0, this.lightboxIndex - 1);
             const last = Math.min(this.lightboxMedia.length - 1, this.lightboxIndex + 1);
             const indices = [];
@@ -1929,18 +2576,20 @@ function tweetApp() {
         lightboxBackdropStyle() {
             const height = Math.max(1, window.innerHeight || 800);
             const progress = Math.min(1, Math.max(0, this.lightboxGestureOffsetY) / (height * 0.7));
-            const opacity = this.lightboxDismissPending ? 0 : 0.95 * (1 - progress * 0.72);
+            const opacity = this.lightboxVideoMotionPhase === 'preparing' || this.lightboxDismissPending ? 0
+                : (this.isMobileVideoViewer() ? 1 : 0.95) * (1 - progress * 0.72);
             const transitionDuration = this.lightboxDismissPending
                 ? this.lightboxMotionDuration(180)
                 : (this.lightboxGestureAnimating ? this.lightboxMotionDuration(260) : 0);
             return {
                 backgroundColor: `rgba(0, 0, 0, ${opacity})`,
+                '--lightbox-backdrop-opacity': String(opacity),
                 transition: transitionDuration ? `background-color ${transitionDuration}ms linear` : 'none',
             };
         },
 
         lightboxChromeStyle() {
-            if (this.lightboxGestureAnimating) return { opacity: '0' };
+            if (this.lightboxGestureAnimating || this.lightboxVideoMotionPhase) return { opacity: '0' };
             const distance = Math.hypot(this.lightboxGestureOffsetX, this.lightboxGestureOffsetY);
             return { opacity: String(Math.max(0, 1 - distance / 180)) };
         },
@@ -1960,7 +2609,7 @@ function tweetApp() {
         },
 
         startLightboxGesture(event) {
-            if (!this.lightboxOpen || this.lightboxGestureAnimating) return;
+            if (!this.lightboxOpen || this.lightboxGestureAnimating || this.lightboxVideoMotionPhase) return;
             this.lightboxSuppressClickUntil = 0;
             if (event.touches?.length > 1) {
                 this.cancelLightboxGesture();
@@ -1968,7 +2617,7 @@ function tweetApp() {
             }
 
             const target = event.target;
-            if (target?.closest?.('button, video[controls], audio, input, textarea, select, a')) return;
+            if (target?.closest?.('button, .video-control-bar, video[controls], audio, input, textarea, select, a')) return;
 
             const touch = event.touches?.[0] || event.changedTouches?.[0];
             if (!touch) return;
@@ -2033,6 +2682,7 @@ function tweetApp() {
         },
 
         moveLightboxGesture(event) {
+            if (this.lightboxOpen && this.isMobileVideoViewer() && event.touches?.length === 1) event.preventDefault?.();
             if (!this.lightboxGestureStart) return;
             if (event.touches?.length !== 1) {
                 this.cancelLightboxGesture();
@@ -2058,7 +2708,8 @@ function tweetApp() {
 
             const { deltaX, deltaY } = movement;
             const distance = Math.hypot(deltaX, deltaY);
-            if (distance >= 8 && start.closesOnClick) {
+            if (distance >= 8) {
+                videoTapBlockedUntil = Date.now() + 600;
                 this.lightboxSuppressClickUntil = Date.now() + 500;
             }
 
@@ -2112,6 +2763,7 @@ function tweetApp() {
         },
 
         animateLightboxDismiss() {
+            if (lightboxOriginVideo && this.isMobileVideoViewer()) { this.closeLightbox(); return; }
             const duration = this.lightboxMotionDuration(180);
             this.lightboxGestureAnimating = true;
             this.lightboxDismissPending = true;
@@ -2152,6 +2804,7 @@ function tweetApp() {
         },
 
         handleLightboxBackdropClick(event) {
+            if (this.lightboxVideoMotionPhase) return;
             if (Date.now() < this.lightboxSuppressClickUntil) {
                 this.lightboxSuppressClickUntil = 0;
                 event.stopPropagation();
@@ -5601,8 +6254,8 @@ function tweetApp() {
                             </div>`);
                 } else {
                     const loopAttr = (isGif || isShort) ? 'loop' : '';
-                    const autoplayAttr = isGif ? 'autoplay muted playsinline' : '';
-                    const controlsAttr = isGif ? '' : 'controls';
+                    const autoplayAttr = isGif ? 'autoplay muted playsinline' : 'playsinline';
+                    const controlsAttr = isGif ? '' : `data-video-custom data-video-aspect="${layout.sourceAspect}"`;
                     const gifEvents = isGif
                         ? 'data-animated-gif onplay="window.tweetNookSyncGifIndicator(this)" onpause="window.tweetNookSyncGifIndicator(this)" onloadeddata="window.tweetNookSyncGifIndicator(this)"'
                         : '';
@@ -5613,6 +6266,7 @@ function tweetApp() {
                     return wrap(`<div class="relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block ${isGif ? '' : 'media-video-player'} ${frameClass}" @click.stop>
                                 <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="${isGif ? 'media-frame-gif-video' : 'media-frame-video'} outline-none block"></video>
                                 ${indicator}
+                                ${isGif ? '' : renderVideoControls()}
                             </div>`);
                 }
             }
@@ -5637,8 +6291,8 @@ function tweetApp() {
                                 </div>`;
                     } else {
                         const loopAttr = (isGif || isShort) ? 'loop' : '';
-                        const autoplayAttr = isGif ? 'autoplay muted playsinline' : '';
-                        const controlsAttr = isGif ? '' : 'controls';
+                        const autoplayAttr = isGif ? 'autoplay muted playsinline' : 'playsinline';
+                        const controlsAttr = isGif ? '' : `data-video-custom data-video-aspect="${this.mediaFrameLayout(item.m, context).sourceAspect}"`;
                         const gifEvents = isGif
                             ? 'data-animated-gif onplay="window.tweetNookSyncGifIndicator(this)" onpause="window.tweetNookSyncGifIndicator(this)" onloadeddata="window.tweetNookSyncGifIndicator(this)"'
                             : '';
@@ -5647,6 +6301,7 @@ function tweetApp() {
                         html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass} ${isGif ? '' : 'media-video-player'}">
                                     <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="absolute inset-0 w-full h-full object-cover outline-none"></video>
                                     ${indicator}
+                                    ${isGif ? '' : renderVideoControls()}
                                 </div>`;
                     }
                 }
