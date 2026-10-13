@@ -3889,7 +3889,8 @@ test('mobile video bounds wait for a playback frame, return to the feed, and res
         const surfaceValues = new Map();
         const motions = [];
         let backdropCancels = 0;
-        const viewer = {animate: () => ({cancel() {backdropCancels++;}})};
+        const viewer = {};
+        app.$refs.lightboxShade = {style: {}, animate: () => ({cancel() {backdropCancels++;}})};
         const active = new FakeElement('video', [['autoplay', ''], ['data-lightbox-index', '0']]);
         Object.assign(active, {readyState: 0, paused: true, ended: false, currentTime: 0, muted: false, volume: 1,
             videoWidth: 720, videoHeight: 1280,
@@ -4009,50 +4010,81 @@ test('video motion holds its final surface for handoff and preserves cropped pic
     }
 });
 
-test('dismissal releases the fixed toolbar fill before the picture returns, without moving the viewer', async () => {
-    const context = browserContext();
-    context.window.scrollX = 12;
-    context.window.scrollY = 680;
-    const values = new Map([['top', '0px'], ['height', '100%']]);
-    const style = entries => ({getPropertyValue: name => entries.get(name) || '',
-        setProperty: (name, value) => entries.set(name, value), removeProperty: name => entries.delete(name)});
-    const classes = new Set();
-    let fadeOptions;
-    const viewer = {style: style(values), getBoundingClientRect: () => ({left: 0, top: 42, width: 390, height: 730}),
-        classList: {add: name => classes.add(name), remove: name => classes.delete(name)},
-        animate: (frames, options) => {fadeOptions = options; return {cancel() {}};}};
-    const surface = {style: style(new Map()), parentElement: {getBoundingClientRect: () => ({left: 0, top: 42})}};
-    const video = {parentElement: surface, style: style(new Map()), videoWidth: 720, videoHeight: 1280,
-        getBoundingClientRect: () => ({left: 0, top: 42, width: 390, height: 650}), closest: () => viewer};
-    context.getComputedStyle = () => ({objectFit: 'contain', borderRadius: '16px'});
-    let complete;
-    surface.animate = () => {
-        assert.ok(classes.has('is-video-closing')); // Enable painting behind the URL bar before motion starts.
-        assert.equal(values.get('position'), 'absolute'); // The release occurs before either animation starts.
-        assert.equal(values.get('left'), '12px');
-        assert.equal(values.get('top'), '722px'); // Page coordinates preserve the current visual viewport offset.
-        assert.equal(values.get('width'), '390px');
-        assert.equal(values.get('height'), '730px');
-        assert.equal(values.get('right'), 'auto');
-        assert.equal(values.get('bottom'), 'auto');
-        return {finished: new Promise(resolve => {complete = resolve;}), cancel() {}};
-    };
-    const {animateMobileVideoBounds} = loadScripts(context, ['app.js'], '({animateMobileVideoBounds})');
-    const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: 200, width: 300, height: 533})};
-    const motion = animateMobileVideoBounds(video, origin, false, 280);
-    assert.equal(fadeOptions.duration, 160); // Background finishes first, then holds transparency through handoff.
-    assert.equal(fadeOptions.easing, 'ease-out');
-    assert.equal(fadeOptions.fill, 'both');
-    complete();
-    assert.equal(await motion.finished, true);
-    assert.equal(values.get('position'), 'absolute'); // Remain released until the atomic DOM handoff.
-    motion.cancel();
-    assert.equal(classes.size, 0);
-    assert.deepEqual([...values], [['top', '0px'], ['height', '100%']]);
-    assert.equal(context.window.scrollY, 680);
+test('dismissal fades the page shade and lifts covering headers above the returning picture', async () => {
+    for (const raisable of [true, false]) {
+        const context = browserContext();
+        context.window.visualViewport = {offsetLeft: 0, offsetTop: 0, width: 390, height: 844};
+        const style = entries => ({getPropertyValue: name => entries.get(name) || '',
+            setProperty: (name, value) => entries.set(name, value), removeProperty: name => entries.delete(name)});
+        const viewer = {};
+        const headerValues = new Map([['z-index', '20']]);
+        const fades = [];
+        const animate = target => (frames, options) => {
+            const fade = {target, frames, options, cancelled: false, cancel() {this.cancelled = true;}};
+            fades.push(fade); return fade;
+        };
+        const title = {};
+        const header = {style: style(headerValues), contains: node => node === title, animate: animate('header'),
+            getBoundingClientRect: () => ({left: 0, top: 0, width: 390, height: 90})};
+        let hitPoint;
+        context.document.querySelectorAll = selector => selector === '[data-video-occluder]' ? [header] : [];
+        context.document.elementFromPoint = (x, y) => {
+            hitPoint = [x, y];
+            return raisable && headerValues.get('z-index') === '101' ? title : viewer;
+        };
+        context.getComputedStyle = element => element === viewer ? {zIndex: '100'} : {objectFit: 'contain', borderRadius: '16px'};
+        const shade = {animate: animate('shade')};
+        let frames, complete;
+        const surface = {style: style(new Map()), parentElement: {getBoundingClientRect: () => ({left: 0, top: 0})},
+            animate: keyframes => {frames = keyframes; return {finished: new Promise(resolve => {complete = resolve;}), cancel() {}};}};
+        const video = {parentElement: surface, style: style(new Map()), videoWidth: 720, videoHeight: 1280,
+            getBoundingClientRect: () => ({left: 0, top: 0, width: 390, height: 772}), closest: () => viewer};
+        const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: 40, width: 300, height: 300 * 1280 / 720})};
+        const {animateMobileVideoBounds} = loadScripts(context, ['app.js'], '({animateMobileVideoBounds})');
+        const motion = animateMobileVideoBounds(video, origin, false, 280, null, shade);
+        assert.deepEqual(hitPoint, [210, 65]); // Probe where the header covers the returning picture.
+        const shadeFade = fades.find(fade => fade.target === 'shade');
+        assert.equal(shadeFade.frames.map(frame => frame.backgroundColor).join(' → '), 'rgba(0, 0, 0, 1) → rgba(0, 0, 0, 0)');
+        assert.equal(shadeFade.options.duration, 120); // The page returns before the picture lands.
+        assert.equal(shadeFade.options.easing, 'ease-out');
+        const headerFade = fades.find(fade => fade.target === 'header');
+        if (raisable) {
+            assert.equal(headerValues.get('z-index'), '101'); // The picture travels beneath the header, as it will rest.
+            assert.equal(frames[1].clipPath, undefined); // No header crop that would reappear behind its glass.
+            assert.equal(JSON.stringify(headerFade.frames), '[{"opacity":0},{"opacity":1}]'); // It fades in with the rest of the page.
+            assert.equal(headerFade.options, shadeFade.options);
+        } else {
+            assert.equal(headerValues.get('z-index'), '20'); // A header in another stacking context isn't moved.
+            assert.equal(headerFade, undefined);
+            const top = frames[1].clipPath.match(/^inset\(([\d.]+)px/)[1];
+            assert.ok(Math.abs(Number(top) * 300 / 390 - 50) < .001); // It keeps the crop at its 90px edge instead.
+        }
+        complete();
+        assert.equal(await motion.finished, true);
+        motion.cancel();
+        assert.deepEqual([...headerValues], [['z-index', '20']]);
+        assert.ok(fades.every(fade => fade.cancelled));
+    }
 });
 
-test('video returning beneath the browser toolbar keeps its bottom pixels through handoff', async () => {
+test('mobile video viewer stays outside Safari toolbar sampling and backs itself with page content', () => {
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const mobile = css.slice(css.indexOf('/* The phone feed uses a sound badge'));
+    const viewer = mobile.match(/\.lightbox-viewer\.is-video-viewer \{([^}]*)\}/)[1];
+    const bleed = Number(viewer.match(/--video-viewer-bleed:\s*(\d+)px/)[1]);
+    assert.ok(2 * bleed > .05 * 1366); // Over 105% of even a tall viewport, on every side.
+    assert.match(viewer, /inset:\s*calc\(-1 \* var\(--video-viewer-bleed\)\)/);
+    assert.match(viewer, /background-color:\s*transparent !important/); // The fixed layer adds no sampled color.
+    assert.match(mobile, /\.is-video-viewer > \.lightbox-stage,\s*\.is-video-viewer > \.lightbox-chrome \{ inset: var\(--video-viewer-bleed\); \}/);
+    assert.match(mobile, /\.is-video-viewer \.lightbox-close-button \{\s*top: calc\(var\(--video-viewer-bleed\) \+/);
+    assert.match(mobile, /\.lightbox-viewer\.is-video-viewer:not\(\.is-video-closed\) \+ \.lightbox-shade \{ display: block; \}/);
+    assert.match(css, /\.lightbox-shade \{[^}]*display: none;[^}]*position: absolute;[^}]*z-index: 99;[^}]*pointer-events: none;/s);
+    assert.match(html, /<\/div>\s*<div x-ref="lightboxShade" class="lightbox-shade" :style="lightboxBackdropStyle\(\)" aria-hidden="true"><\/div>\s*<!-- Tag Modal -->/);
+    assert.doesNotMatch(css, /is-video-closing/);
+});
+
+test('video motion crops its feed frame at the visible viewport in both directions', async () => {
     for (const opening of [true, false]) {
         const context = browserContext();
         context.window.visualViewport = {offsetLeft: 0, offsetTop: 42, width: 390, height: 730};
@@ -4066,13 +4098,9 @@ test('video returning beneath the browser toolbar keeps its bottom pixels throug
         const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: 500, width: 300, height: 300 * 1280 / 720})};
         const {animateMobileVideoBounds} = loadScripts(context, ['app.js'], '({animateMobileVideoBounds})');
         const motion = animateMobileVideoBounds(video, origin, opening, 280);
-        const feedFrame = frames[opening ? 0 : 1];
-        if (opening) {
-            const insets = feedFrame.clipPath.match(/^inset\((.*?) round/)[1].split(' ').map(parseFloat);
-            assert.ok(insets[2] > 0);
-            assert.ok(Math.abs(insets[0]) < .001 && Math.abs(insets[1]) < .001 && Math.abs(insets[3]) < .001);
-        }
-        else assert.equal(feedFrame.clipPath, undefined); // The page return reaches the inline bottom at 1033px, past the 772px viewport.
+        const insets = frames[opening ? 0 : 1].clipPath.match(/^inset\((.*?) round/)[1].split(' ').map(parseFloat);
+        assert.ok(insets[2] > 0); // Safari never draws a fixed layer beneath its toolbar, so cut a straight edge there.
+        assert.ok(Math.abs(insets[0]) < .001 && Math.abs(insets[1]) < .001 && Math.abs(insets[3]) < .001);
         complete();
         assert.equal(await motion.finished, true);
         motion.cancel();
@@ -4170,12 +4198,14 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     context.window.innerHeight = 844;
     context.window.scrollY = 240;
     app.$refs.lightboxViewer = viewer;
+    const shade = {style: {}};
+    app.$refs.lightboxShade = shade;
     const fades = [];
-    viewer.animate = (frames, options) => {
+    shade.animate = (frames, options) => {
         const fade = {frames, options, cancelled: false, cancel() {this.cancelled = true;}};
         fades.push(fade); return fade;
     };
-    context.getComputedStyle = element => element === viewer
+    context.getComputedStyle = element => element === shade
         ? {opacity: '1', backgroundColor: 'rgba(0, 0, 0, 0.6)'} : {borderRadius: '16px', objectFit: 'contain'};
     app.$refs.inlineVideoSlot = slot;
     slot.style = {display: 'none'};
@@ -4217,7 +4247,14 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     assert.equal(stage.querySelectorAll('video').length, 1);
     assert.equal(video.currentTime, 3);
     assert.equal(viewer.style.display, 'flex');
-    assert.equal(context.window.scrollY, 240); // The backdrop shares the screen-fixed viewer; it doesn't move the document.
+    assert.equal(context.window.scrollY, 240); // Opening doesn't move the document.
+    assert.equal(shade.style.top, '-604px'); // The page shade spans a viewport above and below the visible page.
+    assert.equal(shade.style.height, '2532px');
+    context.window.scrollY = 300;
+    context.__state.events.get('scroll')();
+    assert.equal(shade.style.top, '-544px'); // It follows any scroll while the viewer is open.
+    context.window.scrollY = 240;
+    context.__state.events.get('scroll')();
     assert.equal(fades[0].frames[0].backgroundColor, 'rgba(0, 0, 0, 0)');
     assert.equal(fades[0].frames[1].backgroundColor, 'rgba(0, 0, 0, 1)');
     assert.equal(slot.style.display, '');
@@ -4251,18 +4288,18 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     assert.equal(fades[1].frames[0].backgroundColor, 'rgba(0, 0, 0, 0.6)'); // Continue the visible color alpha, not the element opacity.
     assert.equal(fades[1].frames[1].backgroundColor, 'rgba(0, 0, 0, 0)');
     assert.equal(slot.style.transform, 'translate3d(0, 0, 0)');
-    assert.equal(viewerValues.get('position'), 'absolute');
-    assert.ok(viewer.classList.contains('is-video-closing'));
-    assert.equal(viewerValues.get('top'), '240px');
-    assert.equal(fades[1].options.duration, 160);
+    assert.equal(viewerValues.size, 0); // The viewer stays fixed in place; only the page shade fades.
+    assert.equal(fades[1].options.duration, 120);
     assert.match(motions[1].frames[0].transform, /translate3d\(0px, 180px, 0\)/); // Continue from the finger, with no doubled/stale drag transform.
     motions[1].complete(); await Promise.resolve(); await Promise.resolve();
     assert.equal(app.lightboxOpen, false);
     assert.equal(viewer.style.display, 'none');
-    assert.equal(viewerValues.size, 0); // The next opening uses its normal fixed host again.
-    assert.ok(!viewer.classList.contains('is-video-closing'));
+    assert.equal(viewerValues.size, 0);
     assert.equal(context.window.scrollY, 240);
     assert.equal(fades[1].cancelled, true);
+    app.followLightboxShade(false);
+    assert.ok(!context.__state.events.has('scroll')); // Closing stops following the page.
+    assert.ok(!context.__state.events.has('resize'));
     assert.equal(player.parentElement, originalParent);
     assert.equal(feed.querySelector('video'), video);
     assert.equal(video.parentElement, player);

@@ -438,19 +438,20 @@ function fittedVideoRect(video, includeCrop = false) {
     return { left: frame.left + (frame.width - width) / 2, top: frame.top + (frame.height - height) / 2, width, height };
 }
 
-function videoFeedInsets(source, clipBottom = true) {
+function videoFeedInsets(source, raised = []) {
     const viewport = window.visualViewport;
     const left = viewport?.offsetLeft || 0;
     let top = viewport?.offsetTop || 0;
     const right = left + (viewport?.width || window.innerWidth || Infinity);
     const bottom = top + (viewport?.height || window.innerHeight || Infinity);
     document.querySelectorAll('[data-video-occluder]').forEach(header => {
+        if (raised.includes(header)) return;
         const rect = header.getBoundingClientRect();
         if (rect.width && rect.height && rect.left < source.left + source.width && rect.left + rect.width > source.left
             && rect.top <= Math.max(top, source.top) && rect.top + rect.height > top) top = Math.max(top, rect.top + rect.height);
     });
     return {top: Math.min(source.height, Math.max(0, top - source.top)),
-        bottom: clipBottom ? Math.min(source.height, Math.max(0, source.top + source.height - bottom)) : 0,
+        bottom: Math.min(source.height, Math.max(0, source.top + source.height - bottom)),
         left: Math.min(source.width, Math.max(0, left - source.left)),
         right: Math.min(source.width, Math.max(0, source.left + source.width - right))};
 }
@@ -463,7 +464,7 @@ function videoBackdropOpacity(backdrop) {
     return color?.startsWith('rgba(') ? Number(color.split(',')[3].replace(')', '')) : 1;
 }
 
-function animateMobileVideoBounds(video, origin, opening, duration, startBounds = null) {
+function animateMobileVideoBounds(video, origin, opening, duration, startBounds = null, shade = null) {
     const surface = video?.parentElement;
     if (!surface?.animate || !origin?.isConnected || !duration) return null;
     const source = origin.getBoundingClientRect();
@@ -471,9 +472,36 @@ function animateMobileVideoBounds(video, origin, opening, duration, startBounds 
     const parent = surface.parentElement.getBoundingClientRect();
     if (!source.width || !source.height || !frame.width || !frame.height) return null;
     const fitted = fittedVideoRect(video, true);
-    // The page-positioned return must paint the same video pixels behind Safari's
-    // URL bar that the inline player will occupy after handoff.
-    const feedInsets = videoFeedInsets(source, opening);
+    const saved = [];
+    const style = (element, values) => {
+        for (const [name, value] of values) {
+            saved.push([element, name, element.style.getPropertyValue(name)]);
+            element.style.setProperty(name, value);
+        }
+    };
+    const viewer = video.closest('.lightbox-viewer');
+    // A returning picture passes beneath the sticky headers that cover it in the
+    // feed. Cropping it at their edge instead makes the covered part reappear
+    // behind their translucent glass after handoff. A header inside another
+    // stacking context can't rise above the viewer, so it keeps the crop.
+    const raised = [];
+    if (!opening && viewer) {
+        const zIndex = String((parseInt(getComputedStyle(viewer).zIndex, 10) || 0) + 1);
+        document.querySelectorAll('[data-video-occluder]').forEach(header => {
+            const rect = header.getBoundingClientRect();
+            const left = Math.max(rect.left, source.left), right = Math.min(rect.left + rect.width, source.left + source.width);
+            const top = Math.max(rect.top, source.top, 0), bottom = Math.min(rect.top + rect.height, source.top + source.height);
+            if (left >= right || top >= bottom) return;
+            const previous = header.style.getPropertyValue('z-index');
+            header.style.setProperty('z-index', zIndex);
+            if (header.contains(document.elementFromPoint?.((left + right) / 2, (top + bottom) / 2))) {
+                saved.push([header, 'z-index', previous]);
+                raised.push(header);
+            } else if (previous) header.style.setProperty('z-index', previous);
+            else header.style.removeProperty('z-index');
+        });
+    }
+    const feedInsets = videoFeedInsets(source, raised);
     const radius = parseFloat(getComputedStyle(origin.tagName === 'VIDEO' ? origin.parentElement : origin).borderRadius) || 0;
     const crop = rect => {
         const scale = Math.max(rect.width / fitted.width, rect.height / fitted.height);
@@ -500,45 +528,23 @@ function animateMobileVideoBounds(video, origin, opening, duration, startBounds 
     };
     const feed = bounds(source, radius, feedInsets);
     const fullscreen = bounds(startBounds || fitted, startBounds?.radius || 0);
-    const saved = [];
-    const style = (element, values) => {
-        for (const [name, value] of values) {
-            saved.push([element, name, element.style.getPropertyValue(name)]);
-            element.style.setProperty(name, value);
-        }
-    };
-    const viewer = video.closest('.lightbox-viewer');
-    let pageReturn = false;
-    if (!opening && viewer?.getBoundingClientRect) {
-        const rect = viewer.getBoundingClientRect();
-        // Release Safari's fixed-edge fill when dismissal starts. Keeping the
-        // viewer fixed until handoff delays the browser toolbar's own fade by
-        // the entire return animation. Keep the same screen bounds in the page.
-        if (rect.width && rect.height) {
-            pageReturn = true;
-            viewer.classList?.add('is-video-closing');
-            style(viewer, [['position', 'absolute'], ['left', `${rect.left + (window.scrollX || 0)}px`],
-                ['top', `${rect.top + (window.scrollY || 0)}px`], ['right', 'auto'], ['bottom', 'auto'],
-                ['width', `${rect.width}px`], ['height', `${rect.height}px`]]);
-        }
-    }
     style(surface, [['position', 'absolute'], ['left', `${fitted.left - parent.left}px`], ['top', `${fitted.top - parent.top}px`], ['width', `${fitted.width}px`], ['height', `${fitted.height}px`], ['max-width', 'none'], ['aspect-ratio', 'auto'], ['overflow', 'hidden'], ['border', '0'], ['background', 'transparent'], ['transform-origin', '0 0'], ['will-change', 'transform']]);
     style(video, [['position', 'absolute'], ['left', '0'], ['top', '0'], ['width', '100%'], ['height', '100%'], ['max-width', 'none'], ['max-height', 'none'], ['object-fit', 'contain']]);
     const options = { duration, easing: opening ? 'cubic-bezier(0.22, 0.75, 0.2, 1)' : 'cubic-bezier(0.22, 0.65, 0.3, 1)', fill: 'both' };
     const animation = surface.animate(opening ? [feed, fullscreen] : [fullscreen, feed], options);
     const fade = [opening ? 0 : startBounds?.backdropOpacity ?? 1, opening ? 1 : 0];
-    // The opening viewer owns the fixed color and its fade. A separate absolute
-    // sibling behind a transparent fixed viewer misses Safari's toolbar sampling.
-    const backdrop = viewer?.animate?.(fade.map(opacity => ({backgroundColor: `rgba(0, 0, 0, ${opacity})`})), {
-        ...options, duration: opening ? duration : Math.min(duration, 160), easing: opening ? 'linear' : 'ease-out',
-    });
+    // Dismissal reveals the page quickly, then holds it while the picture lands.
+    const fadeOptions = {...options, duration: opening ? duration : Math.min(duration, 120), easing: opening ? 'linear' : 'ease-out'};
+    const backdrop = shade?.animate?.(fade.map(opacity => ({backgroundColor: `rgba(0, 0, 0, ${opacity})`})), fadeOptions);
+    // Raised headers left the backdrop early, so they fade in with the page.
+    const headerFades = raised.map(header => header.animate?.([{opacity: 1 - fade[0]}, {opacity: 1}], fadeOptions));
     let cleaned = false;
     const cleanup = () => {
         if (cleaned) return;
         cleaned = true;
         animation.cancel();
         backdrop?.cancel();
-        if (pageReturn) viewer.classList?.remove('is-video-closing');
+        headerFades.forEach(headerFade => headerFade?.cancel());
         for (const [element, name, value] of saved) {
             if (value) element.style.setProperty(name, value);
             else element.style.removeProperty(name);
@@ -613,6 +619,17 @@ function tweetApp() {
     let lightboxInlineMount = null;
     let lightboxVideoMotion = null;
     let lightboxVideoReadyCancel = null;
+    // The mobile video backdrop is page content rather than a fixed layer, so
+    // Safari paints it beneath its toolbars too. It spans a viewport above and
+    // below the visible page without extending the document.
+    let lightboxShade = null;
+    const placeLightboxShade = () => {
+        const height = window.innerHeight || 800;
+        const top = (window.scrollY || 0) - height;
+        const bottom = Math.min(document.documentElement?.scrollHeight || Infinity, (window.scrollY || 0) + 2 * height);
+        lightboxShade.style.top = `${top}px`;
+        lightboxShade.style.height = `${Math.max(0, bottom - top)}px`;
+    };
     // Lists and threads send abbreviated raw JSON. Copy raw reads the stored document,
     // prefetched when a tweet menu opens so the copy usually stays in the click gesture.
     const rawTweetRequests = new Map();
@@ -2130,7 +2147,10 @@ function tweetApp() {
                 // The mobile viewer blocks pan gestures itself. Changing body
                 // overflow makes Safari stop painting beneath its floating bar.
                 if (val) { if (!this.isMobileVideoViewer()) this.lockModalScroll(); }
-                else if (!this.showStatsModal && !this.showSettingsModal && !this.showSetupModal) this.unlockModalScroll();
+                else {
+                    this.followLightboxShade(false);
+                    if (!this.showStatsModal && !this.showSettingsModal && !this.showSetupModal) this.unlockModalScroll();
+                }
             });
 
             window.addEventListener('open-lightbox', (e) => {
@@ -2347,6 +2367,7 @@ function tweetApp() {
                 if (!inlinePlayer) originVideo.pause();
             }
             this.lightboxOpen = this.lightboxMedia.length > 0;
+            this.followLightboxShade(this.lightboxOpen);
             const animate = originVideo && this.isMobileVideoViewer() && this.lightboxMotionDuration(300) && originVideo.getBoundingClientRect;
             if (animate) this.lightboxVideoMotionPhase = 'preparing';
             // Reparent before play(), within the original tap's user activation.
@@ -2375,10 +2396,10 @@ function tweetApp() {
             const active = this.activeLightboxVideo();
             if (active) tweetNookFinishVideoScrub(active);
             const animate = !preparing && lightboxOriginVideo && this.isMobileVideoViewer() && active?.parentElement?.animate;
-            const backdrop = this.$refs.lightboxViewer;
+            const shade = this.$refs.lightboxShade;
             const startBounds = animate ? {
                 ...(lightboxVideoMotion?.bounds() || {...fittedVideoRect(active), radius: 0}),
-                backdropOpacity: backdrop ? videoBackdropOpacity(backdrop) : Number(this.lightboxBackdropStyle()['--lightbox-backdrop-opacity']),
+                backdropOpacity: shade ? videoBackdropOpacity(shade) : Number(this.lightboxBackdropStyle()['--lightbox-backdrop-opacity']),
             } : null;
             this.resetLightboxMotion();
             if (lightboxInlineMount && this.$refs.inlineVideoSlot) {
@@ -2393,6 +2414,18 @@ function tweetApp() {
 
         activeLightboxVideo() {
             return this.$refs.lightboxStage?.querySelector?.('.lightbox-slide.is-active video[data-video-player]');
+        },
+
+        followLightboxShade(follow) {
+            if (lightboxShade) {
+                window.removeEventListener('scroll', placeLightboxShade);
+                window.removeEventListener('resize', placeLightboxShade);
+            }
+            lightboxShade = follow ? this.$refs.lightboxShade : null;
+            if (!lightboxShade) return;
+            placeLightboxShade();
+            window.addEventListener('scroll', placeLightboxShade, {passive: true});
+            window.addEventListener('resize', placeLightboxShade);
         },
 
         mountInlineLightboxVideo() {
@@ -2475,7 +2508,7 @@ function tweetApp() {
 
         startLightboxVideoMotion(opening, startBounds = null) {
             const motion = animateMobileVideoBounds(this.activeLightboxVideo(), lightboxInlineMount?.placeholder || lightboxOriginVideo, opening,
-                this.lightboxMotionDuration(opening ? 300 : 280), startBounds);
+                this.lightboxMotionDuration(opening ? 300 : 280), startBounds, this.$refs.lightboxShade);
             if (!motion) return false;
             lightboxVideoMotion = motion;
             this.lightboxVideoMotionPhase = opening ? 'opening' : 'closing';
