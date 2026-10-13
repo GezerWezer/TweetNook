@@ -2111,6 +2111,14 @@ body {
 .lightbox-stage {
     contain: strict;
 }
+.lightbox-shade {
+    display: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 99;
+    pointer-events: none;
+}
 .lightbox-slide {
     will-change: transform;
     backface-visibility: hidden;
@@ -2414,33 +2422,37 @@ body {
         opacity: 1;
         visibility: visible;
     }
-    .lightbox-viewer.is-video-viewer { backdrop-filter: none; }
-    .is-video-viewer .lightbox-backdrop { background: transparent; }
-    /* During the page-positioned return, paint past the viewport's bottom edge.
-       Clipping here leaves an empty feed placeholder behind Safari's URL bar
-       until the live video is returned, which makes that area switch abruptly. */
-    .lightbox-viewer.is-video-closing { overflow: visible; }
-    .is-video-closing .lightbox-stage { overflow: visible; contain: size layout style; }
-    .is-video-closing .lightbox-backdrop {
-        top: 100%;
-        bottom: auto;
-        height: max(160px, calc(100lvh - 100svh + env(safe-area-inset-bottom)));
-        background-color: inherit;
+    /* Safari 26 fills the areas beneath its toolbars with one color sampled from
+       a fixed, viewport-sized element and holds it until that element is hidden,
+       so the fill can't follow a fade. Safari skips fixed elements larger than
+       105% of the viewport: oversize the viewer past every edge, and let the
+       page-positioned shade carry the backdrop. Safari draws page content
+       beneath its toolbars, so those areas fade with the rest of the screen. */
+    .lightbox-viewer.is-video-viewer {
+        --video-viewer-bleed: 160px;
+        inset: calc(-1 * var(--video-viewer-bleed));
+        background-color: transparent !important;
+        backdrop-filter: none;
     }
+    .is-video-viewer > .lightbox-stage,
+    .is-video-viewer > .lightbox-chrome { inset: var(--video-viewer-bleed); }
+    .lightbox-viewer.is-video-viewer:not(.is-video-closed) + .lightbox-shade { display: block; }
+    .is-video-viewer .lightbox-backdrop { background: transparent; }
     /* Alpine's leave lifecycle lasts a frame after the bounds return completes. */
     .lightbox-viewer.is-video-viewer.is-video-closed { visibility: hidden; pointer-events: none; }
     .lightbox-viewer.is-video-viewer.lightbox-overlay-enter,
     .lightbox-viewer.is-video-viewer.lightbox-overlay-leave { transition: none; }
     .lightbox-viewer.is-video-viewer.lightbox-overlay-enter-start,
     .lightbox-viewer.is-video-viewer.lightbox-overlay-leave-end { opacity: 1; }
-    /* Keep the backdrop color on the fixed viewer, which Safari samples at its
-       toolbar edge. The moving picture and controls add no separate black fill. */
+    /* The shade is the only black fill; the moving picture and controls add none. */
     .lightbox-video-player { background: transparent; }
     .is-video-preparing .lightbox-video-player > video { visibility: hidden; }
     .is-video-preparing [data-inline-video-slot] video { visibility: visible; }
     .is-video-motion .lightbox-video-player .video-control-bar,
     .is-video-motion .video-center-play { opacity: 0 !important; pointer-events: none !important; }
     .is-video-viewer .lightbox-close-button {
+        top: calc(var(--video-viewer-bleed) + max(16px, env(safe-area-inset-top)));
+        left: calc(var(--video-viewer-bleed) + max(16px, env(safe-area-inset-left)));
         width: 40px;
         height: 40px;
         padding: 8px;
