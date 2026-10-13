@@ -2233,6 +2233,25 @@
                             </div>
                             <p class="text-xs text-[var(--text-secondary)] mt-2">Split Panel opens tweets in a side panel.</p>
                         </div>
+
+                        <!-- Media -->
+                        <div class="mb-8">
+                            <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Media</h3>
+                            <p class="text-sm text-[var(--text-secondary)] mb-4">Choose how videos play in the feed.</p>
+                            <div class="flex bg-[var(--bg-secondary)] rounded-xl p-1 gap-1" role="group" aria-label="Video playback">
+                                <button @click="setVideoPlayback('paused')" :aria-pressed="videoPlayback === 'paused'"
+                                        :class="videoPlayback === 'paused' ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
+                                        class="flex-1 py-2 px-3 rounded-lg text-sm font-bold transition">
+                                    Click to Play
+                                </button>
+                                <button @click="setVideoPlayback('autoplay')" :aria-pressed="videoPlayback === 'autoplay'"
+                                        :class="videoPlayback === 'autoplay' ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
+                                        class="flex-1 py-2 px-3 rounded-lg text-sm font-bold transition">
+                                    Autoplay
+                                </button>
+                            </div>
+                            <p class="text-xs text-[var(--text-secondary)] mt-2">Autoplay starts videos muted as they scroll into view. Unmuting one video unmutes the rest.</p>
+                        </div>
                     </div>
 
                 </div>

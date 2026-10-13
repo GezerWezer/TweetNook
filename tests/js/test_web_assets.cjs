@@ -116,7 +116,9 @@ function browserContext(pathname = '/') {
                 return null;
             },
             querySelectorAll(selector) {
-                return selector === 'video' ? videos : [];
+                if (selector === 'video') return videos;
+                if (selector === 'video[controls]') return videos.filter(video => video.hasAttribute?.('controls'));
+                return [];
             },
             getElementById() {
                 return null;
@@ -3621,6 +3623,112 @@ test('GIF indicator tracks playback state and toggles the archived animation', a
     assert.ok(!classes.has('is-paused'));
     assert.equal(event.prevented, true);
     assert.equal(event.stopped, true);
+});
+
+test('autoplay setting plays the topmost visible video muted and shares unmuting', async () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    // Fake players dispatch their media events synchronously to the app handlers.
+    const player = (top, { lightbox = false } = {}) => {
+        const video = {
+            tagName: 'VIDEO',
+            paused: true,
+            isConnected: true,
+            playCalls: 0,
+            _muted: false,
+            hasAttribute: name => name === 'controls',
+            closest: selector => (lightbox && selector === '.lightbox-stage' ? {} : null),
+            getBoundingClientRect: () => ({ top }),
+            get muted() { return this._muted; },
+            set muted(value) {
+                const changed = this._muted !== value;
+                this._muted = value;
+                if (changed) app.handleVideoVolumeChange(this);
+            },
+            play() {
+                this.playCalls += 1;
+                this.paused = false;
+                app.handleVideoPlay(this);
+                return Promise.resolve();
+            },
+            pause() {
+                if (this.paused) return;
+                this.paused = true;
+                app.handleVideoPause(this);
+            },
+        };
+        context.__state.videos.push(video);
+        return video;
+    };
+    const lower = player(400);
+    const upper = player(100);
+    const lightbox = player(0, { lightbox: true });
+
+    // Autoplay is the default; Click to Play never autoplays.
+    assert.equal(app.videoPlayback, 'autoplay');
+    app.setVideoPlayback('paused');
+    app.updateAutoplayVisibility(lower, true);
+    app.updateAutoplayVisibility(upper, true);
+    assert.equal(upper.playCalls + lower.playCalls, 0);
+
+    app.setVideoPlayback('autoplay');
+    assert.equal(context.localStorage.getItem('tvx-video-playback'), 'autoplay');
+    assert.equal(upper.playCalls, 1);
+    assert.equal(lower.playCalls, 0);
+    assert.ok(upper.muted && lower.muted && lightbox.muted);
+
+    // Unmuting one player unmutes every player.
+    upper.muted = false;
+    assert.equal(app.videoMuted, false);
+    assert.ok(!lower.muted && !lightbox.muted);
+
+    // A video the viewer pauses stays paused; the next visible one takes over with sound.
+    upper.pause();
+    app.autoplayNextVideo();
+    assert.equal(upper.playCalls, 1);
+    assert.equal(lower.playCalls, 1);
+    assert.equal(lower.muted, false);
+
+    // Playing another video pauses the current one, and muting is shared again.
+    lightbox.play();
+    assert.ok(lower.paused);
+    lightbox.muted = true;
+    assert.ok(upper.muted && lower.muted);
+    lightbox.paused = true;
+
+    // Scrolling away clears a hold, but overlays keep autoplay back.
+    app.updateAutoplayVisibility(upper, false);
+    app.updateAutoplayVisibility(lower, false);
+    app.lightboxOpen = true;
+    app.updateAutoplayVisibility(lower, true);
+    assert.equal(lower.playCalls, 1);
+    app.lightboxOpen = false;
+    app.autoplayNextVideo();
+    assert.equal(lower.playCalls, 2);
+    assert.equal(lower.muted, true);
+
+    // Switching back pauses feed players and restores normal sound.
+    app.setVideoPlayback('paused');
+    assert.ok(lower.paused);
+    assert.ok(!upper.muted && !lower.muted && !lightbox.muted);
+
+    const restoredPlayback = () => {
+        const restored = immediateComponent(tweetApp());
+        restored.fetchSetup = async () => {};
+        restored.fetchNotices = async () => {};
+        restored.fetchActivityStatus = async () => {};
+        restored.initApp();
+        return restored.videoPlayback;
+    };
+    assert.equal(restoredPlayback(), 'paused');
+    context.localStorage.removeItem('tvx-video-playback');
+    assert.equal(restoredPlayback(), 'autoplay');
+
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    assert.match(html, /setVideoPlayback\('paused'\)/);
+    assert.match(html, /setVideoPlayback\('autoplay'\)/);
+    assert.match(html, /Unmuting one video unmutes the rest/);
 });
 
 test('activity drawer loads any pipeline and starts production jobs', async () => {

@@ -3,6 +3,13 @@
  */
 
 const statsSuspendedVideos = new Set();
+// Autoplay mode: feed players at least this visible are candidates; the topmost one
+// plays. A candidate paused while on screen stays paused until it scrolls away.
+const VIDEO_AUTOPLAY_VISIBLE_RATIO = 0.5;
+const autoplayVideos = new Set();
+const heldAutoplayVideos = new WeakSet();
+// Players muted only because the browser refused audible autoplay.
+const forcedMuteVideos = new WeakSet();
 const AVATAR_URL_VERSION = 3;
 // Native video controls fade this long after the last pointer/touch/key activity
 // during playback, and almost immediately once the pointer leaves the video.
@@ -105,6 +112,15 @@ function tweetNookToggleGif(event, indicator) {
     } else {
         video.pause();
     }
+}
+
+// GIFs play without controls; every other video is a player.
+function isVideoPlayer(video) {
+    return video?.tagName === 'VIDEO' && video.hasAttribute('controls');
+}
+
+function isFeedVideoPlayer(video) {
+    return isVideoPlayer(video) && !video.closest?.('.lightbox-stage');
 }
 
 window.tweetNookSyncGifIndicator = tweetNookSyncGifIndicator;
@@ -291,6 +307,7 @@ function tweetApp() {
         lightboxGestureAnimating: false,
         lightboxDismissPending: false,
         videoObserver: null,
+        videoAutoplayObserver: null,
         mediaPrefetchObserver: null,
 
         // Split panel state
@@ -1500,6 +1517,9 @@ function tweetApp() {
         fontDiscoveryMessage: '',
         fontPickerOpen: false,
         fontSize: 'default',
+        videoPlayback: 'autoplay', // 'autoplay' | 'paused'
+        // Shared by every player in autoplay mode; each page load starts muted.
+        videoMuted: true,
 
         FONT_OPTIONS: [
             {key: 'system', label: 'System Default', family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'},
@@ -1544,6 +1564,8 @@ function tweetApp() {
                 document.documentElement.style.setProperty('--font-size-base', savedFontSizePx);
             }
             
+            this.videoPlayback = localStorage.getItem('tvx-video-playback') === 'paused' ? 'paused' : 'autoplay';
+
             // Restore split panel preference
             this.splitPanel = localStorage.getItem('tvx-split-panel') === 'true';
             this.routeUsesPanel = this.shouldUseSplitPanel();
@@ -1654,6 +1676,7 @@ function tweetApp() {
                 } else {
                     this.showAutomatedTaggingSpendModal = false;
                     if (!this.showSetupModal && !this.lightboxOpen) this.unlockModalScroll();
+                    this.autoplayNextVideo();
                 }
             });
             // The full tag list is only shown in Tag Management; load it there.
@@ -1685,6 +1708,17 @@ function tweetApp() {
                 });
             }, { threshold: 0.1 });
 
+            this.videoAutoplayObserver = new IntersectionObserver((entries) => {
+                entries.forEach(e => this.updateAutoplayVisibility(
+                    e.target,
+                    e.isIntersecting && e.intersectionRatio >= VIDEO_AUTOPLAY_VISIBLE_RATIO,
+                ));
+            }, { threshold: VIDEO_AUTOPLAY_VISIBLE_RATIO });
+            // Media events do not bubble, so players are followed in the capture phase.
+            document.addEventListener('play', event => this.handleVideoPlay(event.target), true);
+            document.addEventListener('pause', event => this.handleVideoPause(event.target), true);
+            document.addEventListener('volumechange', event => this.handleVideoVolumeChange(event.target), true);
+
             this.mediaPrefetchObserver = new IntersectionObserver((entries) => {
                 entries.forEach(e => {
                     if (!e.isIntersecting) return;
@@ -1697,8 +1731,8 @@ function tweetApp() {
                 mutations.forEach(m => {
                     m.addedNodes.forEach(node => {
                         if (node.nodeType === 1) {
-                            if (node.tagName === 'VIDEO') this.videoObserver.observe(node);
-                            node.querySelectorAll('video').forEach(v => this.videoObserver.observe(v));
+                            if (node.tagName === 'VIDEO') this.observeVideo(node);
+                            node.querySelectorAll('video').forEach(v => this.observeVideo(v));
                             this.observeMediaPrefetch(node);
                         }
                     });
@@ -1725,6 +1759,86 @@ function tweetApp() {
             images.forEach(image => {
                 image.loading = 'eager';
                 image.decode?.().catch(() => {});
+            });
+        },
+
+        observeVideo(video) {
+            this.videoObserver.observe(video);
+            if (!isFeedVideoPlayer(video)) return;
+            if (this.videoPlayback === 'autoplay') video.muted = this.videoMuted;
+            this.videoAutoplayObserver.observe(video);
+        },
+
+        setVideoPlayback(mode) {
+            this.videoPlayback = mode === 'autoplay' ? 'autoplay' : 'paused';
+            localStorage.setItem('tvx-video-playback', this.videoPlayback);
+            const autoplay = this.videoPlayback === 'autoplay';
+            this.videoMuted = true;
+            document.querySelectorAll('video[controls]').forEach(video => {
+                video.muted = autoplay;
+                if (!autoplay && isFeedVideoPlayer(video)) video.pause();
+            });
+            this.autoplayNextVideo();
+        },
+
+        updateAutoplayVisibility(video, visible) {
+            if (visible) {
+                autoplayVideos.add(video);
+            } else {
+                autoplayVideos.delete(video);
+                heldAutoplayVideos.delete(video);
+                if (this.videoPlayback === 'autoplay' && !video.paused) video.pause();
+            }
+            this.autoplayNextVideo();
+        },
+
+        // Starts the topmost visible player unless one is already playing, the
+        // viewer paused it, or an overlay covers the feed.
+        autoplayNextVideo() {
+            if (this.videoPlayback !== 'autoplay') return;
+            if (this.lightboxOpen || this.showSettingsModal || this.showStatsModal) return;
+            autoplayVideos.forEach(video => {
+                if (!video.isConnected) autoplayVideos.delete(video);
+            });
+            const players = [...autoplayVideos];
+            if (players.some(video => !video.paused)) return;
+            const next = players
+                .filter(video => !heldAutoplayVideos.has(video))
+                .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
+            if (!next) return;
+            next.muted = this.videoMuted;
+            next.play()?.catch?.(() => {
+                if (next.muted) return;
+                // Browsers can refuse audible autoplay before the page has had a gesture.
+                forcedMuteVideos.add(next);
+                next.muted = true;
+                next.play()?.catch?.(() => {});
+            });
+        },
+
+        handleVideoPlay(video) {
+            if (this.videoPlayback !== 'autoplay' || !isVideoPlayer(video)) return;
+            heldAutoplayVideos.delete(video);
+            if (!forcedMuteVideos.has(video)) video.muted = this.videoMuted;
+            document.querySelectorAll('video[controls]').forEach(other => {
+                if (other !== video && !other.paused) other.pause();
+            });
+        },
+
+        handleVideoPause(video) {
+            if (this.videoPlayback === 'autoplay' && autoplayVideos.has(video)) heldAutoplayVideos.add(video);
+        },
+
+        handleVideoVolumeChange(video) {
+            if (this.videoPlayback !== 'autoplay' || !isVideoPlayer(video)) return;
+            if (forcedMuteVideos.has(video)) {
+                if (video.muted) return;
+                forcedMuteVideos.delete(video);
+            }
+            if (video.muted === this.videoMuted) return;
+            this.videoMuted = video.muted;
+            document.querySelectorAll('video[controls]').forEach(other => {
+                other.muted = this.videoMuted;
             });
         },
 
@@ -1770,6 +1884,7 @@ function tweetApp() {
             this.pauseLightboxPlayback();
             this.resetLightboxMotion();
             this.lightboxOpen = false;
+            this.autoplayNextVideo();
         },
 
         pauseLightboxPlayback() {
