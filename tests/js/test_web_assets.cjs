@@ -3022,7 +3022,7 @@ test('media quoting media is compact in lists and flush in the detail view', () 
         assert.match(mainQuote, /class="quote-card quote-card-detail /);
         const mediaOwner = main === 'threadData?.main' ? 'threadData' : 'panelThreadData';
         assert.ok(html.includes(`class="main-tweet-quote" :class="{ 'main-tweet-quote-after-single-media': (${mediaOwner}.main.media || []).length === 1 }"`));
-        assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media, 'quote-detail')" @click.stop></div>`));
+        assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media, (${mediaOwner}.main.media || []).length ? 'quote-detail-expanded' : 'quote-detail')" @click.stop></div>`));
     }
     assert.equal((html.match(/renderMediaGrid\((?:threadData|panelThreadData)\.main\.media, 'detail'\)/g) || []).length, 2);
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
@@ -3335,6 +3335,13 @@ test('single media layout distinguishes portraits, square boundaries, GIFs and q
         assert.equal(layout('video', 720, 1280, context).frameAspect, 16 / 9);
         assert.equal(layout('animated_gif', 498, 402, context).frameAspect, 16 / 9);
     }
+    const expandedQuote = layout('photo', 2816, 3072, 'quote-detail-expanded');
+    assert.equal(expandedQuote.frameAspect, 2816 / 3072);
+    assert.equal(expandedQuote.maxWidth, null);
+    assert.equal(expandedQuote.photoCapWidth, null);
+    assert.equal(expandedQuote.portraitPhoto, false);
+    assert.equal(layout('video', 1639, 2048, 'quote-detail-expanded').frameAspect, 16 / 9);
+    assert.equal(layout('animated_gif', 1639, 2048, 'quote-detail-expanded').frameAspect, 16 / 9);
     assert.ok(Math.abs(layout('video', 720, 742).maxWidth - 494.8787062) < 0.00001);
     assert.equal(layout('video', 480, 472).maxWidth, null);
     assert.equal(layout('animated_gif', 404, 512).frameAspect, 1);
@@ -3377,6 +3384,19 @@ test('media renderer preserves direct playback parents, placeholders and existin
     ]);
     assert.match(photo, /media-frame-feed/);
     assert.match(photo, /<img src="\/media\/a.jpg"/);
+
+    const ordinaryQuotedPortrait = app.renderMediaGrid([
+        { type: 'photo', width: 1536, height: 2048, download: { local_path: 'media/quoted.jpg' } },
+    ], 'quote-detail');
+    assert.match(ordinaryQuotedPortrait, /--media-photo-cap-width: 382\.5px;/);
+    assert.match(ordinaryQuotedPortrait, /media-frame-portrait-photo/);
+
+    const expandedQuotedPortrait = app.renderMediaGrid([
+        { type: 'photo', width: 2816, height: 3072, download: { local_path: 'media/expanded-quoted.jpg' } },
+    ], 'quote-detail-expanded');
+    assert.match(expandedQuotedPortrait, /--media-frame-aspect: 0\.9166666666666666;/);
+    assert.match(expandedQuotedPortrait, /class="[^"]*media-frame-quote-detail-expanded[^"]*"/);
+    assert.doesNotMatch(expandedQuotedPortrait, /--media-photo-cap-width|media-frame-portrait-photo/);
 
     const video = app.renderMediaGrid([
         {

@@ -5483,7 +5483,8 @@ function tweetApp() {
             };
             const video = media.type === 'video' || media.type === 'animated_gif';
             const gif = media.type === 'animated_gif';
-            const quoted = context === 'quote' || context === 'quote-detail';
+            const expandedDetailQuote = context === 'quote-detail-expanded';
+            const quoted = context === 'quote' || context === 'quote-detail' || expandedDetailQuote;
             const width = positiveNumber(media.width);
             const height = positiveNumber(media.height);
             const playback = video && Array.isArray(media.aspect_ratio) && media.aspect_ratio.length === 2
@@ -5498,8 +5499,8 @@ function tweetApp() {
                 frameAspect: video ? quoted ? 16 / 9 : gif ? Math.max(sourceAspect, 1) : sourceAspect
                     : Math.min(sourceAspect, 5),
                 maxWidth: !quoted && sourceAspect < 1 && !gif ? 510 * sourceAspect : null,
-                photoCapWidth: portraitPhoto ? 510 * sourceAspect : null,
-                portraitPhoto,
+                photoCapWidth: portraitPhoto && !expandedDetailQuote ? 510 * sourceAspect : null,
+                portraitPhoto: portraitPhoto && !expandedDetailQuote,
                 quoted,
             };
         },
