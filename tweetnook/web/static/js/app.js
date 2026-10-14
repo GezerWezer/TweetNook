@@ -51,12 +51,20 @@ function formatMediaDuration(durationMillis) {
     return `${Math.floor(totalMinutes / 60)}:${minutes}:${seconds}`;
 }
 
+// Phones and touch-first tablets get the full-screen media viewer; styles.css
+// uses the same query.
+const PHONE_MEDIA_QUERY = '(max-width: 640px), (pointer: coarse)';
+
+function isPhoneLayout() {
+    return Boolean(window.matchMedia?.(PHONE_MEDIA_QUERY)?.matches);
+}
+
 function tweetNookVideoPlayer(video) {
     return video?.closest?.('.media-video-player') || video?.parentElement;
 }
 
 function isMobileFullscreenVideo(video) {
-    return Boolean(video?.closest?.('.lightbox-stage') && window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches);
+    return Boolean(video?.closest?.('.lightbox-stage')) && isPhoneLayout();
 }
 
 function tweetNookSyncVideoDuration(video) {
@@ -287,7 +295,7 @@ function tweetNookSyncPlayerControls(video) {
     player.querySelectorAll('[data-video-action="mute"]').forEach(button => {
         const label = muted ? 'Unmute' : 'Mute';
         const mobile = button.classList.contains('video-idle-mute')
-            || (video.closest?.('.lightbox-stage') && window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches);
+            || isMobileFullscreenVideo(video);
         const icon = mobile ? (muted ? 'mobileMuted' : 'mobileSound') : (muted ? 'muted' : 'sound');
         if (button.getAttribute('data-video-icon') !== icon) {
             button.setAttribute('aria-label', label);
@@ -311,7 +319,7 @@ function tweetNookSyncPlayerControls(video) {
     if (document.activeElement !== volume) volume.value = muted ? 0 : video.volume;
     const fullscreen = player.querySelector('[data-video-action="fullscreen"]');
     const filled = player.classList.contains('is-video-fill');
-    const mobileViewer = video.closest?.('.lightbox-stage') && window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches;
+    const mobileViewer = isMobileFullscreenVideo(video);
     const fullscreenLabel = document.fullscreenElement === player ? 'Exit full screen' : mobileViewer ? (filled ? 'Fit video' : 'Fill screen') : 'Full screen';
     if (fullscreen.getAttribute('aria-label') !== fullscreenLabel) {
         fullscreen.setAttribute('aria-label', fullscreenLabel);
@@ -322,7 +330,7 @@ function tweetNookSyncPlayerControls(video) {
 }
 
 function isMobileInlineVideo(video) {
-    return Boolean(window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches)
+    return isPhoneLayout()
         && !video.closest?.('.lightbox-stage') && document.fullscreenElement !== tweetNookVideoPlayer(video);
 }
 
@@ -343,7 +351,7 @@ function tweetNookPlayerAction(video, action) {
     } else if (action === 'fullscreen') {
         if (document.fullscreenElement) document.exitFullscreen()?.catch?.(() => {});
         else if (isMobileInlineVideo(video)) tweetNookOpenMobileVideo(video);
-        else if (video.closest?.('.lightbox-stage') && window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches) {
+        else if (isMobileFullscreenVideo(video)) {
             tweetNookVideoPlayer(video).classList.toggle('is-video-fill');
         }
         else if (tweetNookVideoPlayer(video).requestFullscreen) tweetNookVideoPlayer(video).requestFullscreen()?.catch?.(() => {});
@@ -512,7 +520,7 @@ function feedPicture(origin, aspect) {
 
 // A video player moves its picture inside a wrapper while its controls stay put;
 // a photo or GIF moves itself.
-function animateMobileMediaBounds(media, origin, opening, duration, startBounds = null, shade = null) {
+function animateMobileMediaBounds(media, origin, opening, duration, startBounds = null, shade = null, shadeOpacity = 1) {
     const ownSurface = media?.tagName === 'IMG' || (media?.tagName === 'VIDEO' && !isVideoPlayer(media));
     const surface = ownSurface ? media : media?.parentElement;
     if (!surface?.animate || !origin?.isConnected || !duration) return null;
@@ -605,7 +613,8 @@ function animateMobileMediaBounds(media, origin, opening, duration, startBounds 
     }
     const options = { duration, easing: opening ? 'cubic-bezier(0.22, 0.75, 0.2, 1)' : 'cubic-bezier(0.22, 0.65, 0.3, 1)', fill: 'both' };
     const animation = surface.animate(opening ? [feed, fullscreen] : [fullscreen, feed], options);
-    const fade = [opening ? 0 : startBounds?.backdropOpacity ?? 1, opening ? 1 : 0];
+    // Open to the shade's resting opacity, which its reactive style keeps afterwards.
+    const fade = [opening ? 0 : startBounds?.backdropOpacity ?? shadeOpacity, opening ? shadeOpacity : 0];
     // The backdrop settles well before the picture lands, in either direction.
     const fadeOptions = {...options, duration: Math.min(duration, opening ? 150 : 120), easing: 'ease-out'};
     // Opacity runs on the compositor; a color fade would repaint the shade,
@@ -657,7 +666,7 @@ function tweetNookOpenLightbox(element, index) {
 
 // GIFs play in place on desktop; a phone opens them in the viewer like photos.
 function tweetNookOpenGif(event, video, index) {
-    if (!window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches) return;
+    if (!isPhoneLayout()) return;
     event?.stopPropagation?.();
     tweetNookOpenLightbox(video, index);
 }
@@ -2594,7 +2603,7 @@ function tweetApp() {
 
         isMobileViewer() {
             return Boolean(this.lightboxMedia[this.lightboxIndex])
-                && Boolean(window.matchMedia?.('(max-width: 640px), (pointer: coarse)')?.matches);
+                && isPhoneLayout();
         },
 
         isMobileVideoViewer() {
@@ -2644,7 +2653,7 @@ function tweetApp() {
 
         startLightboxVideoMotion(opening, startBounds = null) {
             const motion = animateMobileMediaBounds(this.activeLightboxMedia(), this.lightboxMotionOrigin(), opening,
-                this.lightboxMotionDuration(opening ? 300 : 280), startBounds, this.$refs.lightboxShade);
+                this.lightboxMotionDuration(opening ? 300 : 280), startBounds, this.$refs.lightboxShade, this.lightboxRestingOpacity());
             if (!motion) return false;
             this.runLightboxMotion(motion, opening);
             return true;
@@ -2656,7 +2665,9 @@ function tweetApp() {
             const fades = [this.$refs.lightboxViewer, this.$refs.lightboxShade].filter(element => element?.animate).map(element => {
                 // Closing continues from the shade's dragged opacity.
                 const current = opening ? 0 : Number(getComputedStyle(element).opacity ?? 1);
-                return element.animate([{opacity: Number.isFinite(current) ? current : 1}, {opacity: opening ? 1 : 0}], options);
+                // The shade opens to the resting opacity its reactive style keeps.
+                const target = !opening ? 0 : element === this.$refs.lightboxShade ? this.lightboxRestingOpacity() : 1;
+                return element.animate([{opacity: Number.isFinite(current) ? current : 1}, {opacity: target}], options);
             });
             if (!fades.length || !options.duration) return false;
             this.runLightboxMotion({
@@ -2762,11 +2773,16 @@ function tweetApp() {
             };
         },
 
+        // Photos keep a hint of the page behind them; video gets a solid backdrop.
+        lightboxRestingOpacity() {
+            return this.isMobileVideoViewer() ? 1 : 0.95;
+        },
+
         lightboxBackdropStyle() {
             const height = Math.max(1, window.innerHeight || 800);
             const progress = Math.min(1, Math.max(0, this.lightboxGestureOffsetY) / (height * 0.7));
             const opacity = this.lightboxVideoMotionPhase === 'preparing' || this.lightboxDismissPending ? 0
-                : (this.isMobileVideoViewer() ? 1 : 0.95) * (1 - progress * 0.72);
+                : this.lightboxRestingOpacity() * (1 - progress * 0.72);
             const transitionDuration = this.lightboxDismissPending
                 ? this.lightboxMotionDuration(180)
                 : (this.lightboxGestureAnimating ? this.lightboxMotionDuration(260) : 0);
