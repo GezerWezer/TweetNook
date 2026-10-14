@@ -397,15 +397,20 @@ function tweetNookInitVideoPlayer(video) {
         if (event.target.hasAttribute('data-video-seek') && !(event.button > 0)) tweetNookStartVideoScrub(video, event);
     });
     player.addEventListener('keydown', event => {
-        if (event.target.closest('input, button')) {
+        // Leave browser and system shortcuts (Cmd/Ctrl+F, Ctrl+K, ...) alone.
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+        // The seek slider's native step is 0.1% of the video; arrows seek by seconds instead.
+        const onSeek = event.target.hasAttribute?.('data-video-seek');
+        const seekBy = {ArrowLeft: -5, ArrowRight: 5, ...(onSeek ? {ArrowDown: -5, ArrowUp: 5} : {})}[event.key];
+        if (event.target.closest('input, button') && !(onSeek && seekBy)) {
             if (event.key !== 'Escape') event.stopPropagation();
             return;
         }
-        const action = { ' ': 'play', k: 'play', m: 'mute', f: 'fullscreen' }[event.key.toLowerCase()];
+        const action = onSeek ? null : { ' ': 'play', k: 'play', m: 'mute', f: 'fullscreen' }[event.key.toLowerCase()];
         if (action) { event.preventDefault(); event.stopPropagation(); tweetNookPlayerAction(video, action); }
-        else if (['ArrowLeft', 'ArrowRight'].includes(event.key) && Number.isFinite(video.duration)) {
+        else if (seekBy && Number.isFinite(video.duration)) {
             event.preventDefault(); event.stopPropagation();
-            video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + (event.key === 'ArrowRight' ? 5 : -5)));
+            video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seekBy));
             tweetNookShowVideoUi(video);
             tweetNookSyncVideoDuration(video);
         }
@@ -2473,7 +2478,8 @@ function tweetApp() {
 
         closeLightbox() {
             if (this.lightboxVideoMotionPhase === 'closing') return;
-            videoTapBlockedUntil = Date.now() + 600;
+            // Only touch dismissals are followed by Safari's late compatibility click.
+            if (this.isMobileViewer()) videoTapBlockedUntil = Date.now() + 600;
             const preparing = this.lightboxVideoMotionPhase === 'preparing';
             const active = this.activeLightboxVideo();
             if (active) tweetNookFinishVideoScrub(active);
@@ -2573,9 +2579,16 @@ function tweetApp() {
         restoreInlineLightboxVideo() {
             if (!lightboxInlineMount) return;
             const {player, placeholder, surface} = lightboxInlineMount;
-            surface.replaceWith(surface.querySelector('video'));
+            const video = surface.querySelector('video');
+            surface.replaceWith(video);
             player.classList.remove('lightbox-video-player', 'is-video-fill');
-            placeholder.replaceWith(player);
+            if (placeholder.isConnected) placeholder.replaceWith(player);
+            else {
+                // The card was re-rendered while the viewer was open and has its own
+                // new player; never leave this one behind in the viewer's slot.
+                video.pause();
+                player.remove();
+            }
             lightboxInlineMount = null;
         },
 
@@ -2680,7 +2693,7 @@ function tweetApp() {
             }
             if (origin && !resume) heldAutoplayVideos.add(origin);
             this.lightboxOpen = false;
-            videoTapBlockedUntil = Date.now() + 500;
+            if (this.isMobileViewer()) videoTapBlockedUntil = Date.now() + 500;
             if ((lightboxInlineMount || this.isMobileViewer()) && this.$refs.lightboxViewer) {
                 // Hide the viewer and restore the feed in one handoff; never
                 // expose a fullscreen frame while Alpine schedules leave.
