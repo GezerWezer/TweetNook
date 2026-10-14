@@ -3810,8 +3810,10 @@ test('custom players retain native fallback, seek, toggle sound, and isolate key
     assert.ok(!video.paused && space.defaultPrevented && space.propagationStopped);
     assert.equal(player.querySelector('[data-video-action="play"]').getAttribute('aria-label'), 'Pause video');
     const sliderKey = dispatchFeed(player, 'keydown', seek, {key: 'ArrowLeft'});
-    assert.equal(video.currentTime, 115); // The slider keeps its own keyboard behavior.
-    assert.ok(sliderKey.propagationStopped && !sliderKey.defaultPrevented); // Do not navigate lightbox slides.
+    assert.equal(video.currentTime, 110); // The slider seeks by seconds, not its 0.1% native step.
+    assert.ok(sliderKey.propagationStopped && sliderKey.defaultPrevented); // Do not navigate lightbox slides.
+    const find = dispatchFeed(player, 'keydown', player, {key: 'f', metaKey: true});
+    assert.ok(!find.defaultPrevented && !find.propagationStopped); // Browser shortcuts such as Cmd+F still work.
     const mute = player.querySelector('[data-video-action="mute"]');
     assert.ok(dispatchFeed(player, 'click', mute).propagationStopped);
     assert.equal(video.muted, true);
