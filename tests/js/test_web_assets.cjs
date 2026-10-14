@@ -4307,6 +4307,10 @@ test('phone photos expand from their tile and return to the one on screen, or fa
     app.openLightbox(opened[0].media, opened[0].index, null, opened[0].origin);
     const expand = motions[0];
     assert.equal(expand.target, 'image'); // The photo moves itself; it has no player wrapper.
+    const darken = motions.find(motion => motion.target === 'shade');
+    // Ends at the photo backdrop's resting opacity, so nothing snaps when the motion is released.
+    assert.equal(JSON.stringify(darken.frames), '[{"opacity":0},{"opacity":0.95}]');
+    assert.equal(app.lightboxRestingOpacity(), 0.95);
     assert.equal(images[1].style.getPropertyValue('transform-origin'), '0 0');
     assert.equal(images[1].style.getPropertyValue('position'), ''); // Its layout box is already the fitted picture.
     assert.match(expand.frames[0].clipPath, /^inset\([\d.]+px 0px [\d.]+px 0px round 0px [1-9][\d.]*px [1-9][\d.]*px 0px\)$/);
