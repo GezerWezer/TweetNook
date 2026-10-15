@@ -1868,6 +1868,8 @@ async def tag_pending_media_tweets(
                 "tagging",
                 f"Paused: {paid_state.stop_reason}",
                 metrics={"tagged": tagged, "requests": paid_state.attempts},
+                reason=paid_state.stop_reason,
+                paused=True,
             )
         elif processed == 0:
             pipeline.skip_step("tagging", "no eligible tweets or available quota/spend")

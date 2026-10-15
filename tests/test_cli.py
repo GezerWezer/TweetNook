@@ -186,7 +186,7 @@ def test_sync_all_help_describes_default_followups() -> None:
     result = runner.invoke(cli.app, ["sync", "all", "--help"])
 
     assert result.exit_code == 0
-    assert "Sync bookmarks and likes" in result.stdout
+    assert "Sync the collections chosen in sync.collections" in " ".join(result.stdout.split())
     assert "resurrection checks" in result.stdout
     assert "--skip-media" in result.stdout
     assert "--skip-unfurl" in result.stdout

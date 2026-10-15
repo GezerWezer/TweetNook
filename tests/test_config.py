@@ -11,6 +11,7 @@ from tweetnook.config import (
     AppConfig,
     AuthConfig,
     DatabaseConfig,
+    SyncConfig,
     TaggingConfig,
     WebConfig,
     XDGPaths,
@@ -373,3 +374,41 @@ def test_config_ui_schema_only_references_real_fields_and_masks_secrets() -> Non
         "database.cache_size_kb",
         "database.mmap_size_bytes",
     } <= advanced
+
+
+def test_sync_collections_default_order_and_validation(paths: XDGPaths) -> None:
+    assert AppConfig().sync.collections == ["bookmarks", "likes"]
+    assert SyncConfig(collections=["tweets", "bookmarks"]).collections == ["bookmarks", "tweets"]
+    with pytest.raises(ValidationError):
+        SyncConfig(collections=[])
+    with pytest.raises(ValidationError):
+        SyncConfig(collections=["mentions"])
+
+    update_config_values(paths, {"sync.collections": ["likes", "tweets"]})
+    raw = tomllib.loads(paths.config_file.read_text(encoding="utf-8"))
+    assert raw["sync"]["collections"] == ["likes", "tweets"]
+    assert AppConfig.model_validate(raw).sync.collections == ["likes", "tweets"]
+    assert "sync.collections" in get_explicit_config_fields(paths)
+
+    update_config_values(paths, {"sync.collections": None})
+    raw = tomllib.loads(paths.config_file.read_text(encoding="utf-8"))
+    assert "collections" not in raw.get("sync", {})
+
+
+def test_config_ui_schema_presentation_metadata_covers_the_editable_fields() -> None:
+    schema = get_config_ui_schema()
+    config_dump = AppConfig().model_dump()
+    editable = {
+        f"{section}.{field}" for section, fields in config_dump.items() for field in fields
+    } - set(schema["blacklist"])
+
+    grouped = [path for group in schema["groups"] for path in group["fields"]]
+    assert len(grouped) == len(set(grouped))
+    assert set(grouped) == editable
+    assert all(group["title"] for group in schema["groups"])
+    assert set(schema["units"]) <= editable
+    assert set(schema["byte_units"]) <= editable
+    assert set(schema["controls"]) <= editable
+    assert all(set(needs) <= editable for needs in schema["requires"].values())
+    assert "sync.collections" in schema["blacklist"]
+    assert schema["descriptions"]["sync.backoff_base"].startswith("Wait before the first retry")
