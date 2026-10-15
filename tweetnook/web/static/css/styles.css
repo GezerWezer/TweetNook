@@ -72,6 +72,48 @@ body {
     color: var(--accent-color);
 }
 
+.scroll-to-top {
+    position: fixed;
+    right: max(24px, env(safe-area-inset-right));
+    bottom: max(24px, env(safe-area-inset-bottom));
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--input-border);
+    border-radius: 9999px;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    box-shadow: 0 0 15px 0 rgba(101, 119, 134, .2), 0 0 3px 1px rgba(101, 119, 134, .15);
+    cursor: pointer;
+    transition: background-color 150ms ease;
+}
+
+.scroll-to-top:hover,
+.scroll-to-top:active {
+    background-color: var(--bg-secondary);
+}
+
+.scroll-to-top:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 3px;
+}
+
+.scroll-to-top-enter { transition: opacity 150ms ease-out; }
+.scroll-to-top-leave { transition: opacity 100ms ease-in; }
+
+/* Leave room for the older desktop utilities until they move into the header. */
+@media (min-width: 640px) {
+    body:has(.settings-fab) .scroll-to-top { bottom: 232px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .scroll-to-top { transition: none !important; }
+}
+
 [x-cloak] {
     display: none !important;
 }
