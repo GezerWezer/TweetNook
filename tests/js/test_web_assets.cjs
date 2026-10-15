@@ -544,6 +544,83 @@ test('theme color helpers and catalog generate complete deterministic themes', (
     assert.ok(exported.THEMES['classic-dark']._accents.length >= 6);
 });
 
+test('demo follows system appearance until an explicit theme is chosen', () => {
+    for (const dark of [false, true]) {
+        const context = browserContext();
+        context.window.TWEETNOOK_DEMO = true;
+        let onChange;
+        const scheme = {
+            matches: dark,
+            addEventListener(name, callback) {
+                assert.equal(name, 'change');
+                onChange = callback;
+            },
+        };
+        context.window.matchMedia = query => {
+            assert.equal(query, '(prefers-color-scheme: dark)');
+            return scheme;
+        };
+        const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const start = () => {
+            const app = immediateComponent(tweetApp());
+            app.fetchSetup = async () => {};
+            app.fetchNotices = async () => {};
+            app.fetchActivityStatus = async () => {};
+            app.fetchTweets = async () => {};
+            app.fetchStats = async () => {};
+            app.fetchArchiveEnrichmentStatus = async () => {};
+            app.fetchAutomatedTagging = async () => {};
+            app.initApp();
+            return app;
+        };
+        const app = start();
+        assert.equal(app.currentTheme, dark ? 'classic-dark' : 'classic-light');
+        assert.equal(app.darkMode, dark);
+        assert.equal(context.__state.rootClasses.has('light'), !dark);
+        assert.equal(context.localStorage.getItem('tvx-theme'), null);
+        assert.equal(app.splitPanel, true);
+        assert.equal(app.shouldUseSplitPanel(), true);
+        context.window.innerWidth = 390;
+        assert.equal(app.shouldUseSplitPanel(), false);
+
+        scheme.matches = !dark;
+        onChange();
+        assert.equal(app.currentTheme, dark ? 'classic-light' : 'classic-dark');
+        assert.equal(context.localStorage.getItem('tvx-theme'), null);
+        assert.equal(start().currentTheme, app.currentTheme);
+
+        app.applyTheme('classic-light');
+        assert.equal(context.localStorage.getItem('tvx-theme'), 'classic-light');
+        scheme.matches = true;
+        onChange();
+        assert.equal(app.currentTheme, 'classic-light');
+        assert.equal(start().currentTheme, 'classic-light');
+    }
+});
+
+test('demo defaults respect saved layout and theme choices without changing local archives', () => {
+    for (const isDemo of [false, true]) {
+        for (const savedSplit of [null, 'false', 'true']) {
+            const context = browserContext();
+            context.window.TWEETNOOK_DEMO = isDemo;
+            context.localStorage.setItem('tvx-theme', 'classic-dark');
+            if (savedSplit !== null) context.localStorage.setItem('tvx-split-panel', savedSplit);
+            const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+            const app = immediateComponent(tweetApp());
+            app.fetchSetup = async () => {};
+            app.fetchNotices = async () => {};
+            app.fetchActivityStatus = async () => {};
+            app.fetchTweets = async () => {};
+            app.fetchStats = async () => {};
+            app.fetchArchiveEnrichmentStatus = async () => {};
+            app.fetchAutomatedTagging = async () => {};
+            app.initApp();
+            assert.equal(app.currentTheme, 'classic-dark');
+            assert.equal(app.splitPanel, savedSplit === null ? isDemo : savedSplit === 'true');
+        }
+    }
+});
+
 test('autocomplete formats valid, invalid, negative, quoted, and escaped capsules', () => {
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(

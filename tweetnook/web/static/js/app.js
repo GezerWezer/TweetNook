@@ -2090,7 +2090,17 @@ function tweetApp() {
             }
 
             const savedTheme = localStorage.getItem('tvx-theme') || localStorage.getItem('theme');
-            if (savedTheme && THEMES[savedTheme]) {
+            if (this.isDemo && (!savedTheme || !THEMES[savedTheme])) {
+                const colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
+                const applySystemTheme = () => {
+                    const selected = localStorage.getItem('tvx-theme') || localStorage.getItem('theme');
+                    if (!selected || !THEMES[selected]) {
+                        this.applyTheme(colorScheme.matches ? 'classic-dark' : 'classic-light', false);
+                    }
+                };
+                applySystemTheme();
+                colorScheme.addEventListener('change', applySystemTheme);
+            } else if (savedTheme && THEMES[savedTheme]) {
                 this.applyTheme(savedTheme);
             } else if (savedTheme === 'light') {
                 this.applyTheme('classic-light');
@@ -2118,7 +2128,8 @@ function tweetApp() {
             this.videoPlayback = localStorage.getItem('tvx-video-playback') === 'paused' ? 'paused' : 'autoplay';
 
             // Restore split panel preference
-            this.splitPanel = localStorage.getItem('tvx-split-panel') === 'true';
+            const savedSplitPanel = localStorage.getItem('tvx-split-panel');
+            this.splitPanel = savedSplitPanel === null ? this.isDemo : savedSplitPanel === 'true';
             this.routeUsesPanel = this.shouldUseSplitPanel();
 
             const initialRoute = this.parseRoute(window.location.pathname);
@@ -3431,7 +3442,7 @@ function tweetApp() {
                 + '</div></div></div>';
         },
 
-        applyTheme(key) {
+        applyTheme(key, persist = true) {
             const theme = THEMES[key];
             if (!theme) return;
             this.currentTheme = key;
@@ -3460,7 +3471,7 @@ function tweetApp() {
                 this.currentAccent = theme['--accent-color'];
             }
 
-            localStorage.setItem('tvx-theme', key);
+            if (persist) localStorage.setItem('tvx-theme', key);
         },
 
         setAccent(accent) {
