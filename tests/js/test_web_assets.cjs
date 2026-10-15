@@ -540,11 +540,17 @@ test('theme color helpers and catalog generate complete deterministic themes', (
             '--border-color',
             '--accent-color',
             '--danger-color',
+            '--destructive-color',
         ]) {
             assert.ok(theme[key], `missing ${key}`);
         }
     }
     assert.ok(exported.THEMES['classic-dark']._accents.length >= 6);
+    // Classic danger is the like pink, so Delete uses X's red; other themes reuse their danger red.
+    assert.equal(exported.THEMES['classic-dark']['--destructive-color'], '#f4212e');
+    assert.equal(exported.THEMES['classic-light']['--destructive-color'], '#f4212e');
+    assert.equal(exported.THEMES['classic-light']['--danger-color'], '#f91880');
+    assert.equal(exported.THEMES.dracula['--destructive-color'], exported.THEMES.dracula['--danger-color']);
 });
 
 test('demo follows system appearance until an explicit theme is chosen', () => {
