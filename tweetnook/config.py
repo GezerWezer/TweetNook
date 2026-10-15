@@ -51,8 +51,17 @@ class AuthConfig(BaseModel):
     user_id: str | None = None
 
 
+SyncCollection = Literal["bookmarks", "likes", "tweets"]
+SYNC_COLLECTION_ORDER: tuple[SyncCollection, ...] = ("bookmarks", "likes", "tweets")
+DEFAULT_SYNC_COLLECTIONS: tuple[SyncCollection, ...] = ("bookmarks", "likes")
+
+
 class SyncConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
+
+    collections: list[SyncCollection] = Field(
+        default_factory=lambda: list(DEFAULT_SYNC_COLLECTIONS), min_length=1
+    )
 
     page_delay: float = Field(default=2.0, ge=0)
     detail_delay: float = Field(default=0.0, ge=0)
@@ -65,6 +74,13 @@ class SyncConfig(BaseModel):
     timeout: float = Field(default=30.0, ge=1.0)
     max_linked_depth: int = Field(default=50, ge=0)
     reply_linked_depth: int = Field(default=0, ge=0, le=1)
+
+    @field_validator("collections")
+    @classmethod
+    def order_collections(cls, value: list[SyncCollection]) -> list[SyncCollection]:
+        """Keep one canonical order so the same choice always compares equal."""
+
+        return [collection for collection in SYNC_COLLECTION_ORDER if collection in value]
 
 
 class WebConfig(BaseModel):
@@ -541,6 +557,11 @@ def get_explicit_config_fields(paths: XDGPaths) -> list[str]:
 
 
 def get_config_ui_schema() -> dict[str, Any]:
+    """Describe how the Settings > Configuration page presents config.toml.
+
+    ``groups`` order the page; ``units``, ``controls``, ``requires``, and ``byte_units`` are
+    presentation hints, so fields added later still render from ``labels`` and the value type.
+    """
     return {
         "whitelist": [
             "web.fetch_avatars",
@@ -554,6 +575,7 @@ def get_config_ui_schema() -> dict[str, Any]:
             "auth.ct0",
             "auth.user_id",
             "web.password_hash",
+            "sync.collections",
             "schedule.enabled",
             "schedule.cadence",
             "schedule.every_hours",
@@ -571,105 +593,158 @@ def get_config_ui_schema() -> dict[str, Any]:
         "types": {},
         "full_width": [],
         "select_options": {},
+        "groups": [
+            {
+                "title": "Web server",
+                "note": "Restart TweetNook after changing these.",
+                "fields": ["web.host", "web.port"],
+            },
+            {
+                "title": "Avatars",
+                "fields": [
+                    "web.fetch_avatars",
+                    "web.avatar_cache_limit_enabled",
+                    "web.avatar_cache_limit_mb",
+                ],
+            },
+            {"title": "Analytics", "fields": ["web.analytics_refresh_time"]},
+            {
+                "title": "Sync speed",
+                "note": (
+                    "The defaults are tuned to stay under X's rate limits. "
+                    "Change them only if syncs fail or run too slowly."
+                ),
+                "fields": ["sync.page_delay", "sync.detail_delay", "sync.timeout"],
+            },
+            {
+                "title": "Rate limits",
+                "fields": [
+                    "sync.max_retries",
+                    "sync.backoff_base",
+                    "sync.detail_max_retries",
+                    "sync.detail_backoff_base",
+                    "sync.cooldown_threshold",
+                    "sync.cooldown_duration",
+                ],
+            },
+            {
+                "title": "Quoted and linked posts",
+                "fields": ["sync.max_linked_depth", "sync.reply_linked_depth"],
+            },
+            {
+                "title": "Database",
+                "note": (
+                    "Memory the local database may use. Larger values can speed up big archives."
+                ),
+                "fields": ["database.cache_size_kb", "database.mmap_size_bytes"],
+            },
+        ],
+        "units": {
+            "web.avatar_cache_limit_mb": "MiB",
+            "sync.page_delay": "sec",
+            "sync.detail_delay": "sec",
+            "sync.timeout": "sec",
+            "sync.backoff_base": "sec",
+            "sync.detail_backoff_base": "sec",
+            "sync.cooldown_threshold": "errors",
+            "sync.cooldown_duration": "sec",
+            "sync.max_linked_depth": "hops",
+            "database.cache_size_kb": "KiB",
+            "database.mmap_size_bytes": "bytes",
+        },
+        "byte_units": {"database.cache_size_kb": 1024, "database.mmap_size_bytes": 1},
+        "controls": {"web.analytics_refresh_time": "time", "sync.reply_linked_depth": "switch"},
+        "requires": {
+            "web.avatar_cache_limit_enabled": ["web.fetch_avatars"],
+            "web.avatar_cache_limit_mb": ["web.fetch_avatars", "web.avatar_cache_limit_enabled"],
+        },
         "labels": {
             "auth": "Authentication",
-            "sync": "Sync & Delays",
-            "web": "Web Server",
-            "schedule": "Scheduled Syncs",
-            "activity": "Activity History",
+            "sync": "Sync",
+            "web": "Web server",
+            "schedule": "Scheduled syncs",
+            "activity": "Activity history",
             "database": "Database",
-            "auth.auth_token": "Auth Token",
-            "auth.ct0": "CT0 (CSRF Token)",
+            "auth.auth_token": "Auth token",
+            "auth.ct0": "CT0 (CSRF token)",
             "auth.user_id": "User ID",
-            "sync.page_delay": "Page Delay (s)",
-            "sync.detail_delay": "Detail Delay (s)",
-            "sync.max_retries": "Max Retries",
-            "sync.backoff_base": "Backoff Base (s)",
-            "sync.detail_max_retries": "Detail Max Retries",
-            "sync.detail_backoff_base": "Detail Backoff Base (s)",
-            "sync.cooldown_threshold": "Cooldown Threshold",
-            "sync.cooldown_duration": "Cooldown Duration (s)",
-            "sync.timeout": "Timeout (s)",
-            "sync.max_linked_depth": "Max Linked Depth",
-            "sync.reply_linked_depth": "Reply Linked Depth",
+            "sync.collections": "What to sync",
+            "sync.page_delay": "Page delay",
+            "sync.detail_delay": "Tweet delay",
+            "sync.max_retries": "Timeline retries",
+            "sync.backoff_base": "Timeline retry wait",
+            "sync.detail_max_retries": "Tweet retries",
+            "sync.detail_backoff_base": "Tweet retry wait",
+            "sync.cooldown_threshold": "Cool down after",
+            "sync.cooldown_duration": "Cooldown length",
+            "sync.timeout": "Request timeout",
+            "sync.max_linked_depth": "Follow depth",
+            "sync.reply_linked_depth": "Include links in replies",
             "web.host": "Host",
             "web.port": "Port",
-            "web.fetch_avatars": "Fetch Avatars locally",
-            "web.avatar_cache_limit_enabled": "Limit Avatar Cache",
-            "web.avatar_cache_limit_mb": "Avatar Cache Limit (MiB)",
-            "web.analytics_refresh_time": "Daily Analytics Refresh Time",
-            "schedule.enabled": "Enable Scheduled Syncs",
-            "schedule.cadence": "Schedule Frequency",
-            "schedule.every_hours": "Every N Hours",
-            "schedule.time": "Run Time",
-            "schedule.randomize_time": "Randomize Run Time",
-            "schedule.random_offset_min_hours": "Minimum Added Delay",
-            "schedule.random_offset_max_hours": "Maximum Added Delay",
+            "web.fetch_avatars": "Download missing avatars",
+            "web.avatar_cache_limit_enabled": "Limit the avatar cache",
+            "web.avatar_cache_limit_mb": "Cache limit",
+            "web.analytics_refresh_time": "Daily refresh",
+            "schedule.enabled": "Sync automatically",
+            "schedule.cadence": "Repeat",
+            "schedule.every_hours": "Interval",
+            "schedule.time": "Time",
+            "schedule.randomize_time": "Vary the start time",
+            "schedule.random_offset_min_hours": "Earliest delay",
+            "schedule.random_offset_max_hours": "Latest delay",
             "schedule.weekday": "Weekday",
-            "schedule.day_of_month": "Day of Month",
-            "schedule.timezone": "Time Zone",
-            "activity.max_runs": "Maximum Saved Runs",
-            "activity.retention_days": "Log Retention (Days)",
-            "database.cache_size_kb": "Cache Size (KiB)",
-            "database.mmap_size_bytes": "MMap Size (Bytes)",
+            "schedule.day_of_month": "Day of the month",
+            "schedule.timezone": "Time zone",
+            "activity.max_runs": "Maximum saved runs",
+            "activity.retention_days": "Log retention",
+            "database.cache_size_kb": "Page cache",
+            "database.mmap_size_bytes": "Memory-mapped I/O",
         },
         "descriptions": {
             "auth.auth_token": "Your Twitter/X authentication token. See README",
             "auth.ct0": "Your CSRF token. See README",
             "auth.user_id": "Your numerical Twitter/X user ID.",
-            "database.cache_size_kb": (
-                "Maximum SQLite page-cache target per database connection. "
-                "Default: 524288 KiB (512 MiB)."
+            "sync.collections": (
+                "Which collections Sync now and scheduled syncs save: bookmarks, likes, "
+                "your tweets. Threads, media, link previews, and tags then run as usual."
             ),
+            "database.cache_size_kb": "Cache target for each database connection.",
             "database.mmap_size_bytes": (
-                "Maximum portion of the database SQLite may access through memory-mapped I/O. "
-                "Default: 1073741824 bytes (1 GiB)."
+                "How much of the database can be read through memory mapping."
             ),
-            "sync.page_delay": "How many seconds to wait between fetching pages of tweets.",
-            "sync.detail_delay": (
-                "How many seconds to wait between fetching individual tweet details."
-            ),
-            "sync.max_retries": (
-                "How many times to retry fetching a timeline if Twitter/X rate-limits you."
-            ),
-            "sync.backoff_base": (
-                "How much to multiply the wait time by after each failed timeline request."
-            ),
-            "sync.detail_max_retries": (
-                "How many times to retry fetching a single tweet if Twitter/X rate-limits you."
-            ),
-            "sync.detail_backoff_base": (
-                "How much to multiply the wait time by after each failed single tweet request."
-            ),
-            "sync.cooldown_threshold": (
-                "How many consecutive rate-limit errors trigger a long cooldown pause."
-            ),
-            "sync.cooldown_duration": (
-                "How many seconds to pause when a long cooldown is triggered."
-            ),
-            "sync.timeout": "How many seconds to wait before giving up on a slow network request.",
+            "sync.page_delay": "Wait between pages of tweets.",
+            "sync.detail_delay": "Wait between individual tweet lookups.",
+            "sync.max_retries": "Tries again when X rate-limits a page of tweets.",
+            "sync.backoff_base": "Wait before the first retry; it doubles each time.",
+            "sync.detail_max_retries": "Tries again when X rate-limits a single tweet.",
+            "sync.detail_backoff_base": "Wait before the first retry; it doubles each time.",
+            "sync.cooldown_threshold": "Rate-limit errors in a row before a long pause.",
+            "sync.cooldown_duration": "How long that pause lasts.",
+            "sync.timeout": "Give up on a slow request after this long.",
             "sync.max_linked_depth": (
-                "Safety cap on how many hops of quoted tweets and linked X posts to follow "
-                "from saved tweets and their author's own thread. 0 disables this. Default: 50."
+                "How far to follow quoted tweets and linked posts from saved tweets and their "
+                "author's thread. 0 turns this off."
             ),
             "sync.reply_linked_depth": (
-                "Set to 1 to also fetch tweets quoted or linked by other people's replies "
-                "in saved conversations (one hop, never further). Default: 0 (off)."
+                "Also save tweets quoted or linked in other people's replies to saved "
+                "conversations, one hop only."
             ),
-            "web.fetch_avatars": "Automatically download and cache user profile pictures.",
+            "web.fetch_avatars": (
+                "When a profile picture isn't saved yet, the server downloads it from X the "
+                "first time it's shown and keeps a copy. When off, only saved avatars appear."
+            ),
             "web.avatar_cache_limit_enabled": (
-                "Run weekly cleanup of least-recently-used cached avatars."
+                "Each week, remove the least recently used avatars once the cache is over its "
+                "limit."
             ),
-            "web.avatar_cache_limit_mb": (
-                "Maximum avatar cache size. Weekly cleanup removes the least recently used "
-                "files until the cache fits this limit."
-            ),
+            "web.avatar_cache_limit_mb": "",
             "web.analytics_refresh_time": (
-                "Local server time (HH:MM) when Analytics statistics are rebuilt each day. "
-                "Takes effect after a server restart."
+                "When Analytics statistics are rebuilt, in the server's local time. "
+                "Takes effect after a restart."
             ),
-            "web.host": "The IP address the Web UI binds to (default is 0.0.0.0 for LAN access).",
-            "web.port": "The port the Web UI runs on.",
+            "web.host": "Use 0.0.0.0 to let other devices on your network connect.",
+            "web.port": "",
             "schedule.enabled": "Run sync automatically from the always-on Web service.",
             "schedule.cadence": "Run every N hours, every day, every week, or every month.",
             "schedule.every_hours": "Hours between runs when the hourly cadence is selected.",

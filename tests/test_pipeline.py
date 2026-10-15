@@ -389,3 +389,36 @@ def test_reporter_lifecycle_lock_serializes_commands_and_releases_after_failure(
 
     with second:
         second.final_note("sync can start after import releases its lifecycle lock")
+
+
+def test_issues_name_the_step_and_steps_carry_structured_reasons(tmp_path) -> None:
+    state_path = tmp_path / "activity-status.json"
+    reporter = PipelineReporter(
+        _console(StringIO()), "tweetnook sync", interactive=False, state_path=state_path
+    )
+
+    with reporter:
+        reporter.add_step("threads", "Threads", total=2, unit="candidates")
+        reporter.add_step("articles", "Articles", total=1, unit="tweets")
+        reporter.add_step("tagging", "Automated tags", total=1, unit="tweets")
+        reporter.issue("Before any step")
+        reporter.start_step("threads", activity="Expanding")
+        reporter.issue("Tweet 1: unavailable", dedupe_key="unavailable")
+        reporter.complete_step("threads", "1 expanded")
+        reporter.issue("Tweet 2: unavailable", dedupe_key="unavailable")
+        reporter.skip_step("articles", "no article rows requiring refresh.")
+        reporter.start_step("tagging", activity="Tagging")
+        reporter.fail_step("tagging", "Paused: daily budget", reason="daily budget", paused=True)
+
+        snapshot = json.loads(state_path.read_text(encoding="utf-8"))
+        issues = {issue["message"]: issue for issue in snapshot["issues"]}
+        assert issues["Before any step"]["step"] is None
+        # A repeat keeps the step where the issue first happened.
+        assert issues["Tweet 1: unavailable"]["step"] == "threads"
+        assert issues["Tweet 1: unavailable"]["count"] == 2
+        steps = {step["key"]: step for step in snapshot["steps"]}
+        assert steps["articles"]["reason"] == "no article rows requiring refresh"
+        assert steps["articles"]["summary"] == "skipped due to no article rows requiring refresh"
+        assert steps["tagging"]["paused"] is True
+        assert steps["tagging"]["reason"] == "daily budget"
+        assert steps["threads"]["paused"] is False

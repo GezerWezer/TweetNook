@@ -1429,6 +1429,8 @@ async def test_paid_queue_pause_records_dispatched_attempt_in_pipeline(monkeypat
     assert result == tagging.TaggingRunResult(processed=1, tagged=0, batches=1)
     assert step.state == "failed"
     assert step.summary.startswith("Paused:")
+    assert step.paused is True
+    assert step.reason and not step.reason.startswith("Paused")
     assert step.metrics == {"tagged": 0, "requests": 1}
     assert "skipped due to no eligible" not in output.getvalue()
 

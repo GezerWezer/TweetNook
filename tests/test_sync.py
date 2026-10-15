@@ -1499,6 +1499,34 @@ async def test_sync_all_shared_preflight_probes_once_per_collection(
     assert probe_counts == {"Bookmarks": 1, "Likes": 1}
 
 
+@pytest.mark.asyncio
+async def test_sync_all_follows_the_configured_collections(paths, config: AppConfig) -> None:
+    _save_query_ids(paths)
+    config.sync.collections = ["likes"]
+    requested: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        operation, _variables = _op_and_variables(request)
+        requested.append(operation)
+        if operation != "Likes":
+            raise AssertionError(f"unexpected request {operation}")
+        return httpx.Response(200, json=make_likes_response(["10"]), request=request)
+
+    outcome = await sync_all(
+        full=False,
+        limit=1,
+        config=config,
+        paths=paths,
+        transport=httpx.MockTransport(handler),
+        console=_console(),
+        sleep=lambda _: asyncio.sleep(0),
+    )
+
+    assert outcome.exit_code == 0
+    assert [result.collection for result in outcome.results] == ["likes"]
+    assert set(requested) == {"Likes"}
+
+
 def test_process_lock_prevents_second_holder(paths) -> None:
     first = ProcessLock(paths.lock_file)
     second = ProcessLock(paths.lock_file)

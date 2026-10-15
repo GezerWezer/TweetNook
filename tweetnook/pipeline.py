@@ -142,6 +142,8 @@ class PipelineIssue:
     message: str
     count: int = 1
     latest: str | None = None
+    # The step that was running when the issue first happened, if any.
+    step: str | None = None
 
 
 @dataclass(slots=True)
@@ -160,6 +162,10 @@ class PipelineStep:
     activity: str = ""
     counters: str = ""
     summary: str = ""
+    # Why a step was skipped or stopped, without the summary's wording around it.
+    reason: str = ""
+    # A failed step that stopped on purpose (a budget or quota) rather than on an error.
+    paused: bool = False
     metrics: dict[str, int] = field(default_factory=dict)
     started_at: float | None = None
     finished_at: float | None = None
@@ -340,7 +346,12 @@ class PipelineReporter:
             )
             if active is not None and active.state == "active":
                 self.fail_step(active.key, message)
-            self.issue(message, level="error", dedupe_key="command:failure")
+            self.issue(
+                message,
+                level="error",
+                dedupe_key="command:failure",
+                step=active.key if active is not None else None,
+            )
             self.finish(message, success=False)
         elif not self._finished:
             self.finish(success=True)
@@ -517,12 +528,15 @@ class PipelineReporter:
         *,
         level: IssueLevel = "warning",
         dedupe_key: str | None = None,
+        step: str | None = None,
     ) -> None:
         message = _clean_line(message)
         key = dedupe_key or f"{level}:{message}"
         issue = self._issue_by_key.get(key)
         if issue is None:
-            issue = PipelineIssue(level=level, message=message)
+            active = self.active_step
+            owner = step if step is not None else (active.key if active is not None else None)
+            issue = PipelineIssue(level=level, message=message, step=owner)
             self._issue_by_key[key] = issue
             self.issues.append(issue)
         else:
@@ -569,6 +583,7 @@ class PipelineReporter:
         step.state = "skipped"
         step.completed = 0
         clean_reason = _clean_line(reason).rstrip(".")
+        step.reason = clean_reason
         step.summary = f"skipped due to {clean_reason}"
         if step.started_at is not None:
             step.finished_at = time.monotonic()
@@ -578,10 +593,20 @@ class PipelineReporter:
             self._log(step.title, "skipped", step.summary)
         self._refresh()
 
-    def fail_step(self, key: str, message: str, *, metrics: dict[str, int] | None = None) -> None:
+    def fail_step(
+        self,
+        key: str,
+        message: str,
+        *,
+        metrics: dict[str, int] | None = None,
+        reason: str | None = None,
+        paused: bool = False,
+    ) -> None:
         step = self._step_by_key[key]
         step.state = "failed"
         step.summary = message
+        step.reason = _clean_line(reason if reason is not None else message)
+        step.paused = paused
         if metrics is not None:
             step.metrics = {name: max(int(value), 0) for name, value in metrics.items()}
         step.finished_at = time.monotonic()
@@ -725,6 +750,8 @@ class PipelineReporter:
                     "counters": step.counters,
                     "detail": step.detail,
                     "summary": step.summary,
+                    "reason": step.reason,
+                    "paused": step.paused,
                     "metrics": step.metrics,
                     "elapsed_seconds": step.elapsed,
                     "rate": step.rate,
@@ -740,6 +767,7 @@ class PipelineReporter:
                     "message": issue.message,
                     "count": issue.count,
                     "latest": issue.latest,
+                    "step": issue.step,
                 }
                 for issue in self.issues
             ],

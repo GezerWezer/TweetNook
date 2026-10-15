@@ -7,7 +7,12 @@ import pytest
 
 from tweetnook.config import AppConfig, ScheduleConfig, XDGPaths
 from tweetnook.job_supervisor import JobConflictError
-from tweetnook.scheduler import ScheduleManager, next_run_after, schedule_description
+from tweetnook.scheduler import (
+    ScheduleManager,
+    next_run_after,
+    schedule_description,
+    schedule_label,
+)
 
 
 @pytest.mark.parametrize(
@@ -408,3 +413,25 @@ def test_scheduler_ignores_conflict_notification_failure(tmp_path) -> None:
 
     assert manager._state["last_result"] == "skipped: another command was running"
     assert manager._state["next_run_at"] > 1_001.0
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "label"),
+    [
+        ({"cadence": "hours", "every_hours": 1}, "Every hour"),
+        ({"cadence": "hours", "every_hours": 6}, "Every 6 hours"),
+        ({"cadence": "daily", "time": "03:00"}, "Daily at 3:00 AM"),
+        ({"cadence": "daily", "time": "15:05"}, "Daily at 3:05 PM"),
+        ({"cadence": "weekly", "weekday": 0, "time": "00:30"}, "Mondays at 12:30 AM"),
+        (
+            {"cadence": "monthly", "day_of_month": 22, "time": "12:00"},
+            "Monthly on the 22nd at 12:00 PM",
+        ),
+        (
+            {"cadence": "monthly", "day_of_month": 11, "time": "09:00"},
+            "Monthly on the 11th at 9:00 AM",
+        ),
+    ],
+)
+def test_schedule_label_is_short_and_includes_the_time(kwargs, label) -> None:
+    assert schedule_label(ScheduleConfig(**kwargs)) == label

@@ -232,3 +232,39 @@ def test_schedule_endpoints_persist_validated_settings(tmp_path, make_web_client
         ).status_code
         == 422
     )
+
+
+def test_activity_run_log_offset_returns_only_new_complete_lines(tmp_path, make_web_client) -> None:
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    server_state["paths"] = paths
+    with PipelineReporter(
+        Console(file=StringIO()),
+        "tweetnook sync",
+        interactive=False,
+        state_path=paths.activity_status_file,
+    ) as pipeline:
+        pipeline.final_note("manual sync complete")
+    client = make_web_client(activity.router)
+    run_id = client.get("/api/activity/runs").json()["runs"][0]["run_id"]
+    run_dir = next(path for path in tmp_path.rglob(run_id) if path.is_dir())
+    log = run_dir / "console.log"
+    log.write_text("first\nsecond\npart", encoding="utf-8")
+
+    first = client.get(f"/api/activity/runs/{run_id}/log", params={"offset": 0})
+    assert first.text == "first\nsecond\n"
+    offset = int(first.headers["X-Log-Offset"])
+    assert offset == len("first\nsecond\n")
+
+    with log.open("a", encoding="utf-8") as handle:
+        handle.write("ial line\nthird\n")
+    second = client.get(f"/api/activity/runs/{run_id}/log", params={"offset": offset})
+    assert second.text == "partial line\nthird\n"
+    assert int(second.headers["X-Log-Offset"]) == log.stat().st_size
+
+    # A replaced, shorter log starts over instead of returning nothing.
+    log.write_text("new\n", encoding="utf-8")
+    restarted = client.get(f"/api/activity/runs/{run_id}/log", params={"offset": offset})
+    assert restarted.text == "new\n"
+    assert client.get(f"/api/activity/runs/{run_id}/log", params={"offset": -1}).status_code == 422

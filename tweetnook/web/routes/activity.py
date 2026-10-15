@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,7 @@ from tweetnook.activity_history import (
     list_runs,
     read_run,
     read_run_log,
+    read_run_log_since,
 )
 from tweetnook.config import ScheduleConfig, update_config_values
 from tweetnook.job_supervisor import JobConflictError
@@ -262,12 +263,19 @@ def activity_run(
 def activity_run_log(
     run_id: str,
     _auth: Annotated[bool, Depends(verify_credentials)],
-) -> str:
+    offset: Annotated[int | None, Query(ge=0)] = None,
+) -> PlainTextResponse:
+    """The run's log. With ``offset``, only complete lines written since that byte offset;
+    ``X-Log-Offset`` gives the offset to pass next, so a live view can follow a long run."""
+
     paths = server_state.get("paths")
     try:
         if paths is None or read_run(paths.data_dir, run_id) is None:
             raise ValueError
-        return read_run_log(paths.data_dir, run_id)
+        if offset is None:
+            return PlainTextResponse(read_run_log(paths.data_dir, run_id))
+        text, next_offset = read_run_log_since(paths.data_dir, run_id, offset)
+        return PlainTextResponse(text, headers={"X-Log-Offset": str(next_offset)})
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="Run not found.") from exc
 

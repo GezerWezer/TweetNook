@@ -124,6 +124,37 @@ def next_run_after(
         nominal_after = nominal
 
 
+_WEEKDAY_PLURALS = (
+    "Mondays",
+    "Tuesdays",
+    "Wednesdays",
+    "Thursdays",
+    "Fridays",
+    "Saturdays",
+    "Sundays",
+)
+
+
+def _ordinal(day: int) -> str:
+    suffix = "th" if 11 <= day % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+    return f"{day}{suffix}"
+
+
+def schedule_label(config: ScheduleConfig) -> str:
+    """A short label with the cadence and time, e.g. "Daily at 3:00 AM"; the random delay
+    is left to the schedule settings."""
+
+    if config.cadence == "hours":
+        return "Every hour" if config.every_hours == 1 else f"Every {config.every_hours} hours"
+    hour, minute = (int(part) for part in config.time.split(":"))
+    clock = f"{hour % 12 or 12}:{minute:02d} {'PM' if hour >= 12 else 'AM'}"
+    if config.cadence == "daily":
+        return f"Daily at {clock}"
+    if config.cadence == "weekly":
+        return f"{_WEEKDAY_PLURALS[config.weekday]} at {clock}"
+    return f"Monthly on the {_ordinal(config.day_of_month)} at {clock}"
+
+
 def schedule_description(config: ScheduleConfig) -> str:
     if config.cadence == "hours":
         suffix = "hour" if config.every_hours == 1 else "hours"
@@ -208,6 +239,7 @@ class ScheduleManager:
                     "date": "Set up scheduling in Settings",
                     "next_run_at": None,
                     "description": schedule_description(schedule),
+                    "label": schedule_label(schedule),
                     "config": schedule.model_dump(),
                 }
             zone = _timezone(schedule.timezone)
@@ -224,6 +256,7 @@ class ScheduleManager:
                 "date": display_date,
                 "next_run_at": next_at,
                 "description": schedule_description(schedule),
+                "label": schedule_label(schedule),
                 "last_run_at": self._state.get("last_run_at"),
                 "last_result": self._state.get("last_result"),
                 "config": schedule.model_dump(),

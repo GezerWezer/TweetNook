@@ -67,12 +67,14 @@ import_app = typer.Typer(
 )
 media_app = typer.Typer(no_args_is_help=True, help="Download archived tweet media.")
 SYNC_GROUP_HELP = (
-    "Run the normal sync pass. Without a subcommand, this syncs bookmarks and likes, "
-    "then runs thread expansion, resurrection checks, article refresh, media download, "
-    "URL unfurl, and configured AI tagging unless skipped or inapplicable."
+    "Run the normal sync pass. Without a subcommand, this syncs the collections chosen in "
+    "sync.collections (bookmarks and likes unless changed), then runs thread expansion, "
+    "resurrection checks, article refresh, media download, URL unfurl, and configured AI "
+    "tagging unless skipped or inapplicable."
 )
 SYNC_ALL_HELP = (
-    "Sync bookmarks and likes, then run thread expansion, resurrection checks, article "
+    "Sync the collections chosen in sync.collections (bookmarks and likes unless changed), "
+    "then run thread expansion, resurrection checks, article "
     "refresh, media download, URL unfurl, and configured AI tagging unless skipped "
     "or inapplicable."
 )
@@ -492,7 +494,7 @@ def _archive_import_summary(result: Any) -> str:
 def _run_sync_command(
     *,
     runner: Callable[[Any, Any, Console], Awaitable[Any]],
-    collections: tuple[str, ...],
+    collections: tuple[str, ...] | None,
     followups: SyncFollowupPlan,
     head_only: bool,
     summarize: Callable[[Any], str] | None = None,
@@ -504,7 +506,8 @@ def _run_sync_command(
             plan_sync_pipeline(
                 pipeline,
                 config=config,
-                collections=collections,
+                # None means the collections chosen in Settings (sync.collections).
+                collections=collections if collections is not None else config.sync.collections,
                 followups=followups,
                 head_only=head_only,
             )
@@ -576,7 +579,7 @@ def _run_sync_all_command(
         skip_threads=skip_threads,
     )
     console, outcome = _run_sync_command(
-        collections=("bookmarks", "likes"),
+        collections=None,
         followups=followups,
         head_only=head_only,
         runner=lambda config, auth_bundle, runner_console: _run_with_depth(

@@ -1249,6 +1249,7 @@ async def sync_all(
     console: Console | None = None,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     followups: SyncFollowupPlan | None = None,
+    collections: Sequence[str] | None = None,
 ) -> SyncAllResult:
     if config is None or paths is None:
         loaded_config, loaded_paths = load_config()
@@ -1256,14 +1257,16 @@ async def sync_all(
         paths = paths or loaded_paths
     paths = ensure_paths(paths)
     console = console or Console(stderr=True)
+    # Without an explicit list, sync what the user chose in Settings (sync.collections).
+    selected = list(collections) if collections is not None else list(config.sync.collections)
     preflight = await run_preflight(
         config=config,
         paths=paths,
-        collections=["bookmarks", "likes"],
+        collections=selected,
         auth_bundle=auth_bundle,
         transport=transport,
     )
-    if not preflight.is_ready_for(["bookmarks", "likes"]):
+    if not preflight.is_ready_for(selected):
         if preflight.has_local_error:
             raise LocalPreflightError("sync all preflight failed on local auth/config.")
         raise RemotePreflightError("sync all preflight failed on a remote probe.")
@@ -1275,7 +1278,7 @@ async def sync_all(
             if full or backfill or article_backfill
             else "stop at saved archive history"
         )
-        for collection in ("bookmarks", "likes"):
+        for collection in selected:
             pipeline.add_step(
                 f"sync:{collection}:head",
                 collection.title(),
@@ -1290,7 +1293,7 @@ async def sync_all(
     results: list[SyncResult] = []
     errors: dict[str, str] = {}
     exit_code = 0
-    for collection in ("bookmarks", "likes"):
+    for collection in selected:
         try:
             result = await _sync_collection_ready(
                 collection=collection,

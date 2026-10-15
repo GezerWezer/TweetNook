@@ -278,6 +278,44 @@ def latest_finished_snapshot(
     return None
 
 
+def _run_log_path(data_dir: Path, run_id: str) -> Path | None:
+    """The run's log: worker console output for Web runs, else the CLI's output.log."""
+
+    run_dir = get_run_dir(data_dir, run_id)
+    for path in (run_dir / "console.log", run_dir / "output.log"):
+        try:
+            if path.stat().st_size > 0:
+                return path
+        except OSError:
+            continue
+    return None
+
+
+def read_run_log_since(
+    data_dir: Path, run_id: str, offset: int, *, max_bytes: int = 2_000_000
+) -> tuple[str, int]:
+    """Return complete log lines written after byte ``offset`` and the offset to ask for next.
+
+    A partly written last line is held back until it ends. If the log is now shorter than
+    ``offset`` (it was replaced), reading starts over from the beginning.
+    """
+
+    path = _run_log_path(data_dir, run_id)
+    if path is None:
+        return "", 0
+    try:
+        with path.open("rb") as handle:
+            size = handle.seek(0, os.SEEK_END)
+            start = offset if 0 <= offset <= size else 0
+            start = max(start, size - max_bytes)
+            handle.seek(start)
+            data = handle.read(size - start)
+    except OSError:
+        return "", offset
+    complete = data.rfind(b"\n") + 1
+    return data[:complete].decode("utf-8", errors="replace"), start + complete
+
+
 def read_run_log(data_dir: Path, run_id: str, *, max_bytes: int = 2_000_000) -> str:
     run_dir = get_run_dir(data_dir, run_id)
     candidates = (run_dir / "console.log", run_dir / "output.log")
