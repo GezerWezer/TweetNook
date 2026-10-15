@@ -1585,6 +1585,101 @@ def optimize_archive() -> None:
         raise typer.Exit(2) from exc
 
 
+@app.command("prune")
+def prune_archive(
+    apply: Annotated[
+        bool,
+        typer.Option(
+            "--apply",
+            help=(
+                "Delete the out-of-scope rows and media files, then VACUUM. "
+                "Without it, only report what would be deleted."
+            ),
+        ),
+    ] = False,
+    max_linked_depth: Annotated[
+        int | None,
+        typer.Option(
+            "--max-linked-depth",
+            min=0,
+            help=(
+                "Quote/linked-status hops from saved tweets to keep "
+                "(default: the sync max_linked_depth setting)."
+            ),
+        ),
+    ] = None,
+    reply_linked_depth: Annotated[
+        int | None,
+        typer.Option(
+            "--reply-linked-depth",
+            min=0,
+            max=1,
+            help=(
+                "1 keeps threads linked from other people's replies, 0 prunes them "
+                "(default: the sync reply_linked_depth setting)."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Remove archived tweets, threads and media that thread expansion would not fetch.
+
+    Keeps saved tweets, their conversations, quote/linked-status threads on the save
+    path under the current sync settings, and tweets quoted or retweeted by kept
+    tweets. Everything else is out of scope, including threads expanded by hand
+    with `threads expand` that are not on the save path. Back up archive.db before
+    using --apply.
+    """
+    from tweetnook.prune import apply_prune, describe_prune_plan, describe_prune_result, plan_prune
+
+    console = _configure_logging()
+    config, paths = load_config()
+    depth = config.sync.max_linked_depth if max_linked_depth is None else max_linked_depth
+    reply_depth = (
+        config.sync.reply_linked_depth if reply_linked_depth is None else reply_linked_depth
+    )
+
+    def log(message: str) -> None:
+        console.print(f"prune: {message}", highlight=False)
+
+    def run() -> None:
+        store = open_archive_store(paths, create=False, config=config)
+        if store is None:
+            console.print("[red]No local archive found.[/red]")
+            raise typer.Exit(1)
+        try:
+            plan = plan_prune(
+                store,
+                paths.data_dir,
+                max_linked_depth=depth,
+                reply_linked_depth=reply_depth,
+                log=log,
+            )
+            for line in describe_prune_plan(plan):
+                console.print(line, highlight=False)
+            if not plan.row_total and not plan.media_files:
+                return
+            if not apply:
+                console.print(
+                    "Dry run: nothing was deleted. Back up archive.db, then re-run with --apply.",
+                    highlight=False,
+                )
+                return
+            result = apply_prune(store, plan, paths.data_dir, paths.database_path, log=log)
+            for line in describe_prune_result(result):
+                console.print(line, highlight=False)
+        finally:
+            store.close()
+
+    try:
+        if apply:
+            _with_archive_write_lock(paths, run)
+        else:
+            run()
+    except ProcessLockError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from exc
+
+
 @db_app.command("check", help="Run an explicit SQLite database integrity check.")
 def check_database(
     full: Annotated[

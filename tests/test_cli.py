@@ -1264,6 +1264,26 @@ def test_optimize_help_describes_query_and_search_maintenance() -> None:
     assert "full-text index" in result.stdout
 
 
+def test_prune_help_describes_dry_run_and_scope_overrides() -> None:
+    result = runner.invoke(cli.app, ["prune", "--help"])
+
+    assert result.exit_code == 0
+    normalized = " ".join(result.stdout.replace("│", " ").split())
+    assert "--apply" in normalized
+    assert "only report what would be deleted" in normalized
+    assert "--max-linked-depth" in normalized
+    assert "default: the sync max_linked_depth setting" in normalized
+    assert "--reply-linked-depth" in normalized
+    assert "default: the sync reply_linked_depth setting" in normalized
+    assert "threads expand" in normalized
+
+
+def test_prune_reply_linked_depth_rejects_values_above_one() -> None:
+    result = runner.invoke(cli.app, ["prune", "--reply-linked-depth", "2"])
+
+    assert result.exit_code == 2
+
+
 @pytest.mark.parametrize(
     ("full", "expected_pragma"),
     [(False, "quick_check"), (True, "integrity_check")],
