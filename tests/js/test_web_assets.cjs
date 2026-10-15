@@ -2140,6 +2140,12 @@ test('list searching, incremental loading, and back-to-top obey state guards', (
     const scrollOptions = context.__state.scrollCalls.at(-1)[0];
     assert.equal(scrollOptions.top, 0);
     assert.equal(scrollOptions.behavior, 'smooth');
+
+    context.window.matchMedia = query => ({ matches: query === '(prefers-reduced-motion: reduce)' });
+    app.scrollToTop();
+    const reducedScroll = context.__state.scrollCalls.at(-1)[0];
+    assert.equal(reducedScroll.top, 0);
+    assert.equal(reducedScroll.behavior, 'instant');
 });
 
 test('themes, accents, fonts, sizes, and split panel persist preferences', () => {
@@ -4489,7 +4495,9 @@ test('Home Screen apps are told apart from Safari tabs for bottom spacing', () =
     assert.match(css, /\.lightbox-video-player \{[^}]*--video-controls-bottom: 0px;/s);
     assert.match(css, /\.ios-home-screen \.lightbox-video-player \{ --video-controls-bottom: max\(8px, env\(safe-area-inset-bottom\)\); \}/);
     assert.match(css, /:root:not\(\.ios-home-screen\) \.scroll-to-top \{ bottom: 12px; \}/);
-    assert.match(html, /class="scroll-to-top fixed bottom-6 left-6/);
+    assert.match(html, /class="scroll-to-top"/);
+    assert.match(css, /\.scroll-to-top \{[^}]*right: max\(24px, env\(safe-area-inset-right\)\);/s);
+    assert.match(css, /\.scroll-to-top \{[^}]*bottom: max\(24px, env\(safe-area-inset-bottom\)\);/s);
 });
 
 test('phone media viewers keep the page paintable under Safari chrome while blocking one-finger page pans', () => {
