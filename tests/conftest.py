@@ -57,6 +57,26 @@ def make_url_entity(
     return entity
 
 
+def make_link_card(
+    image_url: str = "https://pbs.twimg.com/card_img/story.jpg",
+    *,
+    name: str = "summary_large_image",
+) -> dict[str, object]:
+    return {
+        "legacy": {
+            "name": name,
+            "binding_values": [
+                {"key": "title", "value": {"string_value": "A saved story"}},
+                {"key": "card_url", "value": {"string_value": "https://example.com/story"}},
+                {
+                    "key": "thumbnail_image_original",
+                    "value": {"image_value": {"url": image_url, "width": 1200, "height": 628}},
+                },
+            ],
+        }
+    }
+
+
 def make_photo_media(
     media_key: str,
     media_url: str,

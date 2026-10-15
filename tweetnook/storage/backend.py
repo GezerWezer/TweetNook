@@ -2189,6 +2189,60 @@ class ArchiveStore:
         )
         self._merge_records(list(buffer.records.values()))
 
+    def backfill_link_card_media(self) -> int:
+        """Queue saved card images once, without refetching tweets or rehydrating content."""
+        key = "link_card_media_v1"
+        marker = self._row_key_for_metadata(key)
+        if self._get_row(marker) is not None:
+            return 0
+        added = 0
+        after = 0
+        while True:
+            rows = self.conn.execute(
+                "SELECT rowid, raw_json, source FROM archive "
+                "WHERE record_type IN ('tweet_object', 'tweet') AND rowid > ? "
+                "AND raw_json LIKE '%\"card\"%' ORDER BY rowid LIMIT 500",
+                (after,),
+            ).fetchall()
+            if not rows:
+                break
+            buffer = _PageBuffer()
+            for row in rows:
+                after = row["rowid"]
+                try:
+                    raw = fastjson.loads(row["raw_json"])
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(raw, dict):
+                    continue
+                graph = extract_secondary_objects(raw)
+                for media in graph.media.values():
+                    if media.source != "link_card":
+                        continue
+                    row_key = self._row_key_for_media(media.tweet_id, media.media_key)
+                    if row_key in buffer.records or self._get_row(row_key) is not None:
+                        continue
+                    self._queue_record(
+                        self._media_record(
+                            media,
+                            provenance_source=self._normalized_source(row["source"]),
+                            cursor=buffer,
+                        ),
+                        cursor=buffer,
+                    )
+                    added += 1
+            self._merge_records(list(buffer.records.values()))
+        self._queue_record(
+            self._record(
+                row_key=marker,
+                record_type="metadata",
+                key=key,
+                value="done",
+                updated_at=utc_now(),
+            )
+        )
+        return added
+
     def list_media_rows(
         self,
         *,
@@ -2672,6 +2726,7 @@ class ArchiveStore:
                         FROM archive media INDEXED BY idx_archive_tweet_id
                         WHERE media.tweet_id = ?
                           AND media.record_type = 'media'
+                          AND COALESCE(media.source, '') != 'link_card'
                     )
                     OR EXISTS (
                         SELECT 1
@@ -2679,6 +2734,7 @@ class ArchiveStore:
                         JOIN archive quoted_media INDEXED BY idx_archive_tweet_id
                           ON quoted_media.tweet_id = relation.target_tweet_id
                          AND quoted_media.record_type = 'media'
+                         AND COALESCE(quoted_media.source, '') != 'link_card'
                         WHERE relation.tweet_id = ?
                           AND relation.record_type = 'tweet_relation'
                           AND relation.relation_type = 'quote_of'

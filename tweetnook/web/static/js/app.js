@@ -6478,26 +6478,25 @@ function tweetApp() {
                 );
                 let imageHtml = '';
                 
-                if (name === 'summary_large_image') {
-                    const imgUrl = binding.thumbnail_image_original?.image_value?.url || 
-                                   binding.summary_photo_image_original?.image_value?.url || 
-                                   binding.thumbnail_image_x_large?.image_value?.url ||
-                                   binding.thumbnail_image?.image_value?.url || 
-                                   binding.photo_image_full_size?.image_value?.url || 
-                                   binding.summary_photo_image?.image_value?.url;
-                    const localImage = this.localCardImage(tweet, imgUrl);
-                    if (localImage) {
-                        const safeImgUrl = this.escapeHTML(localImage);
-                        imageHtml = `<div class="w-full aspect-[1.91/1] bg-[var(--bg-tertiary)] overflow-hidden border-b border-[var(--border-color)]">
-                                        <img src="${safeImgUrl}" class="w-full h-full object-cover" loading="lazy" onerror="this.parentElement.hidden=true">
-                                     </div>`;
-                    }
+                const imageKeys = [
+                    'thumbnail_image_original', 'summary_photo_image_original',
+                    'thumbnail_image_x_large', 'thumbnail_image_large', 'thumbnail_image',
+                    'photo_image_full_size', 'summary_photo_image',
+                ];
+                for (const key of imageKeys) {
+                    const localImage = this.localCardImage(tweet, binding[key]?.image_value?.url);
+                    if (!localImage) continue;
+                    const safeImgUrl = this.escapeHTML(localImage);
+                    imageHtml = `<div class="link-card-image bg-[var(--bg-tertiary)] overflow-hidden">
+                                    <img src="${safeImgUrl}" alt="" class="w-full h-full object-cover" loading="lazy" onerror="this.parentElement.hidden=true">
+                                 </div>`;
+                    break;
                 }
                 
                 if (title || desc || imageHtml) {
-                    html += `<a href="${expandedUrl}" target="_blank" rel="noopener noreferrer" class="mt-3 block border border-[var(--border-color)] rounded-xl overflow-hidden hover-bg transition cursor-pointer">
+                    html += `<a href="${expandedUrl}" target="_blank" rel="noopener noreferrer" class="link-card${name === 'summary' ? ' link-card-summary' : ''} mt-3 block border border-[var(--border-color)] rounded-xl overflow-hidden hover-bg transition cursor-pointer">
                                 ${imageHtml}
-                                <div class="p-3">
+                                <div class="link-card-text p-3">
                                     <div class="text-[13px] text-[var(--text-secondary)] mb-1">${vanityUrl}</div>
                                     <div class="text-[15px] text-[var(--text-primary)] font-bold leading-tight mb-1" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${title}</div>
                                     <div class="text-[14px] text-[var(--text-secondary)]" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${desc}</div>
@@ -6510,8 +6509,9 @@ function tweetApp() {
 
         localCardImage(tweet, remoteUrl) {
             if (!remoteUrl) return null;
-            // Use the same archived media/poster files as the media grid.
-            const media = tweet.media || [];
+            // Quote renderers wrap a normalized tweet in raw_json.
+            const source = tweet.raw_json?.raw_json ? tweet.raw_json : tweet;
+            const media = [...(source.card_media || []), ...(source.media || [])];
             for (const item of media) {
                 const download = item.download || {};
                 const path = item.thumbnail_url === remoteUrl && download.thumbnail_local_path

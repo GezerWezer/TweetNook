@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from tests.conftest import (
     make_article_result,
+    make_link_card,
     make_photo_media,
     make_tweet_result,
     make_url_entity,
@@ -17,6 +18,43 @@ from tweetnook.extractor import (
     extract_secondary_objects,
     extract_thread_objects,
 )
+
+
+def test_link_cards_extract_separate_media_for_root_and_quoted_tweets() -> None:
+    quote = make_tweet_result("2", "quoted")
+    quote["card"] = make_link_card(name="summary")
+    root = make_tweet_result("1", "root", quoted_tweet=quote)
+    root["card"] = make_link_card("https://example.com/cover.jpg")
+    graph = extract_secondary_objects(root)
+    assert len(graph.media) == 2
+    for item in graph.media.values():
+        assert item.source == "link_card"
+        assert item.media_type == "photo"
+        assert item.media_key.startswith("link-card:")
+        assert item.width == 1200
+    assert {item.tweet_id for item in graph.media.values()} == {"1", "2"}
+
+
+def test_link_card_bindings_support_objects_and_skip_malformed_or_unsafe_images() -> None:
+    tweet = make_tweet_result("1", "saved")
+    for card in (None, [], {"name": []}, make_link_card(name="poll2choice_text_only")):
+        tweet["card"] = card
+        assert not extract_secondary_objects(tweet).media
+    for url in ("data:image/png,test", "file:///tmp/cover.jpg", "https://[broken", "//host/a"):
+        tweet["card"] = make_link_card(url)
+        assert not extract_secondary_objects(tweet).media
+    tweet["card"] = {
+        "name": "summary",
+        "binding_values": {
+            "thumbnail_image_original": {"image_value": []},
+            "thumbnail_image": {"image_value": {"url": "https://example.com/image.png"}},
+        },
+    }
+    first = next(iter(extract_secondary_objects(tweet).media.values()))
+    assert first.media_url == "https://example.com/image.png"
+    tweet["card"]["binding_values"]["thumbnail_image"]["image_value"]["url"] += "?v=2"
+    changed = next(iter(extract_secondary_objects(tweet).media.values()))
+    assert first.media_key != changed.media_key
 
 
 def test_extract_secondary_objects_captures_quote_media_urls_and_article() -> None:

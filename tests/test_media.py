@@ -9,6 +9,7 @@ from rich.console import Console
 
 from tests.conftest import (
     make_article_result,
+    make_link_card,
     make_photo_media,
     make_tweet_result,
     make_url_entity,
@@ -19,6 +20,66 @@ from tweetnook.media import download_media
 from tweetnook.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import ArchiveStore
+
+
+@pytest.mark.asyncio
+async def test_saved_link_cards_backfill_download_and_retry_without_refetch(paths, config):
+    _seed_archive(paths)
+    store = open_archive_store(paths, create=False)
+    raw = make_tweet_result("300", "an older saved link")
+    card_url = "https://pbs.twimg.com/card_img/story?format=jpg&name=small"
+    raw["card"] = make_link_card(card_url)
+    # Simulate a pre-upgrade archive: saved raw tweet, no extracted image row.
+    store.merge_rows(
+        [
+            store._record(
+                row_key="tweet_object:300",
+                record_type="tweet_object",
+                tweet_id="300",
+                source="live",
+                raw_json=store._json_value(raw),
+            ),
+        ]
+    )
+    store.close()
+    requested = []
+
+    def handler(request):
+        requested.append(str(request.url))
+        if "/card_img/" in str(request.url):
+            return httpx.Response(503)
+        return httpx.Response(200, content=b"image", headers={"content-type": "image/jpeg"})
+
+    failed = await download_media(
+        config=config, paths=paths, photos_only=True, transport=httpx.MockTransport(handler)
+    )
+    assert failed.failed == 1
+    assert card_url in requested
+    requested.clear()
+    skipped = await download_media(
+        config=config, paths=paths, transport=httpx.MockTransport(handler)
+    )
+    assert skipped.failed == 0
+    assert not any("/card_img/" in url for url in requested)
+
+    def image(request):
+        assert str(request.url) == card_url
+        return httpx.Response(200, content=b"card-image", headers={"content-type": "image/png"})
+
+    retried = await download_media(
+        config=config, paths=paths, retry_failed=True, limit=1, transport=httpx.MockTransport(image)
+    )
+    assert retried.downloaded == 1
+    store = open_archive_store(paths, create=False)
+    try:
+        row = next(row for row in store.list_media_rows() if row["source"] == "link_card")
+        assert row["download_state"] == "done"
+        assert (paths.data_dir / row["local_path"]).read_bytes() == b"card-image"
+        assert row["local_path"].endswith(".png")
+        assert store.backfill_link_card_media() == 0
+        assert store._get_row("tweet_object:300")["raw_json"] == store._json_value(raw)
+    finally:
+        store.close()
 
 
 def _complex_tweet(tweet_id: str = "100") -> TimelineTweet:

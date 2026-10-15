@@ -5926,6 +5926,35 @@ test('card thumbnails only render matching archived images or posters', () => {
     }
 });
 
+test('link cards show archived large images and summary thumbnails in normalized quotes', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({ tweetApp })');
+    const app = immediateComponent(tweetApp());
+    const remote = 'https://example.com/preview.jpg';
+    for (const name of ['summary', 'summary_large_image']) {
+        const tweet = {
+            raw_json: { card: { legacy: { name, binding_values: [
+                { key: 'title', value: { string_value: 'A saved story' } },
+                { key: 'thumbnail_image_original', value: { image_value: { url: remote } } },
+            ] } } },
+            card_media: [{ url: remote, download: { local_path: 'media/1/card image.jpg' } }],
+            media: [],
+        };
+        for (const input of [tweet, { raw_json: tweet }]) {
+            const html = app.renderCard(input);
+            assert.match(html, /<img src="\/media\/1\/card%20image.jpg" alt=""/);
+            assert.match(html, /A saved story/);
+            assert.equal(html.includes('link-card-summary'), name === 'summary');
+            assert.doesNotMatch(html, /src="https?:/);
+        }
+        tweet.card_media = [];
+        assert.doesNotMatch(app.renderCard(tweet), /<img/);
+        assert.match(app.renderCard(tweet), /A saved story/);
+        tweet.card_media = [{ url: remote, download: { local_path: 'https://host/remote.jpg' } }];
+        assert.doesNotMatch(app.renderCard(tweet), /<img/);
+    }
+});
+
 test('custom font dropdown supports keyboard focus and selection', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({ tweetApp })');

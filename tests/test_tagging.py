@@ -33,7 +33,7 @@ class Store:
             """
             CREATE TABLE archive (
                 row_key TEXT PRIMARY KEY, record_type TEXT NOT NULL, tweet_id TEXT,
-                media_key TEXT, media_type TEXT, local_path TEXT, raw_json TEXT,
+                media_key TEXT, media_type TEXT, local_path TEXT, raw_json TEXT, source TEXT,
                 author_display_name TEXT, author_username TEXT, text TEXT,
                 relation_type TEXT, target_tweet_id TEXT, enrichment_state TEXT,
                 updated_at TEXT, key TEXT, value TEXT
@@ -1132,6 +1132,26 @@ async def test_invalid_structured_output_is_recoverable_and_not_saved(monkeypatc
     )
     assert tagged == 0
     assert store.media_tag("1") is None
+
+
+@pytest.mark.asyncio
+async def test_link_previews_keep_text_tagging_and_never_upload_card_images(monkeypatch, paths):
+    store = Store()
+    store.add_tweet("1", text="A link preview", media=True)
+    store.conn.execute("UPDATE archive SET source = 'link_card' WHERE record_type = 'media'")
+    store.conn.commit()
+    models = FakeModels([free_response([{"id": "1", "tags": ["Links", "Stories"]}])])
+    _client, files = install_fake_client(
+        monkeypatch, models=models, interactions=FakeInteractions([])
+    )
+    allow_free_quota(monkeypatch)
+    previews = []
+    tagged = await tagging.tag_media_tweets(
+        store, config(), paths, console()[0], ["1"], dry_run=True, preview_results=previews
+    )
+    assert tagged == 1
+    assert previews[0].content_type == "text"
+    assert files.uploaded == []
 
 
 @pytest.mark.asyncio

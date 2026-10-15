@@ -229,6 +229,7 @@ def _legacy_target_id(raw: dict[str, Any] | None, relation_type: str) -> str | N
 
 def _media_payload(row: dict[str, Any], raw_tweet: dict[str, Any] | None = None) -> dict[str, Any]:
     payload = {
+        "source": row.get("source"),
         "type": row.get("media_type"),
         "url": row.get("media_url"),
         "thumbnail_url": row.get("thumbnail_url"),
@@ -371,8 +372,10 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
     quotes = [tweet["quoted_tweet"] for tweet in (*tweets, *originals) if tweet.get("quoted_tweet")]
     _attach_targets(store, quotes, ("quote_of",))
     from tweetnook.web.articles import annotate_web_articles
+    from tweetnook.web.cards import annotate_web_link_cards
 
     annotate_web_articles(store, tweets)
+    annotate_web_link_cards(store, tweets)
     return tweets
 
 
@@ -431,6 +434,7 @@ def _attach_targets(
         attached_ids,
         columns=[
             "tweet_id",
+            "source",
             "position",
             "media_type",
             "media_url",

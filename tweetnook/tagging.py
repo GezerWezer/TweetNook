@@ -459,6 +459,7 @@ def _content_types_for_tweets(
         SELECT DISTINCT tweet_id
         FROM archive INDEXED BY idx_archive_tweet_id
         WHERE record_type = 'media' AND tweet_id IN ({placeholders})
+          AND COALESCE(source, '') != 'link_card'
         """,
         relevant_ids,
     ).fetchall()
@@ -788,6 +789,7 @@ async def tag_media_tweets(
         SELECT tweet_id, media_key, media_type, local_path
         FROM archive INDEXED BY idx_archive_tweet_id
         WHERE record_type = 'media' AND tweet_id IN ({placeholders})
+          AND COALESCE(source, '') != 'link_card'
         """,
         context_ids,
     ).fetchall():

@@ -719,6 +719,67 @@ def _article_media_dimensions(item: dict[str, Any]) -> tuple[int | None, int | N
     )
 
 
+def extract_link_card_media(tweet: dict[str, Any]) -> list[MediaData]:
+    """Extract a summary card's image separately from the tweet's own photos."""
+    tweet_id = tweet.get("rest_id")
+    card = tweet.get("card")
+    if not tweet_id or not isinstance(card, dict):
+        return []
+    legacy = card.get("legacy")
+    legacy = legacy if isinstance(legacy, dict) else {}
+    name = card.get("name") or legacy.get("name")
+    if not isinstance(name, str) or name not in {"summary", "summary_large_image"}:
+        return []
+    values = card.get("binding_values") or legacy.get("binding_values") or {}
+    if isinstance(values, list):
+        values = {
+            item["key"]: item.get("value")
+            for item in values
+            if isinstance(item, dict) and isinstance(item.get("key"), str)
+        }
+    if not isinstance(values, dict):
+        return []
+    for key in (
+        "thumbnail_image_original",
+        "summary_photo_image_original",
+        "thumbnail_image_x_large",
+        "thumbnail_image_large",
+        "thumbnail_image",
+        "photo_image_full_size",
+        "summary_photo_image",
+    ):
+        value = values.get(key)
+        image = value.get("image_value") if isinstance(value, dict) else None
+        if not isinstance(image, dict):
+            continue
+        url = image.get("url")
+        if not isinstance(url, str):
+            continue
+        try:
+            parsed = urlsplit(url)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                continue
+        except ValueError:
+            continue
+        return [
+            MediaData(
+                tweet_id=str(tweet_id),
+                position=0,
+                media_key="link-card:" + sha256(url.encode("utf-8")).hexdigest(),
+                media_type="photo",
+                media_url=url,
+                thumbnail_url=url,
+                width=_as_int(image.get("width")),
+                height=_as_int(image.get("height")),
+                duration_millis=None,
+                variants=[],
+                raw_json=image,
+                source="link_card",
+            )
+        ]
+    return []
+
+
 def _article_media_entries(
     tweet: dict[str, Any],
     article_result: dict[str, Any],
@@ -851,6 +912,8 @@ def _visit_tweet(
         return
     graph.add_tweet_object(tweet_object)
     for item in _media_entries(tweet):
+        graph.add_media(item)
+    for item in extract_link_card_media(tweet):
         graph.add_media(item)
     url_refs, urls = _url_entries(tweet)
     for item in url_refs:
