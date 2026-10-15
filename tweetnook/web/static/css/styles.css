@@ -21,6 +21,9 @@
     --danger-color: #f91880;
     --danger-hover: #e01472;
     --danger-text: #ffffff;
+    --destructive-color: #f4212e;
+    --destructive-hover: #dc1e29;
+    --destructive-text: #ffffff;
     --font-size-base: 15px;
 }
 

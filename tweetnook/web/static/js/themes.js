@@ -11,6 +11,8 @@
  *   accent – accent/link color
  *   danger – danger/like color
  *
+ * Optional: destructive – Delete and other destructive actions; defaults to
+ * danger, so set it when danger is a like color rather than a red.
  * Optional: overrides object for any CSS variable that needs a hand-picked value.
  */
 
@@ -104,6 +106,7 @@ function _surface(bg, muted, delta) {
 
 function _generateTheme(seed) {
     const { bg, text, muted, accent, danger } = seed;
+    const destructive = seed.destructive || danger;
     const dark = _luminance(bg) < 128;
 
     const vars = {
@@ -129,6 +132,9 @@ function _generateTheme(seed) {
         '--danger-color':          danger,
         '--danger-hover':          _adjustL(danger, -8),
         '--danger-text':           _luminance(danger) > 150 ? '#000000' : '#ffffff',
+        '--destructive-color':     destructive,
+        '--destructive-hover':     _adjustL(destructive, -8),
+        '--destructive-text':      _luminance(destructive) > 150 ? '#000000' : '#ffffff',
     };
 
     if (seed.overrides) Object.assign(vars, seed.overrides);
@@ -152,7 +158,7 @@ const THEME_SEEDS = {
     'classic-dark': {
         _name: 'Classic Dark',
         bg: '#000000', text: '#e7e9ea', muted: '#71767b',
-        accent: '#1d9bf0', danger: '#f91880',
+        accent: '#1d9bf0', danger: '#f91880', destructive: '#f4212e',
         accents: [
             { name: 'Blue', color: '#1d9bf0' }, { name: 'Yellow', color: '#ffd400' },
             { name: 'Pink', color: '#f91880' }, { name: 'Purple', color: '#7856ff' },
@@ -162,7 +168,7 @@ const THEME_SEEDS = {
     'classic-light': {
         _name: 'Classic Light',
         bg: '#ffffff', text: '#0f1419', muted: '#536471',
-        accent: '#1d9bf0', danger: '#f91880',
+        accent: '#1d9bf0', danger: '#f91880', destructive: '#f4212e',
         // The measured X light palette (design.md).
         overrides: {
             '--bg-secondary': '#f7f9f9', '--bg-header': 'rgba(255,255,255,.92)',
@@ -278,6 +284,9 @@ const THEME_SEEDS = {
             '--danger-color': '#b24b4b',
             '--danger-hover': '#8c3b3b', 
             '--danger-text': '#d8ded3',
+            '--destructive-color': '#b24b4b',
+            '--destructive-hover': '#8c3b3b',
+            '--destructive-text': '#d8ded3',
 
             // Scrollbars
             '--scrollbar-bg': '#282e22',        
@@ -330,6 +339,9 @@ const THEME_SEEDS = {
             '--danger-color': '#D94126',
             '--danger-hover': '#EE563B',
             '--danger-text': '#FFFFFF',
+            '--destructive-color': '#D94126',
+            '--destructive-hover': '#EE563B',
+            '--destructive-text': '#FFFFFF',
 
             // Misc
             '--gray-700': '#67707B'     
