@@ -50,10 +50,6 @@ def test_synthetic_fixture_is_valid_and_contains_no_raw_payload() -> None:
     ]
     assert community_notes == [
         ("202602130004", "community notes work too!"),
-        (
-            "202602090016",
-            "This is an example Community Note attached directly to a video post.",
-        ),
     ]
     replies = [tweet for tweet in data["tweets"] if tweet["reply_to_id"]]
     roots = [tweet for tweet in data["tweets"] if not tweet["reply_to_id"]]
@@ -95,6 +91,12 @@ def test_synthetic_fixture_is_valid_and_contains_no_raw_payload() -> None:
         "202602090016",
         "202602150004",
     ]
+    quote_index = next(
+        index for index, tweet in enumerate(ordered_likes) if tweet["tweet_id"] == "202602120007"
+    )
+    assert ordered_likes[quote_index + 1]["tweet_id"] == "202601280043"
+    browse_guide = next(tweet for tweet in data["tweets"] if tweet["tweet_id"] == "202602150002")
+    assert "Check out the demo on mobile, too!" in browse_guide["text"]
     assert all("guide tweet" in tweet["tags"] for tweet in ordered_likes[:3])
     assert len(ordered_likes[3]["media"]) == 2
     assert [media["type"] for media in ordered_likes[4]["media"]] == ["video"]

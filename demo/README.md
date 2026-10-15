@@ -9,9 +9,15 @@ examples use a plain-text direct reply with no original-poster continuation. Eve
 has two reusable text-only replies: one containing a quote tweet and one containing no quote. Only
 three replies are themselves liked. The 15 liked records open with three guides, a two-image gallery,
 a standalone video, and a four-image gallery. The guides introduce the demo, browsing/search, and
-Appearance settings. Every record has two to five prompt-aligned search tags; media records also have
-descriptions, while text-only descriptions remain empty. One standalone source post demonstrates a
+Appearance settings, with an invitation to try the demo on mobile. Every record has two to five
+prompt-aligned search tags; media records also have descriptions, while text-only descriptions
+remain empty. One standalone source post demonstrates a
 synthetic community note. Invented media posters and thumbnails remain intentionally absent.
+
+The demo follows the device's light/dark appearance automatically until a theme is selected in
+Settings. Split panel is the default on desktop; a saved layout choice takes precedence, and
+narrow screens continue to open conversations in a single column. In the default Likes order,
+`202601280043` appears immediately after `202602120007`.
 
 The fixture stores 78 records for complete conversation and quote context, but the **All Tweets**
 feed exposes only the 26 records that belong to at least one user-facing collection: authored,

@@ -7,6 +7,8 @@ your network. Search by words, author, date, or tag to find something you saved
 without scrolling through your account.
 
 Want to see TweetNook before installing it? [View the live demo](https://gezerwezer.github.io/TweetNook/).
+The demo follows your device's light/dark appearance and defaults to split panel on desktop.
+Try it on mobile, too.
 
 ## Features
 

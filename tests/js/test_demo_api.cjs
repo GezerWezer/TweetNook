@@ -201,10 +201,7 @@ async function main() {
     });
 
     const videoNote = await request(store, `https://example.test/api/tweets/${ids.video}`);
-    assert.equal(
-        videoNote.body.main.raw_json.birdwatch_pivot.subtitle.text,
-        'This is an example Community Note attached directly to a video post.',
-    );
+    assert.equal(videoNote.body.main.raw_json.birdwatch_pivot, undefined);
 
     const rootTweets = fixture.tweets.filter(tweet => tweet.reply_to_id === null);
     assert.equal(rootTweets.length, 26);
