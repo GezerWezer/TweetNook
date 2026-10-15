@@ -198,25 +198,6 @@
                                     </div>
                                 </div>
                             </template>
-                                    </div>
-
-                                    <!-- Days Grid -->
-                                    <div class="grid grid-cols-7 gap-y-1 text-center py-1">
-                                        <template x-for="dayObj in dpGetDays()">
-                                            <button type="button"
-                                                class="w-8 h-8 mx-auto flex items-center justify-center cursor-pointer transition-all rounded-full text-[13px] font-medium focus:outline-none"
-                                                :class="{
-                                                    'bg-[var(--accent-color)] text-white font-bold shadow-sm': dayObj.dateStr === opt.val,
-                                                    'border border-[var(--accent-color)] text-[var(--accent-color)] font-semibold hover:bg-[var(--bg-secondary)]': dayObj.isToday && dayObj.dateStr !== opt.val,
-                                                    'text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]': dayObj.isCurrentMonth && dayObj.dateStr !== opt.val && !dayObj.isToday,
-                                                    'text-[var(--text-secondary)] opacity-30 hover:opacity-100 hover:bg-[var(--hover-bg)]': !dayObj.isCurrentMonth && dayObj.dateStr !== opt.val
-                                                }"
-                                                @click.stop="dpSelectDate(dayObj.dateStr, opt)"
-                                                x-text="dayObj.day"></button>
-                                        </template>
-                                    </div>
-                                </div>
-                            </template>
                         </div>
                     </template>
                 </div>
