@@ -64,6 +64,24 @@ a tweet's media, or swipe down to close it. **Media not downloaded** means the t
 was saved but the local media file is missing; see
 [Download media](enrichment.md#download-media).
 
+## Read X Articles
+
+X Articles are native long-form publications attached to posts. Feed cards show
+an article's cover, title, and excerpt. Select the preview to read the saved body
+in the conversation view or desktop split panel. **Focus mode** opens a centered
+reader; select the close button or press Escape to return to the same place.
+
+The reader preserves captured headings, emphasis, links, lists, quotations, and
+inline images. Older captures with only plain text retain their paragraph breaks.
+Quoted articles keep their full preview, including when the quoting post has its
+own media. Nested quotes, replies, and reposts use the same saved article content.
+
+Only captured content is shown. A preview-only article says that its body has not
+been archived; missing image files show a download placeholder. Embedded content
+without a saved representation links to X when a reference is available.
+Use `has:article` to find article-bearing posts, and
+[refresh articles](enrichment.md#refresh-articles) to fill in saved previews.
+
 ## Read threads and quotes
 
 Select a tweet to open its archived conversation. Parent tweets appear in order,

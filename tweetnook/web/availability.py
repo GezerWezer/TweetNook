@@ -370,6 +370,9 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
     _attach_targets(store, originals, ("quote_of",))
     quotes = [tweet["quoted_tweet"] for tweet in (*tweets, *originals) if tweet.get("quoted_tweet")]
     _attach_targets(store, quotes, ("quote_of",))
+    from tweetnook.web.articles import annotate_web_articles
+
+    annotate_web_articles(store, tweets)
     return tweets
 
 

@@ -692,7 +692,7 @@ class ThreadStore:
         columns: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         assert field == "tweet_id"
-        if record_type in {"tweet_object", "tweet_relation", "tweet_hidden"}:
+        if record_type in {"tweet_object", "tweet_relation", "tweet_hidden", "article"}:
             return []
         if "quoted" not in values:
             return []

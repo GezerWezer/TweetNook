@@ -78,9 +78,23 @@ async function main() {
         store,
         'https://example.test/api/tweets?collection=all&sort=default&page=1&limit=100',
     );
-    assert.equal(allTweets.body.total, 30);
+    assert.equal(allTweets.body.total, 35);
     assert.equal(allTweets.body.has_more, false);
     assert.ok(allTweets.body.tweets.every(tweet => tweet.collections.length > 0));
+    const articleRows = await request(store, 'https://example.test/api/tweets?collection=all&q=has:article&limit=100');
+    assert.equal(articleRows.body.total, 3);
+    const article = await request(store, 'https://example.test/api/tweets/202602160001');
+    assert.equal(article.body.main.article.content_state.blocks[0].type, 'unstyled');
+    assert.equal(article.body.main.media.length, 0);
+    const articleQuote = await request(store, 'https://example.test/api/tweets/202602160003');
+    assert.equal(articleQuote.body.main.media[0].type, 'video');
+    assert.equal(articleQuote.body.main.quoted_tweet.article.title, article.body.main.article.title);
+    assert.equal(articleQuote.body.main.qt_media.length, 0);
+    const nestedArticle = await request(store, 'https://example.test/api/tweets/202602160007');
+    assert.equal(nestedArticle.body.main.quoted_tweet.quoted_tweet.article.status, 'body_present');
+    const previewArticle = await request(store, 'https://example.test/api/tweets/202602160005');
+    assert.equal(previewArticle.body.main.article.content_text, null);
+    assert.equal(previewArticle.body.main.article.status, 'preview_only');
     const mixedSearch = await request(store, 'https://example.test/api/tweets?collection=all&q=gif%20is:reply');
     const mixedCount = await request(store, 'https://example.test/api/tweets/count?collection=all&q=gif%20is:reply');
     assert.deepEqual(mixedSearch.body.highlight_terms, ['gif']);
@@ -129,7 +143,7 @@ async function main() {
         ids.likedPlainReply,
     ]);
     const quoteTweets = await resultIds(store, 'is:quote');
-    assert.equal(quoteTweets.length, 16);
+    assert.equal(quoteTweets.length, 18);
     assert.ok(quoteTweets.includes(ids.textQuotesGallery));
     assert.ok(quoteTweets.includes(ids.textQuotesGif));
     assert.ok(quoteTweets.includes(ids.textQuotesVideo));
@@ -162,7 +176,7 @@ async function main() {
     );
 
     const likes = await request(store, 'https://example.test/api/tweets?collection=likes&sort=liked_latest&page=1&limit=6');
-    assert.equal(likes.body.total, 15);
+    assert.equal(likes.body.total, 18);
     assert.deepEqual(
         likes.body.tweets.map(tweet => tweet.tweet_id),
         [
@@ -204,7 +218,7 @@ async function main() {
     assert.equal(videoNote.body.main.raw_json.birdwatch_pivot, undefined);
 
     const rootTweets = fixture.tweets.filter(tweet => tweet.reply_to_id === null);
-    assert.equal(rootTweets.length, 26);
+    assert.equal(rootTweets.length, 31);
     for (const [index, root] of rootTweets.entries()) {
         const detail = await request(store, `https://example.test/api/tweets/${root.tweet_id}`);
         assert.ok(detail.body.children.length >= 1);
@@ -218,7 +232,7 @@ async function main() {
     }
 
     const likedTweets = fixture.tweets.filter(tweet => tweet.collections.includes('like'));
-    assert.equal(likedTweets.length, 15);
+    assert.equal(likedTweets.length, 18);
     for (const likedTweet of likedTweets) {
         const detail = await request(store, `https://example.test/api/tweets/${likedTweet.tweet_id}`);
         assert.ok(detail.body.children.some(child => (
@@ -308,7 +322,8 @@ async function main() {
         [{tag: 'guide tweet', count: 3}],
     );
     const initialStats = await request(freshStore, 'https://example.test/api/stats/snapshot');
-    assert.equal(initialStats.body.summary.unique_posts, 86);
+    assert.equal(initialStats.body.summary.unique_posts, 99);
+    assert.equal(initialStats.body.summary.articles, 3);
     assert.equal(initialStats.body.summary.missing_archive_tweets, 5);
     assert.equal(initialStats.body.health.enrichment.unavailable.reasons.filter(reason => reason.count > 0).length, 3);
     assert.deepEqual(
@@ -319,16 +334,16 @@ async function main() {
     );
     assert.equal(initialStats.body.storage.formatted_total, '400 KiB');
     assert.equal(initialStats.body.storage.simplified_segments[0].percent, 86.9);
-    assert.equal(initialStats.body.tags.tagged_tweets, 62);
+    assert.equal(initialStats.body.tags.tagged_tweets, 71);
     assert.equal(initialStats.body.tags.coverage_pct, 72.7);
-    assert.deepEqual(initialStats.body.tags.top_tags[0], {tag: 'TweetNook demo', count: 82});
+    assert.deepEqual(initialStats.body.tags.top_tags[0], {tag: 'TweetNook demo', count: 95});
     assert.equal((await request(freshStore, `https://example.test/api/tags/${ids.ownerRoot}`, {method: 'DELETE'})).response.status, 200);
     assert.equal(freshStore.hydrate(ids.ownerRoot).media_tags, null);
 
     const stats = await request(freshStore, 'https://example.test/api/stats/snapshot');
-    assert.equal(stats.body.summary.unique_posts, 86);
+    assert.equal(stats.body.summary.unique_posts, 99);
     assert.equal(stats.body.health.enrichment.incomplete, 0);
-    assert.equal(stats.body.tags.tagged_tweets, 61);
+    assert.equal(stats.body.tags.tagged_tweets, 70);
     assert.equal(stats.body.tags.coverage_pct, 72.7);
 
     const tagging = await request(freshStore, 'https://example.test/api/automated-tagging/test', {

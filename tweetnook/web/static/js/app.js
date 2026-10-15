@@ -2259,6 +2259,10 @@ function tweetApp() {
                 }
             });
 
+            window.addEventListener('open-article', (event) => {
+                const id = event.detail?.tweetId;
+                if (id && /^\d+$/.test(id)) this.openThread(id);
+            });
             window.addEventListener('open-lightbox', (e) => {
                 this.openLightbox(e.detail.media, e.detail.index, e.detail.originVideo, e.detail.origin);
             });
@@ -6023,8 +6027,20 @@ function tweetApp() {
             return html + escape(text.slice(offset));
         },
 
+        articleForTweet(tweet) {
+            return window.TweetNookArticles?.data(tweet) || null;
+        },
+
+        renderArticle(tweet, full = false) {
+            return window.TweetNookArticles?.render(this, tweet, full) || '';
+        },
+
+        openArticleFocus(tweet) {
+            window.TweetNookArticles?.focus(this, tweet);
+        },
+
         formatText(tweet, forceFull = false, highlightSearch = false) {
-            if (!tweet) return '';
+            if (!tweet || this.articleForTweet(tweet)) return '';
             if (this.isPlaceholderTweet(tweet)) return this.renderTweetPlaceholder(tweet);
             const raw = tweet.raw_json?.raw_json || tweet.raw_json || tweet;
             const rawLegacy = raw?.legacy || raw || {};
@@ -6153,8 +6169,9 @@ function tweetApp() {
             return true;
         },
         
-        renderCard(tweet) {
+        renderCard(tweet, context = 'preview') {
             if (this.isPlaceholderTweet(tweet)) return '';
+            if (this.articleForTweet(tweet)) return this.renderArticle(tweet, context === 'detail');
             if (!tweet || !tweet.raw_json) return '';
             const raw = tweet.raw_json.raw_json || tweet.raw_json;
             const card = raw.card;
@@ -6306,7 +6323,8 @@ function tweetApp() {
 
         // Like X, a quote is compact when both it and the tweet quoting it have media.
         isMediaQuotingMedia(tweet) {
-            return Boolean(tweet?.media?.length && tweet?.qt_media?.length);
+            return !this.articleForTweet(this.getQuoteTweet(tweet))
+                && Boolean(tweet?.media?.length && tweet?.qt_media?.length);
         },
 
         // X shows a quote's avatar at 24px and a nested quote's at 20px.
@@ -6334,6 +6352,7 @@ function tweetApp() {
             const media = quote.qt_media || nested.media || [];
             return `<div class="quote-nested${media.length ? ' quote-nested-media' : ''}"${id ? ` data-thread-id="${this.escapeHTML(id)}"` : ''} data-action="quote">`
                 + this.renderQuoteByline(nested, 'w-5 h-5')
+                + this.renderArticle(nested)
                 + (media.length ? `<div class="quote-media">${this.renderQuoteThumbnail(media)}</div>` : '')
                 + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(nested, true, highlightSearch)}</div>`
                 + '</div>';

@@ -34,7 +34,7 @@ def test_synthetic_fixture_is_valid_and_contains_no_raw_payload() -> None:
     assert all(author["username"].startswith("demo_") for author in data["authors"])
     owner = next(author for author in data["authors"] if author["id"] == data["owner_user_id"])
     assert owner["display_name"] == "You"
-    assert len(data["tweets"]) == 86
+    assert len(data["tweets"]) == 99
     assert all(2 <= len(tweet["tags"]) <= 5 for tweet in data["tweets"])
     assert all(isinstance(tweet["description"], str) for tweet in data["tweets"])
     assert all(bool(tweet["description"]) == bool(tweet["media"]) for tweet in data["tweets"])
@@ -53,12 +53,12 @@ def test_synthetic_fixture_is_valid_and_contains_no_raw_payload() -> None:
     ]
     replies = [tweet for tweet in data["tweets"] if tweet["reply_to_id"]]
     roots = [tweet for tweet in data["tweets"] if not tweet["reply_to_id"]]
-    assert len(roots) == 26
-    assert len(replies) == 60
+    assert len(roots) == 31
+    assert len(replies) == 68
     assert sum("like" in tweet["collections"] for tweet in replies) == 3
     assert any(tweet["text"].startswith("This is something I tweeted.") for tweet in roots)
     saved = [tweet for tweet in data["tweets"] if tweet["collections"]]
-    assert len(saved) == 30
+    assert len(saved) == 35
     assert all(tweet["collections"] for tweet in saved)
     assert sum(not tweet["media"] for tweet in roots) > sum(bool(tweet["media"]) for tweet in roots)
     assert (

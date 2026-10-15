@@ -294,6 +294,7 @@
                                 </template>
 
                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
+                                <div x-html="renderCard(parent)" @click.stop></div>
                                 <div x-html="renderMediaGrid(parent.media)" @click.stop></div>
                                 <div x-html="renderQuoteCard(parent)" @click.stop="handleThreadParentQuoteClick($event, parent)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                 <div x-html="renderCommunityNote(parent.raw_json)" @click.stop></div>
@@ -363,7 +364,8 @@
                         </template>
 
                         <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
-                        <div x-html="renderCard(threadData.main)" @click.stop></div>
+                        <button x-show="articleForTweet(threadData.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg>Focus mode</button>
+                        <div x-html="renderCard(threadData.main, 'detail')" @click.stop></div>
                         <div x-html="renderMediaGrid(threadData.main.media, 'detail')" @click.stop></div>
 
                         <!-- Quote Tweet -->
@@ -675,7 +677,7 @@
                 <button x-show="panelStack.length > 1" @click="panelGoBack()" class="p-2 -ml-2 rounded-full hover-bg transition">
                     <svg viewBox="0 0 24 24" class="w-5 h-5 fill-[var(--white-icon)]"><path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z"></path></svg>
                 </button>
-                <h2 class="text-xl font-bold text-[var(--text-primary)]" x-text="panelMode === 'quotes' ? 'Quote Tweets' : 'Tweet'"></h2>
+                <h2 class="text-xl font-bold text-[var(--text-primary)]" x-text="panelMode === 'quotes' ? 'Quote Tweets' : (articleForTweet(panelThreadData?.main) ? 'Article' : 'Tweet')"></h2>
             </div>
             <button @click="closePanel()" class="p-2 rounded-full hover-bg transition text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                 <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
@@ -715,6 +717,7 @@
                                     <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(parent)" @click="handleReplyRecipientClick($event)"></div>
                                 </template>
                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
+                                <div x-html="renderCard(parent)" @click.stop></div>
                                 <div x-html="renderMediaGrid(parent.media)" @click.stop></div>
                                 <div x-html="renderQuoteCard(parent)" @click.stop="handleThreadParentQuoteClick($event, parent)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                 <div x-html="renderCommunityNote(parent.raw_json)" @click.stop></div>
@@ -780,7 +783,8 @@
                             <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-2" x-html="renderReplyRecipientContent(panelThreadData.main)" @click="handleReplyRecipientClick($event)"></div>
                         </template>
                         <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(panelThreadData.main)" @click="handleTextClick($event)"></div>
-                        <div x-html="renderCard(panelThreadData.main)" @click.stop></div>
+                        <button x-show="articleForTweet(panelThreadData.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(panelThreadData.main)" aria-label="Open article focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg>Focus mode</button>
+                        <div x-html="renderCard(panelThreadData.main, 'detail')" @click.stop></div>
                         <div x-html="renderMediaGrid(panelThreadData.main.media, 'detail')" @click.stop></div>
 
                         <!-- Quote Tweet -->
