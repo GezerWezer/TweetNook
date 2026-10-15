@@ -101,90 +101,91 @@
                          @paste="setTimeout(() => handleInput(), 0)"
                          x-ref="searchInput" 
                          :class="{'empty-content': searchQuery.length === 0}"
-                         role="searchbox" aria-label="Search your archive" data-placeholder="Search your archive" 
+                         role="searchbox" aria-label="Search your archive" data-placeholder="Search your archive"
+                         aria-controls="nook-suggest" :aria-expanded="String(showDropdown && (options.length > 0 || !!emptyNote))"
+                         :aria-activedescendant="showDropdown && options.length && !options[0].isDatePicker ? 'nook-suggest-' + selectedIndex : null" 
                          class="nook-search-input rich-search-input w-full bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full py-2 pl-4 pr-10 focus:outline-none focus:ring-1 focus:ring-[var(--accent-color)] border border-[var(--input-border)] whitespace-pre-wrap overflow-hidden block min-h-[38px] leading-relaxed"></div>
                     <button type="button" aria-label="Clear search" x-show="searchQuery" @click="searchQuery = ''; $refs.searchInput.innerHTML = ''; search()" class="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-[var(--text-secondary)] rounded-full hover:bg-[var(--text-primary)] transition z-10">
                         <svg viewBox="0 0 24 24" class="w-3 h-3 fill-[var(--bg-primary)]"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.023-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.023 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
                     </button>
                 </div>
                 
-                <div x-ref="dropdownMenu" x-show="showDropdown && options.length > 0" x-transition.opacity.duration.100ms :class="options[0]?.isDatePicker ? 'w-[280px] rounded-2xl' : 'right-4 rounded-xl'" class="absolute top-full left-4 mt-1 bg-[var(--dropdown-bg)] border border-[var(--border-color)] shadow-[0_0_15px_rgba(255,255,255,0.1)] overflow-y-auto max-h-[50vh] z-50">
+                <div x-ref="dropdownMenu" id="nook-suggest" role="listbox" aria-label="Search suggestions"
+                     x-show="showDropdown && (options.length > 0 || emptyNote)" x-transition.opacity.duration.100ms
+                     :class="options[0]?.isDatePicker && 'is-calendar'" class="nook-suggest">
                     <template x-for="(opt, index) in options" :key="index">
-                        <div @click="!opt.isDatePicker && selectOptionIndex(index)" 
-                             @mouseenter="!opt.isDatePicker && (selectedIndex = index)" 
-                             :class="{
-                                 'bg-[var(--bg-tertiary)]': !opt.isDatePicker && selectedIndex === index,
-                                 'px-4 py-3 cursor-pointer flex justify-between items-center': !opt.isDatePicker,
-                                 'p-2': opt.isDatePicker
-                             }">
-                            <template x-if="opt.isAuthor">
-                                <div class="flex items-center space-x-3 w-full py-1">
-                                    <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden">
-                                        <span class="avatar-initial" x-text="(opt.desc || opt.value || '?').charAt(0)"></span>
-                                        <img :src="avatarUrl(opt.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
-                                    </div>
-                                    <div class="flex flex-col min-w-0 flex-1">
-                                        <span class="font-bold text-[15px] text-[var(--text-primary)] leading-tight truncate" x-html="highlightMatch(opt.desc || opt.value, opt.query)"></span>
-                                        <span class="text-[14px] text-[var(--text-secondary)] truncate" x-html="highlightMatch('@' + opt.value, opt.query)"></span>
-                                    </div>
-                                </div>
+                        <div :id="opt.isDatePicker ? null : 'nook-suggest-' + index"
+                             :role="opt.isDatePicker ? null : 'option'"
+                             :aria-selected="opt.isDatePicker ? null : String(selectedIndex === index)"
+                             @click="!opt.isDatePicker && selectOptionIndex(index)"
+                             @mouseenter="!opt.isDatePicker && (selectedIndex = index)"
+                             :class="opt.isDatePicker ? 'nook-suggest-calendar' : (opt.isAuthor ? 'nook-suggest-row is-person' : 'nook-suggest-row')">
+                            <template x-if="opt.glyph">
+                                <span class="nook-suggest-glyph" x-html="suggestionGlyph(opt.glyph)"></span>
                             </template>
-                            <template x-if="!opt.isAuthor && !opt.isTag && !opt.isDatePicker">
-                                <div class="flex flex-col justify-center w-full">
-                                    <template x-if="opt.value">
-                                        <div>
-                                            <div class="text-[var(--text-primary)] font-bold" x-text="opt.value"></div>
-                                            <div class="text-[var(--text-secondary)] text-sm mt-0.5" x-text="opt.desc"></div>
-                                        </div>
-                                    </template>
-                                    <template x-if="!opt.value">
-                                        <div>
-                                            <div class="flex items-center space-x-2">
-                                                <span class="text-[var(--text-primary)] font-bold" x-text="opt.prefix"></span>
-                                                <span class="text-[var(--text-secondary)]" x-text="opt.desc"></span>
-                                            </div>
-                                        </div>
-                                    </template>
-                                </div>
+                            <template x-if="opt.isAuthor">
+                                <span class="nook-suggest-text is-person">
+                                    <span class="avatar nook-suggest-avatar relative bg-[var(--gray-700)] text-[var(--white-icon)] overflow-hidden">
+                                        <span class="avatar-initial" x-text="(opt.desc || opt.value || '?').charAt(0)"></span>
+                                        <img :src="avatarUrl(opt.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" alt="" loading="lazy">
+                                    </span>
+                                    <span class="nook-suggest-person">
+                                        <span class="nook-suggest-name" x-html="highlightMatch(opt.desc || opt.value, opt.query)"></span>
+                                        <span class="nook-suggest-handle" x-html="highlightMatch('@' + opt.value, opt.query)"></span>
+                                    </span>
+                                </span>
                             </template>
                             <template x-if="opt.isTag">
-                                <div class="flex w-full justify-between items-center">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-[var(--text-primary)]" x-html="highlightTagMatch(opt.value, opt.query)"></span>
-                                    </div>
-                                    <span class="text-[var(--text-secondary)] text-sm bg-[var(--bg-tertiary)] px-2 py-0.5 rounded-full font-medium" x-text="opt.count"></span>
-                                </div>
+                                <span class="nook-suggest-text">
+                                    <span class="nook-suggest-tag" x-html="highlightTagMatch(opt.value, opt.query)"></span>
+                                    <span class="nook-suggest-count" x-text="opt.count + (opt.total === 1 ? ' tweet' : ' tweets')"></span>
+                                </span>
+                            </template>
+                            <template x-if="!opt.isAuthor && !opt.isTag && !opt.isDatePicker">
+                                <span class="nook-suggest-text">
+                                    <template x-if="opt.value">
+                                        <span class="nook-suggest-prefix" :class="opt.negated && 'is-negative'" x-text="opt.prefix"></span>
+                                    </template>
+                                    <span class="nook-suggest-key" :class="!opt.value && opt.negated && 'is-negative'" x-text="opt.value || opt.prefix"></span>
+                                    <span class="nook-suggest-desc" x-text="opt.desc"></span>
+                                </span>
                             </template>
                             <template x-if="opt.isDatePicker">
-                                <div class="w-full text-[var(--text-primary)] select-none" @mousedown.prevent>
-                                    <div class="flex h-8 items-center ps-3">
-                                        <h2 class="min-w-0 flex-1 truncate text-[13px] leading-[18px] font-medium" x-text="new Date(dpYear, dpMonth, 1).toLocaleString('default', { month: 'long', year: 'numeric' })"></h2>
-                                        <button type="button" aria-label="Previous month" @click.stop="dpPrevMonth()" class="group w-8 h-8 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)] transition-colors">
-                                            <svg class="w-4 h-4 fill-current transition-transform duration-200 group-hover:scale-110" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.91 7.5 9.41 12l4.5 4.5-1.41 1.41L6.59 12l5.91-5.91z"></path></svg>
+                                <div class="select-none" @mousedown.prevent>
+                                    <div class="nook-calendar-head">
+                                        <h2 x-text="new Date(dpYear, dpMonth, 1).toLocaleString('default', { month: 'long', year: 'numeric' })"></h2>
+                                        <button type="button" class="nook-calendar-nav" aria-label="Previous month" @click.stop="dpPrevMonth()">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.91 7.5 9.41 12l4.5 4.5-1.41 1.41L6.59 12l5.91-5.91z"></path></svg>
                                         </button>
-                                        <button type="button" aria-label="Next month" @click.stop="dpNextMonth()" class="group w-8 h-8 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)] transition-colors">
-                                            <svg class="w-4 h-4 fill-current transition-transform duration-200 group-hover:scale-110" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.91 12 10 17.91 8.59 16.5l4.5-4.5-4.5-4.5L10 6.09z"></path></svg>
+                                        <button type="button" class="nook-calendar-nav" aria-label="Next month" @click.stop="dpNextMonth()">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.91 12 10 17.91 8.59 16.5l4.5-4.5-4.5-4.5L10 6.09z"></path></svg>
                                         </button>
                                     </div>
-                                    <div role="grid" class="mt-1 px-1">
-                                        <div role="row" class="grid grid-cols-7">
-                                            <template x-for="day in ['S', 'M', 'T', 'W', 'T', 'F', 'S']">
-                                                <div role="columnheader" class="flex h-6 items-center justify-center text-[10px] font-medium opacity-30" x-text="day"></div>
-                                            </template>
-                                        </div>
-                                        <div class="grid grid-cols-7">
-                                            <template x-for="dayObj in dpGetDays()">
-                                                <div role="gridcell" class="flex h-7 items-center justify-center" :aria-selected="dpIsSelected(dayObj, opt)">
-                                                    <button type="button" tabindex="-1"
-                                                        class="flex w-6 h-6 items-center justify-center rounded-full text-[11px] font-normal transition-colors focus:outline-none"
-                                                        :class="dpIsSelected(dayObj, opt) ? 'bg-[var(--text-primary)] text-[var(--bg-primary)]' : (dayObj.isCurrentMonth ? 'hover:bg-[var(--bg-tertiary)]' : 'text-[color-mix(in_srgb,var(--text-primary)_30%,transparent)] hover:bg-[var(--bg-tertiary)]')"
+                                    <div role="grid" class="nook-calendar-grid">
+                                        <template x-for="day in ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']">
+                                            <div role="columnheader" class="nook-calendar-dow" x-text="day"></div>
+                                        </template>
+                                        <template x-for="dayObj in dpGetDays()">
+                                            <div role="gridcell" class="nook-calendar-cell" :aria-selected="dpIsSelected(dayObj, opt)">
+                                                <button type="button" tabindex="-1" class="nook-calendar-day"
+                                                        :class="{ 'is-outside': !dayObj.isCurrentMonth, 'is-today': dayObj.isToday, 'is-selected': dpIsSelected(dayObj, opt) }"
+                                                        :aria-current="dayObj.isToday ? 'date' : null"
                                                         @click.stop="dpSelectDate(dayObj.dateStr, opt)"
                                                         x-text="dayObj.day"></button>
-                                                </div>
-                                            </template>
-                                        </div>
+                                            </div>
+                                        </template>
                                     </div>
                                 </div>
+                            </template>
+                        </div>
+                    </template>
+                    <template x-if="emptyNote && options.length === 0">
+                        <div class="nook-suggest-empty" role="status">
+                            <template x-if="emptyNote.query">
+                                <span>No <span x-text="emptyNote.noun"></span> match “<b x-text="emptyNote.query"></b>”.<span x-show="emptyNote.noun === 'people'"> Try part of a name or handle.</span></span>
+                            </template>
+                            <template x-if="!emptyNote.query">
+                                <span>No <span x-text="emptyNote.noun"></span> yet.</span>
                             </template>
                         </div>
                     </template>

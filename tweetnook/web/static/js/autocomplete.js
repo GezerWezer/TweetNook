@@ -15,6 +15,29 @@ const SEARCH_CARET = '\uE000';
 const BOX_START = '\uE001';
 const BOX_END = '\uE002';
 
+// Suggestion glyphs: X design system icons (iconXDS.md), plus the app's own
+// verified seal, which XDS lacks. Values are [viewBox, inner SVG markup].
+const SUGGESTION_GLYPHS = {
+    "person": ["0 0 24 24", "<path d=\"M12 12.25a8 8 0 0 1 8 8V22H4v-1.75a8 8 0 0 1 8-8m0 2A6 6 0 0 0 6 20h12a6 6 0 0 0-6-5.75M12 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9m0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5\"/>"],
+    "reply": ["0 0 24 24", "<path d=\"M1.75 10a8 8 0 0 1 8-8h4.37a8.13 8.13 0 0 1 3.93 15.24L10 21.7V18h-.07a8 8 0 0 1-8.18-8m2 0a6 6 0 0 0 6.14 6H12v2.3l5.09-2.8A6.13 6.13 0 0 0 14.12 4H9.75a6 6 0 0 0-6 6\"/>"],
+    "attachment": ["0 0 24 24", "<path d=\"M5 15V8h2v7a5 5 0 0 0 10 0V7a3 3 0 1 0-6 0v8a1 1 0 1 0 2 0V8h2v7a3 3 0 1 1-6 0V7a5 5 0 0 1 10 0v8a7 7 0 1 1-14 0\"/>"],
+    "timeline": ["0 0 24 24", "<path d=\"M15 17h-4v-2h4zm-7.5-6.25a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3M18 13h-7v-2h7z\"/><path d=\"M18.5 7a3.5 3.5 0 0 1 3.5 3.5v7a3.5 3.5 0 0 1-3.5 3.5h-13A3.5 3.5 0 0 1 2 17.5v-7A3.5 3.5 0 0 1 5.5 7zm-13 2C4.67 9 4 9.67 4 10.5v7c0 .83.67 1.5 1.5 1.5h13c.83 0 1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5z\"/><path d=\"M17 3a2 2 0 0 1 2 2H5c0-1.1.9-2 2-2z\"/>"],
+    "calendar": ["0 0 24 24", "<path d=\"M8 3.5h8V2h2v1.5h3.5V16a5 5 0 0 1-5 5h-9a5 5 0 0 1-5-4.74V3.5H6V2h2zM4.5 16v.15a3 3 0 0 0 3 2.85h9a3 3 0 0 0 3-3v-6h-15zm0-8h15V5.5h-15z\"/>"],
+    "link": ["0 0 24 24", "<path d=\"M1 12a7 7 0 0 1 7-7h2v2H8a5 5 0 1 0 0 10h2v2H8a7 7 0 0 1-7-7m20 0a5 5 0 0 0-5-5h-2V5h2a7 7 0 1 1 0 14h-2v-2h2a5 5 0 0 0 5-5m-4-1v2H7v-2z\"/>"],
+    "sticker": ["0 0 24 24", "<path d=\"M12 2.5q.57 0 1.12.07l.34.04.25.24 7.44 7.44.24.25.04.34q.07.55.07 1.12A9.5 9.5 0 1 1 12 2.5m0 2a7.5 7.5 0 1 0 7.5 7.5A8.44 8.44 0 0 1 12 4.5\"/>"],
+    "edit": ["0 0 24 24", "<path d=\"M13.54 4.04a4.54 4.54 0 0 1 6.42 6.42l-8.73 8.72a5 5 0 0 1-3.08 1.45l-5.25.47.47-5.25a5 5 0 0 1 1.45-3.08zm-7.3 10.14a3 3 0 0 0-.87 1.85L5.1 18.9l2.87-.26a3 3 0 0 0 1.85-.86L16.59 11 13 7.4zm12.3-8.72a2.54 2.54 0 0 0-3.58 0L14.4 6 18 9.58l.54-.54c1-.99 1-2.6 0-3.58\"/>"],
+    "grid": ["0 0 24 24", "<path d=\"M3 5.5A2.5 2.5 0 0 1 5.5 3h3A2.5 2.5 0 0 1 11 5.5v3A2.5 2.5 0 0 1 8.5 11h-3A2.5 2.5 0 0 1 3 8.5zM5.5 5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5zm7.5.5A2.5 2.5 0 0 1 15.5 3h3A2.5 2.5 0 0 1 21 5.5v3a2.5 2.5 0 0 1-2.5 2.5h-3A2.5 2.5 0 0 1 13 8.5zm2.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5zM3 15.5A2.5 2.5 0 0 1 5.5 13h3a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 8.5 21h-3A2.5 2.5 0 0 1 3 18.5zm2.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5zm7.5.5a2.5 2.5 0 0 1 2.5-2.5h3a2.5 2.5 0 0 1 2.5 2.5v3a2.5 2.5 0 0 1-2.5 2.5h-3a2.5 2.5 0 0 1-2.5-2.5zm2.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5z\"/>"],
+    "photo": ["0 0 24 24", "<path d=\"M15 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4\"/><path d=\"M14.1 2.5q1.65-.02 2.7.06c.74.06 1.38.18 1.97.48a5 5 0 0 1 2.19 2.19c.3.6.42 1.23.48 1.96q.08 1.06.06 2.71v4.2q.02 1.65-.06 2.7a5 5 0 0 1-.48 1.97 5 5 0 0 1-2.19 2.19c-.6.3-1.23.42-1.96.48q-1.06.08-2.71.06H9.9q-1.65.02-2.7-.06a5 5 0 0 1-1.97-.48 5 5 0 0 1-2.19-2.19c-.3-.6-.42-1.23-.48-1.96q-.07-1.06-.06-2.71V9.9q-.02-1.65.06-2.7c.06-.74.18-1.38.48-1.97a5 5 0 0 1 2.19-2.19c.6-.3 1.23-.42 1.96-.48q1.06-.07 2.71-.06zM4.5 15.44q.01.7.05 1.2c.05.61.14.96.28 1.22a3 3 0 0 0 1.3 1.31c.27.14.62.23 1.22.28.62.05 1.41.05 2.55.05h5.18l-7.12-7.13zM9.9 4.5c-1.14 0-1.93 0-2.55.05-.6.05-.95.14-1.21.28a3 3 0 0 0-1.31 1.3 3 3 0 0 0-.28 1.22c-.05.62-.05 1.41-.05 2.55v2.87l3.54-3.14 9.63 9.63.2-.09a3 3 0 0 0 1.3-1.3c.14-.27.23-.62.28-1.22.05-.62.05-1.41.05-2.55V9.9c0-1.14 0-1.93-.05-2.55a3 3 0 0 0-.28-1.21 3 3 0 0 0-1.3-1.31 3 3 0 0 0-1.22-.28c-.62-.05-1.41-.05-2.55-.05z\"/>"],
+    "play-circle": ["0 0 24 24", "<path d=\"m16.5 12-7 4.45v-8.9z\"/><path d=\"M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16\"/>"],
+    "news": ["0 0 24 24", "<path d=\"M18 17H6v-2h12z\"/><path d=\"M12 13H6V7h6zm-4-2h2V9H8z\"/><path d=\"M18 13h-4v-2h4zm0-4h-4V7h4z\"/><path d=\"M17 3q1.02-.01 1.72.04c.48.04.94.12 1.37.34.66.34 1.2.87 1.53 1.53.22.43.3.89.34 1.37q.05.7.04 1.72v8q.01 1.02-.04 1.72a4 4 0 0 1-.34 1.37 3.5 3.5 0 0 1-1.53 1.53c-.43.22-.89.3-1.37.34q-.7.05-1.72.04H7q-1.03.01-1.72-.04a4 4 0 0 1-1.37-.34 3.5 3.5 0 0 1-1.53-1.53 4 4 0 0 1-.34-1.37Q1.99 17.02 2 16V8q-.01-1.03.04-1.72c.04-.48.12-.94.34-1.37a3.5 3.5 0 0 1 1.53-1.53c.43-.22.89-.3 1.37-.34Q5.98 2.99 7 3zM7 5c-.72 0-1.2 0-1.56.03s-.52.08-.62.13a1.5 1.5 0 0 0-.66.66c-.05.1-.1.26-.13.62S4 7.28 4 8v8c0 .72 0 1.2.03 1.56s.08.52.13.62q.23.43.66.66c.1.05.26.1.62.13.37.03.84.03 1.56.03h10c.72 0 1.2 0 1.56-.03s.52-.08.62-.13q.43-.23.66-.66c.05-.1.1-.26.13-.62.03-.37.03-.84.03-1.56V8c0-.72 0-1.2-.03-1.56a2 2 0 0 0-.13-.62 1.5 1.5 0 0 0-.66-.66c-.1-.05-.26-.1-.62-.13S17.72 5 17 5z\"/>"],
+    "quotes": ["0 0 24 24", "<path d=\"M6.8 5.01a4.6 4.6 0 0 1 3.87 2.37c.78 1.37.96 3.11.75 4.75a10 10 0 0 1-1.82 4.6A5.3 5.3 0 0 1 5.45 19h-1v-4.58C2.9 13.62 1.5 12 1.5 10v-.25A4.96 4.96 0 0 1 6.43 5zm-.52 2a2.97 2.97 0 0 0-2.78 3c0 1.18 1.03 2.36 2.29 2.82l.66.23v3.74q.86-.36 1.56-1.28a8 8 0 0 0 1.42-3.65c.18-1.36 0-2.62-.5-3.5C8.47 7.55 7.7 7 6.43 7zm11.52-2a4.6 4.6 0 0 1 3.87 2.37c.78 1.37.96 3.11.75 4.75a10 10 0 0 1-1.82 4.6A5.3 5.3 0 0 1 16.45 19h-1v-4.58C13.9 13.62 12.5 12 12.5 10v-.25A4.96 4.96 0 0 1 17.43 5zm-.52 2a2.97 2.97 0 0 0-2.78 3c0 1.18 1.03 2.36 2.29 2.82l.66.23v3.74q.86-.36 1.56-1.28a8 8 0 0 0 1.42-3.65c.18-1.36 0-2.62-.5-3.5C19.47 7.55 18.7 7 17.43 7z\"/>"],
+    "repost": ["0 0 24 24", "<path d=\"M13.1 4q1.65-.01 2.71.06c.73.06 1.37.18 1.96.48a5 5 0 0 1 2.19 2.19 5 5 0 0 1 .48 1.96q.08 1.06.06 2.71v5.05l2.07-1.93 1.36 1.46-4.43 4.14-4.43-4.14 1.36-1.46 2.07 1.93V11.4c0-1.14 0-1.93-.05-2.55a3 3 0 0 0-.27-1.21 3 3 0 0 0-1.32-1.31 3 3 0 0 0-1.21-.28C15.03 6 14.24 6 13.1 6H11V4zM8.93 8.02 7.57 9.48 5.5 7.55v5.05c0 1.14 0 1.93.05 2.55.05.6.15.95.28 1.21a3 3 0 0 0 1.31 1.31c.26.14.61.23 1.22.28s1.4.05 2.54.05H13v2h-2.1q-1.64.02-2.7-.06a5 5 0 0 1-1.97-.48 5 5 0 0 1-2.18-2.19 5 5 0 0 1-.49-1.96q-.08-1.06-.06-2.7V7.54L1.43 9.48.07 8.02 4.5 3.88z\"/>"],
+    "bulleted-list": ["0 0 24 24", "<path d=\"M5.5 13.5C3.6 13.5 2 15.1 2 17s1.6 3.5 3.5 3.5S9 18.9 9 17s-1.6-3.5-3.5-3.5m0 5.2c-1 0-1.8-.8-1.8-1.8s.8-1.8 1.8-1.8 1.8.8 1.8 1.8-.8 1.8-1.8 1.8M22 8H12V6h10zM5.5 3.5C3.6 3.5 2 5.1 2 7s1.6 3.5 3.5 3.5S9 8.9 9 7 7.4 3.5 5.5 3.5m0 5.2c-1 0-1.8-.8-1.8-1.8s.8-1.8 1.8-1.8 1.8.8 1.8 1.8-.8 1.8-1.8 1.8M22 18H12v-2h10z\"/>"],
+    "verified": ["0 0 22 22", "<path d=\"M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z\" />"],
+    "history": ["0 0 24 24", "<path d=\"M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5\"/><path d=\"m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z\"/>"],
+    "eye-off": ["0 0 24 24", "<path fill-rule=\"evenodd\" d=\"M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10\"/>"],
+};
+
 function searchAutocomplete() {
     return {
         suggestionRequest: 0,
@@ -22,6 +45,8 @@ function searchAutocomplete() {
         showDropdown: false,
         selectedIndex: 0,
         options: [],
+        // Shown in place of suggestions when a people or tag lookup finds nothing.
+        emptyNote: null,
         cursorPos: 0,
         isComposing: false,
         dpYear: new Date().getFullYear(),
@@ -48,33 +73,35 @@ function searchAutocomplete() {
         },
         
         allFilters: [
-            { prefix: 'from:', desc: 'Sent from a specific user' },
-            { prefix: 'to:', desc: 'Replying to a specific user' },
-            { prefix: 'has:', desc: 'Includes specific attached content' },
-            { prefix: 'is:', desc: 'Matches a tweet type or state' },
-            { prefix: 'since:', desc: 'After a specific date (YYYY-MM-DD)' },
-            { prefix: 'until:', desc: 'Before a specific date (YYYY-MM-DD)' },
-            { prefix: 'url:', desc: 'Contains a specific URL' },
-            { prefix: 'tag:', desc: 'Matches media tag' },
-            { prefix: 'description:', desc: 'Words in a tag description' }
+            // excludeDesc describes the negated filter; -since: keeps tweets before
+            // the date and -until: keeps those on or after it (search.py).
+            { prefix: 'from:', glyph: 'person', desc: 'Sent from a specific user', excludeDesc: 'Hide tweets from a specific user' },
+            { prefix: 'to:', glyph: 'reply', desc: 'Replying to a specific user', excludeDesc: 'Hide replies to a specific user' },
+            { prefix: 'has:', glyph: 'attachment', desc: 'Includes specific attached content', excludeDesc: 'Hide tweets with specific attached content' },
+            { prefix: 'is:', glyph: 'timeline', desc: 'Matches a tweet type or state', excludeDesc: 'Hide a tweet type or state' },
+            { prefix: 'since:', glyph: 'calendar', desc: 'After a specific date (YYYY-MM-DD)', excludeDesc: 'Hide tweets on or after a date (YYYY-MM-DD)' },
+            { prefix: 'until:', glyph: 'calendar', desc: 'Before a specific date (YYYY-MM-DD)', excludeDesc: 'Hide tweets before a date (YYYY-MM-DD)' },
+            { prefix: 'url:', glyph: 'link', desc: 'Contains a specific URL', excludeDesc: 'Hide tweets containing a specific URL' },
+            { prefix: 'tag:', glyph: 'sticker', desc: 'Matches media tag', excludeDesc: 'Hide tweets with a media tag' },
+            { prefix: 'description:', glyph: 'edit', desc: 'Words in a tag description', excludeDesc: 'Hide tweets with these words in a tag description' }
         ],
         
         hasOptions: [
-            { prefix: 'has:', value: 'media', desc: 'Images, videos, or GIFs' },
-            { prefix: 'has:', value: 'image', desc: 'Only images' },
-            { prefix: 'has:', value: 'video', desc: 'Videos or GIFs' },
-            { prefix: 'has:', value: 'links', desc: 'External links' },
-            { prefix: 'has:', value: 'article', desc: 'Attached archived article' }
+            { prefix: 'has:', value: 'media', glyph: 'grid', desc: 'Images, videos, or GIFs', excludeDesc: 'Hide tweets with images, videos, or GIFs' },
+            { prefix: 'has:', value: 'image', glyph: 'photo', desc: 'Only images', excludeDesc: 'Hide tweets with images' },
+            { prefix: 'has:', value: 'video', glyph: 'play-circle', desc: 'Videos or GIFs', excludeDesc: 'Hide tweets with videos or GIFs' },
+            { prefix: 'has:', value: 'links', glyph: 'link', desc: 'External links', excludeDesc: 'Hide tweets with external links' },
+            { prefix: 'has:', value: 'article', glyph: 'news', desc: 'Attached archived article', excludeDesc: 'Hide tweets with an archived article' }
         ],
         
         isOptions: [
-            { prefix: 'is:', value: 'reply', desc: 'Replies to other tweets' },
-            { prefix: 'is:', value: 'quote', desc: 'Quote tweets' },
-            { prefix: 'is:', value: 'retweet', desc: 'Native reposts' },
-            { prefix: 'is:', value: 'thread', desc: 'Self-reply threads' },
-            { prefix: 'is:', value: 'verified', desc: 'From verified users' },
-            { prefix: 'is:', value: 'resurrected', desc: 'Previously unavailable and recovered' },
-            { prefix: 'is:', value: 'hidden', desc: 'Tweets you hid from lists' }
+            { prefix: 'is:', value: 'reply', glyph: 'reply', desc: 'Replies to other tweets', excludeDesc: 'Hide replies to other tweets' },
+            { prefix: 'is:', value: 'quote', glyph: 'quotes', desc: 'Quote tweets', excludeDesc: 'Hide quote tweets' },
+            { prefix: 'is:', value: 'retweet', glyph: 'repost', desc: 'Native reposts', excludeDesc: 'Hide native reposts' },
+            { prefix: 'is:', value: 'thread', glyph: 'bulleted-list', desc: 'Self-reply threads', excludeDesc: 'Hide self-reply threads' },
+            { prefix: 'is:', value: 'verified', glyph: 'verified', desc: 'From verified users', excludeDesc: 'Hide tweets from verified users' },
+            { prefix: 'is:', value: 'resurrected', glyph: 'history', desc: 'Previously unavailable and recovered', excludeDesc: 'Hide recovered tweets' },
+            { prefix: 'is:', value: 'hidden', glyph: 'eye-off', desc: 'Tweets you hid from lists', excludeDesc: 'Hide tweets you hid from lists' }
         ],
 
         currentSearchTokenStart(text) {
@@ -104,7 +131,7 @@ function searchAutocomplete() {
 
         // A response that arrives after newer input is discarded instead of
         // replacing the current suggestions.
-        fetchSuggestions(url, toOptions) {
+        fetchSuggestions(url, toOptions, emptyNote = null) {
             const request = ++this.suggestionRequest;
             clearTimeout(this.suggestionTimer);
             this.suggestionTimer = setTimeout(() => {
@@ -114,7 +141,8 @@ function searchAutocomplete() {
                         if (request !== this.suggestionRequest) return;
                         this.options = toOptions(data || {});
                         if (this.options.length === 0) {
-                            this.showDropdown = false;
+                            this.emptyNote = emptyNote;
+                            if (!emptyNote) this.showDropdown = false;
                         }
                     })
                     .catch(err => {
@@ -152,17 +180,20 @@ function searchAutocomplete() {
             
             this.showDropdown = true;
             this.selectedIndex = 0;
+            this.emptyNote = null;
             
             if (currentWord.includes(':')) {
                 const parts = currentWord.split(':');
                 const rawPrefix = parts[0] + ':';
                 const basePrefix = rawPrefix.startsWith('-') ? rawPrefix.substring(1) : rawPrefix;
                 const val = parts.slice(1).join(':').replace(/^"/, '').replace(/"$/, '').toLowerCase();
+                const negated = rawPrefix.startsWith('-');
+                const valueOption = o => ({ ...o, prefix: rawPrefix, negated, desc: negated ? o.excludeDesc : o.desc });
                 
                 if (basePrefix === 'has:') {
-                    this.options = this.hasOptions.filter(o => o.value.startsWith(val)).map(o => ({...o, prefix: rawPrefix}));
+                    this.options = this.hasOptions.filter(o => o.value.startsWith(val)).map(valueOption);
                 } else if (basePrefix === 'is:') {
-                    this.options = this.isOptions.filter(o => o.value.startsWith(val)).map(o => ({...o, prefix: rawPrefix}));
+                    this.options = this.isOptions.filter(o => o.value.startsWith(val)).map(valueOption);
                 } else if (basePrefix === 'since:' || basePrefix === 'until:') {
                     // The whole date, so a caret inside it keeps the same day shown.
                     const tokenEnd = this.currentSearchTokenEnd(this.searchQuery, this.cursorPos, tokenStart);
@@ -188,7 +219,7 @@ function searchAutocomplete() {
                                 id: a.id,
                                 query: val
                             }));
-                        });
+                        }, { noun: 'people', query: val });
                     } else {
                         this.options = [];
                         this.showDropdown = false;
@@ -203,9 +234,10 @@ function searchAutocomplete() {
                             prefix: rawPrefix,
                             value: t.tag,
                             count: t.count.toLocaleString(),
+                            total: t.count,
                             query: val
                         }));
-                    });
+                    }, { noun: 'tags', query: val });
                 } else {
                     this.options = [];
                     this.showDropdown = false;
@@ -213,7 +245,8 @@ function searchAutocomplete() {
             } else {
                 if (currentWord.startsWith('-')) {
                     const cleanWord = currentWord.substring(1).toLowerCase();
-                    this.options = this.allFilters.filter(o => o.prefix.startsWith(cleanWord)).map(o => ({...o, prefix: '-' + o.prefix}));
+                    this.options = this.allFilters.filter(o => o.prefix.startsWith(cleanWord))
+                        .map(o => ({ ...o, prefix: '-' + o.prefix, negated: true, desc: o.excludeDesc }));
                 } else {
                     const lowerWord = currentWord.toLowerCase();
                     this.options = this.allFilters.filter(o => o.prefix.startsWith(lowerWord));
@@ -237,7 +270,7 @@ function searchAutocomplete() {
             this.$nextTick(() => {
                 const dropdown = this.$refs.dropdownMenu;
                 if (!dropdown) return;
-                const items = dropdown.querySelectorAll(':scope > div');
+                const items = dropdown.querySelectorAll('[role="option"]');
                 if (items && items[this.selectedIndex]) {
                     items[this.selectedIndex].scrollIntoView({ block: 'nearest' });
                 }
@@ -301,6 +334,12 @@ function searchAutocomplete() {
             });
         },
         
+        suggestionGlyph(name) {
+            const glyph = SUGGESTION_GLYPHS[name];
+            if (!glyph) return '';
+            return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${glyph[0]}" fill="currentColor" aria-hidden="true" focusable="false">${glyph[1]}</svg>`;
+        },
+
         highlightMatch(text, query) {
             if (!text) return '';
             if (!query) return this.escapeHtml(text);
@@ -1000,7 +1039,8 @@ function searchAutocomplete() {
         
         // Like X, today stands in as the selection until a full date is typed.
         dpIsSelected(dayObj, opt) {
-            return /^\d{4}-\d{2}-\d{2}$/.test(opt.val) ? dayObj.dateStr === opt.val : dayObj.isToday;
+            // Today is marked separately; nothing is selected until a date is entered.
+            return /^\d{4}-\d{2}-\d{2}$/.test(opt.val) && dayObj.dateStr === opt.val;
         },
 
         formatDateStr(y, m, d) {

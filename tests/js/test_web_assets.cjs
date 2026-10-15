@@ -769,6 +769,60 @@ test('autocomplete separates attached content from post types and states', () =>
     assert.ok(!component.allFilters.some(option => option.prefix === 'filter:'));
 });
 
+test('autocomplete describes excluded filters and values by what they hide', () => {
+    const { searchAutocomplete } = loadScripts(
+        browserContext(), ['autocomplete.js'], '({searchAutocomplete})',
+    );
+    const component = immediateComponent(searchAutocomplete());
+    component.$refs.searchInput = { isContentEditable: false, selectionStart: 0 };
+    const suggest = query => {
+        component.searchQuery = query;
+        component.$refs.searchInput.selectionStart = query.length;
+        component.handleInput();
+        return component.options;
+    };
+
+    const plain = suggest('fr')[0];
+    assert.equal(plain.desc, 'Sent from a specific user');
+    assert.ok(!plain.negated);
+    const excluded = suggest('-')[0];
+    assert.equal(excluded.prefix, '-from:');
+    assert.equal(excluded.desc, 'Hide tweets from a specific user');
+    assert.ok(excluded.negated);
+    assert.equal(suggest('-sin')[0].desc, 'Hide tweets on or after a date (YYYY-MM-DD)');
+
+    const value = suggest('-is:rep')[0];
+    assert.equal(value.prefix, '-is:');
+    assert.equal(value.desc, 'Hide replies to other tweets');
+    assert.equal(suggest('is:rep')[0].desc, 'Replies to other tweets');
+    for (const option of [...component.allFilters, ...component.hasOptions, ...component.isOptions]) {
+        assert.ok(option.excludeDesc, option.prefix + (option.value || ''));
+        assert.match(component.suggestionGlyph(option.glyph), /^<svg [^>]*viewBox=/, option.glyph);
+    }
+});
+
+test('autocomplete keeps the menu open with a note when a lookup finds nothing', async () => {
+    const context = browserContext();
+    context.fetch = async () => ({ ok: true, json: async () => ({ authors: [], tags: [] }) });
+    const { searchAutocomplete } = loadScripts(context, ['autocomplete.js'], '({searchAutocomplete})');
+    const component = immediateComponent(searchAutocomplete());
+    component.$refs.searchInput = { isContentEditable: false, selectionStart: 0 };
+
+    component.searchQuery = 'from:zzq';
+    component.$refs.searchInput.selectionStart = component.searchQuery.length;
+    component.handleInput();
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(component.options.length, 0);
+    assert.equal(component.showDropdown, true);
+    assert.deepEqual({ ...component.emptyNote }, { noun: 'people', query: 'zzq' });
+
+    component.searchQuery = 'has:';
+    component.$refs.searchInput.selectionStart = component.searchQuery.length;
+    component.handleInput();
+    assert.equal(component.emptyNote, null);
+    assert.ok(component.options.length > 0);
+});
+
 test('autocomplete keyboard navigation wraps and scrolls selected option', () => {
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
