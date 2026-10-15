@@ -1149,100 +1149,153 @@
         <div x-ref="lightboxShade" class="lightbox-shade" :style="lightboxShadeStyle()" aria-hidden="true"></div>
 
         <!-- Tag Modal -->
-        <div x-show="tagModalOpen" 
-             @keydown.window.escape="closeTagModal()" 
-             class="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4" 
-             x-cloak 
-             @click="closeTagModal()">
-            <div class="bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-2xl w-full max-w-md overflow-hidden flex flex-col shadow-2xl relative" @click.stop>
-                
-                <div class="flex items-center justify-between p-4 border-b border-[var(--border-color)]">
-                    <div class="flex items-center text-[var(--text-primary)] font-bold text-lg">
-                        <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current mr-2 text-[var(--accent-color)]"><path d="M20.95 13.05 10.9 3H3v7.9l10.05 10.05a1.5 1.5 0 0 0 2.12 0l5.78-5.78a1.5 1.5 0 0 0 0-2.12ZM7.5 9A1.5 1.5 0 1 1 7.5 6a1.5 1.5 0 0 1 0 3Z"></path></svg>
-                        Tags
-                    </div>
-                    <button @click="closeTagModal()" class="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] p-2 rounded-full transition">
-                        <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
-                    </button>
-                </div>
+        <!-- One sheet for a tweet's tags and description: view first, Edit swaps in the editor. -->
+        <div class="nook-td-layer" x-show="tagModalOpen" x-cloak
+             @keydown.window="tagModalOpen && tagDialogKeydown($event)"
+             x-init="let opener = null;
+                     $watch('tagModalOpen', open => {
+                         if (open) { opener = document.activeElement; focusTagDialogControl(isEditingTags ? 'nook-td-input' : 'nook-td-edit'); }
+                         else { opener?.focus?.(); opener = null; }
+                     });
+                     $watch('isEditingTags', editing => tagModalOpen && focusTagDialogControl(editing ? (tagFocusTarget === 'desc' ? 'nook-td-desc' : 'nook-td-input') : 'nook-td-edit'));">
+            <div class="nook-td-backdrop" @click="tagBackdropClick()"></div>
+            <section class="nook-td" role="dialog" aria-modal="true" aria-labelledby="nook-td-title" @keydown.tab="!tagDeleteConfirm && nookTrapFocus($event, $el)" :inert="tagDeleteConfirm">
+                <header class="nook-td-head">
+                    <button type="button" class="nook-icon-button" x-show="!isEditingTags || !tagModalHasContent()" @click="isEditingTags ? cancelEditingTags() : closeTagModal()" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
+</svg></button>
+                    <button type="button" class="nook-icon-button" x-show="isEditingTags && tagModalHasContent()" @click="cancelEditingTags()" aria-label="Cancel editing"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
+</svg></button>
+                    <h2 class="nook-td-title" id="nook-td-title" x-text="!isEditingTags ? 'Tags' : (tagModalHasContent() ? 'Edit tags' : 'Add tags')"></h2>
+                    <button type="button" class="nook-secondary-button" id="nook-td-edit" x-show="!isEditingTags" @click="startEditingTags()">Edit</button>
+                    <button type="button" class="nook-primary-button nook-td-save" x-show="isEditingTags" @click="saveTags()"
+                            :aria-disabled="String(tagSaving || !tagIsDirty())" :aria-busy="String(tagSaving)" x-text="tagSaving ? 'Saving…' : 'Save'"></button>
+                </header>
 
-                <div class="p-4 overflow-y-auto max-h-[60vh] text-[var(--text-primary)] min-h-[150px]">
-                    <template x-if="tagModalData">
+                <div class="nook-td-body" x-ref="tagDialogBody">
+                    <div class="nook-td-error" role="alert" x-show="tagError"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M13.5 8.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5S11.17 7 12 7s1.5.67 1.5 1.5zM13 17v-5h-2v5h2zm-1 5.25c5.66 0 10.25-4.59 10.25-10.25S17.66 1.75 12 1.75 1.75 6.34 1.75 12 6.34 22.25 12 22.25zM20.25 12c0 4.56-3.69 8.25-8.25 8.25S3.75 16.56 3.75 12 7.44 3.75 12 3.75s8.25 3.69 8.25 8.25z" />
+</svg><span x-text="tagError"></span></div>
+
+                    <!-- The tweet being tagged, as a quoted-post card -->
+                    <template x-if="tagModalTweet()">
+                        <figure class="nook-td-tweet" aria-label="Tweet">
+                            <div class="nook-td-tweet-head">
+                                <span class="nook-td-avatar" aria-hidden="true" x-text="getInitial(tagModalTweet())"></span>
+                                <span class="nook-td-name" x-text="tagModalTweet().author?.display_name || 'Unknown'"></span>
+                                <span class="nook-td-handle" x-text="'@' + (tagModalTweet().author?.username || 'unknown') + (tagModalTweet().created_at ? ' · ' + formatDate(tagModalTweet().created_at) : '')"></span>
+                            </div>
+                            <p class="nook-td-tweet-text" x-show="tagModalTweet().text" x-text="tagModalTweet().text"></p>
+                        </figure>
+                    </template>
+
+                    <!-- Viewing -->
+                    <template x-if="tagModalData && !isEditingTags">
                         <div>
-                            <template x-if="isEditingTags">
-                                <div class="mb-4">
-                                    <label for="tag-description" class="block text-sm text-[var(--text-secondary)] font-bold uppercase tracking-wider mb-2">Description</label>
-                                    <textarea id="tag-description" x-model="editableDescription" rows="4" maxlength="4000"
-                                              placeholder="Add a description..."
-                                              class="w-full resize-y rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] px-3 py-2 text-[15px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent-color)] transition"></textarea>
+                            <section class="nook-td-section" aria-labelledby="nook-td-tags-heading">
+                                <div class="nook-td-section-head">
+                                    <h3 id="nook-td-tags-heading">Tags</h3>
+                                    <span class="nook-td-badge" x-show="tagModalData.tags.length" x-text="tagModalData.tags.length"></span>
                                 </div>
-                            </template>
-                            <template x-if="!isEditingTags && tagModalData.description">
-                                <div class="mb-4">
-                                    <div class="text-sm text-[var(--text-secondary)] font-bold uppercase tracking-wider mb-2">Description</div>
-                                    <div class="text-[15px] leading-relaxed whitespace-pre-wrap break-words" x-text="tagModalData.description"></div>
-                                </div>
-                            </template>
-                            
-                            <div>
-                                <div class="text-sm text-[var(--text-secondary)] font-bold uppercase tracking-wider mb-2">Tags</div>
-                                <div class="flex flex-wrap gap-2 relative">
-                                    <template x-for="tag in (isEditingTags ? editableTags : tagModalData.tags)" :key="tag">
-                                        <div class="relative group">
-                                            <div @click="!isEditingTags && (closeTagModal(), searchQuery = 'tag:' + (tag.includes(' ') ? '&quot;' + tag + '&quot;' : tag), search())" 
-                                                 :class="isEditingTags ? 'px-3 py-1 pr-8 bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)]' : 'px-3 py-1 text-[var(--accent-color)] cursor-pointer tag-capsule'"
-                                                 class="text-sm rounded-full font-medium transition flex items-center" >
-                                                <span x-text="tag"></span>
-                                            </div>
-                                            <button x-show="isEditingTags" @click="editableTags = editableTags.filter(t => t !== tag)" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--danger-color)] rounded-full p-0.5">
-                                                <svg viewBox="0 0 24 24" class="w-4 h-4 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
-                                            </button>
-                                        </div>
+                                <ul class="nook-td-chips" x-show="tagModalData.tags.length">
+                                    <template x-for="tag in tagModalData.tags" :key="tag">
+                                        <li><button type="button" class="nook-td-chip" @click="searchForTag(tag)" :title="'Show tweets tagged ' + tag" :aria-label="'Show tweets tagged ' + tag"><span x-text="tag"></span></button></li>
                                     </template>
+                                </ul>
+                                <p class="nook-td-empty" x-show="!tagModalData.tags.length">No tags yet. <button type="button" class="nook-td-link" @click="startEditingTags('tags')">Add tags</button></p>
+                            </section>
+                            <section class="nook-td-section" aria-labelledby="nook-td-desc-heading">
+                                <div class="nook-td-section-head"><h3 id="nook-td-desc-heading">Description</h3></div>
+                                <p class="nook-td-description" x-show="tagModalData.description" x-text="tagModalData.description"></p>
+                                <p class="nook-td-empty" x-show="!tagModalData.description">No description. <button type="button" class="nook-td-link" @click="startEditingTags('desc')">Add a description</button></p>
+                            </section>
+                            <div class="nook-td-rule" role="presentation"></div>
+                            <button type="button" class="nook-td-delete" id="nook-td-delete" @click="requestDeleteTags()"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M16 6V4.5C16 3.12 14.88 2 13.5 2h-3C9.11 2 8 3.12 8 4.5V6H3v2h1.06l.81 11.21C4.98 20.78 6.28 22 7.86 22h8.27c1.58 0 2.88-1.22 3-2.79L19.93 8H21V6h-5zm-6-1.5c0-.28.22-.5.5-.5h3c.27 0 .5.22.5.5V6h-4V4.5zm7.13 14.57c-.04.52-.47.93-1 .93H7.86c-.53 0-.96-.41-1-.93L6.07 8h11.85l-.79 11.07zM9 17v-6h2v6H9zm4 0v-6h2v6h-2z" />
+</svg><span x-text="tagDeleteLabel()"></span></button>
+                        </div>
+                    </template>
 
-                                    <!-- Add Tag Button & Dropdown -->
-                                    <div x-show="isEditingTags" class="relative inline-block" @click.away="tagSearchDropdown = false">
-                                        <button @click="tagSearchDropdown = true; tagSearchQuery = ''; fetchTagAutocomplete(''); $nextTick(() => $refs.tagSearchInput.focus())" class="px-3 py-1 bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-sm rounded-full font-medium transition flex items-center h-[28px]">
-                                            <svg viewBox="0 0 24 24" class="w-4 h-4 fill-current"><path d="M11 11V4h2v7h7v2h-7v7h-2v-7H4v-2h7z"></path></svg>
-                                        </button>
-                                        <div x-show="tagSearchDropdown" class="absolute left-0 mt-2 w-48 bg-[var(--dropdown-bg)] border border-[var(--border-color)] rounded-xl shadow-lg z-50 overflow-hidden">
-                                            <input type="text" x-ref="tagSearchInput" x-model="tagSearchQuery" @input.debounce.250ms="fetchTagAutocomplete(tagSearchQuery)" @keydown.enter.prevent="if(tagSearchQuery) { addEditableTag(tagSearchQuery); tagSearchDropdown = false }" placeholder="Add tag..." class="w-full bg-transparent text-[var(--text-primary)] px-3 py-2 border-b border-[var(--border-color)] focus:outline-none text-sm">
-                                            <div class="max-h-40 overflow-y-auto">
-                                                <template x-for="opt in tagAutocompleteOptions" :key="opt.tag">
-                                                    <div @click="addEditableTag(opt.tag); tagSearchDropdown = false" class="px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--hover-bg)] cursor-pointer flex justify-between items-center">
-                                                        <span x-text="opt.tag"></span>
-                                                        <span class="text-[var(--text-secondary)] text-xs font-bold" x-text="opt.count"></span>
-                                                    </div>
-                                                </template>
-                                                <div x-show="tagSearchQuery && !tagAutocompleteOptions.find(o => o.tag.toLowerCase() === tagSearchQuery.toLowerCase())" @click="addEditableTag(tagSearchQuery); tagSearchDropdown = false" class="px-3 py-2 text-sm text-[var(--accent-color)] hover:bg-[var(--hover-bg)] cursor-pointer font-medium">
-                                                    Add "<span x-text="tagSearchQuery"></span>"
-                                                </div>
-                                            </div>
-                                        </div>
+                    <!-- Editing -->
+                    <template x-if="tagModalData && isEditingTags">
+                        <div class="nook-td-edit">
+                            <div class="nook-td-fieldwrap" @focusout="if (!$el.contains($event.relatedTarget)) { tagSearchDropdown = false; tagOptionIndex = -1; }">
+                                <div class="nook-td-field" @mousedown="if (!$event.target.closest('button, input')) { $event.preventDefault(); $refs.tagSearchInput.focus(); openTagSuggestions(); }">
+                                    <div class="nook-td-field-top">
+                                        <label class="nook-td-label" for="nook-td-input">Tags</label>
+                                        <span class="nook-td-count" x-text="editableTags.length ? (editableTags.length === 1 ? '1 tag' : editableTags.length + ' tags') : ''"></span>
                                     </div>
-
+                                    <div class="nook-td-chipflow">
+                                        <ul class="nook-td-tokens" aria-label="Added tags">
+                                            <template x-for="(tag, index) in editableTags" :key="tag">
+                                                <li class="nook-td-token"><span :title="tag" x-text="tag"></span><button type="button" :aria-label="'Remove tag ' + tag"
+                                                        @click="const i = removeEditableTag(tag); $nextTick(() => { const next = document.querySelectorAll('.nook-td-token button')[Math.min(i, editableTags.length - 1)]; (next || $refs.tagSearchInput).focus(); })"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
+</svg></button></li>
+                                            </template>
+                                        </ul>
+                                        <input id="nook-td-input" class="nook-td-input" type="text" x-ref="tagSearchInput" x-model="tagSearchQuery"
+                                               :placeholder="editableTags.length ? 'Add another tag' : 'Add a tag'" :readonly="tagSaving"
+                                               role="combobox" aria-autocomplete="list" aria-controls="nook-td-options"
+                                               :aria-expanded="String(tagSearchDropdown && tagSuggestions().length > 0)"
+                                               :aria-activedescendant="tagSearchDropdown && tagOptionIndex >= 0 ? 'nook-td-option-' + tagOptionIndex : null"
+                                               autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="enter"
+                                               @click="tagSearchDropdown || openTagSuggestions()"
+                                               @input="tagSearchDropdown = true; tagOptionIndex = -1; $nextTick(() => revealTagOptions())"
+                                               @input.debounce.150ms="fetchTagAutocomplete(tagSearchQuery)"
+                                               @keydown="tagInputKeydown($event)">
+                                    </div>
                                 </div>
-                                <div x-show="!isEditingTags && tagModalData.tags.length === 0" class="text-[15px] text-[var(--text-secondary)]">No tags yet.</div>
+                                <ul class="nook-td-options" id="nook-td-options" role="listbox" aria-label="Tag suggestions" x-ref="tagOptions"
+                                    x-show="tagSearchDropdown && tagSuggestions().length > 0" @mousedown.prevent>
+                                    <template x-for="(opt, index) in tagSuggestions()" :key="(opt.isNew ? 'new:' : '') + opt.tag">
+                                        <li role="option" class="nook-td-option" :class="{ 'is-active': index === tagOptionIndex, 'is-new': opt.isNew }"
+                                            :id="'nook-td-option-' + index" :aria-selected="String(index === tagOptionIndex)"
+                                            :aria-label="opt.isNew ? 'Add new tag: ' + opt.tag : opt.tag + ', ' + tagCountLabel(opt.count)"
+                                            @mousemove="tagOptionIndex = index" @click="pickTagSuggestion(opt)">
+                                            <template x-if="opt.isNew">
+                                                <span class="nook-td-option-label"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M11 11V4h2v7h7v2h-7v7h-2v-7H4v-2h7z" />
+</svg><span>Add new tag “<b x-text="opt.tag"></b>”</span></span>
+                                            </template>
+                                            <template x-if="!opt.isNew">
+                                                <span class="nook-td-option-label" x-html="tagOptionHtml(opt.tag)"></span>
+                                            </template>
+                                            <span class="nook-td-option-count" aria-hidden="true" x-show="!opt.isNew" x-text="tagCountLabel(opt.count)"></span>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </div>
+
+                            <div class="nook-td-field nook-td-desc-field">
+                                <div class="nook-td-field-top">
+                                    <label class="nook-td-label" for="nook-td-desc">Description</label>
+                                    <span class="nook-td-count" :class="{ 'is-near': editableDescription.length >= 3800 }" x-text="editableDescription.length.toLocaleString() + ' / 4,000'"></span>
+                                </div>
+                                <textarea id="nook-td-desc" class="nook-td-textarea" x-model="editableDescription" maxlength="4000" rows="3" :readonly="tagSaving"
+                                          placeholder="Why you saved it, what to remember"
+                                          x-init="$nextTick(() => { $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'; })"
+                                          @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"></textarea>
                             </div>
                         </div>
                     </template>
                 </div>
+            </section>
 
-                <div class="p-4 border-t border-[var(--border-color)] bg-[var(--bg-secondary)] flex justify-between items-center">
-                    <button @click="isEditingTags ? (isEditingTags = false) : ((tagModalData?.tags?.length || tagModalData?.description) ? deleteTags() : closeTagModal())"
-                            class="text-sm font-medium px-4 py-2 rounded-full transition"
-                            :class="isEditingTags || (!tagModalData?.tags?.length && !tagModalData?.description) ? 'text-[var(--text-primary)] hover:bg-[var(--hover-bg)] border border-[var(--border-color)]' : 'danger-capsule'"
-                            x-text="isEditingTags ? 'Cancel' : ((tagModalData?.tags?.length || tagModalData?.description) ? 'Delete Tags' : 'Close')">
-                    </button>
-                    <button @click="isEditingTags ? saveTags() : startEditingTags()" 
-                            class="text-sm font-bold px-4 py-2 rounded-full transition"
-                            :class="isEditingTags ? 'bg-[var(--accent-color)] text-[var(--accent-text)] hover:bg-[var(--accent-hover)]' : 'text-[var(--text-primary)] bg-[var(--bg-tertiary)] hover:bg-[var(--hover-bg)]'"
-                            x-text="isEditingTags ? 'Save Changes' : 'Edit Tags'">
-                    </button>
-                </div>
+            <!-- Delete confirmation -->
+            <div class="nook-td-confirm-layer" x-show="tagDeleteConfirm" x-cloak>
+                <div class="nook-td-backdrop" @click="closeDeleteConfirm()"></div>
+                <section class="nook-td-confirm" role="alertdialog" aria-modal="true" aria-labelledby="nook-td-confirm-title" aria-describedby="nook-td-confirm-copy" @keydown.tab="nookTrapFocus($event, $el)">
+                    <h2 id="nook-td-confirm-title" x-text="tagDeleteLabel() + '?'"></h2>
+                    <p id="nook-td-confirm-copy" x-text="tagDeleteCopy()"></p>
+                    <p class="nook-td-confirm-error" role="alert" x-show="tagConfirmError" x-text="tagConfirmError"></p>
+                    <button type="button" class="nook-destructive-button" @click="deleteTags()" :aria-disabled="String(tagSaving)" x-text="tagSaving ? 'Deleting…' : 'Delete'"></button>
+                    <button type="button" class="nook-secondary-button" id="nook-td-confirm-cancel" @click="closeDeleteConfirm()">Cancel</button>
+                </section>
             </div>
         </div>
-        
+
         <!-- Settings Modal: master list of categories, detail page on the right (one page at a time on phones) -->
         <div x-show="showSettingsModal" x-cloak class="settings-modal-backdrop nook-settings-backdrop" @click.self="closeSettings()" @keydown.window.escape="showAutomatedTaggingSpendModal ? closeAutomatedTaggingSpendHistory() : closeSettings()">
             <div class="settings-modal-shell nook-settings-shell" :class="nookSettingsDetail ? 'is-detail' : 'is-menu'" role="dialog" aria-modal="true" aria-labelledby="nook-settings-title" @keydown.tab="nookSettingsTrap($event, $el)">

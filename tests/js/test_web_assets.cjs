@@ -2568,12 +2568,10 @@ test('tweet overflow supports copying raw data, untagged tweets, and a one-secon
     app.openTagsFromTweetMenu('2', null);
     assert.equal(app.tweetMenuOpen, null);
     assert.equal(app.tagModalOpen, true);
-    assert.equal(app.isEditingTags, false);
+    // Nothing saved yet, so the dialog opens in the editor.
+    assert.equal(app.isEditingTags, true);
     assert.deepEqual(Array.from(app.tagModalData.tags), []);
     assert.equal(app.tagModalData.description, '');
-
-    app.startEditingTags();
-    assert.equal(app.isEditingTags, true);
     assert.deepEqual(Array.from(app.editableTags), []);
 
     app.startTweetMenuPress({ pointerType: 'touch', button: 0 }, '3', {
