@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 from rich.console import Console
@@ -291,6 +291,114 @@ async def _try_expand_target(
     result.expanded += 1
 
 
+@dataclass(slots=True)
+class LinkedStatusWalk:
+    """Tweets reachable from saves along quote/linked-status edges, keyed by hop depth.
+
+    Depth 0 holds saved tweets and the saved authors' own tweets in saved
+    conversations; deeper entries are thread-expansion candidates.
+    """
+
+    depths: dict[str, int]
+    discovery_kinds: dict[str, str]
+    quote_reachable_targets: set[str]
+    reachable_quote_count: int = 0
+    reachable_link_count: int = 0
+    edges_skipped: int = 0
+    url_ref_count: int = 0
+    self_thread_ids: list[str] = field(default_factory=list)
+    reply_ids: list[str] = field(default_factory=list)
+    reply_hop_count: int = 0
+
+
+def walk_linked_statuses(
+    store: ArchiveStore,
+    membership_ids: list[str],
+    *,
+    max_linked_depth: int,
+    reply_linked_depth: int,
+    log: Callable[[str], None] | None = None,
+) -> LinkedStatusWalk:
+    """Walk the save path the way thread expansion selects linked-status targets."""
+    log = log or (lambda _message: None)
+    log("loading archived url refs...")
+    url_ref_rows = store.list_url_ref_rows()
+    url_edges: dict[str, list[str]] = {}
+    for row in url_ref_rows:
+        target_id = next(
+            (
+                found
+                for field_name in ("canonical_url", "expanded_url", "url")
+                if isinstance((candidate := row.get(field_name)), str)
+                and (found := extract_status_id_from_url(candidate))
+            ),
+            None,
+        )
+        source_id = row.get("tweet_id")
+        if isinstance(source_id, str) and target_id:
+            url_edges.setdefault(source_id, []).append(target_id)
+
+    walk = LinkedStatusWalk(
+        depths={tweet_id: 0 for tweet_id in membership_ids if tweet_id},
+        discovery_kinds={},
+        quote_reachable_targets=set(),
+        url_ref_count=len(url_ref_rows),
+    )
+    depths = walk.depths
+
+    def follow_edges(sources: list[str], depth: int) -> list[str]:
+        """Record unseen quote/link targets of ``sources`` at ``depth``."""
+        quote_edges: dict[str, list[str]] = {}
+        for row in store.list_quote_relation_rows(set(sources)):
+            source_id = row.get("tweet_id")
+            target_id = row.get("target_tweet_id")
+            if isinstance(source_id, str) and isinstance(target_id, str) and target_id:
+                quote_edges.setdefault(source_id, []).append(target_id)
+
+        reached: list[str] = []
+        for source_id in sources:
+            candidates = [
+                *(("quote", target_id) for target_id in quote_edges.get(source_id, [])),
+                *(("linked", target_id) for target_id in url_edges.get(source_id, [])),
+            ]
+            for kind, target_id in candidates:
+                if kind == "quote":
+                    walk.reachable_quote_count += 1
+                    walk.quote_reachable_targets.add(target_id)
+                else:
+                    walk.reachable_link_count += 1
+                if target_id == source_id or target_id in depths:
+                    walk.edges_skipped += 1
+                    continue
+                depths[target_id] = depth
+                walk.discovery_kinds[target_id] = kind
+                reached.append(target_id)
+        return reached
+
+    # The saved author's own continuation of a saved tweet's conversation counts
+    # as saved (depth 0): its quotes/links are followed, but the tweets are
+    # already archived, so depth-0 entries are never queued for fetching.
+    if max_linked_depth > 0:
+        log("loading saved-conversation self-threads and replies...")
+        self_thread_set, reply_set = store.list_saved_conversation_tweet_ids()
+        walk.self_thread_ids = sorted(self_thread_set - depths.keys())
+        walk.reply_ids = sorted(reply_set - depths.keys())
+        depths.update(dict.fromkeys(walk.self_thread_ids, 0))
+
+    frontier = list(depths)
+    for depth in range(1, max_linked_depth + 1):
+        if not frontier:
+            break
+        frontier = follow_edges(frontier, depth)
+
+    # Other people's tweets in saved conversations get at most one hop, run after
+    # the save path so its depths win. Reached targets are fetched but never join
+    # a frontier, so neither their replies nor their own links are followed.
+    if max_linked_depth > 0 and reply_linked_depth > 0 and walk.reply_ids:
+        walk.reply_hop_count = len(follow_edges(walk.reply_ids, 1))
+    return walk
+
+
 async def expand_threads(
     *,
     targets: list[str] | None = None,
@@ -377,92 +485,23 @@ async def expand_threads(
                 console,
                 f"loaded {len(known_tweet_ids)} known tweet ids for linked-status dedupe",
             )
-            _log_threads(console, "loading archived url refs...")
-            url_ref_rows = store.list_url_ref_rows()
-            max_linked_depth = config.sync.max_linked_depth
-            url_edges: dict[str, list[str]] = {}
-            for row in url_ref_rows:
-                target_id = next(
-                    (
-                        found
-                        for field_name in ("canonical_url", "expanded_url", "url")
-                        if isinstance((candidate := row.get(field_name)), str)
-                        and (found := extract_status_id_from_url(candidate))
-                    ),
-                    None,
-                )
-                source_id = row.get("tweet_id")
-                if isinstance(source_id, str) and target_id:
-                    url_edges.setdefault(source_id, []).append(target_id)
-
-            reply_linked_depth = config.sync.reply_linked_depth
-            depths = {tweet_id: 0 for tweet_id in membership_ids if tweet_id}
-            discovery_kinds: dict[str, str] = {}
-            quote_reachable_targets: set[str] = set()
-            reachable_quote_count = 0
-            reachable_link_count = 0
-
-            def follow_edges(sources: list[str], depth: int) -> list[str]:
-                """Record unseen quote/link targets of ``sources`` at ``depth``."""
-                nonlocal reachable_quote_count, reachable_link_count
-                quote_edges: dict[str, list[str]] = {}
-                for row in store.list_quote_relation_rows(set(sources)):
-                    source_id = row.get("tweet_id")
-                    target_id = row.get("target_tweet_id")
-                    if isinstance(source_id, str) and isinstance(target_id, str) and target_id:
-                        quote_edges.setdefault(source_id, []).append(target_id)
-
-                reached: list[str] = []
-                for source_id in sources:
-                    candidates = [
-                        *(("quote", target_id) for target_id in quote_edges.get(source_id, [])),
-                        *(("linked", target_id) for target_id in url_edges.get(source_id, [])),
-                    ]
-                    for kind, target_id in candidates:
-                        if kind == "quote":
-                            reachable_quote_count += 1
-                            quote_reachable_targets.add(target_id)
-                        else:
-                            reachable_link_count += 1
-                        if target_id == source_id or target_id in depths:
-                            result.skipped += 1
-                            continue
-                        depths[target_id] = depth
-                        discovery_kinds[target_id] = kind
-                        reached.append(target_id)
-                return reached
-
-            # The saved author's own continuation of a saved tweet's conversation counts
-            # as saved (depth 0): its quotes/links are followed, but the tweets are
-            # already archived, so depth-0 entries are never queued for fetching.
-            self_thread_ids: list[str] = []
-            reply_ids: list[str] = []
-            if max_linked_depth > 0:
-                _log_threads(console, "loading saved-conversation self-threads and replies...")
-                self_thread_set, reply_set = store.list_saved_conversation_tweet_ids()
-                self_thread_ids = sorted(self_thread_set - depths.keys())
-                reply_ids = sorted(reply_set - depths.keys())
-                depths.update(dict.fromkeys(self_thread_ids, 0))
-
-            frontier = list(depths)
-            for depth in range(1, max_linked_depth + 1):
-                if not frontier:
-                    break
-                frontier = follow_edges(frontier, depth)
-
-            # Other people's tweets in saved conversations get at most one hop, run after
-            # the save path so its depths win. Reached targets are fetched but never join
-            # a frontier, so neither their replies nor their own links are followed.
-            reply_hop_count = 0
-            if max_linked_depth > 0 and reply_linked_depth > 0 and reply_ids:
-                reply_hop_count = len(follow_edges(reply_ids, 1))
+            walk = walk_linked_statuses(
+                store,
+                membership_ids,
+                max_linked_depth=config.sync.max_linked_depth,
+                reply_linked_depth=config.sync.reply_linked_depth,
+                log=lambda message: _log_threads(console, message),
+            )
+            result.skipped += walk.edges_skipped
 
             membership_id_set = set(membership_ids)
-            for target_id, depth in depths.items():
+            for target_id, depth in walk.depths.items():
                 if depth == 0:
                     continue
                 kind = (
-                    "quote" if target_id in quote_reachable_targets else discovery_kinds[target_id]
+                    "quote"
+                    if target_id in walk.quote_reachable_targets
+                    else walk.discovery_kinds[target_id]
                 )
                 if target_id in membership_id_set or target_id in expanded_targets:
                     result.skipped += 1
@@ -477,14 +516,16 @@ async def expand_threads(
             _log_threads(
                 console,
                 "related-status pass over "
-                f"{reachable_quote_count} quote relations and "
-                f"{reachable_link_count} reachable url refs "
-                f"(from {len(url_ref_rows)} total url refs, max depth {max_linked_depth}; "
-                f"{len(self_thread_ids)} self-thread seeds; "
+                f"{walk.reachable_quote_count} quote relations and "
+                f"{walk.reachable_link_count} reachable url refs "
+                f"(from {walk.url_ref_count} total url refs, "
+                f"max depth {config.sync.max_linked_depth}; "
+                f"{len(walk.self_thread_ids)} self-thread seeds; "
                 + (
-                    f"reply hop from {len(reply_ids)} replies reached {reply_hop_count} new)"
-                    if reply_linked_depth > 0
-                    else f"{len(reply_ids)} replies not followed)"
+                    f"reply hop from {len(walk.reply_ids)} replies "
+                    f"reached {walk.reply_hop_count} new)"
+                    if config.sync.reply_linked_depth > 0
+                    else f"{len(walk.reply_ids)} replies not followed)"
                 ),
             )
 

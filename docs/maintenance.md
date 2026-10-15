@@ -58,6 +58,40 @@ uploads, logs, or cached files.
 Normal writer jobs also perform lightweight planner-statistics maintenance when
 they close the database. Ordinary browsing does not run compaction.
 
+## Remove context outside the current scope
+
+If you lower `sync.max_linked_depth` or `sync.reply_linked_depth`, context
+fetched under the old settings keeps using space. To see what is now out of
+scope, run:
+
+```bash
+tweetnook prune
+```
+
+This is a dry run: it reports the out-of-scope tweets, expanded threads, media
+files, and database rows, and deletes nothing.
+
+Scope follows the current `sync.max_linked_depth` and `sync.reply_linked_depth`
+settings. TweetNook keeps:
+
+- saved tweets and their conversations
+- quoted and linked threads on the save path, including links in the saved
+  author's own replies
+- threads linked from other people's replies, when `sync.reply_linked_depth` is 1
+- tweets quoted or retweeted by any kept tweet, without their threads
+
+Everything else is out of scope, together with its media files, link records,
+saved responses, media tags, and hidden markers. That includes threads you
+expanded by hand with `tweetnook threads expand` that are not on the save path.
+Use `--max-linked-depth` or `--reply-linked-depth` to preview a different scope
+without changing your settings.
+
+To delete them, run:
+
+```bash
+tweetnook prune --apply
+```
+
 ## Repair older records
 
 These commands are for specific problems in older archives. Back up before
