@@ -765,10 +765,10 @@ function tweetApp() {
 
         feedOptions(kind) {
             if (kind === 'collection') return [
-                { value: 'all', label: 'All Tweets' },
+                { value: 'all', label: 'All tweets' },
                 { value: 'likes', label: 'Likes' },
                 { value: 'bookmarks', label: 'Bookmarks' },
-                { value: 'tweets', label: 'Your Tweets' },
+                { value: 'tweets', label: 'Your tweets' },
             ];
             return [
                 ...(this.searchQuery.trim() ? [{ value: 'default', label: 'Relevance' }] : []),
@@ -1510,6 +1510,7 @@ function tweetApp() {
 
             syncCard('sync:bookmarks', 'New bookmarks');
             syncCard('sync:likes', 'New liked tweets');
+            syncCard('sync:tweets', 'New tweets');
 
             const syncSteps = steps.filter(step => step.key?.startsWith('sync:'));
             if (syncSteps.length) {
@@ -1942,6 +1943,14 @@ function tweetApp() {
         showSetupModal: false,
         settingsBodyOverflow: null,
         settingsTab: 'appearance',
+        nookSettingsDetail: false,
+        nookConfigSaved: false,
+        nookConfigResets: [],
+        nookSyncCollections: ['bookmarks', 'likes'],
+        nookLogOpenRunId: null,
+        nookLogRun: null,
+        nookLogLines: null,
+        nookDetailScrolled: false,
         globalTags: [],
         globalTagsLoading: false,
         tagSearchTerm: '',
@@ -2059,7 +2068,7 @@ function tweetApp() {
         expandedStorageId: null,
         
         THEMES: THEMES,
-        currentTheme: 'classic-dark',
+        currentTheme: 'classic-light',
         currentAccent: null,
 
         fontFamily: 'system',
@@ -2102,7 +2111,7 @@ function tweetApp() {
                 colorScheme.addEventListener('change', applySystemTheme);
             } else if (savedTheme && THEMES[savedTheme]) {
                 this.applyTheme(savedTheme);
-            } else if (savedTheme === 'light') {
+            } else {
                 this.applyTheme('classic-light');
             }
             
@@ -2229,9 +2238,9 @@ function tweetApp() {
                     this.lockModalScroll();
                     if (!this.isDemo) this.fetchSetup();
                     if (!this.setupForced) {
-                        if (!this.isDemo) this.fetchConfig();
+                        this.fetchConfig();
                         if (this.archiveReady) this.fetchScheduleSettings();
-                        if (!this.isDemo) this.fetchActivityRuns();
+                        this.fetchActivityRuns();
                         this.fetchAutomatedTagging();
                         if (this.settingsTab === 'tags') this.fetchGlobalTags();
                     }
@@ -5375,7 +5384,6 @@ function tweetApp() {
         },
 
         async fetchConfig() {
-            if (this.isDemo) return;
             try {
                 const [resSchema, resConfig, resDefaults] = await Promise.all([
                     fetch('/api/config/schema'),
@@ -5396,10 +5404,15 @@ function tweetApp() {
         },
 
         closeSettings() {
+            const wasOpen = this.showSettingsModal;
             this.showSettingsModal = false;
+            if (wasOpen) this.$nextTick(() => nookSettingsRestoreFocus());
         },
 
         openSettings() {
+            nookSettingsRememberFocus();
+            this.nookSettingsDetail = window.matchMedia('(min-width: 800px)').matches;
+            this.$nextTick(() => nookSettingsFocus(this));
             this.showSetupModal = false;
             this.showSettingsModal = true;
         },
@@ -5551,14 +5564,12 @@ function tweetApp() {
                 this.activityDrawerOpen = true;
                 return;
             }
-            if (notice.action === 'schedule') {
-                this.settingsTab = 'schedule';
-                this.fetchScheduleSettings();
-            } else {
+            if (notice.action !== 'schedule') {
                 this.openSetup();
                 return;
             }
             this.openSettings();
+            nookSettingsNavigate(this, 'schedule');
         },
 
         async saveSetupAuth() {

@@ -7,6 +7,7 @@ const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo', 'data.json'), 'utf8'));
+const demoConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo', 'config.json'), 'utf8'));
 const source = fs.readFileSync(path.join(ROOT, 'demo', 'demo-api.js'), 'utf8');
 
 const window = {
@@ -26,6 +27,8 @@ const context = vm.createContext({
     Promise,
     setTimeout,
     clearTimeout,
+    TextEncoder,
+    TextDecoder,
 });
 vm.runInContext(source, context, {filename: 'demo-api.js'});
 
@@ -450,11 +453,108 @@ async function main() {
     );
     assert.equal(stopped.body.last_snapshot.issues[0].message, 'Stopped by user');
 
+    assert.equal(stopped.body.last_snapshot.issues[0].step, 'threads');
+
+    // The simulated run's log only grows, so offsets stay valid while it runs.
+    clock += 10;
+    const logStore = api.createStore(fixture, {now: () => clock});
+    const logRun = (await request(logStore, 'https://example.test/api/activity/sync', {method: 'POST'})).body.run_id;
+    const readLive = async offset => {
+        const response = await logStore.handle(`https://example.test/api/activity/runs/${logRun}/log?offset=${offset}`);
+        return {text: await response.text(), next: Number(response.headers.get('X-Log-Offset'))};
+    };
+    clock += 20;
+    const early = await readLive(0);
+    clock += 40;
+    const later = await readLive(early.next);
+    const whole = await (await logStore.handle(`https://example.test/api/activity/runs/${logRun}/log`)).text();
+    assert.equal(early.text + later.text, whole);
+    assert.match(early.text, /^Threads: progress · 0\/6 candidates/m);
+    assert.match(later.text, /^Threads: progress · [1-9]\/6 candidates/m);
+    assert.equal(stopped.body.last_snapshot.steps.find(step => step.state === 'skipped').reason, 'an earlier failure stopped the command');
+    assert.equal(completed.body.last_snapshot.steps.find(step => step.key === 'articles').reason, 'no article rows requiring refresh');
+    assert.equal(completed.body.last_snapshot.steps.every(step => step.paused === false), true);
+
+    // Activity logs: the simulated sync is the newest run, followed by the sample runs.
+    const runs = await request(activityStore, 'https://example.test/api/activity/runs?limit=100');
+    assert.equal(runs.body.runs[0].run_id, stopped.body.last_snapshot.run_id);
+    assert.equal(runs.body.runs[0].status, 'stopped');
+    assert.ok(runs.body.runs.length > 3);
+    assert.ok(runs.body.runs.every(run => run.run_id && run.title.startsWith('tweetnook ') && run.started_at));
+    const sample = runs.body.runs.find(run => run.origin === 'cli');
+    const detail = await request(activityStore, `https://example.test/api/activity/runs/${sample.run_id}`);
+    assert.equal(detail.body.status, sample.status);
+    const fullLog = await (await activityStore.handle(`https://example.test/api/activity/runs/${sample.run_id}/log`)).text();
+    assert.match(fullLog, /^\d{4}-\d{2}-\d{2}T[^ ]+ tweetnook sync bookmarks: started$/m);
+    // With an offset: complete lines after that byte, and where to continue.
+    const first = await activityStore.handle(`https://example.test/api/activity/runs/${sample.run_id}/log?offset=0`);
+    const next = Number(first.headers.get('X-Log-Offset'));
+    assert.equal(await first.text(), fullLog);
+    assert.equal(next, new TextEncoder().encode(fullLog).length);
+    const rest = await activityStore.handle(`https://example.test/api/activity/runs/${sample.run_id}/log?offset=${next}`);
+    assert.equal(await rest.text(), '');
+    assert.equal(rest.headers.get('X-Log-Offset'), String(next));
+    const restarted = await activityStore.handle(`https://example.test/api/activity/runs/${sample.run_id}/log?offset=${next + 100}`);
+    assert.equal(await restarted.text(), fullLog);
+    const liveLog = await (await activityStore.handle(`https://example.test/api/activity/runs/${runs.body.runs[0].run_id}/log`)).text();
+    assert.match(liveLog, /^Threads: failed · Stopped by user$/m);
+    assert.match(liveLog, /^tweetnook sync: stopped · Stopped by user$/m);
+    assert.equal((await activityStore.handle('https://example.test/api/activity/runs/missing')).status, 404);
+
+    // Notices: a sample that can be dismissed.
+    const notices = await request(activityStore, 'https://example.test/api/notices');
+    assert.equal(notices.body.notices.filter(notice => !notice.dismissed).length, 1);
+    await request(activityStore, `https://example.test/api/notices/${notices.body.notices[0].id}/dismiss`, {method: 'POST'});
+    assert.equal((await request(activityStore, 'https://example.test/api/notices')).body.notices[0].dismissed, true);
+
+    // Configuration: served only when the schema is provided; saves stay in this session.
+    assert.equal((await activityStore.handle('https://example.test/api/config')).status, 404);
+    const configStore = api.createStore(fixture, {config: demoConfig});
+    assert.deepEqual((await request(configStore, 'https://example.test/api/config/schema')).body, demoConfig.schema);
+    assert.deepEqual((await request(configStore, 'https://example.test/api/config/defaults')).body, demoConfig.defaults);
+    const config = await request(configStore, 'https://example.test/api/config');
+    assert.deepEqual(config.body, {values: demoConfig.defaults, explicit: []});
+    const savedCollections = await request(configStore, 'https://example.test/api/config', {
+        method: 'POST',
+        body: JSON.stringify({changes: {'sync.collections': ['tweets', 'bookmarks'], 'web.port': 9000}}),
+    });
+    assert.deepEqual(savedCollections.body.values.sync.collections, ['bookmarks', 'tweets']);
+    assert.equal(savedCollections.body.values.web.port, 9000);
+    assert.deepEqual(savedCollections.body.explicit, ['sync.collections', 'web.port']);
+    const reset = await request(configStore, 'https://example.test/api/config', {
+        method: 'POST',
+        body: JSON.stringify({changes: {'web.port': null}}),
+    });
+    assert.equal(reset.body.values.web.port, demoConfig.defaults.web.port);
+    assert.deepEqual(reset.body.explicit, ['sync.collections']);
+    const empty = await configStore.handle('https://example.test/api/config', {
+        method: 'POST',
+        body: JSON.stringify({changes: {'sync.collections': []}}),
+    });
+    assert.equal(empty.status, 400);
+
+    // Schedule: the same short label and description the scheduler gives.
+    const daily = await request(freshStore, 'https://example.test/api/activity/schedule');
+    assert.equal(daily.body.label, 'Daily at 3:00 AM');
+    assert.equal(daily.body.description, 'Every day · randomized delay');
+    assert.ok(daily.body.next_run_at > Date.now() / 1000);
+    const weekly = await request(freshStore, 'https://example.test/api/activity/schedule', {
+        method: 'PUT',
+        body: JSON.stringify({cadence: 'weekly', weekday: 0, time: '00:30'}),
+    });
+    assert.equal(weekly.body.label, 'Mondays at 12:30 AM');
+    const hourly = await request(freshStore, 'https://example.test/api/activity/schedule', {
+        method: 'PUT',
+        body: JSON.stringify({cadence: 'hours', every_hours: 1}),
+    });
+    assert.equal(hourly.body.label, 'Every hour');
+
     const schedule = await request(freshStore, 'https://example.test/api/activity/schedule', {
         method: 'PUT',
         body: JSON.stringify({enabled: false}),
     });
     assert.equal(schedule.body.config.enabled, false);
+    assert.equal(schedule.body.configured, false);
 
     console.log('demo API tests passed');
 }

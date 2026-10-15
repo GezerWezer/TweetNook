@@ -76,6 +76,10 @@
         });
     }
 
+    function textResponse(text, headers = {}) {
+        return new Response(text, {status: 200, headers: {'Content-Type': 'text/plain; charset=utf-8', ...headers}});
+    }
+
     function errorResponse(detail, status = 400) {
         return jsonResponse({detail}, status);
     }
@@ -336,6 +340,23 @@
                 additional_instructions: null,
                 max_media_size_mb: 100,
             },
+            // Configuration page: the server's schema and defaults (demo/config.json), saved in this session.
+            config: options.config ? {
+                schema: clone(options.config.schema),
+                defaults: clone(options.config.defaults),
+                values: clone(options.config.defaults),
+                explicit: [],
+            } : null,
+            notices: [
+                {
+                    id: 'demo-skipped-sync',
+                    severity: 'warning',
+                    action: 'schedule',
+                    dismissed: false,
+                    title: 'Scheduled sync skipped',
+                    message: 'The 3:00 AM sync was skipped because another task was still running. The next run is tomorrow.',
+                },
+            ],
         };
 
         // Quotes attach two levels deep: a quote and its own quote, as X nests them.
@@ -612,6 +633,7 @@
                 detail: 'article rows requiring refresh',
                 skip: true,
                 summary: 'skipped due to no article rows requiring refresh',
+                reason: 'no article rows requiring refresh',
                 scenes: [{at: 0, completed: 0, activity: '', counters: ''}],
             },
             {
@@ -703,6 +725,10 @@
                                     : 'skipped due to an earlier failure stopped the command'
                                 : '',
                     metrics: stateName === 'complete' ? clone(phase.metrics || {}) : {},
+                    reason: stateName === 'skipped'
+                        ? scheduledSkip ? phase.reason || '' : 'an earlier failure stopped the command'
+                        : null,
+                    paused: false,
                     completed,
                     total: phase.total,
                     unit: phase.unit,
@@ -739,7 +765,7 @@
                 active_step: activeStep?.key || null,
                 steps,
                 issues: stopped
-                    ? [{level: 'error', message: 'Stopped by user', count: 1, latest: null}]
+                    ? [{level: 'error', message: 'Stopped by user', count: 1, latest: null, step: steps.find(step => step.state === 'failed')?.key || null}]
                     : [],
             };
             if (complete) {
@@ -749,16 +775,231 @@
             return snapshot;
         }
 
+        const WEEKDAY_PLURALS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
+        function ordinal(n) {
+            const suffix = ['th', 'st', 'nd', 'rd'], v = n % 100;
+            return n + (suffix[(v - 20) % 10] || suffix[v] || suffix[0]);
+        }
+        // Same wording as scheduler.schedule_label() and schedule_description().
+        function scheduleLabel(config) {
+            if (config.cadence === 'hours') return Number(config.every_hours) === 1 ? 'Every hour' : `Every ${config.every_hours} hours`;
+            const [hour, minute] = String(config.time || '03:00').split(':').map(Number);
+            const clock = `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
+            if (config.cadence === 'daily') return `Daily at ${clock}`;
+            if (config.cadence === 'weekly') return `${WEEKDAY_PLURALS[Number(config.weekday) || 0]} at ${clock}`;
+            return `Monthly on the ${ordinal(Number(config.day_of_month) || 1)} at ${clock}`;
+        }
+        function scheduleDescription(config) {
+            if (config.cadence === 'hours') return `Every ${config.every_hours} ${Number(config.every_hours) === 1 ? 'hour' : 'hours'}`;
+            const base = {daily: 'Every day', weekly: 'Every week'}[config.cadence] || 'Every month';
+            return config.randomize_time ? `${base} · randomized delay` : base;
+        }
+        // The next run in the browser's time zone, before any random delay.
+        function nextScheduledRun(config) {
+            const now = new Date(nowSeconds() * 1000);
+            if (config.cadence === 'hours') return new Date(now.getTime() + Number(config.every_hours || 6) * 3600000);
+            const [hour, minute] = String(config.time || '03:00').split(':').map(Number);
+            const next = new Date(now);
+            next.setHours(hour, minute, 0, 0);
+            const lastDay = date => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+            const matches = () => config.cadence === 'daily'
+                || (config.cadence === 'weekly' && (next.getDay() + 6) % 7 === Number(config.weekday))
+                || (config.cadence === 'monthly' && next.getDate() === Math.min(Number(config.day_of_month), lastDay(next)));
+            for (let guard = 0; guard < 400 && (next <= now || !matches()); guard++) next.setDate(next.getDate() + 1);
+            return next;
+        }
+
         function scheduleStatus() {
             const config = clone(runtime.schedule);
+            if (!config.enabled) {
+                return {
+                    configured: false,
+                    enabled: false,
+                    relative: 'Not configured',
+                    date: 'Set up scheduling in Settings',
+                    description: 'Scheduled syncs are off',
+                    label: scheduleLabel(config),
+                    next_run_at: null,
+                    config,
+                };
+            }
+            const next = nextScheduledRun(config);
+            const hours = Math.max(0, Math.round((next.getTime() / 1000 - nowSeconds()) / 3600));
             return {
                 configured: true,
-                enabled: config.enabled,
-                relative: config.enabled ? 'daily around 3:00 AM' : 'Not scheduled',
-                date: config.enabled ? 'Tomorrow · browser local time' : 'Enable scheduling in Settings',
-                description: config.enabled ? 'Daily at 3:00 AM with up to 2 hours random delay' : 'Scheduled syncs are off',
+                enabled: true,
+                relative: hours < 1 ? 'in less than an hour' : hours < 48 ? `in ${hours} hour${hours === 1 ? '' : 's'}` : `in ${Math.round(hours / 24)} days`,
+                date: `${next.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'})} at ${next.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'})}`,
+                description: scheduleDescription(config),
+                label: scheduleLabel(config),
+                next_run_at: next.getTime() / 1000,
                 config,
             };
+        }
+
+        // Activity logs: sample runs in the shapes activity_history writes. Web and scheduled runs keep
+        // console.log lines; command-line runs keep output.log lines, which carry an ISO timestamp.
+        function sampleRun(runId, title, origin, status, hoursAgo, seconds, summary, lines) {
+            const startedAt = Math.floor(nowSeconds()) - hoursAgo * 3600;
+            const stamp = offset => origin === 'cli' ? `${new Date((startedAt + offset) * 1000).toISOString()} ` : '';
+            return {
+                run: {
+                    run_id: runId,
+                    title,
+                    origin,
+                    status,
+                    started_at: startedAt,
+                    completed_at: startedAt + seconds,
+                    exit_code: status === 'completed' ? 0 : status === 'failed' ? 1 : null,
+                    summary,
+                },
+                log: lines.map(([offset, text]) => stamp(offset) + text).join('\n') + '\n',
+            };
+        }
+        const sampleRuns = [
+            sampleRun('demo-sync-today', 'tweetnook sync', 'schedule', 'completed', 5, 486, 'bookmarks: 2 pages, 31 tweets; likes: 1 pages, 12 tweets', [
+                [0, 'tweetnook sync: started'],
+                [0, 'Prepare: starting · Connecting to Twitter/X · total=5 checks · sign-in · archive owner · 2 collection checks'],
+                [3, 'Prepare: complete · Connected · 2/2 collections ready · elapsed 00:03'],
+                [3, 'Bookmarks: starting · Fetching page 1 · head pass · each page is committed with its resume cursor'],
+                [9, 'Bookmarks: complete · 2 pages · 31 tweets · archive is up to date · elapsed 00:06'],
+                [9, 'Likes: starting · Fetching page 1 · head pass · each page is committed with its resume cursor'],
+                [12, 'Likes: complete · 1 pages · 12 tweets · archive is up to date · elapsed 00:03'],
+                [12, 'Threads: starting · Selecting candidates · total=9 candidates'],
+                [80, 'Threads: progress · 6/9 candidates · Fetching thread context · 6 expanded · 212 already known'],
+                [131, 'WARNING: Rate limited by Twitter/X; waiting 60s before retrying · occurrences=2'],
+                [196, 'Threads: complete · 9 expanded · 212 already known · elapsed 03:04'],
+                [196, 'Unavailable tweets: starting · Preparing recovery checks · total=8 tweets'],
+                [244, 'Unavailable tweets: complete · 1 restored · 7 still unavailable · elapsed 00:48'],
+                [244, 'Articles: skipped due to no article rows requiring refresh'],
+                [244, 'Media: starting · Downloading photo · total=41 files'],
+                [470, 'Media: complete · 41 downloaded · 36.2 MiB · elapsed 03:46'],
+                [470, 'Link previews: starting · Fetching example.com · total=3 URLs'],
+                [486, 'Link previews: complete · 3 updated · elapsed 00:16'],
+                [486, 'tweetnook sync: complete · elapsed 08:06 · bookmarks: 2 pages, 31 tweets; likes: 1 pages, 12 tweets'],
+            ]),
+            sampleRun('demo-tagging-today', 'tweetnook tag', 'web', 'completed', 7, 54, 'Tagged 17 tweets.', [
+                [0, 'tweetnook tag: started'],
+                [1, 'Automated tags: starting · Selecting tweets · total=17 tweets · gemini-demo · Free · sequential processing'],
+                [20, 'Automated tags: progress · 6/17 tweets · 6 tagged · 6 requests'],
+                [38, 'Automated tags: progress · 12/17 tweets · 12 tagged · 12 requests'],
+                [54, 'Automated tags: complete · 17 tagged · 17 requests · elapsed 00:54'],
+                [54, 'tweetnook tag: complete · elapsed 00:54'],
+            ]),
+            sampleRun('demo-failed-yesterday', 'tweetnook sync bookmarks', 'cli', 'failed', 29, 30, 'Connection timed out after 30 seconds.', [
+                [0, 'tweetnook sync bookmarks: started'],
+                [0, 'Prepare: starting · Connecting to Twitter/X · total=3 checks · sign-in · archive owner · 1 collection check'],
+                [12, 'WARNING: Connection is taking longer than expected.'],
+                [30, 'ERROR: Connection timed out after 30 seconds.'],
+                [30, 'Prepare: failed · Connection timed out after 30 seconds · elapsed 00:30'],
+                [30, 'tweetnook sync bookmarks: failed · elapsed 00:30 · saved archive data remains available'],
+            ]),
+            sampleRun('demo-import-stopped', 'tweetnook import x-archive', 'web', 'stopped', 31, 412, 'Stopped by user.', [
+                [0, 'tweetnook import x-archive: started'],
+                [1, 'Import: starting · Reading archive file · total=4815 tweets'],
+                [95, 'Import: progress · 1200/4815 tweets · 1200 imported'],
+                [410, 'Import: stopped · Stop requested; progress is saved · elapsed 06:50'],
+                [412, 'tweetnook import x-archive: stopped · elapsed 06:52'],
+            ]),
+            sampleRun('demo-enrich-earlier', 'tweetnook import enrich', 'web', 'completed', 77, 3720, 'Enriched 4,815 tweets.', [
+                [0, 'tweetnook import enrich: started'],
+                [1, 'Enrichment: starting · Selecting tweets · total=4815 tweets'],
+                [1800, 'Enrichment: progress · 2400/4815 tweets · 2400 enriched'],
+                [3719, 'Enrichment: complete · 4815 enriched · elapsed 1:02:00'],
+                [3720, 'tweetnook import enrich: complete · elapsed 1:02:00'],
+            ]),
+        ];
+
+        // The simulated sync (running or last finished) as an Activity logs run.
+        function liveRun() {
+            const snapshot = activitySnapshot() || runtime.lastActivity;
+            if (!snapshot?.run_id) return null;
+            const status = snapshot.running ? 'running' : snapshot.stopped ? 'stopped' : snapshot.success === false ? 'failed' : 'completed';
+            return {
+                snapshot,
+                run: {
+                    run_id: snapshot.run_id,
+                    title: 'tweetnook sync',
+                    origin: snapshot.origin || 'web',
+                    status,
+                    started_at: snapshot.started_at,
+                    completed_at: snapshot.running ? null : snapshot.completed_at,
+                    exit_code: snapshot.running ? null : status === 'completed' ? 0 : 1,
+                    summary: snapshot.summary || '',
+                },
+            };
+        }
+        // The console.log lines the pipeline would have written so far, from the run's steps. Like a real
+        // log it only grows: each read appends the lines that are new since the last one.
+        const liveLogs = new Map();
+        function liveLog(snapshot) {
+            const log = liveLogs.get(snapshot.run_id) || {lines: [], seen: new Set()};
+            liveLogs.set(snapshot.run_id, log);
+            for (const line of liveLogLines(snapshot)) {
+                if (log.seen.has(line)) continue;
+                log.seen.add(line);
+                log.lines.push(line);
+            }
+            return log.lines.join('\n') + '\n';
+        }
+        function liveLogLines(snapshot) {
+            const lines = ['tweetnook sync: started'];
+            for (const step of snapshot.steps || []) {
+                if (step.state === 'pending') continue;
+                if (step.state === 'skipped') {
+                    lines.push(`${step.title}: ${step.summary || 'skipped'}`);
+                    continue;
+                }
+                lines.push(`${step.title}: starting${step.total ? ` · total=${step.total} ${step.unit}` : ''}${step.detail ? ` · ${step.detail}` : ''}`);
+                if (step.total && step.state === 'active') {
+                    lines.push(`${step.title}: progress · ${step.completed}/${step.total} ${step.unit}${step.activity ? ` · ${step.activity}` : ''}${step.counters ? ` · ${step.counters}` : ''}`);
+                }
+                if (step.state === 'complete') lines.push(`${step.title}: complete · ${step.summary || 'done'}`);
+                if (step.state === 'failed') lines.push(`${step.title}: failed · ${step.summary || 'stopped'}`);
+            }
+            for (const issue of snapshot.issues || []) {
+                lines.push(`${issue.level === 'error' ? 'ERROR' : 'WARNING'}: ${issue.message}${issue.count > 1 ? ` · occurrences=${issue.count}` : ''}`);
+            }
+            if (!snapshot.running) {
+                const outcome = snapshot.stopped ? 'stopped' : snapshot.success === false ? 'failed' : 'complete';
+                lines.push(`tweetnook sync: ${outcome}${snapshot.summary ? ` · ${snapshot.summary}` : ''}`);
+            }
+            return lines;
+        }
+        function findRun(runId) {
+            const live = liveRun();
+            if (live?.run.run_id === runId) return {run: live.run, log: liveLog(live.snapshot)};
+            return sampleRuns.find(item => item.run.run_id === runId) || null;
+        }
+        // Complete lines after a byte offset, like activity_history.read_run_log_since().
+        function logSince(text, offset) {
+            const bytes = new TextEncoder().encode(text);
+            const start = offset > bytes.length ? 0 : offset;
+            let end = bytes.length;
+            while (end > start && bytes[end - 1] !== 10) end -= 1;
+            return {text: new TextDecoder().decode(bytes.slice(start, end)), offset: end};
+        }
+
+        // Config values the page edits, in the dotted-path form the server's POST /api/config takes.
+        function applyConfigChanges(changes) {
+            const config = runtime.config;
+            for (const [path, value] of Object.entries(changes || {})) {
+                const [section, ...rest] = path.split('.');
+                const key = rest.join('.');
+                if (!config.values[section] || !(key in config.values[section])) throw new Error(`Unknown setting ${path}`);
+                if (path === 'sync.collections') {
+                    const order = ['bookmarks', 'likes', 'tweets'];
+                    const picked = value === null ? config.defaults.sync.collections : value;
+                    if (!Array.isArray(picked) || !picked.length) throw new Error('Choose at least one collection to sync');
+                    config.values.sync.collections = order.filter(item => picked.includes(item));
+                } else {
+                    config.values[section][key] = value === null ? clone(config.defaults[section][key]) : value;
+                }
+                const explicit = new Set(config.explicit);
+                if (value === null) explicit.delete(path);
+                else explicit.add(path);
+                config.explicit = [...explicit].sort();
+            }
         }
 
         function accounting() {
@@ -1164,7 +1405,41 @@
                 return jsonResponse(scheduleStatus());
             }
 
-            if (path.endsWith('/api/notices') && method === 'GET') return jsonResponse({notices: []});
+            if (path.endsWith('/api/activity/runs') && method === 'GET') {
+                const live = liveRun();
+                return jsonResponse({runs: [...(live ? [live.run] : []), ...sampleRuns.map(item => clone(item.run))]});
+            }
+            const runMatch = path.match(/\/api\/activity\/runs\/([^/]+)(\/log)?$/);
+            if (runMatch && method === 'GET') {
+                const found = findRun(decodeURIComponent(runMatch[1]));
+                if (!found) return errorResponse('Run not found.', 404);
+                if (!runMatch[2]) return jsonResponse(clone(found.run));
+                const offset = url.searchParams.get('offset');
+                if (offset === null) return textResponse(found.log);
+                const since = logSince(found.log, Math.max(0, Number(offset) || 0));
+                return textResponse(since.text, {'X-Log-Offset': String(since.offset)});
+            }
+
+            if (path.endsWith('/api/config/schema') && method === 'GET' && runtime.config) return jsonResponse(clone(runtime.config.schema));
+            if (path.endsWith('/api/config/defaults') && method === 'GET' && runtime.config) return jsonResponse(clone(runtime.config.defaults));
+            if (path.endsWith('/api/config') && ['GET', 'POST'].includes(method) && runtime.config) {
+                if (method === 'POST') {
+                    try {
+                        applyConfigChanges(body.changes);
+                    } catch (error) {
+                        return errorResponse(error.message, 400);
+                    }
+                }
+                return jsonResponse({values: clone(runtime.config.values), explicit: clone(runtime.config.explicit)});
+            }
+
+            if (path.endsWith('/api/notices') && method === 'GET') return jsonResponse({notices: clone(runtime.notices)});
+            const dismissMatch = path.match(/\/api\/notices\/([^/]+)\/dismiss$/);
+            if (dismissMatch && method === 'POST') {
+                const notice = runtime.notices.find(item => item.id === decodeURIComponent(dismissMatch[1]));
+                if (notice) notice.dismissed = true;
+                return jsonResponse({dismissed: true});
+            }
 
             if (path.endsWith('/api/automated-tagging') && method === 'GET') {
                 return jsonResponse({installed: true, values: clone(runtime.automatedTagging), accounting: accounting()});
@@ -1249,16 +1524,18 @@
     global.TweetNookDemo = api;
     if (global.TWEETNOOK_DEMO === true) {
         if (!nativeFetch) throw new Error('TweetNook demo requires the Fetch API');
-        const fixtureUrl = global.TWEETNOOK_DEMO_DATA_URL || 'demo/data.json';
-        api.ready = nativeFetch(new URL(fixtureUrl, global.document?.baseURI || global.location.href))
-            .then(response => {
-                if (!response.ok) throw new Error(`Could not load demo fixture (${response.status})`);
-                return response.json();
-            })
-            .then(data => {
-                api.store = createStore(data, {seedLastActivity: true});
-                return api.store;
-            });
+        const base = global.document?.baseURI || global.location.href;
+        const load = (fileUrl, label) => nativeFetch(new URL(fileUrl, base)).then(response => {
+            if (!response.ok) throw new Error(`Could not load demo ${label} (${response.status})`);
+            return response.json();
+        });
+        api.ready = Promise.all([
+            load(global.TWEETNOOK_DEMO_DATA_URL || 'demo/data.json', 'fixture'),
+            load(global.TWEETNOOK_DEMO_CONFIG_URL || 'demo/config.json', 'configuration'),
+        ]).then(([data, config]) => {
+            api.store = createStore(data, {seedLastActivity: true, config});
+            return api.store;
+        });
         global.fetch = async function demoFetch(input, init = {}) {
             const url = new URL(input instanceof Request ? input.url : String(input), global.document?.baseURI || global.location.href);
             if (url.pathname.includes('/api/')) return api.handle(input, init);

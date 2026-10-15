@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "tweetnook" / "web"
 DEMO_ROOT = ROOT / "demo"
 DEMO_MEDIA_ROOT = DEMO_ROOT / "demo media"
+DEMO_CONFIG = DEMO_ROOT / "config.json"
 
 ALLOWED_COLLECTIONS = {"bookmark", "like", "tweet"}
 ALLOWED_MEDIA = {"photo", "video", "animated_gif"}
@@ -309,6 +310,22 @@ def validate_fixture(data: dict[str, Any]) -> None:
     _require(not missing_features, f"demo fixture does not exercise: {', '.join(missing_features)}")
 
 
+def demo_config_payload() -> dict[str, Any]:
+    """The Configuration page's schema and defaults, as the local server would serve them.
+
+    The Pages build runs without project dependencies, so this is generated ahead of time into
+    demo/config.json (``--refresh-config``); a test keeps the file in step with tweetnook/config.py.
+    """
+    from tweetnook.config import AppConfig, get_config_ui_schema
+
+    return {"schema": get_config_ui_schema(), "defaults": AppConfig().model_dump(mode="json")}
+
+
+def write_demo_config(path: Path = DEMO_CONFIG) -> Path:
+    path.write_text(json.dumps(demo_config_payload(), indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def normalize_base_path(value: str) -> str:
     value = value.strip()
     _require(value.startswith("/"), "base path must begin with /")
@@ -324,7 +341,9 @@ def render_index(source: str, *, base_path: str, version: str) -> str:
         f"window.TWEETNOOK_DEMO_BASE = {json.dumps(base_path)}; "
         f"window.TWEETNOOK_DEMO_VERSION = {json.dumps(version)}; "
         f"window.TWEETNOOK_DEMO_DATA_URL = "
-        f"{json.dumps(f'demo/data.json?v={asset_version}')};</script>\n"
+        f"{json.dumps(f'demo/data.json?v={asset_version}')}; "
+        f"window.TWEETNOOK_DEMO_CONFIG_URL = "
+        f"{json.dumps(f'demo/config.json?v={asset_version}')};</script>\n"
         '    <script src="demo/demo-api.js"></script>\n'
     )
     _require("<head>" in source, "production index is missing <head>")
@@ -379,6 +398,7 @@ def build_pages_demo(output: Path, *, version: str, base_path: str) -> Path:
     shutil.copytree(WEB_ROOT / "static", output / "static")
     (output / "demo").mkdir()
     shutil.copy2(DEMO_ROOT / "data.json", output / "demo" / "data.json")
+    shutil.copy2(DEMO_CONFIG, output / "demo" / "config.json")
     shutil.copy2(DEMO_ROOT / "demo-api.js", output / "demo" / "demo-api.js")
     shutil.copytree(
         DEMO_MEDIA_ROOT,
@@ -399,6 +419,7 @@ def build_pages_demo(output: Path, *, version: str, base_path: str) -> Path:
         output / "static" / "css" / "styles.css",
         output / "static" / "js" / "app.js",
         output / "demo" / "data.json",
+        output / "demo" / "config.json",
         output / "demo" / "demo-api.js",
     ]
     expected.extend(
@@ -417,7 +438,15 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=ROOT / "_dist" / "pages")
     parser.add_argument("--version", default="development")
     parser.add_argument("--base-path", default="/tweetnook/")
+    parser.add_argument(
+        "--refresh-config",
+        action="store_true",
+        help="Regenerate demo/config.json from tweetnook/config.py (needs the project installed).",
+    )
     args = parser.parse_args()
+    if args.refresh_config:
+        print(f"Wrote {write_demo_config()}")
+        return
     built = build_pages_demo(args.output.resolve(), version=args.version, base_path=args.base_path)
     print(f"Built TweetNook Pages demo at {built}")
 

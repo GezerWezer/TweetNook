@@ -31,6 +31,7 @@ function browserContext(pathname = '/') {
         setInterval: () => 0,
         clearInterval() {},
         URL,
+        URLSearchParams,
         Date,
         Math,
         JSON,
@@ -162,6 +163,7 @@ function browserContext(pathname = '/') {
         innerWidth: 1280,
         scrollY: 0,
         location,
+        matchMedia: query => ({ matches: query.includes('min-width') }),
         addEventListener(name, callback) {
             events.set(name, callback);
         },
@@ -183,6 +185,7 @@ function browserContext(pathname = '/') {
             };
         },
     };
+    context.location = location;
     context.globalThis = context;
     context.__state = {
         stored,
@@ -1152,7 +1155,7 @@ test('tweet app starts with coherent list, panel, modal, and theme state', () =>
     assert.equal(app.panelMode, null);
     assert.deepEqual(Array.from(app.panelStack), []);
     assert.equal(app.tagModalOpen, false);
-    assert.equal(app.currentTheme, 'classic-dark');
+    assert.equal(app.currentTheme, 'classic-light');
     assert.equal(app.showEmptyUnavailableReasons, false);
     assert.equal(app.statsGeneratedAt, null);
     assert.equal(app.statsRefreshing, false);
@@ -1796,13 +1799,13 @@ test('analytics markup exposes the Archive status cards and reason breakdown', (
         'utf8',
     );
 
-    assert.match(html, /x-model="showEmptyUnavailableReasons"/);
+    assert.match(html, /role="switch"[^>]*:aria-checked="showEmptyUnavailableReasons" @click="showEmptyUnavailableReasons = !showEmptyUnavailableReasons"/);
     assert.match(html, /@click="refreshStats\(\)"/);
     assert.match(html, /@keydown\.window\.escape="closeStatsModal\(\)"/);
     assert.match(html, /@click\.self="closeStatsModal\(\)"/);
     assert.match(html, /@click="closeStatsModal\(\)"/);
     assert.match(html, /x-text="statsAgeLabel\(\)"/);
-    assert.match(html, /x-show="!statsRefreshing"/);
+    assert.match(html, /x-text="statsRefreshing \? 'Refreshing' : 'Refresh'"/);
     assert.match(html, /x-show="statsRefreshing"/);
     assert.match(html, /class="stats-modal-scroll /);
     assert.match(styles, /\.stats-modal-scroll\s*\{[^}]*overscroll-behavior: contain;/s);
@@ -2077,7 +2080,8 @@ test('like order is exposed for Likes, preserved during search, and reset on col
         ]),
     );
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
-    assert.match(html, /x-for="\(option, index\) in feedOptions\(kind\)"/);
+    assert.match(html, /x-for="option in feedOptions\('collection'\)"/);
+    assert.match(html, /x-for="\(option, index\) in feedOptions\('sort'\)"/);
 });
 
 test('feed menus retain null focus transitions and close when focus moves outside', () => {
@@ -2940,11 +2944,13 @@ test('setup uses a dedicated responsive X-style modal shell', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
-    const settingsMarkup = html.slice(html.indexOf('<!-- Settings Modal -->'), html.indexOf('<!-- Setup Modal -->'));
+    const settingsMarkup = html.slice(html.indexOf('<!-- Settings Modal'), html.indexOf('<!-- Setup Modal -->'));
+    const settingsJs = fs.readFileSync(path.join(JS_DIR, 'settings.js'), 'utf8');
     const setupMarkup = html.slice(html.indexOf('<!-- Setup Modal -->'), html.indexOf('<!-- Automated Tagging Spend History Modal -->'));
 
     assert.match(settingsMarkup, /x-show="showSettingsModal"/);
-    assert.match(settingsMarkup, /@click="settingsTab = 'setup'; fetchSetup\(\)"/);
+    assert.match(settingsMarkup, /@click="nookSettingsNavigate\(\$data, 'setup'\)"/);
+    assert.match(settingsJs, /if \(key === 'setup' && !app\.isDemo\) app\.fetchSetup\(\);/);
     assert.match(settingsMarkup, /@click="rerunSetup\(\)"/);
     assert.match(setupMarkup, /x-show="showSetupModal"/);
     assert.match(setupMarkup, /class="setup-desktop-required" role="note"/);
@@ -3034,9 +3040,17 @@ test('config saves only diffs and resets only eligible explicit fields', async (
 
 test('config boolean controls bind actual booleans', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
-    assert.match(html, /<option :value="true">On<\/option>/);
-    assert.match(html, /<option :value="false">Off<\/option>/);
+    assert.match(html, /role="switch"[^>]*:aria-checked="nookConfigOn\(\$data, field\)"[^>]*@click="nookConfigToggle\(\$data, field\)"/);
     assert.doesNotMatch(html, /<option value="(?:true|false)">/);
+    const { nookConfigToggle } = loadScripts(browserContext(), ['settings.js'], '({nookConfigToggle})');
+    const app = { configData: { web: { fetch_avatars: true }, sync: { reply_linked_depth: 0 } } };
+    nookConfigToggle(app, { path: 'web.fetch_avatars', section: 'web', key: 'fetch_avatars', type: 'boolean' });
+    assert.equal(app.configData.web.fetch_avatars, false);
+    nookConfigToggle(app, { path: 'web.fetch_avatars', section: 'web', key: 'fetch_avatars', type: 'boolean' });
+    assert.equal(app.configData.web.fetch_avatars, true);
+    // Number fields shown as a switch keep their numeric type.
+    nookConfigToggle(app, { path: 'sync.reply_linked_depth', section: 'sync', key: 'reply_linked_depth', type: 'toggle01' });
+    assert.equal(app.configData.sync.reply_linked_depth, 1);
 });
 
 test('tweet text decodes one entity layer before safe rendering and length checks', () => {
@@ -4955,9 +4969,8 @@ test('autoplay setting plays the topmost visible video muted and shares unmuting
     assert.equal(restoredPlayback(), 'autoplay');
 
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
-    assert.match(html, /setVideoPlayback\('paused'\)/);
-    assert.match(html, /setVideoPlayback\('autoplay'\)/);
-    assert.match(html, /Unmuting one video unmutes the rest/);
+    assert.match(html, /role="switch" aria-label="Autoplay videos" :aria-checked="videoPlayback === 'autoplay'" @click="setVideoPlayback\(videoPlayback === 'autoplay' \? 'paused' : 'autoplay'\)"/);
+    assert.match(html, /Play videos muted as they scroll into view\./);
 });
 
 test('activity drawer loads any pipeline and starts production jobs', async () => {
@@ -5188,7 +5201,8 @@ test('activity polling adapts to idle and visibility while its elapsed clock sta
     assert.equal(app.activityNowSeconds, 101);
     assert.equal(app.activity, original);
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
-    assert.match(html, /formatActivityDuration\(activityNowSeconds - activity.started_at\)/);
+    const headerJs = fs.readFileSync(path.join(JS_DIR, 'header.js'), 'utf8');
+    assert.match(headerJs, /this\.formatActivityDuration\(this\.activityNowSeconds - this\.activity\.started_at\)/);
 
     data = {active: false, last_snapshot: {run_id: 'one', success: true, steps: []}};
     await app.fetchActivityStatus();
@@ -5324,29 +5338,31 @@ test('schedule settings bind every control to the schedule form', () => {
     const end = html.indexOf('<!-- Activity logs -->');
     const scheduleHtml = html.slice(start, end);
 
-    assert.match(scheduleHtml, /id="save-schedule-btn"/);
-    assert.match(scheduleHtml, /x-model="scheduleForm\.enabled"/);
+    assert.match(html, /id="save-schedule-btn"[^>]*@click="saveScheduleSettings\(\)"/);
+    assert.match(scheduleHtml, /aria-label="Sync automatically" :aria-checked="scheduleForm\.enabled" @click="scheduleForm\.enabled = !scheduleForm\.enabled; scheduleFieldChanged\(\)"/);
     assert.match(scheduleHtml, /<fieldset[^>]*:disabled="!scheduleForm\.enabled"/);
     assert.match(scheduleHtml, /scheduleForm\.cadence = cadence\.key/);
-    assert.match(scheduleHtml, /x-model\.number="scheduleForm\.every_hours"/);
-    assert.match(scheduleHtml, /x-model="scheduleTimeHour"/);
-    assert.match(scheduleHtml, /x-model="scheduleTimeMinute"/);
-    assert.match(scheduleHtml, /x-model="scheduleTimePeriod"/);
-    assert.match(scheduleHtml, /x-model\.number="scheduleForm\.weekday"/);
-    assert.match(scheduleHtml, /x-model\.number="scheduleForm\.day_of_month"/);
-    assert.match(scheduleHtml, /x-model="scheduleForm\.timezone"/);
-    assert.match(scheduleHtml, /x-model="scheduleForm\.randomize_time"/);
-    assert.match(scheduleHtml, /min="0" max="24" step="0\.25" x-model\.number="scheduleForm\.random_offset_min_hours"/);
-    assert.match(scheduleHtml, /min="0" max="24" step="0\.25" x-model\.number="scheduleForm\.random_offset_max_hours"/);
+    // Dropdowns are custom listboxes (nookSelect) bound to the same form fields.
+    const select = field => new RegExp(`value: \\(\\) => ${field.replace('.', '\\.')}, choose: value => \\{`);
+    for (const field of ['scheduleForm.every_hours', 'scheduleTimeHour', 'scheduleTimeMinute', 'scheduleForm.day_of_month', 'scheduleForm.timezone', 'scheduleForm.random_offset_min_hours', 'scheduleForm.random_offset_max_hours']) {
+        assert.match(scheduleHtml, select(field), field);
+    }
+    assert.match(scheduleHtml, /@click="setScheduleTimePart\('period', 'AM'\)"/);
+    assert.match(scheduleHtml, /@click="scheduleForm\.weekday = index; scheduleFieldChanged\(\)"/);
+    assert.match(scheduleHtml, /aria-label="Vary the start time" :aria-checked="scheduleForm\.randomize_time"/);
+    // What to sync mirrors the sync panel's choice (sync.collections).
+    for (const key of ['bookmarks', 'likes', 'tweets']) {
+        assert.match(scheduleHtml, new RegExp(`:aria-checked="nookSyncCollections\\.includes\\('${key}'\\)" @click="nookToggleSyncCollection\\(\\$data, '${key}'\\)"`));
+    }
 });
 
 test('unchecked square checkboxes use thinner outlines while checked states retain weight', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     assert.equal(
         (html.match(/class="flex h-6 w-6 items-center justify-center rounded-lg border-2 transition"/g) || []).length,
-        4,
+        1,
     );
-    assert.equal((html.match(/text-white border-\[3px\]'/g) || []).length, 4);
+    assert.equal((html.match(/text-white border-\[3px\]'/g) || []).length, 1);
 });
 
 test('activity stages use focused pages and finish on a run summary', () => {
@@ -5630,15 +5646,16 @@ test('community note detail uses captured title and omits footers, while feed an
 test('automated tagging has a dedicated conditional Settings page', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     assert.match(html, /x-show="automatedTaggingInstalled"/);
-    assert.match(html, /settingsTab = 'automated-tagging'/);
-    assert.match(html, /md:hidden[\s\S]*x-model="settingsTab"/);
+    assert.match(html, /id="nook-nav-automated-tagging"[^>]*x-show="automatedTaggingInstalled"|x-show="automatedTaggingInstalled"[^>]*id="nook-nav-automated-tagging"/);
+    assert.match(html, /@click="nookSettingsNavigate\(\$data, 'automated-tagging'\)"/);
+    assert.match(html, /x-show="settingsTab === 'automated-tagging' && automatedTaggingInstalled"/);
     assert.match(html, /automatedTaggingContextItems/);
     assert.match(html, /handleAutomatedTaggingContextKeydown\(\$event\)/);
     const automatedTaggingStart = html.indexOf('<!-- Optional direct-Gemini automated tagging -->');
     const automatedTaggingEnd = html.indexOf('<!-- Config Section -->');
     const automatedTaggingHtml = html.slice(automatedTaggingStart, automatedTaggingEnd);
     assert.match(automatedTaggingHtml, /<fieldset[^>]*:disabled="!automatedTagging\.enabled"/);
-    assert.match(automatedTaggingHtml, /<input type="checkbox" x-model="automatedTagging\.enabled"/);
+    assert.match(automatedTaggingHtml, /<input type="checkbox" role="switch" aria-label="Enable automated tagging" x-model="automatedTagging\.enabled"/);
     assert.match(automatedTaggingHtml, /<input type="checkbox" x-model="automatedTagging\.google_search"/);
     assert.match(automatedTaggingHtml, /<select[^>]*x-model="automatedTagging\.model"/);
     assert.match(automatedTaggingHtml, /<option[^>]*:value="model\.id"[^>]*x-text="model\.name"/);
@@ -5662,15 +5679,13 @@ test('automated tagging has a dedicated conditional Settings page', () => {
 test('Settings hidden checkboxes stay anchored inside the modal', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     const settingsHtml = html.slice(
-        html.indexOf('<!-- Settings Modal -->'),
+        html.indexOf('<!-- Settings Modal'),
         html.indexOf('<!-- Setup Modal -->'),
     );
+    // Other Settings switches are buttons (role="switch"); these two still wrap a hidden checkbox.
     for (const model of [
         'automatedTagging.enabled',
         'automatedTagging.google_search',
-        'showAdvancedConfig',
-        'scheduleForm.enabled',
-        'scheduleForm.randomize_time',
     ]) {
         const inputAt = settingsHtml.indexOf(`x-model="${model}"`);
         assert.notEqual(inputAt, -1, `missing Settings checkbox for ${model}`);
@@ -6018,7 +6033,7 @@ test('notification badge counts every unread item and actions use Settings desti
     const context = browserContext();
     const requests = [];
     context.fetch = async (url, options) => { requests.push([url, options.method]); return {ok: true}; };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js', 'settings.js'], '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.notices = [
         {id: 'a', severity: 'error', dismissed: false, action: 'setup'},
@@ -6056,23 +6071,26 @@ test('log formatting does not mark zero-failure summaries as errors', () => {
 
 test('notifications live in Settings with unread counts', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
-    assert.match(html, /<option value="notifications" x-text="noticeCount \? `Notifications \(\$\{noticeCount\}\)` : 'Notifications'">/);
-    assert.match(html, /settingsTab = 'notifications'; fetchNotices\(\)/);
-    assert.match(html, /settingsTab === 'notifications' \? 'Notifications'/);
+    const settingsJs = fs.readFileSync(path.join(JS_DIR, 'settings.js'), 'utf8');
+    assert.match(html, /id="nook-nav-notifications" :aria-label="noticeCount \? 'Notifications, ' \+ noticeCount \+ ' unread' : 'Notifications'"/);
+    assert.match(html, /@click="nookSettingsNavigate\(\$data, 'notifications'\)"/);
+    assert.match(settingsJs, /if \(key === 'notifications'\) app\.fetchNotices\(\);/);
+    assert.match(settingsJs, /notifications:'Notifications'/);
     assert.match(html, /Settings, \$\{noticeCount\} unread notifications/);
-    assert.match(html, /class="settings-notification-count" x-text="noticeCount"/);
-    assert.match(html, /class="notification-count-badge" x-text="noticeCount > 99 \? '99' : noticeCount"/);
+    assert.match(html, /class="nook-nav-count" aria-hidden="true" x-text="noticeCount"/);
+    assert.match(html, /class="nook-notice-count" aria-hidden="true" x-text="noticeCount > 9 \? '9\+' : noticeCount"/);
 });
 
 test('Settings and Setup stay above an expanded activity drawer', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
-    const activityStart = html.indexOf('<!-- Twitter/X-style activity drawer -->');
-    const activityMarkup = html.slice(activityStart, html.indexOf('</section>', activityStart));
+    const headerCss = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/header.css'), 'utf8');
+    const settingsCss = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/settings.css'), 'utf8');
+    const zIndex = (css, selector) => Number(css.match(new RegExp(`${selector.replace('.', '\\.')}\\s*\\{[^}]*z-index:\\s*(\\d+)`))?.[1]);
 
-    assert.equal((html.match(/settings-modal-backdrop fixed inset-0 z-\[100\]/g) || []).length, 2);
-    assert.match(css, /\.activity-drawer\s*\{[\s\S]*?z-index: 70;/);
-    assert.doesNotMatch(activityMarkup, /activity-over-settings/);
+    assert.match(html, /class="settings-modal-backdrop nook-settings-backdrop"/);
+    assert.match(html, /class="settings-modal-backdrop fixed inset-0 z-\[100\]/);
+    assert.equal(zIndex(settingsCss, '.nook-settings-backdrop'), 100);
+    assert.ok(zIndex(headerCss, '.nook-sync-panel') < 100);
 });
 
 test('activity drawer animation isolates layout and transitions only geometry', () => {
@@ -6110,37 +6128,26 @@ test('tweet bylines size dates from the visible label and truncate handles when 
     assert.ok(card.querySelector('.roll-wrapper').classList.contains('tweet-byline-detail'));
 });
 
-test('floating analytics, settings, and sync controls are desktop-only', () => {
+test('sync, analytics, and settings live in the top bar on every screen size', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
-    const statsStart = html.indexOf('<!-- Stats Button -->');
-    const settingsStart = html.indexOf('<!-- Settings Button -->');
-    const activityStart = html.indexOf('<!-- Twitter/X-style activity drawer -->');
+    const utilities = html.slice(html.indexOf('<div class="nook-utilities">'), html.indexOf('<nav class="nook-tabs"'));
 
-    assert.match(html.slice(statsStart, settingsStart), /class="[^\"]*hidden sm:flex[^\"]*"/);
-    assert.match(html.slice(settingsStart, activityStart), /class="[^\"]*hidden sm:flex[^\"]*"/);
-    assert.match(html.slice(activityStart, html.indexOf('</section>', activityStart)), /class="activity-drawer hidden sm:block"/);
+    assert.match(utilities, /class="nook-icon-button nook-activity-button" @click="nookToggleActivity\(\$data, \$el\)" aria-controls="nook-activity-drawer"/);
+    assert.match(utilities, /@click="openStatsModal\(\)" aria-label="Analytics"/);
+    assert.match(utilities, /@click="openSettings\(\)"/);
+    assert.doesNotMatch(utilities, /hidden sm:flex/);
+    assert.doesNotMatch(html, /<!-- Stats Button -->|<!-- Settings Button -->/);
+    assert.match(html, /<section id="nook-activity-drawer" class="nook-sync-panel"/);
 });
 
 test('Settings tabs use the requested order and Appearance is the default', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
-    const mobileStart = html.indexOf('<select x-show="!setupForced"');
-    const mobileEnd = html.indexOf('</select>', mobileStart);
-    const mobileTabs = html.slice(mobileStart, mobileEnd);
-    const sidebarStart = html.indexOf('<div x-show="!setupForced" class="settings-sidebar');
-    const sidebarEnd = html.indexOf('</div>\n                </div>', sidebarStart);
-    const sidebarTabs = html.slice(sidebarStart, sidebarEnd);
-    const mobileMarkers = ['value="appearance"', 'value="schedule"', 'value="tags"', 'value="automated-tagging"', 'value="notifications"', 'value="config"', 'value="logs"', 'value="setup"'];
-    const sidebarMarkers = [
-        "settingsTab = 'appearance'", "settingsTab = 'schedule'", "settingsTab = 'tags'",
-        "settingsTab = 'automated-tagging'", "settingsTab = 'notifications'", "settingsTab = 'config'",
-        "settingsTab = 'logs'", "settingsTab = 'setup'",
-    ];
-    const positions = (source, markers) => markers.map(marker => source.indexOf(marker));
-    assert.ok(positions(mobileTabs, mobileMarkers).every(index => index >= 0));
-    assert.ok(positions(sidebarTabs, sidebarMarkers).every(index => index >= 0));
-    assert.deepEqual(positions(mobileTabs, mobileMarkers), [...positions(mobileTabs, mobileMarkers)].sort((a, b) => a - b));
-    assert.deepEqual(positions(sidebarTabs, sidebarMarkers), [...positions(sidebarTabs, sidebarMarkers)].sort((a, b) => a - b));
+    const keys = ['appearance', 'schedule', 'tags', 'automated-tagging', 'notifications', 'config', 'logs', 'setup'];
+    const positions = keys.map(key => html.indexOf(`id="nook-nav-${key}"`));
+    assert.ok(positions.every(index => index >= 0));
+    assert.deepEqual(positions, [...positions].sort((a, b) => a - b));
+    for (const key of keys) assert.match(html, new RegExp(`@click="nookSettingsNavigate\\(\\$data, '${key}'\\)"`));
     assert.match(js, /settingsTab: 'appearance'/);
     assert.match(js, /rerunSetup\(\)[\s\S]*?this\.settingsTab = 'setup'/);
 });
@@ -7096,6 +7103,167 @@ test('media lightbox data and community note links cannot inject script', () => 
     assert.doesNotMatch(note, /javascript:/);
     assert.match(note, /<a href="#"[^>]*>bad<\/a>/);
     assert.match(note, /<a href="https:\/\/example\.test\/a\?b=1&amp;c=2"/);
+});
+
+test('what to sync is the server sync.collections setting, shared by the sync panel and Schedule', async () => {
+    const context = browserContext();
+    const requests = [];
+    let saved = ['likes'];
+    let failNext = false;
+    context.fetch = async (url, options = {}) => {
+        requests.push([url, options.method || 'GET', options.body ? JSON.parse(options.body) : null]);
+        if (options.method === 'POST') {
+            if (failNext) { failNext = false; return { ok: false, async json() { return {}; } }; }
+            saved = JSON.parse(options.body).changes['sync.collections'];
+        }
+        return { ok: true, async json() { return { values: { sync: { collections: saved } }, explicit: ['sync.collections'] }; } };
+    };
+    const { nookLoadSyncCollections, nookToggleSyncCollection, nookSyncCollectionsLabel } = loadScripts(
+        context, ['header.js'], '({nookLoadSyncCollections, nookToggleSyncCollection, nookSyncCollectionsLabel})',
+    );
+    const app = { nookSyncCollections: ['bookmarks', 'likes'], configData: { sync: { collections: ['likes'] } }, configOriginal: { sync: { collections: ['likes'] } } };
+
+    await nookLoadSyncCollections(app);
+    assert.deepEqual([...app.nookSyncCollections], ['likes']);
+    assert.equal(nookSyncCollectionsLabel(app), 'Likes');
+
+    // Choices save right away, in the canonical order, and keep a loaded Configuration page in step.
+    await nookToggleSyncCollection(app, 'tweets');
+    await nookToggleSyncCollection(app, 'bookmarks');
+    assert.deepEqual(requests.at(-1), ['/api/config', 'POST', { changes: { 'sync.collections': ['bookmarks', 'likes', 'tweets'] } }]);
+    assert.deepEqual([...app.nookSyncCollections], ['bookmarks', 'likes', 'tweets']);
+    assert.deepEqual([...app.configData.sync.collections], ['bookmarks', 'likes', 'tweets']);
+    assert.deepEqual([...app.configOriginal.sync.collections], ['bookmarks', 'likes', 'tweets']);
+    assert.equal(nookSyncCollectionsLabel(app), 'Bookmarks, likes and your tweets');
+
+    // A failed save puts the previous choice back.
+    failNext = true;
+    await nookToggleSyncCollection(app, 'likes');
+    assert.deepEqual([...app.nookSyncCollections], ['bookmarks', 'likes', 'tweets']);
+
+    // The last collection can't be turned off.
+    app.nookSyncCollections = ['likes'];
+    const before = requests.length;
+    await nookToggleSyncCollection(app, 'likes');
+    assert.equal(requests.length, before);
+    assert.deepEqual([...app.nookSyncCollections], ['likes']);
+});
+
+test('sync panel shows paused and skipped reasons, new tweets, and the server schedule label', () => {
+    const context = browserContext();
+    const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
+    const app = immediateComponent(tweetApp());
+    const panel = Object.assign(Object.create(app), nookSyncPanel());
+
+    const paused = { key: 'tagging', title: 'Automated tags', state: 'failed', paused: true, reason: 'daily spend limit reached', summary: 'Stopped at the spend limit' };
+    assert.equal(panel.stepState(paused), 'paused');
+    assert.equal(panel.stepStateLabel(paused), 'paused');
+    assert.equal(panel.segClass(paused), 'is-paused');
+    assert.deepEqual({ ...panel.describe(paused) }, { left: 'Automated tags', right: 'Paused', sub: 'Daily spend limit reached' });
+
+    const failed = { key: 'media', title: 'Media', state: 'failed', summary: 'Disk full', reason: null };
+    assert.equal(panel.describe(failed).danger, true);
+    assert.equal(panel.describe(failed).sub, 'Disk full');
+
+    const skipped = { key: 'articles', title: 'Articles', state: 'skipped', reason: 'no article rows requiring refresh', summary: 'skipped due to no article rows requiring refresh' };
+    assert.equal(panel.describe(skipped).sub, 'No article rows requiring refresh');
+
+    app.activity = null;
+    app.lastActivity = {
+        run_id: 'one', success: true, completed_at: 100,
+        steps: [
+            { key: 'sync:bookmarks:head', title: 'Bookmarks', state: 'complete', metrics: { new_tweets: 2 } },
+            { key: 'sync:tweets:head', title: 'Your tweets', state: 'complete', metrics: { new_tweets: 1 } },
+        ],
+        issues: [],
+    };
+    assert.equal(panel.caption().left, '2 bookmarks and 1 tweet added');
+
+    app.activitySchedule = { configured: true, label: 'Daily at 3:00 AM', description: 'Every day · randomized delay' };
+    assert.equal(panel.scheduleLabel(), 'Daily at 3:00 AM');
+    app.activitySchedule = { configured: false, label: 'Daily at 3:00 AM' };
+    assert.equal(panel.scheduleLabel(), 'Scheduled syncs off');
+});
+
+test('activity log view follows a running log by byte offset', async () => {
+    const context = browserContext();
+    const chunks = {
+        0: ['tweetnook sync: started\nPrepare: complete · Connected\n', 52],
+        52: ['Bookmarks: complete · 1 pages · 3 tweets\n', 94],
+        94: ['tweetnook sync: started\n', 24],
+    };
+    const requests = [];
+    context.fetch = async url => {
+        requests.push(url);
+        const offset = Number(new URL(url, 'http://localhost').searchParams.get('offset'));
+        const [text, next] = chunks[offset];
+        return { ok: true, async text() { return text; }, headers: { get: name => (name === 'X-Log-Offset' ? String(next) : null) } };
+    };
+    const { nookLogsPage, nookRunTitle } = loadScripts(context, ['settings.js'], '({nookLogsPage, nookRunTitle})');
+    const page = Object.assign(nookLogsPage(), { nookLogLines: null });
+
+    page.nookLogLines = await page.readLog('run/1', 0);
+    assert.equal(requests[0], '/api/activity/runs/run%2F1/log?offset=0');
+    assert.equal(page.logOffset, 52);
+    assert.equal(page.nookLogLines.length, 2);
+
+    page.nookLogLines = await page.readLog('run/1', page.logOffset);
+    assert.equal(page.logOffset, 94);
+    assert.deepEqual([...page.nookLogLines.map(line => line.index)], [0, 1, 2]);
+    assert.match(page.nookLogLines[2].text || JSON.stringify(page.nookLogLines[2]), /Bookmarks/);
+
+    // A log that starts over (the server's offset went backwards) replaces what was shown.
+    chunks[94] = ['tweetnook sync: started\n', 24];
+    page.nookLogLines = await page.readLog('run/1', page.logOffset);
+    assert.equal(page.logOffset, 24);
+    assert.equal(page.nookLogLines.length, 1);
+
+    assert.equal(nookRunTitle('tweetnook sync'), 'Archive sync');
+    assert.equal(nookRunTitle('tweetnook import x-archive'), 'Archive import');
+    assert.equal(nookRunTitle('tweetnook export'), 'Export');
+});
+
+test('Configuration page groups and formats fields from the server schema', () => {
+    const context = browserContext();
+    const { nookConfigSections, nookConfigFormat, nookConfigDisabled } = loadScripts(
+        context, ['settings.js'], '({nookConfigSections, nookConfigFormat, nookConfigDisabled})',
+    );
+    const { schema, defaults } = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo', 'config.json'), 'utf8'));
+    const app = {
+        configSchema: schema,
+        configData: JSON.parse(JSON.stringify(defaults)),
+        showAdvancedConfig: false,
+        configSaving: false,
+        getFieldType(section, key) {
+            const value = this.configData[section][key];
+            return typeof value === 'boolean' ? 'boolean' : typeof value === 'number' ? 'number' : 'text';
+        },
+    };
+    const basic = nookConfigSections(app, 'basic');
+    assert.deepEqual([...basic.map(group => group.title)], ['Web server', 'Avatars']);
+    assert.equal(basic[0].note, 'Restart TweetNook after changing these.');
+    assert.equal(nookConfigSections(app, 'advanced').length, 0);
+
+    app.showAdvancedConfig = true;
+    const advanced = nookConfigSections(app, 'advanced');
+    const fields = [...basic, ...advanced].flatMap(group => group.fields);
+    const paths = fields.map(field => field.path);
+    // Every field outside the blacklist appears exactly once; the rest stay out.
+    const expected = Object.entries(defaults).flatMap(([section, values]) => Object.keys(values).map(key => `${section}.${key}`))
+        .filter(item => !schema.blacklist.includes(item));
+    assert.deepEqual([...paths].sort(), [...expected].sort());
+    assert.ok(!paths.includes('sync.collections'));
+
+    const field = name => fields.find(item => item.path === name);
+    assert.equal(field('web.analytics_refresh_time').type, 'time');
+    assert.equal(field('sync.reply_linked_depth').type, 'toggle01');
+    assert.equal(nookConfigFormat(field('database.cache_size_kb'), 524288), '512 MiB');
+    assert.equal(nookConfigFormat(field('sync.page_delay'), 2), `2 ${schema.units['sync.page_delay']}`);
+    // Avatar cache limits depend on fetching avatars.
+    app.configData.web.fetch_avatars = false;
+    assert.equal(nookConfigDisabled(app, field('web.avatar_cache_limit_mb')), true);
+    app.configData.web.fetch_avatars = true;
+    assert.equal(nookConfigDisabled(app, field('web.avatar_cache_limit_mb')), false);
 });
 
 async function main() {

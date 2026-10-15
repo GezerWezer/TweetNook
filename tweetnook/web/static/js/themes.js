@@ -163,6 +163,11 @@ const THEME_SEEDS = {
         _name: 'Classic Light',
         bg: '#ffffff', text: '#0f1419', muted: '#536471',
         accent: '#1d9bf0', danger: '#f91880',
+        // The measured X light palette (design.md).
+        overrides: {
+            '--bg-secondary': '#f7f9f9', '--bg-header': 'rgba(255,255,255,.92)',
+            '--border-color': '#eff3f4', '--input-border': '#cfd9de',
+        },
         accents: [
             { name: 'Blue', color: '#1d9bf0' }, { name: 'Yellow', color: '#ffd400' },
             { name: 'Pink', color: '#f91880' }, { name: 'Purple', color: '#7856ff' },
