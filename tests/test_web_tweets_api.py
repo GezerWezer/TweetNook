@@ -705,8 +705,11 @@ class ThreadStore:
                 }
             ]
         assert record_type == "media"
+        if columns == ["tweet_id", "source", "media_url", "thumbnail_url", "local_path"]:
+            return []
         assert columns == [
             "tweet_id",
+            "source",
             "position",
             "media_type",
             "media_url",
@@ -804,6 +807,7 @@ def test_api_tweet_thread_builds_parents_children_nested_replies_quotes_media_an
             "raw_json",
         },
         "media": {
+            "source",
             "tweet_id",
             "position",
             "media_type",

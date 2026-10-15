@@ -2967,3 +2967,31 @@ body {
     margin-top: 12px;
     padding: 0 12px;
 }
+
+/* Link-card images are archived separately from tweet galleries. */
+.link-card-image {
+    aspect-ratio: 1.91 / 1;
+    border-bottom: 1px solid var(--border-color);
+}
+.link-card-summary {
+    display: flex;
+    align-items: stretch;
+}
+.link-card-summary .link-card-image {
+    position: relative;
+    width: 96px;
+    min-height: 96px;
+    flex-shrink: 0;
+    aspect-ratio: auto;
+    border-bottom: 0;
+    border-right: 1px solid var(--border-color);
+}
+.link-card-summary .link-card-image img {
+    height: 100%;
+    position: absolute;
+    inset: 0;
+}
+.link-card-text {
+    flex: 1;
+    min-width: 0;
+}

@@ -376,6 +376,7 @@ def api_tweet_thread(
         media = store._query(
             expr=f"record_type = 'media' AND tweet_id IN ({id_list})",
             cols=[
+                "source",
                 "tweet_id",
                 "position",
                 "media_type",
@@ -449,6 +450,7 @@ def api_tweet_thread(
 
         def thread_media_payload(row, raw_tweet):
             payload = {
+                "source": row.get("source"),
                 "type": row.get("media_type"),
                 "url": row.get("media_url"),
                 "thumbnail_url": row.get("thumbnail_url"),

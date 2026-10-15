@@ -88,7 +88,7 @@ def _asset_url(row: dict[str, object]) -> str | None:
     media_url = row.get("media_url")
     if not isinstance(media_url, str) or not media_url:
         return None
-    if media_type == "photo":
+    if media_type == "photo" and row.get("source") != "link_card":
         return _photo_download_url(media_url)
     return media_url
 
@@ -195,6 +195,11 @@ async def download_media(
         config = job.config
         paths = job.paths
         store = job.store
+        emit_status(status, "checking saved link-card images")
+        queued = store.backfill_link_card_media()
+        if queued:
+            job.mark_dirty(rows=queued, batches=1)
+            emit_status(status, f"queued {queued} saved link-card images")
         states = {"pending"}
         if retry_failed:
             states.add("failed")

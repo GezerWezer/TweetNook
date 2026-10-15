@@ -361,6 +361,8 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
             "related.record_type = 'tweet_object' AND related.enrichment_state = 'resurrected'"
         )
     if condition is not None:
+        if key in {"has", "filter"} and value in {"media", "image", "images"}:
+            condition += " AND COALESCE(related.source, '') != 'link_card'"
         if (key, value) in {
             ("has", "media"),
             ("filter", "media"),
