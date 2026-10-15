@@ -201,7 +201,7 @@ function nookCountLabel(count) {
   return count === 1 ? '1 tweet' : `${Number(count || 0).toLocaleString()} tweets`;
 }
 function nookTrapFocus(event, container) {
-  const items = [...container.querySelectorAll('button, input, [tabindex="0"]')].filter(item => !item.disabled && item.getClientRects().length);
+  const items = [...container.querySelectorAll('button, input, textarea, [tabindex="0"]')].filter(item => !item.disabled && item.getClientRects().length);
   if (!items.length) return;
   const first = items[0], last = items[items.length - 1];
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }

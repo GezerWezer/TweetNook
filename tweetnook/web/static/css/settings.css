@@ -368,3 +368,104 @@ fieldset:disabled .nook-select-trigger { cursor:default; }
 .nook-sync-tick svg { width:20px; height:20px; fill:currentColor; }
 .nook-sync-choice[aria-checked="true"] .nook-sync-tick { visibility:visible; }
 .nook-sync-choice:focus-visible { outline:2px solid var(--accent-color); outline-offset:-2px; border-radius:4px; }
+
+
+/* ---- Tag dialog (a tweet's tags and description) ---- */
+/* 600px dialog toward the top, fixed header, scrolling body; full-screen sheet on phones. */
+.nook-td-layer { position:fixed; inset:0; z-index:100; display:flex; justify-content:center; align-items:flex-start; padding:max(24px,6vh) 16px 24px; }
+.nook-td-backdrop { position:absolute; inset:0; background:rgba(91,112,131,.4); }
+.nook-td { position:relative; display:flex; flex-direction:column; width:100%; max-width:600px; max-height:min(820px,calc(100dvh - max(24px,6vh) - 24px)); overflow:hidden; border-radius:16px; background:var(--bg-primary); color:var(--text-primary); font-size:15px; line-height:20px; }
+.nook-td button,.nook-td input,.nook-td textarea { font-family:inherit; }
+.nook-td :focus-visible,.nook-td-confirm :focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
+@media (prefers-reduced-motion:no-preference) {
+  .nook-td,.nook-td-confirm { animation:nook-td-pop .14s ease-out; }
+  @keyframes nook-td-pop { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+}
+.nook-td-head { flex:none; display:flex; align-items:center; gap:16px; min-height:53px; padding:0 16px 0 8px; border-bottom:1px solid var(--border-color); }
+.nook-td-head .nook-icon-button { width:36px; height:36px; }
+.nook-td-title { flex:1; min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:20px; line-height:24px; font-weight:700; }
+.nook-td-save[aria-disabled="true"] { opacity:.5; cursor:default; }
+.nook-td-body { flex:1; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; padding-bottom:8px; }
+.nook-td-error { display:flex; align-items:flex-start; gap:8px; margin:12px 16px 0; padding:12px; border:1px solid color-mix(in srgb,var(--destructive-color) 40%,transparent); border-radius:12px; background:color-mix(in srgb,var(--destructive-color) 8%,transparent); font-size:14px; line-height:18px; }
+.nook-td-error svg { flex:none; width:18px; height:18px; color:var(--destructive-color); }
+
+/* The tweet being tagged, as a quoted-post card. */
+.nook-td-tweet { margin:12px 16px 4px; padding:12px; border:1px solid var(--input-border); border-radius:16px; }
+.nook-td-tweet-head { display:flex; align-items:center; gap:4px; min-width:0; }
+.nook-td-avatar { flex:none; display:flex; align-items:center; justify-content:center; width:24px; height:24px; margin-right:4px; border-radius:50%; background:color-mix(in srgb,var(--accent-color) 18%,transparent); color:var(--accent-color); font-size:12px; font-weight:700; text-transform:uppercase; }
+.nook-td-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700; }
+.nook-td-handle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-secondary); }
+.nook-td-tweet-text { display:-webkit-box; margin:4px 0 0; overflow:hidden; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
+
+/* Viewing */
+.nook-td-section { padding:12px 16px; }
+.nook-td-section-head { display:flex; align-items:center; gap:8px; }
+.nook-td-section-head h3 { margin:0; font-size:15px; line-height:20px; font-weight:700; }
+.nook-td-badge { min-width:20px; padding:2px 7px; border-radius:9999px; background:var(--accent-color); color:var(--accent-text,#fff); font-size:12px; line-height:16px; font-weight:700; text-align:center; }
+.nook-td-chips { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 0; padding:0; list-style:none; }
+.nook-td-chips li { min-width:0; max-width:100%; }
+.nook-td-chip { display:inline-flex; align-items:center; max-width:100%; min-height:32px; padding:0 14px; border:1px solid color-mix(in srgb,var(--accent-color) 35%,transparent); border-radius:9999px; background:color-mix(in srgb,var(--accent-color) 10%,transparent); color:var(--accent-color); font-size:14px; line-height:16px; font-weight:600; cursor:pointer; }
+.nook-td-chip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nook-td-chip:hover { background:color-mix(in srgb,var(--accent-color) 20%,transparent); }
+.nook-td-description { margin:6px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+.nook-td-empty { margin:4px 0 0; color:var(--text-secondary); }
+.nook-td-link { padding:0; border:0; background:none; color:var(--accent-color); font-size:inherit; cursor:pointer; }
+.nook-td-link:hover { text-decoration:underline; }
+.nook-td-rule { height:1px; margin-top:8px; background:var(--border-color); }
+.nook-td-delete { display:flex; align-items:center; gap:12px; width:100%; min-height:48px; padding:12px 16px; border:0; background:none; color:var(--destructive-color); font-size:15px; font-weight:700; text-align:left; cursor:pointer; }
+.nook-td-delete svg { flex:none; width:18.75px; height:18.75px; }
+.nook-td-delete:hover { background:color-mix(in srgb,var(--destructive-color) 8%,transparent); }
+.nook-td-delete:focus-visible { outline-offset:-2px; }
+
+/* Editing: outlined fields, label inside above the value, accent outline and label on focus. */
+.nook-td-edit { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; padding:8px 16px 8px; }
+.nook-td-fieldwrap { position:relative; margin-top:4px; }
+.nook-td-field { padding:8px 11px 10px; border:1px solid var(--input-border); border-radius:4px; cursor:text; }
+.nook-td-field:focus-within { border-color:var(--accent-color); box-shadow:inset 0 0 0 1px var(--accent-color); }
+.nook-td-field-top { display:flex; justify-content:space-between; gap:8px; }
+.nook-td-label { color:var(--text-secondary); font-size:13px; line-height:16px; cursor:text; }
+.nook-td-field:focus-within .nook-td-label { color:var(--accent-color); }
+.nook-td-count { visibility:hidden; white-space:nowrap; color:var(--text-secondary); font-size:13px; line-height:16px; font-variant-numeric:tabular-nums; }
+.nook-td-field:focus-within .nook-td-count,.nook-td-count.is-near { visibility:visible; }
+.nook-td-count.is-near { color:var(--destructive-color); font-weight:700; }
+.nook-td-chipflow { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:6px; }
+.nook-td-tokens { display:contents; }
+.nook-td-token { display:inline-flex; align-items:center; min-width:0; max-width:100%; min-height:32px; padding-left:12px; border-radius:9999px; background:color-mix(in srgb,var(--accent-color) 14%,transparent); color:var(--accent-color); font-size:14px; line-height:16px; font-weight:600; }
+.nook-td-token > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nook-td-token button { flex:none; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; margin:0 2px; padding:0; border:0; border-radius:50%; background:none; color:inherit; cursor:pointer; }
+.nook-td-token button:hover { background:color-mix(in srgb,var(--accent-color) 20%,transparent); }
+.nook-td-token button:focus-visible { outline-offset:-1px; }
+.nook-td-token svg { width:16px; height:16px; }
+.nook-td-input { flex:1 1 120px; min-width:120px; padding:4px 2px; border:0; outline:0; background:transparent; color:var(--text-primary); font-size:17px; line-height:24px; }
+.nook-td-input::placeholder,.nook-td-textarea::placeholder { color:var(--text-secondary); }
+.nook-td .nook-td-input:focus-visible,.nook-td .nook-td-textarea:focus-visible { outline:none; }
+.nook-td-input[readonly],.nook-td-textarea[readonly] { opacity:.6; }
+.nook-td-textarea { display:block; width:100%; min-height:72px; max-height:264px; margin-top:4px; padding:0; overflow-y:auto; border:0; outline:0; resize:none; background:transparent; color:var(--text-primary); font-size:17px; line-height:24px; overflow-wrap:anywhere; }
+
+/* Suggestions: the menu recipe, with the active row marked by the accent edge. */
+.nook-td-options { position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:3; max-height:264px; margin:0; padding:4px 0; overflow-y:auto; overscroll-behavior:contain; list-style:none; border-radius:12px; background:var(--dropdown-bg,var(--bg-primary)); box-shadow:0 0 15px 0 color-mix(in srgb,var(--text-secondary) 20%,transparent),0 0 3px 1px color-mix(in srgb,var(--text-secondary) 15%,transparent),0 0 0 1px var(--border-color); }
+.nook-td-option { display:flex; align-items:center; gap:12px; min-height:44px; padding:12px 16px; color:var(--text-primary); cursor:pointer; }
+.nook-td-option.is-active { background:color-mix(in srgb,var(--accent-color) 10%,transparent); box-shadow:inset 3px 0 0 var(--accent-color); }
+.nook-td-option-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nook-td-option.is-new .nook-td-option-label { display:flex; align-items:center; gap:12px; }
+.nook-td-option-label b { font-weight:700; }
+.nook-td-option-count { flex:none; color:var(--text-secondary); font-size:13px; line-height:16px; }
+.nook-td-option.is-new { color:var(--accent-color); }
+.nook-td-option.is-new svg { flex:none; width:18.75px; height:18.75px; }
+.nook-td-option + .nook-td-option.is-new { border-top:1px solid var(--border-color); }
+
+/* Delete confirmation */
+.nook-td-confirm-layer { position:fixed; inset:0; z-index:110; display:flex; align-items:center; justify-content:center; padding:16px; }
+.nook-td-confirm { position:relative; display:flex; flex-direction:column; gap:12px; width:100%; max-width:320px; padding:32px; border-radius:16px; background:var(--bg-primary); color:var(--text-primary); }
+.nook-td-confirm h2 { margin:0; font-size:20px; line-height:24px; font-weight:800; }
+.nook-td-confirm p { margin:0 0 12px; color:var(--text-secondary); font-size:15px; line-height:20px; }
+.nook-td-confirm .nook-td-confirm-error { color:var(--destructive-color); font-weight:700; }
+.nook-td-confirm .nook-secondary-button { min-height:44px; font-size:15px; }
+.nook-td-confirm [aria-disabled="true"] { opacity:.5; cursor:default; }
+
+@media (max-width:599px) {
+  .nook-td-layer { padding:0; }
+  .nook-td-layer > .nook-td-backdrop { display:none; }
+  .nook-td { max-width:none; height:100dvh; max-height:none; border-radius:0; }
+  .nook-td-textarea { max-height:40dvh; }
+}
