@@ -1,0 +1,299 @@
+{
+  "schema": {
+    "whitelist": [
+      "web.fetch_avatars",
+      "web.avatar_cache_limit_enabled",
+      "web.avatar_cache_limit_mb",
+      "web.host",
+      "web.port"
+    ],
+    "blacklist": [
+      "auth.auth_token",
+      "auth.ct0",
+      "auth.user_id",
+      "web.password_hash",
+      "sync.collections",
+      "schedule.enabled",
+      "schedule.cadence",
+      "schedule.every_hours",
+      "schedule.time",
+      "schedule.randomize_time",
+      "schedule.random_offset_min_hours",
+      "schedule.random_offset_max_hours",
+      "schedule.weekday",
+      "schedule.day_of_month",
+      "schedule.timezone",
+      "activity.max_runs",
+      "activity.retention_days",
+      "tagging.enabled",
+      "tagging.api_key",
+      "tagging.api_mode",
+      "tagging.model",
+      "tagging.thinking_level",
+      "tagging.google_search",
+      "tagging.free_batch_size",
+      "tagging.free_rpm",
+      "tagging.free_rpd",
+      "tagging.processing_tier",
+      "tagging.daily_spend_limit_usd",
+      "tagging.unlimited_spend",
+      "tagging.search_safety_reserve",
+      "tagging.unknown_billing_policy",
+      "tagging.unknown_request_reserve_usd",
+      "tagging.max_unknown_requests_per_day",
+      "tagging.search_unknown_policy",
+      "tagging.max_unknown_search_requests",
+      "tagging.tagging_context",
+      "tagging.additional_instructions",
+      "tagging.max_media_size_mb"
+    ],
+    "types": {},
+    "full_width": [],
+    "select_options": {},
+    "groups": [
+      {
+        "title": "Web server",
+        "note": "Restart TweetNook after changing these.",
+        "fields": [
+          "web.host",
+          "web.port"
+        ]
+      },
+      {
+        "title": "Avatars",
+        "fields": [
+          "web.fetch_avatars",
+          "web.avatar_cache_limit_enabled",
+          "web.avatar_cache_limit_mb"
+        ]
+      },
+      {
+        "title": "Analytics",
+        "fields": [
+          "web.analytics_refresh_time"
+        ]
+      },
+      {
+        "title": "Sync speed",
+        "note": "The defaults are tuned to stay under X's rate limits. Change them only if syncs fail or run too slowly.",
+        "fields": [
+          "sync.page_delay",
+          "sync.detail_delay",
+          "sync.timeout"
+        ]
+      },
+      {
+        "title": "Rate limits",
+        "fields": [
+          "sync.max_retries",
+          "sync.backoff_base",
+          "sync.detail_max_retries",
+          "sync.detail_backoff_base",
+          "sync.cooldown_threshold",
+          "sync.cooldown_duration"
+        ]
+      },
+      {
+        "title": "Quoted and linked posts",
+        "fields": [
+          "sync.max_linked_depth",
+          "sync.reply_linked_depth"
+        ]
+      },
+      {
+        "title": "Database",
+        "note": "Memory the local database may use. Larger values can speed up big archives.",
+        "fields": [
+          "database.cache_size_kb",
+          "database.mmap_size_bytes"
+        ]
+      }
+    ],
+    "units": {
+      "web.avatar_cache_limit_mb": "MiB",
+      "sync.page_delay": "sec",
+      "sync.detail_delay": "sec",
+      "sync.timeout": "sec",
+      "sync.backoff_base": "sec",
+      "sync.detail_backoff_base": "sec",
+      "sync.cooldown_threshold": "errors",
+      "sync.cooldown_duration": "sec",
+      "sync.max_linked_depth": "hops",
+      "database.cache_size_kb": "KiB",
+      "database.mmap_size_bytes": "bytes"
+    },
+    "byte_units": {
+      "database.cache_size_kb": 1024,
+      "database.mmap_size_bytes": 1
+    },
+    "controls": {
+      "web.analytics_refresh_time": "time",
+      "sync.reply_linked_depth": "switch"
+    },
+    "requires": {
+      "web.avatar_cache_limit_enabled": [
+        "web.fetch_avatars"
+      ],
+      "web.avatar_cache_limit_mb": [
+        "web.fetch_avatars",
+        "web.avatar_cache_limit_enabled"
+      ]
+    },
+    "labels": {
+      "auth": "Authentication",
+      "sync": "Sync",
+      "web": "Web server",
+      "schedule": "Scheduled syncs",
+      "activity": "Activity history",
+      "database": "Database",
+      "auth.auth_token": "Auth token",
+      "auth.ct0": "CT0 (CSRF token)",
+      "auth.user_id": "User ID",
+      "sync.collections": "What to sync",
+      "sync.page_delay": "Page delay",
+      "sync.detail_delay": "Tweet delay",
+      "sync.max_retries": "Timeline retries",
+      "sync.backoff_base": "Timeline retry wait",
+      "sync.detail_max_retries": "Tweet retries",
+      "sync.detail_backoff_base": "Tweet retry wait",
+      "sync.cooldown_threshold": "Cool down after",
+      "sync.cooldown_duration": "Cooldown length",
+      "sync.timeout": "Request timeout",
+      "sync.max_linked_depth": "Follow depth",
+      "sync.reply_linked_depth": "Include links in replies",
+      "web.host": "Host",
+      "web.port": "Port",
+      "web.fetch_avatars": "Download missing avatars",
+      "web.avatar_cache_limit_enabled": "Limit the avatar cache",
+      "web.avatar_cache_limit_mb": "Cache limit",
+      "web.analytics_refresh_time": "Daily refresh",
+      "schedule.enabled": "Sync automatically",
+      "schedule.cadence": "Repeat",
+      "schedule.every_hours": "Interval",
+      "schedule.time": "Time",
+      "schedule.randomize_time": "Vary the start time",
+      "schedule.random_offset_min_hours": "Earliest delay",
+      "schedule.random_offset_max_hours": "Latest delay",
+      "schedule.weekday": "Weekday",
+      "schedule.day_of_month": "Day of the month",
+      "schedule.timezone": "Time zone",
+      "activity.max_runs": "Maximum saved runs",
+      "activity.retention_days": "Log retention",
+      "database.cache_size_kb": "Page cache",
+      "database.mmap_size_bytes": "Memory-mapped I/O"
+    },
+    "descriptions": {
+      "auth.auth_token": "Your Twitter/X authentication token. See README",
+      "auth.ct0": "Your CSRF token. See README",
+      "auth.user_id": "Your numerical Twitter/X user ID.",
+      "sync.collections": "Which collections Sync now and scheduled syncs save: bookmarks, likes, your tweets. Threads, media, link previews, and tags then run as usual.",
+      "database.cache_size_kb": "Cache target for each database connection.",
+      "database.mmap_size_bytes": "How much of the database can be read through memory mapping.",
+      "sync.page_delay": "Wait between pages of tweets.",
+      "sync.detail_delay": "Wait between individual tweet lookups.",
+      "sync.max_retries": "Tries again when X rate-limits a page of tweets.",
+      "sync.backoff_base": "Wait before the first retry; it doubles each time.",
+      "sync.detail_max_retries": "Tries again when X rate-limits a single tweet.",
+      "sync.detail_backoff_base": "Wait before the first retry; it doubles each time.",
+      "sync.cooldown_threshold": "Rate-limit errors in a row before a long pause.",
+      "sync.cooldown_duration": "How long that pause lasts.",
+      "sync.timeout": "Give up on a slow request after this long.",
+      "sync.max_linked_depth": "How far to follow quoted tweets and linked posts from saved tweets and their author's thread. 0 turns this off.",
+      "sync.reply_linked_depth": "Also save tweets quoted or linked in other people's replies to saved conversations, one hop only.",
+      "web.fetch_avatars": "When a profile picture isn't saved yet, the server downloads it from X the first time it's shown and keeps a copy. When off, only saved avatars appear.",
+      "web.avatar_cache_limit_enabled": "Each week, remove the least recently used avatars once the cache is over its limit.",
+      "web.avatar_cache_limit_mb": "",
+      "web.analytics_refresh_time": "When Analytics statistics are rebuilt, in the server's local time. Takes effect after a restart.",
+      "web.host": "Use 0.0.0.0 to let other devices on your network connect.",
+      "web.port": "",
+      "schedule.enabled": "Run sync automatically from the always-on Web service.",
+      "schedule.cadence": "Run every N hours, every day, every week, or every month.",
+      "schedule.every_hours": "Hours between runs when the hourly cadence is selected.",
+      "schedule.time": "Local or configured-zone time for daily, weekly, and monthly runs.",
+      "schedule.randomize_time": "Add a random delay after the selected run time by default.",
+      "schedule.random_offset_min_hours": "Smallest added delay in hours; 0 keeps the selected time.",
+      "schedule.random_offset_max_hours": "Largest added delay in hours.",
+      "schedule.weekday": "Weekday for weekly runs, where Monday is zero.",
+      "schedule.day_of_month": "Preferred calendar day for monthly runs.",
+      "schedule.timezone": "IANA time zone name, or local for the system time zone.",
+      "activity.max_runs": "Maximum number of completed command histories to retain.",
+      "activity.retention_days": "Maximum age of completed command histories."
+    }
+  },
+  "defaults": {
+    "auth": {
+      "auth_token": null,
+      "ct0": null,
+      "user_id": null
+    },
+    "sync": {
+      "collections": [
+        "bookmarks",
+        "likes"
+      ],
+      "page_delay": 2.0,
+      "detail_delay": 0.0,
+      "max_retries": 3,
+      "backoff_base": 2.0,
+      "detail_max_retries": 2,
+      "detail_backoff_base": 30.0,
+      "cooldown_threshold": 3,
+      "cooldown_duration": 300.0,
+      "timeout": 30.0,
+      "max_linked_depth": 50,
+      "reply_linked_depth": 0
+    },
+    "web": {
+      "password_hash": null,
+      "host": "0.0.0.0",
+      "port": 8000,
+      "fetch_avatars": true,
+      "avatar_cache_limit_enabled": true,
+      "avatar_cache_limit_mb": 512,
+      "analytics_refresh_time": "05:00"
+    },
+    "schedule": {
+      "enabled": false,
+      "cadence": "daily",
+      "every_hours": 6,
+      "time": "03:00",
+      "randomize_time": true,
+      "random_offset_min_hours": 0.0,
+      "random_offset_max_hours": 2.0,
+      "weekday": 0,
+      "day_of_month": 1,
+      "timezone": "local"
+    },
+    "activity": {
+      "max_runs": 100,
+      "retention_days": 90
+    },
+    "database": {
+      "cache_size_kb": 524288,
+      "mmap_size_bytes": 1073741824
+    },
+    "tagging": {
+      "enabled": false,
+      "api_key": null,
+      "api_mode": "free",
+      "model": "gemini-3.6-flash",
+      "thinking_level": "high",
+      "google_search": false,
+      "free_batch_size": 20,
+      "free_rpm": 10,
+      "free_rpd": 20,
+      "processing_tier": "flex",
+      "daily_spend_limit_usd": null,
+      "unlimited_spend": false,
+      "search_safety_reserve": 100,
+      "unknown_billing_policy": "reserve",
+      "unknown_request_reserve_usd": 0.02,
+      "max_unknown_requests_per_day": 3,
+      "search_unknown_policy": "reserve",
+      "max_unknown_search_requests": 3,
+      "tagging_context": [],
+      "additional_instructions": null,
+      "max_media_size_mb": 100
+    }
+  }
+}

@@ -1,0 +1,114 @@
+/* Header, collection tabs, and the sync panel. All colors follow the app's semantic theme roles. */
+/* The title row and tabs carry their own surface so the tabs can tuck away while the title row stays. */
+.nook-header { position: sticky; top: 0; z-index: 30; pointer-events: none; }
+.nook-header > * { pointer-events: auto; }
+.nook-title-row { position: relative; z-index: 2; background: var(--bg-header); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 6px 8px 6px 16px; }
+.nook-title-block { flex: 1; min-width: 0; }
+.nook-title-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.nook-title-line h1 { font-size: calc(var(--font-size-base) * 1.333333); line-height: 24px; font-weight: 800; margin: 0; white-space: nowrap; }
+/* The demo label reads as part of the title: same size and weight, recolored in the accent. */
+.nook-demo-badge { color: var(--accent-color); font-size: calc(var(--font-size-base) * 1.333333); font-weight: 800; line-height: 24px; }
+.nook-title-line { column-gap: 6px; }
+.nook-sync { display: block; margin-top: 1px; color: var(--text-secondary); font-size: calc(var(--font-size-base) * .866667); line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nook-utilities { display: flex; align-items: center; gap: 0; flex-shrink: 0; }
+.nook-icon-button { position: relative; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 0; border-radius: 9999px; background: transparent; color: var(--text-primary); cursor: pointer; }
+.nook-icon-button svg { width: 20px; height: 20px; fill: currentColor; }
+.nook-icon-button:hover { background: var(--bg-tertiary); }
+.nook-back { margin-left: -8px; }
+.nook-notice-count { position: absolute; top: 3px; right: 1px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9999px; background: var(--accent-color); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--bg-primary); }
+/* Equal tabs while they fit; below that the strip scrolls and fades at the clipped edge. */
+.nook-tabs-frame { position: relative; z-index: 1; background: var(--bg-header); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-color); transition: transform 200ms ease, opacity 200ms ease; }
+.nook-tabs-frame::before, .nook-tabs-frame::after { content: ''; position: absolute; top: 0; bottom: 0; width: 32px; pointer-events: none; opacity: 0; transition: opacity 120ms ease; }
+.nook-tabs-frame::before { left: 0; background: linear-gradient(to left, transparent, var(--bg-primary)); }
+.nook-tabs-frame::after { right: 0; background: linear-gradient(to right, transparent, var(--bg-primary)); }
+.nook-tabs-frame.is-clipped-start::before, .nook-tabs-frame.is-clipped-end::after { opacity: 1; }
+.nook-tabs { position: relative; height: 53px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.nook-tabs::-webkit-scrollbar { display: none; }
+.nook-tab { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; height: 53px; padding: 0 16px; border: 0; background: transparent; color: var(--text-secondary); font-size: var(--font-size-base); font-weight: 500; cursor: pointer; transition: background-color 120ms ease; }
+.nook-tab:hover { background: var(--bg-tertiary); }
+.nook-tab[aria-selected="true"] { color: var(--text-primary); font-weight: 700; }
+.nook-tab span { position: relative; display: flex; align-items: center; height: 100%; white-space: nowrap; }
+.nook-tab[aria-selected="true"] span::after { content: ''; position: absolute; bottom: 0; left: 50%; width: 100%; min-width: 32px; height: 4px; border-radius: 9999px; background: var(--accent-color); transform: translateX(-50%); }
+.nook-search-wrap { padding: 12px 16px 4px; }
+.nook-search-field { border-radius: 9999px; background: var(--bg-secondary); }
+.nook-search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-secondary); }
+.nook-search-icon svg { width: 18px; height: 18px; }
+.nook-search-input { padding: 10px 42px 10px 46px !important; min-height: 44px !important; line-height: 22px !important; font-size: calc(var(--font-size-base) * .933333); border: 1px solid transparent !important; background: transparent !important; }
+.nook-search-input:focus { border-color: var(--accent-color) !important; background: var(--bg-primary) !important; box-shadow: 0 0 0 1px var(--accent-color) !important; }
+.nook-search-field:focus-within .nook-search-icon { color: var(--accent-color); }
+.nook-results-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 0 8px 4px 16px; border-bottom: 1px solid var(--border-color); }
+.nook-count { color: var(--text-secondary); font-size: calc(var(--font-size-base) * .866667); line-height: 16px; }
+.feed-picker-trigger.nook-sort { min-height: 40px; font-size: calc(var(--font-size-base) * .933333); font-weight: 700; gap: 8px; padding: 8px 12px; }
+.nook-sort svg { width: 16px; height: 16px; }
+.feed-picker:first-child .nook-sort-menu { left: auto; right: 0; }
+.nook-sort-menu { border-radius: 12px; background: var(--dropdown-bg); box-shadow: 0 0 15px 0 color-mix(in srgb, var(--text-secondary) 20%, transparent), 0 0 3px 1px color-mix(in srgb, var(--text-secondary) 15%, transparent); }
+.nook-icon-button:focus-visible, .nook-tab:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -3px; }
+.settings-fab { display: none !important; }
+@media (max-width: 640px) {
+  .nook-tab { font-size: calc(var(--font-size-base) * .933333); padding: 0 12px; }
+  .nook-sort { min-height: 44px !important; }
+  .nook-search-input { font-size: max(16px, var(--font-size-base)); }
+}
+@media (max-width: 359px) {
+  .nook-tab { font-size: calc(var(--font-size-base) * .866667); padding: 0 8px; }
+}
+/* Sync activity lives in the top bar: the drawer opens as a panel anchored under its button. */
+.nook-activity-button { color: var(--text-primary); }
+.nook-activity-glyph { display: flex; }
+.nook-activity-spinner { width: 18px; height: 18px; border: 2px solid color-mix(in srgb, var(--accent-color) 25%, transparent); border-top-color: var(--accent-color); border-radius: 50%; animation: nook-activity-spin .8s linear infinite; }
+@keyframes nook-activity-spin { to { transform: rotate(360deg); } }
+
+/* Sync panel: anchored under the top-bar sync button. Theme roles only. */
+.nook-sync-panel { position: fixed; z-index: 70; top: var(--nook-activity-top, 64px); right: var(--nook-activity-right, 16px); width: min(380px, calc(100vw - 16px)); max-height: calc(100dvh - var(--nook-activity-top, 64px) - 16px); overflow-y: auto; border-radius: 16px; background: var(--bg-primary); color: var(--text-primary); box-shadow: 0 0 15px rgba(101, 119, 134, .2), 0 0 3px 1px rgba(101, 119, 134, .15), 0 8px 32px rgba(0, 0, 0, .12); animation: nook-activity-open 140ms ease-out; }
+@keyframes nook-activity-open { from { opacity: 0; transform: translateY(-4px); } }
+.cs-top { padding: 16px 16px 14px; }
+.cs-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.cs-head strong { font-size: 17px; line-height: 22px; font-weight: 800; }
+.cs-time { color: var(--text-secondary); font-size: 13px; font-variant-numeric: tabular-nums; }
+.cs-bar { display: flex; gap: 4px; margin-top: 12px; }
+.cs-seg { flex: 1 1 0; min-width: 0; height: 20px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; cursor: pointer; transition: flex-grow 220ms ease-in-out; }
+.cs-seg.is-current, .cs-seg[aria-selected="true"] { flex-grow: 1.6; }
+.cs-track { width: 100%; height: 3px; overflow: hidden; border-radius: 9999px; background: var(--border-color); transition: background-color 180ms ease, transform 160ms ease; }
+.cs-seg:is(:hover, :focus-visible) .cs-track { transform: scaleY(1.65); }
+.cs-seg:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
+.cs-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--accent-color); transition: width 240ms ease; }
+.cs-seg.is-active .cs-track { background: color-mix(in srgb, var(--accent-color) 28%, var(--border-color)); }
+.cs-seg.is-skipped .cs-fill, .cs-seg.is-paused .cs-fill { background: var(--text-secondary); }
+.cs-seg.is-failed .cs-track, .cs-seg.is-cancelled .cs-track { background: color-mix(in srgb, var(--danger-color) 28%, var(--border-color)); }
+.cs-seg.is-failed .cs-fill, .cs-seg.is-cancelled .cs-fill { background: var(--danger-color); }
+.cs-caption { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; margin: 4px 0 0; font-size: 14px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.cs-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-r { color: var(--text-secondary); text-align: right; white-space: nowrap; }
+.cs-r.is-danger { color: var(--danger-color); }
+.cs-subline { grid-column: 1 / -1; margin-top: 2px; color: var(--text-secondary); font-size: 13px; }
+.cs-menu { margin: 0; padding: 4px 0; list-style: none; border-top: 1px solid var(--border-color); }
+.cs-menu.cs-flush { border-top: 0; padding-top: 0; }
+.cs-menu.cs-last { padding-bottom: 8px; }
+.cs-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 10px 16px; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
+.cs-row:hover { background: var(--hover-bg); }
+.cs-row:focus-visible, .cs-back:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
+.cs-row:disabled { opacity: .5; cursor: default; }
+.cs-row svg { width: 20px; height: 20px; flex: 0 0 20px; fill: currentColor; }
+.cs-row.is-danger { color: var(--danger-color); }
+.cs-grow { flex: 1; min-width: 0; }
+.cs-two { display: flex; flex-direction: column; }
+.cs-sub { color: var(--text-secondary); font-size: 13px; line-height: 16px; }
+.cs-detail { color: var(--text-secondary); font-size: 13px; }
+.cs-chev { display: flex; color: var(--text-secondary); }
+.cs-chev svg { width: 16px; height: 16px; flex-basis: 16px; }
+.cs-tick { display: flex; color: var(--accent-color); visibility: hidden; }
+.cs-tick svg { width: 18px; height: 18px; flex-basis: 18px; }
+.cs-check[aria-checked="true"] .cs-tick { visibility: visible; }
+.cs-subhead { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); }
+.cs-subhead strong { font-size: 17px; line-height: 22px; font-weight: 800; }
+.cs-back { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-primary); cursor: pointer; }
+.cs-back:hover { background: var(--hover-bg); }
+.cs-back svg { width: 20px; height: 20px; fill: currentColor; }
+.cs-label { padding: 12px 16px 2px; color: var(--text-secondary); font-size: 13px; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .nook-sync-panel { animation: none; } .cs-seg, .cs-track, .cs-fill { transition: none; } }
+
+@media (prefers-reduced-motion: reduce) { .nook-activity-spinner { animation: none; border-color: var(--accent-color); opacity: .6; } }
+/* Like the search bar, the tabs get out of the way while reading: they tuck under the title row on scroll down and return on scroll up. */
+.nook-header.tabs-hidden .nook-tabs-frame { transform: translateY(-100%); opacity: 0; pointer-events: none; }
+.nook-header.tabs-hidden .nook-title-row, .nook-header:has(> .nook-tabs-frame[style*="display: none"]) .nook-title-row { box-shadow: 0 1px 0 var(--border-color); }
+@media (prefers-reduced-motion: reduce) { .nook-header *, .nook-header *::before, .nook-header *::after, .nook-sort-menu { transition: none !important; } }

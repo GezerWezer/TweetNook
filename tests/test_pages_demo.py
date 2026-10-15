@@ -11,6 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER_PATH = ROOT / "scripts" / "build_pages_demo.py"
 FIXTURE_PATH = ROOT / "demo" / "data.json"
+DEMO_CONFIG_PATH = ROOT / "demo" / "config.json"
 NODE_TEST = ROOT / "tests" / "js" / "test_demo_api.cjs"
 
 
@@ -157,6 +158,10 @@ def test_static_builder_creates_subpath_safe_public_artifact(tmp_path: Path) -> 
     assert "window.TWEETNOOK_DEMO = true" in html
     assert 'window.TWEETNOOK_DEMO_VERSION = "0.0.9"' in html
     assert 'window.TWEETNOOK_DEMO_DATA_URL = "demo/data.json?v=0.0.9"' in html
+    assert 'window.TWEETNOOK_DEMO_CONFIG_URL = "demo/config.json?v=0.0.9"' in html
+    assert json.loads((output / "demo" / "config.json").read_text(encoding="utf-8")) == json.loads(
+        DEMO_CONFIG_PATH.read_text(encoding="utf-8")
+    )
     assert html.index('src="demo/demo-api.js?v=0.0.9"') < html.index(
         'src="static/js/app.js?v=0.0.9"'
     )
@@ -204,11 +209,20 @@ def test_production_frontend_only_exposes_demo_behavior_behind_explicit_flag() -
 
     assert "window.TWEETNOOK_DEMO = true" not in html
     assert "window.TWEETNOOK_DEMO === true" in app
-    assert 'x-show="isDemo"' in html
-    assert 'text-[var(--accent-color)]">DEMO</span>' in html
-    assert "This demo uses synthetic, in-memory data." in html
-    assert "Setup, Configuration, and Logs are hidden" in html
-    assert html.count('x-show="!isDemo"') >= 6
+    assert '<span x-show="isDemo" class="nook-demo-badge">Demo</span>' in html
+    assert ':disabled="isDemo">Run setup again</button>' in html
+    # Setup needs a local installation; Configuration and Activity logs are served by the adapter.
     assert "if (!this.isDemo) this.fetchSetup()" in app
-    assert "if (!this.isDemo) this.fetchConfig()" in app
-    assert "if (!this.isDemo) this.fetchActivityRuns()" in app
+    assert "if (!this.isDemo) this.fetchConfig()" not in app
+    assert "if (!this.isDemo) this.fetchActivityRuns()" not in app
+
+
+def test_demo_config_matches_the_server_schema_and_defaults() -> None:
+    pytest.importorskip("pydantic")
+    builder = _load_builder()
+    expected = json.loads(json.dumps(builder.demo_config_payload()))
+
+    assert json.loads(DEMO_CONFIG_PATH.read_text(encoding="utf-8")) == expected, (
+        "demo/config.json is out of date; run "
+        "`uv run python scripts/build_pages_demo.py --refresh-config`"
+    )
