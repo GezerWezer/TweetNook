@@ -104,7 +104,7 @@
     },
     {
       "tweet_id": "202602140002",
-      "text": "This is a liked text reply to the archive owner’s standalone post.",
+      "text": "This is a liked text reply to the archive owner\u2019s standalone post.",
       "author_id": "910000000000000002",
       "created_at": "2026-02-14T16:04:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -188,7 +188,7 @@
     },
     {
       "tweet_id": "202602130004",
-      "text": "This is User Two’s standalone text post. It is also the source post used by a later quote tweet.",
+      "text": "This is User Two\u2019s standalone text post. It is also the source post used by a later quote tweet.",
       "author_id": "910000000000000003",
       "created_at": "2026-02-13T15:00:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -223,7 +223,7 @@
     },
     {
       "tweet_id": "202602130005",
-      "text": "@demo_user2 @demo_user1 This is a GIF reply to User Two’s standalone post, also addressed to User One.",
+      "text": "@demo_user2 @demo_user1 This is a GIF reply to User Two\u2019s standalone post, also addressed to User One.",
       "author_id": "910000000000000004",
       "created_at": "2026-02-13T15:04:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -302,7 +302,7 @@
     },
     {
       "tweet_id": "202602120007",
-      "text": "This is User One quoting User Two’s standalone text post.",
+      "text": "This is User One quoting User Two\u2019s standalone text post.",
       "author_id": "910000000000000002",
       "created_at": "2026-02-12T14:00:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -338,7 +338,7 @@
     },
     {
       "tweet_id": "202602120008",
-      "text": "This is a one-image reply to User One’s quote tweet.",
+      "text": "This is a one-image reply to User One\u2019s quote tweet.",
       "author_id": "910000000000000005",
       "created_at": "2026-02-12T14:04:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -474,7 +474,7 @@
         "TweetNook demo",
         "image gallery"
       ],
-      "description": "Image 1: A close-up portrait of a cat’s face, centered on its nose and whiskers. Image 2: A close-up portrait of a cat looking toward the camera."
+      "description": "Image 1: A close-up portrait of a cat\u2019s face, centered on its nose and whiskers. Image 2: A close-up portrait of a cat looking toward the camera."
     },
     {
       "tweet_id": "202602110011",
@@ -520,11 +520,11 @@
         "reply thread",
         "image gallery"
       ],
-      "description": "A white rabbit in an enclosure turns away from a cup of mealworms. On-screen text reads, “I said I’m GOOD,” with laughing emojis."
+      "description": "A white rabbit in an enclosure turns away from a cup of mealworms. On-screen text reads, \u201cI said I\u2019m GOOD,\u201d with laughing emojis."
     },
     {
       "tweet_id": "202602110012",
-      "text": "This is User Three’s text response beneath the video reply.",
+      "text": "This is User Three\u2019s text response beneath the video reply.",
       "author_id": "910000000000000004",
       "created_at": "2026-02-11T13:08:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -649,7 +649,7 @@
         "TweetNook demo",
         "reply thread"
       ],
-      "description": "Image 1: A close-up portrait of a cat’s face, centered on its nose and whiskers. Image 2: A close-up portrait of a cat looking toward the camera."
+      "description": "Image 1: A close-up portrait of a cat\u2019s face, centered on its nose and whiskers. Image 2: A close-up portrait of a cat looking toward the camera."
     },
     {
       "tweet_id": "202602100015",
@@ -829,7 +829,7 @@
     },
     {
       "tweet_id": "202602080019",
-      "text": "This is a GIF post quote-tweeting User Five’s standalone video.",
+      "text": "This is a GIF post quote-tweeting User Five\u2019s standalone video.",
       "author_id": "910000000000000007",
       "created_at": "2026-02-08T10:00:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -959,11 +959,11 @@
         "reply thread",
         "video post"
       ],
-      "description": "A white rabbit in an enclosure turns away from a cup of mealworms. On-screen text reads, “I said I’m GOOD,” with laughing emojis."
+      "description": "A white rabbit in an enclosure turns away from a cup of mealworms. On-screen text reads, \u201cI said I\u2019m GOOD,\u201d with laughing emojis."
     },
     {
       "tweet_id": "202602070022",
-      "text": "This is a one-image post quote-tweeting User Four’s standalone GIF.",
+      "text": "This is a one-image post quote-tweeting User Four\u2019s standalone GIF.",
       "author_id": "910000000000000003",
       "created_at": "2026-02-07T09:00:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -1387,7 +1387,7 @@
     },
     {
       "tweet_id": "202602020033",
-      "text": "This is a one-image post quoting User Two’s standalone text post.",
+      "text": "This is a one-image post quoting User Two\u2019s standalone text post.",
       "author_id": "910000000000000003",
       "created_at": "2026-02-02T11:00:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -1467,7 +1467,7 @@
     },
     {
       "tweet_id": "202602010035",
-      "text": "This is a GIF post quoting the archive owner’s standalone text post.",
+      "text": "This is a GIF post quoting the archive owner\u2019s standalone text post.",
       "author_id": "910000000000000004",
       "created_at": "2026-02-01T10:00:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -1547,7 +1547,7 @@
     },
     {
       "tweet_id": "202601310037",
-      "text": "This is a video post quoting User Two’s standalone text post.",
+      "text": "This is a video post quoting User Two\u2019s standalone text post.",
       "author_id": "910000000000000005",
       "created_at": "2026-01-31T09:00:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -1695,7 +1695,7 @@
     },
     {
       "tweet_id": "202601290041",
-      "text": "This is a text post quoting the archive owner’s one-image reply.",
+      "text": "This is a text post quoting the archive owner\u2019s one-image reply.",
       "author_id": "910000000000000006",
       "created_at": "2026-01-29T15:00:00Z",
       "synced_at": "2026-02-14T16:10:00Z",
@@ -1879,7 +1879,7 @@
       "reply_to_username": null,
       "quoted_tweet_id": null,
       "tweet_id": "202602150002",
-      "text": "Browse like you would on X/Twitter. Click posts to expand their conversations. The search bar provides advanced filtering options—try them out!\n\nCheck out the demo on mobile, too!",
+      "text": "Browse like you would on X/Twitter. Click posts to expand their conversations. The search bar provides advanced filtering options\u2014try them out!\n\nCheck out the demo on mobile, too!",
       "author_id": "910000000000000003",
       "created_at": "2026-02-15T11:55:00Z",
       "collections": [
@@ -1915,7 +1915,7 @@
       "reply_to_username": null,
       "quoted_tweet_id": null,
       "tweet_id": "202602150003",
-      "text": "Check out Settings for appearance options. 👀",
+      "text": "Check out Settings for appearance options. \ud83d\udc40",
       "author_id": "910000000000000004",
       "created_at": "2026-02-15T11:50:00Z",
       "collections": [
@@ -3217,7 +3217,7 @@
         "nested quote",
         "image gallery"
       ],
-      "description": "Image 1: A close-up portrait of a cat’s face, centered on its nose and whiskers. Image 2: A close-up portrait of a cat looking toward the camera."
+      "description": "Image 1: A close-up portrait of a cat\u2019s face, centered on its nose and whiskers. Image 2: A close-up portrait of a cat looking toward the camera."
     },
     {
       "tweet_id": "202602130106",
@@ -3328,6 +3328,674 @@
       "tags": [
         "TweetNook demo",
         "reply thread"
+      ],
+      "description": ""
+    },
+    {
+      "tweet_id": "202602160001",
+      "text": "A field guide to keeping what matters",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:01:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [
+        "bookmark",
+        "like"
+      ],
+      "liked_order": 78,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160001",
+      "reply_to_id": null,
+      "reply_to_username": null,
+      "quoted_tweet_id": null,
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "X Article"
+      ],
+      "description": "",
+      "article": {
+        "article_id": "demo-article-1",
+        "title": "A field guide to keeping what matters",
+        "summary_text": "A calmer way to save ideas, keep their context, and find them again. A synthetic article with rich text and inline media.",
+        "content_text": "A useful archive gives an idea somewhere to land. Save what interests you, keep its context, and come back when you need it.\n\nMake room for the good stuff\n\nThis is a synthetic article written for the TweetNook demo. It shows headings, emphasis, links, lists, quotations, images, and code without leaving your archive.\n\nSave a post that you want to revisit.\n\nKeep the thread and any quoted posts beside it.\n\nUse a few useful tags to find it later.\n\nContext turns a saved link into something you can use.\n\nTry it for yourself\n\nOpen an article from its preview.\n\nRead its saved content, then return to the same conversation.\n\nVisit the project guide for more ideas.\n\nhas:article\n\nAn embedded post can be linked even when its contents were not captured:",
+        "published_at": "2026-02-15T11:01:00Z",
+        "status": "body_present",
+        "canonical_url": null,
+        "media": [
+          {
+            "media_key": "article-cover:202602160001",
+            "media_id": "demo-cover",
+            "source": "article_cover",
+            "type": "photo",
+            "url": "demo/media/article-cover.svg",
+            "width": 1500,
+            "height": 600,
+            "alt_text": "An illustrated reading desk with a book, a lamp, and a plant."
+          },
+          {
+            "media_key": "3_demo-diagram",
+            "media_id": "demo-diagram",
+            "source": "article_media",
+            "type": "photo",
+            "url": "demo/media/article-diagram.svg",
+            "width": 1200,
+            "height": 600,
+            "alt_text": "Three steps: save a post, add context, and find it again."
+          }
+        ],
+        "content_state": {
+          "blocks": [
+            {
+              "key": "0",
+              "text": "A useful archive gives an idea somewhere to land. Save what interests you, keep its context, and come back when you need it.",
+              "type": "unstyled",
+              "inlineStyleRanges": [
+                {
+                  "offset": 2,
+                  "length": 14,
+                  "style": "Bold"
+                }
+              ],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "1",
+              "text": "Make room for the good stuff",
+              "type": "header-two",
+              "inlineStyleRanges": [],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "2",
+              "text": "This is a synthetic article written for the TweetNook demo. It shows headings, emphasis, links, lists, quotations, images, and code without leaving your archive.",
+              "type": "unstyled",
+              "inlineStyleRanges": [],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "3",
+              "text": "Save a post that you want to revisit.",
+              "type": "unordered-list-item",
+              "inlineStyleRanges": [],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "4",
+              "text": "Keep the thread and any quoted posts beside it.",
+              "type": "unordered-list-item",
+              "inlineStyleRanges": [],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "5",
+              "text": "Use a few useful tags to find it later.",
+              "type": "unordered-list-item",
+              "inlineStyleRanges": [],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "6",
+              "text": "Context turns a saved link into something you can use.",
+              "type": "blockquote",
+              "inlineStyleRanges": [],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "7",
+              "text": " ",
+              "type": "atomic",
+              "inlineStyleRanges": [],
+              "entityRanges": [
+                {
+                  "key": 0,
+                  "offset": 0,
+                  "length": 1
+                }
+              ],
+              "data": {}
+            },
+            {
+              "key": "8",
+              "text": "Try it for yourself",
+              "type": "header-two",
+              "inlineStyleRanges": [],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "9",
+              "text": "Open an article from its preview.",
+              "type": "ordered-list-item",
+              "inlineStyleRanges": [],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "10",
+              "text": "Read its saved content, then return to the same conversation.",
+              "type": "ordered-list-item",
+              "inlineStyleRanges": [],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "11",
+              "text": "Visit the project guide for more ideas.",
+              "type": "unstyled",
+              "inlineStyleRanges": [],
+              "entityRanges": [
+                {
+                  "key": 1,
+                  "offset": 10,
+                  "length": 13
+                }
+              ],
+              "data": {}
+            },
+            {
+              "key": "12",
+              "text": "has:article",
+              "type": "code-block",
+              "inlineStyleRanges": [],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "13",
+              "text": "An embedded post can be linked even when its contents were not captured:",
+              "type": "unstyled",
+              "inlineStyleRanges": [],
+              "entityRanges": [],
+              "data": {}
+            },
+            {
+              "key": "14",
+              "text": " ",
+              "type": "atomic",
+              "inlineStyleRanges": [],
+              "entityRanges": [
+                {
+                  "key": 2,
+                  "offset": 0,
+                  "length": 1
+                }
+              ],
+              "data": {}
+            }
+          ],
+          "entityMap": [
+            {
+              "key": "0",
+              "value": {
+                "type": "MEDIA",
+                "data": {
+                  "mediaItems": [
+                    {
+                      "mediaId": "demo-diagram"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "key": "1",
+              "value": {
+                "type": "LINK",
+                "data": {
+                  "url": "https://github.com/gezerwezer/tweetnook"
+                }
+              }
+            },
+            {
+              "key": "2",
+              "value": {
+                "type": "TWEET",
+                "data": {
+                  "tweetId": "202602140001"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tweet_id": "202602160002",
+      "text": "This text post quotes an article. Open the preview to read its saved body.",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:02:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [
+        "bookmark",
+        "like"
+      ],
+      "liked_order": 77,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160002",
+      "reply_to_id": null,
+      "reply_to_username": null,
+      "quoted_tweet_id": "202602160001",
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "article quote"
+      ],
+      "description": ""
+    },
+    {
+      "tweet_id": "202602160003",
+      "text": "A video can quote an article without replacing its cover with a tiny thumbnail.",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:03:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [
+        "bookmark",
+        "like"
+      ],
+      "liked_order": 76,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [
+        {
+          "type": "video",
+          "url": "demo/media/video2.mp4",
+          "width": 690,
+          "height": 1156,
+          "duration_millis": 5784
+        }
+      ],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160003",
+      "reply_to_id": null,
+      "reply_to_username": null,
+      "quoted_tweet_id": "202602160001",
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "article quote"
+      ],
+      "description": "A short demo video accompanies a quoted article."
+    },
+    {
+      "tweet_id": "202602160004",
+      "text": "An article without a cover image",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:04:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [
+        "bookmark"
+      ],
+      "liked_order": null,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160004",
+      "reply_to_id": null,
+      "reply_to_username": null,
+      "quoted_tweet_id": null,
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "X Article"
+      ],
+      "description": "",
+      "article": {
+        "article_id": "demo-article-2",
+        "title": "An article without a cover image",
+        "summary_text": "This archive has the words, but no cover or rich formatting.",
+        "content_text": "This is a second synthetic article. It has no cover image.\n\nOlder captures may preserve only plain text. The reader keeps the paragraph breaks and makes the saved text available without inventing formatting.",
+        "status": "body_present",
+        "media": [],
+        "published_at": "2026-02-15T11:04:00Z",
+        "content_state": null
+      }
+    },
+    {
+      "tweet_id": "202602160005",
+      "text": "When only the preview survives",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:05:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [
+        "bookmark"
+      ],
+      "liked_order": null,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160005",
+      "reply_to_id": null,
+      "reply_to_username": null,
+      "quoted_tweet_id": null,
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "X Article"
+      ],
+      "description": "",
+      "article": {
+        "article_id": "demo-article-3",
+        "title": "When only the preview survives",
+        "summary_text": "Sometimes X returns a title and an excerpt but no full body. This demo shows exactly what was saved.",
+        "content_text": null,
+        "status": "preview_only",
+        "media": [],
+        "content_state": null
+      }
+    },
+    {
+      "tweet_id": "202602160006",
+      "text": "This is a plain-text reply without media or a quote tweet.",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:06:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [],
+      "liked_order": null,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160001",
+      "reply_to_id": "202602160001",
+      "reply_to_username": "demo_user2",
+      "quoted_tweet_id": null,
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "X Article"
+      ],
+      "description": ""
+    },
+    {
+      "tweet_id": "202602160007",
+      "text": "This is a text-only reply that also quotes another tweet.",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:07:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [],
+      "liked_order": null,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160001",
+      "reply_to_id": "202602160001",
+      "reply_to_username": "demo_user2",
+      "quoted_tweet_id": "202602160002",
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "article quote"
+      ],
+      "description": ""
+    },
+    {
+      "tweet_id": "202602160008",
+      "text": "This is a plain-text reply without media or a quote tweet.",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:08:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [],
+      "liked_order": null,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160002",
+      "reply_to_id": "202602160002",
+      "reply_to_username": "demo_user2",
+      "quoted_tweet_id": null,
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "X Article"
+      ],
+      "description": ""
+    },
+    {
+      "tweet_id": "202602160009",
+      "text": "This is a text-only reply that also quotes another tweet.",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:09:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [],
+      "liked_order": null,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160002",
+      "reply_to_id": "202602160002",
+      "reply_to_username": "demo_user2",
+      "quoted_tweet_id": "202602160002",
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "article quote"
+      ],
+      "description": ""
+    },
+    {
+      "tweet_id": "202602160010",
+      "text": "This is a plain-text reply without media or a quote tweet.",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:10:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [],
+      "liked_order": null,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160003",
+      "reply_to_id": "202602160003",
+      "reply_to_username": "demo_user2",
+      "quoted_tweet_id": null,
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "X Article"
+      ],
+      "description": ""
+    },
+    {
+      "tweet_id": "202602160011",
+      "text": "This is a text-only reply that also quotes another tweet.",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:11:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [],
+      "liked_order": null,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160003",
+      "reply_to_id": "202602160003",
+      "reply_to_username": "demo_user2",
+      "quoted_tweet_id": "202602160002",
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "article quote"
+      ],
+      "description": ""
+    },
+    {
+      "tweet_id": "202602160012",
+      "text": "This is a plain-text reply without media or a quote tweet.",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:12:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [],
+      "liked_order": null,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160004",
+      "reply_to_id": "202602160004",
+      "reply_to_username": "demo_user2",
+      "quoted_tweet_id": null,
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "X Article"
+      ],
+      "description": ""
+    },
+    {
+      "tweet_id": "202602160013",
+      "text": "This is a plain-text reply without media or a quote tweet.",
+      "author_id": "910000000000000003",
+      "created_at": "2026-02-15T11:13:00Z",
+      "synced_at": "2026-02-15T12:00:00Z",
+      "collections": [],
+      "liked_order": null,
+      "engagement": {
+        "replies": 1,
+        "retweets": 4,
+        "likes": 36,
+        "bookmarks": 11,
+        "views": 1700
+      },
+      "hashtags": [],
+      "mentions": [],
+      "urls": [],
+      "media": [],
+      "source": "Twitter Web App",
+      "card_name": null,
+      "conversation_id": "202602160005",
+      "reply_to_id": "202602160005",
+      "reply_to_username": "demo_user2",
+      "quoted_tweet_id": null,
+      "tags": [
+        "TweetNook demo",
+        "article demo",
+        "X Article"
       ],
       "description": ""
     }

@@ -2,25 +2,32 @@
 
 `data.json` contains synthetic placeholder posts only. `demo-api.js` deep-clones that fixture at
 page load and intercepts TweetNook API requests in memory; content mutations are never persisted.
-The fixture contains seven placeholder users, 22 root posts, and 56 contextual replies. The
+The fixture contains seven placeholder users, 31 root posts, and 68 contextual replies. The
 showcases cover standalone text, text quoting text or media, media quoting text or media, images,
 galleries, GIFs, and videos. Eight conversations include a nested original-poster response; ten base
 examples use a plain-text direct reply with no original-poster continuation. Every liked post also
 has two reusable text-only replies: one containing a quote tweet and one containing no quote. Only
-three replies are themselves liked. The 15 liked records open with three guides, a two-image gallery,
+three replies are themselves liked. The 18 liked records open with three guides, a two-image gallery,
 a standalone video, and a four-image gallery. The guides introduce the demo, browsing/search, and
 Appearance settings, with an invitation to try the demo on mobile. Every record has two to five
 prompt-aligned search tags; media records also have descriptions, while text-only descriptions
 remain empty. One standalone source post demonstrates a
 synthetic community note. Invented media posters and thumbnails remain intentionally absent.
 
+Three synthetic articles demonstrate a complete rich body with inline imagery,
+plain text without a cover, and a preview without a saved body. Text and video posts
+quote the rich article; their replies include a nested quote of that quote. Article
+covers and inline media use original SVG demo illustrations. Find these examples
+with `tag:"article demo"` across All Tweets; `has:article` selects the three article
+posts directly. The reader, focus mode, and quoted previews use production code.
+
 The demo follows the device's light/dark appearance automatically until a theme is selected in
 Settings. Split panel is the default on desktop; a saved layout choice takes precedence, and
 narrow screens continue to open conversations in a single column. In the default Likes order,
 `202601280043` appears immediately after `202602120007`.
 
-The fixture stores 78 records for complete conversation and quote context, but the **All Tweets**
-feed exposes only the 26 records that belong to at least one user-facing collection: authored,
+The fixture stores 99 records for complete conversation and quote context, but the **All Tweets**
+feed exposes only the 35 records that belong to at least one user-facing collection: authored,
 liked, or bookmarked. Context-only saved replies remain accessible inside their conversations.
 
 The Analytics modal uses a demo-sized projection of a captured production stats response. It keeps

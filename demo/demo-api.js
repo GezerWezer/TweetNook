@@ -403,7 +403,7 @@
                 collections: [...source.collections],
                 media: clone(source.media || []),
                 urls: clone(source.urls || []),
-                article: null,
+                article: clone(source.article || null),
                 media_tags: source.tags?.length || source.description
                     ? {tags: [...(source.tags || [])], description: source.description || ''}
                     : null,
@@ -866,7 +866,7 @@
                 core_db: archiveTweetCount,
                 tags: Math.max(1, tags.length),
                 user_profiles: uniqueAuthors.size,
-                articles: 1,
+                articles: state.tweets.filter(tweet => tweet.article).length,
             };
             const storageCountLabels = {
                 context_media: '10 photos · 7 videos/gifs',
@@ -878,7 +878,7 @@
                 core_db: `${archiveTweetCount.toLocaleString()} archive tweets`,
                 tags: `${Math.max(1, tags.length)} topic tags`,
                 user_profiles: `${uniqueAuthors.size} demo profiles`,
-                articles: '1 article card',
+                articles: `${state.tweets.filter(tweet => tweet.article).length} articles`,
             };
             const storageSegments = scaleStorageSegments(
                 STATS_REFERENCE.storage.detailed,
@@ -904,7 +904,7 @@
                     owner_user_id: 'demo_you',
                     unique_posts: archiveTweetCount,
                     media_rows: mediaCount,
-                    articles: 1,
+                    articles: state.tweets.filter(tweet => tweet.article).length,
                     urls: 5,
                     profiles: uniqueAuthors.size,
                     oldest_post: 'Jan 28, 2026',

@@ -15,7 +15,7 @@ Try it on mobile, too.
 - **Archive your tweets:** save bookmarks, likes, and your own tweets, along with replies and quoted tweets
 - **Import existing data:** bring in an official Twitter/X archive.
 - **Browse in your browser:** read saved threads, view photos and videos, and
-  explore quoted tweets and articles.
+  explore quoted tweets, or read saved X Articles with rich text and focus mode.
 - **Search and organize:** combine search filters, add your own tags, edit
   local descriptions, and hide tweets you no longer want to see.
 - **Automated tagging:** with an optional add-on, you can use Gemini to suggest tags and describe media.

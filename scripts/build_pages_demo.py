@@ -63,7 +63,7 @@ def validate_fixture(data: dict[str, Any]) -> None:
     tweets = data.get("tweets")
     _require(isinstance(authors, list) and len(authors) == 7, "demo fixture must contain 7 authors")
     _require(isinstance(tweets, list) and tweets, "demo fixture must contain tweets")
-    _require(12 <= len(tweets) <= 96, "demo fixture must contain between 12 and 96 tweets")
+    _require(12 <= len(tweets) <= 110, "demo fixture must contain between 12 and 110 tweets")
 
     def require_demo_asset(value: Any, label: str) -> None:
         asset_url = str(value or "")
@@ -115,6 +115,12 @@ def validate_fixture(data: dict[str, Any]) -> None:
             f"tweet {tweet_id} tags must be non-empty strings",
         )
         _require(len(set(tags)) == len(tags), f"tweet {tweet_id} tags must be unique")
+        article = tweet.get("article")
+        if article is not None:
+            _require(isinstance(article, dict), f"tweet {tweet_id} article must be an object")
+            _require(bool(article.get("title")), f"tweet {tweet_id} article needs a title")
+            for item in article.get("media", []):
+                require_demo_asset(item.get("url"), f"tweet {tweet_id} article media")
         community_note = tweet.get("community_note")
         _require(
             community_note is None

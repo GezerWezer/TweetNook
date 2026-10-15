@@ -107,6 +107,13 @@ routes; there is no separate manual-tag service module.
 
 ## Web core
 
+Archived article presentation is implemented in `tweetnook/web/articles.py` and
+`tweetnook/web/static/js/articles.js`, with styles in `articles.css`. The Web
+annotation pass loads article rows and media for main, quoted, nested, and reposted
+tweets in batches, preserving rich state while removing duplicate tweet-gallery
+images. Coverage: `tests/web/test_article_presentation.py` and
+`node tests/js/test_articles.cjs`.
+
 | File | Responsibility | Design/tests |
 |---|---|---|
 | [tweetnook/web/__init__.py](../../tweetnook/web/__init__.py) | Web package marker/public boundary | [Web and Jobs](web-and-jobs.md); Web tests |
