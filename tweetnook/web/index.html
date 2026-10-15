@@ -214,7 +214,7 @@
             </div>
 
             <template x-if="error">
-                <div class="p-4 mx-4 my-2 border rounded-lg" style="background-color: color-mix(in srgb, var(--danger-color) 20%, transparent); border-color: var(--danger-color); color: var(--danger-color);">
+                <div class="p-4 mx-4 my-2 border rounded-lg" style="background-color: color-mix(in srgb, var(--destructive-color) 20%, transparent); border-color: var(--destructive-color); color: var(--destructive-color);">
                     <div class="font-bold mb-1">Error Loading Tweets</div>
                     <div x-text="error"></div>
                     <button @click="error = null; fetchTweets()" class="mt-2 text-sm text-red-300 hover:text-red-100 underline">Try Again</button>
@@ -1373,7 +1373,7 @@
                                 <div class="setup-card">
                                     <h3 class="text-lg font-bold text-[var(--text-primary)]">Setup status</h3>
                                     <p class="mt-2 text-sm text-[var(--text-secondary)]" x-text="setupProgressMessage"></p>
-                                    <p class="mt-2 text-sm text-[var(--danger-color)]" x-show="setupError" x-text="setupError" role="alert"></p>
+                                    <p class="mt-2 text-sm text-[var(--destructive-color)]" x-show="setupError" x-text="setupError" role="alert"></p>
                                 </div>
                                 <div class="setup-card">
                                     <div class="flex items-center justify-between gap-4 py-1">
@@ -1499,7 +1499,7 @@
                         </template>
                         <template x-if="automatedTagging">
                             <div class="pb-10">
-                                <div x-show="automatedTaggingError" role="alert" class="rounded-xl border border-[var(--danger-color)] p-4 text-sm text-[var(--danger-color)]" x-text="automatedTaggingError"></div>
+                                <div x-show="automatedTaggingError" role="alert" class="rounded-xl border border-[var(--destructive-color)] p-4 text-sm text-[var(--destructive-color)]" x-text="automatedTaggingError"></div>
 
                                 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
                                     <p class="text-sm text-[var(--text-secondary)]">Please read the <a href="https://github.com/gezerwezer/tweetnook/blob/main/docs/automated-tagging.md" target="_blank" rel="noopener noreferrer" class="font-bold text-[var(--accent-color)] hover:underline">automated tagging documentation</a> first.</p>
@@ -1687,7 +1687,7 @@
                                             <template x-for="item in automatedTaggingContextItems" :key="item">
                                                 <div class="relative group flex items-center rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-1 pr-8 text-sm font-medium text-[var(--text-primary)]">
                                                     <span x-text="item"></span>
-                                                    <button type="button" @click="removeAutomatedTaggingContext(item)" class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-[var(--text-secondary)] hover:text-[var(--danger-color)]" :aria-label="`Remove ${item}`">
+                                                    <button type="button" @click="removeAutomatedTaggingContext(item)" class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-[var(--text-secondary)] hover:text-[var(--destructive-color)]" :aria-label="`Remove ${item}`">
                                                         <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.024-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293.39-.39 1.024-1.024 0-1.414L13.414 12z"></path></svg>
                                                     </button>
                                                 </div>
@@ -1712,7 +1712,7 @@
                                         <template x-for="item in automatedTaggingInstructionItems" :key="item">
                                             <div class="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
                                                 <span class="min-w-0 break-words text-sm text-[var(--text-primary)]" x-text="item"></span>
-                                                <button type="button" @click="removeAutomatedTaggingInstruction(item)" class="shrink-0 rounded-full p-1 text-[var(--text-secondary)] hover:text-[var(--danger-color)]" :aria-label="`Remove ${item}`">
+                                                <button type="button" @click="removeAutomatedTaggingInstruction(item)" class="shrink-0 rounded-full p-1 text-[var(--text-secondary)] hover:text-[var(--destructive-color)]" :aria-label="`Remove ${item}`">
                                                     <svg viewBox="0 0 24 24" aria-hidden="true" class="h-4 w-4 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-1.024-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.024-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.024 0 1.414s1.024.39 1.414 0L12 13.414l5.793 5.793c.39.39 1.024.39 1.414 0s.39-1.024 0-1.414L13.414 12z"></path></svg>
                                                 </button>
                                             </div>
@@ -1731,7 +1731,7 @@
                                         <input id="automated-tagging-tweet-id" type="text" inputmode="numeric" autocomplete="off" x-model="automatedTaggingTweetId" @input.debounce.350ms="lookupAutomatedTaggingTweet()" @keydown.enter.prevent="lookupAutomatedTaggingTweet()" placeholder="Enter the numeric tweet ID" class="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--input-border)] text-[var(--text-primary)] rounded-lg px-3 py-2 focus:outline-none focus:border-[var(--accent-color)]">
                                         <p class="mt-2 text-xs text-[var(--text-secondary)]">The ID must belong to a tweet already in your archive.</p>
                                         <p x-show="automatedTaggingTweetLookingUp" class="mt-2 text-sm text-[var(--text-secondary)]">Loading archived tweet…</p>
-                                        <p x-show="automatedTaggingTweetLookupError" role="alert" class="mt-2 text-sm text-[var(--danger-color)]" x-text="automatedTaggingTweetLookupError"></p>
+                                        <p x-show="automatedTaggingTweetLookupError" role="alert" class="mt-2 text-sm text-[var(--destructive-color)]" x-text="automatedTaggingTweetLookupError"></p>
                                     </div>
 
                                     <div x-show="automatedTaggingSelectedTweet" class="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4">
@@ -1750,7 +1750,7 @@
                                         <button id="run-automated-tagging-test-btn" type="button" @click="runAutomatedTaggingTest()" :disabled="!automatedTaggingSelectedTweet || automatedTaggingTesting" class="w-full rounded-full bg-[var(--accent-color)] px-5 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-50" x-text="automatedTaggingTesting ? 'Running test…' : 'Run test'"></button>
                                     </div>
 
-                                    <div x-show="automatedTaggingTestError" role="alert" class="rounded-xl border border-[var(--danger-color)] p-4 text-sm text-[var(--danger-color)] whitespace-pre-wrap" x-text="automatedTaggingTestError"></div>
+                                    <div x-show="automatedTaggingTestError" role="alert" class="rounded-xl border border-[var(--destructive-color)] p-4 text-sm text-[var(--destructive-color)] whitespace-pre-wrap" x-text="automatedTaggingTestError"></div>
 
                                     <template x-if="automatedTaggingTestResult?.success">
                                         <div class="rounded-xl border border-[var(--accent-color)] bg-[var(--bg-primary)] p-5 space-y-4">
@@ -2247,7 +2247,7 @@
                             <div class="space-y-3">
                                 <template x-for="notice in notices.filter(n => !n.dismissed)" :key="notice.id">
                                     <article class="setup-card notice-item">
-                                        <h4 class="font-bold" :class="notice.severity === 'error' ? 'text-[var(--danger-color)]' : (notice.severity === 'warning' ? 'text-[var(--accent-color)]' : 'text-[var(--text-primary)]')" x-text="notice.title"></h4>
+                                        <h4 class="font-bold" :class="notice.severity === 'error' ? 'text-[var(--destructive-color)]' : (notice.severity === 'warning' ? 'text-[var(--accent-color)]' : 'text-[var(--text-primary)]')" x-text="notice.title"></h4>
                                         <p class="mt-2 text-sm text-[var(--text-secondary)]" x-text="notice.message"></p>
                                         <div class="mt-4 flex flex-wrap gap-3">
                                             <button class="setup-btn" @click="openNotice(notice)">View details</button>
@@ -2635,7 +2635,7 @@
                                                     </button>
                                                 </div>
                                                 <div x-show="!setupSavingAuth && setupAuthResult && !setupAuthResult.success" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
-                                                     class="text-sm font-bold text-[var(--danger-color)] mt-3">
+                                                     class="text-sm font-bold text-[var(--destructive-color)] mt-3">
                                                     Authentication could not be verified. Check the server's internet connection and cookies.
                                                 </div>
                                             </div>

@@ -6068,9 +6068,9 @@ test('log formatting does not mark zero-failure summaries as errors', () => {
         'media: 30 downloaded, 0 failed\nmedia: 29 downloaded, 1 failed\nsync follow-up tagging failed',
     );
 
-    assert.doesNotMatch(formatted.split('\n')[0], /var\(--danger-color\)/);
-    assert.match(formatted.split('\n')[1], /var\(--danger-color\)/);
-    assert.match(formatted.split('\n')[2], /var\(--danger-color\)/);
+    assert.doesNotMatch(formatted.split('\n')[0], /var\(--destructive-color\)/);
+    assert.match(formatted.split('\n')[1], /var\(--destructive-color\)/);
+    assert.match(formatted.split('\n')[2], /var\(--destructive-color\)/);
 });
 
 test('notifications live in Settings with unread counts', () => {

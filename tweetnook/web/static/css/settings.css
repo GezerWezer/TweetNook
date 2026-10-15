@@ -125,7 +125,7 @@
 .nook-segmented button[aria-checked="true"] { background:var(--bg-primary); color:var(--text-primary); box-shadow:0 1px 3px rgba(15,20,25,.12),0 0 0 1px var(--border-color); }
 .nook-text-button { min-height:36px; padding:0 12px; border:0; border-radius:9999px; background:transparent; color:var(--accent-color); font-size:14px; font-weight:700; cursor:pointer; }
 .nook-text-button:hover { background:color-mix(in srgb,var(--accent-color) 10%,transparent); }
-.nook-destructive-button { min-height:44px; padding:0 24px; border:0; border-radius:9999px; background:#f4212e; color:#fff; font-size:15px; font-weight:700; cursor:pointer; }
+.nook-destructive-button { min-height:44px; padding:0 24px; border:0; border-radius:9999px; background:var(--destructive-color); color:var(--destructive-text); font-size:15px; font-weight:700; cursor:pointer; }
 .nook-destructive-button:disabled,.nook-secondary-button:disabled { opacity:.5; cursor:default; }
 .nook-search-pill { flex:1 1 220px; min-width:0; display:flex; align-items:center; gap:10px; min-height:44px; padding:0 16px; border:1px solid transparent; border-radius:9999px; background:var(--bg-secondary); color:var(--text-secondary); }
 .nook-search-pill:focus-within { border-color:var(--accent-color); background:var(--bg-primary); box-shadow:0 0 0 1px var(--accent-color); color:var(--accent-color); }
@@ -141,7 +141,7 @@
 .nook-menu [role="menuitem"]:hover,.nook-menu [role="menuitem"]:focus-visible { background:var(--hover-bg); outline:none; }
 .nook-menu [role="menuitem"] > span { display:flex; }
 .nook-menu svg { width:18.75px; height:18.75px; }
-.nook-menu .is-destructive { color:#f4212e; }
+.nook-menu .is-destructive { color:var(--destructive-color); }
 .nook-sheet-backdrop { position:fixed; inset:0; z-index:130; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(0,0,0,.4); }
 .nook-sheet { width:min(480px,100%); max-height:calc(100dvh - 32px); overflow:auto; border-radius:16px; background:var(--bg-primary); color:var(--text-primary); }
 .nook-sheet-header { position:sticky; top:0; display:flex; align-items:center; gap:8px; min-height:56px; padding:6px 16px 6px 8px; background:var(--bg-primary); }
@@ -252,7 +252,7 @@ fieldset:disabled .nook-select-trigger { cursor:default; }
 
 /* ---- Schedule ---- */
 .nook-schedule-page { padding-top:4px; }
-.nook-schedule-error { color:#f4212e; }
+.nook-schedule-error { color:var(--destructive-color); }
 .nook-schedule-summary { display:flex; align-items:flex-start; gap:12px; margin:0; padding:8px 0 12px; color:var(--text-secondary); }
 .nook-schedule-icon { flex:0 0 20px; display:flex; padding-top:0; color:var(--text-secondary); }
 .nook-schedule-icon svg { width:20px; height:20px; }
@@ -280,7 +280,7 @@ fieldset:disabled .nook-select-trigger { cursor:default; }
 .nook-delay-row { display:flex; align-items:center; gap:10px; margin-top:4px; }
 .nook-delay-row .nook-select { flex:1 1 0; }
 .nook-delay-to { color:var(--text-secondary); font-size:15px; }
-.nook-field-error { margin:8px 0 0; color:#f4212e; font-size:13px; line-height:18px; }
+.nook-field-error { margin:8px 0 0; color:var(--destructive-color); font-size:13px; line-height:18px; }
 @media (max-width:420px) { .nook-day-chips { gap:4px; } .nook-day-chips button { font-size:13px; } .nook-period button { padding:0 12px; } }
 @media (prefers-reduced-motion:reduce) { .nook-select-chevron svg,.nook-schedule-fields { transition:none; } }
 
@@ -332,7 +332,7 @@ fieldset:disabled .nook-select-trigger { cursor:default; }
 .nook-log-copy strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; line-height:20px; font-weight:700; }
 .nook-log-meta { display:block; margin:4px 0 0; color:var(--text-secondary); font-size:14px; line-height:18px; }
 .nook-log-copy .nook-log-meta { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.nook-log-state.is-failed { color:var(--danger-color); font-weight:700; }
+.nook-log-state.is-failed { color:var(--destructive-color); font-weight:700; }
 .nook-log-state.is-running { color:var(--accent-color); font-weight:700; }
 .nook-log-detail { padding-top:12px; }
 .nook-log-summary { margin:0; color:var(--text-primary); font-size:15px; line-height:20px; }
@@ -341,7 +341,7 @@ fieldset:disabled .nook-select-trigger { cursor:default; }
 .nook-log-counts { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; color:var(--text-secondary); font-size:13px; line-height:18px; }
 .nook-log-counts button { padding:0; border:0; background:transparent; font-size:13px; font-weight:700; cursor:pointer; }
 .nook-log-counts button:hover { text-decoration:underline; }
-.nook-log-counts .is-error { color:var(--danger-color); }
+.nook-log-counts .is-error { color:var(--destructive-color); }
 .nook-log-counts .is-warning { color:var(--accent-color); }
 .nook-log-actions { display:flex; gap:8px; }
 .nook-log-panel { margin-bottom:8px; padding:12px 0; border:1px solid var(--border-color); border-radius:12px; background:var(--bg-secondary); color:var(--text-primary); font:13px/20px ui-monospace,SFMono-Regular,Menlo,monospace; }
@@ -351,7 +351,7 @@ fieldset:disabled .nook-select-trigger { cursor:default; }
 .nook-log-line > span { white-space:pre-wrap; overflow-wrap:anywhere; }
 .nook-log-line.is-quiet { color:var(--text-secondary); }
 .nook-log-line.is-warning { color:var(--accent-color); }
-.nook-log-line.is-error { color:var(--danger-color); }
+.nook-log-line.is-error { color:var(--destructive-color); }
 .nook-log-line.is-flash { background:var(--hover-bg); box-shadow:inset 3px 0 0 currentColor; }
 .nook-log-fold { display:flex; align-items:center; gap:4px; padding:0 16px; border:0; background:transparent; color:var(--accent-color); font:inherit; cursor:pointer; }
 .nook-log-fold:hover { text-decoration:underline; }
