@@ -352,21 +352,27 @@ function nookRunTitle(title) {
   const command = String(title || '').replace(/^tweetnook\s+/, '').trim();
   return NOOK_RUN_TITLES[command] || (command ? command[0].toUpperCase() + command.slice(1) : 'Activity');
 }
+function nookWhenLabel(seconds) {
+  const date = new Date(seconds * 1000), today = new Date();
+  const startOf = value => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const days = Math.round((startOf(today) - startOf(date)) / 86400000);
+  const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (days === 0) return `Today, ${time}`;
+  if (days === 1) return `Yesterday, ${time}`;
+  return `${date.toLocaleDateString([], { month: 'short', day: 'numeric', year: date.getFullYear() === today.getFullYear() ? undefined : 'numeric' })}, ${time}`;
+}
+// Notices store ISO timestamps; older ones may have none.
+function nookNoticeWhen(notice) {
+  const time = Date.parse(notice?.created_at || '');
+  return Number.isFinite(time) ? nookWhenLabel(time / 1000) : '';
+}
 function nookLogsPage() {
   return {
     copied: false, openFolds: [], flash: null, hasTime: false, liveTimer: null, logOffset: 0,
     originLabel(origin) { return { schedule: 'Scheduled', web: 'Web app', cli: 'Command line' }[origin] || origin || 'Command line'; },
     statusKind(run) { return { completed: 'ok', failed: 'failed', stopped: 'stopped' }[run.status] || 'running'; },
     statusLabel(run) { return { completed: 'Completed', failed: 'Failed', stopped: 'Stopped', starting: 'Starting' }[run.status] || 'Running'; },
-    whenLabel(seconds) {
-      const date = new Date(seconds * 1000), today = new Date();
-      const startOf = value => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-      const days = Math.round((startOf(today) - startOf(date)) / 86400000);
-      const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      if (days === 0) return `Today, ${time}`;
-      if (days === 1) return `Yesterday, ${time}`;
-      return `${date.toLocaleDateString([], { month: 'short', day: 'numeric', year: date.getFullYear() === today.getFullYear() ? undefined : 'numeric' })}, ${time}`;
-    },
+    whenLabel(seconds) { return nookWhenLabel(seconds); },
     fullTime(seconds) { return new Date(seconds * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); },
     durationLabel(run) {
       if (!run.completed_at) return '';

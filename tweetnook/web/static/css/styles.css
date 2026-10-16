@@ -2100,33 +2100,20 @@ body {
 
 /* Persistent notifications reuse the Settings card and button styles. */
 .notice-item { margin: 0; }
-.settings-fab { position: fixed; }
-.notification-count-badge,
-.settings-notification-count {
-    display: inline-flex;
+.notice-section-head {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    border-radius: 50%;
-    color: var(--accent-text);
-    background: var(--accent-color);
-    font-weight: 700;
-    line-height: 1;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.notice-time {
+    margin-top: 2px;
+    color: var(--text-secondary);
+    font-size: 13px;
     font-variant-numeric: tabular-nums;
 }
-.notification-count-badge {
-    position: absolute;
-    top: -5px;
-    left: -5px;
-    width: 22px;
-    height: 22px;
-    font-size: 11px;
-}
-.settings-notification-count {
-    width: 20px;
-    height: 20px;
-    font-size: 11px;
-}
+.settings-fab { position: fixed; }
 
 /* Fullscreen media uses direct-manipulation motion while retaining native pinch zoom. */
 .lightbox-viewer {

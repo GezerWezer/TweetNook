@@ -15,6 +15,18 @@ def list_notices():
     return {"notices": notices.list() if notices else []}
 
 
+@router.post("/dismiss-all")
+def dismiss_all_notices():
+    notices = server_state.get("notices")
+    return {"dismissed": notices.dismiss_all() if notices else 0}
+
+
+@router.delete("/dismissed")
+def clear_dismissed_notices():
+    notices = server_state.get("notices")
+    return {"cleared": notices.clear_dismissed() if notices else 0}
+
+
 @router.post("/{notice_id}/dismiss")
 def dismiss_notice(notice_id: str):
     if notices := server_state.get("notices"):

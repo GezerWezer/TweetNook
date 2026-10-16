@@ -203,6 +203,7 @@ class SetupCoordinator:
                         "Initialization did not finish. Open Setup to retry; "
                         "already imported data is preserved.",
                         action="setup",
+                        run_id=self.state.archive_init_run_id,
                     )
             if (
                 store is not None
@@ -254,6 +255,7 @@ class SetupCoordinator:
                     "Enrichment needs attention",
                     "Enrichment was interrupted or failed. "
                     "Pending tweets can be retried from Activity.",
+                    run_id=self.state.auto_enrich_run_id,
                 )
             self.start_scheduler()
 

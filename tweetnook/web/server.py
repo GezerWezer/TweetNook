@@ -201,11 +201,15 @@ async def lifespan(app: FastAPI):
                         if coordinator and run_id == coordinator.state.archive_init_run_id
                         else "activity"
                     )
+                    summary = str(run.get("summary") or "").strip()
                     notices.add(
                         f"job-{run_id}",
                         run.get("title") or "Background job failed",
-                        "The job did not finish successfully. Open Activity for details.",
+                        f"The job did not finish successfully: {summary}"
+                        if summary
+                        else "The job did not finish successfully. Open its log for details.",
                         action=action,
+                        run_id=run_id,
                     )
                 if coordinator:
                     coordinator.job_completed(run_id, exit_code)

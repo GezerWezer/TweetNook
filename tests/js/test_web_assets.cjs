@@ -6142,6 +6142,47 @@ test('notification badge counts every unread item and actions use Settings desti
     assert.equal(app.activityDrawerOpen, true);
 });
 
+test('notices link to their run log and support bulk dismiss and clearing history', async () => {
+    const context = browserContext();
+    const requests = [];
+    context.fetch = async (url, options) => { requests.push([url, options?.method]); return {ok: true, json: async () => ({runs: []})}; };
+    const { tweetApp, nookNoticeWhen } = loadScripts(context, ['themes.js', 'app.js', 'settings.js'], '({tweetApp, nookNoticeWhen})');
+    const app = immediateComponent(tweetApp());
+    app.openSettings();
+    app.notices = [
+        {id: 'a', dismissed: false, action: 'activity', run_id: 'run-a'},
+        {id: 'b', dismissed: false, action: 'setup', run_id: 'run-b'},
+        {id: 'c', dismissed: true, action: 'activity'},
+    ];
+
+    app.openNotice(app.notices[0]);
+    assert.equal(app.settingsTab, 'logs');
+    assert.equal(app.nookLogOpenRunId, 'run-a');
+    assert.equal(app.activityDrawerOpen, false);
+    app.openNoticeLog(app.notices[1]);
+    assert.equal(app.nookLogOpenRunId, 'run-b');
+
+    await app.dismissAllNotices();
+    assert.equal(app.noticeCount, 0);
+    await app.clearDismissedNotices();
+    assert.deepEqual(app.notices, []);
+    assert.deepEqual(requests.filter(([url]) => url.startsWith('/api/notices')), [
+        ['/api/notices/dismiss-all', 'POST'],
+        ['/api/notices/dismissed', 'DELETE'],
+    ]);
+
+    assert.equal(nookNoticeWhen({}), '');
+    assert.match(nookNoticeWhen({created_at: new Date().toISOString()}), /^Today, /);
+});
+
+test('notification list shows times, run logs, and bulk actions', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.match(html, /x-show="noticeCount > 1" @click="dismissAllNotices\(\)">Dismiss all</);
+    assert.match(html, /@click="clearDismissedNotices\(\)">Clear history</);
+    assert.match(html, /class="notice-time" x-show="nookNoticeWhen\(notice\)"/);
+    assert.match(html, /x-show="notice.action !== 'activity' && notice.run_id" @click="openNoticeLog\(notice\)">View log</);
+});
+
 test('log formatting does not mark zero-failure summaries as errors', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');

@@ -353,6 +353,7 @@
                     severity: 'warning',
                     action: 'schedule',
                     dismissed: false,
+                    created_at: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
                     title: 'Scheduled sync skipped',
                     message: 'The 3:00 AM sync was skipped because another task was still running. The next run is tomorrow.',
                 },
@@ -1434,6 +1435,16 @@
             }
 
             if (path.endsWith('/api/notices') && method === 'GET') return jsonResponse({notices: clone(runtime.notices)});
+            if (path.endsWith('/api/notices/dismiss-all') && method === 'POST') {
+                const unread = runtime.notices.filter(item => !item.dismissed);
+                unread.forEach(item => { item.dismissed = true; });
+                return jsonResponse({dismissed: unread.length});
+            }
+            if (path.endsWith('/api/notices/dismissed') && method === 'DELETE') {
+                const before = runtime.notices.length;
+                runtime.notices = runtime.notices.filter(item => !item.dismissed);
+                return jsonResponse({cleared: before - runtime.notices.length});
+            }
             const dismissMatch = path.match(/\/api\/notices\/([^/]+)\/dismiss$/);
             if (dismissMatch && method === 'POST') {
                 const notice = runtime.notices.find(item => item.id === decodeURIComponent(dismissMatch[1]));

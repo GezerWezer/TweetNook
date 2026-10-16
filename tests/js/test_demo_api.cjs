@@ -506,6 +506,9 @@ async function main() {
     assert.equal(notices.body.notices.filter(notice => !notice.dismissed).length, 1);
     await request(activityStore, `https://example.test/api/notices/${notices.body.notices[0].id}/dismiss`, {method: 'POST'});
     assert.equal((await request(activityStore, 'https://example.test/api/notices')).body.notices[0].dismissed, true);
+    assert.deepEqual((await request(activityStore, 'https://example.test/api/notices/dismiss-all', {method: 'POST'})).body, {dismissed: 0});
+    assert.deepEqual((await request(activityStore, 'https://example.test/api/notices/dismissed', {method: 'DELETE'})).body, {cleared: 1});
+    assert.deepEqual((await request(activityStore, 'https://example.test/api/notices')).body.notices, []);
 
     // Configuration: served only when the schema is provided; saves stay in this session.
     assert.equal((await activityStore.handle('https://example.test/api/config')).status, 404);
