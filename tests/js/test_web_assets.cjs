@@ -3010,10 +3010,6 @@ test('setup validates before saving auth then uploads, imports, and confirms arc
                 values: { auth_token: '********', ct0: '********', user_id: '42' },
             }; } };
         }
-        if (url === '/api/setup/archive' && options.method === 'PUT') {
-            archive = { ...archive, uploaded: true, filename: 'archive.zip', size: 2048 };
-            return { ok: true, async json() { return archive; } };
-        }
         if (url === '/api/setup/archive' && options.method === 'DELETE') {
             archive = { ...archive, uploaded: false, filename: null, size: null };
             return { ok: true, async json() { return archive; } };
@@ -3026,12 +3022,29 @@ test('setup validates before saving auth then uploads, imports, and confirms arc
         }
         throw new Error(`unexpected request: ${url}`);
     };
+    // Archive uploads go through XHR so the file row can report progress.
+    context.XMLHttpRequest = class {
+        constructor() { this.upload = {}; }
+        open(method, url) { requests.push([url, method]); }
+        setRequestHeader() {}
+        send(file) {
+            this.upload.onprogress({ loaded: file.size / 2, total: file.size });
+            archive = { ...archive, uploaded: true, filename: 'archive.zip', size: file.size };
+            this.status = 200;
+            this.responseText = JSON.stringify(archive);
+            this.onload();
+        }
+    };
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
     const app = immediateComponent(tweetApp());
 
     await app.fetchSetup();
     assert.equal(app.setupAuth.auth_token, '********');
+    assert.equal(app.setupArchiveStatus, 'none');
+    assert.equal(app.setupArchiveAction.label, 'Start import');
+    assert.equal(app.setupArchiveAction.disabled, true);
     app.setupFlowStep = 2;
+    assert.equal(app.setupAuthNeedsTest, true);
     const authDelays = [];
     context.setTimeout = (callback, delay) => {
         authDelays.push(delay);
@@ -3043,11 +3056,28 @@ test('setup validates before saving auth then uploads, imports, and confirms arc
     assert.deepEqual(authDelays, [1000]);
     assert.equal(app.setupFlowStep, 3);
     assert.equal(requests.filter(([url]) => url === '/api/setup/auth').length, 1);
+    // A verified, unedited connection continues without another probe.
+    app.goToSetupStep(2);
+    assert.equal(app.setupAuthNeedsTest, false);
+    await app.saveSetupAuth();
+    assert.equal(app.setupFlowStep, 3);
+    assert.equal(requests.filter(([url]) => url === '/api/setup/auth').length, 1);
+    app.editSetupAuth();
+    assert.equal(app.setupAuthNeedsTest, true);
+
+    await app.uploadSetupArchive({ target: { files: [{ name: 'notes.txt', size: 4 }], value: 'notes.txt' } });
+    assert.match(app.setupArchiveError, /not a \.zip file/);
+    assert.equal(requests.some(([url, method]) => url === '/api/setup/archive' && method === 'PUT'), false);
 
     await app.uploadSetupArchive({
         target: { files: [{ name: 'archive.zip', size: 2048 }], value: 'archive.zip' },
     });
     assert.equal(app.setupData.archive.uploaded, true);
+    assert.equal(app.setupArchiveError, '');
+    assert.equal(app.setupUploading, false);
+    assert.equal(app.setupArchiveStatus, 'staged');
+    assert.equal(app.setupArchiveAction.label, 'Start import');
+    assert.equal(app.setupArchiveAction.disabled, false);
     assert.equal(app.formatSetupBytes(2048), '2.00 KiB');
 
     app.showSetupModal = true;
@@ -3061,9 +3091,114 @@ test('setup validates before saving auth then uploads, imports, and confirms arc
     assert.equal(app.setupDirection, 'back');
     app.goToSetupStep(2);
 
+    const confirmations = [];
+    app.askSetupConfirm = async options => { confirmations.push(options); return false; };
+    await app.clearSetupArchive();
+    assert.equal(app.setupData.archive.uploaded, true);
+    assert.equal(confirmations[0].destructive, true);
+    app.askSetupConfirm = async () => true;
     await app.clearSetupArchive();
     assert.equal(app.setupData.archive.uploaded, false);
     assert.ok(requests.some(([url, method]) => url === '/api/setup/archive' && method === 'DELETE'));
+});
+
+test('setup archive choices stay reversible until Setup finishes', async () => {
+    const context = browserContext();
+    const requests = [];
+    let archive = { ready: false, database_exists: false, uploaded: false, initialization_mode: null, initialization_state: 'missing', legacy_migration_available: true };
+    context.fetch = async (url, options = {}) => {
+        requests.push([url, options.method || 'GET']);
+        if (url === '/api/setup/archive/empty') {
+            archive = { ...archive, ready: true, database_exists: true, initialization_mode: 'empty', initialization_state: 'complete' };
+            return { ok: true, async json() { return {}; } };
+        }
+        if (url === '/api/setup/complete') return { ok: true, async json() { return { completed: true, reload: false }; } };
+        throw new Error(`unexpected request: ${url}`);
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.setupData = { archive, auth: { verified: false }, web: { password_configured: true } };
+
+    assert.equal(app.setupArchiveStatus, 'none');
+    assert.equal(app.setupArchiveAction.disabled, true);
+
+    // Choosing an empty archive only selects it; nothing is created yet.
+    app.chooseSetupArchive('empty');
+    assert.equal(app.setupArchiveStatus, 'empty-selected');
+    assert.equal(app.setupArchiveAction.label, 'Continue');
+    assert.equal(app.setupArchiveStatusText, '', 'selecting adds no line, so the layout stays put');
+    app.setupArchiveAction.run();
+    assert.equal(app.setupFlowStep, 2);
+    assert.equal(requests.length, 0);
+
+    // Going back, the choice can be switched or undone.
+    app.goToSetupStep(1);
+    app.chooseSetupArchive('migration');
+    assert.equal(app.setupArchiveAction.label, 'Start migration');
+    app.chooseSetupArchive('migration');
+    assert.equal(app.setupArchiveStatus, 'none');
+
+    // The empty archive is created as part of finishing.
+    app.chooseSetupArchive('empty');
+    app.setupSkipAuth = true;
+    await app.finishSetup();
+    assert.deepEqual(requests.map(([url]) => url), ['/api/setup/archive/empty', '/api/setup/complete']);
+    assert.equal(app.setupArchiveChoice, null);
+});
+
+test('first-run setup resumes at the first unfinished step after a reload', async () => {
+    let auth = { verified: false, configured: false, values: { auth_token: '', ct0: '', user_id: '' } };
+    let archive = { ready: false, uploaded: false, initialization_mode: null };
+    const load = async () => {
+        const context = browserContext();
+        context.fetch = async () => ({ ok: true, async json() { return { required: true, completed: false, web: {}, auth, archive }; } });
+        const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const app = immediateComponent(tweetApp());
+        await app.fetchSetup();
+        return app;
+    };
+    assert.equal((await load()).setupFlowStep, 1);
+    archive = { ...archive, ready: true, initialization_mode: 'import' };
+    assert.equal((await load()).setupFlowStep, 2);
+    auth = { ...auth, verified: true };
+    const app = await load();
+    assert.equal(app.setupFlowStep, 3);
+    // Later polls do not move someone who went back.
+    app.goToSetupStep(1);
+    await app.fetchSetup();
+    assert.equal(app.setupFlowStep, 1);
+});
+
+test('setup password step validates matching passwords before finishing', async () => {
+    const context = browserContext();
+    const bodies = [];
+    context.fetch = async (url, options = {}) => {
+        assert.equal(url, '/api/setup/complete');
+        bodies.push(JSON.parse(options.body));
+        return { ok: true, async json() { return { completed: true, reload: false }; } };
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.setupData = { web: { password_configured: false }, archive: {}, auth: {} };
+
+    assert.equal(app.setupCanFinish, false);
+    app.setupPassword = 'secret-1';
+    app.setupPasswordConfirm = 'secret';
+    assert.equal(app.setupPasswordMismatch, false, 'a prefix still being typed is not an error');
+    assert.equal(app.setupCanFinish, false);
+    app.setupPasswordConfirm = 'secret-2';
+    assert.equal(app.setupPasswordMismatch, true);
+    await app.finishSetup();
+    assert.equal(bodies.length, 0);
+
+    app.setupPasswordConfirm = 'secret-1';
+    assert.equal(app.setupCanFinish, true);
+    await app.finishSetup();
+    assert.deepEqual(bodies, [{ skip_auth: false, password: 'secret-1', confirm_password: 'secret-1' }]);
+
+    // An existing password may be kept by leaving both fields empty.
+    app.setupData.web.password_configured = true;
+    assert.equal(app.setupCanFinish, true);
 });
 
 test('setup uses a dedicated responsive X-style modal shell', () => {
@@ -3080,8 +3215,13 @@ test('setup uses a dedicated responsive X-style modal shell', () => {
     assert.match(settingsMarkup, /@click="rerunSetup\(\)"/);
     assert.match(setupMarkup, /x-show="showSetupModal"/);
     assert.match(setupMarkup, /class="setup-desktop-required" role="note"/);
-    assert.match(setupMarkup, /@click\.stop="clearSetupArchive\(\)"/);
-    assert.match(setupMarkup, /@click="goToSetupStep\(1\)"/);
+    assert.match(setupMarkup, /@click="clearSetupArchive\(\)"/);
+    assert.match(setupMarkup, /@click="goToSetupStep\(setupFlowStep - 1\)"/);
+    assert.match(setupMarkup, /class="setup-modal-footer"/);
+    // Going back to step 1 after an earlier choice still offers an archive upload.
+    assert.match(setupMarkup, /class="setup-upload-zone" x-show="!setupUploading && !setupData\.archive\.uploaded && setupArchiveStatus !== 'importing'"/);
+    assert.doesNotMatch(setupMarkup, /<details/);
+    assert.doesNotMatch(js, /alert\(error\.message\)|confirm\('Clear the uploaded/);
     assert.match(setupMarkup, /@click="if \(!setupAuthSuccessPending\) saveSetupAuth\(\)" :disabled="setupSavingAuth"/);
     assert.match(css, /@media \(max-width: 767px\)[\s\S]*?\.setup-modal-progress,[\s\S]*?\.setup-modal-content\s*\{ display: none !important; \}/);
     assert.match(js, /openSetup\(\)\s*\{[\s\S]*?this\.showSetupModal = true;[\s\S]*?this\.showSettingsModal = false;/);
