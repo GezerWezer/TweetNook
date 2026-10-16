@@ -93,6 +93,7 @@ class WebConfig(BaseModel):
     avatar_cache_limit_enabled: bool = True
     avatar_cache_limit_mb: int = Field(default=512, ge=1)
     analytics_refresh_time: str = Field(default="05:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    dev_replay_source: bool = False
 
 
 class ScheduleConfig(BaseModel):
@@ -638,6 +639,11 @@ def get_config_ui_schema() -> dict[str, Any]:
                 ),
                 "fields": ["database.cache_size_kb", "database.mmap_size_bytes"],
             },
+            {
+                "title": "Developer",
+                "note": "Only for testing a second TweetNook install against this archive.",
+                "fields": ["web.dev_replay_source"],
+            },
         ],
         "units": {
             "web.avatar_cache_limit_mb": "MiB",
@@ -686,6 +692,7 @@ def get_config_ui_schema() -> dict[str, Any]:
             "web.avatar_cache_limit_enabled": "Limit the avatar cache",
             "web.avatar_cache_limit_mb": "Cache limit",
             "web.analytics_refresh_time": "Daily refresh",
+            "web.dev_replay_source": "Serve as replay source",
             "schedule.enabled": "Sync automatically",
             "schedule.cadence": "Repeat",
             "schedule.every_hours": "Interval",
@@ -742,6 +749,11 @@ def get_config_ui_schema() -> dict[str, Any]:
             "web.analytics_refresh_time": (
                 "When Analytics statistics are rebuilt, in the server's local time. "
                 "Takes effect after a restart."
+            ),
+            "web.dev_replay_source": (
+                "Developer tool. Lets a separate TweetNook test install replay this archive's "
+                "saved Twitter/X responses and media instead of contacting X. Read-only and "
+                "protected by the Web password; refused when no Web password is set."
             ),
             "web.host": "Use 0.0.0.0 to let other devices on your network connect.",
             "web.port": "",
