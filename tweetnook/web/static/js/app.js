@@ -3690,6 +3690,7 @@ function tweetApp() {
 
         async applyRoute(route, { fromPopState = false, state = null } = {}) {
             if (!route) return false;
+            window.TweetNookArticles?.closeFocus?.({restoreFocus: false});
             const routeState = state || this.historyStateForRoute(route);
             if (state && Number.isInteger(routeState.tweetNookDepth) && routeState.tweetNookDepth >= 0) {
                 this.navigationDepth = routeState.tweetNookDepth;

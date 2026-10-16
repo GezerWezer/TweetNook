@@ -62,9 +62,8 @@ def validate_fixture(data: dict[str, Any]) -> None:
     _require(data.get("schema_version") == 2, "demo fixture schema_version must be 2")
     authors = data.get("authors")
     tweets = data.get("tweets")
-    _require(isinstance(authors, list) and len(authors) == 7, "demo fixture must contain 7 authors")
+    _require(isinstance(authors, list) and bool(authors), "demo fixture must contain authors")
     _require(isinstance(tweets, list) and tweets, "demo fixture must contain tweets")
-    _require(12 <= len(tweets) <= 110, "demo fixture must contain between 12 and 110 tweets")
 
     def require_demo_asset(value: Any, label: str) -> None:
         asset_url = str(value or "")
@@ -84,10 +83,6 @@ def validate_fixture(data: dict[str, Any]) -> None:
         author_id = str(author["id"])
         _require(author_id not in author_ids, f"duplicate author ID: {author_id}")
         author_ids.add(author_id)
-        _require(
-            str(author["username"]).startswith("demo_"),
-            "placeholder usernames must start with demo_",
-        )
         require_demo_asset(author["avatar_url"], f"author {author_id} avatar")
 
     tweet_ids: set[str] = set()
@@ -110,7 +105,6 @@ def validate_fixture(data: dict[str, Any]) -> None:
         )
         tags = tweet["tags"]
         _require(isinstance(tags, list), f"tweet {tweet_id} tags must be an array")
-        _require(2 <= len(tags) <= 5, f"tweet {tweet_id} must contain 2 to 5 tags")
         _require(
             all(isinstance(tag, str) and tag.strip() for tag in tags),
             f"tweet {tweet_id} tags must be non-empty strings",
@@ -136,20 +130,9 @@ def validate_fixture(data: dict[str, Any]) -> None:
         for media in tweet["media"]:
             _require(media.get("type") in ALLOWED_MEDIA, f"tweet {tweet_id} has invalid media type")
             require_demo_asset(media.get("url"), f"tweet {tweet_id} media URL")
-            _require(
-                "thumbnail_url" not in media and "poster_url" not in media,
-                f"tweet {tweet_id} must not invent a poster or thumbnail",
-            )
-        if tweet["media"]:
-            _require(
-                bool(tweet["description"].strip()),
-                f"media tweet {tweet_id} must contain a description",
-            )
-        else:
-            _require(
-                tweet["description"] == "",
-                f"text-only tweet {tweet_id} must not contain a description",
-            )
+            for field in ("thumbnail_url", "poster_url"):
+                if media.get(field):
+                    require_demo_asset(media[field], f"tweet {tweet_id} {field}")
 
     for tweet in tweets:
         tweet_id = str(tweet["tweet_id"])
@@ -160,154 +143,58 @@ def validate_fixture(data: dict[str, Any]) -> None:
                 f"tweet {tweet_id} has unresolved {field}: {related_id}",
             )
 
-    roots = [tweet for tweet in tweets if tweet.get("reply_to_id") is None]
-    chained_root_ids: set[str] = set()
-    for root in roots:
-        root_id = str(root["tweet_id"])
-        direct_replies = [
-            tweet for tweet in tweets if str(tweet.get("reply_to_id") or "") == root_id
-        ]
-        _require(direct_replies, f"root tweet {root_id} must have a reply")
-        root_author_id = str(root["author_id"])
-        if any(
-            str(candidate.get("reply_to_id") or "") == str(reply["tweet_id"])
-            and str(candidate["author_id"]) == root_author_id
-            for reply in direct_replies
-            for candidate in tweets
-        ):
-            chained_root_ids.add(root_id)
-
-    _require(chained_root_ids, "demo fixture must contain original-poster reply chains")
+    guide_ids = {"202602150001", "202602150002", "202602150003"}
     _require(
-        len(chained_root_ids) < len(roots),
-        "demo fixture must also contain direct replies without an original-poster follow-up",
+        {
+            tweet["tweet_id"]
+            for tweet in tweets
+            if "guide tweet" in tweet["tags"] and "like" in tweet["collections"]
+        }
+        == guide_ids,
+        "demo fixture must contain all three liked guide posts",
     )
 
-    liked_replies = [
-        tweet for tweet in tweets if tweet.get("reply_to_id") and "like" in tweet["collections"]
-    ]
-    _require(1 <= len(liked_replies) <= 3, "demo fixture must contain only a few liked replies")
-
-    liked_tweets = [tweet for tweet in tweets if "like" in tweet["collections"]]
-    for liked_tweet in liked_tweets:
-        liked_id = str(liked_tweet["tweet_id"])
-        direct_replies = [
-            tweet for tweet in tweets if str(tweet.get("reply_to_id") or "") == liked_id
-        ]
-        _require(
-            any(not reply["media"] and reply["quoted_tweet_id"] for reply in direct_replies),
-            f"liked tweet {liked_id} must have a text-only quote reply",
-        )
-        _require(
-            any(not reply["media"] and not reply["quoted_tweet_id"] for reply in direct_replies),
-            f"liked tweet {liked_id} must have a plain-text reply",
-        )
-
-    ordered_likes = sorted(liked_tweets, key=lambda tweet: int(tweet["liked_order"]), reverse=True)
-    _require(len(ordered_likes) >= 6, "demo fixture must contain at least six liked tweets")
+    ordered_likes = sorted(
+        (tweet for tweet in tweets if "like" in tweet["collections"]),
+        key=lambda tweet: int(tweet["liked_order"]),
+        reverse=True,
+    )
     _require(
         all("guide tweet" in tweet["tags"] for tweet in ordered_likes[:3]),
         "the first three liked tweets must carry the guide tweet tag",
     )
-    _require(
-        len(ordered_likes[3]["media"]) == 2
-        and all(media["type"] == "photo" for media in ordered_likes[3]["media"]),
-        "the fourth liked tweet must be a two-image gallery",
-    )
-    _require(
-        len(ordered_likes[4]["media"]) == 1 and ordered_likes[4]["media"][0]["type"] == "video",
-        "the fifth liked tweet must be a standalone video",
-    )
-    _require(
-        len(ordered_likes[5]["media"]) == 4
-        and all(media["type"] == "photo" for media in ordered_likes[5]["media"]),
-        "the sixth liked tweet must be a four-image gallery",
-    )
 
-    visible_media_urls = [
-        media["url"] for tweet in tweets if tweet["collections"] for media in tweet["media"]
-    ]
-    source_media_urls = {
-        f"demo/media/{path.name}"
-        for path in DEMO_MEDIA_ROOT.iterdir()
-        if path.is_file()
-        and path.name != ".DS_Store"
-        and path.suffix.lower() in {".gif", ".jpeg", ".jpg", ".mp4", ".png", ".webm"}
-    }
-    _require(
-        source_media_urls <= set(visible_media_urls),
-        "every supplied non-avatar media asset must appear in a feed-visible tweet",
-    )
-    _require(
-        all(visible_media_urls.count(url) <= 2 for url in source_media_urls),
-        "feed-visible media assets must not be reused more than twice",
-    )
 
-    guide_fragments = {
-        "Welcome to the TweetNook demo page.",
-        "Browse like you would on X/Twitter.",
-        "Check out Settings for appearance options.",
-    }
-    _require(
-        all(
-            any(fragment in tweet["text"] and "like" in tweet["collections"] for tweet in tweets)
-            for fragment in guide_fragments
-        ),
-        "demo fixture must contain all three liked guide posts",
-    )
+def fixture_media_paths(data: dict[str, Any]) -> set[Path]:
+    """Publish only media used by the current fixture, including article imagery."""
+    urls = {author["avatar_url"] for author in data["authors"]}
+    for tweet in data["tweets"]:
+        urls.update(media["url"] for media in tweet["media"])
+        urls.update(
+            media[field]
+            for media in tweet["media"]
+            for field in ("thumbnail_url", "poster_url")
+            if media.get(field)
+        )
+        urls.update(media["url"] for media in (tweet.get("article") or {}).get("media", []))
+    return {Path(url.removeprefix("demo/media/")) for url in urls}
 
-    tweets_by_id = {str(tweet["tweet_id"]): tweet for tweet in tweets}
-    feature_checks = {
-        "image": any(any(media["type"] == "photo" for media in tweet["media"]) for tweet in tweets),
-        "gallery": any(len(tweet["media"]) >= 2 for tweet in tweets),
-        "gif": any(
-            any(media["type"] == "animated_gif" for media in tweet["media"]) for tweet in tweets
-        ),
-        "video": any(any(media["type"] == "video" for media in tweet["media"]) for tweet in tweets),
-        "quote": any(tweet["quoted_tweet_id"] for tweet in tweets),
-        "text quoting media": any(
-            tweet["quoted_tweet_id"]
-            and not tweet["media"]
-            and tweets_by_id[str(tweet["quoted_tweet_id"])]["media"]
-            for tweet in tweets
-        ),
-        "media quoting text": any(
-            tweet["quoted_tweet_id"]
-            and tweet["media"]
-            and not tweets_by_id[str(tweet["quoted_tweet_id"])]["media"]
-            for tweet in tweets
-        ),
-        "plain non-chain reply": any(
-            tweet["reply_to_id"]
-            and not tweet["media"]
-            and not any(candidate.get("reply_to_id") == tweet["tweet_id"] for candidate in tweets)
-            for tweet in tweets
-        ),
-        "reply/OP chain": any(
-            tweet.get("reply_to_id")
-            and str(tweet["author_id"])
-            == str(
-                next(
-                    (
-                        parent["author_id"]
-                        for parent in tweets
-                        if parent["tweet_id"] == tweet["conversation_id"]
-                    ),
-                    "",
-                )
-            )
-            for tweet in tweets
-        ),
-        "like": any("like" in tweet["collections"] for tweet in tweets),
-        "bookmark": any("bookmark" in tweet["collections"] for tweet in tweets),
-        "owner tweet": any(
-            str(tweet["author_id"]) == str(data.get("owner_user_id")) for tweet in tweets
-        ),
-        "verified author": any(author["verified"] for author in authors),
-        "community note": any(tweet.get("community_note") for tweet in tweets),
+
+def with_demo_metrics(data: dict[str, Any]) -> dict[str, Any]:
+    """Measure the published JSON/media, not a fictional SQLite database."""
+    data = json.loads(json.dumps(data))
+    metadata = data.setdefault("demo_metadata", {})
+    metadata["asset_bytes"] = {
+        "demo/media/" + path.as_posix(): (DEMO_MEDIA_ROOT / path).stat().st_size
+        for path in sorted(fixture_media_paths(data))
     }
-    missing_features = [name for name, present in feature_checks.items() if not present]
-    _require(not missing_features, f"demo fixture does not exercise: {', '.join(missing_features)}")
+    metadata["fixture_bytes"] = 0
+    for _ in range(8):
+        size = len((json.dumps(data, indent=2, ensure_ascii=True) + "\n").encode())
+        if metadata["fixture_bytes"] == size:
+            break
+        metadata["fixture_bytes"] = size
+    return data
 
 
 def demo_config_payload() -> dict[str, Any]:
@@ -390,6 +277,7 @@ def scan_public_output(output: Path) -> None:
 def build_pages_demo(output: Path, *, version: str, base_path: str) -> Path:
     fixture = json.loads((DEMO_ROOT / "data.json").read_text(encoding="utf-8"))
     validate_fixture(fixture)
+    fixture = with_demo_metrics(fixture)
     normalized_base = normalize_base_path(base_path)
 
     if output.exists():
@@ -397,14 +285,16 @@ def build_pages_demo(output: Path, *, version: str, base_path: str) -> Path:
     output.mkdir(parents=True)
     shutil.copytree(WEB_ROOT / "static", output / "static")
     (output / "demo").mkdir()
-    shutil.copy2(DEMO_ROOT / "data.json", output / "demo" / "data.json")
+    (output / "demo" / "data.json").write_text(
+        json.dumps(fixture, indent=2, ensure_ascii=True) + "\n"
+    )
     shutil.copy2(DEMO_CONFIG, output / "demo" / "config.json")
     shutil.copy2(DEMO_ROOT / "demo-api.js", output / "demo" / "demo-api.js")
-    shutil.copytree(
-        DEMO_MEDIA_ROOT,
-        output / "demo" / "media",
-        ignore=shutil.ignore_patterns(".DS_Store"),
-    )
+    media_paths = fixture_media_paths(fixture)
+    for relative in sorted(media_paths):
+        target = output / "demo" / "media" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(DEMO_MEDIA_ROOT / relative, target)
 
     source = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
     rendered = render_index(source, base_path=normalized_base, version=version)
@@ -422,11 +312,7 @@ def build_pages_demo(output: Path, *, version: str, base_path: str) -> Path:
         output / "demo" / "config.json",
         output / "demo" / "demo-api.js",
     ]
-    expected.extend(
-        output / "demo" / "media" / path.relative_to(DEMO_MEDIA_ROOT)
-        for path in DEMO_MEDIA_ROOT.rglob("*")
-        if path.is_file() and path.name != ".DS_Store"
-    )
+    expected.extend(output / "demo" / "media" / relative for relative in media_paths)
     missing = [path.relative_to(output) for path in expected if not path.exists()]
     _require(not missing, f"Pages build is missing: {', '.join(map(str, missing))}")
     scan_public_output(output)

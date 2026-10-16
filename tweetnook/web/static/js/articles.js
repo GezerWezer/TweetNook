@@ -52,7 +52,23 @@
     function inline(block, entities) {
         const text = typeof block.text === 'string' ? block.text : '';
         const styles = Array.isArray(block.inlineStyleRanges) ? block.inlineStyleRanges : [];
-        const links = Array.isArray(block.entityRanges) ? block.entityRanges : [];
+        const links = (Array.isArray(block.entityRanges) ? block.entityRanges : []).map(range => {
+            const entity = entities.get(String(range?.key));
+            return {...range, href: entity?.type?.toUpperCase() === 'LINK' ? httpURL(entity.data?.url) : ''};
+        });
+        // X Articles also store detected URLs and mentions on each block, outside
+        // Draft's entity map. Prefer URL spans when a URL contains an @handle.
+        for (const annotation of Array.isArray(block.data?.urls) ? block.data.urls : []) {
+            links.push({offset: annotation?.fromIndex, length: annotation?.toIndex - annotation?.fromIndex,
+                href: httpURL(annotation?.text)});
+        }
+        for (const annotation of Array.isArray(block.data?.mentions) ? block.data.mentions : []) {
+            const offset = annotation?.fromIndex, length = annotation?.toIndex - offset;
+            const username = String(annotation?.text || '').replace(/^@/, '');
+            if (!/^[A-Za-z0-9_]{1,15}$/.test(username)
+                || links.some(range => range.href && range.offset < offset + length && range.offset + range.length > offset)) continue;
+            links.push({offset, length, href: `https://x.com/${username}`});
+        }
         const valid = range => Number.isInteger(range?.offset) && Number.isInteger(range?.length)
             && range.offset >= 0 && range.length > 0 && range.offset < text.length;
         const ranges = [...styles, ...links].filter(valid);
@@ -66,13 +82,22 @@
                 const tag = tags[String(range.style).toLowerCase()];
                 if (tag && range.offset <= start && range.offset + range.length >= end) part = `<${tag}>${part}</${tag}>`;
             }
-            const linkRange = links.filter(valid).find(r => r.offset <= start && r.offset + r.length >= end);
-            const entity = linkRange && entities.get(String(linkRange.key));
-            const href = entity?.type?.toUpperCase() === 'LINK' ? httpURL(entity.data?.url) : '';
+            const href = links.filter(valid).find(r => r.href && r.offset <= start && r.offset + r.length >= end)?.href || '';
             if (href) part = `<a href="${escape(href)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${part}</a>`;
             html += part;
         }
         return html || '<br>';
+    }
+
+    function caption(text) {
+        if (typeof text !== 'string' || !text.trim()) return '';
+        const urls = [];
+        for (const match of text.matchAll(/\b(?:https?:\/\/|www\.)[^\s<>]+|\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?:\/[^\s<>]*)?/gi)) {
+            const value = match[0].replace(/[.,!?;:)\]]+$/g, '');
+            urls.push({fromIndex: match.index, toIndex: match.index + value.length,
+                text: /^https?:\/\//i.test(value) ? value : `https://${value}`});
+        }
+        return `<figcaption>${inline({text, data: {urls}}, new Map())}</figcaption>`;
     }
 
     function body(app, article, interactive = true) {
@@ -84,7 +109,7 @@
         const meaningful = blocks.some(b => typeof b?.text === 'string' && b.text.trim() && b.type !== 'atomic');
         let html = '', list = '';
         const closeList = () => { if (list) { html += `</${list}>`; list = ''; } };
-        const figure = item => `<figure class="article-figure">${image(app, item, false, interactive)}</figure>`;
+        const figure = (item, text) => `<figure class="article-figure">${image(app, item, false, interactive)}${caption(text)}</figure>`;
         if (meaningful) {
             for (const block of blocks.slice(0, 10000)) {
                 if (!block || typeof block !== 'object') continue;
@@ -100,9 +125,11 @@
                                 const item = media.find(m => m.source !== 'article_cover'
                                     && (String(m.media_id || '') === String(entry.mediaId)
                                     || String(m.media_key || '').endsWith('_' + entry.mediaId)));
-                                if (item) { used.add(item); html += figure(item); }
+                                if (item) { used.add(item); html += figure(item, details.caption); }
                                 else html += '<p class="article-notice">Embedded media was not captured.</p>';
                             }
+                        } else if (entity?.type?.toUpperCase() === 'DIVIDER') {
+                            html += '<hr>';
                         } else {
                             const id = String(details.tweetId || details.tweet_id || details.id || '');
                             const href = httpURL(details.url) || (/^\d+$/.test(id) ? `https://x.com/i/status/${id}` : '');
@@ -142,16 +169,35 @@
         return `<section class="article-detail">${cover ? `<div class="article-cover">${image(app, cover, true, interactive)}</div>` : ''}<h2 class="article-title">${escape(title)}</h2>${byline}${actions}<div class="article-body">${body(app, article, interactive)}</div></section>`;
     }
 
+    let activeFocus = null;
+
+    function closeFocus({restoreFocus = true} = {}) {
+        const session = activeFocus;
+        if (!session) return;
+        // Native dialog close events can arrive after the route has restored its
+        // scroll position. Finish cleanup now and ignore that later event.
+        activeFocus = null;
+        if (session.dialog.open) session.dialog.close();
+        document.body.style.overflow = session.savedOverflow;
+        session.dialog.remove();
+        if (restoreFocus && session.opener?.isConnected) session.opener.focus({preventScroll: true});
+    }
+
     function focus(app, tweet) {
         if (!data(tweet)) return;
+        const opener = activeFocus?.opener || document.activeElement;
+        closeFocus({restoreFocus: false});
         const dialog = document.createElement('dialog');
         dialog.className = 'article-focus';
         dialog.setAttribute('aria-label', 'Article focus mode');
         dialog.innerHTML = `<div class="article-focus-toolbar"><button type="button" autofocus aria-label="Exit article focus mode">${icon('M16.697 5.89l1.414 1.42L13.414 12l4.697 4.69-1.414 1.42L12 13.41l-4.697 4.7-1.414-1.42L10.586 12 5.89 7.31l1.414-1.42L12 10.59l4.697-4.7z')}</button></div><div class="article-focus-content">${render(app, tweet, true, false, true)}</div>`;
-        const savedOverflow = document.body.style.overflow;
-        dialog.addEventListener('close', () => { document.body.style.overflow = savedOverflow; dialog.remove(); }, {once: true});
+        activeFocus = {dialog, opener, savedOverflow: document.body.style.overflow};
+        dialog.addEventListener('close', () => {
+            if (activeFocus?.dialog === dialog) closeFocus();
+        }, {once: true});
+        dialog.addEventListener('cancel', event => { event.preventDefault(); closeFocus(); });
         dialog.addEventListener('keydown', event => event.stopPropagation());
-        dialog.querySelector('button').addEventListener('click', () => dialog.close());
+        dialog.querySelector('button').addEventListener('click', () => closeFocus());
         document.body.appendChild(dialog);
         dialog.showModal();
         document.body.style.overflow = 'hidden';
@@ -161,5 +207,5 @@
         event.preventDefault(); event.stopPropagation();
         global.dispatchEvent(new CustomEvent('open-article', {detail: {tweetId: element.dataset.articleId}}));
     };
-    global.TweetNookArticles = {data, render, body, focus, inline, entityMap};
+    global.TweetNookArticles = {data, render, body, focus, closeFocus, inline, entityMap};
 })(window);
