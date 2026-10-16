@@ -77,6 +77,7 @@ class WebConfig(BaseModel):
     avatar_cache_limit_enabled: bool = True
     avatar_cache_limit_mb: int = Field(default=512, ge=1)
     analytics_refresh_time: str = Field(default="05:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    dev_replay_source: bool = False
 
 
 class ScheduleConfig(BaseModel):
@@ -594,6 +595,7 @@ def get_config_ui_schema() -> dict[str, Any]:
             "web.avatar_cache_limit_enabled": "Limit Avatar Cache",
             "web.avatar_cache_limit_mb": "Avatar Cache Limit (MiB)",
             "web.analytics_refresh_time": "Daily Analytics Refresh Time",
+            "web.dev_replay_source": "Serve Archive as Replay Source (Developer)",
             "schedule.enabled": "Enable Scheduled Syncs",
             "schedule.cadence": "Schedule Frequency",
             "schedule.every_hours": "Every N Hours",
@@ -663,6 +665,12 @@ def get_config_ui_schema() -> dict[str, Any]:
             "web.analytics_refresh_time": (
                 "Local server time (HH:MM) when Analytics statistics are rebuilt each day. "
                 "Takes effect after a server restart."
+            ),
+            "web.dev_replay_source": (
+                "Developer tool. Lets a separate TweetNook test install replay this "
+                "archive's saved Twitter/X responses and media instead of contacting "
+                "Twitter/X. Read-only, protected by this server's Web password, and refused "
+                "when no Web password is set. Leave off otherwise."
             ),
             "web.host": "The IP address the Web UI binds to (default is 0.0.0.0 for LAN access).",
             "web.port": "The port the Web UI runs on.",
