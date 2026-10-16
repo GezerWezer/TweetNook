@@ -10,61 +10,6 @@
         'card_name', 'tag', 'description', 'hashtag',
     ]);
 
-    // Captured from a production stats response and intentionally projected onto the
-    // small synthetic archive below. Keep the response's category mix and labels, but
-    // do not expose the real account ID or production-scale counts in the public demo.
-    const STATS_REFERENCE = {
-        archiveTweets: 636770,
-        collections: {
-            bookmark: {label: 'Bookmarks', backfill_status: 'none saved'},
-            like: {label: 'Likes', backfill_status: 'none saved'},
-            tweet: {label: 'Authored Tweets', backfill_status: 'none saved'},
-        },
-        enrichment: {
-            threadsExpanded: 33402,
-            resurrected: 42,
-            unavailable: {
-                total: 2823,
-                reasons: [
-                    {reason: 'protected_account', label: 'Protected account', count: 293, due: 114, delayed: 179, permanent: 0},
-                    {reason: 'suspended_account', label: 'Suspended account', count: 839, due: 0, delayed: 839, permanent: 0},
-                    {reason: 'account_missing', label: 'Missing account', count: 29, due: 0, delayed: 29, permanent: 0},
-                    {reason: 'withheld', label: 'Withheld', count: 3, due: 0, delayed: 3, permanent: 0},
-                    {reason: 'not_found', label: 'Not found', count: 0, due: 0, delayed: 0, permanent: 0},
-                    {reason: 'unavailable_unknown', label: 'Unknown availability', count: 1659, due: 261, delayed: 1398, permanent: 0},
-                    {reason: 'deleted_by_author', label: 'Deleted by author', count: 0, due: 0, delayed: 0, permanent: 0},
-                    {reason: 'archive_deleted', label: 'Deleted in archive', count: 0, due: 0, delayed: 0, permanent: 0},
-                ],
-            },
-        },
-        storage: {
-            totalBytes: 79447340695,
-            detailed: [
-                {id: 'context_media', group: 'media', name: 'Context Media (Thread Extensions)', bytes: 48900386028, percent: 61.55, description: 'Downloaded media from surrounding thread context.'},
-                {id: 'core_media', group: 'media', name: 'Core Media (Bookmarked & Quoted)', bytes: 18449101264, percent: 23.22, description: 'Downloaded media attached to saved and quoted tweets.'},
-                {id: 'search_index', group: 'database', name: 'Search Index & DB Overhead', bytes: 7617931201, percent: 9.59, description: 'SQLite indexes, FTS data, structural overhead, and active sidecars.'},
-                {id: 'threads', group: 'database', name: 'Thread Extensions & Context', bytes: 2709334002, percent: 3.41, description: 'Estimated payload size for fetched conversation context.'},
-                {id: 'supplementary_media', group: 'media', name: 'Supplementary Media Files', bytes: 1535370967, percent: 1.93, description: 'Video posters, thumbnails, and other derived supporting files.'},
-                {id: 'avatars', group: 'media', name: 'Avatar Image Cache', bytes: 152418180, percent: 0.19, description: 'Locally cached author profile images.'},
-                {id: 'core_db', group: 'database', name: 'Core Tweet Database', bytes: 80261422, percent: 0.1, description: 'Estimated payload size for saved tweet records and raw data.'},
-                {id: 'tags', group: 'database', name: 'Tagging & Topic Metadata', bytes: 2207853, percent: 0.0, description: 'Estimated payload size for search tags and topic metadata.'},
-                {id: 'user_profiles', group: 'database', name: 'User Profiles & Handles', bytes: 253911, percent: 0.0, description: 'Estimated payload size for stored author names and handles.'},
-                {id: 'articles', group: 'database', name: 'Article Content & Cards', bytes: 75867, percent: 0.0, description: 'Estimated payload size for article bodies, previews, and cards.'},
-            ],
-            simplified: [
-                {id: 'media', name: 'Media Files & Avatars', bytes: 69037276439, percent: 86.9, description: 'Downloaded tweet media, thread attachments, and cached avatars.'},
-                {id: 'database', name: 'Database & Indexes', bytes: 10410064256, percent: 13.1, description: 'Primary SQLite archive, full-text indexes, and active sidecars.'},
-            ],
-        },
-        tags: {
-            eligible: 11790,
-            coverage: 72.7,
-            unique: 7105,
-            totalInstances: 20091,
-            average: 2.3,
-        },
-    };
-
     function clone(value) {
         return JSON.parse(JSON.stringify(value));
     }
@@ -303,7 +248,6 @@
         const state = clone(fixture);
         const authors = new Map(state.authors.map(author => [String(author.id), author]));
         const sourceTweets = new Map(state.tweets.map(tweet => [String(tweet.tweet_id), tweet]));
-        const initialTaggedTweetCount = state.tweets.filter(tweet => tweet.tags?.length).length;
         const nowSeconds = typeof options.now === 'function'
             ? options.now
             : () => Date.now() / 1000;
@@ -325,14 +269,14 @@
             automatedTagging: {
                 enabled: true,
                 api_key: 'demo-only',
-                api_mode: 'free',
-                model: 'gemini-demo',
+                api_mode: 'paid',
+                model: fixture.demo_metadata?.tagging?.model || 'gemini-3.6-flash',
                 thinking_level: 'low',
-                google_search: false,
+                google_search: true,
                 free_batch_size: 6,
                 free_rpm: 10,
                 free_rpd: 20,
-                processing_tier: 'flex',
+                processing_tier: 'standard',
                 daily_spend_limit_usd: null,
                 unlimited_spend: false,
                 search_safety_reserve: 100,
@@ -349,13 +293,13 @@
             } : null,
             notices: [
                 {
-                    id: 'demo-skipped-sync',
-                    severity: 'warning',
+                    id: 'demo-activity-replay',
+                    severity: 'info',
                     action: 'schedule',
                     dismissed: false,
-                    created_at: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
-                    title: 'Scheduled sync skipped',
-                    message: 'The 3:00 AM sync was skipped because another task was still running. The next run is tomorrow.',
+                    created_at: state.generated_at,
+                    title: 'Demo activity replay',
+                    message: 'Sync and activity history replay this local demo archive. No Twitter/X or model requests are sent.',
                 },
             ],
         };
@@ -371,22 +315,26 @@
                 core: {user_results: {result: authorRaw(author)}},
                 legacy: {
                     full_text: source.text,
+                    ...(Array.isArray(source.display_text_range)
+                        ? {display_text_range: clone(source.display_text_range)} : {}),
                     created_at: source.created_at,
                     conversation_id_str: source.conversation_id,
                     in_reply_to_status_id_str: source.reply_to_id,
                     in_reply_to_screen_name: source.reply_to_username,
                     quoted_status_id_str: source.quoted_tweet_id,
                     is_quote_status: Boolean(source.quoted_tweet_id),
+                    quoted_status_permalink: source.quote_short_url ? {url: source.quote_short_url} : undefined,
                     reply_count: engagement.replies || 0,
                     retweet_count: engagement.retweets || 0,
                     quote_count: source.quoted_tweet_id ? 1 : 0,
                     favorite_count: engagement.likes || 0,
                     bookmark_count: engagement.bookmarks || 0,
                     entities: {
+                        media: (source.media_short_urls || []).map(url => ({url})),
                         hashtags: (source.hashtags || []).map(text => ({text})),
                         user_mentions: (source.mentions || []).map(screen_name => ({screen_name})),
                         urls: (source.urls || []).map(url => ({
-                            url: url.short_url || url.expanded_url,
+                            url: url.short_url || url.url || url.expanded_url,
                             expanded_url: url.expanded_url,
                             display_url: url.display_url,
                         })),
@@ -500,181 +448,85 @@
                 .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag));
         }
 
+        // A compressed, local replay of the published archive, using the production
+        // pipeline's phase/log shapes. These are playback times, not captured run timings.
         const syncDurationSeconds = 180;
-        const syncPhases = [
-            {
-                key: 'preflight:bookmarks,likes',
-                title: 'Prepare',
-                start: 0,
-                end: 3,
-                total: 5,
-                unit: 'checks',
-                detail: 'sign-in · archive owner · 2 collection checks',
-                rateUnit: 'checks/s',
-                summary: 'Connected · 2/2 collections ready',
-                scenes: [
-                    {at: 0, completed: 0, activity: 'Connecting to Twitter/X', counters: ''},
-                    {at: 0.2, completed: 1, activity: 'Checking archive ownership', counters: 'Signed in'},
-                    {at: 0.4, completed: 2, activity: 'Preparing Twitter/X requests', counters: 'Signed in · archive owner confirmed'},
-                    {at: 0.6, completed: 3, activity: 'Checking Bookmarks', counters: '2 request types ready'},
-                    {at: 0.8, completed: 4, activity: 'Checking Likes', counters: '1/2 collections ready'},
-                ],
-            },
-            {
-                key: 'sync:bookmarks:head',
-                title: 'Bookmarks',
-                start: 3,
-                end: 5,
-                total: 1,
-                unit: 'current page',
-                detail: 'head pass · each page is committed with its resume cursor',
+        const replayNotice = 'DEMO REPLAY: local archive only; no Twitter/X or model requests. Timings are playback timings.';
+
+        function replayInventory() {
+            const rows = state.tweets;
+            const liked = rows.filter(tweet => tweet.collections.includes('like'));
+            const assets = new Set();
+            const links = new Set();
+            for (const tweet of rows) {
+                for (const media of [...(tweet.media || []), ...(tweet.article?.media || [])]) {
+                    for (const url of [media.url, media.thumbnail_url, media.poster_url]) {
+                        if (url) assets.add(url);
+                    }
+                }
+                for (const url of tweet.urls || []) links.add(url.expanded_url || url.url);
+            }
+            return {
+                bookmarks: rows.filter(tweet => tweet.collections.includes('bookmark')).length,
+                likes: liked.length,
+                context: rows.filter(tweet => !tweet.collections.length).length,
+                articles: rows.filter(tweet => tweet.article).length,
+                media: assets.size,
+                urls: links.size,
+                taggedLikes: liked.filter(tweet => tweet.tags?.length).length,
+            };
+        }
+
+        function replayPhases(counts) {
+            const phase = (key, title, start, end, total, unit, activity, summary, metrics = {}, extra = {}) => ({
+                key, title, start, end, total, unit,
+                summary: total === 0 ? `skipped due to no saved ${unit} to replay` : summary,
+                metrics,
+                detail: 'Demo replay · saved local data · no network requests',
                 showRate: false,
                 showEta: false,
-                showProgress: false,
-                summary: '1 page · 20 tweets · archive is up to date',
-                metrics: {new_tweets: 12, tweets_seen: 20, pages: 1},
-                scenes: [
-                    {at: 0, completed: 0, activity: 'Fetching page 1', counters: '0 pages · 0 tweets saved'},
-                    {at: 0.45, completed: 0, activity: 'Saving 20 tweets from page 1', counters: '0 pages · 0 tweets saved'},
-                    {at: 0.8, completed: 1, activity: 'Archive is up to date', counters: '1 page · 20 tweets saved'},
-                ],
-            },
-            {
-                key: 'sync:likes:head',
-                title: 'Likes',
-                start: 5,
-                end: 7,
-                total: 1,
-                unit: 'current page',
-                detail: 'head pass · each page is committed with its resume cursor',
-                showRate: false,
-                showEta: false,
-                showProgress: false,
-                summary: '1 page · 20 tweets · archive is up to date',
-                metrics: {new_tweets: 8, tweets_seen: 20, pages: 1},
-                scenes: [
-                    {at: 0, completed: 0, activity: 'Fetching page 1', counters: '0 pages · 0 tweets saved'},
-                    {at: 0.45, completed: 0, activity: 'Saving 20 tweets from page 1', counters: '0 pages · 0 tweets saved'},
-                    {at: 0.8, completed: 1, activity: 'Archive is up to date', counters: '1 page · 20 tweets saved'},
-                ],
-            },
-            {
-                key: 'threads',
-                title: 'Threads',
-                start: 7,
-                end: 75,
-                total: 6,
-                unit: 'candidates',
-                detail: 'membership and reachable linked-status candidates',
-                rateUnit: 'candidates/s',
-                summary: '6 expanded · 148 already known',
-                metrics: {expanded: 6, already_known: 148, failed: 0},
-                scenes: [
-                    {at: 0, completed: 0, activity: 'Selecting candidates', counters: ''},
-                    {at: 0.02, completed: 0, activity: 'Loading prior expansions', counters: ''},
-                    {at: 0.12, completed: 0, activity: 'Prior expansions loaded', counters: ''},
-                    {at: 0.14, completed: 0, activity: 'Reading saved tweets', counters: ''},
-                    {at: 0.2, completed: 0, activity: 'Membership pass over 126 archived tweets', counters: '120 already expanded'},
-                    {at: 0.22, completed: 0, activity: 'Reading saved tweet IDs', counters: ''},
-                    {at: 0.28, completed: 0, activity: 'Saved tweet IDs loaded', counters: ''},
-                    {at: 0.3, completed: 0, activity: 'Reading URL references', counters: ''},
-                    {at: 0.47, completed: 0, activity: 'Preparing conversation lookups', counters: '5 membership · 1 quoted'},
-                    {at: 0.5, completed: 0, activity: 'Preparing conversation lookups', counters: '5 membership · 1 quoted'},
-                    {at: 0.59, completed: 1, activity: 'Fetching thread context', counters: '1 expanded · 148 already known'},
-                    {at: 0.68, completed: 2, activity: 'Fetching thread context', counters: '2 expanded · 148 already known'},
-                    {at: 0.77, completed: 3, activity: 'Fetching thread context', counters: '3 expanded · 148 already known'},
-                    {at: 0.86, completed: 4, activity: 'Fetching thread context', counters: '4 expanded · 148 already known'},
-                    {at: 0.94, completed: 5, activity: 'Fetching thread context', counters: '5 expanded · 148 already known'},
-                    {at: 0.985, completed: 6, activity: 'Saving conversation relationships', counters: '6 expanded · 148 already known'},
-                ],
-            },
-            {
-                key: 'resurrection',
-                title: 'Unavailable tweets',
-                start: 75,
-                end: 171,
-                total: 16,
-                unit: 'tweets',
-                detail: '16 due selected · 100-request ceiling',
-                rateUnit: 'tweets/s',
-                summary: '1 restored · 15 still unavailable',
-                metrics: {restored: 1, still_unavailable: 15, retry_later: 2, remaining_due: 3},
+                skip: total === 0,
+                reason: total === 0 ? `no saved ${unit} to replay` : '',
                 resolveScene(stepElapsed) {
-                    if (stepElapsed < 1) {
-                        return {
-                            completed: 0,
-                            activity: 'Preparing recovery checks',
-                            counters: '',
-                        };
-                    }
-                    const completed = Math.min(15, Math.floor(stepElapsed / 6));
-                    const returned = completed >= 4 ? 1 : 0;
-                    const unavailable = completed - returned;
-                    if (stepElapsed < 6 || completed === 15) {
-                        return {
-                            completed,
-                            activity: 'Rate-limit pacing · one request every 6s',
-                            counters: [returned ? `${returned} restored` : '', unavailable ? `${unavailable} still unavailable` : ''].filter(Boolean).join(' · '),
-                        };
-                    }
-                    return {
-                        completed,
-                        activity: 'Checking an unavailable tweet',
-                        counters: [returned ? `${returned} restored` : '', unavailable ? `${unavailable} still unavailable` : ''].filter(Boolean).join(' · '),
-                    };
+                    const ratio = Math.max(0, Math.min(1, stepElapsed / (end - start || 1)));
+                    const completed = Math.min(total, Math.floor(total * ratio));
+                    return {completed, activity, counters: `${completed}/${total} ${unit} reviewed`};
                 },
-            },
-            {
-                key: 'articles',
-                title: 'Articles',
-                start: 171,
-                end: 171,
-                total: 0,
-                unit: 'tweets',
-                detail: 'article rows requiring refresh',
-                skip: true,
-                summary: 'skipped due to no article rows requiring refresh',
-                reason: 'no article rows requiring refresh',
-                scenes: [{at: 0, completed: 0, activity: '', counters: ''}],
-            },
-            {
-                key: 'media',
-                title: 'Media',
-                start: 171,
-                end: 176,
-                total: 28,
-                unit: 'files',
-                detail: 'pending media rows',
-                rateUnit: 'files/s',
-                summary: '28 downloaded · 18.6 MiB',
-                metrics: {downloaded: 28, downloaded_bytes: 19503514, already_saved: 4, failed: 0},
-                scenes: [
-                    {at: 0, completed: 0, activity: 'Downloading animated GIF', counters: ''},
-                    {at: 0.2, completed: 5, activity: 'Downloading photo', counters: '5 downloaded · 3.4 MiB'},
-                    {at: 0.4, completed: 11, activity: 'Downloading video', counters: '11 downloaded · 7.2 MiB'},
-                    {at: 0.6, completed: 17, activity: 'Downloading video', counters: '17 downloaded · 11.3 MiB'},
-                    {at: 0.8, completed: 23, activity: 'Downloading photo', counters: '23 downloaded · 15.1 MiB'},
-                    {at: 0.96, completed: 28, activity: 'Saving download metadata', counters: '28 downloaded · 18.6 MiB'},
-                ],
-            },
-            {
-                key: 'urls',
-                title: 'Link previews',
-                start: 176,
-                end: 180,
-                total: 2,
-                unit: 'URLs',
-                detail: 'saved URLs · redirects followed · canonical metadata persisted',
-                rateUnit: 'URLs/s',
-                summary: '2 updated',
-                metrics: {updated: 2, failed: 0},
-                scenes: [
-                    {at: 0, completed: 0, activity: 'Fetching example.com', counters: ''},
-                    {at: 0.45, completed: 1, activity: 'Fetching docs.example.com', counters: '1 updated'},
-                    {at: 0.9, completed: 2, activity: 'Saving link previews', counters: '2 updated'},
-                ],
-            },
-        ];
+                ...extra,
+            });
+            return [
+                phase('preflight:bookmarks,likes', 'Prepare', 0, 3, 1, 'archive',
+                    'Opening the local demo archive', 'Demo archive ready'),
+                phase('sync:bookmarks:head', 'Bookmarks', 3, 8, counts.bookmarks, 'bookmarks',
+                    'Reading saved bookmarks', `${counts.bookmarks} saved bookmarks`,
+                    {new_tweets: 0, tweets_seen: counts.bookmarks, pages: 0}),
+                phase('sync:likes:head', 'Likes', 8, 13, counts.likes, 'likes',
+                    'Reading saved Likes', `${counts.likes} saved Likes`,
+                    {new_tweets: 0, tweets_seen: counts.likes, pages: 0}),
+                phase('threads', 'Threads', 13, 75, counts.context, 'context tweets',
+                    'Reviewing saved conversation context', `${counts.context} saved context tweets`,
+                    {expanded: 0, already_known: counts.context, failed: 0}),
+                phase('resurrection', 'Unavailable tweets', 75, 75, 0, 'unavailable tweets', '',
+                    'skipped due to no unavailable tweets in the demo', {},
+                    {reason: 'no unavailable tweets in the demo'}),
+                phase('articles', 'Articles', 75, 95, counts.articles, 'articles',
+                    'Reading saved article content', `${counts.articles} saved articles`,
+                    {updated: 0, already_saved: counts.articles}),
+                phase('media', 'Media', 95, 160, counts.media, 'files',
+                    'Reviewing cached attachments and posters', `${counts.media} cached files · 0 downloads`,
+                    {downloaded: 0, downloaded_bytes: 0, already_saved: counts.media, failed: 0}),
+                phase('urls', 'Link previews', 160, 170, counts.urls, 'URLs',
+                    'Reading saved URL records', `${counts.urls} saved URLs · 0 requests`,
+                    {updated: 0, already_saved: counts.urls, failed: 0}),
+                phase('tagging', 'Automated tags', 170, 180, counts.taggedLikes, 'tagged Likes',
+                    'Reading cached tags for liked tweets', `${counts.taggedLikes} liked tweets have tags · 0 requests`,
+                    {tagged: 0, already_tagged: counts.taggedLikes, requests: 0}),
+            ];
+        }
+
+        function replaySummary(counts) {
+            return `Demo replay · ${counts.bookmarks} bookmarks · ${counts.likes} likes · ${counts.context} context tweets`;
+        }
 
         function progressScene(phase, ratio, stepElapsed) {
             if (phase.resolveScene) return phase.resolveScene(stepElapsed);
@@ -691,7 +543,7 @@
             const stopped = runtime.activity.stopped;
             const complete = elapsed >= syncDurationSeconds || stopped;
             const displayElapsed = Math.min(elapsed, syncDurationSeconds);
-            const steps = syncPhases.map(phase => {
+            const steps = runtime.activity.phases.map(phase => {
                 const scheduledSkip = Boolean(phase.skip) && elapsed >= phase.start;
                 let stateName = phase.skip
                     ? scheduledSkip ? 'skipped' : 'pending'
@@ -746,7 +598,7 @@
             const snapshot = {
                 version: 1,
                 run_id: runtime.activity.runId,
-                origin: 'web',
+                origin: 'demo',
                 pid: 1,
                 title: 'tweetnook sync',
                 running: !complete,
@@ -755,7 +607,7 @@
                 summary: stopped
                     ? 'Stopped by user'
                     : complete
-                        ? 'bookmarks: 1 pages, 20 tweets; likes: 1 pages, 20 tweets'
+                        ? replaySummary(runtime.activity.counts)
                         : '',
                 started_at: runtime.activity.startedAt,
                 updated_at: now,
@@ -838,77 +690,44 @@
             };
         }
 
-        // Activity logs: sample runs in the shapes activity_history writes. Web and scheduled runs keep
-        // console.log lines; command-line runs keep output.log lines, which carry an ISO timestamp.
-        function sampleRun(runId, title, origin, status, hoursAgo, seconds, summary, lines) {
-            const startedAt = Math.floor(nowSeconds()) - hoursAgo * 3600;
-            const stamp = offset => origin === 'cli' ? `${new Date((startedAt + offset) * 1000).toISOString()} ` : '';
+        // These histories replay the current fixture, not a private server/account.
+        // The log grammar follows production activity_history; origin and the first
+        // line make the local replay and its artificial playback duration explicit.
+        function sampleRun(runId, title, seconds, summary, lines) {
+            const startedAt = fixtureDate(state.generated_at) || Math.floor(nowSeconds());
             return {
                 run: {
                     run_id: runId,
                     title,
-                    origin,
-                    status,
+                    origin: 'demo',
+                    status: 'completed',
                     started_at: startedAt,
                     completed_at: startedAt + seconds,
-                    exit_code: status === 'completed' ? 0 : status === 'failed' ? 1 : null,
+                    exit_code: 0,
                     summary,
                 },
-                log: lines.map(([offset, text]) => stamp(offset) + text).join('\n') + '\n',
+                log: [replayNotice, ...lines].join('\n') + '\n',
             };
         }
+        const initialReplayCounts = replayInventory();
         const sampleRuns = [
-            sampleRun('demo-sync-today', 'tweetnook sync', 'schedule', 'completed', 5, 486, 'bookmarks: 2 pages, 31 tweets; likes: 1 pages, 12 tweets', [
-                [0, 'tweetnook sync: started'],
-                [0, 'Prepare: starting · Connecting to Twitter/X · total=5 checks · sign-in · archive owner · 2 collection checks'],
-                [3, 'Prepare: complete · Connected · 2/2 collections ready · elapsed 00:03'],
-                [3, 'Bookmarks: starting · Fetching page 1 · head pass · each page is committed with its resume cursor'],
-                [9, 'Bookmarks: complete · 2 pages · 31 tweets · archive is up to date · elapsed 00:06'],
-                [9, 'Likes: starting · Fetching page 1 · head pass · each page is committed with its resume cursor'],
-                [12, 'Likes: complete · 1 pages · 12 tweets · archive is up to date · elapsed 00:03'],
-                [12, 'Threads: starting · Selecting candidates · total=9 candidates'],
-                [80, 'Threads: progress · 6/9 candidates · Fetching thread context · 6 expanded · 212 already known'],
-                [131, 'WARNING: Rate limited by Twitter/X; waiting 60s before retrying · occurrences=2'],
-                [196, 'Threads: complete · 9 expanded · 212 already known · elapsed 03:04'],
-                [196, 'Unavailable tweets: starting · Preparing recovery checks · total=8 tweets'],
-                [244, 'Unavailable tweets: complete · 1 restored · 7 still unavailable · elapsed 00:48'],
-                [244, 'Articles: skipped due to no article rows requiring refresh'],
-                [244, 'Media: starting · Downloading photo · total=41 files'],
-                [470, 'Media: complete · 41 downloaded · 36.2 MiB · elapsed 03:46'],
-                [470, 'Link previews: starting · Fetching example.com · total=3 URLs'],
-                [486, 'Link previews: complete · 3 updated · elapsed 00:16'],
-                [486, 'tweetnook sync: complete · elapsed 08:06 · bookmarks: 2 pages, 31 tweets; likes: 1 pages, 12 tweets'],
-            ]),
-            sampleRun('demo-tagging-today', 'tweetnook tag', 'web', 'completed', 7, 54, 'Tagged 17 tweets.', [
-                [0, 'tweetnook tag: started'],
-                [1, 'Automated tags: starting · Selecting tweets · total=17 tweets · gemini-demo · Free · sequential processing'],
-                [20, 'Automated tags: progress · 6/17 tweets · 6 tagged · 6 requests'],
-                [38, 'Automated tags: progress · 12/17 tweets · 12 tagged · 12 requests'],
-                [54, 'Automated tags: complete · 17 tagged · 17 requests · elapsed 00:54'],
-                [54, 'tweetnook tag: complete · elapsed 00:54'],
-            ]),
-            sampleRun('demo-failed-yesterday', 'tweetnook sync bookmarks', 'cli', 'failed', 29, 30, 'Connection timed out after 30 seconds.', [
-                [0, 'tweetnook sync bookmarks: started'],
-                [0, 'Prepare: starting · Connecting to Twitter/X · total=3 checks · sign-in · archive owner · 1 collection check'],
-                [12, 'WARNING: Connection is taking longer than expected.'],
-                [30, 'ERROR: Connection timed out after 30 seconds.'],
-                [30, 'Prepare: failed · Connection timed out after 30 seconds · elapsed 00:30'],
-                [30, 'tweetnook sync bookmarks: failed · elapsed 00:30 · saved archive data remains available'],
-            ]),
-            sampleRun('demo-import-stopped', 'tweetnook import x-archive', 'web', 'stopped', 31, 412, 'Stopped by user.', [
-                [0, 'tweetnook import x-archive: started'],
-                [1, 'Import: starting · Reading archive file · total=4815 tweets'],
-                [95, 'Import: progress · 1200/4815 tweets · 1200 imported'],
-                [410, 'Import: stopped · Stop requested; progress is saved · elapsed 06:50'],
-                [412, 'tweetnook import x-archive: stopped · elapsed 06:52'],
-            ]),
-            sampleRun('demo-enrich-earlier', 'tweetnook import enrich', 'web', 'completed', 77, 3720, 'Enriched 4,815 tweets.', [
-                [0, 'tweetnook import enrich: started'],
-                [1, 'Enrichment: starting · Selecting tweets · total=4815 tweets'],
-                [1800, 'Enrichment: progress · 2400/4815 tweets · 2400 enriched'],
-                [3719, 'Enrichment: complete · 4815 enriched · elapsed 1:02:00'],
-                [3720, 'tweetnook import enrich: complete · elapsed 1:02:00'],
-            ]),
+            sampleRun('demo-archive-replay', 'tweetnook sync', syncDurationSeconds,
+                replaySummary(initialReplayCounts), [
+                    'tweetnook sync: started',
+                    ...replayPhases(initialReplayCounts).flatMap(phase => phase.skip
+                        ? [`${phase.title}: ${phase.summary.startsWith('skipped') ? phase.summary : `skipped due to ${phase.reason}`}`]
+                        : [
+                            `${phase.title}: starting · total=${phase.total} ${phase.unit} · ${phase.detail}`,
+                            `${phase.title}: complete · ${phase.summary}`,
+                        ]),
+                    `tweetnook sync: complete · ${replaySummary(initialReplayCounts)}`,
+                ]),
+            sampleRun('demo-tags-replay', 'tweetnook tag', 0,
+                `Demo replay · ${initialReplayCounts.taggedLikes}/${initialReplayCounts.likes} liked tweets have cached tags`, [
+                    'tweetnook tag: started',
+                    `Automated tags: complete · ${initialReplayCounts.taggedLikes}/${initialReplayCounts.likes} liked tweets have cached tags · 0 model requests`,
+                    'tweetnook tag: complete · Demo replay · cached results only',
+                ]),
         ];
 
         // The simulated sync (running or last finished) as an Activity logs run.
@@ -944,7 +763,7 @@
             return log.lines.join('\n') + '\n';
         }
         function liveLogLines(snapshot) {
-            const lines = ['tweetnook sync: started'];
+            const lines = [replayNotice, 'tweetnook sync: started'];
             for (const step of snapshot.steps || []) {
                 if (step.state === 'pending') continue;
                 if (step.state === 'skipped') {
@@ -1004,203 +823,133 @@
         }
 
         function accounting() {
+            const tagged = fixture.demo_metadata?.tagging;
+            const recorded = tagged?.accounting;
+            const day = tagged?.completed_at?.slice(0, 10);
+            const today = new Date(nowSeconds() * 1000).toISOString().slice(0, 10);
+            const thisMonth = Boolean(day && day.slice(0, 7) === today.slice(0, 7));
+            const isToday = day === today;
+            const requests = recorded?.requests || 0;
+            const cost = recorded?.estimated_cost_usd || 0;
+            const history = day ? [{date: day, requests, estimated_cost_usd: cost}] : [];
             return {
-                requests: 0,
-                tweets: 0,
-                estimated_cost_usd: 0,
-                search_queries_this_month: 0,
-                search_allowance: 5000,
-                spend_history: [],
-                lifetime_spend_history: [],
-                models: {},
-                tweet_types: {},
+                scope: 'Liked demo posts only. Batch token estimates include retries; Search charges and account-wide usage are unknown.',
+                pricing_note: 'This demo uses Gemini-reported tokens and official Gemini 3.6 Flash Batch rates: $0.375 per million input tokens and $1.875 per million output tokens, including thinking. Search cost is excluded because the provider did not report an authoritative call count. This is an estimate, not an invoice.',
+                requests, tweets: recorded?.unique_tagged_tweets || 0, estimated_cost_usd: cost,
+                today_requests: isToday ? requests : 0, today_estimated_cost_usd: isToday ? cost : 0,
+                month_requests: thisMonth ? requests : 0, month_estimated_cost_usd: thisMonth ? cost : 0,
+                lifetime_requests: requests, lifetime_estimated_cost_usd: cost,
+                search_queries_this_month: thisMonth ? recorded?.reported_search_queries || 0 : 0,
+                search_allowance: 5000, search_call_count_known: false,
+                spend_history: history.filter(row => (Date.parse(today) - Date.parse(row.date)) / 86400000 < 365),
+                lifetime_spend_history: history,
+                models: recorded?.models || {}, tweet_types: recorded?.tweet_types || {},
             };
         }
 
         function statsSnapshot() {
             const tweets = currentTweets();
+            const metadata = fixture.demo_metadata || {};
+            const dateLabel = values => {
+                const dates = values.map(fixtureDate).filter(value => value !== null);
+                return dates.length ? new Date(Math.min(...dates) * 1000).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+                }) : '-';
+            };
+            const latestLabel = values => dateLabel(values.filter(value => fixtureDate(value) !== null)
+                .sort((a, b) => fixtureDate(b) - fixtureDate(a)).slice(0, 1));
             const uniqueAuthors = new Set(tweets.map(tweet => tweet.author.id));
-            const tags = tagCounts();
-            const archiveTweetCount = tweets.length;
-            const mediaCount = tweets.reduce((total, tweet) => total + tweet.media.length, 0);
-            const currentTaggedTweetCount = state.tweets.filter(tweet => tweet.tags?.length).length;
-            const collectionRows = Object.entries(STATS_REFERENCE.collections).map(([collection, metadata]) => {
-                const matches = tweets.filter(tweet => tweet.collections.includes(collection));
-                return {
-                    collection: metadata.label,
-                    count: matches.length,
-                    oldest: matches.length ? new Date(Math.min(...matches.map(tweet => Date.parse(tweet.created_at)))).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : '-',
-                    newest: matches.length ? new Date(Math.max(...matches.map(tweet => Date.parse(tweet.created_at)))).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'}) : '-',
-                    last_synced: 'Feb 15, 2026 12:10 pm',
-                    backfill_status: metadata.backfill_status,
-                };
-            });
-            const unavailableTotal = Math.min(archiveTweetCount, 5);
-            const sourceUnavailableReasons = STATS_REFERENCE.enrichment.unavailable.reasons;
-            const sourceUnavailableTotal = STATS_REFERENCE.enrichment.unavailable.total;
-            const scaledReasonCounts = new Map(sourceUnavailableReasons.map(reason => [
-                reason.reason,
-                Math.floor(unavailableTotal * reason.count / sourceUnavailableTotal),
-            ]));
-            let unallocatedReasons = unavailableTotal - [...scaledReasonCounts.values()].reduce((total, count) => total + count, 0);
-            const largestReasonRemainders = sourceUnavailableReasons
-                .filter(reason => reason.count > 0)
-                .map(reason => ({
-                    reason: reason.reason,
-                    remainder: unavailableTotal * reason.count / sourceUnavailableTotal
-                        - Math.floor(unavailableTotal * reason.count / sourceUnavailableTotal),
-                }))
-                .sort((left, right) => right.remainder - left.remainder);
-            for (const item of largestReasonRemainders) {
-                if (unallocatedReasons <= 0) break;
-                scaledReasonCounts.set(item.reason, scaledReasonCounts.get(item.reason) + 1);
-                unallocatedReasons -= 1;
+            const allMedia = tweets.flatMap(tweet => [...tweet.media, ...(tweet.article?.media || [])]);
+            const eligible = state.tweets.filter(tweet => tweet.collections.includes('like'));
+            const tagged = eligible.filter(tweet => tweet.tags?.length);
+            const counts = new Map();
+            for (const tweet of eligible) for (const tag of new Set(tweet.tags || [])) {
+                counts.set(tag, (counts.get(tag) || 0) + 1);
             }
-            const unavailableReasons = STATS_REFERENCE.enrichment.unavailable.reasons.map(reason => {
-                const count = scaledReasonCounts.get(reason.reason) || 0;
-                const permanent = count && reason.permanent > 0 ? 1 : 0;
-                const retryable = count - permanent;
-                const due = retryable > 0 && reason.due > 0
-                    ? Math.min(retryable, Math.max(1, Math.round(retryable * reason.due / reason.count)))
-                    : 0;
-                return {
-                    ...reason,
-                    count,
-                    percent_of_missing: unavailableTotal ? Number((count / unavailableTotal * 100).toFixed(1)) : 0,
-                    percent_of_archive: archiveTweetCount ? Number((count / archiveTweetCount * 100).toFixed(1)) : 0,
-                    retryable,
-                    due,
-                    delayed: retryable - due,
-                    permanent,
-                };
+            const tags = [...counts].map(([tag, count]) => ({tag, count}))
+                .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+            const instances = eligible.reduce((total, tweet) => total + (tweet.tags || []).length, 0);
+            const collectionRows = Object.entries({bookmark: 'Bookmarks', like: 'Likes', tweet: 'Authored Tweets'})
+                .map(([collection, label]) => {
+                    const matches = tweets.filter(tweet => tweet.collections.includes(collection));
+                    return {
+                        collection: label, count: matches.length,
+                        oldest: dateLabel(matches.map(tweet => tweet.created_at)),
+                        newest: latestLabel(matches.map(tweet => tweet.created_at)),
+                        last_synced: latestLabel(matches.map(tweet => tweet.synced_at)),
+                        backfill_status: 'Demo selection',
+                    };
+                });
+            const assetBytes = metadata.asset_bytes || {};
+            const groups = {core_media: new Set(), context_media: new Set(), supplementary_media: new Set(), avatars: new Set()};
+            const savedOrQuoted = new Set(tweets.filter(tweet => tweet.collections.length).map(tweet => tweet.tweet_id));
+            for (const tweet of state.tweets) if (tweet.quoted_tweet_id) savedOrQuoted.add(tweet.quoted_tweet_id);
+            for (const tweet of tweets) {
+                const target = savedOrQuoted.has(tweet.tweet_id) ? groups.core_media : groups.context_media;
+                for (const media of [...tweet.media, ...(tweet.article?.media || [])]) {
+                    if (media.url) target.add(media.url);
+                    for (const field of ['thumbnail_url', 'poster_url']) if (media[field]) groups.supplementary_media.add(media[field]);
+                }
+                const avatar = authors.get(String(tweet.author.id))?.avatar_url;
+                if (avatar) groups.avatars.add(avatar);
+            }
+            // Shared assets count once, under their first applicable category.
+            const counted = new Set();
+            const definitions = [
+                ['core_media', 'Saved & Quoted Media', 'Attachments and article images on saved or quoted posts.'],
+                ['context_media', 'Conversation Media', 'Attachments and article images on other conversation posts.'],
+                ['supplementary_media', 'Video Posters & Thumbnails', 'Supporting images for GIFs and videos.'],
+                ['avatars', 'Author Avatars', 'Profile images used by the curated archive.'],
+            ];
+            const segments = definitions.map(([id, name, description]) => {
+                const paths = [...groups[id]].filter(path => !counted.has(path));
+                for (const path of paths) counted.add(path);
+                return {id, name, description, group: 'media', bytes: paths.reduce((sum, path) => sum + (assetBytes[path] || 0), 0),
+                    count: paths.length, unit: 'files', formatted_count: `${paths.length} files`};
             });
-            const resurrected = archiveTweetCount > unavailableTotal ? 1 : 0;
-            const enriched = Math.max(0, archiveTweetCount - unavailableTotal - resurrected);
-            const storageTotalBytes = 400 * 1024;
-            const formatDemoStorageSize = bytes => {
-                if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
-                if (bytes >= 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KiB`;
-                return `${bytes} B`;
-            };
-            const scaleStorageSegments = (sourceSegments, counts, countLabels) => {
-                const sourceTotalBytes = sourceSegments.reduce((total, segment) => total + segment.bytes, 0);
-                const bytes = sourceSegments.map(segment => Math.max(1, Math.round(
-                    storageTotalBytes * segment.bytes / sourceTotalBytes,
-                )));
-                bytes[0] += storageTotalBytes - bytes.reduce((total, value) => total + value, 0);
-                return sourceSegments.map((segment, index) => ({
-                    ...segment,
-                    bytes: bytes[index],
-                    count: counts[segment.id] ?? 0,
-                    unit: segment.group === 'media' ? 'files' : 'records',
-                    formatted_count: countLabels[segment.id] || `${(counts[segment.id] ?? 0).toLocaleString()} ${segment.group === 'media' ? 'files' : 'records'}`,
-                    formatted_size: formatDemoStorageSize(bytes[index]),
-                    percent: Number((bytes[index] / storageTotalBytes * 100).toFixed(2)),
-                }));
-            };
-            const storageCounts = {
-                context_media: 17,
-                core_media: 6,
-                search_index: 1,
-                threads: archiveTweetCount,
-                supplementary_media: 4,
-                avatars: uniqueAuthors.size,
-                core_db: archiveTweetCount,
-                tags: Math.max(1, tags.length),
-                user_profiles: uniqueAuthors.size,
-                articles: state.tweets.filter(tweet => tweet.article).length,
-            };
-            const storageCountLabels = {
-                context_media: '10 photos · 7 videos/gifs',
-                core_media: '3 photos · 3 videos/gifs',
-                search_index: '1 active index',
-                threads: `${archiveTweetCount.toLocaleString()} context objects`,
-                supplementary_media: '4 supporting files',
-                avatars: `${uniqueAuthors.size} cached avatars`,
-                core_db: `${archiveTweetCount.toLocaleString()} archive tweets`,
-                tags: `${Math.max(1, tags.length)} topic tags`,
-                user_profiles: `${uniqueAuthors.size} demo profiles`,
-                articles: `${state.tweets.filter(tweet => tweet.article).length} articles`,
-            };
-            const storageSegments = scaleStorageSegments(
-                STATS_REFERENCE.storage.detailed,
-                storageCounts,
-                storageCountLabels,
-            );
-            const simplifiedStorageSegments = scaleStorageSegments(
-                STATS_REFERENCE.storage.simplified,
-                {media: mediaCount + uniqueAuthors.size, database: archiveTweetCount},
-                {media: `${mediaCount} media files · ${uniqueAuthors.size} avatars`, database: `${archiveTweetCount.toLocaleString()} archive records · SQLite index`},
-            );
-            const tagEligibleTweets = Math.max(1, archiveTweetCount - 1);
-            const baselineTaggedTweets = Math.round(tagEligibleTweets * STATS_REFERENCE.tags.coverage / 100);
-            const tagDelta = currentTaggedTweetCount - initialTaggedTweetCount;
-            const taggedTweets = Math.max(0, Math.min(tagEligibleTweets, baselineTaggedTweets + tagDelta));
+            const dataBytes = metadata.fixture_bytes ?? new TextEncoder().encode(JSON.stringify(fixture)).length;
+            segments.push({id: 'core_db', name: 'Demo Data (JSON)', group: 'database',
+                description: 'The published fixture, including posts, profiles, tags and article text.',
+                bytes: dataBytes, count: tweets.length, unit: 'records', formatted_count: `${tweets.length} archive records`});
+            const totalBytes = segments.reduce((sum, segment) => sum + segment.bytes, 0);
+            const sizeLabel = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MiB`
+                : bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KiB` : `${bytes} B`;
+            const formatSegment = segment => ({...segment, formatted_size: sizeLabel(segment.bytes),
+                percent: totalBytes ? Number((segment.bytes / totalBytes * 100).toFixed(2)) : 0});
+            const mediaBytes = totalBytes - dataBytes;
             return {
-                generated_at: new Date().toISOString(),
-                age_seconds: 0,
-                stale: false,
-                refreshing: false,
-                refresh_failed: false,
+                generated_at: new Date().toISOString(), age_seconds: 0, stale: false, refreshing: false, refresh_failed: false,
                 summary: {
-                    owner_user_id: 'demo_you',
-                    unique_posts: archiveTweetCount,
-                    media_rows: mediaCount,
-                    articles: state.tweets.filter(tweet => tweet.article).length,
-                    urls: 5,
-                    profiles: uniqueAuthors.size,
-                    oldest_post: 'Jan 28, 2026',
-                    newest_post: 'Feb 15, 2026',
-                    latest_sync: 'Feb 15, 2026',
-                    missing_archive_tweets: unavailableTotal,
-                    missing_archive_pct: archiveTweetCount ? Number((unavailableTotal / archiveTweetCount * 100).toFixed(1)) : 0,
-                    archive_tweets: archiveTweetCount,
+                    owner_user_id: fixture.owner_user_id, unique_posts: tweets.length, archive_tweets: tweets.length,
+                    media_rows: allMedia.length, articles: tweets.filter(tweet => tweet.article).length,
+                    urls: new Set(tweets.flatMap(tweet => tweet.urls.map(url => url.expanded_url || url.url || url.short_url)).filter(Boolean)).size,
+                    profiles: uniqueAuthors.size, oldest_post: dateLabel(tweets.map(tweet => tweet.created_at)),
+                    newest_post: latestLabel(tweets.map(tweet => tweet.created_at)), latest_sync: latestLabel(tweets.map(tweet => tweet.synced_at)),
+                    missing_archive_tweets: 0, missing_archive_pct: 0,
                 },
                 collections: collectionRows,
                 health: {
-                    threads_expanded: Math.max(1, Math.round(
-                        STATS_REFERENCE.enrichment.threadsExpanded / STATS_REFERENCE.archiveTweets * archiveTweetCount,
-                    )),
-                    enrichment: {
-                        available: enriched + resurrected,
-                        done: enriched,
-                        incomplete: 0,
-                        pending: 0,
-                        transient: 0,
-                        resurrected,
-                        terminal: unavailableTotal,
-                        unavailable: {
-                            total: unavailableTotal,
-                            percent_of_archive: archiveTweetCount ? Number((unavailableTotal / archiveTweetCount * 100).toFixed(1)) : 0,
-                            retryable: unavailableTotal,
-                            due: unavailableReasons.reduce((total, reason) => total + reason.due, 0),
-                            delayed: unavailableReasons.reduce((total, reason) => total + reason.delayed, 0),
-                            permanent: unavailableReasons.reduce((total, reason) => total + reason.permanent, 0),
-                            reasons: unavailableReasons,
-                        },
-                    },
+                    threads_expanded: (metadata.expanded_thread_ids || []).filter(id => sourceTweets.has(String(id))).length,
+                    enrichment: {details_description: 'Captured posts and demo examples', available: tweets.length, done: tweets.length, incomplete: 0, pending: 0, transient: 0,
+                        resurrected: 0, terminal: 0, unavailable: {total: 0, percent_of_archive: 0, retryable: 0, due: 0,
+                            delayed: 0, permanent: 0, reasons: []}},
                 },
                 storage: {
-                    total_bytes: storageTotalBytes,
-                    formatted_total: '400 KiB',
-                    database_component_bytes_estimated: true,
-                    segments: storageSegments,
-                    simplified_segments: simplifiedStorageSegments,
+                    total_bytes: totalBytes, formatted_total: sizeLabel(totalBytes), database_component_bytes_estimated: false,
+                    media_sizes_measured: Boolean(metadata.asset_bytes), segments: segments.map(formatSegment),
+                    simplified_segments: [
+                        formatSegment({id: 'media', name: 'Media Files & Avatars', bytes: mediaBytes, count: counted.size,
+                            formatted_count: `${counted.size} files`, description: 'Referenced publication media and avatars.'}),
+                        formatSegment({id: 'database', name: 'Demo Data (JSON)', bytes: dataBytes, count: tweets.length,
+                            formatted_count: `${tweets.length} archive records`, description: 'Published JSON fixture.'}),
+                    ],
                 },
                 tags: {
-                    eligible_tweets: tagEligibleTweets,
-                    tagged_tweets: taggedTweets,
-                    untagged_eligible: tagEligibleTweets - taggedTweets,
-                    unique_tags: Math.max(
-                        tags.length,
-                        Math.round(STATS_REFERENCE.tags.unique / STATS_REFERENCE.tags.eligible * tagEligibleTweets),
-                    ),
-                    total_tag_instances: Math.round(
-                        STATS_REFERENCE.tags.totalInstances / STATS_REFERENCE.tags.eligible * tagEligibleTweets,
-                    ),
-                    coverage_pct: STATS_REFERENCE.tags.coverage,
-                    avg_tags_per_tweet: STATS_REFERENCE.tags.average,
-                    top_tags: tags.slice(0, 20),
+                    scope: 'Liked demo posts', eligible_tweets: eligible.length, tagged_tweets: tagged.length,
+                    untagged_eligible: eligible.length - tagged.length, unique_tags: tags.length, total_tag_instances: instances,
+                    coverage_pct: eligible.length ? Number((tagged.length / eligible.length * 100).toFixed(1)) : 0,
+                    avg_tags_per_tweet: tagged.length ? Number((instances / tagged.length).toFixed(1)) : 0,
+                    top_tags: tags.slice(0, 20), generation: metadata.tagging || null,
                 },
             };
         }
@@ -1313,7 +1062,7 @@
                 if (!author) return jsonResponse({author_id: null, snapshots: []});
                 return jsonResponse({
                     author_id: author.id,
-                    snapshots: [{
+                    snapshots: author.profile_snapshots?.length ? clone(author.profile_snapshots) : [{
                         display_name: author.display_name,
                         username: author.username,
                         description: author.description || '',
@@ -1368,7 +1117,7 @@
                 return jsonResponse({success: true});
             }
 
-            if (path.endsWith('/api/stats/latest-sync')) return jsonResponse({latest_sync: 'Feb 15, 2026'});
+            if (path.endsWith('/api/stats/latest-sync')) return jsonResponse({latest_sync: statsSnapshot().summary.latest_sync});
             if (path.endsWith('/api/stats/enrichment-incomplete')) return jsonResponse({incomplete: 0});
             if (path.endsWith('/api/stats/snapshot')) return jsonResponse(statsSnapshot());
             if (path.endsWith('/api/stats/status')) {
@@ -1384,7 +1133,10 @@
             if (path.endsWith('/api/activity/sync') && method === 'POST') {
                 if (runtime.activity) return errorResponse('A demo sync is already running', 409);
                 const startedAt = nowSeconds();
+                const counts = replayInventory();
                 runtime.activity = {
+                    counts,
+                    phases: replayPhases(counts),
                     runId: `demo-${Math.floor(startedAt * 1000)}`,
                     startedAt,
                     stopped: false,
@@ -1496,6 +1248,8 @@
             const finishedAt = nowSeconds() - 600;
             runtime.activity = {
                 runId: 'demo-last-sync',
+                counts: initialReplayCounts,
+                phases: replayPhases(initialReplayCounts),
                 startedAt: finishedAt - syncDurationSeconds,
                 stopped: false,
                 stoppedAt: null,

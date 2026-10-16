@@ -48,6 +48,7 @@
                     <span x-show="viewMode === 'list'" class="nook-sync" x-text="(activity || activityStartPending) ? activityCommandLabel() + ' in progress…' : lastSyncFormatted ? 'Synced ' + lastSyncFormatted : 'Your saved tweets, in one place'" :title="lastSyncFormatted ? 'Last synced ' + lastSyncFormatted : null"></span>
                 </div>
                 <div class="nook-utilities">
+                    <button x-cloak x-show="viewMode === 'thread' && articleForTweet(threadData?.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg><span class="article-focus-label">Focus mode</span></button>
                     <button type="button" class="nook-icon-button nook-activity-button" @click="nookToggleActivity($data, $el)" aria-controls="nook-activity-drawer" :aria-expanded="activityDrawerOpen" :aria-label="(activity || activityStartPending) ? activityCommandLabel() + ', in progress' : 'Sync activity'" :title="(activity || activityStartPending) ? activityCommandLabel() + ' in progress' : 'Sync activity'"><span x-show="!(activity || activityStartPending)" class="nook-activity-glyph"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M11.99 16l-5.7-5.7L7.7 8.88l3.29 3.3V2.59h2v9.59l3.3-3.3 1.41 1.42-5.71 5.7zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z" />
 </svg></span><span x-cloak x-show="activity || activityStartPending" class="nook-activity-spinner" aria-hidden="true"></span></button>
@@ -375,7 +376,6 @@
                         </template>
 
                         <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
-                        <button x-show="articleForTweet(threadData.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg>Focus mode</button>
                         <div x-html="renderCard(threadData.main, 'detail')" @click.stop></div>
                         <div x-html="renderMediaGrid(threadData.main.media, 'detail')" @click.stop></div>
 
@@ -690,9 +690,12 @@
                 </button>
                 <h2 class="text-xl font-bold text-[var(--text-primary)]" x-text="panelMode === 'quotes' ? 'Quote Tweets' : (articleForTweet(panelThreadData?.main) ? 'Article' : 'Tweet')"></h2>
             </div>
-            <button @click="closePanel()" class="p-2 rounded-full hover-bg transition text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
-                <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
-            </button>
+            <div class="article-header-actions">
+                <button x-cloak x-show="panelMode === 'thread' && articleForTweet(panelThreadData?.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(panelThreadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg><span class="article-focus-label">Focus mode</span></button>
+                <button @click="closePanel()" class="p-2 rounded-full hover-bg transition text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+                    <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
+                </button>
+            </div>
         </div>
 
         <!-- Panel Thread View -->
@@ -794,7 +797,6 @@
                             <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-2" x-html="renderReplyRecipientContent(panelThreadData.main)" @click="handleReplyRecipientClick($event)"></div>
                         </template>
                         <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(panelThreadData.main)" @click="handleTextClick($event)"></div>
-                        <button x-show="articleForTweet(panelThreadData.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(panelThreadData.main)" aria-label="Open article focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg>Focus mode</button>
                         <div x-html="renderCard(panelThreadData.main, 'detail')" @click.stop></div>
                         <div x-html="renderMediaGrid(panelThreadData.main.media, 'detail')" @click.stop></div>
 
@@ -2710,6 +2712,7 @@
                 </div>
 
                 <div class="flex-1 space-y-8 overflow-y-auto p-4 md:p-6">
+                    <p x-show="automatedTaggingAccounting?.scope" x-text="automatedTaggingAccounting?.scope" class="text-sm text-[var(--text-secondary)]"></p>
                     <div>
                         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                             <h3 class="stats-section-title">Pricing overview</h3>
@@ -2863,7 +2866,8 @@
 
                     <div class="rounded-2xl border border-[var(--border-color)] bg-[color-mix(in_srgb,var(--accent-color)_8%,var(--bg-secondary))] p-4 text-sm text-[var(--text-secondary)]">
                         <p class="font-bold text-[var(--text-primary)]">How pricing is calculated</p>
-                        <p class="mt-1">Estimates use Gemini-reported token usage and the OpenRouter reference rates stored with each paid request. Free requests are recorded at $0.00. Missing provider usage or unavailable pricing is shown as a pricing gap instead of being guessed.</p>
+                        <p x-show="automatedTaggingAccounting?.pricing_note" x-text="automatedTaggingAccounting?.pricing_note" class="mt-1"></p>
+                        <p x-show="!automatedTaggingAccounting?.pricing_note" class="mt-1">Estimates use Gemini-reported token usage and the OpenRouter reference rates stored with each paid request. Free requests are recorded at $0.00. Missing provider usage or unavailable pricing is shown as a pricing gap instead of being guessed.</p>
                         <p class="mt-2">These local estimates can differ from Google’s final bill and cannot include requests made by other applications. Review <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener noreferrer" class="font-bold text-[var(--accent-color)] hover:underline">Gemini API pricing</a> for current provider terms.</p>
                     </div>
                 </div>
@@ -3025,7 +3029,7 @@
                                     <div class="stats-card">
                                         <div class="stats-label">Full details</div>
                                         <div class="stats-value" x-text="statsHealth.enrichment.done.toLocaleString()"></div>
-                                <div class="stats-subtitle">Fetched from X</div>
+                                <div class="stats-subtitle" x-text="statsHealth.enrichment.details_description || 'Fetched from X'"></div>
                                     </div>
                                     <div class="stats-card">
                                         <div class="stats-label">Conversations</div>
@@ -3204,6 +3208,7 @@
 
                         <template x-if="!loadingStatsTags && statsTags">
                             <div class="space-y-3">
+                                <p x-show="statsTags.scope" x-text="statsTags.scope" class="text-sm text-[var(--text-secondary)]"></p>
                                 <!-- Metric cards row -->
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                                     <div class="stats-card">

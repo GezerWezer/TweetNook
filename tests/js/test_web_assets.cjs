@@ -2329,6 +2329,58 @@ test('popstate applies URL routes without pushing and restores list scroll', asy
     assert.equal(context.__state.historyCalls.filter(call => call[0] === 'push').length, 0);
 });
 
+test('Back and Forward dismiss article focus before restoring routes and scroll in both layouts', async () => {
+    for (const splitPanel of [false, true]) {
+        const context = browserContext('/post/123');
+        const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const app = immediateComponent(tweetApp());
+        app.fetchSetup = async () => {};
+        app.fetchNotices = async () => {};
+        app.fetchActivityStatus = async () => {};
+        app.initApp();
+        app.archiveResourcesLoaded = true;
+        app.splitPanel = splitPanel;
+        app.$refs.detailPanel = {scrollTop: 0};
+        let focusOpen = true;
+        let closes = 0;
+        context.document.body.style.overflow = 'hidden';
+        context.window.TweetNookArticles = {closeFocus(options) {
+            assert.equal(options.restoreFocus, false, 'route changes must not refocus the old article');
+            focusOpen = false;
+            context.document.body.style.overflow = '';
+            closes++;
+        }};
+        const originalScrollTo = context.window.scrollTo;
+        context.window.scrollTo = (...args) => {
+            assert.equal(focusOpen, false, 'focus cleanup must finish before route scroll restoration');
+            originalScrollTo(...args);
+        };
+        app.showFullThread = async id => {
+            assert.equal(focusOpen, false);
+            app.viewMode = 'thread';
+            app.threadData = {main: {tweet_id: id}};
+        };
+        app.applyPanelRoute = async route => {
+            assert.equal(focusOpen, false);
+            app.panelMode = route.viewMode;
+            app.panelThreadData = {main: {tweet_id: route.tweetId}};
+        };
+        await context.window.dispatchEvent({type: 'popstate', state: {viewMode: 'list', scrollY: 321, tweetNookDepth: 0}});
+        assert.equal(focusOpen, false);
+        assert.equal(context.document.body.style.overflow, '');
+        assert.equal(app.viewMode, 'list');
+        assert.ok(context.__state.scrollCalls.some(call => call[1] === 321));
+        await context.window.dispatchEvent({type: 'popstate', state: {viewMode: 'thread', tweetId: '123', tweetNookDepth: 1}});
+        assert.equal(splitPanel ? app.panelThreadData.main.tweet_id : app.threadData.main.tweet_id, '123');
+        assert.equal(focusOpen, false, 'Forward must not reopen the dismissed dialog');
+        focusOpen = true;
+        context.document.body.style.overflow = 'hidden';
+        await app.applyRoute({viewMode: 'list'}, {state: {viewMode: 'list', scrollY: 22}});
+        assert.equal(focusOpen, false, 'programmatic navigation uses the same cleanup');
+        assert.equal(closes, 3);
+    }
+});
+
 test('split-panel routes follow browser history and rebuild cached content', async () => {
     const context = browserContext();
     const requests = [];
@@ -2755,6 +2807,22 @@ test('reply-recipient markup opens profile cards on every tweet surface', () => 
     const { app } = feedListApp();
     const card = app.renderFeedCard(JSON.parse(JSON.stringify(WEB_FIXTURE.slim[4])));
     assert.match(card, /data-action="reply-profile" data-username="frank">@frank</);
+});
+
+test('demo reply metadata keeps body mentions out of the automatic recipient label', () => {
+    const context = browserContext();
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    context.window.TWEETNOOK_DEMO = false;
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'demo-api.js'), 'utf8'), context);
+    const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo', 'data.json'), 'utf8'));
+    const store = context.window.TweetNookDemo.createStore(fixture);
+    const reply = store.hydrate('1795129713683255380');
+    assert.deepEqual(Array.from(reply.raw_json.legacy.display_text_range), [13, 42]);
+    assert.equal(app.getReplyTo(reply), 'aleksliving');
+    assert.deepEqual(Array.from(app.getReplyRecipients(reply)), ['aleksliving']);
+    const body = app.formatText(reply);
+    assert.match(body, /@RPhantom00<\/span> it/);
+    assert.doesNotMatch(body, /@aleksliving/);
 });
 
 test('reply recipients use only the captured automatic prefix and retain safe labels', () => {
@@ -3459,6 +3527,35 @@ test('result highlights follow the returned query rather than edits to the searc
     })});
     await app.fetchTweets();
     assert.equal(list.children[0].querySelector('strong'), null);
+});
+
+test('demo hides captured media and quote links while preserving ordinary links', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'demo-api.js'), 'utf8'), context);
+    const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo', 'data.json'), 'utf8'));
+    const store = context.window.TweetNookDemo.createStore(fixture);
+    const app = immediateComponent(tweetApp());
+    const mediaOnly = store.hydrate('2087274031749927040');
+    assert.equal(app.formatText(mediaOnly, true), '');
+    assert.equal(mediaOnly.text, 'https://t.co/iJmE5Nu84I');
+    assert.equal(mediaOnly.media.length, 1);
+    for (const source of fixture.tweets) {
+        const html = app.formatText(store.hydrate(source.tweet_id), true);
+        for (const url of [...(source.media_short_urls || []), source.quote_short_url].filter(Boolean)) {
+            assert.ok(!html.includes(url), `${source.tweet_id} displays attachment URL ${url}`);
+        }
+    }
+    const mixed = fixture.tweets.find(tweet => tweet.tweet_id === '2087274031749927040');
+    mixed.text = 'Read https://t.co/story https://t.co/iJmE5Nu84I';
+    mixed.urls = [{url: 'https://t.co/story', expanded_url: 'https://example.com/story', display_url: 'example.com/story'}];
+    const regular = app.formatText(context.window.TweetNookDemo.createStore(fixture).hydrate(mixed.tweet_id), true);
+    assert.match(regular, /href="https:\/\/example.com\/story"/);
+    assert.match(regular, />example.com\/story<\/a>/);
+    assert.ok(!regular.includes('https://t.co/iJmE5Nu84I'));
+    mixed.text = 'A quote https://t.co/quote';
+    mixed.quote_short_url = 'https://t.co/quote';
+    assert.equal(app.formatText(context.window.TweetNookDemo.createStore(fixture).hydrate(mixed.tweet_id), true), 'A quote');
 });
 
 test('text and card renderers escape HTML and reject active URL schemes', () => {
