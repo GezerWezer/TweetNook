@@ -1972,7 +1972,7 @@
 
                     <!-- Scheduled sync settings -->
                     <!-- Schedule: summary, what to sync, cadence, time, and random delay -->
-                    <div class="nook-setting-body nook-schedule-page" x-show="settingsTab === 'schedule'">
+                    <div class="nook-setting-body nook-schedule-page" x-show="settingsTab === 'schedule' || setupSection === 'schedule'">
                         <div x-show="!scheduleForm && !scheduleError" class="nook-empty"><span>Loading schedule…</span></div>
                         <p x-show="scheduleError" role="alert" class="nook-inline-status nook-schedule-error" x-text="scheduleError"></p>
                         <template x-if="scheduleForm">
@@ -2345,7 +2345,7 @@
 
                     <!-- Appearance Section -->
 
-                    <div class="nook-setting-body nook-appearance" x-show="settingsTab === 'appearance'">
+                    <div class="nook-setting-body nook-appearance" x-show="settingsTab === 'appearance' || setupSection === 'appearance'">
                         <section class="nook-setting-section">
                             <div class="nook-section-title"><h3>Theme</h3><span x-text="THEMES[currentTheme]?._name"></span></div>
                             <template x-for="group in nookThemeGroups()" :key="group.label">
@@ -2465,7 +2465,7 @@
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
                         </button>
                         <h1 id="setup-modal-title" class="setup-modal-heading">Setup</h1>
-                        <span class="setup-modal-step" x-show="setupForced || setupRerun || !setupData?.completed" x-text="`Step ${setupFlowStep} of 3`"></span>
+                        <span class="setup-modal-step" x-show="setupForced || setupRerun || !setupData?.completed" x-text="`Step ${setupFlowStep} of ${SETUP_STEP_COUNT}`"></span>
                     </div>
                     <div class="setup-desktop-required" role="note">
                         <div class="setup-desktop-required-icon" aria-hidden="true">
@@ -2475,9 +2475,9 @@
                         <p>Open TweetNook on a desktop computer to import your archive, connect Twitter/X, and finish setup.</p>
                     </div>
                     <div class="setup-modal-progress" x-show="showSetupModal && (setupForced || setupRerun || !setupData?.completed)" aria-hidden="true">
-                        <span :class="setupFlowStep >= 1 ? 'is-complete' : ''"></span>
-                        <span :class="setupFlowStep >= 2 ? 'is-complete' : ''"></span>
-                        <span :class="setupFlowStep >= 3 ? 'is-complete' : ''"></span>
+                        <template x-for="step in SETUP_STEP_COUNT" :key="step">
+                            <span :class="setupFlowStep >= step ? 'is-complete' : ''"></span>
+                        </template>
                     </div>
                     <div class="setup-modal-content flex-1 overflow-y-auto" x-show="showSetupModal">
                         <template x-if="!setupData || !setupAuth">
@@ -2645,14 +2645,47 @@
                                     </div>
                                 </div>
 
-                                <!-- ── Step 3 · Web password ──────────────────────── -->
+                                <!-- ── Step 3 · Schedule (the Settings page itself, moved in while open) ── -->
                                 <div class="setup-step setup-flow-panel" x-show="setupFlowStep === 3"
                                      :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
                                      x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
                                     <div class="setup-step-body">
                                         <div class="setup-step-header">
                                             <div class="flex-1 min-w-0">
-                                                <h2 id="setup-step-title-3" class="setup-modal-title" tabindex="-1">Protect your archive</h2>
+                                                <h2 id="setup-step-title-3" class="setup-modal-title" tabindex="-1">Keep your archive up to date</h2>
+                                                <p class="setup-modal-description">Choose what to sync and when. You can change this later in Settings.</p>
+                                            </div>
+                                        </div>
+                                        <div class="setup-status" x-show="!setupData.auth.verified" role="status">
+                                            <span>Scheduled syncs need a Twitter/X connection. Until you connect one, they won't run.</span>
+                                        </div>
+                                        <div id="setup-schedule-slot" class="setup-settings-slot"></div>
+                                    </div>
+                                </div>
+
+                                <!-- ── Step 4 · Appearance (the Settings page itself, moved in while open) ── -->
+                                <div class="setup-step setup-flow-panel" x-show="setupFlowStep === 4"
+                                     :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
+                                     x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
+                                    <div class="setup-step-body">
+                                        <div class="setup-step-header">
+                                            <div class="flex-1 min-w-0">
+                                                <h2 id="setup-step-title-4" class="setup-modal-title" tabindex="-1">Make it yours</h2>
+                                                <p class="setup-modal-description">Changes apply right away in this browser. You can change them later in Settings.</p>
+                                            </div>
+                                        </div>
+                                        <div id="setup-appearance-slot" class="setup-settings-slot"></div>
+                                    </div>
+                                </div>
+
+                                <!-- ── Step 5 · Web password ──────────────────────── -->
+                                <div class="setup-step setup-flow-panel" x-show="setupFlowStep === 5"
+                                     :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
+                                     x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
+                                    <div class="setup-step-body">
+                                        <div class="setup-step-header">
+                                            <div class="flex-1 min-w-0">
+                                                <h2 id="setup-step-title-5" class="setup-modal-title" tabindex="-1">Protect your archive</h2>
                                                 <p class="setup-modal-description">Your browser asks for this password whenever it opens TweetNook.</p>
                                             </div>
                                         </div>
@@ -2707,7 +2740,13 @@
                             <span class="setup-btn-spinner" x-show="setupSavingAuth" aria-hidden="true"></span>
                             <span x-text="setupSavingAuth ? 'Testing connection…' : (setupAuthSuccessPending ? 'Connected' : (setupAuthNeedsTest ? 'Test and continue' : 'Continue'))"></span>
                         </button>
-                        <button type="submit" form="setup-password-form" class="setup-btn is-primary" x-show="setupFlowStep === 3"
+                        <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 3"
+                                :disabled="!scheduleForm || scheduleSaving || !scheduleRandomWindowValid()" @click="saveSetupSchedule()">
+                            <span class="setup-btn-spinner" x-show="scheduleSaving" aria-hidden="true"></span>
+                            <span x-text="scheduleSaving ? 'Saving…' : 'Continue'"></span>
+                        </button>
+                        <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 4" @click="goToSetupStep(5)">Continue</button>
+                        <button type="submit" form="setup-password-form" class="setup-btn is-primary" x-show="setupFlowStep === 5"
                                 :disabled="!setupCanFinish" x-text="setupFinishing ? 'Finishing…' : 'Finish setup'"></button>
                     </div>
 

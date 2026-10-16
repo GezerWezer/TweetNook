@@ -253,3 +253,40 @@ def test_setup_auth_is_saved_only_after_successful_candidate_probe(
 
     rejected = client.put("/api/setup/auth", json={"browser": "firefox"})
     assert rejected.status_code == 422
+
+
+def test_setup_schedule_saves_before_the_scheduler_starts(
+    monkeypatch, tmp_path: Path, make_web_client
+) -> None:
+    paths = _paths(tmp_path)
+    paths.config_file.write_text("", encoding="utf-8")
+
+    def load_test_config():
+        raw = tomllib.loads(paths.config_file.read_text(encoding="utf-8"))
+        return config_module.AppConfig.model_validate(raw), paths
+
+    monkeypatch.setattr(setup, "load_config", load_test_config)
+    server_state.update({"paths": paths, "schedule_manager": None})
+    client = make_web_client(setup.router)
+
+    initial = client.get("/api/setup/schedule").json()
+    assert initial["config"]["enabled"] is False
+    assert initial["collections"] == ["bookmarks", "likes"]
+
+    schedule = {**initial["config"], "enabled": True, "cadence": "weekly", "weekday": 2}
+    response = client.put(
+        "/api/setup/schedule",
+        json={"schedule": schedule, "collections": ["tweets", "bookmarks"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["config"]["cadence"] == "weekly"
+    assert response.json()["collections"] == ["bookmarks", "tweets"]
+    saved = tomllib.loads(paths.config_file.read_text(encoding="utf-8"))
+    assert saved["schedule"]["enabled"] is True
+    assert saved["schedule"]["weekday"] == 2
+    assert saved["sync"]["collections"] == ["bookmarks", "tweets"]
+    assert server_state["config"].sync.collections == ["bookmarks", "tweets"]
+
+    rejected = client.put("/api/setup/schedule", json={"schedule": schedule, "collections": []})
+    assert rejected.status_code == 422

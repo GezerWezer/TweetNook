@@ -1590,7 +1590,8 @@ body {
 }
 .setup-modal-progress {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
     gap: 4px;
     padding: 0 20px;
     height: 3px;
@@ -2107,6 +2108,8 @@ body {
 button.setup-link { padding: 0; border: 0; background: none; font-family: inherit; font-size: inherit; cursor: pointer; }
 .nook-sheet.setup-help-sheet { width: min(680px, 100%); }
 .setup-help-sheet .nook-sheet-header { z-index: 1; }
+/* Settings pages shown inside a Setup step align with the step's own text column. */
+.setup-settings-slot > .nook-setting-body { padding: 0; }
 .setup-help-sheet .setup-modal-close { position: static; flex-shrink: 0; }
 .setup-help-error { margin: 0 16px 16px; }
 .setup-help-tabs { height: 53px; border-bottom: 1px solid var(--border-color); }

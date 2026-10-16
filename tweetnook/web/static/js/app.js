@@ -29,6 +29,8 @@ const MEDIA_PREFETCH_MARGIN_PX = 1600;
 // Hovering a tweet this long starts loading its conversation.
 const THREAD_HOVER_PREFETCH_MS = 150;
 const SETUP_LOAD_ERROR = 'Could not load setup';
+// Archive, Connect, Schedule, Appearance, Password.
+const SETUP_STEP_COUNT = 5;
 const DEFAULT_FEEDS = [['likes', 'liked_latest'], ['all', 'newest'], ['bookmarks', 'newest'], ['tweets', 'newest']];
 const videoUiHideTimers = new WeakMap();
 const videoScrubStates = new WeakMap();
@@ -2036,6 +2038,7 @@ function tweetApp() {
         setupArchiveFresh: false,
         setupArchiveChoice: null,
         setupStepResumed: false,
+        setupSection: null,
         setupAuthEdited: false,
         setupStartingImport: false,
         setupConfirm: null,
@@ -2273,7 +2276,12 @@ function tweetApp() {
             this.$watch('settingsTab', tab => {
                 if (tab === 'tags' && this.showSettingsModal) this.fetchGlobalTags();
             });
+            this.$watch('setupFlowStep', step => {
+                if (step === 3) this.loadSetupSchedule();
+                this.$nextTick(() => this.placeSetupSections());
+            });
             this.$watch('showSetupModal', val => {
+                this.$nextTick(() => this.placeSetupSections());
                 if (val) this.lockModalScroll();
                 else if (!this.showSettingsModal && !this.lightboxOpen) this.unlockModalScroll();
             });
@@ -5697,12 +5705,86 @@ function tweetApp() {
 
         goToSetupStep(step) {
             const next = Number(step);
-            if (![1, 2, 3].includes(next) || next === this.setupFlowStep) return;
+            if (!Number.isInteger(next) || next < 1 || next > SETUP_STEP_COUNT || next === this.setupFlowStep) return;
             this.setupDirection = next < this.setupFlowStep ? 'back' : 'forward';
             this.setupFlowStep = next;
             this.setupError = '';
             // Move focus to the new step's title so keyboard and screen-reader users follow along.
             this.$nextTick?.(() => document.getElementById(`setup-step-title-${next}`)?.focus({ preventScroll: true }));
+        },
+
+        // Setup shows the Settings Schedule and Appearance pages themselves: each is moved
+        // into its step while that step is open and put back afterwards, so they never drift.
+        placeSetupSections() {
+            const step = this.showSetupModal ? this.setupFlowStep : 0;
+            this.setupSection = { 3: 'schedule', 4: 'appearance' }[step] || null;
+            for (const [key, selector] of [['schedule', '.nook-schedule-page'], ['appearance', '.nook-appearance']]) {
+                const section = document.querySelector(selector);
+                if (!section) continue;
+                if (!section.setupHome) {
+                    section.setupHome = document.createComment(`${key} page`);
+                    section.before(section.setupHome);
+                }
+                const slot = document.getElementById(`setup-${key}-slot`);
+                if (this.setupSection === key && slot) slot.append(section);
+                else if (section.parentNode !== section.setupHome.parentNode) section.setupHome.after(section);
+            }
+        },
+
+        // Until Setup finishes the scheduler is not running and its API is gated, so
+        // the first run reads and saves the schedule through Setup's own endpoint.
+        async loadSetupSchedule() {
+            if (this.setupData?.completed) {
+                await Promise.all([this.fetchScheduleSettings(), nookLoadSyncCollections(this)]);
+                return;
+            }
+            this.scheduleError = '';
+            try {
+                const response = await fetch('/api/setup/schedule');
+                if (!response.ok) throw new Error('Could not load schedule');
+                const data = await response.json();
+                this.scheduleSettings = data;
+                this.scheduleForm = this.normalizeScheduleConfig(data.config);
+                this.syncScheduleTimePicker();
+                this.scheduleOriginal = JSON.parse(JSON.stringify(this.scheduleForm));
+                if (Array.isArray(data.collections) && data.collections.length) this.nookSyncCollections = data.collections;
+            } catch (error) {
+                this.scheduleError = error.message;
+            }
+        },
+
+        async saveSetupSchedule() {
+            if (!this.scheduleForm || this.scheduleSaving || !this.scheduleRandomWindowValid()) return;
+            if (this.setupData?.completed) {
+                // After Setup, the Schedule page saves as it does in Settings.
+                if (this.scheduleHasChanges()) await this.saveScheduleSettings();
+                if (!this.scheduleError) this.goToSetupStep(4);
+                return;
+            }
+            this.scheduleSaving = true;
+            this.scheduleError = '';
+            try {
+                const response = await fetch('/api/setup/schedule', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        schedule: this.normalizeScheduleConfig(this.scheduleForm),
+                        collections: this.nookSyncCollections,
+                    }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not save schedule');
+                this.scheduleSettings = data;
+                this.scheduleForm = this.normalizeScheduleConfig(data.config);
+                this.syncScheduleTimePicker();
+                this.scheduleOriginal = JSON.parse(JSON.stringify(this.scheduleForm));
+                this.nookSyncCollections = data.collections;
+                this.goToSetupStep(4);
+            } catch (error) {
+                this.scheduleError = error.message;
+            } finally {
+                this.scheduleSaving = false;
+            }
         },
 
         // Resolves true when the in-app confirmation sheet is accepted.

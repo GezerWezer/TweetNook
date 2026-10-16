@@ -109,6 +109,8 @@ async function nookToggleSyncCollection(app, key) {
   if (!picked.length) return;
   const next = NOOK_COLLECTION_ORDER.filter(item => picked.includes(item));
   app.nookSyncCollections = next;
+  // During first-run Setup the config API is gated; the Schedule step saves this on Continue.
+  if (app.showSetupModal && !app.setupData?.completed) return;
   try {
     const response = await fetch('/api/config', {
       method: 'POST',
