@@ -26,7 +26,7 @@ test('previews show one cover, badge, title, and excerpt without the body', () =
     assert.match(html, /Read article: A &lt;saved&gt; article/);
     assert.match(html, /data-article-id="123"/);
     assert.equal((html.match(/<img /g) || []).length, 1);
-    assert.match(html, /article-badge/);
+    assert.match(html, /<span class="article-badge">Article<\/span>/);
     assert.doesNotMatch(html, /Second paragraph/);
 });
 test('missing covers and preview-only bodies remain understandable', () => {
