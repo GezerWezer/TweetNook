@@ -2108,8 +2108,10 @@ body {
 button.setup-link { padding: 0; border: 0; background: none; font-family: inherit; font-size: inherit; cursor: pointer; }
 .nook-sheet.setup-help-sheet { width: min(680px, 100%); }
 .setup-help-sheet .nook-sheet-header { z-index: 1; }
-/* Settings pages shown inside a Setup step align with the step's own text column. */
-.setup-settings-slot > .nook-setting-body { padding: 0; }
+/* Setup's Schedule and Appearance steps reuse the Settings row and theme-tile styles. */
+.setup-sync-switch { border-bottom: 1px solid var(--border-color); }
+.setup-sync-section { margin-top: 16px; }
+.setup-sync-section h3 { color: var(--text-primary); font-size: 15px; line-height: 20px; font-weight: 700; }
 .setup-help-sheet .setup-modal-close { position: static; flex-shrink: 0; }
 .setup-help-error { margin: 0 16px 16px; }
 .setup-help-tabs { height: 53px; border-bottom: 1px solid var(--border-color); }

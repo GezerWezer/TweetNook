@@ -588,12 +588,14 @@ function nookTimeLabel(time) {
   const [hour, minute] = String(time || '03:00').split(':').map(Number);
   return `${hour % 12 || 12}:${String(minute || 0).padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
 }
-function nookScheduleSentence(app) {
+// details: false leaves out the random start window and time zone (used by Setup).
+function nookScheduleSentence(app, { details = true } = {}) {
   const form = app.scheduleForm;
   if (!form) return '';
   if (form.cadence === 'hours') return nookEvery(Number(form.every_hours));
   let sentence = form.cadence === 'daily' ? 'Every day' : form.cadence === 'weekly' ? `Every ${NOOK_WEEKDAYS[form.weekday] || 'week'}` : `On the ${nookOrdinal(Number(form.day_of_month))} of every month`;
   sentence += ` at ${nookTimeLabel(form.time)}`;
+  if (!details) return sentence;
   const earliest = Number(form.random_offset_min_hours), latest = Number(form.random_offset_max_hours);
   if (form.randomize_time && app.scheduleRandomWindowValid() && latest > 0) {
     sentence += earliest > 0 ? `, starting ${nookDelayLabel(earliest)} to ${nookDelayLabel(latest)} later` : `, starting up to ${nookDelayLabel(latest)} later`;
@@ -608,13 +610,8 @@ function nookScheduleHeadline(app) {
 }
 function nookScheduleStatusLine(app) {
   const form = app.scheduleForm, status = app.scheduleSettings;
-  // In Setup the page has no Save button; Continue saves it.
-  const inSetup = app.showSetupModal;
-  if (app.scheduleHasChanges()) {
-    if (inSetup) return 'Saved when you continue.';
-    return form.enabled ? 'Not saved yet. Save to update the next sync.' : 'Not saved yet. Save to turn scheduled syncs off.';
-  }
+  if (app.scheduleHasChanges()) return form.enabled ? 'Not saved yet. Save to update the next sync.' : 'Not saved yet. Save to turn scheduled syncs off.';
   if (!form.enabled) return 'Turn on automatic syncs to keep your archive current.';
   if (status?.configured && status.date) return `Next sync ${status.date}${status.relative ? ` (${status.relative})` : ''}`;
-  return inSetup ? 'Scheduled syncs start when you finish Setup.' : 'Save to schedule the next sync.';
+  return 'Save to schedule the next sync.';
 }
