@@ -2813,10 +2813,11 @@ body {
     border-radius: 0;
     --media-border-size: 0px;
 }
-.quote-card:not(.quote-compact) > .quote-media img {
+/* Only single media letterboxes; gallery tiles crop to fill their cells like X. */
+.quote-card:not(.quote-compact) > .quote-media > .media-single img {
     object-fit: contain;
 }
-.quote-card:not(.quote-compact) > .quote-media video {
+.quote-card:not(.quote-compact) > .quote-media > .media-single video {
     object-fit: contain;
     background: #000;
 }
