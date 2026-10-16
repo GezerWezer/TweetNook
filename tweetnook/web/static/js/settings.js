@@ -608,8 +608,13 @@ function nookScheduleHeadline(app) {
 }
 function nookScheduleStatusLine(app) {
   const form = app.scheduleForm, status = app.scheduleSettings;
-  if (app.scheduleHasChanges()) return form.enabled ? 'Not saved yet. Save to update the next sync.' : 'Not saved yet. Save to turn scheduled syncs off.';
+  // In Setup the page has no Save button; Continue saves it.
+  const inSetup = app.showSetupModal;
+  if (app.scheduleHasChanges()) {
+    if (inSetup) return 'Saved when you continue.';
+    return form.enabled ? 'Not saved yet. Save to update the next sync.' : 'Not saved yet. Save to turn scheduled syncs off.';
+  }
   if (!form.enabled) return 'Turn on automatic syncs to keep your archive current.';
   if (status?.configured && status.date) return `Next sync ${status.date}${status.relative ? ` (${status.relative})` : ''}`;
-  return 'Save to schedule the next sync.';
+  return inSetup ? 'Scheduled syncs start when you finish Setup.' : 'Save to schedule the next sync.';
 }

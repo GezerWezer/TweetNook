@@ -16,12 +16,15 @@ from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from tweetnook.config import (
+    SYNC_COLLECTION_ORDER,
     AppConfig,
     AuthConfig,
     ReplayConfig,
+    ScheduleConfig,
+    SyncCollection,
     XDGPaths,
     ensure_paths,
     load_config,
@@ -477,6 +480,52 @@ def migrate_archive(_auth: Annotated[bool, Depends(verify_credentials)]):
     if not (coordinator.paths.data_dir / "archive.lancedb").exists():
         raise HTTPException(status_code=409, detail="No upstream LanceDB archive was found.")
     return _initialize("migration")
+
+
+class ScheduleSetupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schedule: ScheduleConfig
+    collections: list[SyncCollection] = Field(min_length=1)
+
+
+def _schedule_payload() -> dict[str, object]:
+    """Scheduled syncs and what they collect; the scheduler itself starts after Setup."""
+    config, _ = load_config()
+    manager = server_state.get("schedule_manager")
+    status_payload = manager.status() if manager else {"config": config.schedule.model_dump()}
+    return {**status_payload, "collections": list(config.sync.collections)}
+
+
+@router.get("/schedule")
+def get_setup_schedule(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, object]:
+    return _schedule_payload()
+
+
+@router.put("/schedule")
+def put_setup_schedule(
+    request: ScheduleSetupRequest,
+    _auth: Annotated[bool, Depends(verify_credentials)],
+) -> dict[str, object]:
+    """Save the Schedule step while the Activity schedule API is still gated by Setup."""
+    paths = server_state.get("paths")
+    if paths is None:
+        raise HTTPException(status_code=503, detail="Setup storage is not initialized.")
+    changes: dict[str, object] = {
+        f"schedule.{key}": value for key, value in request.schedule.model_dump().items()
+    }
+    changes["sync.collections"] = [c for c in SYNC_COLLECTION_ORDER if c in request.collections]
+    try:
+        update_config_values(paths, changes)
+        config, _ = load_config()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    server_state["config"] = config
+    if supervisor := server_state.get("job_supervisor"):
+        supervisor.config = config
+    if manager := server_state.get("schedule_manager"):
+        manager.reload(reset=True)
+    return _schedule_payload()
 
 
 class CompleteRequest(BaseModel):

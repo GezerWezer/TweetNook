@@ -3169,6 +3169,55 @@ test('first-run setup resumes at the first unfinished step after a reload', asyn
     assert.equal(app.setupFlowStep, 1);
 });
 
+test('setup schedule step saves through Setup before the scheduler starts', async () => {
+    const context = browserContext();
+    const requests = [];
+    context.fetch = async (url, options = {}) => {
+        requests.push([url, options.method || 'GET', options.body ? JSON.parse(options.body) : null]);
+        if (url === '/api/setup/schedule' && !options.method) {
+            return { ok: true, async json() { return { config: { enabled: false, cadence: 'daily', time: '03:00' }, collections: ['bookmarks'] }; } };
+        }
+        if (url === '/api/setup/schedule') {
+            const body = JSON.parse(options.body);
+            return { ok: true, async json() { return { config: body.schedule, collections: body.collections }; } };
+        }
+        throw new Error(`unexpected request: ${url}`);
+    };
+    const { tweetApp, nookToggleSyncCollection, nookScheduleStatusLine } = loadScripts(
+        context, ['themes.js', 'app.js', 'header.js', 'settings.js'], '({tweetApp, nookToggleSyncCollection, nookScheduleStatusLine})');
+    const app = immediateComponent(tweetApp());
+    app.setupData = { completed: false, archive: {}, auth: { verified: false }, web: {} };
+    app.showSetupModal = true;
+    app.setupFlowStep = 3;
+
+    await app.loadSetupSchedule();
+    assert.equal(app.scheduleForm.enabled, false);
+    assert.deepEqual([...app.nookSyncCollections], ['bookmarks']);
+    assert.equal(nookScheduleStatusLine(app), 'Turn on automatic syncs to keep your archive current.');
+
+    // What to sync stays local until Continue; the gated config API is not called.
+    await nookToggleSyncCollection(app, 'tweets');
+    assert.deepEqual([...app.nookSyncCollections], ['bookmarks', 'tweets']);
+    app.scheduleForm.enabled = true;
+    assert.equal(nookScheduleStatusLine(app), 'Saved when you continue.');
+
+    await app.saveSetupSchedule();
+    const saved = requests.at(-1);
+    assert.deepEqual([saved[0], saved[1]], ['/api/setup/schedule', 'PUT']);
+    assert.equal(saved[2].schedule.enabled, true);
+    assert.deepEqual(saved[2].collections, ['bookmarks', 'tweets']);
+    assert.equal(requests.some(([url]) => url === '/api/config'), false);
+    assert.equal(app.setupFlowStep, 4);
+    assert.equal(app.scheduleHasChanges(), false);
+    assert.equal(nookScheduleStatusLine(app), 'Scheduled syncs start when you finish Setup.');
+
+    // Setup has five steps.
+    app.goToSetupStep(5);
+    assert.equal(app.setupFlowStep, 5);
+    app.goToSetupStep(6);
+    assert.equal(app.setupFlowStep, 5);
+});
+
 test('setup password step validates matching passwords before finishing', async () => {
     const context = browserContext();
     const bodies = [];
