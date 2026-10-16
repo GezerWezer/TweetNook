@@ -2152,6 +2152,17 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
 .setup-help-block pre { width: fit-content; max-width: 100%; margin: 0; padding: 6px 10px; overflow-x: auto; line-height: 18px; white-space: pre; user-select: all; }
 .setup-help-source { margin-top: 24px; font-size: 15px; }
 
+/* Developer replay source section on Setup step 1 */
+.setup-replay-lede { margin: 0 0 12px; }
+.setup-replay-fields { margin-bottom: 4px; }
+.setup-replay > .setup-status { margin: 0 0 8px; }
+.setup-check-row { display: flex; align-items: center; gap: 16px; min-height: 64px; padding: 12px 0; cursor: pointer; }
+.setup-check-row .setup-option-copy strong { font-size: 15px; line-height: 20px; font-weight: 400; color: var(--text-primary); }
+.setup-check-row input { flex-shrink: 0; width: 20px; height: 20px; accent-color: var(--accent-color); cursor: pointer; }
+.setup-replay-actions { display: flex; gap: 12px; margin-top: 4px; }
+.nook-demo-badge.setup-replay-badge { position: absolute; left: 56px; font-size: 13px; line-height: 16px; font-weight: 700; }
+.setup-help code { padding: 1px 4px; border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); font-size: 12px; }
+
 /* Inline spinner for buttons */
 .setup-btn-spinner {
     width: 14px;
