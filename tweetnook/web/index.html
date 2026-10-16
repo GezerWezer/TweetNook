@@ -2244,15 +2244,20 @@
                         <div x-show="notices.length === 0" class="setup-card text-sm text-[var(--text-secondary)]">No notifications yet.</div>
 
                         <section x-show="notices.some(n => !n.dismissed)" aria-labelledby="unread-notifications-heading">
-                            <h3 id="unread-notifications-heading" class="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--text-secondary)]">Unread</h3>
+                            <div class="notice-section-head">
+                                <h3 id="unread-notifications-heading" class="text-sm font-bold uppercase tracking-wide text-[var(--text-secondary)]">Unread</h3>
+                                <button type="button" class="setup-btn" x-show="noticeCount > 1" @click="dismissAllNotices()">Dismiss all</button>
+                            </div>
                             <div class="space-y-3">
                                 <template x-for="notice in notices.filter(n => !n.dismissed)" :key="notice.id">
                                     <article class="setup-card notice-item">
                                         <h4 class="font-bold" :class="notice.severity === 'error' ? 'text-[var(--destructive-color)]' : (notice.severity === 'warning' ? 'text-[var(--accent-color)]' : 'text-[var(--text-primary)]')" x-text="notice.title"></h4>
+                                        <p class="notice-time" x-show="nookNoticeWhen(notice)" x-text="nookNoticeWhen(notice)"></p>
                                         <p class="mt-2 text-sm text-[var(--text-secondary)]" x-text="notice.message"></p>
                                         <div class="mt-4 flex flex-wrap gap-3">
-                                            <button class="setup-btn" @click="openNotice(notice)">View details</button>
-                                            <button class="setup-btn" @click="dismissNotice(notice.id)">Dismiss</button>
+                                            <button type="button" class="setup-btn" @click="openNotice(notice)" x-text="notice.action === 'activity' && notice.run_id ? 'View log' : 'View details'"></button>
+                                            <button type="button" class="setup-btn" x-show="notice.action !== 'activity' && notice.run_id" @click="openNoticeLog(notice)">View log</button>
+                                            <button type="button" class="setup-btn" @click="dismissNotice(notice.id)">Dismiss</button>
                                         </div>
                                     </article>
                                 </template>
@@ -2260,13 +2265,20 @@
                         </section>
 
                         <section x-show="notices.some(n => n.dismissed)" class="mt-7" aria-labelledby="recent-notifications-heading">
-                            <h3 id="recent-notifications-heading" class="mb-3 text-sm font-bold uppercase tracking-wide text-[var(--text-secondary)]">Recent / Dismissed</h3>
+                            <div class="notice-section-head">
+                                <h3 id="recent-notifications-heading" class="text-sm font-bold uppercase tracking-wide text-[var(--text-secondary)]">Recent / Dismissed</h3>
+                                <button type="button" class="setup-btn" @click="clearDismissedNotices()">Clear history</button>
+                            </div>
                             <div class="space-y-3">
                                 <template x-for="notice in notices.filter(n => n.dismissed)" :key="notice.id">
                                     <article class="setup-card notice-item opacity-60">
                                         <h4 class="font-bold text-[var(--text-primary)]" x-text="notice.title"></h4>
+                                        <p class="notice-time" x-show="nookNoticeWhen(notice)" x-text="nookNoticeWhen(notice)"></p>
                                         <p class="mt-2 text-sm text-[var(--text-secondary)]" x-text="notice.message"></p>
-                                        <button class="setup-btn mt-4" @click="openNotice(notice)">View details</button>
+                                        <div class="mt-4 flex flex-wrap gap-3">
+                                            <button type="button" class="setup-btn" @click="openNotice(notice)" x-text="notice.action === 'activity' && notice.run_id ? 'View log' : 'View details'"></button>
+                                            <button type="button" class="setup-btn" x-show="notice.action !== 'activity' && notice.run_id" @click="openNoticeLog(notice)">View log</button>
+                                        </div>
                                     </article>
                                 </template>
                             </div>

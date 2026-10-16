@@ -5790,9 +5790,26 @@ function tweetApp() {
             if (response.ok) this.notices = this.notices.map(n => n.id === id ? {...n, dismissed: true} : n);
         },
 
+        async dismissAllNotices() {
+            const response = await fetch('/api/notices/dismiss-all', { method: 'POST' });
+            if (response.ok) this.notices = this.notices.map(n => ({...n, dismissed: true}));
+        },
+
+        async clearDismissedNotices() {
+            const response = await fetch('/api/notices/dismissed', { method: 'DELETE' });
+            if (response.ok) this.notices = this.notices.filter(n => !n.dismissed);
+        },
+
+        // Notices raised by a run open that run's log in Settings → Activity logs.
+        openNoticeLog(notice) {
+            nookSettingsNavigate(this, 'logs');
+            this.nookLogOpenRunId = notice.run_id;
+        },
+
         openNotice(notice) {
             if (notice.action === 'activity') {
-                this.activityDrawerOpen = true;
+                if (notice.run_id) this.openNoticeLog(notice);
+                else this.openActivityDrawer();
                 return;
             }
             if (notice.action !== 'schedule') {

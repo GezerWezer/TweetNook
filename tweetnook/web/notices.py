@@ -33,21 +33,23 @@ class NoticeStore:
         except (OSError, ValueError):
             self.items = []
 
-    def add(self, notice_id, title, message, *, severity="error", action="activity"):
+    def add(self, notice_id, title, message, *, severity="error", action="activity", run_id=None):
         with self.lock:
             if any(item["id"] == notice_id for item in self.items):
                 return
-            self.items.append(
-                dict(
-                    id=notice_id,
-                    severity=severity,
-                    title=title,
-                    message=message,
-                    created_at=datetime.now(UTC).isoformat(),
-                    dismissed=False,
-                    action=action,
-                )
+            item = dict(
+                id=notice_id,
+                severity=severity,
+                title=title,
+                message=message,
+                created_at=datetime.now(UTC).isoformat(),
+                dismissed=False,
+                action=action,
             )
+            if run_id:
+                # Lets the inbox open the log of the run behind the notice.
+                item["run_id"] = run_id
+            self.items.append(item)
             self.items = self.items[-100:]
             atomic_json(self.path, self.items)
 
@@ -57,7 +59,30 @@ class NoticeStore:
 
     def dismiss(self, notice_id):
         with self.lock:
-            for item in self.items:
-                if item["id"] == notice_id:
-                    item["dismissed"] = True
-            atomic_json(self.path, self.items)
+            changed = [
+                item for item in self.items if item["id"] == notice_id and not item["dismissed"]
+            ]
+            for item in changed:
+                item["dismissed"] = True
+            if changed:
+                atomic_json(self.path, self.items)
+            return bool(changed)
+
+    def dismiss_all(self):
+        with self.lock:
+            changed = [item for item in self.items if not item["dismissed"]]
+            for item in changed:
+                item["dismissed"] = True
+            if changed:
+                atomic_json(self.path, self.items)
+            return len(changed)
+
+    def clear_dismissed(self):
+        """Drop dismissed history; unread notices stay."""
+        with self.lock:
+            kept = [item for item in self.items if not item["dismissed"]]
+            removed = len(self.items) - len(kept)
+            if removed:
+                self.items = kept
+                atomic_json(self.path, self.items)
+            return removed
