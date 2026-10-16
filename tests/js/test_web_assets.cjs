@@ -3218,6 +3218,66 @@ test('setup schedule step saves through Setup before the scheduler starts', asyn
     assert.equal(app.setupFlowStep, 5);
 });
 
+test('setup replay source connects, toggles placeholder media, and disconnects', async () => {
+    const context = browserContext();
+    const requests = [];
+    const replay = (connected, placeholder = true) => ({
+        tools: true,
+        replay: connected
+            ? { connected: true, url: 'http://192.168.1.20:8000', password: '********', placeholder_media: placeholder,
+                status: { bookmarks_pages: 3, likes_pages: 2, thread_captures: 9 } }
+            : { connected: false, url: null, password: null, placeholder_media: true, status: null },
+    });
+    let fail = true;
+    context.fetch = async (url, options = {}) => {
+        const body = options.body ? JSON.parse(options.body) : undefined;
+        requests.push([url, options.method, body]);
+        if (url === '/api/setup/replay' && options.method === 'PUT') {
+            if (fail) return { ok: false, async json() { return { detail: 'The replay source rejected the password (its Web password).' }; } };
+            return { ok: true, async json() { return replay(true, body.placeholder_media); } };
+        }
+        if (url === '/api/setup/replay/placeholder-media') return { ok: true, async json() { return replay(true, body.placeholder_media); } };
+        if (url === '/api/setup/replay' && options.method === 'DELETE') return { ok: true, async json() { return replay(false); } };
+        throw new Error(`unexpected request: ${url}`);
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.setupData = { dev: replay(false), archive: {}, auth: {} };
+
+    assert.equal(app.setupReplayConnected, false);
+    await app.connectSetupReplay();
+    assert.equal(requests.length, 0, 'an empty address sends nothing');
+
+    // Before connecting, the checkbox only changes what will be sent.
+    await app.setSetupReplayPlaceholder(false);
+    assert.equal(app.setupReplayPlaceholder, false);
+    assert.equal(requests.length, 0);
+
+    app.setupReplayForm.url = ' 192.168.1.20:8000 ';
+    app.setupReplayForm.password = 'secret';
+    await app.connectSetupReplay();
+    assert.match(app.setupReplayError, /rejected the password/);
+    assert.equal(app.setupReplayConnected, false);
+    assert.equal(app.setupReplayForm.password, 'secret', 'a failed test keeps the typed password');
+
+    fail = false;
+    await app.connectSetupReplay();
+    assert.deepEqual(requests.at(-1), ['/api/setup/replay', 'PUT', { url: '192.168.1.20:8000', password: 'secret', placeholder_media: false }]);
+    assert.equal(app.setupReplayConnected, true);
+    assert.equal(app.setupReplayError, '');
+    assert.equal(app.setupReplayForm.password, '');
+    assert.equal(app.setupReplaySummary, 'Connected to http://192.168.1.20:8000. It can replay 3 bookmark pages, 2 like pages, 9 threads.');
+
+    // Once connected, the checkbox saves straight away.
+    await app.setSetupReplayPlaceholder(true);
+    assert.deepEqual(requests.at(-1), ['/api/setup/replay/placeholder-media', 'PUT', { placeholder_media: true }]);
+    assert.equal(app.setupReplayPlaceholder, true);
+
+    await app.disconnectSetupReplay();
+    assert.equal(app.setupReplayConnected, false);
+    assert.equal(app.setupReplayForm.url, 'http://192.168.1.20:8000', 'the address is kept for reconnecting');
+});
+
 test('setup password step validates matching passwords before finishing', async () => {
     const context = browserContext();
     const bodies = [];
@@ -3298,6 +3358,10 @@ test('setup uses a dedicated responsive X-style modal shell', () => {
     assert.match(setupMarkup, /@click="clearSetupArchive\(\)"/);
     assert.match(setupMarkup, /@click="goToSetupStep\(setupFlowStep - 1\)"/);
     assert.match(setupMarkup, /class="setup-modal-footer"/);
+    // The replay source section only appears with developer tools, and replay mode is always labelled.
+    assert.match(setupMarkup, /<section class="setup-options setup-replay" x-show="setupData\.dev\?\.tools"/);
+    assert.match(setupMarkup, /x-show="setupReplayConnected"[^>]*class="nook-demo-badge setup-replay-badge">Replay mode</);
+    assert.match(html, /x-show="setupReplayConnected" x-cloak class="nook-demo-badge"[^>]*>Replay mode</);
     // Going back to step 1 after an earlier choice still offers an archive upload.
     assert.match(setupMarkup, /class="setup-upload-zone" x-show="!setupUploading && !setupData\.archive\.uploaded && setupArchiveStatus !== 'importing'"/);
     assert.doesNotMatch(setupMarkup, /<details/);

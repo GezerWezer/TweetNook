@@ -2043,6 +2043,9 @@ function tweetApp() {
         setupStartingImport: false,
         setupConfirm: null,
         setupHelp: null,
+        setupReplayForm: { url: '', password: '', placeholder_media: true },
+        setupReplaySaving: false,
+        setupReplayError: '',
         setupHelpOpen: false,
         setupHelpBrowser: 0,
         setupHelpError: '',
@@ -5948,6 +5951,73 @@ function tweetApp() {
         setupHelpAlsoFor(browser) {
             const names = browser.name.split(' / ').slice(1);
             return names.length ? `Also for ${names.join(', ')}.` : '';
+        },
+
+        // Developer replay source (serve --dev-tools): this install's Twitter/X traffic
+        // goes to another TweetNook archive. The server keeps the password masked.
+        get setupReplayConnected() {
+            return !!this.setupData?.dev?.replay?.connected;
+        },
+
+        get setupReplayPlaceholder() {
+            return this.setupReplayConnected
+                ? !!this.setupData.dev.replay.placeholder_media
+                : !!this.setupReplayForm.placeholder_media;
+        },
+
+        get setupReplaySummary() {
+            const replay = this.setupData?.dev?.replay;
+            if (!replay?.connected) return '';
+            const status = replay.status || {};
+            const pages = [
+                `${status.bookmarks_pages ?? 0} bookmark pages`,
+                `${status.likes_pages ?? 0} like pages`,
+                `${status.thread_captures ?? 0} threads`,
+            ].join(', ');
+            return `Connected to ${replay.url}. It can replay ${pages}.`;
+        },
+
+        async setupReplayRequest(method, url, body) {
+            this.setupReplaySaving = true;
+            this.setupReplayError = '';
+            try {
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body === undefined ? undefined : JSON.stringify(body),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'The replay source could not be updated.');
+                this.setupData = { ...this.setupData, dev: data };
+                return true;
+            } catch (error) {
+                this.setupReplayError = error.message;
+                return false;
+            } finally {
+                this.setupReplaySaving = false;
+            }
+        },
+
+        async connectSetupReplay() {
+            if (this.setupReplaySaving || !this.setupReplayForm.url.trim()) return;
+            const { url, password, placeholder_media } = this.setupReplayForm;
+            if (await this.setupReplayRequest('PUT', '/api/setup/replay', { url: url.trim(), password, placeholder_media })) {
+                this.setupReplayForm.password = '';
+            }
+        },
+
+        async disconnectSetupReplay() {
+            if (this.setupReplaySaving) return;
+            const url = this.setupData?.dev?.replay?.url || '';
+            if (await this.setupReplayRequest('DELETE', '/api/setup/replay')) this.setupReplayForm.url = url;
+        },
+
+        async setSetupReplayPlaceholder(value) {
+            if (!this.setupReplayConnected) {
+                this.setupReplayForm.placeholder_media = value;
+                return;
+            }
+            await this.setupReplayRequest('PUT', '/api/setup/replay/placeholder-media', { placeholder_media: value });
         },
 
         skipSetupAuth() {

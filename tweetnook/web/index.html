@@ -44,6 +44,7 @@
                     <div class="nook-title-line">
                         <h1 x-text="viewMode === 'list' ? 'Your archive' : viewMode === 'quotes' ? 'Quote tweets' : (articleForTweet(threadData?.main) ? 'Article' : 'Tweet')"></h1>
                         <span x-show="isDemo" class="nook-demo-badge">Demo</span>
+                        <span x-show="setupReplayConnected" x-cloak class="nook-demo-badge" :title="`Twitter/X requests go to the replay source at ${setupData?.dev?.replay?.url}`">Replay mode</span>
                     </div>
                     <span x-show="viewMode === 'list'" class="nook-sync" x-text="(activity || activityStartPending) ? activityCommandLabel() + ' in progress…' : lastSyncFormatted ? 'Synced ' + lastSyncFormatted : 'Your saved tweets, in one place'" :title="lastSyncFormatted ? 'Last synced ' + lastSyncFormatted : null"></span>
                 </div>
@@ -2465,6 +2466,7 @@
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
                         </button>
                         <h1 id="setup-modal-title" class="setup-modal-heading">Setup</h1>
+                        <span x-show="setupReplayConnected" x-cloak class="nook-demo-badge setup-replay-badge">Replay mode</span>
                         <span class="setup-modal-step" x-show="setupForced || setupRerun || !setupData?.completed" x-text="`Step ${setupFlowStep} of ${SETUP_STEP_COUNT}`"></span>
                     </div>
                     <div class="setup-desktop-required" role="note">
@@ -2570,6 +2572,51 @@
                                                 <svg class="setup-option-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>
                                             </button>
                                         </section>
+
+                                        <!-- Developer tools (serve --dev-tools): send Twitter/X traffic to another TweetNook's archive -->
+                                        <section class="setup-options setup-replay" x-show="setupData.dev?.tools" aria-labelledby="setup-replay-title">
+                                            <h3 id="setup-replay-title">Replay source</h3>
+                                            <p class="setup-help setup-replay-lede">Developer tool. Send this install's Twitter/X requests to another TweetNook archive instead of Twitter/X. Turn on "Serve as replay source" in that archive's Settings first.</p>
+
+                                            <div class="setup-status" x-show="setupReplayConnected" role="status">
+                                                <svg class="is-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>
+                                                <span x-text="setupReplaySummary"></span>
+                                            </div>
+
+                                            <form id="setup-replay-form" class="setup-fields setup-replay-fields" x-show="!setupReplayConnected" @submit.prevent="connectSetupReplay()">
+                                                <div class="setup-field">
+                                                    <div class="setup-field-body">
+                                                        <label for="setup-replay-url">Archive address</label>
+                                                        <input id="setup-replay-url" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="192.168.1.20:8000" x-model="setupReplayForm.url" @input="setupReplayError = ''">
+                                                    </div>
+                                                </div>
+                                                <div class="setup-field" x-data="{ shown: false }">
+                                                    <div class="setup-field-body">
+                                                        <label for="setup-replay-password">Archive web password</label>
+                                                        <input id="setup-replay-password" :type="shown ? 'text' : 'password'" autocomplete="off" x-model="setupReplayForm.password" @input="setupReplayError = ''">
+                                                    </div>
+                                                    <button type="button" class="setup-field-toggle" :aria-label="shown ? 'Hide password' : 'Show password'" :aria-pressed="shown" @click="shown = !shown">
+                                                        <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5"/><path fill-rule="evenodd" d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0"/></svg>
+                                                        <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10"/></svg>
+                                                    </button>
+                                                </div>
+                                            </form>
+
+                                            <label class="setup-check-row">
+                                                <span class="setup-option-copy"><strong>Use placeholder media</strong><span>Download tiny stand-in images and videos instead of the real files to save space.</span></span>
+                                                <input type="checkbox" :checked="setupReplayPlaceholder" :disabled="setupReplaySaving" @change="setSetupReplayPlaceholder($event.target.checked)">
+                                            </label>
+
+                                            <p class="setup-field-error setup-step-error" x-show="setupReplayError" x-text="setupReplayError" role="alert"></p>
+
+                                            <div class="setup-replay-actions">
+                                                <button type="submit" form="setup-replay-form" class="setup-btn" x-show="!setupReplayConnected" :disabled="setupReplaySaving || !setupReplayForm.url.trim()">
+                                                    <span class="setup-btn-spinner" x-show="setupReplaySaving" aria-hidden="true"></span>
+                                                    <span x-text="setupReplaySaving ? 'Testing…' : 'Test and connect'"></span>
+                                                </button>
+                                                <button type="button" class="setup-btn" x-show="setupReplayConnected" :disabled="setupReplaySaving" @click="disconnectSetupReplay()">Disconnect</button>
+                                            </div>
+                                        </section>
                                     </div>
                                 </div>
                                 <!-- ── Step 2 · Authentication ──────────────────────── -->
@@ -2584,6 +2631,7 @@
                                                     Paste two session cookies from a browser where you're signed in to Twitter/X.
                                                     <button type="button" id="setup-help-trigger" class="setup-link" aria-haspopup="dialog" @click="openSetupHelp()">Where do I find these?</button>
                                                 </p>
+                                                <p class="setup-help" x-show="setupReplayConnected">Replay mode: any cookie values work. Enter <code>fail</code>, <code>ratelimit</code> or <code>offline</code> as auth_token to test those errors.</p>
                                             </div>
                                         </div>
 
