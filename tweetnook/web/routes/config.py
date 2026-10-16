@@ -83,6 +83,13 @@ def api_post_config(
             path in secret_paths and value == MASKED_SECRET for path, value in req.changes.items()
         ):
             raise ValueError("Masked secret placeholders cannot be saved")
+        if req.changes.get("web.dev_replay_source") is True:
+            from tweetnook.web.deps import server_state
+
+            if not server_state.get("password_hash"):
+                raise ValueError(
+                    "Set a Web password before serving this archive as a replay source."
+                )
 
         update_config_values(paths, req.changes)
         config, refreshed_paths = load_config()
