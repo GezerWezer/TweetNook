@@ -1973,7 +1973,7 @@
 
                     <!-- Scheduled sync settings -->
                     <!-- Schedule: summary, what to sync, cadence, time, and random delay -->
-                    <div class="nook-setting-body nook-schedule-page" x-show="settingsTab === 'schedule' || setupSection === 'schedule'">
+                    <div class="nook-setting-body nook-schedule-page" x-show="settingsTab === 'schedule'">
                         <div x-show="!scheduleForm && !scheduleError" class="nook-empty"><span>Loading schedule…</span></div>
                         <p x-show="scheduleError" role="alert" class="nook-inline-status nook-schedule-error" x-text="scheduleError"></p>
                         <template x-if="scheduleForm">
@@ -2346,7 +2346,7 @@
 
                     <!-- Appearance Section -->
 
-                    <div class="nook-setting-body nook-appearance" x-show="settingsTab === 'appearance' || setupSection === 'appearance'">
+                    <div class="nook-setting-body nook-appearance" x-show="settingsTab === 'appearance'">
                         <section class="nook-setting-section">
                             <div class="nook-section-title"><h3>Theme</h3><span x-text="THEMES[currentTheme]?._name"></span></div>
                             <template x-for="group in nookThemeGroups()" :key="group.label">
@@ -2693,7 +2693,7 @@
                                     </div>
                                 </div>
 
-                                <!-- ── Step 3 · Schedule (the Settings page itself, moved in while open) ── -->
+                                <!-- ── Step 3 · Schedule: on or off and what to sync; Settings has the rest ── -->
                                 <div class="setup-step setup-flow-panel" x-show="setupFlowStep === 3"
                                      :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
                                      x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
@@ -2701,28 +2701,73 @@
                                         <div class="setup-step-header">
                                             <div class="flex-1 min-w-0">
                                                 <h2 id="setup-step-title-3" class="setup-modal-title" tabindex="-1">Keep your archive up to date</h2>
-                                                <p class="setup-modal-description">Choose what to sync and when. You can change this later in Settings.</p>
+                                                <p class="setup-modal-description">TweetNook can check Twitter/X on a schedule and save anything new.</p>
                                             </div>
                                         </div>
                                         <div class="setup-status" x-show="!setupData.auth.verified" role="status">
                                             <span>Scheduled syncs need a Twitter/X connection. Until you connect one, they won't run.</span>
                                         </div>
-                                        <div id="setup-schedule-slot" class="setup-settings-slot"></div>
+                                        <p class="setup-field-error setup-step-error" x-show="scheduleError" x-text="scheduleError" role="alert"></p>
+                                        <div x-show="!scheduleForm && !scheduleError" class="setup-help">Loading schedule…</div>
+                                        <template x-if="scheduleForm">
+                                            <div>
+                                                <div class="nook-choice-row setup-sync-switch">
+                                                    <span><strong id="setup-sync-label">Sync automatically</strong><span x-text="setupScheduleSummary"></span></span>
+                                                    <button type="button" role="switch" class="nook-switch-button" aria-labelledby="setup-sync-label" :aria-checked="scheduleForm.enabled" @click="scheduleForm.enabled = !scheduleForm.enabled; scheduleFieldChanged()"><span class="nook-switch-track"><span></span></span></button>
+                                                </div>
+                                                <section class="setup-sync-section">
+                                                    <h3 id="setup-sync-what-title">What to sync</h3>
+                                                    <div role="group" aria-labelledby="setup-sync-what-title">
+                                                        <template x-for="item in [
+                                                            {key: 'bookmarks', label: 'Bookmarks', detail: 'Posts you’ve bookmarked'},
+                                                            {key: 'likes', label: 'Likes', detail: 'Posts you’ve liked'},
+                                                            {key: 'tweets', label: 'Your tweets', detail: 'Posts you’ve written'},
+                                                        ]" :key="item.key">
+                                                            <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes(item.key)" @click="nookToggleSyncCollection($data, item.key)"><span><strong x-text="item.label"></strong><span x-text="item.detail"></span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" /></svg></span></button>
+                                                        </template>
+                                                    </div>
+                                                </section>
+                                                <p class="setup-help">Change how often and when it syncs, and more, in Settings → Schedule.</p>
+                                            </div>
+                                        </template>
                                     </div>
                                 </div>
 
-                                <!-- ── Step 4 · Appearance (the Settings page itself, moved in while open) ── -->
+                                <!-- ── Step 4 · Appearance: themes only; Settings has the rest ── -->
                                 <div class="setup-step setup-flow-panel" x-show="setupFlowStep === 4"
                                      :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
                                      x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
                                     <div class="setup-step-body">
                                         <div class="setup-step-header">
                                             <div class="flex-1 min-w-0">
-                                                <h2 id="setup-step-title-4" class="setup-modal-title" tabindex="-1">Make it yours</h2>
-                                                <p class="setup-modal-description">Changes apply right away in this browser. You can change them later in Settings.</p>
+                                                <h2 id="setup-step-title-4" class="setup-modal-title" tabindex="-1">Choose a theme</h2>
                                             </div>
                                         </div>
-                                        <div id="setup-appearance-slot" class="setup-settings-slot"></div>
+                                        <template x-for="group in nookThemeGroups()" :key="group.label">
+                                            <div class="nook-theme-group">
+                                                <h4 :id="'setup-theme-group-' + group.label" x-text="group.label"></h4>
+                                                <div class="nook-theme-grid" role="radiogroup" :aria-labelledby="'setup-theme-group-' + group.label">
+                                                    <template x-for="item in group.themes" :key="item.key">
+                                                        <button type="button" role="radio" class="nook-theme-tile" :aria-checked="currentTheme === item.key" :aria-label="item.theme._name"
+                                                                :style="nookThemeTileStyle(item.key, item.theme, $data)" @click="applyTheme(item.key)">
+                                                            <span class="nook-theme-sample" aria-hidden="true">
+                                                                <span class="cts-post">
+                                                                    <span class="cts-avatar"></span>
+                                                                    <span class="cts-body">
+                                                                        <span class="cts-identity"><i class="cts-name"></i><i class="cts-handle"></i></span>
+                                                                        <i class="cts-text"></i>
+                                                                        <span class="cts-identity"><i class="cts-text is-short"></i><i class="cts-link"></i></span>
+                                                                        <span class="cts-actions"><i></i><i></i><i class="is-like"></i><i></i></span>
+                                                                    </span>
+                                                                </span>
+                                                            </span>
+                                                            <span class="nook-theme-label"><span x-text="item.theme._name"></span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" /></svg></span></span>
+                                                        </button>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <p class="setup-help">Accent colors, text size, fonts and layout are in Settings → Appearance.</p>
                                     </div>
                                 </div>
 

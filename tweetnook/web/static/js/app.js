@@ -2038,7 +2038,6 @@ function tweetApp() {
         setupArchiveFresh: false,
         setupArchiveChoice: null,
         setupStepResumed: false,
-        setupSection: null,
         setupAuthEdited: false,
         setupStartingImport: false,
         setupConfirm: null,
@@ -2281,10 +2280,8 @@ function tweetApp() {
             });
             this.$watch('setupFlowStep', step => {
                 if (step === 3) this.loadSetupSchedule();
-                this.$nextTick(() => this.placeSetupSections());
             });
             this.$watch('showSetupModal', val => {
-                this.$nextTick(() => this.placeSetupSections());
                 if (val) this.lockModalScroll();
                 else if (!this.showSettingsModal && !this.lightboxOpen) this.unlockModalScroll();
             });
@@ -5716,22 +5713,12 @@ function tweetApp() {
             this.$nextTick?.(() => document.getElementById(`setup-step-title-${next}`)?.focus({ preventScroll: true }));
         },
 
-        // Setup shows the Settings Schedule and Appearance pages themselves: each is moved
-        // into its step while that step is open and put back afterwards, so they never drift.
-        placeSetupSections() {
-            const step = this.showSetupModal ? this.setupFlowStep : 0;
-            this.setupSection = { 3: 'schedule', 4: 'appearance' }[step] || null;
-            for (const [key, selector] of [['schedule', '.nook-schedule-page'], ['appearance', '.nook-appearance']]) {
-                const section = document.querySelector(selector);
-                if (!section) continue;
-                if (!section.setupHome) {
-                    section.setupHome = document.createComment(`${key} page`);
-                    section.before(section.setupHome);
-                }
-                const slot = document.getElementById(`setup-${key}-slot`);
-                if (this.setupSection === key && slot) slot.append(section);
-                else if (section.parentNode !== section.setupHome.parentNode) section.setupHome.after(section);
-            }
+        // Setup's Schedule step shows only how often and when; Settings → Schedule has the rest.
+        get setupScheduleSummary() {
+            if (!this.scheduleForm) return '';
+            const sentence = nookScheduleSentence(this, { details: false });
+            const when = sentence ? sentence[0].toLowerCase() + sentence.slice(1) : '';
+            return this.scheduleForm.enabled ? `Syncs ${when}.` : `Off. When on, syncs ${when}.`;
         },
 
         // Until Setup finishes the scheduler is not running and its API is gated, so

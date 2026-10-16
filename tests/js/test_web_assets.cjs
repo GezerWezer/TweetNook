@@ -3183,8 +3183,8 @@ test('setup schedule step saves through Setup before the scheduler starts', asyn
         }
         throw new Error(`unexpected request: ${url}`);
     };
-    const { tweetApp, nookToggleSyncCollection, nookScheduleStatusLine } = loadScripts(
-        context, ['themes.js', 'app.js', 'header.js', 'settings.js'], '({tweetApp, nookToggleSyncCollection, nookScheduleStatusLine})');
+    const { tweetApp, nookToggleSyncCollection, nookScheduleHeadline } = loadScripts(
+        context, ['themes.js', 'app.js', 'header.js', 'settings.js'], '({tweetApp, nookToggleSyncCollection, nookScheduleHeadline})');
     const app = immediateComponent(tweetApp());
     app.setupData = { completed: false, archive: {}, auth: { verified: false }, web: {} };
     app.showSetupModal = true;
@@ -3193,13 +3193,17 @@ test('setup schedule step saves through Setup before the scheduler starts', asyn
     await app.loadSetupSchedule();
     assert.equal(app.scheduleForm.enabled, false);
     assert.deepEqual([...app.nookSyncCollections], ['bookmarks']);
-    assert.equal(nookScheduleStatusLine(app), 'Turn on automatic syncs to keep your archive current.');
+    // The simple step states the default without the random start window.
+    assert.equal(app.setupScheduleSummary, 'Off. When on, syncs every day at 3:00 AM.');
 
     // What to sync stays local until Continue; the gated config API is not called.
     await nookToggleSyncCollection(app, 'tweets');
     assert.deepEqual([...app.nookSyncCollections], ['bookmarks', 'tweets']);
     app.scheduleForm.enabled = true;
-    assert.equal(nookScheduleStatusLine(app), 'Saved when you continue.');
+    app.scheduleForm.randomize_time = true;
+    app.scheduleForm.random_offset_max_hours = 2;
+    assert.equal(app.setupScheduleSummary, 'Syncs every day at 3:00 AM.');
+    assert.match(nookScheduleHeadline(app), /later/, 'Settings still describes the random start');
 
     await app.saveSetupSchedule();
     const saved = requests.at(-1);
@@ -3209,7 +3213,6 @@ test('setup schedule step saves through Setup before the scheduler starts', asyn
     assert.equal(requests.some(([url]) => url === '/api/config'), false);
     assert.equal(app.setupFlowStep, 4);
     assert.equal(app.scheduleHasChanges(), false);
-    assert.equal(nookScheduleStatusLine(app), 'Scheduled syncs start when you finish Setup.');
 
     // Setup has five steps.
     app.goToSetupStep(5);
