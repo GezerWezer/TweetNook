@@ -3201,6 +3201,37 @@ test('setup password step validates matching passwords before finishing', async 
     assert.equal(app.setupCanFinish, true);
 });
 
+test('setup cookie help loads the generated guide and opens on the current browser', async () => {
+    const context = browserContext();
+    const help = JSON.parse(fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/setup-help.json'), 'utf8'));
+    let loads = 0;
+    context.fetch = async url => {
+        assert.equal(url, '/static/setup-help.json');
+        loads++;
+        return { ok: true, async json() { return help; } };
+    };
+    context.navigator = { ...(context.navigator || {}), userAgent: 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15' };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+
+    await app.openSetupHelp();
+    assert.equal(app.setupHelpOpen, true);
+    assert.equal(app.setupHelp.browsers[app.setupHelpBrowser].name, 'Safari');
+    assert.equal(app.setupHelpDefaultBrowser('Mozilla/5.0 Firefox/131.0'), help.browsers.findIndex(b => b.name === 'Firefox'));
+    assert.equal(app.setupHelpDefaultBrowser('Mozilla/5.0 Chrome/129.0 Safari/537.36'), 0);
+    assert.equal(app.setupHelpTabLabel(help.browsers[0]), 'Chrome');
+    assert.match(app.setupHelpAlsoFor(help.browsers[0]), /^Also for Chromium, Brave/);
+    assert.equal(app.setupHelpAlsoFor({ name: 'Safari' }), '');
+
+    // Escape closes the help sheet before it would close Setup.
+    app.showSetupModal = true;
+    app.closeSetup();
+    assert.equal(app.setupHelpOpen, false);
+    assert.equal(app.showSetupModal, true);
+    await app.openSetupHelp();
+    assert.equal(loads, 1, 'the guide is fetched once');
+});
+
 test('setup uses a dedicated responsive X-style modal shell', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');

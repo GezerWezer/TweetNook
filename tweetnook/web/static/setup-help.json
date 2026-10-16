@@ -1,0 +1,1115 @@
+{
+ "source": "docs/getting-started.md",
+ "caution": [
+  {
+   "t": "text",
+   "v": "These cookies provide access to your logged-in Twitter/X session. Treat them like a password."
+  }
+ ],
+ "browsers": [
+  {
+   "name": "Chrome / Chromium / Brave / Microsoft Edge / Opera / Helium",
+   "intro": [],
+   "steps": [
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Open Twitter/X"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Go to:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "https://x.com/"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Make sure you are logged in."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Open Developer Tools"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Use one of the following:"
+        }
+       ]
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "strong",
+         "v": "Windows / Linux"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Ctrl + Shift + I"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "strong",
+         "v": "macOS"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Cmd + Option + I"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "You can also right-click anywhere on the page and choose "
+        },
+        {
+         "t": "strong",
+         "v": "Inspect"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Open the Application tab"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "In Developer Tools, select:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Application"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "If you do not see it, click the "
+        },
+        {
+         "t": "code",
+         "v": "»"
+        },
+        {
+         "t": "text",
+         "v": " menu at the top of Developer Tools and choose "
+        },
+        {
+         "t": "strong",
+         "v": "Application"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Open Twitter/X cookies"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "In the left sidebar, expand:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Storage\n└── Cookies"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Then select:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "https://x.com"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Depending on your browser/session, you may also see cookies associated with:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "https://twitter.com"
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Find "
+      },
+      {
+       "t": "code",
+       "v": "auth_token"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Find the row whose "
+        },
+        {
+         "t": "strong",
+         "v": "Name"
+        },
+        {
+         "t": "text",
+         "v": " is:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "auth_token"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Copy the contents of its "
+        },
+        {
+         "t": "strong",
+         "v": "Value"
+        },
+        {
+         "t": "text",
+         "v": " field."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Find "
+      },
+      {
+       "t": "code",
+       "v": "ct0"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Find the row whose "
+        },
+        {
+         "t": "strong",
+         "v": "Name"
+        },
+        {
+         "t": "text",
+         "v": " is:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "ct0"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Copy the contents of its "
+        },
+        {
+         "t": "strong",
+         "v": "Value"
+        },
+        {
+         "t": "text",
+         "v": " field."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Find your numeric account ID"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Find the row whose "
+        },
+        {
+         "t": "strong",
+         "v": "Name"
+        },
+        {
+         "t": "text",
+         "v": " is:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "twid"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Copy the numeric account ID from its "
+        },
+        {
+         "t": "strong",
+         "v": "Value"
+        },
+        {
+         "t": "text",
+         "v": " field."
+        }
+       ]
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "For example:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "u%3D123456789"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "gives the account ID:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "123456789"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Use the digits only, not your "
+        },
+        {
+         "t": "code",
+         "v": "@username"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Firefox",
+   "intro": [],
+   "steps": [
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Open Twitter/X"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Go to:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "https://x.com/"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Make sure you are logged in."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Open Developer Tools"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "strong",
+         "v": "Windows / Linux"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Ctrl + Shift + I"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "strong",
+         "v": "macOS"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Cmd + Option + I"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "You can also right-click the page and choose "
+        },
+        {
+         "t": "strong",
+         "v": "Inspect"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Open the Storage tab"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Select:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Storage"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "If the tab is hidden, use the "
+        },
+        {
+         "t": "code",
+         "v": "»"
+        },
+        {
+         "t": "text",
+         "v": " menu in Developer Tools."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Open Twitter/X cookies"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "In the left sidebar, expand:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Cookies"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Then select:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "https://x.com"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "You may also see relevant cookies under:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "https://twitter.com"
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Find "
+      },
+      {
+       "t": "code",
+       "v": "auth_token"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Use the filter box and search for:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "auth_token"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Select the matching cookie and copy its "
+        },
+        {
+         "t": "strong",
+         "v": "Value"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Find "
+      },
+      {
+       "t": "code",
+       "v": "ct0"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Search for:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "ct0"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Select the matching cookie and copy its "
+        },
+        {
+         "t": "strong",
+         "v": "Value"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Find your numeric account ID"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Find the cookie named:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "twid"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Copy the numeric account ID from its "
+        },
+        {
+         "t": "strong",
+         "v": "Value"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "For example:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "u%3D123456789"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "gives the account ID:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "123456789"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Use the digits only, not your "
+        },
+        {
+         "t": "code",
+         "v": "@username"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Safari",
+   "intro": [
+    {
+     "type": "p",
+     "inline": [
+      {
+       "t": "text",
+       "v": "Safari's developer tools may need to be enabled first."
+      }
+     ]
+    }
+   ],
+   "steps": [
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Enable Safari developer features"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Open:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Safari → Settings"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Depending on your Safari version, look under "
+        },
+        {
+         "t": "strong",
+         "v": "Advanced"
+        },
+        {
+         "t": "text",
+         "v": " and enable the option to show developer features / the Develop menu."
+        }
+       ]
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "After enabling it, a "
+        },
+        {
+         "t": "strong",
+         "v": "Develop"
+        },
+        {
+         "t": "text",
+         "v": " menu should appear in Safari's menu bar."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Open Twitter/X"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Go to:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "https://x.com/"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Make sure you are logged in."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Open Web Inspector"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Use:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Develop → Show Web Inspector"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "or the keyboard shortcut:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Cmd + Option + I"
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Open the Storage section"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "In Web Inspector, select:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "Storage"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Then locate the cookies associated with:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "x.com"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Depending on your session, you may also find relevant entries associated with:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "twitter.com"
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Find "
+      },
+      {
+       "t": "code",
+       "v": "auth_token"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Locate the cookie named:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "auth_token"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Copy its "
+        },
+        {
+         "t": "strong",
+         "v": "Value"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Find "
+      },
+      {
+       "t": "code",
+       "v": "ct0"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Locate the cookie named:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "ct0"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Copy its "
+        },
+        {
+         "t": "strong",
+         "v": "Value"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Find your numeric account ID"
+      }
+     ],
+     "blocks": [
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Locate the cookie named:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "twid"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Copy the numeric account ID from its "
+        },
+        {
+         "t": "strong",
+         "v": "Value"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "For example:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "u%3D123456789"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "gives the account ID:"
+        }
+       ]
+      },
+      {
+       "type": "code",
+       "text": "123456789"
+      },
+      {
+       "type": "p",
+       "inline": [
+        {
+         "t": "text",
+         "v": "Use the digits only, not your "
+        },
+        {
+         "t": "code",
+         "v": "@username"
+        },
+        {
+         "t": "text",
+         "v": "."
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
