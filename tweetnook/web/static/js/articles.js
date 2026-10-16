@@ -8,9 +8,8 @@
         try { const url = new URL(String(value)); return /^https?:$/.test(url.protocol) ? url.href : ''; }
         catch { return ''; }
     };
-    const X_MARK = 'M21.742 21.75l-7.563-11.179 7.056-8.321h-2.456l-5.691 6.714-4.54-6.714H2.359l7.29 10.776L2.25 21.75h2.456l6.035-7.118 4.818 7.118h6.191-.008zM7.739 3.818L18.81 20.182h-2.447L5.29 3.818h2.447z';
     const icon = path => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"></path></svg>`;
-    const badge = `<span class="article-badge">${icon(X_MARK)}Article</span>`;
+    const badge = '<span class="article-badge">Article</span>';
 
     function data(tweet) {
         for (let node = tweet, depth = 0; node && depth < 4; node = node.raw_json, depth++) {
