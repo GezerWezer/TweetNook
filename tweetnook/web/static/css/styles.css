@@ -2103,6 +2103,52 @@ body {
 .setup-field-error { color: var(--destructive-color); }
 .setup-field-error.setup-step-error { margin: 12px 0 0; font-size: 15px; line-height: 20px; }
 
+/* Cookie instructions sheet, generated from docs/getting-started.md */
+button.setup-link { padding: 0; border: 0; background: none; font-family: inherit; font-size: inherit; cursor: pointer; }
+.nook-sheet.setup-help-sheet { width: min(680px, 100%); }
+.setup-help-sheet .nook-sheet-header { z-index: 1; }
+.setup-help-sheet .setup-modal-close { position: static; flex-shrink: 0; }
+.setup-help-error { margin: 0 16px 16px; }
+.setup-help-tabs { height: 53px; border-bottom: 1px solid var(--border-color); }
+.setup-help-tabs .nook-tab:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
+.setup-help-body { padding: 16px 16px 24px; color: var(--text-primary); font-size: 15px; line-height: 20px; }
+.setup-help-caution { display: flex; gap: 10px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); }
+.setup-help-caution svg { flex-shrink: 0; width: 20px; height: 20px; fill: var(--destructive-color); }
+.setup-help-also { margin-bottom: 12px; color: var(--text-secondary); font-size: 13px; line-height: 16px; }
+.setup-help-steps { display: flex; flex-direction: column; gap: 20px; margin: 0; padding: 0; list-style: none; }
+.setup-help-steps li { display: flex; gap: 12px; }
+.setup-help-block + .setup-help-steps { margin-top: 16px; }
+.setup-help-number {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 9999px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.setup-help-step { flex: 1; min-width: 0; }
+.setup-help-step h4 { margin-bottom: 4px; font-size: 15px; line-height: 24px; font-weight: 700; }
+.setup-help-block + .setup-help-block { margin-top: 6px; }
+.setup-help-block p { color: var(--text-secondary); }
+.setup-help-strong { color: var(--text-primary); font-weight: 700; }
+.setup-help-code,
+.setup-help-block pre {
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+}
+.setup-help-code { padding: 1px 4px; }
+.setup-help-block pre { width: fit-content; max-width: 100%; margin: 0; padding: 6px 10px; overflow-x: auto; line-height: 18px; white-space: pre; user-select: all; }
+.setup-help-source { margin-top: 24px; font-size: 15px; }
+
 /* Inline spinner for buttons */
 .setup-btn-spinner {
     width: 14px;

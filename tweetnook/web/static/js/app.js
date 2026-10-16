@@ -2039,6 +2039,10 @@ function tweetApp() {
         setupAuthEdited: false,
         setupStartingImport: false,
         setupConfirm: null,
+        setupHelp: null,
+        setupHelpOpen: false,
+        setupHelpBrowser: 0,
+        setupHelpError: '',
 
         mergePrimaryTag: '',
         mergeTagsList: [],
@@ -5670,6 +5674,10 @@ function tweetApp() {
         },
 
         closeSetup() {
+            if (this.setupHelpOpen) {
+                this.closeSetupHelp();
+                return;
+            }
             if (this.setupConfirm) {
                 this.setupConfirm.resolve(false);
                 return;
@@ -5816,6 +5824,48 @@ function tweetApp() {
             if (this.setupFinishing) return false;
             if (!this.setupPasswordRequired && !this.setupPassword) return true;
             return !!this.setupPassword && this.setupPassword === this.setupPasswordConfirm;
+        },
+
+        // Cookie instructions are generated from docs/getting-started.md by
+        // scripts/build_setup_help.py, so the app and the guide cannot drift apart.
+        async openSetupHelp() {
+            this.setupHelpOpen = true;
+            this.setupHelpError = '';
+            if (!this.setupHelp) {
+                try {
+                    const response = await fetch('/static/setup-help.json');
+                    if (!response.ok) throw new Error();
+                    this.setupHelp = await response.json();
+                    this.setupHelpBrowser = this.setupHelpDefaultBrowser(navigator.userAgent || '');
+                } catch (_) {
+                    this.setupHelpError = 'The instructions could not be loaded.';
+                }
+            }
+            this.$nextTick?.(() => document.querySelector('.setup-help-sheet .nook-sheet-header button')?.focus());
+        },
+
+        closeSetupHelp() {
+            this.setupHelpOpen = false;
+            this.$nextTick?.(() => document.getElementById('setup-help-trigger')?.focus());
+        },
+
+        // Opens on the tab for the browser showing TweetNook, the likeliest one signed in to Twitter/X.
+        setupHelpDefaultBrowser(userAgent) {
+            const browsers = this.setupHelp?.browsers || [];
+            const find = word => browsers.findIndex(browser => browser.name.toLowerCase().includes(word));
+            let index = -1;
+            if (/firefox|fxios/i.test(userAgent)) index = find('firefox');
+            else if (/safari/i.test(userAgent) && !/chrome|chromium|crios|edg|opr/i.test(userAgent)) index = find('safari');
+            return Math.max(index, 0);
+        },
+
+        setupHelpTabLabel(browser) {
+            return browser.name.split(' / ')[0];
+        },
+
+        setupHelpAlsoFor(browser) {
+            const names = browser.name.split(' / ').slice(1);
+            return names.length ? `Also for ${names.join(', ')}.` : '';
         },
 
         skipSetupAuth() {

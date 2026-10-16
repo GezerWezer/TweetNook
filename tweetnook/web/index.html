@@ -2582,7 +2582,7 @@
                                                 <h2 id="setup-step-title-2" class="setup-modal-title" tabindex="-1">Connect your Twitter/X account</h2>
                                                 <p class="setup-modal-description">
                                                     Paste two session cookies from a browser where you're signed in to Twitter/X.
-                                                    <a href="https://github.com/gezerwezer/tweetnook/blob/main/docs/getting-started.md" target="_blank" rel="noopener" class="setup-link">Where do I find these?</a>
+                                                    <button type="button" id="setup-help-trigger" class="setup-link" aria-haspopup="dialog" @click="openSetupHelp()">Where do I find these?</button>
                                                 </p>
                                             </div>
                                         </div>
@@ -2709,6 +2709,68 @@
                         </button>
                         <button type="submit" form="setup-password-form" class="setup-btn is-primary" x-show="setupFlowStep === 3"
                                 :disabled="!setupCanFinish" x-text="setupFinishing ? 'Finishing…' : 'Finish setup'"></button>
+                    </div>
+
+                    <!-- Cookie instructions, generated from docs/getting-started.md -->
+                    <div class="nook-sheet-backdrop" x-cloak x-show="setupHelpOpen" @click.self="closeSetupHelp()">
+                        <div class="nook-sheet setup-help-sheet" role="dialog" aria-modal="true" aria-labelledby="setup-help-title" @keydown.tab="nookTrapFocus($event, $event.currentTarget)">
+                            <div class="nook-sheet-header">
+                                <button type="button" class="setup-modal-close" aria-label="Close instructions" @click="closeSetupHelp()">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z"/></svg>
+                                </button>
+                                <h3 id="setup-help-title">Find your cookies</h3>
+                            </div>
+                            <p class="setup-field-error setup-help-error" x-show="setupHelpError" x-text="setupHelpError" role="alert"></p>
+                            <template x-if="setupHelp">
+                                <div>
+                                    <div class="nook-tabs setup-help-tabs" role="tablist" aria-label="Browser">
+                                        <template x-for="(browser, index) in setupHelp.browsers" :key="browser.name">
+                                            <button type="button" class="nook-tab" role="tab" :id="`setup-help-tab-${index}`" aria-controls="setup-help-panel"
+                                                    :aria-selected="setupHelpBrowser === index" :tabindex="setupHelpBrowser === index ? 0 : -1"
+                                                    @click="setupHelpBrowser = index"
+                                                    @keydown.arrow-right.prevent="setupHelpBrowser = (index + 1) % setupHelp.browsers.length; $nextTick(() => document.getElementById(`setup-help-tab-${setupHelpBrowser}`)?.focus())"
+                                                    @keydown.arrow-left.prevent="setupHelpBrowser = (index - 1 + setupHelp.browsers.length) % setupHelp.browsers.length; $nextTick(() => document.getElementById(`setup-help-tab-${setupHelpBrowser}`)?.focus())">
+                                                <span x-text="setupHelpTabLabel(browser)"></span>
+                                            </button>
+                                        </template>
+                                    </div>
+                                    <div id="setup-help-panel" class="setup-help-body" role="tabpanel" :aria-labelledby="`setup-help-tab-${setupHelpBrowser}`" x-data="{ browser: null }" x-effect="browser = setupHelp.browsers[setupHelpBrowser]">
+                                        <p class="setup-help-caution" role="note">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4m0-6.45c.8 0 1.4.7 1.29 1.48L12.75 14h-1.5l-.54-3.77A1.3 1.3 0 0 1 12 8.75"/><path d="M9.4 3.5a3 3 0 0 1 5.2 0L22.4 17a3 3 0 0 1-2.6 4.5H4.2A3 3 0 0 1 1.6 17zm3.47 1a1 1 0 0 0-1.74 0L3.34 18a1 1 0 0 0 .87 1.5h15.58a1 1 0 0 0 .87-1.5z"/></svg>
+                                            <span><template x-for="(part, partIndex) in setupHelp.caution" :key="partIndex"><span :class="`setup-help-${part.t}`" x-text="part.v"></span></template></span>
+                                        </p>
+                                        <template x-if="browser">
+                                            <div>
+                                                <p class="setup-help-also" x-show="setupHelpAlsoFor(browser)" x-text="setupHelpAlsoFor(browser)"></p>
+                                                <template x-for="(block, blockIndex) in browser.intro" :key="'intro' + blockIndex">
+                                                    <div class="setup-help-block">
+                                                        <pre x-show="block.type === 'code'" x-text="block.text"></pre>
+                                                        <p x-show="block.type === 'p'"><template x-for="(part, partIndex) in block.inline || []" :key="partIndex"><span :class="`setup-help-${part.t}`" x-text="part.v"></span></template></p>
+                                                    </div>
+                                                </template>
+                                                <ol class="setup-help-steps">
+                                                    <template x-for="(step, stepIndex) in browser.steps" :key="browser.name + stepIndex">
+                                                        <li>
+                                                            <span class="setup-help-number" aria-hidden="true" x-text="stepIndex + 1"></span>
+                                                            <div class="setup-help-step">
+                                                                <h4><template x-for="(part, partIndex) in step.title" :key="partIndex"><span :class="`setup-help-${part.t}`" x-text="part.v"></span></template></h4>
+                                                                <template x-for="(block, blockIndex) in step.blocks" :key="blockIndex">
+                                                                    <div class="setup-help-block">
+                                                                        <pre x-show="block.type === 'code'" x-text="block.text"></pre>
+                                                                        <p x-show="block.type === 'p'"><template x-for="(part, partIndex) in block.inline || []" :key="partIndex"><span :class="`setup-help-${part.t}`" x-text="part.v"></span></template></p>
+                                                                    </div>
+                                                                </template>
+                                                            </div>
+                                                        </li>
+                                                    </template>
+                                                </ol>
+                                                <a class="setup-link setup-help-source" :href="`https://github.com/gezerwezer/tweetnook/blob/main/${setupHelp.source}`" target="_blank" rel="noopener">Open the full guide</a>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
                     </div>
 
                     <!-- In-app confirmation instead of the browser's blocking confirm() -->
