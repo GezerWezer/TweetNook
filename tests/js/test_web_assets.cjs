@@ -3822,6 +3822,10 @@ test('media renderer preserves direct playback parents, placeholders and existin
     assert.match(css, /\.quote-thumbnail-badge\s*\{[^}]*display: inline-flex;[^}]*align-items: center;/s);
     assert.match(css, /\.quote-thumbnail-duration\s*\{[^}]*background: rgba\(0, 0, 0, 0\.77\);/s);
     assert.match(css, /\.media-frame-video,[\s\S]*object-fit: contain;[\s\S]*background: #000;/);
+    // Quote galleries crop their tiles; only single quoted media letterboxes.
+    assert.match(css, /\.quote-card:not\(\.quote-compact\) > \.quote-media > \.media-single img \{\s*object-fit: contain;/);
+    assert.match(css, /\.quote-card:not\(\.quote-compact\) > \.quote-media > \.media-single video \{\s*object-fit: contain;/);
+    assert.doesNotMatch(css, /\.quote-card:not\(\.quote-compact\) > \.quote-media (img|video) \{/);
 });
 
 test('video duration uses loaded metadata and shows only while the control bar is hidden', () => {
