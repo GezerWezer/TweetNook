@@ -3,6 +3,25 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning while it is in the `0.x` series.
 
+## [0.3.2] - 2026-10-16
+
+### Added
+
+- Added an authenticated developer replay source that lets test installs replay
+  saved Twitter/X responses from an archive without contacting Twitter/X.
+
+### Validation
+
+- `ruff format --check`
+- `ruff check`
+- `pytest -q`
+- `node --test tests/js/test_web_assets.cjs`
+- `node --test tests/js/test_demo_api.cjs`
+- `git diff --check`
+- `UV_CACHE_DIR=/tmp/uv-cache-release-0.3.2 uv build --out-dir /tmp/tweetnook-release-0.3.2`
+- `UV_CACHE_DIR=/tmp/uv-cache-release-0.3.2 uvx --from twine twine check /tmp/tweetnook-release-0.3.2/tweetnook-0.3.2.tar.gz /tmp/tweetnook-release-0.3.2/tweetnook-0.3.2-py3-none-any.whl`
+- `UV_CACHE_DIR=/tmp/uv-cache-release-0.3.2 uv run --isolated --no-project --with /tmp/tweetnook-release-0.3.2/tweetnook-0.3.2-py3-none-any.whl -- tweetnook --help`
+
 ## [0.3.1] - 2026-10-12
 
 ### Fixed
@@ -430,6 +449,7 @@ semantic-style versioning while it is in the `0.x` series.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[0.3.2]: https://github.com/gezerwezer/tweetnook/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/gezerwezer/tweetnook/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/gezerwezer/tweetnook/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/gezerwezer/tweetnook/compare/v0.1.8...v0.2.0
