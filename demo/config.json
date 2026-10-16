@@ -107,6 +107,13 @@
           "database.cache_size_kb",
           "database.mmap_size_bytes"
         ]
+      },
+      {
+        "title": "Developer",
+        "note": "Only for testing a second TweetNook install against this archive.",
+        "fields": [
+          "web.dev_replay_source"
+        ]
       }
     ],
     "units": {
@@ -167,6 +174,7 @@
       "web.avatar_cache_limit_enabled": "Limit the avatar cache",
       "web.avatar_cache_limit_mb": "Cache limit",
       "web.analytics_refresh_time": "Daily refresh",
+      "web.dev_replay_source": "Serve as replay source",
       "schedule.enabled": "Sync automatically",
       "schedule.cadence": "Repeat",
       "schedule.every_hours": "Interval",
@@ -204,6 +212,7 @@
       "web.avatar_cache_limit_enabled": "Each week, remove the least recently used avatars once the cache is over its limit.",
       "web.avatar_cache_limit_mb": "",
       "web.analytics_refresh_time": "When Analytics statistics are rebuilt, in the server's local time. Takes effect after a restart.",
+      "web.dev_replay_source": "Developer tool. Lets a separate TweetNook test install replay this archive's saved Twitter/X responses and media instead of contacting X. Read-only and protected by the Web password; refused when no Web password is set.",
       "web.host": "Use 0.0.0.0 to let other devices on your network connect.",
       "web.port": "",
       "schedule.enabled": "Run sync automatically from the always-on Web service.",
@@ -250,7 +259,8 @@
       "fetch_avatars": true,
       "avatar_cache_limit_enabled": true,
       "avatar_cache_limit_mb": 512,
-      "analytics_refresh_time": "05:00"
+      "analytics_refresh_time": "05:00",
+      "dev_replay_source": false
     },
     "schedule": {
       "enabled": false,

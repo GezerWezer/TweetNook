@@ -31,6 +31,7 @@ from tweetnook.web.routes.activity import router as activity_router
 from tweetnook.web.routes.automated_tagging import router as automated_tagging_router
 from tweetnook.web.routes.avatars import router as avatars_router
 from tweetnook.web.routes.config import router as config_router
+from tweetnook.web.routes.dev_replay import router as dev_replay_router
 from tweetnook.web.routes.notices import router as notices_router
 from tweetnook.web.routes.setup import router as setup_router
 from tweetnook.web.routes.stats import router as stats_router
@@ -284,6 +285,7 @@ app.include_router(storage_stats_router)
 app.include_router(activity_router)
 app.include_router(setup_router)
 app.include_router(notices_router)
+app.include_router(dev_replay_router)
 
 app.include_router(automated_tagging_router)
 
@@ -308,6 +310,8 @@ class TextGZipMiddleware:
 
 def _compressible_path(path: str) -> bool:
     if path.startswith(("/media/", "/api/avatar/")):
+        return False
+    if path.startswith("/api/dev/replay/x/") and ".twimg.com/" in path:
         return False
     if path.startswith("/static/"):
         return path.endswith((".js", ".css", ".html", ".json", ".svg", ".txt"))
