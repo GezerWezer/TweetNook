@@ -40,7 +40,16 @@ LEGACY_BROWSER_AUTH_FIELDS = (
     "browser_profile_path",
     "firefox_profile_path",
 )
-CONFIG_SECTION_ORDER = ("auth", "sync", "web", "schedule", "activity", "database", "tagging")
+CONFIG_SECTION_ORDER = (
+    "auth",
+    "sync",
+    "web",
+    "schedule",
+    "activity",
+    "database",
+    "tagging",
+    "replay",
+)
 
 
 class AuthConfig(BaseModel):
@@ -210,6 +219,20 @@ class TaggingConfig(BaseModel):
         return self
 
 
+class ReplayConfig(BaseModel):
+    """Developer replay source for a test install (see ``tweetnook.dev_replay``).
+
+    While ``url`` is set, every Twitter/X request this install makes goes to that
+    TweetNook replay source instead of Twitter/X, and every other host is blocked.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    url: str | None = None
+    password: str | None = None
+    placeholder_media: bool = True
+
+
 class AppConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -220,6 +243,7 @@ class AppConfig(BaseModel):
     activity: ActivityConfig = Field(default_factory=ActivityConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     tagging: TaggingConfig = Field(default_factory=TaggingConfig)
+    replay: ReplayConfig = Field(default_factory=ReplayConfig)
 
 
 class XDGPaths(BaseModel):
@@ -499,6 +523,11 @@ def load_config(env: Mapping[str, str] | None = None) -> tuple[AppConfig, XDGPat
     api_key = env.get("TWEETNOOK_GEMINI_API_KEY") or env.get("GEMINI_API_KEY")
     if api_key:
         config.tagging = config.tagging.model_copy(update={"api_key": api_key})
+    # Every process that talks to Twitter/X loads its config first, so this is where
+    # a test install's replay source is switched on (or off) for the whole process.
+    from tweetnook.dev_replay import configure_replay
+
+    configure_replay(config.replay)
     return config, paths
 
 
@@ -590,6 +619,7 @@ def get_config_ui_schema() -> dict[str, Any]:
             "activity.max_runs",
             "activity.retention_days",
             *[f"tagging.{field}" for field in TaggingConfig.model_fields],
+            *[f"replay.{field}" for field in ReplayConfig.model_fields],
         ],
         "types": {},
         "full_width": [],
@@ -751,9 +781,10 @@ def get_config_ui_schema() -> dict[str, Any]:
                 "Takes effect after a restart."
             ),
             "web.dev_replay_source": (
-                "Developer tool. Lets a separate TweetNook test install replay this archive's "
-                "saved Twitter/X responses and media instead of contacting X. Read-only and "
-                "protected by the Web password; refused when no Web password is set."
+                "Developer tool. Lets a separate TweetNook test install started with "
+                "--dev-tools replay this archive's saved Twitter/X responses and media instead "
+                "of contacting X. Read-only and protected by the Web password; refused when no "
+                "Web password is set."
             ),
             "web.host": "Use 0.0.0.0 to let other devices on your network connect.",
             "web.port": "",

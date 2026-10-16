@@ -1893,8 +1893,24 @@ def search_archive(
     help="Run the Web server in the foreground; complete Setup in your browser.",
 )
 @app.command("serve-daemon", hidden=True)
-def serve_daemon_internal() -> None:
+def serve_daemon_internal(
+    dev_tools: Annotated[
+        bool,
+        typer.Option(
+            "--dev-tools",
+            help=(
+                "Developer tools: let Setup connect this install to a replay source (another "
+                "TweetNook server) so it replays that archive instead of contacting Twitter/X. "
+                "Same as TWEETNOOK_DEV_TOOLS=1."
+            ),
+        ),
+    ] = False,
+) -> None:
     """Internal command used by 'web start' to run the server process."""
+    if dev_tools:
+        from tweetnook.dev_replay import DEV_TOOLS_ENV
+
+        os.environ[DEV_TOOLS_ENV] = "1"
     try:
         from tweetnook.web.server import run_server
     except ImportError as exc:

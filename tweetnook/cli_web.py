@@ -8,6 +8,7 @@ import sys
 import time
 from importlib import import_module
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -89,8 +90,18 @@ def _running_pid(pid_file: Path, port: int) -> int | None:
     return None
 
 
+DEV_TOOLS_OPTION = typer.Option(
+    "--dev-tools",
+    help=(
+        "Developer tools: let Setup connect this install to a replay source (another "
+        "TweetNook server) so it replays that archive instead of contacting Twitter/X. "
+        "Same as TWEETNOOK_DEV_TOOLS=1."
+    ),
+)
+
+
 @web_app.command("start", help="Start the background web server.")
-def start_web() -> None:
+def start_web(dev_tools: Annotated[bool, DEV_TOOLS_OPTION] = False) -> None:
     console = Console()
     _require_web_dependencies(console)
     config, paths = load_config()
@@ -113,6 +124,8 @@ def start_web() -> None:
     console.print(f"Starting web server on {display_web_url(web_config.host, web_config.port)} ...")
 
     command = [sys.executable, "-m", "tweetnook", "serve"]
+    if dev_tools:
+        command.append("--dev-tools")
     try:
         process = subprocess.Popen(
             command,
@@ -170,12 +183,12 @@ def stop_web() -> None:
 
 
 @web_app.command("restart", help="Restart the background web server.")
-def restart_web() -> None:
+def restart_web(dev_tools: Annotated[bool, DEV_TOOLS_OPTION] = False) -> None:
     console = Console()
     _require_web_dependencies(console)
     _, paths = load_config()
     stop_web()
-    start_web()
+    start_web(dev_tools=dev_tools)
 
 
 @web_app.command("status", help="Check if the background web server is running.")

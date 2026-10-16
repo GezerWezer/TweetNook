@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, Response
 
 from tweetnook.config import XDGPaths
+from tweetnook.dev_replay import client_transport
 from tweetnook.web.avatar_cache import mark_avatar_accessed
 from tweetnook.web.deps import get_server_state, require_store, verify_credentials
 
@@ -103,6 +104,15 @@ def _avatar_urls(url: str) -> list[str]:
     return list(dict.fromkeys(urlunsplit(parts._replace(path=path)) for path in paths))
 
 
+def _fetch_avatar(url: str, *, timeout: float) -> httpx.Response:
+    transport = client_transport()
+    if transport is None:
+        return httpx.get(url, timeout=timeout, follow_redirects=True)
+    # Replay mode: avatars come from the replay source, never from Twitter/X.
+    with httpx.Client(transport=transport) as client:
+        return client.get(url, timeout=timeout, follow_redirects=True)
+
+
 @router.get("/api/avatar/{user_id}")
 async def get_avatar(
     user_id: str,
@@ -167,7 +177,7 @@ def _avatar_response(user_id: str, store: Any):
             if remaining <= 0:
                 return return_transparent()
             try:
-                resp = httpx.get(url, timeout=min(10.0, remaining), follow_redirects=True)
+                resp = _fetch_avatar(url, timeout=min(10.0, remaining))
                 image_format = _avatar_format(resp.content)
                 if resp.status_code == 200 and image_format is not None:
                     suffix, media_type = image_format

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from tweetnook.dev_replay import client_transport
 from tweetnook.exceptions import QueryIdRefreshError
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids
 
@@ -24,7 +25,9 @@ async def resolve_query_ids(
 ) -> dict[str, str]:
     ids = {operation: store.get(operation) for operation in operations}
     if force_refresh or any(value is None for value in ids.values()):
-        client = httpx.AsyncClient(follow_redirects=True, timeout=20.0, transport=transport)
+        client = httpx.AsyncClient(
+            follow_redirects=True, timeout=20.0, transport=client_transport(transport)
+        )
         try:
             await refresh_query_ids(store, operations=operations, client=client)
         finally:

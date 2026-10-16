@@ -2,9 +2,9 @@
 
 A replay source serves a test install the Twitter/X responses this archive
 already saved: timeline pages chained by cursor, TweetDetail payloads, and
-downloaded media (or tiny placeholders). The client sends each original
-Twitter/X request as ``GET /api/dev/replay/x/{host}{path}?{query}`` with the
-source's Web password. The archive is opened with SQLite's ``mode=ro`` and
+downloaded media (or tiny placeholders). The client (``tweetnook.dev_replay``)
+sends each original Twitter/X request as ``GET /api/dev/replay/x/{host}{path}?{query}``
+with the source's Web password. The archive is opened with SQLite's ``mode=ro`` and
 never written.
 """
 
@@ -25,14 +25,13 @@ from urllib.parse import parse_qs
 from tweetnook import fastjson
 from tweetnook.client.timelines import parse_tweet_detail_tweets
 from tweetnook.config import DB_FILENAME
+from tweetnook.dev_replay import (
+    FAILURE_HEADER,
+    MEDIA_HEADER,
+    PLACEHOLDER_MEDIA,
+    RESULT_HEADER,
+)
 from tweetnook.web.replay_placeholders import IMAGE_FORMATS, placeholder_bytes
-
-# Wire contract shared with replaying clients (test installs).
-REPLAY_PATH_PREFIX = "/api/dev/replay"
-FAILURE_HEADER = "X-TweetNook-Replay-Fail"
-MEDIA_HEADER = "X-TweetNook-Replay-Media"
-RESULT_HEADER = "X-TweetNook-Replay"
-PLACEHOLDER_MEDIA = "placeholder"
 
 TIMELINE_OPERATIONS = ("Bookmarks", "Likes", "UserTweets")
 DETAIL_OPERATIONS = ("ThreadExpandDetail", "TweetDetail", "TweetDetailResurrection")

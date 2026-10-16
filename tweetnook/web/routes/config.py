@@ -14,6 +14,7 @@ SECRET_FIELDS = (
     ("auth", "ct0"),
     ("web", "password_hash"),
     ("tagging", "api_key"),
+    ("replay", "password"),
 )
 
 

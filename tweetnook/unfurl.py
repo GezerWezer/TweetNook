@@ -11,6 +11,7 @@ import httpx
 from rich.console import Console
 
 from tweetnook.config import DEFAULT_USER_AGENT, AppConfig, XDGPaths
+from tweetnook.dev_replay import client_transport
 from tweetnook.extractor import canonicalize_url
 from tweetnook.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs import locked_archive_job
@@ -141,7 +142,7 @@ async def unfurl_urls(
         async with httpx.AsyncClient(
             follow_redirects=True,
             timeout=max(config.sync.timeout, 30.0),
-            transport=transport,
+            transport=client_transport(transport),
             headers={
                 "User-Agent": DEFAULT_USER_AGENT,
                 "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
