@@ -13,6 +13,7 @@ import httpx
 
 from tweetnook.auth import ResolvedAuthBundle
 from tweetnook.config import DEFAULT_USER_AGENT, PUBLIC_BEARER_TOKEN, SyncConfig
+from tweetnook.dev_replay import client_transport
 from tweetnook.exceptions import (
     APIResponseError,
     AuthExpiredError,
@@ -107,7 +108,7 @@ def build_async_client(
         follow_redirects=True,
         headers=headers,
         timeout=timeout,
-        transport=transport,
+        transport=client_transport(transport),
     )
 
 

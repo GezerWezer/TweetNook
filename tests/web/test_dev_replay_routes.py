@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import httpx
@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from tests.conftest import make_bookmarks_response, make_tweet_detail_response, make_tweet_result
 from tweetnook import config as config_module
+from tweetnook import dev_replay
 from tweetnook.client.timelines import (
     FocalResultKind,
     TimelineTweet,
@@ -20,13 +21,21 @@ from tweetnook.client.timelines import (
     parse_tweet_detail_response,
 )
 from tweetnook.config import XDGPaths, ensure_paths
+from tweetnook.dev_replay import (
+    FAILURE_HEADER,
+    MEDIA_HEADER,
+    RESULT_HEADER,
+    ReplaySettings,
+    ReplayTransport,
+    configure_replay,
+)
 from tweetnook.media import download_media
 from tweetnook.storage import open_archive_store
 from tweetnook.sync import sync_collection
 from tweetnook.web.deps import server_state
 from tweetnook.web.replay_placeholders import placeholder_bytes
-from tweetnook.web.replay_source import FAILURE_HEADER, MEDIA_HEADER, RESULT_HEADER
 from tweetnook.web.routes import dev_replay as dev_replay_routes
+from tweetnook.web.routes import setup
 from tweetnook.web.server import _compressible_path
 
 PASSWORD = "source-pass"
@@ -154,6 +163,8 @@ def test_config_refuses_enabling_replay_source_without_password(make_web_client)
     assert "web.dev_replay_source" not in schema["whitelist"]
     assert "web.dev_replay_source" not in schema["blacklist"]
     assert "web.dev_replay_source" in schema["descriptions"]
+    for field in ("replay.url", "replay.password", "replay.placeholder_media"):
+        assert field in schema["blacklist"]
 
 
 def test_status_reports_available_replay_data(monkeypatch, source_paths) -> None:
@@ -274,29 +285,11 @@ def _test_paths(tmp_path: Path) -> XDGPaths:
     return _paths(tmp_path / "test-install")
 
 
-class ReplayClientTransport(httpx.AsyncBaseTransport):
-    """Minimal stand-in for a replaying client, following the wire contract."""
-
-    def __init__(self, app, *, placeholder_media: bool = True) -> None:
-        self.inner = httpx.ASGITransport(app=app)
-        self.placeholder_media = placeholder_media
-
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        raw_path = f"/api/dev/replay/x/{request.url.host}".encode() + request.url.raw_path
-        token = base64.b64encode(f"tester:{PASSWORD}".encode()).decode()
-        headers = {"authorization": f"Basic {token}"}
-        if self.placeholder_media:
-            headers[MEDIA_HEADER] = "placeholder"
-        replay = httpx.Request(
-            request.method,
-            httpx.URL("http://source.test").copy_with(raw_path=raw_path),
-            headers=headers,
-        )
-        return await self.inner.handle_async_request(replay)
-
-
-def _replay_transport(app, *, placeholder_media: bool = True) -> ReplayClientTransport:
-    return ReplayClientTransport(app, placeholder_media=placeholder_media)
+def _replay_transport(app, *, placeholder_media: bool = True) -> ReplayTransport:
+    return ReplayTransport(
+        ReplaySettings("http://source.test", PASSWORD, placeholder_media),
+        async_transport=httpx.ASGITransport(app=app),
+    )
 
 
 async def test_test_install_sync_replays_saved_chain(
@@ -348,3 +341,269 @@ async def test_placeholder_media_is_accepted_by_media_pipeline(
     assert video["thumbnail_content_type"] == "image/jpeg"
     photo = next(row for row in rows if row["media_type"] == "photo")
     assert (paths.data_dir / photo["local_path"]).read_bytes() == placeholder_bytes("image/jpeg")
+
+
+# -- test install: end-to-end replay through the default client ----------------------
+
+
+@pytest.fixture
+def replay_network(monkeypatch, source_paths):
+    """Activate replay as a saved config would, with the source app answering in-process."""
+
+    app = _source_app(monkeypatch, source_paths)
+    monkeypatch.setattr(
+        dev_replay, "_async_network_transport", lambda: httpx.ASGITransport(app=app)
+    )
+    configure_replay(config_module.ReplayConfig(url="http://source.test:8000", password=PASSWORD))
+    yield app
+    configure_replay(None)
+
+
+async def test_sync_without_explicit_transport_replays_from_the_source(
+    replay_network, tmp_path, config
+) -> None:
+    paths = _test_paths(tmp_path)
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    # No transport and no query ids: discovery and every page go to the replay source.
+    result = await sync_collection(
+        "bookmarks", full=False, config=config, paths=paths, sleep=no_sleep
+    )
+
+    assert result.pages_fetched == 3
+    assert result.tweets_seen == 3
+    assert result.stop_reason == "empty"
+
+
+async def test_fake_failure_token_replays_an_auth_error(replay_network, tmp_path, config) -> None:
+    from tweetnook.sync import RemotePreflightError
+
+    failing = config.model_copy(
+        update={"auth": config.auth.model_copy(update={"auth_token": "fail"})}
+    )
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    with pytest.raises(RemotePreflightError, match="rejected the current session"):
+        await sync_collection(
+            "bookmarks", full=False, config=failing, paths=_test_paths(tmp_path), sleep=no_sleep
+        )
+
+
+# -- test install: Setup replay source ------------------------------------------------
+
+
+def _setup_env(monkeypatch, tmp_path: Path) -> XDGPaths:
+    env = {
+        "XDG_CONFIG_HOME": str(tmp_path / "ti" / "config"),
+        "XDG_DATA_HOME": str(tmp_path / "ti" / "data"),
+        "XDG_CACHE_HOME": str(tmp_path / "ti" / "cache"),
+    }
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    _config, paths = config_module.load_config()
+    server_state["paths"] = paths
+    return paths
+
+
+def _probe_source_app(monkeypatch, app) -> None:
+    monkeypatch.setattr(setup, "_source_client", lambda: TestClient(app))
+
+
+def _setup_client(make_web_client) -> TestClient:
+    # Source and test install share server_state here, so both use the same Web password.
+    client = make_web_client(setup.router)
+    client.auth = AUTH
+    return client
+
+
+def test_replay_setup_requires_dev_tools(monkeypatch, tmp_path, make_web_client) -> None:
+    monkeypatch.delenv("TWEETNOOK_DEV_TOOLS", raising=False)
+    _setup_env(monkeypatch, tmp_path)
+    client = make_web_client(setup.router)
+    body = {"url": "http://s.test", "password": "pw"}
+    assert client.put("/api/setup/replay", json=body).status_code == 404
+    assert (
+        client.put("/api/setup/replay/placeholder-media", json={"placeholder_media": False})
+    ).status_code == 404
+    assert client.delete("/api/setup/replay").status_code == 404
+    dev = client.get("/api/setup").json()["dev"]
+    assert dev["tools"] is False
+    assert dev["replay"]["connected"] is False
+
+
+def test_replay_setup_tests_saves_toggles_and_disconnects(
+    monkeypatch, tmp_path, source_paths, make_web_client
+) -> None:
+    monkeypatch.setenv("TWEETNOOK_DEV_TOOLS", "1")
+    paths = _setup_env(monkeypatch, tmp_path)
+    source = _source_app(monkeypatch, source_paths)
+    server_state["paths"] = paths  # _source_app pointed it at the source archive
+    monkeypatch.setattr(dev_replay_routes, "server_state", {**server_state, "paths": source_paths})
+    _probe_source_app(monkeypatch, source)
+    client = _setup_client(make_web_client)
+
+    bad = client.put("/api/setup/replay", json={"url": "source.test:8000", "password": "nope"})
+    assert bad.status_code == 422
+    assert "rejected the password" in bad.json()["detail"]
+    assert config_module.load_config()[0].replay.url is None
+    missing = client.put("/api/setup/replay", json={"url": "source.test:8000"})
+    assert missing.status_code == 422
+
+    saved = client.put("/api/setup/replay", json={"url": "source.test:8000/", "password": PASSWORD})
+    assert saved.status_code == 200, saved.text
+    replay = saved.json()["replay"]
+    assert replay["connected"] is True
+    assert replay["url"] == "http://source.test:8000"
+    assert replay["password"] == "********"
+    assert replay["placeholder_media"] is True
+    assert replay["status"]["bookmarks_pages"] == 3
+    assert replay["status"]["bookmarks_chain_pages"] == 2
+    assert isinstance(replay["status"]["checked_at"], int)
+    assert saved.json()["tools"] is True
+    assert PASSWORD not in saved.text
+    assert PASSWORD not in client.get("/api/setup").text
+    assert dev_replay.active_replay() == ReplaySettings("http://source.test:8000", PASSWORD, True)
+
+    # Re-testing with the masked password reuses the saved one for the same source only.
+    again = client.put(
+        "/api/setup/replay", json={"url": "http://source.test:8000", "password": "********"}
+    )
+    assert again.status_code == 200
+    other = client.put(
+        "/api/setup/replay", json={"url": "http://elsewhere.test", "password": "********"}
+    )
+    assert other.status_code == 422
+    assert config_module.load_config()[0].replay.url == "http://source.test:8000"
+
+    toggled = client.put("/api/setup/replay/placeholder-media", json={"placeholder_media": False})
+    assert toggled.status_code == 200
+    assert toggled.json()["replay"]["placeholder_media"] is False
+    replay_config = config_module.load_config()[0].replay
+    assert (replay_config.url, replay_config.password, replay_config.placeholder_media) == (
+        "http://source.test:8000",
+        PASSWORD,
+        False,
+    )
+    assert dev_replay.active_replay().placeholder_media is False
+    setup_dev = client.get("/api/setup").json()["dev"]
+    assert setup_dev["replay"]["status"]["bookmarks_pages"] == 3
+    assert setup_dev["replay"]["placeholder_media"] is False
+
+    # Secrets stay masked in Settings > Configuration too.
+    from tweetnook.web.routes import config as config_routes
+
+    settings = make_web_client(config_routes.router).get("/api/config", auth=AUTH).json()
+    assert settings["values"]["replay"]["password"] == "********"
+
+    cleared = client.delete("/api/setup/replay")
+    assert cleared.status_code == 200
+    assert cleared.json()["replay"] == {
+        "connected": False,
+        "url": None,
+        "password": None,
+        "placeholder_media": True,
+        "status": None,
+    }
+    assert "replay" not in paths.config_file.read_text()
+    assert dev_replay.active_replay() is None
+    assert (
+        client.put("/api/setup/replay/placeholder-media", json={"placeholder_media": True})
+    ).status_code == 409
+
+
+def test_replay_setup_reports_a_source_that_is_not_serving(
+    monkeypatch, tmp_path, source_paths, make_web_client
+) -> None:
+    monkeypatch.setenv("TWEETNOOK_DEV_TOOLS", "1")
+    _setup_env(monkeypatch, tmp_path)
+    source = _source_app(monkeypatch, source_paths, enabled=False)
+    _probe_source_app(monkeypatch, source)
+    client = _setup_client(make_web_client)
+
+    response = client.put("/api/setup/replay", json={"url": "source.test", "password": PASSWORD})
+
+    assert response.status_code == 422
+    assert "Serve as replay source" in response.json()["detail"]
+    assert config_module.load_config()[0].replay.url is None
+
+
+def test_replay_setup_reports_an_unreachable_source(monkeypatch, tmp_path, make_web_client) -> None:
+    monkeypatch.setenv("TWEETNOOK_DEV_TOOLS", "1")
+    _setup_env(monkeypatch, tmp_path)
+
+    def refuse(request):
+        raise httpx.ConnectError("connection refused", request=request)
+
+    monkeypatch.setattr(
+        setup, "_source_client", lambda: httpx.Client(transport=httpx.MockTransport(refuse))
+    )
+    client = _setup_client(make_web_client)
+
+    response = client.put("/api/setup/replay", json={"url": "10.0.0.9:8000", "password": "pw"})
+
+    assert response.status_code == 422
+    assert "Could not reach the replay source" in response.json()["detail"]
+
+
+def test_auth_probe_subprocess_receives_replay_config(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):
+        env = kwargs["env"]
+        temp_env = {
+            name: env[name] for name in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME")
+        }
+        config, _ = config_module.load_config(temp_env)
+        captured["replay"] = config.replay
+        captured["auth"] = config.auth
+        captured["active"] = dev_replay.active_replay()
+        configure_replay(None)
+        return subprocess.CompletedProcess(command, 0, "ok", "")
+
+    monkeypatch.setattr(setup.subprocess, "run", fake_run)
+    replay = config_module.ReplayConfig(
+        url="http://source.test:8000", password=PASSWORD, placeholder_media=False
+    )
+    monkeypatch.setattr(
+        setup, "load_config", lambda: (config_module.AppConfig(replay=replay), None)
+    )
+    # put_auth calls the probe with the candidate only; the saved replay source follows it.
+    setup._test_auth_candidate(
+        config_module.AuthConfig(auth_token="fail", ct0="dummy", user_id="42")
+    )
+
+    assert captured["replay"] == replay
+    assert captured["auth"].auth_token == "fail"
+    assert captured["active"] == ReplaySettings("http://source.test:8000", PASSWORD, False)
+
+
+def test_cli_jobs_inherit_replay_from_the_saved_config(monkeypatch, tmp_path) -> None:
+    """Background jobs load the same config.toml, so replay is active in them too."""
+
+    paths = _setup_env(monkeypatch, tmp_path)
+    config_module.update_config_values(
+        paths, {"replay.url": "http://source.test:8000", "replay.password": PASSWORD}
+    )
+    configure_replay(None)
+    code = (
+        "from tweetnook.config import load_config\n"
+        "from tweetnook.dev_replay import active_replay, client_transport\n"
+        "load_config()\n"
+        "print(active_replay().url, type(client_transport()).__name__)\n"
+    )
+    import os
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+        check=True,
+        timeout=60,
+    )
+    assert result.stdout.split() == ["http://source.test:8000", "ReplayTransport"]

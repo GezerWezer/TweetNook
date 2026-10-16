@@ -3,24 +3,35 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict
 
 from tweetnook.config import (
+    AppConfig,
     AuthConfig,
+    ReplayConfig,
+    XDGPaths,
     ensure_paths,
     load_config,
     resolve_paths,
     update_config_values,
+)
+from tweetnook.dev_replay import (
+    REPLAY_STATUS_PATH,
+    dev_tools_enabled,
+    normalize_replay_url,
 )
 from tweetnook.exceptions import ProcessLockError
 from tweetnook.job_supervisor import JobConflictError
@@ -62,7 +73,19 @@ def _candidate_auth(request: AuthUpdateRequest, current: AuthConfig) -> AuthConf
     return AuthConfig.model_validate(values)
 
 
-def _test_auth_candidate(candidate: AuthConfig) -> subprocess.CompletedProcess[str]:
+def _replay_config_changes(replay: ReplayConfig) -> dict[str, object]:
+    return {
+        "replay.url": replay.url,
+        "replay.password": replay.password,
+        "replay.placeholder_media": replay.placeholder_media,
+    }
+
+
+def _test_auth_candidate(
+    candidate: AuthConfig, replay: ReplayConfig | None = None
+) -> subprocess.CompletedProcess[str]:
+    if replay is None:
+        replay = load_config()[0].replay
     env = os.environ.copy()
     for name in ("TWEETNOOK_AUTH_TOKEN", "TWEETNOOK_CT0", "TWEETNOOK_USER_ID"):
         env.pop(name, None)
@@ -77,6 +100,8 @@ def _test_auth_candidate(candidate: AuthConfig) -> subprocess.CompletedProcess[s
                 "auth.auth_token": candidate.auth_token,
                 "auth.ct0": candidate.ct0,
                 "auth.user_id": candidate.user_id,
+                # A test install probes its replay source, never Twitter/X.
+                **_replay_config_changes(replay),
             },
         )
         return subprocess.run(
@@ -126,7 +151,193 @@ def get_setup(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, 
             config.auth,
             verified=bool(coordinator and coordinator.state.auth_verified),
         ),
+        "dev": _dev_payload(config),
     }
+
+
+REPLAY_STATUS_FIELDS = (
+    "bookmarks_pages",
+    "bookmarks_chain_pages",
+    "likes_pages",
+    "likes_chain_pages",
+    "thread_captures",
+    "downloaded_media",
+    "placeholder_media",
+    "owner_user_id",
+)
+
+
+def _replay_status_file(paths: XDGPaths) -> Path:
+    return paths.cache_dir / "replay-source-status.json"
+
+
+def _read_replay_status(paths: XDGPaths | None) -> dict[str, object] | None:
+    if paths is None:
+        return None
+    try:
+        data = json.loads(_replay_status_file(paths).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _write_replay_status(paths: XDGPaths, status_summary: dict[str, object] | None) -> None:
+    target = _replay_status_file(paths)
+    try:
+        if status_summary is None:
+            target.unlink(missing_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(status_summary), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _dev_payload(config: AppConfig) -> dict[str, object]:
+    """Developer replay state for Setup. Never includes the source password."""
+
+    replay = config.replay
+    connected = bool(replay.url)
+    return {
+        "tools": dev_tools_enabled(),
+        "replay": {
+            "connected": connected,
+            "url": replay.url,
+            "password": MASKED_SECRET if replay.password else None,
+            "placeholder_media": replay.placeholder_media,
+            "status": _read_replay_status(server_state.get("paths")) if connected else None,
+        },
+    }
+
+
+class ReplaySourceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str
+    password: str | None = None
+    placeholder_media: bool | None = None
+
+
+class ReplayMediaRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    placeholder_media: bool
+
+
+def _require_dev_tools() -> XDGPaths:
+    if not dev_tools_enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+    paths = server_state.get("paths")
+    if paths is None:
+        raise HTTPException(status_code=503, detail="Setup storage is not initialized.")
+    return paths
+
+
+def _source_client() -> httpx.Client:
+    # Deliberately not ``client_transport()``: this request goes to the source itself.
+    return httpx.Client(timeout=15.0, follow_redirects=False)
+
+
+def _probe_replay_source(url: str, password: str | None) -> dict[str, object]:
+    """Call the source's replay status endpoint directly (never via the replay transport)."""
+
+    try:
+        with _source_client() as client:
+            response = client.get(f"{url}{REPLAY_STATUS_PATH}", auth=("tweetnook", password or ""))
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Could not reach the replay source at {url}: {exc}"
+        ) from exc
+    if response.status_code == 401:
+        raise HTTPException(
+            status_code=422, detail="The replay source rejected the password (its Web password)."
+        )
+    if response.status_code == 404:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "That server is not serving a replay source. On it, turn on Settings > "
+                "Configuration > Developer > Serve as replay source."
+            ),
+        )
+    try:
+        data = response.json()
+    except ValueError:
+        data = None
+    if response.status_code != 200 or not isinstance(data, dict) or not data.get("replay_source"):
+        detail = data.get("detail") if isinstance(data, dict) else None
+        raise HTTPException(
+            status_code=422,
+            detail=str(detail or f"The replay source answered with HTTP {response.status_code}."),
+        )
+    return {field: data.get(field) for field in REPLAY_STATUS_FIELDS}
+
+
+def _apply_replay_config(paths: XDGPaths, changes: dict[str, object]) -> AppConfig:
+    try:
+        update_config_values(paths, changes)
+        config, _ = load_config()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    server_state["config"] = config
+    if supervisor := server_state.get("job_supervisor"):
+        supervisor.config = config
+    return config
+
+
+@router.put("/replay")
+def put_replay_source(
+    request: ReplaySourceRequest,
+    _auth: Annotated[bool, Depends(verify_credentials)],
+) -> dict[str, object]:
+    """Test a replay source and save it only when its status endpoint answers."""
+
+    paths = _require_dev_tools()
+    current = load_config()[0].replay
+    try:
+        url = normalize_replay_url(request.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    password = request.password.strip() if request.password else None
+    if password == MASKED_SECRET or password is None:
+        # The saved password is only ever sent back to the source it was saved for.
+        password = current.password if current.url == url else None
+    if not password:
+        raise HTTPException(status_code=422, detail="Enter the replay source's Web password.")
+    placeholder_media = (
+        current.placeholder_media
+        if request.placeholder_media is None
+        else request.placeholder_media
+    )
+    source_status = _probe_replay_source(url, password)
+    _write_replay_status(paths, {**source_status, "checked_at": int(time.time())})
+    config = _apply_replay_config(
+        paths,
+        _replay_config_changes(
+            ReplayConfig(url=url, password=password, placeholder_media=placeholder_media)
+        ),
+    )
+    return _dev_payload(config)
+
+
+@router.put("/replay/placeholder-media")
+def put_replay_placeholder_media(
+    request: ReplayMediaRequest,
+    _auth: Annotated[bool, Depends(verify_credentials)],
+) -> dict[str, object]:
+    paths = _require_dev_tools()
+    if not load_config()[0].replay.url:
+        raise HTTPException(status_code=409, detail="No replay source is connected.")
+    config = _apply_replay_config(paths, {"replay.placeholder_media": request.placeholder_media})
+    return _dev_payload(config)
+
+
+@router.delete("/replay")
+def delete_replay_source(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, object]:
+    paths = _require_dev_tools()
+    config = _apply_replay_config(paths, _replay_config_changes(ReplayConfig()))
+    _write_replay_status(paths, None)
+    return _dev_payload(config)
 
 
 @router.put("/auth")

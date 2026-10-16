@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import signal
 import subprocess
 import sys
@@ -678,7 +679,7 @@ def test_restart_preflights_then_stops_and_starts(monkeypatch, tmp_path: Path) -
     )
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "stop_web", lambda: calls.append("stop"))
-    monkeypatch.setattr(cli_web, "start_web", lambda: calls.append("start"))
+    monkeypatch.setattr(cli_web, "start_web", lambda **_kwargs: calls.append("start"))
 
     result = runner.invoke(cli_web.web_app, ["restart"])
 
@@ -692,7 +693,7 @@ def test_restart_works_without_archive(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(cli_web, "_require_web_dependencies", lambda _console: None)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "stop_web", lambda: calls.append("stop"))
-    monkeypatch.setattr(cli_web, "start_web", lambda: calls.append("start"))
+    monkeypatch.setattr(cli_web, "start_web", lambda **_kwargs: calls.append("start"))
     result = runner.invoke(cli_web.web_app, ["restart"])
     assert result.exit_code == 0
     assert calls == ["stop", "start"]
@@ -826,3 +827,48 @@ def test_web_subcommand_help_exits_successfully(command: str) -> None:
 
     assert result.exit_code == 0
     assert "--help" in result.stdout
+
+
+def test_web_start_and_serve_help_expose_dev_tools() -> None:
+    for app, args in (
+        (cli_web.web_app, ["start", "--help"]),
+        (cli_web.web_app, ["restart", "--help"]),
+        (cli.app, ["serve", "--help"]),
+    ):
+        result = runner.invoke(app, args, env={"COLUMNS": "200", "TERM": "dumb"})
+        assert result.exit_code == 0
+        assert "--dev-tools" in result.stdout
+        assert "replay source" in result.stdout
+        assert "TWEETNOOK_DEV_TOOLS" in result.stdout
+
+
+def test_web_start_passes_dev_tools_to_server(monkeypatch, tmp_path: Path) -> None:
+    config, paths = _configured(tmp_path, archive=True)
+    _stub_start_prerequisites(monkeypatch, config, paths)
+    monkeypatch.setattr(cli_web, "_is_running", lambda _pid: False)
+    commands: list[list[str]] = []
+
+    def popen(command, **_kwargs):
+        commands.append(command)
+        return SimpleNamespace(pid=1357)
+
+    monkeypatch.setattr(cli_web.subprocess, "Popen", popen)
+
+    result = runner.invoke(cli_web.web_app, ["start", "--dev-tools"])
+
+    assert result.exit_code == 0
+    assert commands == [[sys.executable, "-m", "tweetnook", "serve", "--dev-tools"]]
+
+
+def test_serve_dev_tools_sets_environment(monkeypatch) -> None:
+    import tweetnook.web.server as web_server
+
+    # setenv records the variable so the value set by --dev-tools is undone afterwards.
+    monkeypatch.setenv("TWEETNOOK_DEV_TOOLS", "0")
+    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), None))
+    monkeypatch.setattr(web_server, "run_server", lambda *_args: None)
+
+    result = runner.invoke(cli.app, ["serve", "--dev-tools"])
+
+    assert result.exit_code == 0
+    assert os.environ["TWEETNOOK_DEV_TOOLS"] == "1"

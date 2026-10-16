@@ -9,8 +9,9 @@ from fastapi.responses import FileResponse, Response
 from fastapi.security import HTTPBasicCredentials
 
 from tweetnook.config import load_config
+from tweetnook.dev_replay import REPLAY_PATH_PREFIX
 from tweetnook.web.deps import security, server_state, verify_credentials
-from tweetnook.web.replay_source import REPLAY_PATH_PREFIX, replay_archive, replay_request
+from tweetnook.web.replay_source import replay_archive, replay_request
 
 router = APIRouter(prefix=REPLAY_PATH_PREFIX, tags=["dev-replay"])
 

@@ -7,6 +7,7 @@ from collections.abc import Iterable, Sequence
 
 import httpx
 
+from tweetnook.dev_replay import client_transport
 from tweetnook.query_ids.constants import (
     BUNDLE_URL_PATTERN,
     CLIENT_WEB_BUNDLE_URL,
@@ -104,7 +105,9 @@ async def refresh_query_ids(
 ) -> dict[str, str]:
     operation_list = list(operations)
     close_client = client is None
-    client = client or httpx.AsyncClient(follow_redirects=True, timeout=20.0)
+    client = client or httpx.AsyncClient(
+        follow_redirects=True, timeout=20.0, transport=client_transport()
+    )
     try:
         discovered = await discover_query_ids(client, operations=operation_list)
     finally:
