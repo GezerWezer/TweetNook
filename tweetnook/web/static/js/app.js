@@ -28,6 +28,7 @@ const FEED_PREFETCH_MARGIN_PX = 1200;
 const MEDIA_PREFETCH_MARGIN_PX = 1600;
 // Hovering a tweet this long starts loading its conversation.
 const THREAD_HOVER_PREFETCH_MS = 150;
+const SETUP_LOAD_ERROR = 'Could not load setup';
 const DEFAULT_FEEDS = [['likes', 'liked_latest'], ['all', 'newest'], ['bookmarks', 'newest'], ['tweets', 'newest']];
 const videoUiHideTimers = new WeakMap();
 const videoScrubStates = new WeakMap();
@@ -2029,8 +2030,16 @@ function tweetApp() {
         setupTestingAuth: false,
         setupAuthResult: null,
         setupUploading: false,
+        setupUpload: null,
+        setupUploadXhr: null,
+        setupArchiveError: '',
+        setupArchiveFresh: false,
+        setupArchiveChoice: null,
+        setupStepResumed: false,
+        setupAuthEdited: false,
         setupStartingImport: false,
-        
+        setupConfirm: null,
+
         mergePrimaryTag: '',
         mergeTagsList: [],
         mergeSearchTerm: '',
@@ -5661,6 +5670,10 @@ function tweetApp() {
         },
 
         closeSetup() {
+            if (this.setupConfirm) {
+                this.setupConfirm.resolve(false);
+                return;
+            }
             if (this.setupForced) return;
             this.setupRerun = false;
             this.showSetupModal = false;
@@ -5679,6 +5692,135 @@ function tweetApp() {
             if (![1, 2, 3].includes(next) || next === this.setupFlowStep) return;
             this.setupDirection = next < this.setupFlowStep ? 'back' : 'forward';
             this.setupFlowStep = next;
+            this.setupError = '';
+            // Move focus to the new step's title so keyboard and screen-reader users follow along.
+            this.$nextTick?.(() => document.getElementById(`setup-step-title-${next}`)?.focus({ preventScroll: true }));
+        },
+
+        // Resolves true when the in-app confirmation sheet is accepted.
+        askSetupConfirm({ title, body, confirmLabel, destructive = false }) {
+            this.setupConfirm?.resolve(false);
+            const returnFocus = document.activeElement;
+            return new Promise(resolve => {
+                this.setupConfirm = {
+                    title, body, confirmLabel, destructive,
+                    resolve: accepted => {
+                        this.setupConfirm = null;
+                        returnFocus?.focus?.();
+                        resolve(accepted);
+                    },
+                };
+                this.$nextTick?.(() => document.querySelector('.setup-confirm .setup-confirm-accept')?.focus());
+            });
+        },
+
+        // Step 1 is a choice confirmed by its footer button. Uploading picks the import;
+        // the option rows pick a migration or an empty archive, and clicking again undoes it.
+        // An empty archive is only created when Setup finishes, so it stays reversible.
+        get setupArchiveStatus() {
+            const archive = this.setupData?.archive;
+            if (!archive) return 'none';
+            if (this.setupUploading) return 'uploading';
+            const state = archive.initialization_state;
+            if (state === 'running') return 'importing';
+            if (this.setupArchiveChoice === 'empty') return 'empty-selected';
+            if (this.setupArchiveChoice === 'migration') return 'migration-selected';
+            if (['failed', 'interrupted'].includes(state)) return 'failed';
+            if (archive.uploaded && (this.setupArchiveFresh || !archive.initialization_mode)) return 'staged';
+            if (archive.ready || archive.initialization_mode) return 'existing';
+            return archive.uploaded ? 'staged' : 'none';
+        },
+
+        get setupArchiveFileState() {
+            switch (this.setupArchiveStatus) {
+                case 'staged': return 'Ready to import';
+                case 'importing': return 'Importing';
+                case 'failed': return 'Import stopped';
+                case 'empty-selected':
+                case 'migration-selected': return 'Not used';
+                default: return 'Uploaded';
+            }
+        },
+
+        // What the archive already holds, shown above the upload area once one exists.
+        get setupArchiveSummary() {
+            const archive = this.setupData?.archive || {};
+            if (!archive.ready || this.setupArchiveStatus === 'importing') return '';
+            if (archive.imported) return 'Your Twitter/X archive has been imported.';
+            if (archive.initialization_mode === 'migration') return 'Your TweetXVault archive has been migrated.';
+            if (archive.initialization_mode === 'empty') return 'Your archive was started without an import.';
+            return 'Your archive is set up.';
+        },
+
+        get setupArchiveStatusText() {
+            switch (this.setupArchiveStatus) {
+                case 'importing': return this.activity?.summary || 'Importing. You can keep going while it runs.';
+                case 'failed': return 'The import did not finish. Already imported data is kept; try again.';
+                default: return '';
+            }
+        },
+
+        get setupArchiveAction() {
+            const status = this.setupArchiveStatus;
+            const archive = this.setupData?.archive || {};
+            if (['importing', 'existing', 'empty-selected'].includes(status)) {
+                return { label: 'Continue', disabled: false, run: () => this.goToSetupStep(2) };
+            }
+            if (status === 'migration-selected' || (status === 'failed' && !archive.uploaded && archive.initialization_mode === 'migration')) {
+                return {
+                    label: status === 'failed' ? 'Retry migration' : 'Start migration',
+                    disabled: !!this.activity || this.setupStartingImport,
+                    run: () => this.startSetupMigration(),
+                };
+            }
+            return {
+                label: status === 'failed' ? 'Try import again' : 'Start import',
+                disabled: !archive.uploaded || this.setupUploading || this.setupStartingImport || !!this.activity,
+                run: () => this.importSetupArchive(),
+            };
+        },
+
+        chooseSetupArchive(choice) {
+            this.setupArchiveError = '';
+            this.setupArchiveChoice = this.setupArchiveChoice === choice ? null : choice;
+        },
+
+        // A first-run reload returns to the first unfinished step instead of step 1.
+        resumeSetupStep() {
+            if (this.setupStepResumed || !this.setupForced || !this.setupData) return;
+            this.setupStepResumed = true;
+            const archive = this.setupData.archive || {};
+            if (!archive.initialization_mode) return;
+            this.setupFlowStep = this.setupData.auth?.verified ? 3 : 2;
+        },
+
+        get setupAuthNeedsTest() {
+            return !(this.setupData?.auth?.verified && !this.setupAuthEdited);
+        },
+
+        get setupAuthMissing() {
+            return !this.setupAuth?.auth_token?.trim() || !this.setupAuth?.ct0?.trim();
+        },
+
+        get setupPasswordRequired() {
+            return !this.setupData?.web?.password_configured;
+        },
+
+        get setupPasswordMismatch() {
+            // Stay quiet while the confirmation is still a prefix of the password being typed.
+            const confirm = this.setupPasswordConfirm;
+            return !!confirm && confirm !== this.setupPassword && !this.setupPassword.startsWith(confirm);
+        },
+
+        get setupCanFinish() {
+            if (this.setupFinishing) return false;
+            if (!this.setupPasswordRequired && !this.setupPassword) return true;
+            return !!this.setupPassword && this.setupPassword === this.setupPasswordConfirm;
+        },
+
+        skipSetupAuth() {
+            this.setupSkipAuth = true;
+            this.goToSetupStep(3);
         },
 
         rerunSetup() {
@@ -5708,8 +5850,10 @@ function tweetApp() {
             this.setupPolling = true;
             try {
                 const response = await fetch('/api/setup');
-                if (!response.ok) throw new Error('Could not load setup');
+                if (!response.ok) throw new Error(SETUP_LOAD_ERROR);
                 const data = await response.json();
+                // A transient polling failure should not outlive the next successful poll.
+                if (this.setupError === SETUP_LOAD_ERROR) this.setupError = '';
                 this.setupData = data;
                 if (!this.setupAuth) this.setupAuth = JSON.parse(JSON.stringify(data.auth.values));
                 this.archiveReady = !!data.archive.ready;
@@ -5717,6 +5861,7 @@ function tweetApp() {
                 if (this.setupForced) {
                     this.showSetupModal = true;
                     this.showSettingsModal = false;
+                    this.resumeSetupStep();
                 }
                 if (this.archiveReady && !this.setupForced && !this.archiveResourcesLoaded) {
                     this.archiveResourcesLoaded = true;
@@ -5737,24 +5882,37 @@ function tweetApp() {
             }
         },
 
-        async initializeSetupArchive(mode) {
-            if (mode === 'empty' && !confirm('Importing your official Twitter/X archive first is recommended. A live sync may not recover all of your historical data. Create an empty archive?')) return;
-            this.setupError = '';
+        // Starts the upstream migration; an empty archive is created by finishSetup().
+        async startSetupMigration() {
+            this.setupArchiveError = '';
+            this.setupStartingImport = true;
             try {
-                const response = await fetch(mode === 'empty' ? '/api/setup/archive/empty' : '/api/setup/migrate', { method: 'POST' });
+                const response = await fetch('/api/setup/migrate', { method: 'POST' });
                 const data = await response.json();
-                if (!response.ok) throw new Error(data.detail?.message || data.detail || 'Could not initialize archive');
+                if (!response.ok) throw new Error(data.detail?.message || data.detail || 'Could not start the migration');
+                this.setupArchiveChoice = null;
                 this.goToSetupStep(2);
                 await this.fetchSetup();
                 await this.fetchActivityStatus();
-            } catch (error) { this.setupError = error.message; }
+            } catch (error) {
+                this.setupArchiveError = error.message;
+            } finally {
+                this.setupStartingImport = false;
+            }
         },
 
         async finishSetup() {
-            if (this.setupFinishing) return;
+            if (!this.setupCanFinish) return;
             this.setupFinishing = true;
             this.setupError = '';
             try {
+                // The empty-archive choice is applied only now, so it could be changed until here.
+                if (this.setupArchiveChoice === 'empty' && !this.setupData?.archive?.initialization_mode) {
+                    const created = await fetch('/api/setup/archive/empty', { method: 'POST' });
+                    const detail = (await created.json().catch(() => ({}))).detail;
+                    if (!created.ok) throw new Error(detail?.message || detail || 'Could not create the archive');
+                    this.setupArchiveChoice = null;
+                }
                 const body = { skip_auth: this.setupSkipAuth };
                 if (!this.setupData?.web?.password_configured || this.setupPassword) {
                     body.password = this.setupPassword;
@@ -5823,6 +5981,16 @@ function tweetApp() {
 
         async saveSetupAuth() {
             if (!this.setupAuth || this.setupSavingAuth || this.setupAuthSuccessPending) return false;
+            // A connection verified earlier needs no new test unless the cookies were edited.
+            if (!this.setupAuthNeedsTest) {
+                this.setupSkipAuth = false;
+                this.goToSetupStep(3);
+                return true;
+            }
+            if (this.setupAuthMissing) {
+                this.setupAuthResult = { success: false, message: 'Paste both auth_token and ct0 to connect.' };
+                return false;
+            }
             this.setupSavingAuth = true;
             this.setupAuthSuccessPending = false;
             this.setupAuthResult = null;
@@ -5837,13 +6005,16 @@ function tweetApp() {
 
                 if (!saveResponse.ok) {
                     const data = await saveResponse.json().catch(() => ({}));
-                    throw new Error(data.detail || 'Could not save authentication');
+                    throw new Error(saveResponse.status === 503
+                        ? 'TweetNook could not reach Twitter/X. Check the server’s internet connection and try again.'
+                        : 'Twitter/X did not accept these cookies. Copy fresh values from a signed-in browser and try again.');
                 }
 
                 const auth = await saveResponse.json();
                 this.setupData.auth = auth;
                 this.setupAuth = JSON.parse(JSON.stringify(auth.values));
                 this.setupAuthSaved = !!auth.verified;
+                this.setupAuthEdited = false;
                 this.setupSkipAuth = false;
                 await this.fetchSetup();
                 if (this.setupData.auth.verified) {
@@ -5860,60 +6031,102 @@ function tweetApp() {
                     this.goToSetupStep(3);
                     return true;
                 }
-                throw new Error('Authentication was not verified');
+                throw new Error('Twitter/X did not accept these cookies. Copy fresh values from a signed-in browser and try again.');
 
             } catch (error) {
-                this.setupAuthResult = { success: false, message: 'Authentication failed, verify cookies', output: '' };
+                this.setupAuthResult = { success: false, message: error.message };
                 return false;
             } finally {
                 this.setupSavingAuth = false;
             }
         },
 
+        editSetupAuth() {
+            this.setupAuthSaved = false;
+            this.setupAuthEdited = true;
+            this.setupAuthResult = null;
+        },
+
+        // Uses XHR rather than fetch so multi-gigabyte archives can report upload progress.
         async uploadSetupArchive(event) {
             const file = event.target.files?.[0];
             event.target.value = '';
             if (!file) return;
+            this.setupArchiveError = '';
             if (!file.name.toLowerCase().endsWith('.zip')) {
-                alert('Choose an archive.zip file.');
+                this.setupArchiveError = `“${file.name}” is not a .zip file. Choose the archive.zip you downloaded from Twitter/X.`;
                 return;
             }
             this.setupUploading = true;
+            this.setupUpload = { name: file.name, loaded: 0, total: file.size || 0 };
             try {
-                const response = await fetch('/api/setup/archive', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/zip' },
-                    body: file,
+                const archive = await new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    this.setupUploadXhr = xhr;
+                    xhr.open('PUT', '/api/setup/archive');
+                    xhr.setRequestHeader('Content-Type', 'application/zip');
+                    xhr.upload.onprogress = progress => {
+                        this.setupUpload = { ...this.setupUpload, loaded: progress.loaded, total: progress.total || this.setupUpload.total };
+                    };
+                    xhr.onload = () => {
+                        let data = {};
+                        try { data = JSON.parse(xhr.responseText || '{}'); } catch (_) { /* Non-JSON error page. */ }
+                        if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+                        else reject(new Error(typeof data.detail === 'string' ? data.detail : 'Could not upload archive.zip.'));
+                    };
+                    xhr.onerror = () => reject(new Error('The upload was interrupted. Check that TweetNook is still running and try again.'));
+                    xhr.onabort = () => resolve(null);
+                    xhr.send(file);
                 });
-                if (!response.ok) {
-                    const data = await response.json().catch(() => ({}));
-                    throw new Error(data.detail || 'Could not upload archive');
+                if (archive) {
+                    this.setupData.archive = archive;
+                    this.setupArchiveFresh = true;
+                    this.setupArchiveChoice = null;
                 }
-                this.setupData.archive = await response.json();
             } catch (error) {
-                alert(error.message);
+                this.setupArchiveError = error.message;
             } finally {
                 this.setupUploading = false;
+                this.setupUpload = null;
+                this.setupUploadXhr = null;
             }
         },
 
+        cancelSetupUpload() {
+            this.setupUploadXhr?.abort();
+        },
+
+        get setupUploadPercent() {
+            const upload = this.setupUpload;
+            if (!upload?.total) return 0;
+            return Math.min(100, Math.round((upload.loaded / upload.total) * 100));
+        },
+
         async clearSetupArchive() {
-            if (!confirm('Clear the uploaded archive.zip? Imported tweets will not be deleted.')) return;
+            if (!await this.askSetupConfirm({
+                title: 'Remove archive.zip?',
+                body: 'The uploaded file is deleted. Imported tweets stay in your archive.',
+                confirmLabel: 'Remove',
+                destructive: true,
+            })) return;
+            this.setupArchiveError = '';
             try {
                 const response = await fetch('/api/setup/archive', { method: 'DELETE' });
                 if (!response.ok) {
                     const data = await response.json().catch(() => ({}));
-                    throw new Error(data.detail || 'Could not clear archive');
+                    throw new Error(data.detail || 'Could not remove archive.zip');
                 }
                 this.setupData.archive = await response.json();
+                this.setupArchiveFresh = false;
             } catch (error) {
-                alert(error.message);
+                this.setupArchiveError = error.message;
             }
         },
 
         async importSetupArchive() {
             if (!this.setupData?.archive?.uploaded || this.setupStartingImport) return;
             this.setupStartingImport = true;
+            this.setupArchiveError = '';
             this.activityError = null;
             try {
                 const response = await fetch('/api/setup/archive/import', { method: 'POST' });
@@ -5921,12 +6134,13 @@ function tweetApp() {
                     const data = await response.json().catch(() => ({}));
                     throw new Error(data.detail || 'Could not start archive import');
                 }
+                this.setupArchiveFresh = false;
                 this.goToSetupStep(2);
                 await this.fetchSetup();
                 await this.fetchActivityStatus();
             } catch (error) {
                 this.activityError = error.message;
-                alert(error.message);
+                this.setupArchiveError = error.message;
             } finally {
                 this.setupStartingImport = false;
             }
