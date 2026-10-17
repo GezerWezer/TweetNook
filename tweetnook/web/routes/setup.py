@@ -156,6 +156,7 @@ def get_setup(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, 
             verified=bool(coordinator and coordinator.state.auth_verified),
         ),
         "dev": _dev_payload(config),
+        "schedule": {"enabled": config.schedule.enabled, "collections": config.sync.collections},
     }
 
 

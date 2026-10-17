@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/static/css/styles.css">
     <script src="/static/js/themes.js"></script>
     <script src="/static/js/autocomplete.js"></script>
+    <script src="/static/js/setup-completion.js"></script>
     <script src="/static/js/app.js"></script>
     <script src="/static/js/articles.js"></script>
     <link rel="stylesheet" href="/static/css/articles.css">
@@ -2458,6 +2459,8 @@
              x-cloak
              @click.self="closeSetup()">
             <div class="setup-modal-shell bg-[var(--bg-primary)] w-full h-full flex flex-col overflow-hidden relative"
+                 :class="{ 'is-complete': setupCompletionVisible }"
+                 @keydown.tab="if (setupCompletionVisible) nookTrapFocus($event, $event.currentTarget)"
                  role="dialog" aria-modal="true" aria-labelledby="setup-modal-title">
                     <!-- Focused first-run setup in its own Twitter/X-style modal -->
                     <div class="setup-modal-header" x-show="showSetupModal">
@@ -2466,7 +2469,7 @@
                         </button>
                         <h1 id="setup-modal-title" class="setup-modal-heading">Setup</h1>
                         <span x-show="setupReplayConnected" x-cloak class="nook-demo-badge setup-replay-badge">Replay mode</span>
-                        <span class="setup-modal-step" x-show="setupForced || setupRerun || !setupData?.completed" x-text="`Step ${setupFlowStep} of ${SETUP_STEP_COUNT}`"></span>
+                        <span class="setup-modal-step" x-show="!setupCompletionVisible && (setupForced || setupRerun || !setupData?.completed)" x-text="`Step ${setupFlowStep} of ${SETUP_STEP_COUNT}`"></span>
                     </div>
                     <div class="setup-desktop-required" role="note">
                         <div class="setup-desktop-required-icon" aria-hidden="true">
@@ -2475,7 +2478,7 @@
                         <h2>Continue setup on desktop</h2>
                         <p>Open TweetNook on a desktop computer to import your archive, connect Twitter/X, and finish setup.</p>
                     </div>
-                    <div class="setup-modal-progress" x-show="showSetupModal && (setupForced || setupRerun || !setupData?.completed)" aria-hidden="true">
+                    <div class="setup-modal-progress" x-show="showSetupModal && !setupCompletionVisible && (setupForced || setupRerun || !setupData?.completed)" aria-hidden="true">
                         <template x-for="step in SETUP_STEP_COUNT" :key="step">
                             <span :class="setupFlowStep >= step ? 'is-complete' : ''"></span>
                         </template>
@@ -2490,7 +2493,7 @@
                         <template x-if="setupData && setupAuth">
                             <div class="setup-modal-inner">
                                 <p class="setup-flow-error" x-show="setupError" x-text="setupError" role="alert"></p>
-                                <div x-show="setupForced || setupRerun || !setupData.completed">
+                                <div x-show="!setupCompletionVisible && (setupForced || setupRerun || !setupData.completed)">
                                 <!-- ── Step 1 · Twitter/X Archive Import ─────────────────────── -->
                                 <div class="setup-step setup-flow-panel" x-show="setupFlowStep === 1"
                                      :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
@@ -2829,12 +2832,43 @@
                                 </div>
                                 </div>
 
+                                <section class="setup-completion" x-show="setupCompletionVisible" aria-labelledby="setup-completion-title">
+                                    <h2 id="setup-completion-title" tabindex="-1">Setup complete</h2>
+                                    <p class="setup-completion-intro" x-text="setupCompletion.intro"></p>
+                                    <div class="setup-completion-pipeline" aria-label="Your archive preparation workflow">
+                                        <template x-for="stage in setupCompletion.stages" :key="stage.key">
+                                            <article class="setup-completion-stage" :data-state="stage.state">
+                                                <div class="setup-completion-stage-icon" aria-hidden="true" x-html="stage.icon"></div>
+                                                <div class="setup-completion-stage-heading">
+                                                    <h3 x-text="stage.title"></h3>
+                                                    <span class="setup-completion-status">
+                                                        <svg x-show="stage.state === 'done'" data-icon="checkmark" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z"/></svg>
+                                                        <span x-text="stage.label"></span>
+                                                    </span>
+                                                </div>
+                                                <p x-text="stage.description"></p>
+                                                <svg class="setup-completion-connector" data-icon="arrow-down" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4h2v12.59l5-5L19.41 13 12 20.41 4.59 13 6 11.59l5 5z"/></svg>
+                                            </article>
+                                        </template>
+                                    </div>
+                                    <p class="setup-completion-note" x-show="setupCompletion.note" x-text="setupCompletion.note" role="status" aria-live="polite"></p>
+                                    <section class="setup-completion-expectations" aria-labelledby="setup-completion-expectations-title">
+                                        <svg data-icon="clock" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.75c-4.55 0-8.25 3.69-8.25 8.25s3.7 8.25 8.25 8.25 8.25-3.69 8.25-8.25S16.56 3.75 12 3.75zM1.75 12C1.75 6.34 6.34 1.75 12 1.75S22.25 6.34 22.25 12 17.66 22.25 12 22.25 1.75 17.66 1.75 12zM11 6h2v5.28l3.82 1.27-.63 1.9L11 12.72V6z"/></svg>
+                                        <div>
+                                            <h3 id="setup-completion-expectations-title" x-text="setupCompletion.title"></h3>
+                                            <p x-text="setupCompletion.time"></p>
+                                            <p x-text="setupCompletion.usability"></p>
+                                        </div>
+                                    </section>
+                                    <p class="setup-completion-note" x-text="setupCompletion.keep"></p>
+                                    <p class="setup-completion-note" x-text="setupCompletion.schedule"></p>
+                                </section>
                             </div>
                         </template>
                     </div>
 
                     <!-- One footer for every step: Back on the left, the step's commit action on the right -->
-                    <div class="setup-modal-footer" x-show="setupData && setupAuth && (setupForced || setupRerun || !setupData?.completed)">
+                    <div class="setup-modal-footer" x-show="setupData && setupAuth && !setupCompletionVisible && (setupForced || setupRerun || !setupData?.completed)">
                         <button type="button" class="setup-btn" x-show="setupFlowStep > 1" :disabled="setupSavingAuth || setupAuthSuccessPending || setupFinishing" @click="goToSetupStep(setupFlowStep - 1)">Back</button>
                         <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 1"
                                 :disabled="setupArchiveAction.disabled" @click="setupArchiveAction.run()">
@@ -2855,6 +2889,11 @@
                         <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 4" @click="goToSetupStep(5)">Continue</button>
                         <button type="submit" form="setup-password-form" class="setup-btn is-primary" x-show="setupFlowStep === 5"
                                 :disabled="!setupCanFinish" x-text="setupFinishing ? 'Finishing…' : 'Finish setup'"></button>
+                    </div>
+
+                    <div class="setup-modal-footer setup-completion-footer" x-show="setupCompletionVisible">
+                        <button type="button" class="setup-btn" @click="closeSetup()">Browse archive</button>
+                        <button type="button" class="setup-btn is-primary" @click="setupCompletionAction()" x-text="setupCompletion.needsConnection ? 'Connect X' : 'View activity'"></button>
                     </div>
 
                     <!-- Cookie instructions, generated from docs/getting-started.md -->
