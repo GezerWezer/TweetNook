@@ -7828,6 +7828,51 @@ test('sync panel shows paused and skipped reasons, new tweets, and the server sc
     assert.equal(panel.scheduleLabel(), 'Scheduled syncs off');
 });
 
+test('sync panel bounces only active steps with unknown totals and suppresses fabricated fractions', () => {
+    const context = browserContext();
+    const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
+    const panel = Object.assign(Object.create(immediateComponent(tweetApp())), nookSyncPanel());
+    const step = { state: 'active', title: 'Bookmarks', activity: 'Fetching page 3', completed: 3, total: 4, show_progress: false };
+
+    // Timeline page totals are placeholders even when positive.
+    assert.equal(panel.indeterminate(step), true);
+    assert.match(panel.segClass(step), /is-current is-indeterminate/);
+    assert.equal(panel.fill(step), 30);
+    assert.equal(panel.describe(step).right, '');
+    assert.equal(panel.describe(step).left, 'Fetching page 3');
+
+    step.show_progress = true;
+    assert.equal(panel.indeterminate(step), false);
+    assert.equal(panel.fill(step), 75);
+    assert.equal(panel.describe(step).right, '3 / 4');
+    assert.doesNotMatch(panel.segClass(step), /is-indeterminate/);
+    for (const total of [undefined, null, 0, -1, 'unknown', Infinity]) {
+        step.total = total;
+        assert.equal(panel.indeterminate(step), true);
+        assert.equal(panel.describe(step).right, '');
+    }
+
+    step.show_progress = false;
+    for (const state of ['pending', 'complete', 'skipped', 'failed', 'cancelled']) {
+        step.state = state;
+        assert.equal(panel.indeterminate(step), false);
+        assert.doesNotMatch(panel.segClass(step), /is-indeterminate/);
+        assert.equal(panel.fill(step), state === 'pending' ? 0 : 100);
+    }
+    step.state = 'failed';
+    step.paused = true;
+    assert.equal(panel.indeterminate(step), false);
+    assert.equal(panel.segClass(step), 'is-paused');
+
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'header.css'), 'utf8');
+    assert.match(html, /class="cs-seg" :class="segClass\(step\)"/);
+    assert.match(html, /class="cs-fill" :style="`width:\$\{fill\(step\)\}%`"/);
+    assert.match(css, /\.cs-seg\.is-indeterminate \.cs-fill \{[^}]*animation: nook-sync-bounce[^}]*infinite alternate/);
+    assert.match(css, /@keyframes nook-sync-bounce \{[^\n]*translateX\(233\.333333%\)/);
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.cs-seg\.is-indeterminate \.cs-fill \{ animation: none;/);
+});
+
 test('activity log view follows a running log by byte offset', async () => {
     const context = browserContext();
     const chunks = {
