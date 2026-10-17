@@ -8,6 +8,7 @@ import re
 import sys
 import time
 import uuid
+from collections import OrderedDict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,23 @@ SECRET_ARGUMENTS = {
     "--password",
     "--api-key",
 }
+_FINAL_RESERVE_BYTES = 256 * 1024
+_TERMINAL_RESULTS: OrderedDict[tuple[str, str], dict[str, Any]] = OrderedDict()
+
+
+def _cache_result(data_dir: Path, run_id: str, result: dict[str, Any]) -> None:
+    key = (str(data_dir.resolve()), run_id)
+    _TERMINAL_RESULTS[key] = result
+    _TERMINAL_RESULTS.move_to_end(key)
+    while len(_TERMINAL_RESULTS) > 100:
+        _TERMINAL_RESULTS.popitem(last=False)
+
+
+def _release_reserve(run_dir: Path) -> None:
+    try:
+        (run_dir / "final.reserve").unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def new_run_id(now: datetime | None = None) -> str:
@@ -39,8 +57,14 @@ def runs_root(data_dir: Path) -> Path:
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
-    temporary.replace(path)
+    try:
+        temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -101,6 +125,14 @@ def reserve_run(
         }
     )
     _atomic_json(metadata_path, current)
+    # Real allocated bytes on the data volume, released before terminal metadata.
+    # The worker reuses the supervisor's reservation instead of allocating twice.
+    reserve = run_dir / "final.reserve"
+    if not reserve.exists():
+        with reserve.open("wb") as handle:
+            handle.write(b"\0" * _FINAL_RESERVE_BYTES)
+            handle.flush()
+            os.fsync(handle.fileno())
     return run_dir
 
 
@@ -148,9 +180,11 @@ class ActivityRunWriter:
         payload = dict(snapshot)
         payload["run_id"] = self.run_id
         payload["origin"] = self.origin
+        terminal = not payload.get("running")
+        if terminal:
+            _release_reserve(self.run_dir)
         try:
-            _atomic_json(self.run_dir / "snapshot.json", payload)
-            if not payload.get("running"):
+            if terminal:
                 _atomic_json(self.run_dir / "final.json", payload)
                 self.update_metadata(
                     status=(
@@ -166,6 +200,7 @@ class ActivityRunWriter:
                     success=payload.get("success"),
                     summary=payload.get("summary", ""),
                 )
+            _atomic_json(self.run_dir / "snapshot.json", payload)
         except OSError:
             pass
 
@@ -184,10 +219,11 @@ def mark_run_process_result(
     *,
     exit_code: int,
     stopped: bool = False,
-) -> None:
+) -> dict[str, Any]:
     run_dir = get_run_dir(data_dir, run_id)
     metadata_path = run_dir / "metadata.json"
     metadata = _read_json(metadata_path) or {"run_id": run_id}
+    _release_reserve(run_dir)
     final = _read_json(run_dir / "final.json")
     if final is None:
         snapshot = _read_json(run_dir / "snapshot.json") or {}
@@ -195,26 +231,72 @@ def mark_run_process_result(
             {
                 "run_id": run_id,
                 "running": False,
-                "success": False,
+                "success": False if exit_code or stopped else None,
                 "completed_at": time.time(),
                 "updated_at": time.time(),
                 "summary": (
-                    "Stopped by user." if stopped else f"Worker exited with status {exit_code}."
+                    "Stopped by user."
+                    if stopped
+                    else f"Worker exited with status {exit_code}; completion was not recorded. "
+                    "Saved progress is preserved. Review the log before resuming."
                 ),
             }
         )
-        _atomic_json(run_dir / "final.json", snapshot)
         final = snapshot
+    final = terminal_snapshot(final, stopped=stopped)
+    if exit_code != 0 or stopped:
+        final["success"] = False
+    successful = exit_code == 0 and final.get("success") is True
     metadata.update(
         {
-            "status": "stopped" if stopped else ("completed" if exit_code == 0 else "failed"),
+            "status": (
+                "stopped"
+                if stopped
+                else "completed"
+                if successful
+                else "interrupted"
+                if final.get("success") is None
+                else "failed"
+            ),
             "completed_at": final.get("completed_at") or time.time(),
             "exit_code": exit_code,
-            "success": exit_code == 0 and bool(final.get("success", True)),
+            "success": final.get("success"),
             "summary": final.get("summary", ""),
         }
     )
-    _atomic_json(metadata_path, metadata)
+    result = {**metadata, "snapshot": final}
+    _cache_result(data_dir, run_id, result)
+    try:
+        _atomic_json(run_dir / "final.json", final)
+        _atomic_json(metadata_path, metadata)
+    except OSError:
+        final["history_warning"] = (
+            "The final result could not be saved to disk. Free disk space; "
+            "this result is available until the server restarts."
+        )
+        final["summary"] = f"{final.get('summary', '')} {final['history_warning']}".strip()
+        result["summary"] = final["summary"]
+    return result
+
+
+def terminal_snapshot(snapshot: dict[str, Any], *, stopped: bool | None = None) -> dict[str, Any]:
+    """Never retain active steps after their worker has exited."""
+    snapshot = {
+        **snapshot,
+        "running": False,
+        "active_step": None,
+        "stopped": bool(snapshot.get("stopped")) if stopped is None else stopped,
+    }
+    steps = []
+    for item in snapshot.get("steps") or []:
+        step = dict(item)
+        if step.get("state") == "active":
+            step.update(state="failed", reason="The worker stopped before this step finished.")
+        elif step.get("state") == "pending":
+            step.update(state="skipped", reason="An earlier failure stopped the command.")
+        steps.append(step)
+    snapshot["steps"] = steps
+    return snapshot
 
 
 def update_run_metadata(data_dir: Path, run_id: str, **changes: Any) -> None:
@@ -237,11 +319,72 @@ def get_run_dir(data_dir: Path, run_id: str) -> Path:
 
 def read_run(data_dir: Path, run_id: str) -> dict[str, Any] | None:
     run_dir = get_run_dir(data_dir, run_id)
+    cached = _TERMINAL_RESULTS.get((str(data_dir.resolve()), run_id))
+    if cached is not None:
+        return cached
     metadata = _read_json(run_dir / "metadata.json")
     if metadata is None:
         return None
-    snapshot = _read_json(run_dir / "final.json") or _read_json(run_dir / "snapshot.json")
+    final = _read_json(run_dir / "final.json")
+    snapshot = final or _read_json(run_dir / "snapshot.json")
+    if metadata.get("status") in {"starting", "running"}:
+        if final is not None:
+            metadata.update(
+                status=(
+                    "completed"
+                    if final.get("success") is True
+                    else "interrupted"
+                    if final.get("success") is None
+                    else "failed"
+                ),
+                success=final.get("success"),
+                completed_at=final.get("completed_at"),
+                summary=final.get("summary", ""),
+            )
+        elif _worker_disappeared(metadata):
+            snapshot = terminal_snapshot(snapshot or {})
+            snapshot.update(
+                run_id=run_id,
+                title=metadata.get("title"),
+                origin=metadata.get("origin"),
+                success=None,
+                completed_at=time.time(),
+                updated_at=time.time(),
+                summary="The worker ended before its final result was saved. "
+                "Saved progress is preserved. Check disk space and review the log, then resume.",
+                history_warning="Completion could not be verified; this run was interrupted.",
+            )
+            metadata.update(
+                status="interrupted",
+                success=None,
+                completed_at=snapshot["completed_at"],
+                summary=snapshot["summary"],
+            )
+        else:
+            return {**metadata, "snapshot": snapshot}
+        result = {**metadata, "snapshot": snapshot}
+        _cache_result(data_dir, run_id, result)
+        _release_reserve(run_dir)
+        try:
+            _atomic_json(run_dir / "final.json", snapshot or {})
+            _atomic_json(run_dir / "metadata.json", metadata)
+        except OSError:
+            pass
+        return result
     return {**metadata, "snapshot": snapshot}
+
+
+def _worker_disappeared(metadata: dict[str, Any]) -> bool:
+    pid = metadata.get("pid")
+    if not isinstance(pid, int) or pid <= 0:
+        return time.time() - (metadata.get("started_at") or time.time()) > 120
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    return False
 
 
 def list_runs(data_dir: Path, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
@@ -252,9 +395,9 @@ def list_runs(data_dir: Path, *, limit: int = 50, offset: int = 0) -> list[dict[
     for entry in root.iterdir():
         if not entry.is_dir() or not RUN_ID_RE.fullmatch(entry.name):
             continue
-        metadata = _read_json(entry / "metadata.json")
-        if metadata is not None:
-            records.append(metadata)
+        run = read_run(data_dir, entry.name)
+        if run is not None:
+            records.append({key: value for key, value in run.items() if key != "snapshot"})
     records.sort(
         key=lambda item: (item.get("started_at") or 0, item.get("run_id", "")),
         reverse=True,
@@ -266,11 +409,14 @@ def latest_finished_snapshot(
     data_dir: Path,
     *,
     title: str | None = None,
+    titles: set[str] | None = None,
 ) -> dict[str, Any] | None:
     for record in list_runs(data_dir, limit=25):
         if record.get("status") in {"starting", "running"}:
             continue
         if title is not None and record.get("title") != title:
+            continue
+        if titles is not None and record.get("title") not in titles:
             continue
         run = read_run(data_dir, str(record["run_id"]))
         if run and isinstance(run.get("snapshot"), dict):

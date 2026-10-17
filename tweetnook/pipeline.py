@@ -21,6 +21,8 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
+from tweetnook.resource_failure import STORAGE_RECOVERY, is_storage_exhausted
+
 TWITTER_BLUE = "#1DA1F2"
 SPINNER_INTERVAL_MS = 80
 SPINNER_FRAMES: dict[str, tuple[str, ...]] = {
@@ -337,33 +339,40 @@ class PipelineReporter:
         return self
 
     def __exit__(self, exc_type, exc, _traceback) -> None:
-        if exc is not None:
-            active = self.active_step
-            message = (
-                "Stopped by user"
-                if exc_type is KeyboardInterrupt
-                else (_clean_line(str(exc)) or exc.__class__.__name__)
-            )
-            if active is not None and active.state == "active":
-                self.fail_step(active.key, message)
-            self.issue(
-                message,
-                level="error",
-                dedupe_key="command:failure",
-                step=active.key if active is not None else None,
-            )
-            self.finish(message, success=False)
-        elif not self._finished:
-            self.finish(success=True)
-        if self._live is not None:
-            self._live.stop()
-            self._live = None
-        if self._token is not None:
-            _CURRENT_PIPELINE.reset(self._token)
-            self._token = None
-        if self._command_lock is not None:
-            self._command_lock.release()
-            self._command_lock = None
+        try:
+            if exc is not None:
+                active = self.active_step
+                message = (
+                    "Stopped by user"
+                    if exc_type is KeyboardInterrupt
+                    else (_clean_line(str(exc)) or exc.__class__.__name__)
+                )
+                if is_storage_exhausted(exc):
+                    message = STORAGE_RECOVERY
+                if active is not None and active.state == "active":
+                    self.fail_step(active.key, message)
+                self.issue(
+                    message,
+                    level="error",
+                    dedupe_key="command:failure",
+                    step=active.key if active is not None else None,
+                )
+                self.finish(message, success=False)
+            elif not self._finished:
+                self.finish(success=True)
+        finally:
+            if self._live is not None:
+                try:
+                    self._live.stop()
+                except OSError:
+                    pass
+                self._live = None
+            if self._token is not None:
+                _CURRENT_PIPELINE.reset(self._token)
+                self._token = None
+            if self._command_lock is not None:
+                self._command_lock.release()
+                self._command_lock = None
 
     @property
     def active_step(self) -> PipelineStep | None:
@@ -622,6 +631,12 @@ class PipelineReporter:
         self._finished = True
         self._finished_at = time.monotonic()
         self._finished_at_unix = time.time()
+        if success and any(step.state == "failed" for step in self.steps):
+            success = False
+            summary = (
+                "Some selected stages did not finish. Saved progress is preserved. "
+                "Review Activity and resume."
+            )
         self._success = success
         if summary:
             self._final_summary = summary
@@ -712,7 +727,11 @@ class PipelineReporter:
 
     def _log(self, scope: str, event: str, message: str = "") -> None:
         line = self._record_history(scope, event, message)
-        self.console.print(line, markup=False, highlight=False, soft_wrap=True)
+        try:
+            self.console.print(line, markup=False, highlight=False, soft_wrap=True)
+        except OSError:
+            # A full worker console log must not prevent terminal snapshots.
+            pass
 
     def _refresh(self) -> None:
         snapshot = self._state_snapshot()
@@ -720,7 +739,10 @@ class PipelineReporter:
         if self._run_writer is not None:
             self._run_writer.snapshot(snapshot)
         if self._live is not None:
-            self._live.update(self, refresh=True)
+            try:
+                self._live.update(self, refresh=True)
+            except OSError:
+                pass
 
     def _state_snapshot(self) -> dict[str, object]:
         active = self.active_step

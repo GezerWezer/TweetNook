@@ -969,7 +969,15 @@ function tweetApp() {
                             this.threadCache.clear();
                             this.fetchArchiveEnrichmentStatus();
                         }
-                        const lastActivity = data.last_snapshot || this.activity || this.lastActivity;
+                        const previous = this.activity;
+                        const interrupted = previous ? {
+                            ...previous, running: false, success: null, active_step: null,
+                            summary: 'The worker ended before its final result was saved. Review Activity and check disk space before resuming.',
+                            steps: (previous.steps || []).map(step => step.state === 'active'
+                                ? {...step, state: 'failed', reason: 'The worker ended before this step finished.'}
+                                : step.state === 'pending' ? {...step, state: 'skipped'} : step),
+                        } : null;
+                        const lastActivity = data.last_snapshot || interrupted || this.lastActivity;
                         this.lastActivity = this.lastActivity?.run_id === lastActivity?.run_id
                             ? reconcileActivityValue(this.lastActivity, lastActivity) : lastActivity;
                         this.activity = null;
@@ -1460,7 +1468,7 @@ function tweetApp() {
             if (this.displayActivity?.stopped || this.displayActivity?.success === false) {
                 return 'failed';
             }
-            return 'pending';
+            return this.displayActivity ? 'failed' : 'pending';
         },
 
         activityRunStateLabel() {
@@ -1468,7 +1476,7 @@ function tweetApp() {
             if (this.displayActivity?.stopped) return 'Canceled';
             if (this.displayActivity?.success === false) return 'Failed';
             if (this.displayActivity?.success === true) return 'Complete';
-            return 'Waiting';
+            return this.displayActivity ? 'Interrupted' : 'Waiting';
         },
 
         activityRunStatusTitle() {
@@ -1476,7 +1484,16 @@ function tweetApp() {
             if (this.displayActivity?.stopped) return 'Last run stopped';
             if (this.displayActivity?.success === false) return 'Last run failed';
             if (this.displayActivity?.success === true) return 'Last run completed';
-            return 'Run summary';
+            return this.displayActivity ? 'Last run interrupted' : 'Run summary';
+        },
+
+        activityHeaderText() {
+            if (this.activity || this.activityStartPending) return this.activityCommandLabel() + ' in progress…';
+            const last = this.lastActivity;
+            if (last?.stopped) return 'Sync stopped — open Activity';
+            if (last?.success === false) return 'Sync failed — open Activity';
+            if (last && last.success !== true) return 'Sync interrupted — open Activity';
+            return this.lastSyncFormatted ? 'Synced ' + this.lastSyncFormatted : 'Your saved tweets, in one place';
         },
 
         activityRunCounts() {
@@ -6159,6 +6176,8 @@ function tweetApp() {
             if (!archive) return '';
             if (archive.initialization_state === 'running') return this.activity?.summary || 'Importing your archive locally in the background…';
             if (['failed', 'interrupted'].includes(archive.initialization_state)) return 'Archive setup needs attention. Retry the import or migration.';
+            if (archive.followup_state === 'failed' || archive.enrichment_state === 'failed') return 'Saved posts are available to browse. Preparation did not finish; open Activity to review the error and resume.';
+            if (archive.followup_state === 'running' && archive.details_complete) return 'Imported details are complete. Sync and follow-up work are still running.';
             if (archive.enrichment_state === 'running') return 'Archive enrichment is running in the background.';
             if (archive.enrichment_state === 'waiting_for_auth') return 'Local import complete. Connect Twitter/X to start enrichment.';
             if (archive.enrichment_state === 'waiting_for_worker') return 'Enrichment will start when the active task finishes.';

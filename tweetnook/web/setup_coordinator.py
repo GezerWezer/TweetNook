@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ValidationError
 
-from tweetnook.activity_history import new_run_id, read_run
+from tweetnook.activity_history import latest_finished_snapshot, new_run_id, read_run
 from tweetnook.job_supervisor import JobConflictError
 from tweetnook.storage import open_archive_store
 from tweetnook.web.notices import atomic_json
@@ -57,6 +57,28 @@ class SetupCoordinator:
             return read_run(self.paths.data_dir, run_id) if run_id else None
         except ValueError:
             return None
+
+    def _followup_result(self):
+        run = self._run(self.state.auto_enrich_run_id)
+        latest = latest_finished_snapshot(
+            self.paths.data_dir, titles={"tweetnook sync", "tweetnook import enrich"}
+        )
+        initialization = self._run(self.state.archive_init_run_id)
+        if (
+            latest
+            and initialization
+            and ((latest.get("started_at") or 0) < (initialization.get("started_at") or 0))
+        ):
+            latest = None
+        if latest and (not run or (latest.get("started_at") or 0) >= (run.get("started_at") or 0)):
+            return {
+                "status": "stopped"
+                if latest.get("stopped")
+                else ("completed" if latest.get("success") is True else "failed"),
+                "success": latest.get("success"),
+                "snapshot": latest,
+            }
+        return run
 
     def begin(self, mode):
         with self.lock:
@@ -241,7 +263,7 @@ class SetupCoordinator:
                             "Enrichment could not start",
                             "Retry enrichment from Activity.",
                         )
-            enrich_run = self._run(self.state.auto_enrich_run_id)
+            enrich_run = self._followup_result()
             enrich_finishing = bool(
                 self.state.auto_enrich_run_id
                 and supervisor.active_run_id == self.state.auto_enrich_run_id
@@ -255,15 +277,14 @@ class SetupCoordinator:
                 self.notices.add(
                     f"enrich-{self.state.auto_enrich_run_id}",
                     "Enrichment task needs attention",
-                    "Enrichment or its automatic sync did not finish. "
-                    "Saved progress is preserved. Open Activity to review the failed step.",
+                    (enrich_run or {}).get("snapshot", {}).get("summary")
+                    or "Enrichment or its automatic sync did not finish. "
+                    "Saved progress is preserved. Check disk space and open Activity to resume.",
                     run_id=self.state.auto_enrich_run_id,
                 )
             elif enrich_run and enrich_run.get("status") in {"completed", "stopped"}:
                 self.notices.dismiss(f"enrich-{self.state.auto_enrich_run_id}")
-                # Log retention must not turn a successful run into an interruption.
-                self.state.auto_enrich_run_id = None
-                self.save()
+                # Keep the successful identity so readiness survives browser reloads.
             self.start_scheduler()
 
     def complete_walkthrough(self, *, skip_auth=False):
@@ -295,17 +316,36 @@ class SetupCoordinator:
                 else self.state.initialization_result or ("ready" if store else "missing")
             )
             enrichment = "not_applicable"
+            followup_run = self._followup_result()
+            followup_state = "not_started"
+            if supervisor.active_kind in {"enrich", "sync"}:
+                followup_state = "running"
+            elif self.state.auto_enrich_requested:
+                followup_state = (
+                    "waiting_for_setup"
+                    if not self.state.completed
+                    else "waiting_for_auth"
+                    if not self.state.auth_verified
+                    else "waiting_for_worker"
+                )
+            elif followup_run:
+                followup_state = "complete" if followup_run.get("success") is True else "failed"
+            followup_failed = followup_state == "failed"
             if self.state.initialization_mode == "import" or imported:
                 if running or not imported:
                     enrichment = "waiting_for_import"
                 elif supervisor.active_kind == "enrich":
                     enrichment = "running"
-                elif not pending:
+                elif followup_failed:
+                    enrichment = "failed"
+                elif not pending and followup_state not in {
+                    "waiting_for_setup",
+                    "waiting_for_auth",
+                    "waiting_for_worker",
+                }:
                     enrichment = "complete"
                 elif self.state.auto_enrich_requested:
-                    enrichment = (
-                        "waiting_for_auth" if not self.state.auth_verified else "waiting_for_worker"
-                    )
+                    enrichment = followup_state
                 else:
                     run = self._run(self.state.auto_enrich_run_id)
                     enrichment = (
@@ -326,7 +366,11 @@ class SetupCoordinator:
                     "size": archive.stat().st_size if archive.is_file() else None,
                     "imported": imported,
                     "official_import_completed": imported,
-                    "enriched": imported and pending == 0,
+                    "enriched": imported and pending == 0 and not followup_failed,
+                    "details_complete": imported and pending == 0,
+                    "browsable": store is not None,
+                    "followup_state": followup_state,
+                    "all_followups_complete": followup_state == "complete",
                     "pending_enrichment": pending,
                     "enrichment_state": enrichment,
                     "initialization_state": init_state,
@@ -334,7 +378,12 @@ class SetupCoordinator:
                     "legacy_migration_available": (
                         self.paths.data_dir / "archive.lancedb"
                     ).exists(),
-                    "warnings": []
+                    "warnings": [
+                        (followup_run or {}).get("snapshot", {}).get("summary")
+                        or "Archive preparation did not finish. Open Activity to review and resume."
+                    ]
+                    if followup_failed
+                    else []
                     if imported
                     else ["Importing your official Twitter/X archive first is recommended."],
                 },

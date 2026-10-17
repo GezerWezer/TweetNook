@@ -11,6 +11,7 @@ from rich.console import Console
 
 from tweetnook.config import AppConfig, XDGPaths, ensure_paths, load_config
 from tweetnook.exceptions import ConfigError
+from tweetnook.resource_failure import raise_if_storage_exhausted
 from tweetnook.storage import ArchiveStore, open_archive_store
 
 _INTERRUPT_OPTIMIZE_MESSAGE = (
@@ -140,6 +141,7 @@ async def locked_archive_job(
         except BaseException as exc:
             if is_interrupt_exception(exc):
                 best_effort_interrupt_optimize(store, tracker, console=console)
+            raise_if_storage_exhausted(exc)
             raise
         finally:
             store.close()

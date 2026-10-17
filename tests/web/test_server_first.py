@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -48,6 +50,22 @@ class Supervisor:
         self.active = False
         self.active_run_id = None
         self.active_kind = None
+        if code == 0:
+            run_dir = self.paths.activity_runs_dir / run_id
+            metadata = json.loads((run_dir / "metadata.json").read_text())
+            (run_dir / "final.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "title": metadata["title"],
+                        "started_at": metadata["started_at"],
+                        "running": False,
+                        "success": True,
+                        "completed_at": time.time(),
+                        "steps": [],
+                    }
+                )
+            )
         mark_run_process_result(self.paths.data_dir, run_id, exit_code=code, stopped=stopped)
         if callback := self.callbacks.get("on_complete"):
             callback(run_id, code)
@@ -272,8 +290,8 @@ def test_enrichment_exit_waits_for_monitor_before_raising_notice(coordinator):
     jobs.active = False  # Process exited, but monitor has not recorded its result.
     coord.reconcile()
     assert coord.notices.list() == []
-    jobs.finish()
-    assert coord.state.auto_enrich_run_id is None
+    finished_id = jobs.finish()
+    assert coord.state.auto_enrich_run_id == finished_id
     assert coord.notices.list() == []
     coord.reconcile()
     assert coord.notices.list() == []
@@ -284,9 +302,38 @@ def test_successful_enrichment_dismisses_prior_spurious_notice(coordinator):
     jobs.start(kind="enrich", cli_args=["import", "enrich"], origin="web", title="Enrich")
     coord.state.auto_enrich_run_id = jobs.active_run_id
     coord.notices.add(f"enrich-{jobs.active_run_id}", "Enrichment needs attention", "Stale warning")
-    jobs.finish()
-    assert coord.state.auto_enrich_run_id is None
+    finished_id = jobs.finish()
+    assert coord.state.auto_enrich_run_id == finished_id
     assert all(notice["dismissed"] for notice in coord.notices.list())
+
+
+def test_failed_followups_remain_visible_when_imported_details_are_complete(coordinator):
+    coord, jobs, store = coordinator
+    server_state["store"] = store
+    store.count_incomplete_initial_enrichment = lambda: 0
+    coord.state.initialization_mode = "import"
+    coord.state.initialization_result = "complete"
+    coord.state.completed = True
+    jobs.start(
+        kind="enrich", cli_args=["import", "enrich"], origin="web", title="tweetnook import enrich"
+    )
+    coord.state.auto_enrich_run_id = jobs.active_run_id
+    coord.save()
+    failed_id = jobs.finish(2)
+
+    status = coord.status()["archive"]
+    assert status["browsable"] is True
+    assert status["details_complete"] is True
+    assert status["enriched"] is False
+    assert status["enrichment_state"] == "failed"
+    assert status["followup_state"] == "failed"
+    assert status["all_followups_complete"] is False
+    assert status["warnings"]
+    restarted = SetupCoordinator(
+        coord.paths, server_state, coord.attach, lambda: None, coord.notices
+    )
+    assert restarted.state.auto_enrich_run_id == failed_id
+    assert restarted.status()["archive"]["followup_state"] == "failed"
 
 
 def test_interrupted_import_does_not_attach_partial_database(coordinator):
@@ -433,7 +480,7 @@ def test_real_offline_import_worker_attaches_archive(first_run, tmp_path, monkey
             time.sleep(0.05)
         assert status["archive"]["ready"], status
         assert status["archive"]["imported"]
-        assert status["archive"]["enrichment_state"] == "waiting_for_auth"
+        assert status["archive"]["enrichment_state"] == "waiting_for_setup"
         assert len(list(first_run.activity_runs_dir.iterdir())) == 1
         assert first_run.media_dir.exists()
 

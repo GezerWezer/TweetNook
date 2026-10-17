@@ -148,7 +148,8 @@ function nookSyncPanel() {
       if (!last) return 'Not synced yet';
       if (last.stopped) return 'Sync stopped';
       if (last.success === false) return 'Sync failed';
-      return 'Synced';
+      if (last.success === true) return 'Synced';
+      return 'Sync interrupted';
     },
     headTime() {
       if (this.activity?.started_at) return this.formatActivityDuration(this.activityNowSeconds - this.activity.started_at);

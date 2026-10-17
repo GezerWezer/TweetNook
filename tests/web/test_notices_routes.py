@@ -55,3 +55,19 @@ def test_notice_keeps_run_link_and_skips_redundant_writes(tmp_path) -> None:
     assert store.dismiss("job") is False
     assert store.dismiss("missing") is False
     assert not path.exists()
+
+
+def test_notices_remain_readable_when_full_disk_prevents_persistence(tmp_path, monkeypatch):
+    import errno
+
+    from tweetnook.web.notices import NoticeStore
+
+    def full(*args, **kwargs):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr("tweetnook.web.notices.atomic_json", full)
+    notices = NoticeStore(tmp_path / "notices.json")
+    notices.add("disk-full", "Storage is full", "Free disk space, then resume.")
+    assert notices.list()[0]["title"] == "Storage is full"
+    assert notices.dismiss("disk-full") is True
+    assert notices.list()[0]["dismissed"] is True

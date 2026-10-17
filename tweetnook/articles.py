@@ -23,6 +23,7 @@ from tweetnook.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs import locked_archive_job, resolve_job_context
 from tweetnook.pipeline import current_pipeline
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids
+from tweetnook.resource_failure import raise_if_storage_exhausted
 from tweetnook.utils import resolve_query_ids
 
 _STATUS_URL_RE = re.compile(r"/status/(\d+)")
@@ -223,6 +224,7 @@ async def refresh_articles(
                         job.mark_dirty()
                         result.updated += 1
                     except Exception as exc:
+                        raise_if_storage_exhausted(exc)
                         result.failed += 1
                         if pipeline is not None:
                             pipeline.issue(

@@ -422,3 +422,35 @@ def test_issues_name_the_step_and_steps_carry_structured_reasons(tmp_path) -> No
         assert steps["tagging"]["paused"] is True
         assert steps["tagging"]["reason"] == "daily budget"
         assert steps["threads"]["paused"] is False
+
+
+def test_full_console_does_not_prevent_final_snapshot_or_lock_release(tmp_path):
+    import errno
+    import json
+
+    import pytest
+
+    from tweetnook.locking import ProcessLock
+    from tweetnook.pipeline import current_pipeline
+
+    class FullConsole:
+        is_terminal = False
+
+        def print(self, *args, **kwargs):
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+    path = tmp_path / "activity-status.json"
+    with pytest.raises(OSError):
+        with PipelineReporter(
+            FullConsole(), "tweetnook sync", interactive=False, state_path=path
+        ) as pipeline:
+            pipeline.add_step("media", "Media", total=2, unit="files")
+            pipeline.start_step("media", activity="Downloading")
+            raise OSError(errno.ENOSPC, "No space left on device")
+    final = json.loads(path.read_text())
+    assert final["success"] is False
+    assert "Free or add disk space" in final["summary"]
+    assert current_pipeline() is None
+    lock = ProcessLock(tmp_path / "command.lock")
+    lock.acquire()
+    lock.release()

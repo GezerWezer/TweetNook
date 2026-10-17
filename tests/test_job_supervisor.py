@@ -55,12 +55,13 @@ def test_supervisor_launches_isolated_cli_worker_and_records_exit(tmp_path, monk
     metadata_path = paths.activity_runs_dir / result["run_id"] / "metadata.json"
     for _ in range(100):
         metadata = json.loads(metadata_path.read_text())
-        if metadata["status"] == "completed":
+        if metadata["status"] == "interrupted":
             break
         time.sleep(0.01)
     metadata = json.loads(metadata_path.read_text())
-    assert metadata["status"] == "completed"
+    assert metadata["status"] == "interrupted"
     assert metadata["exit_code"] == 0
+    assert metadata["success"] is None
 
 
 def test_supervisor_stops_the_worker_process_group(tmp_path, monkeypatch) -> None:
@@ -194,3 +195,43 @@ def test_shutdown_does_not_signal_finished_worker(tmp_path, monkeypatch):
         "tweetnook.job_supervisor.os.killpg", lambda *args: pytest.fail("no active worker")
     )
     supervisor.shutdown()
+
+
+def test_monitor_always_cleans_up_and_calls_back_when_result_persistence_fails(
+    tmp_path, monkeypatch
+):
+    import errno
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    callbacks = []
+    supervisor = JobSupervisor(
+        _paths(tmp_path), AppConfig(), on_complete=lambda *args: callbacks.append(args)
+    )
+    process = SimpleNamespace(wait=lambda: 2, poll=lambda: 2, pid=4321)
+    handle = Mock()
+    handle.close.side_effect = OSError(errno.ENOSPC, "No space left on device")
+    supervisor._process = process
+    supervisor._run_id = "test-run"
+    supervisor._kind = "sync"
+    supervisor._origin = "web"
+    supervisor._console_handle = handle
+
+    def full(*args, **kwargs):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr("tweetnook.job_supervisor.mark_run_process_result", full)
+    monkeypatch.setattr("tweetnook.job_supervisor.cleanup_runs", full)
+    supervisor._monitor(process, "test-run")
+
+    assert supervisor.active is False
+    assert supervisor.active_run_id is None
+    assert supervisor._console_handle is None
+    handle.close.assert_called_once()
+    assert callbacks == [("test-run", 2)]
+    assert supervisor.last_result["snapshot"]["success"] is False
+    # Persistence failure must not leave the supervisor refusing the next start.
+    monkeypatch.setattr(supervisor, "_external_activity_is_running", lambda: False)
+    monkeypatch.setattr("tweetnook.job_supervisor.reserve_run", full)
+    with pytest.raises(OSError):
+        supervisor.start(kind="sync", cli_args=["sync"], origin="web", title="Sync")

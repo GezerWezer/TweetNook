@@ -370,8 +370,8 @@ function nookLogsPage() {
   return {
     copied: false, openFolds: [], flash: null, hasTime: false, liveTimer: null, logOffset: 0,
     originLabel(origin) { return { schedule: 'Scheduled', web: 'Web app', cli: 'Command line' }[origin] || origin || 'Command line'; },
-    statusKind(run) { return { completed: 'ok', failed: 'failed', stopped: 'stopped' }[run.status] || 'running'; },
-    statusLabel(run) { return { completed: 'Completed', failed: 'Failed', stopped: 'Stopped', starting: 'Starting' }[run.status] || 'Running'; },
+    statusKind(run) { return { completed: 'ok', failed: 'failed', interrupted: 'failed', stopped: 'stopped', starting: 'running', running: 'running' }[run.status] || 'failed'; },
+    statusLabel(run) { return { completed: 'Completed', failed: 'Failed', interrupted: 'Interrupted', stopped: 'Stopped', starting: 'Starting', running: 'Running' }[run.status] || 'Result unavailable'; },
     whenLabel(seconds) { return nookWhenLabel(seconds); },
     fullTime(seconds) { return new Date(seconds * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); },
     durationLabel(run) {

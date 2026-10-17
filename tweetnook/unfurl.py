@@ -16,6 +16,7 @@ from tweetnook.extractor import canonicalize_url
 from tweetnook.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs import locked_archive_job
 from tweetnook.pipeline import current_pipeline
+from tweetnook.resource_failure import raise_if_storage_exhausted
 from tweetnook.utils import utc_now
 
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
@@ -250,6 +251,7 @@ async def unfurl_urls(
                             )
                             result.updated += 1
                         except Exception as exc:
+                            raise_if_storage_exhausted(exc)
                             pending_updates.append(
                                 store.build_url_unfurl_update(
                                     row,
