@@ -8093,6 +8093,30 @@ test('activity log view follows a running log by byte offset', async () => {
     assert.equal(nookRunTitle('tweetnook export'), 'Export');
 });
 
+test('timestamped worker logs show local times and retain UTC timestamps in exports', async () => {
+    const context = browserContext();
+    const { nookLogParse, nookLogsPage } = loadScripts(context, ['settings.js'], '({nookLogParse, nookLogsPage})');
+    const stamp = '2026-10-17T21:01:16.123456Z';
+    const raw = `${stamp} Media: progress · 47 files\n${stamp} ERROR: Storage is full.\n`;
+    const lines = nookLogParse(raw);
+    const localTime = new Date(stamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'});
+    assert.equal(lines[0].time, localTime);
+    assert.equal(lines[0].text, 'Media: progress · 47 files');
+    assert.equal(lines[0].quiet, true);
+    assert.equal(lines[1].tone, 'error');
+    assert.equal(lines[1].time, localTime);
+    assert.equal(nookLogParse('Older log without a timestamp\n')[0].time, '');
+    const page = nookLogsPage();
+    page.nookLogLines = lines;
+    assert.equal(page.rawText(), raw); // Copy and Download both use rawText().
+    let copied = null;
+    context.navigator = {clipboard: {writeText: async value => { copied = value; }}};
+    context.setTimeout = () => 0;
+    await page.copy();
+    assert.equal(copied, raw);
+    assert.equal(page.copied, true);
+});
+
 test('combined archive preparation keeps its name through enrichment, sync, media and history', () => {
     const context = browserContext();
     const { tweetApp, nookRunTitle } = loadScripts(context, ['themes.js', 'app.js', 'settings.js'], '({tweetApp, nookRunTitle})');
