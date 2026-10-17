@@ -8104,6 +8104,63 @@ test('enrichment status waits for setup and tolerates the archive attachment rac
     assert.equal(app.archiveEnrichmentRefreshing, false);
 });
 
+test('committed collection stages refresh an empty feed and its count while media still runs', async () => {
+    const context = browserContext();
+    let committed = false, feeds = 0;
+    context.fetch = async url => {
+        if (url === '/api/activity/status') return {ok: true, json: async () => ({
+            active: true, snapshot: {run_id: 'first-sync', steps: [
+                {key: 'sync:bookmarks:head', state: 'complete'},
+                {key: 'media', state: 'active'},
+            ]},
+        })};
+        assert.match(url, /^\/api\/tweets\?/);
+        feeds++;
+        return {ok: true, json: async () => ({
+            tweets: committed ? [{tweet_id: 'saved'}] : [], total: committed ? 227 : 0,
+            page: 1, pages: 1, has_more: false,
+        })};
+    };
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.archiveReady = true;
+    app.collectionFilter = 'bookmarks';
+    app.renderFeedList = () => {};
+    app.scheduleFeedPrefetch = () => {};
+    await app.fetchTweets();
+    assert.equal(app.total, 0);
+    app.activity = {run_id: 'first-sync', steps: [{key: 'sync:bookmarks:head', state: 'active'}]};
+    committed = true;
+    await app.fetchActivityStatus();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(app.total, 227);
+    assert.equal(app.tweets[0].tweet_id, 'saved');
+    assert.equal(app.activity.steps[1].state, 'active');
+    assert.equal(app.feedUpdateAvailable, false);
+    assert.equal(feeds, 2);
+    await app.fetchActivityStatus();
+    assert.equal(feeds, 2); // Identical polls do not keep refreshing the feed.
+});
+
+test('committed content offers a refresh without disturbing a populated feed', async () => {
+    const context = browserContext();
+    context.fetch = async () => ({ok: true, json: async () => ({active: true,
+        snapshot: {run_id: 'sync', steps: [{key: 'sync:likes:head', state: 'complete'}]},
+    })});
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.archiveReady = true;
+    app.tweets = [{tweet_id: 'reading'}];
+    let feeds = 0;
+    app.fetchTweets = async () => { feeds++; };
+    await app.fetchActivityStatus();
+    assert.equal(app.feedUpdateAvailable, true);
+    assert.equal(feeds, 0);
+    assert.equal(app.tweets[0].tweet_id, 'reading');
+    const markup = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.match(markup, /x-show="feedUpdateAvailable"[^>]*@click="fetchTweets\(\)"/);
+});
+
 async function main() {
     let failures = 0;
     for (const { name, fn } of tests) {

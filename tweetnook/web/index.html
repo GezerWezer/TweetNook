@@ -197,6 +197,7 @@
 
             <div class="nook-results-row">
                 <span class="nook-count" role="status" aria-live="polite" x-text="loading ? 'Loading…' : resultCountLabel()"></span>
+                <button type="button" x-cloak x-show="feedUpdateAvailable" class="feed-picker-trigger" :disabled="loading" @click="fetchTweets()">Updates available · Refresh</button>
                 <div x-ref="feedMenus" class="feed-pickers" @click.outside="closeFeedMenu()" @focusout="if ($event.relatedTarget && !$el.contains($event.relatedTarget)) closeFeedMenu()" @keydown.escape.stop.prevent="closeFeedMenu(true)">
                     <div class="feed-picker">
                         <button type="button" class="feed-picker-trigger nook-sort" id="feed-trigger-sort" aria-controls="feed-menu-sort" :aria-label="'Sort: ' + feedLabel('sort')" aria-haspopup="menu" :aria-expanded="feedMenu === 'sort'" @click="feedMenu === 'sort' ? closeFeedMenu() : openFeedMenu('sort', $el)" @keydown.arrow-down.prevent="openFeedMenu('sort', $el)" @keydown.arrow-up.prevent="openFeedMenu('sort', $el)">
