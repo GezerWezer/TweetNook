@@ -103,25 +103,60 @@
 .cs-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .cs-head strong { font-size: 17px; line-height: 22px; font-weight: 800; }
 .cs-time { color: var(--text-secondary); font-size: 13px; font-variant-numeric: tabular-nums; }
-.cs-bar { display: flex; gap: 4px; margin-top: 12px; }
-.cs-seg { flex: 1 1 0; min-width: 0; height: 20px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; cursor: pointer; transition: flex-grow 220ms ease-in-out; }
-.cs-seg.is-current, .cs-seg[aria-selected="true"] { flex-grow: 1.6; }
-.cs-track { width: 100%; height: 3px; overflow: hidden; border-radius: 9999px; background: var(--border-color); transition: background-color 180ms ease, transform 160ms ease; }
-.cs-seg:is(:hover, :focus-visible) .cs-track { transform: scaleY(1.65); }
-.cs-seg:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
-.cs-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--accent-color); transition: width 240ms ease; }
-.cs-seg.is-indeterminate .cs-fill { transition: none; animation: nook-sync-bounce 1.2s ease-in-out infinite alternate; }
-@keyframes nook-sync-bounce { from { transform: translateX(0); } to { transform: translateX(233.333333%); } }
-@media (prefers-reduced-motion: reduce) { .cs-seg.is-indeterminate .cs-fill { animation: none; transform: translateX(116.666667%); } }
-.cs-seg.is-active .cs-track { background: color-mix(in srgb, var(--accent-color) 28%, var(--border-color)); }
-.cs-seg.is-skipped .cs-fill, .cs-seg.is-paused .cs-fill { background: var(--text-secondary); }
-.cs-seg.is-failed .cs-track, .cs-seg.is-cancelled .cs-track { background: color-mix(in srgb, var(--destructive-color) 28%, var(--border-color)); }
-.cs-seg.is-failed .cs-fill, .cs-seg.is-cancelled .cs-fill { background: var(--destructive-color); }
-.cs-caption { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; margin: 4px 0 0; font-size: 14px; line-height: 18px; font-variant-numeric: tabular-nums; }
-.cs-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cs-r { color: var(--text-secondary); text-align: right; white-space: nowrap; }
+.cs-tabs-frame { position: relative; margin: 10px -16px 0; border-bottom: 1px solid var(--border-color); }
+.cs-tabs-frame::before, .cs-tabs-frame::after { content: ''; position: absolute; top: 0; bottom: 0; z-index: 1; width: 32px; pointer-events: none; opacity: 0; transition: opacity 120ms ease; }
+.cs-tabs-frame::before { left: 0; background: linear-gradient(to left, transparent, var(--bg-primary)); }
+.cs-tabs-frame::after { right: 0; background: linear-gradient(to right, transparent, var(--bg-primary)); }
+.cs-tabs-frame.is-clipped-start::before, .cs-tabs-frame.is-clipped-end::after { opacity: 1; }
+.cs-tabs { position: relative; display: flex; padding: 0 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.cs-tabs::-webkit-scrollbar { display: none; }
+.cs-step-tab { position: relative; display: flex; flex: none; align-items: center; gap: 6px; height: 40px; padding: 0 10px; border: 0; background: transparent; color: var(--text-secondary); font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.cs-step-tab:hover { background: var(--bg-tertiary); }
+.cs-step-tab:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
+.cs-step-tab[aria-selected="true"] { color: var(--text-primary); font-weight: 700; }
+.cs-step-tab[aria-selected="true"]::after { content: ''; position: absolute; right: 10px; bottom: 0; left: 10px; height: 4px; border-radius: 9999px; background: var(--accent-color); }
+.cs-step-tab::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--text-secondary); }
+.cs-step-tab:is(.is-complete, .is-active)::before { background: var(--accent-color); }
+.cs-step-tab:is(.is-failed, .is-cancelled)::before { background: var(--destructive-color); }
+.cs-step-tab.is-pending::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-secondary); }
+.cs-step-tab.is-active::before { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 30%, transparent); }
+.cs-step-tab.is-overview::before { border-radius: 2px; background: var(--text-primary); }
+.cs-caption { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 20px 16px; column-gap: 12px; margin: 12px 0 0; font-size: 15px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.cs-l { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.cs-r { color: var(--text-secondary); font-size: 14px; text-align: right; white-space: nowrap; }
 .cs-r.is-danger { color: var(--destructive-color); }
-.cs-subline { grid-column: 1 / -1; margin-top: 2px; color: var(--text-secondary); font-size: 13px; }
+.cs-line2 { grid-column: 1 / -1; grid-row: 2; display: flex; gap: 6px; min-width: 0; margin-top: 2px; }
+.cs-subline { flex: 1 1 auto; min-width: 0; height: 16px; margin: 0; overflow: hidden; color: var(--text-secondary); font-size: 13px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.cs-eta { flex: none; color: var(--text-secondary); font-size: 13px; line-height: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Every step reserves the same bar, count row and three-line status area. */
+.cs-detail-host { height: 116px; margin-top: 12px; }
+.cs-details-heading { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.bd-bar { display: flex; gap: 2px; height: 8px; overflow: hidden; border-radius: 9999px; background: var(--border-color); }
+.bd-part { flex: none; min-width: 3px; height: 100%; transition: width 240ms ease; }
+.bd-part.is-indeterminate { border-radius: 9999px; animation: nook-sync-bounce 1.2s ease-in-out infinite alternate; }
+@keyframes nook-sync-bounce { from { transform: translateX(0); } to { transform: translateX(233.333333%); } }
+.bd-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 8px; height: 36px; margin: 12px 0 0; padding: 0; list-style: none; font-variant-numeric: tabular-nums; }
+.bd-stat { min-width: 0; }
+.bd-stat.is-placeholder { grid-column: 1 / -1; }
+.bd-value { display: flex; align-items: center; gap: 6px; color: var(--text-primary); font-size: 15px; font-weight: 700; line-height: 20px; white-space: nowrap; }
+.bd-value > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bd-label { display: block; overflow: hidden; color: var(--text-secondary); font-size: 13px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.bd-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.is-done > .bd-dot, .bd-part.is-done { background: var(--accent-color); }
+.is-neutral > .bd-dot, .bd-part.is-neutral { background: var(--text-secondary); }
+.is-failed > .bd-dot, .bd-part.is-failed { background: var(--destructive-color); }
+.is-rest > .bd-dot { box-shadow: inset 0 0 0 1.5px var(--text-secondary); }
+.is-plain > .bd-dot { display: none; }
+.cs-status { display: flex; align-items: flex-start; gap: 8px; height: 48px; margin: 12px 0 0; color: var(--text-secondary); font-size: 13px; line-height: 16px; }
+.cs-status.is-failed { color: var(--text-primary); }
+.cs-status-text { flex: 1; min-width: 0; max-height: 48px; overflow-y: auto; overflow-wrap: anywhere; }
+.cs-status-text:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.cs-status.is-active .cs-status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-glyph { display: flex; align-items: center; justify-content: center; flex: none; width: 16px; height: 16px; color: var(--text-secondary); }
+.cs-glyph svg { width: 16px; height: 16px; fill: currentColor; }
+.cs-glyph.is-complete { color: var(--accent-color); }
+.cs-glyph.is-failed { color: var(--destructive-color); }
+@media (prefers-reduced-motion: reduce) { .bd-part { transition: none; } .bd-part.is-indeterminate { animation: none; transform: translateX(116.666667%); } }
 .cs-menu { margin: 0; padding: 4px 0; list-style: none; border-top: 1px solid var(--border-color); }
 .cs-menu.cs-flush { border-top: 0; padding-top: 0; }
 .cs-menu.cs-last { padding-bottom: 8px; }
@@ -146,7 +181,7 @@
 .cs-back:hover { background: var(--hover-bg); }
 .cs-back svg { width: 20px; height: 20px; fill: currentColor; }
 .cs-label { padding: 12px 16px 2px; color: var(--text-secondary); font-size: 13px; font-weight: 700; }
-@media (prefers-reduced-motion: reduce) { .nook-sync-panel { animation: none; } .cs-seg, .cs-track, .cs-fill { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .nook-sync-panel { animation: none; } .cs-tabs-frame::before, .cs-tabs-frame::after { transition: none; } }
 
 @media (prefers-reduced-motion: reduce) { .nook-activity-spinner { animation: none; border-color: var(--accent-color); opacity: .6; } }
 /* Like the search bar, the tabs get out of the way while reading: they tuck under the title row on scroll down and return on scroll up. */
