@@ -1294,6 +1294,33 @@ test('avatar load and error state hides initials only for real images and recove
     assert.equal(image.classList.contains('avatar-image-loaded'), true);
 });
 
+test('avatar initials preserve emoji and combining graphemes across author surfaces', () => {
+    const context = browserContext();
+    const { tweetApp, avatarInitial } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, avatarInitial})');
+    const app = immediateComponent(tweetApp());
+    app.positionProfileCard = () => {};
+    for (const initial of ['😀', '👩🏽‍💻', '🇨🇦', 'e\u0301', 'A']) {
+        const name = initial + ' Author';
+        assert.equal(avatarInitial(name), initial);
+        assert.equal(app.getInitial({author: {display_name: name}}), initial);
+        assert.equal(app.getInitial({author: {username: name}}), initial);
+        assert.equal(app.getQuoteAuthor({author: {display_name: name}}).initial, initial);
+        assert.equal(app.getQuoteAuthor({core: {user_results: {result: {legacy: {name}}}}}).initial, initial);
+        app.profileCard = { name: 'Original', snapshots: [{display_name: name}] };
+        app.showProfileSnapshot(0);
+        assert.equal(app.profileCard.initial, initial.toUpperCase());
+    }
+    assert.equal(app.getInitial({author: {}}), '?');
+    assert.equal(avatarInitial(''), '?');
+    assert.equal(avatarInitial(null), '?');
+    // Older browsers still preserve a complete supplementary-plane code point.
+    const fallbackContext = browserContext();
+    vm.runInContext('Intl.Segmenter = undefined', fallbackContext);
+    const fallback = loadScripts(fallbackContext, ['themes.js', 'app.js'], 'avatarInitial');
+    assert.equal(fallback('😀 Author'), '😀');
+    assert.equal(fallback('Alice'), 'A');
+});
+
 test('all avatar templates expose load and error handling, including reply and profile initials', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const images = html.match(/<img\b[^>]*:src="avatarUrl\([^>]*>/g) || [];
@@ -1303,7 +1330,7 @@ test('all avatar templates expose load and error handling, including reply and p
         assert.ok(image.includes('@error="avatarFailed($el)"'));
         assert.ok(image.includes('class="avatar-image '));
     }
-    const initialPairs = html.match(/<span[^>]*x-text="(?:getInitial\([^\"]*|getQuoteAuthor\([^\"]*\.initial|profileCard\?\.initial|\(opt\.desc[^\"]*)"[^>]*><\/span>\s*<img[^>]*:src="avatarUrl/g) || [];
+    const initialPairs = html.match(/<span[^>]*x-text="(?:getInitial\([^\"]*|getQuoteAuthor\([^\"]*\.initial|profileCard\?\.initial|avatarInitial\([^\"]*)"[^>]*><\/span>\s*<img[^>]*:src="avatarUrl/g) || [];
     assert.equal(initialPairs.length, 16);
     for (const pair of initialPairs) assert.ok(pair.includes('class="avatar-initial"'));
     // Feed cards (main and quote avatars) render in app.js; capture listeners on the
@@ -6027,12 +6054,12 @@ test('activity stages use focused pages and finish on a run summary', () => {
     assert.equal(app.activityCommandLabel(), 'Archive Sync');
 
     app.activity.title = 'tweetnook import enrich';
-    assert.equal(app.activityCommandLabel(), 'Archive Enrichment');
+    assert.equal(app.activityCommandLabel(), 'Archive Preparation');
     app.activity.title = 'tweetnook media download';
     assert.equal(app.activityCommandLabel(), 'Media Download');
     app.activityStartPending = true;
     app.activityStartingKind = 'enrich';
-    assert.equal(app.activityCommandLabel(), 'Archive Enrichment');
+    assert.equal(app.activityCommandLabel(), 'Archive Preparation');
     app.activityStartPending = false;
     app.activityStartingKind = null;
     app.activity.title = 'tweetnook sync';
@@ -8064,6 +8091,129 @@ test('activity log view follows a running log by byte offset', async () => {
     assert.equal(nookRunTitle('tweetnook sync'), 'Archive sync');
     assert.equal(nookRunTitle('tweetnook import x-archive'), 'Archive import');
     assert.equal(nookRunTitle('tweetnook export'), 'Export');
+});
+
+test('combined archive preparation keeps its name through enrichment, sync, media and history', () => {
+    const context = browserContext();
+    const { tweetApp, nookRunTitle } = loadScripts(context, ['themes.js', 'app.js', 'settings.js'], '({tweetApp, nookRunTitle})');
+    const app = immediateComponent(tweetApp());
+    for (const key of ['archive-enrich', 'sync:likes:head', 'media']) {
+        app.activity = { title: 'tweetnook import enrich', steps: [{key, state: 'active'}] };
+        assert.equal(app.activityHeaderText(), 'Archive Preparation in progress…');
+        assert.equal(nookRunTitle(app.activity.title), 'Archive preparation');
+    }
+    app.activity = null;
+    app.activityStartPending = true;
+    app.activityStartingKind = 'enrich';
+    assert.equal(app.activityCommandLabel(), 'Archive Preparation');
+    assert.equal(nookRunTitle('tweetnook enrich'), 'Archive preparation');
+    assert.equal(nookRunTitle('tweetnook rehydrate'), 'Archive enrichment');
+    assert.equal(nookRunTitle('tweetnook sync'), 'Archive sync');
+});
+
+test('restored Settings logs catch up, resume a single poll and show results finished while closed', async () => {
+    for (const status of ['failed', 'completed']) {
+        const context = browserContext();
+        const timers = new Map(), watchers = {};
+        let nextTimer = 0, output = 'Likes: progress · 61 pages\n', result = {status: 'running'};
+        const offsets = [];
+        context.setTimeout = callback => { timers.set(++nextTimer, callback); return nextTimer; };
+        context.clearTimeout = timer => timers.delete(timer);
+        context.fetch = async url => {
+            if (!url.includes('/log?')) return {ok: true, json: async () => ({...result})};
+            const offset = Number(new URL(url, 'http://localhost').searchParams.get('offset'));
+            offsets.push(offset);
+            return {ok: true, text: async () => output.slice(offset), headers: {get: () => String(output.length)}};
+        };
+        const page = immediateComponent(loadScripts(context, ['settings.js'], 'nookLogsPage')());
+        Object.assign(page, {showSettingsModal: true, settingsTab: 'logs', activityRuns: []});
+        page.$watch = (key, callback) => { watchers[key] = callback; };
+        page.init();
+        await page.open({run_id: 'first-sync', status: 'running'});
+        assert.equal(timers.size, 1);
+        assert.equal(page.nookLogLines.length, 1);
+        page.openFolds = [0];
+        page.showSettingsModal = false;
+        await watchers.showSettingsModal();
+        assert.equal(timers.size, 0);
+        output += 'Likes: progress · 173 pages\n';
+        page.showSettingsModal = true;
+        await watchers.showSettingsModal();
+        assert.equal(page.nookLogLines.length, 2);
+        assert.deepEqual([...page.openFolds], [0]);
+        assert.equal(timers.size, 1);
+        assert.ok(offsets[1] > 0); // Resume by offset without duplicating the restored log.
+        const readsBeforeSameRun = offsets.length;
+        await watchers['nookLogRun?.run_id']('first-sync', 'first-sync');
+        assert.equal(offsets.length, readsBeforeSameRun); // Replacing metadata must not trigger a polling loop.
+        assert.equal(timers.size, 1);
+        const [timer, poll] = [...timers][0];
+        timers.delete(timer);
+        output += 'Media: progress · 10 files\n';
+        await poll();
+        assert.equal(page.nookLogLines.length, 3);
+        assert.equal(timers.size, 1);
+        page.showSettingsModal = false;
+        await watchers.showSettingsModal();
+        result = {status, completed_at: 1000, exit_code: status === 'failed' ? 2 : 0,
+            summary: status === 'failed' ? 'Storage is full. Free disk space, then resume.' : 'Complete'};
+        output += result.summary + '\n';
+        page.showSettingsModal = true;
+        await watchers.showSettingsModal();
+        assert.equal(page.nookLogRun.status, status);
+        assert.equal(page.nookLogRun.exit_code, result.exit_code);
+        assert.equal(page.nookLogRun.completed_at, 1000);
+        assert.equal(page.nookLogRun.summary, result.summary);
+        assert.match(page.nookLogLines.at(-1).raw, new RegExp(result.summary));
+        assert.equal(timers.size, 0);
+        // Returning to the log tab also refreshes the restored view.
+        page.settingsTab = 'appearance';
+        await watchers.settingsTab();
+        const reads = offsets.length;
+        page.settingsTab = 'logs';
+        await watchers.settingsTab();
+        assert.equal(offsets.length, reads + 1);
+        assert.equal(timers.size, 0);
+    }
+});
+
+test('log restoration shares in-flight reads and ignores responses from a replaced log', async () => {
+    const context = browserContext(), pending = [], timers = new Map(), watchers = {};
+    let nextTimer = 0;
+    context.setTimeout = callback => { timers.set(++nextTimer, callback); return nextTimer; };
+    context.clearTimeout = timer => timers.delete(timer);
+    context.fetch = url => new Promise(resolve => pending.push({url, resolve}));
+    const page = immediateComponent(loadScripts(context, ['settings.js'], 'nookLogsPage')());
+    Object.assign(page, {showSettingsModal: true, settingsTab: 'logs', activityRuns: []});
+    page.$watch = (key, callback) => { watchers[key] = callback; };
+    page.init();
+    const opening = page.open({run_id: 'old', status: 'running'});
+    page.showSettingsModal = false;
+    await watchers.showSettingsModal();
+    page.showSettingsModal = true;
+    const restoring = watchers.showSettingsModal();
+    assert.equal(pending.length, 2); // No competing poll while the first request is in flight.
+    const switching = page.open({run_id: 'new', status: 'starting'});
+    const resolve = (start, status, text) => {
+        pending[start].resolve({ok: true, json: async () => ({status})});
+        pending[start + 1].resolve({ok: true, text: async () => text, headers: {get: () => String(text.length)}});
+    };
+    resolve(2, 'running', 'New run\n');
+    await switching;
+    resolve(0, 'failed', 'Old run failed with a much longer log\n');
+    await Promise.all([opening, restoring]);
+    assert.equal(page.nookLogRun.run_id, 'new');
+    assert.equal(page.nookLogRun.status, 'running');
+    assert.equal(page.logOffset, 8);
+    assert.equal(page.nookLogLines.length, 1);
+    assert.equal(page.nookLogLines[0].raw, 'New run');
+    assert.equal(timers.size, 1);
+    const polling = page.refreshLive('new');
+    page.showSettingsModal = false;
+    await watchers.showSettingsModal();
+    resolve(4, 'running', '');
+    await polling;
+    assert.equal(timers.size, 0);
 });
 
 test('Configuration page groups and formats fields from the server schema', () => {

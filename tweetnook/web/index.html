@@ -128,7 +128,7 @@
                             <template x-if="opt.isAuthor">
                                 <span class="nook-suggest-text is-person">
                                     <span class="avatar nook-suggest-avatar relative bg-[var(--gray-700)] text-[var(--white-icon)] overflow-hidden">
-                                        <span class="avatar-initial" x-text="(opt.desc || opt.value || '?').charAt(0)"></span>
+                                        <span class="avatar-initial" x-text="avatarInitial(opt.desc || opt.value)"></span>
                                         <img :src="avatarUrl(opt.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" alt="" loading="lazy">
                                     </span>
                                     <span class="nook-suggest-person">

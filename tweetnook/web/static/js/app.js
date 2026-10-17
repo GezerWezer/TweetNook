@@ -11,6 +11,14 @@ const heldAutoplayVideos = new WeakSet();
 // Players muted only because the browser refused audible autoplay.
 const forcedMuteVideos = new WeakSet();
 const AVATAR_URL_VERSION = 3;
+const avatarInitialSegmenter = typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+function avatarInitial(name) {
+    const value = String(name || '');
+    return (avatarInitialSegmenter
+        ? avatarInitialSegmenter.segment(value)[Symbol.iterator]().next().value?.segment
+        : Array.from(value)[0]) || '?';
+}
 // Video controls fade this long after the last pointer/touch/key activity
 // during playback, and almost immediately once the pointer leaves the video.
 const VIDEO_UI_IDLE_MS = 3000;
@@ -1437,9 +1445,9 @@ function tweetApp() {
             const command = rawTitle.replace(/^tweetnook\s+/i, '').trim().toLowerCase();
             const labels = {
                 sync: 'Archive Sync',
-                enrich: 'Archive Enrichment',
+                enrich: 'Archive Preparation',
                 import: 'Archive Import',
-                'import enrich': 'Archive Enrichment',
+                'import enrich': 'Archive Preparation',
                 'import x-archive': 'Archive Import',
                 'threads expand': 'Thread Expansion',
                 'articles refresh': 'Article Refresh',
@@ -1876,7 +1884,7 @@ function tweetApp() {
                 name,
                 username,
                 id,
-                initial: name.charAt(0).toUpperCase(),
+                initial: avatarInitial(name).toUpperCase(),
                 description: legacy.description || '',
                 followersCount: legacy.followers_count || 0,
                 followingCount: legacy.friends_count || 0,
@@ -1947,7 +1955,7 @@ function tweetApp() {
             card.snapshotIndex = index;
             card.name = snapshot.display_name || card.name;
             card.username = snapshot.username || card.username;
-            card.initial = card.name.charAt(0).toUpperCase();
+            card.initial = avatarInitial(card.name).toUpperCase();
             card.description = snapshot.description || '';
             card.followersCount = snapshot.followers_count || 0;
             card.followingCount = snapshot.following_count || 0;
@@ -4443,8 +4451,8 @@ function tweetApp() {
         
         getInitial(tweet) {
             if (!tweet || !tweet.author) return '?';
-            if (tweet.author.display_name) return tweet.author.display_name.charAt(0);
-            if (tweet.author.username) return tweet.author.username.charAt(0);
+            if (tweet.author.display_name) return avatarInitial(tweet.author.display_name);
+            if (tweet.author.username) return avatarInitial(tweet.author.username);
             return '?';
         },
 
@@ -6788,14 +6796,14 @@ function tweetApp() {
                     name,
                     screen_name: qt.author.username || 'unknown',
                     id: qt.author.id || 'x',
-                    initial: name.charAt(0),
+                    initial: avatarInitial(name),
                 };
             }
             const userResult = qt.core?.user_results?.result;
             let name = userResult?.legacy?.name || userResult?.core?.name || qt.user?.name || 'Unknown';
             let screen_name = userResult?.legacy?.screen_name || userResult?.core?.screen_name || qt.user?.screen_name || 'unknown';
             let id = userResult?.rest_id || qt.user?.id_str || 'x';
-            return { name, screen_name, id, initial: name.charAt(0) };
+            return { name, screen_name, id, initial: avatarInitial(name) };
         },
 
         getQuoteText(qt) {
