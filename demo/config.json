@@ -48,7 +48,9 @@
       "tagging.max_media_size_mb",
       "replay.url",
       "replay.password",
-      "replay.placeholder_media"
+      "replay.placeholder_media",
+      "replay.skip_quote_expansion",
+      "replay.skip_link_previews"
     ],
     "types": {},
     "full_width": [],
@@ -311,7 +313,9 @@
     "replay": {
       "url": null,
       "password": null,
-      "placeholder_media": true
+      "placeholder_media": true,
+      "skip_quote_expansion": false,
+      "skip_link_previews": false
     }
   }
 }

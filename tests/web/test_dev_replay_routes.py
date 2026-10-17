@@ -537,6 +537,7 @@ def test_replay_setup_tests_saves_toggles_and_disconnects(
         "password": None,
         "placeholder_media": True,
         "skip_quote_expansion": False,
+        "skip_link_previews": False,
         "status": None,
     }
     assert "replay" not in paths.config_file.read_text()
@@ -628,6 +629,7 @@ def test_cli_jobs_inherit_replay_from_the_saved_config(monkeypatch, tmp_path) ->
             "replay.url": "http://source.test:8000",
             "replay.password": PASSWORD,
             "replay.skip_quote_expansion": True,
+            "replay.skip_link_previews": True,
         },
     )
     configure_replay(None)
@@ -636,7 +638,7 @@ def test_cli_jobs_inherit_replay_from_the_saved_config(monkeypatch, tmp_path) ->
         "from tweetnook.dev_replay import active_replay, client_transport\n"
         "config, _ = load_config()\n"
         "print(active_replay().url, type(client_transport()).__name__, "
-        "config.replay.skip_quote_expansion)\n"
+        "config.replay.skip_quote_expansion, config.replay.skip_link_previews)\n"
     )
     import os
     import sys
@@ -649,4 +651,31 @@ def test_cli_jobs_inherit_replay_from_the_saved_config(monkeypatch, tmp_path) ->
         check=True,
         timeout=60,
     )
-    assert result.stdout.split() == ["http://source.test:8000", "ReplayTransport", "True"]
+    assert result.stdout.split() == ["http://source.test:8000", "ReplayTransport", "True", "True"]
+
+
+def test_skip_link_previews_is_dev_gated_persisted_and_reset(
+    monkeypatch, tmp_path, make_web_client
+):
+    _setup_env(monkeypatch, tmp_path)
+    client = _setup_client(make_web_client)
+    endpoint = "/api/setup/replay/skip-link-previews"
+    monkeypatch.delenv("TWEETNOOK_DEV_TOOLS", raising=False)
+    assert client.put(endpoint, json={"skip_link_previews": True}).status_code == 404
+    monkeypatch.setenv("TWEETNOOK_DEV_TOOLS", "1")
+    assert client.put(endpoint, json={"skip_link_previews": True}).status_code == 409
+    monkeypatch.setattr(setup, "_probe_replay_source", lambda *args: {"owner_user_id": "4242"})
+    assert (
+        client.put(
+            "/api/setup/replay", json={"url": "http://source.test", "password": "synthetic"}
+        ).status_code
+        == 200
+    )
+    assert client.put(endpoint, json={"skip_link_previews": True}).status_code == 200
+    assert config_module.load_config()[0].replay.skip_link_previews is True
+    assert client.get("/api/setup").json()["dev"]["replay"]["skip_link_previews"] is True
+    again = client.put("/api/setup/replay", json={"url": "http://source.test"})
+    assert again.json()["replay"]["skip_link_previews"] is True
+    reset = client.delete("/api/setup/replay")
+    assert reset.json()["replay"]["skip_link_previews"] is False
+    assert config_module.load_config()[0].replay.skip_link_previews is False
