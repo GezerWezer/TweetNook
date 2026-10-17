@@ -5844,7 +5844,10 @@ function tweetApp() {
         get setupArchiveAction() {
             const status = this.setupArchiveStatus;
             const archive = this.setupData?.archive || {};
-            if (['importing', 'existing', 'empty-selected'].includes(status)) {
+            if (status === 'empty-selected') {
+                return { label: 'Continue', disabled: false, run: () => this.continueWithEmptyArchive() };
+            }
+            if (['importing', 'existing'].includes(status)) {
                 return { label: 'Continue', disabled: false, run: () => this.goToSetupStep(2) };
             }
             if (status === 'migration-selected' || (status === 'failed' && !archive.uploaded && archive.initialization_mode === 'migration')) {
@@ -5859,6 +5862,15 @@ function tweetApp() {
                 disabled: !archive.uploaded || this.setupUploading || this.setupStartingImport || !!this.activity,
                 run: () => this.importSetupArchive(),
             };
+        },
+
+        // The empty archive is still only created at Finish; this confirms the choice before moving on.
+        async continueWithEmptyArchive() {
+            if (await this.askSetupConfirm({
+                title: 'Start with an empty archive?',
+                body: 'Importing your official Twitter/X archive first is recommended. A live sync may not recover all of your older history.',
+                confirmLabel: 'Start empty',
+            })) this.goToSetupStep(2);
         },
 
         chooseSetupArchive(choice) {
@@ -6099,6 +6111,11 @@ function tweetApp() {
 
         async finishSetup() {
             if (!this.setupCanFinish) return;
+            if (this.setupNoPassword && !await this.askSetupConfirm({
+                title: 'Continue without a password?',
+                body: this.setupNoPasswordWarning,
+                confirmLabel: 'Continue',
+            })) return;
             this.setupFinishing = true;
             this.setupError = '';
             try {

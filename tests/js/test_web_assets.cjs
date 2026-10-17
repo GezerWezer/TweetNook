@@ -3127,8 +3127,14 @@ test('setup archive choices stay reversible until Setup finishes', async () => {
     assert.equal(app.setupArchiveStatus, 'empty-selected');
     assert.equal(app.setupArchiveAction.label, 'Continue');
     assert.equal(app.setupArchiveStatusText, '', 'selecting adds no line, so the layout stays put');
-    app.setupArchiveAction.run();
+    // Continue confirms the choice; declining stays on step 1.
+    const confirms = [];
+    app.askSetupConfirm = async options => { confirms.push(options.title); return confirms.length > 1; };
+    await app.setupArchiveAction.run();
+    assert.equal(app.setupFlowStep, 1);
+    await app.setupArchiveAction.run();
     assert.equal(app.setupFlowStep, 2);
+    assert.deepEqual(confirms, ['Start with an empty archive?', 'Start with an empty archive?']);
     assert.equal(requests.length, 0);
 
     // Going back, the choice can be switched or undone.
@@ -3321,6 +3327,12 @@ test('setup password step validates matching passwords before finishing', async 
     assert.match(app.setupNoPasswordWarning, /other devices on your network/);
     app.setupData.web = { password_configured: true };
     assert.match(app.setupNoPasswordWarning, /other devices on your network.*current password is removed/);
+    // Finishing without a password asks first; declining sends nothing.
+    const sent = bodies.length;
+    app.askSetupConfirm = async options => { assert.equal(options.body, app.setupNoPasswordWarning); return false; };
+    await app.finishSetup();
+    assert.equal(bodies.length, sent);
+    app.askSetupConfirm = async () => true;
     await app.finishSetup();
     assert.deepEqual(bodies.at(-1), { skip_auth: false, no_password: true });
 });
