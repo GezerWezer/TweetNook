@@ -613,7 +613,7 @@ test('demo follows system appearance until an explicit theme is chosen', () => {
     }
 });
 
-test('demo defaults respect saved layout and theme choices without changing local archives', () => {
+test('desktop split-panel defaults respect saved layout and theme choices in demos and local archives', () => {
     for (const isDemo of [false, true]) {
         for (const savedSplit of [null, 'false', 'true']) {
             const context = browserContext();
@@ -631,7 +631,7 @@ test('demo defaults respect saved layout and theme choices without changing loca
             app.fetchAutomatedTagging = async () => {};
             app.initApp();
             assert.equal(app.currentTheme, 'classic-dark');
-            assert.equal(app.splitPanel, savedSplit === null ? isDemo : savedSplit === 'true');
+            assert.equal(app.splitPanel, savedSplit === null ? true : savedSplit === 'true');
         }
     }
 });
@@ -2298,6 +2298,7 @@ test('initialization preserves direct detail paths without adding history entrie
 
 test('popstate applies URL routes without pushing and restores list scroll', async () => {
     const context = browserContext();
+    context.localStorage.setItem('tvx-split-panel', 'false');
     context.fetch = async url => ({
         ok: true,
         async json() {
@@ -2503,6 +2504,7 @@ test('thread and quote navigation update history, panel state, and network state
     const app = immediateComponent(tweetApp());
     app.archiveResourcesLoaded = true;
     app.$refs.detailPanel = { scrollTop: 99 };
+    app.splitPanel = false;
 
     await app.openThread('42');
     assert.equal(app.viewMode, 'thread');
@@ -6637,6 +6639,7 @@ test('first-run gating loads archive resources only after completion and preserv
     const calls = [];
     for (const method of ['fetchTweets', 'fetchStats', 'fetchGlobalTags', 'fetchArchiveEnrichmentStatus', 'fetchAutomatedTagging']) app[method] = async () => calls.push(method);
     let appliedDeepLinks = 0;
+    app.splitPanel = false;
     app.pendingRoute = { viewMode: 'thread', tweetId: '123' };
     app.pendingRouteState = { viewMode: 'thread', tweetId: '123', tweetNookDepth: 0 };
     app.showFullThread = async tweetId => {
@@ -7173,6 +7176,7 @@ test('threads open on the tweet already shown while the conversation loads', asy
     const pending = [];
     context.fetch = url => new Promise(resolve => pending.push({ url, resolve }));
     const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    app.splitPanel = false;
     const feedTweet = {
         tweet_id: '5', text: 'Shown in the feed', author: { id: '1', username: 'a', display_name: 'A' },
         quoted_tweet: { tweet_id: '6', text: 'Quoted', author: { id: '2', username: 'b', display_name: 'B' } },

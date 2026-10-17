@@ -865,7 +865,7 @@ function tweetApp() {
         mediaPrefetchObserver: null,
 
         // Split panel state
-        splitPanel: false,
+        splitPanel: true,
         panelStack: [],
         panelMode: null,        // 'thread' | 'quotes' | null
         panelThreadData: null,
@@ -2204,7 +2204,7 @@ function tweetApp() {
 
             // Restore split panel preference
             const savedSplitPanel = localStorage.getItem('tvx-split-panel');
-            this.splitPanel = savedSplitPanel === null ? this.isDemo : savedSplitPanel === 'true';
+            this.splitPanel = savedSplitPanel === null ? true : savedSplitPanel === 'true';
             this.routeUsesPanel = this.shouldUseSplitPanel();
 
             const initialRoute = this.parseRoute(window.location.pathname);
