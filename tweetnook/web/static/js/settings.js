@@ -346,7 +346,7 @@ function nookLogParse(text) {
 // Runs are titled with their command ("tweetnook sync"); the list shows a plain name instead.
 const NOOK_RUN_TITLES = {
   sync: 'Archive sync', 'sync all': 'Archive sync', 'sync bookmarks': 'Bookmark sync', 'sync likes': 'Like sync', 'sync tweets': 'Tweet sync',
-  tag: 'Automated tagging', rehydrate: 'Archive enrichment', 'import enrich': 'Archive enrichment', 'import x-archive': 'Archive import',
+  tag: 'Automated tagging', rehydrate: 'Archive enrichment', enrich: 'Archive preparation', 'import enrich': 'Archive preparation', 'import x-archive': 'Archive import',
 };
 function nookRunTitle(title) {
   const command = String(title || '').replace(/^tweetnook\s+/, '').trim();
@@ -368,7 +368,7 @@ function nookNoticeWhen(notice) {
 }
 function nookLogsPage() {
   return {
-    copied: false, openFolds: [], flash: null, hasTime: false, liveTimer: null, logOffset: 0,
+    copied: false, openFolds: [], flash: null, hasTime: false, liveTimer: null, liveRequest: null, liveRequestId: 0, logOffset: 0,
     originLabel(origin) { return { schedule: 'Scheduled', web: 'Web app', cli: 'Command line' }[origin] || origin || 'Command line'; },
     statusKind(run) { return { completed: 'ok', failed: 'failed', interrupted: 'failed', stopped: 'stopped', starting: 'running', running: 'running' }[run.status] || 'failed'; },
     statusLabel(run) { return { completed: 'Completed', failed: 'Failed', interrupted: 'Interrupted', stopped: 'Stopped', starting: 'Starting', running: 'Running' }[run.status] || 'Result unavailable'; },
@@ -395,17 +395,19 @@ function nookLogsPage() {
       this.$watch('nookLogOpenRunId', openPending);
       this.$watch('activityRunsLoading', openPending);
       this.$watch('activityRuns', openPending);
+      // Settings preserves this view when closed. Catch up immediately when it reopens,
+      // including runs that finished while polling was paused.
+      const restore = () => this.refreshLive(this.nookLogRun?.run_id);
+      this.$watch('showSettingsModal', restore);
+      this.$watch('settingsTab', restore);
+      this.$watch('nookLogRun?.run_id', (now, before) => { if (now !== before) restore(); });
     },
     async open(run) {
       clearTimeout(this.liveTimer);
+      this.liveRequest = null;
       this.nookLogRun = run; this.nookLogLines = null; this.copied = false; this.openFolds = []; this.flash = null; this.hasTime = false; this.logOffset = 0;
       this.$nextTick(() => document.querySelector('.nook-detail-header h2')?.focus());
-      const [details, lines] = await Promise.all([this.readDetails(run.run_id), this.readLog(run.run_id, 0)]);
-      if (this.nookLogRun?.run_id !== run.run_id) return;
-      if (details) this.nookLogRun = { ...run, ...details };
-      this.nookLogLines = lines || [];
-      this.hasTime = this.nookLogLines.some(line => line.time);
-      if (['starting', 'running'].includes(this.nookLogRun.status)) this.liveTimer = setTimeout(() => this.refreshLive(run.run_id), 2000);
+      await this.refreshLive(run.run_id);
     },
     async readDetails(runId) {
       try {
@@ -416,11 +418,12 @@ function nookLogsPage() {
       }
     },
     // Complete lines written since logOffset; X-Log-Offset says where to continue.
-    async readLog(runId, offset) {
+    async readLog(runId, offset, isCurrent = () => true) {
       try {
         const response = await fetch(`/api/activity/runs/${encodeURIComponent(runId)}/log?offset=${offset}`);
         if (!response.ok) return null;
         const text = await response.text();
+        if (!isCurrent()) return null;
         const next = Number(response.headers.get('X-Log-Offset'));
         const restarted = Number.isFinite(next) && next < offset;
         this.logOffset = Number.isFinite(next) ? next : offset;
@@ -433,12 +436,30 @@ function nookLogsPage() {
     },
     // While a run is in progress, read its new log lines every two seconds; stop when it ends or the view closes.
     async refreshLive(runId) {
-      if (this.nookLogRun?.run_id !== runId || !this.showSettingsModal || this.settingsTab !== 'logs') return;
-      const [details, lines] = await Promise.all([this.readDetails(runId), this.readLog(runId, this.logOffset)]);
-      if (this.nookLogRun?.run_id !== runId) return;
-      if (details) this.nookLogRun = { ...this.nookLogRun, ...details };
-      if (lines) { this.nookLogLines = lines; this.hasTime = lines.some(line => line.time); }
-      if (['starting', 'running'].includes(this.nookLogRun?.status)) this.liveTimer = setTimeout(() => this.refreshLive(runId), 2000);
+      clearTimeout(this.liveTimer);
+      this.liveTimer = null;
+      if (!runId || this.nookLogRun?.run_id !== runId || !this.showSettingsModal || this.settingsTab !== 'logs') return;
+      if (this.liveRequest?.runId === runId) return this.liveRequest.promise;
+      const request = { runId, id: ++this.liveRequestId };
+      this.liveRequest = request;
+      const isCurrent = () => this.liveRequest?.id === request.id && this.nookLogRun?.run_id === runId;
+      request.promise = Promise.all([this.readDetails(runId), this.readLog(runId, this.logOffset, isCurrent)]);
+      try {
+        const [details, lines] = await request.promise;
+        if (!isCurrent()) return;
+        if (details) this.nookLogRun = { ...this.nookLogRun, ...details };
+        if (lines || this.nookLogLines === null) {
+          this.nookLogLines = lines || [];
+          this.hasTime = this.nookLogLines.some(line => line.time);
+        }
+      } finally {
+        if (this.liveRequest?.id === request.id) {
+          this.liveRequest = null;
+          if (this.nookLogRun?.run_id === runId && this.showSettingsModal && this.settingsTab === 'logs'
+              && ['starting', 'running'].includes(this.nookLogRun.status))
+            this.liveTimer = setTimeout(() => this.refreshLive(runId), 2000);
+        }
+      }
     },
     back() { nookSettingsBack(this); },
     plural(count, noun) { return `${count.toLocaleString()} ${noun}${count === 1 ? '' : 's'}`; },
