@@ -2794,7 +2794,7 @@ body {
 }
 
 /* Regular quotes share one border with their media. Compact thumbnails retain
-   their own border, and portrait detail media letterboxes within the full width. */
+   their own border; photo previews crop while video playback stays contained. */
 .quote-card:not(.quote-compact) > .quote-media:not(:empty) {
     margin: 16px -12px 0;
 }
@@ -2813,9 +2813,8 @@ body {
     border-radius: 0;
     --media-border-size: 0px;
 }
-/* Only single media letterboxes; gallery tiles crop to fill their cells like X. */
 .quote-card:not(.quote-compact) > .quote-media > .media-single img {
-    object-fit: contain;
+    object-fit: cover;
 }
 .quote-card:not(.quote-compact) > .quote-media > .media-single video {
     object-fit: contain;
@@ -2823,9 +2822,8 @@ body {
 }
 
 /* Measure the column separately from a narrow portrait frame. The ratio belongs
-   to the media area; the frame's border adds to its height. Portrait photos on X
-   use a 510px image area, including when quoted, while square/landscape photos
-   and GIF frames can exceed that height. */
+   to the media area; the frame's border adds to its height. List photo previews
+   cap portrait height, while focal quoted photos fill the available width. */
 .media-single {
     container-type: inline-size;
 }
@@ -2855,6 +2853,20 @@ body {
 .media-frame-gif-video {
     object-fit: contain;
     background: #000;
+}
+.media-grid-video {
+    object-fit: contain;
+    background: #000;
+}
+/* X releases portrait preview caps below its 676px layout breakpoint. Override
+   the inherited caps on the frame so resizing also updates existing media. */
+@media (max-width: 675px) {
+    .media-frame-feed,
+    .media-frame-detail,
+    .media-frame-quote {
+        --media-max-width: 100%;
+        --media-photo-cap-width: 100%;
+    }
 }
 
 .main-tweet-quote-after-single-media > .quote-card-detail,

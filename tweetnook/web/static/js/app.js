@@ -6656,8 +6656,8 @@ function tweetApp() {
             };
             const video = media.type === 'video' || media.type === 'animated_gif';
             const gif = media.type === 'animated_gif';
-            const expandedDetailQuote = context === 'quote-detail-expanded';
-            const quoted = context === 'quote' || context === 'quote-detail' || expandedDetailQuote;
+            const detailQuote = context === 'quote-detail' || context === 'quote-detail-expanded';
+            const quoted = context === 'quote' || detailQuote;
             const width = positiveNumber(media.width);
             const height = positiveNumber(media.height);
             const playback = video && Array.isArray(media.aspect_ratio) && media.aspect_ratio.length === 2
@@ -6667,13 +6667,14 @@ function tweetApp() {
             const sourceAspect = Number.isFinite(measured) && measured > 0
                 ? measured : gif ? 1 : 16 / 9;
             const portraitPhoto = !video && sourceAspect < 1;
+            const photoAspect = Math.min(quoted ? Math.max(sourceAspect, 3 / 4) : sourceAspect, 5);
             return {
                 sourceAspect,
                 frameAspect: video ? quoted ? 16 / 9 : gif ? Math.max(sourceAspect, 1) : sourceAspect
-                    : Math.min(sourceAspect, 5),
+                    : photoAspect,
                 maxWidth: !quoted && sourceAspect < 1 && !gif ? 510 * sourceAspect : null,
-                photoCapWidth: portraitPhoto && !expandedDetailQuote ? 510 * sourceAspect : null,
-                portraitPhoto: portraitPhoto && !expandedDetailQuote,
+                photoCapWidth: portraitPhoto && !detailQuote ? 510 * photoAspect : null,
+                portraitPhoto: portraitPhoto && !detailQuote,
                 quoted,
             };
         },
@@ -6800,7 +6801,7 @@ function tweetApp() {
                         const videoEvents = isGif ? '' : VIDEO_PLAYER_EVENTS;
                         const indicator = this.renderMediaPlaybackIndicator(item);
                         html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass} ${isGif ? '' : 'media-video-player'}">
-                                    <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="absolute inset-0 w-full h-full object-cover outline-none"></video>
+                                    <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="absolute inset-0 w-full h-full media-grid-video outline-none"></video>
                                     ${indicator}
                                     ${isGif ? '' : renderVideoControls()}
                                 </div>`;

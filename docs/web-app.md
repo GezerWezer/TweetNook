@@ -64,6 +64,11 @@ a tweet's media, or swipe down to close it. **Media not downloaded** means the t
 was saved but the local media file is missing; see
 [Download media](enrichment.md#download-media).
 
+Tall quoted photos use cropped previews; open the photo to see the full image.
+Videos in galleries preserve the complete picture, with bars when their proportions
+differ from the tile. On narrow screens, direct portrait photos and videos fill
+the available width.
+
 ## Read X Articles
 
 X Articles are native long-form publications attached to posts. Feed cards show
