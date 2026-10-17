@@ -8063,6 +8063,47 @@ test('Configuration page groups and formats fields from the server schema', () =
     assert.equal(nookConfigDisabled(app, field('web.avatar_cache_limit_mb')), false);
 });
 
+test('setup polls fill an unset archive ID without replacing a user entry', async () => {
+    const context = browserContext();
+    context.fetch = async () => ({ok: true, json: async () => ({
+        required: true, auth: {values: {user_id: '4242'}}, archive: {ready: true},
+    })});
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.setupAuth = {auth_token: 'synthetic', ct0: 'synthetic', user_id: ''};
+    await app.fetchSetup();
+    assert.equal(app.setupAuth.user_id, '4242');
+    app.setupAuth.user_id = '5151';
+    await app.fetchSetup();
+    assert.equal(app.setupAuth.user_id, '5151');
+    const markup = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.match(markup, /Settings<\/h2><span x-show="isDemo"/);
+    assert.doesNotMatch(markup, /Filled from your imported archive when available/);
+});
+
+test('enrichment status waits for setup and tolerates the archive attachment race', async () => {
+    const context = browserContext();
+    let calls = 0, errors = 0;
+    context.console.error = () => { errors++; };
+    context.fetch = async () => { calls++; return {
+        ok: false, status: 503, json: async () => ({detail: {code: 'archive_not_ready'}}),
+    }; };
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.archiveReady = false;
+    await app.fetchArchiveEnrichmentStatus();
+    assert.equal(calls, 0);
+    app.archiveReady = true;
+    app.setupForced = true;
+    await app.fetchArchiveEnrichmentStatus();
+    assert.equal(calls, 0);
+    app.setupForced = false;
+    await app.fetchArchiveEnrichmentStatus();
+    assert.equal(calls, 1);
+    assert.equal(errors, 0);
+    assert.equal(app.archiveEnrichmentRefreshing, false);
+});
+
 async function main() {
     let failures = 0;
     for (const { name, fn } of tests) {

@@ -4302,11 +4302,19 @@ function tweetApp() {
         },
 
         async fetchArchiveEnrichmentStatus() {
+            // Import completion and store attachment can briefly occur between polls.
+            if (this.archiveReady === false || this.setupForced) return;
             const requestId = ++this.archiveEnrichmentRequestId;
             this.archiveEnrichmentRefreshing = true;
             try {
                 const response = await fetch('/api/stats/enrichment-incomplete');
-                if (!response.ok) throw new Error('Could not load archive enrichment status');
+                if (!response.ok) {
+                    if (response.status === 503 || response.status === 409) {
+                        const pending = await response.json().catch(() => ({}));
+                        if (['archive_not_ready', 'setup_required'].includes(pending.detail?.code)) return;
+                    }
+                    throw new Error('Could not load archive enrichment status');
+                }
                 const data = await response.json();
                 if (requestId === this.archiveEnrichmentRequestId) {
                     this.archiveEnrichmentIncomplete = data.incomplete || 0;
@@ -6135,6 +6143,9 @@ function tweetApp() {
                 if (this.setupError === SETUP_LOAD_ERROR) this.setupError = '';
                 this.setupData = data;
                 if (!this.setupAuth) this.setupAuth = JSON.parse(JSON.stringify(data.auth.values));
+                else if (!this.setupAuthEdited && !this.setupAuth.user_id && data.auth.values.user_id) {
+                    this.setupAuth.user_id = data.auth.values.user_id;
+                }
                 this.archiveReady = !!data.archive.ready;
                 this.setupForced = !!data.required;
                 if (data.completed && !data.required) {
@@ -6322,7 +6333,7 @@ function tweetApp() {
                         success: true,
                         message: this.setupData.archive.enrichment_state === 'running'
                             ? 'Connected successfully. Archive enrichment has started.'
-                            : 'Connected successfully. Archive enrichment will start when the local import finishes.',
+                            : 'Connected successfully. Enrichment and first sync start after you finish setup with your chosen collections.',
                     };
                     this.setupSavingAuth = false;
                     this.setupAuthSuccessPending = true;

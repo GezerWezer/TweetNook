@@ -64,7 +64,7 @@ class SetupCoordinator:
             if self.server.get("shutting_down"):
                 raise JobConflictError("The server is stopping.")
             args = (
-                ["import", "x-archive", str(self.paths.staged_archive_file), "--offline"]
+                ["import", "x-archive", str(self.paths.staged_archive_file), "--defer-followup"]
                 if mode == "import"
                 else ["migrate"]
             )
@@ -211,13 +211,10 @@ class SetupCoordinator:
                 and self.state.initialization_result == "complete"
                 and self.state.auto_enrich_requested
             ):
-                pending = store.count_incomplete_initial_enrichment()
                 config = self.server["config"]
-                if pending == 0:
-                    self.state.auto_enrich_requested = False
-                    self.save()
-                elif (
-                    self.state.auth_verified
+                if (
+                    self.state.completed
+                    and self.state.auth_verified
                     and config.auth.auth_token
                     and config.auth.ct0
                     and not supervisor.active
