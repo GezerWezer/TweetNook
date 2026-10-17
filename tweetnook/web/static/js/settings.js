@@ -324,7 +324,8 @@ function nookTagsPage() {
 
 // Activity logs: runs grouped by day; a run opens as a nested page in the detail pane.
 // Activity log lines (tweetnook/pipeline.py): "Step: event · fields", "WARNING: …", "ERROR: …", and
-// "tweetnook <command>: started|complete". output.log lines carry an ISO timestamp; console.log lines don't.
+// "tweetnook <command>: started|complete". New worker/output.log lines carry UTC timestamps;
+// older console.log files may have no per-line times.
 const NOOK_LOG_RUN = /^tweetnook\b[^:]*: (started|complete|failed|stopped)\b/;
 const NOOK_LOG_STEP = /^[A-Z][\w '\/&-]*?: (starting|progress|status|complete|failed|skipped|stopped)\b/;
 function nookLogParse(text) {
