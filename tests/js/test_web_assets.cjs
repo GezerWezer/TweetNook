@@ -3230,10 +3230,11 @@ test('setup schedule step saves through Setup before the scheduler starts', asyn
 test('setup replay source connects, toggles placeholder media, and disconnects', async () => {
     const context = browserContext();
     const requests = [];
+    let skipQuotes = false;
     const replay = (connected, placeholder = true) => ({
         tools: true,
         replay: connected
-            ? { connected: true, url: 'http://192.168.1.20:8000', password: '********', placeholder_media: placeholder,
+            ? { connected: true, url: 'http://192.168.1.20:8000', password: '********', placeholder_media: placeholder, skip_quote_expansion: skipQuotes,
                 status: { bookmarks_pages: 3, likes_pages: 2, thread_captures: 9 } }
             : { connected: false, url: null, password: null, placeholder_media: true, status: null },
     });
@@ -3243,9 +3244,14 @@ test('setup replay source connects, toggles placeholder media, and disconnects',
         requests.push([url, options.method, body]);
         if (url === '/api/setup/replay' && options.method === 'PUT') {
             if (fail) return { ok: false, async json() { return { detail: 'The replay source rejected the password (its Web password).' }; } };
+            skipQuotes = body.skip_quote_expansion;
             return { ok: true, async json() { return replay(true, body.placeholder_media); } };
         }
         if (url === '/api/setup/replay/placeholder-media') return { ok: true, async json() { return replay(true, body.placeholder_media); } };
+        if (url === '/api/setup/replay/skip-quote-expansion') {
+            skipQuotes = body.skip_quote_expansion;
+            return {ok: true, async json() { return replay(true); }};
+        }
         if (url === '/api/setup/replay' && options.method === 'DELETE') return { ok: true, async json() { return replay(false); } };
         throw new Error(`unexpected request: ${url}`);
     };
@@ -3262,6 +3268,11 @@ test('setup replay source connects, toggles placeholder media, and disconnects',
     assert.equal(app.setupReplayPlaceholder, false);
     assert.equal(requests.length, 0);
 
+    assert.equal(app.setupReplaySkipQuotes, false);
+    await app.setSetupReplaySkipQuotes(true);
+    assert.equal(app.setupReplaySkipQuotes, true);
+    assert.equal(requests.length, 0);
+
     app.setupReplayForm.url = ' 192.168.1.20:8000 ';
     app.setupReplayForm.password = 'secret';
     await app.connectSetupReplay();
@@ -3271,7 +3282,7 @@ test('setup replay source connects, toggles placeholder media, and disconnects',
 
     fail = false;
     await app.connectSetupReplay();
-    assert.deepEqual(requests.at(-1), ['/api/setup/replay', 'PUT', { url: '192.168.1.20:8000', password: 'secret', placeholder_media: false }]);
+    assert.deepEqual(requests.at(-1), ['/api/setup/replay', 'PUT', { url: '192.168.1.20:8000', password: 'secret', placeholder_media: false, skip_quote_expansion: true }]);
     assert.equal(app.setupReplayConnected, true);
     assert.equal(app.setupReplayError, '');
     assert.equal(app.setupReplayForm.password, '');
@@ -3281,6 +3292,12 @@ test('setup replay source connects, toggles placeholder media, and disconnects',
     await app.setSetupReplayPlaceholder(true);
     assert.deepEqual(requests.at(-1), ['/api/setup/replay/placeholder-media', 'PUT', { placeholder_media: true }]);
     assert.equal(app.setupReplayPlaceholder, true);
+    assert.equal(app.setupReplaySkipQuotes, true);
+    await app.setSetupReplaySkipQuotes(false);
+    assert.deepEqual(requests.at(-1), ['/api/setup/replay/skip-quote-expansion', 'PUT', {skip_quote_expansion: false}]);
+    assert.equal(app.setupReplaySkipQuotes, false);
+    const markup = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.match(markup, /Use placeholder media[\s\S]*Skip quote expansion during sync[\s\S]*setSetupReplaySkipQuotes/);
 
     await app.disconnectSetupReplay();
     assert.equal(app.setupReplayConnected, false);

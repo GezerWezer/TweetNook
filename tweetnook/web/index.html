@@ -2606,6 +2606,10 @@
                                                 <span class="setup-option-copy"><strong>Use placeholder media</strong><span>Download tiny stand-in images and videos instead of the real files to save space.</span></span>
                                                 <input type="checkbox" :checked="setupReplayPlaceholder" :disabled="setupReplaySaving" @change="setSetupReplayPlaceholder($event.target.checked)">
                                             </label>
+                                            <label class="setup-check-row">
+                                                <span class="setup-option-copy"><strong>Skip quote expansion during sync</strong><span>Skip lookups for quoted tweets during replay syncs. Thread and linked-tweet expansion still run. Applies to the next sync.</span></span>
+                                                <input type="checkbox" :checked="setupReplaySkipQuotes" :disabled="setupReplaySaving" @change="setSetupReplaySkipQuotes($event.target.checked)">
+                                            </label>
 
                                             <p class="setup-field-error setup-step-error" x-show="setupReplayError" x-text="setupReplayError" role="alert"></p>
 

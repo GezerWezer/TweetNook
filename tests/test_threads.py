@@ -26,13 +26,14 @@ from tweetnook.storage import ArchiveStore, open_archive_store
 from tweetnook.threads import expand_threads, normalize_thread_target
 
 
-def _seed_thread_archive(paths) -> dict[str, object]:
+def _seed_thread_archive(paths, *, with_quote: bool = False) -> dict[str, object]:
     root_raw = make_tweet_result(
         "100",
         "reply tweet",
         user_id="1000",
         in_reply_to_status_id="200",
         conversation_id="200",
+        quoted_tweet=make_tweet_result("400", "quoted tweet") if with_quote else None,
         urls=[
             make_url_entity(
                 "https://t.co/thread",
@@ -385,6 +386,43 @@ async def test_expand_threads_fetches_membership_and_linked_status(
     assert second.expanded == 0
     assert second.failed == 0
     assert second.skipped >= 1
+
+
+@pytest.mark.asyncio
+async def test_skip_quotes_keeps_threads_and_linked_expansion_and_can_be_reenabled(
+    paths, config, auth_bundle
+) -> None:
+    root = _seed_thread_archive(paths, with_quote=True)
+    QueryIdStore(paths).save({"TweetDetail": "detail-qid"})
+    requested = []
+    output = StringIO()
+
+    def handler(request):
+        target = json.loads(request.url.params["variables"])["focalTweetId"]
+        requested.append(target)
+        payload = root if target == "100" else make_tweet_result(target, "context")
+        return httpx.Response(200, json=make_tweet_detail_response([payload]), request=request)
+
+    result = await expand_threads(
+        skip_quotes=True,
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        transport=httpx.MockTransport(handler),
+        console=Console(file=output, force_terminal=False),
+    )
+    assert requested == ["100", "300"]
+    assert result.expanded == 2
+    assert "quoted tweet pass skipped by replay sync setting (1 candidates)" in output.getvalue()
+    requested.clear()
+    result = await expand_threads(
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        transport=httpx.MockTransport(handler),
+    )
+    assert requested == ["400"]
+    assert result.expanded == 1
 
 
 @pytest.mark.asyncio

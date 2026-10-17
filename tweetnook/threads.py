@@ -404,6 +404,7 @@ async def expand_threads(
     targets: list[str] | None = None,
     limit: int | None = None,
     refresh: bool = False,
+    skip_quotes: bool = False,
     config: AppConfig | None = None,
     paths: XDGPaths | None = None,
     auth_bundle: ResolvedAuthBundle | None = None,
@@ -529,13 +530,24 @@ async def expand_threads(
                 ),
             )
 
+        if skip_quotes and not targets:
+            _log_threads(
+                console,
+                "quoted tweet pass skipped by replay sync setting "
+                f"({len(pending_quote_ids)} candidates)",
+            )
+            pending_quote_ids = []
+
         pending_total = (
             len(pending_membership_ids) + len(pending_quote_ids) + len(pending_linked_ids)
         )
         if pending_total == 0:
             if pipeline is not None:
                 pipeline.skip_step(
-                    step_key, "all thread candidates already being expanded or known"
+                    step_key,
+                    "quote expansion being disabled and no other thread candidates remaining"
+                    if skip_quotes and not targets
+                    else "all thread candidates already being expanded or known",
                 )
             return result
 
