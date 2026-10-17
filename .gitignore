@@ -28,3 +28,4 @@ build/
 .mypy_cache/
 .ruff_cache/
 .coverage
+design-assets/
