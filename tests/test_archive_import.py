@@ -398,6 +398,41 @@ def test_offline_import_copies_full_archive_without_live_followup(
     store.close()
 
 
+@pytest.mark.parametrize("deferred", [False, True])
+def test_local_import_summary_distinguishes_setup_deferred_followup(paths, tmp_path, deferred):
+    archive_dir = _write_archive_dir(tmp_path)
+    console = _console()
+    reporter = PipelineReporter(console, "archive import", interactive=False)
+    with reporter:
+        asyncio.run(
+            import_x_archive(
+                archive_dir,
+                config=AppConfig(),
+                paths=paths,
+                console=console,
+                offline=True,
+                defer_followup=deferred,
+            )
+        )
+    summary = reporter._state_snapshot()["summary"]
+    assert ("deferred to the separate Setup" in summary) is deferred
+    assert ("skipped (offline)" in summary) is not deferred
+
+
+def test_existing_archive_auth_completes_declared_step(monkeypatch):
+    bundle = ResolvedAuthBundle(
+        auth_token="synthetic", ct0="synthetic", auth_token_source="test", ct0_source="test"
+    )
+    reporter = PipelineReporter(_console(), "archive enrich", interactive=False)
+    monkeypatch.setattr(
+        archive_import, "resolve_auth_bundle", lambda _: pytest.fail("Already resolved")
+    )
+    with reporter:
+        reporter.add_step("archive-auth", "Authentication", total=1, unit="session")
+        assert archive_import._resolve_archive_followup_auth(AppConfig(), bundle) is bundle
+        assert reporter.step_state("archive-auth") == "complete"
+
+
 def test_import_x_archive_directory_populates_archive_and_copies_media(
     paths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

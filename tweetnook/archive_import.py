@@ -1005,8 +1005,6 @@ def _resolve_archive_followup_auth(
     config: AppConfig,
     auth_bundle: ResolvedAuthBundle | None,
 ) -> ResolvedAuthBundle:
-    if auth_bundle is not None:
-        return auth_bundle
     pipeline = current_pipeline()
     step_key = "archive-auth"
     if pipeline is not None:
@@ -1024,7 +1022,7 @@ def _resolve_archive_followup_auth(
             activity="Resolving Twitter/X authentication for archive follow-up",
         )
     try:
-        resolved = resolve_auth_bundle(config)
+        resolved = auth_bundle if auth_bundle is not None else resolve_auth_bundle(config)
     except ConfigError as exc:
         if pipeline is not None:
             pipeline.fail_step(step_key, str(exc))
@@ -1777,6 +1775,7 @@ async def import_x_archive(
     detail_lookups: int = 0,
     enrich: bool = True,
     offline: bool = False,
+    defer_followup: bool = False,
     regen: bool = False,
     sample_limit: int | None = None,
     debug: bool = False,
@@ -1786,6 +1785,7 @@ async def import_x_archive(
     transport: httpx.AsyncBaseTransport | None = None,
     console: Console | None = None,
 ) -> ArchiveImportResult:
+    offline = offline or defer_followup
     config, paths = resolve_job_context(config=config, paths=paths)
     console = console or Console(stderr=True)
     pipeline = current_pipeline()
@@ -2578,7 +2578,10 @@ async def import_x_archive(
         if offline and not sampled_import:
             if pipeline is not None:
                 pipeline.final_note(
-                    "Local archive import complete; live follow-up skipped (offline)."
+                    "Local archive import complete; live follow-up deferred to the separate "
+                    "Setup enrichment and first-sync task after collection choices are confirmed."
+                    if defer_followup
+                    else "Local archive import complete; live follow-up skipped (offline)."
                 )
             return ArchiveImportResult(
                 skipped=not import_performed,
