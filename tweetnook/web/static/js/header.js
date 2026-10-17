@@ -137,7 +137,7 @@ function nookSyncCollectionsLabel(app) {
 }
 function nookSyncPanel() {
   return {
-    view: 'main', selected: null,
+    view: 'main', selected: null, lastActiveStep: null, tabsResizeObserver: null,
     running() { return Boolean(this.activity || this.activityStartPending); },
     steps() { return this.activitySteps(); },
     escape(text) { return String(text ?? ''); },
@@ -161,30 +161,48 @@ function nookSyncPanel() {
     indeterminate(step) {
       return this.stepState(step) === 'active' && (step.show_progress === false || !Number.isFinite(Number(step.total)) || Number(step.total) <= 0);
     },
-    segClass(step) {
-      const state = this.stepState(step);
-      return `is-${state === 'pending' ? 'waiting' : state}${state === 'active' ? ' is-current' : ''}${this.indeterminate(step) ? ' is-indeterminate' : ''}`;
-    },
-    fill(step) {
-      const state = this.stepState(step);
-      if (this.indeterminate(step)) return 30;
-      if (state === 'active') return Math.round(this.activityPercent(step));
-      return state === 'pending' ? 0 : 100;
+    tabPages() { return (this.running() ? [] : [null]).concat(this.steps().map((_, index) => index)); },
+    tabLabel(index) {
+      if (index === null) return 'Overview';
+      const step = this.steps()[index];
+      const labels = { 'archive-auth': 'Connect', 'archive-enrich': 'Refresh', threads: 'Conversations', resurrection: 'Retry', articles: 'Articles', media: 'Media', urls: 'Links' };
+      if (step.key?.startsWith('preflight:')) return 'Access';
+      return labels[step.key] || step.title;
     },
     focusIndex() {
-      if (this.selected !== null) return this.selected;
+      if (this.selected !== null && this.steps()[this.selected]) return this.selected;
+      if (!this.running()) return null;
       const active = this.steps().findIndex(step => step.state === 'active');
       return active >= 0 ? active : 0;
     },
-    pick(index) { this.selected = this.selected === index ? null : index; },
+    updateTabFades() {
+      const nav = this.$refs.stepTabs, frame = this.$refs.stepTabsFrame;
+      if (!nav || !frame) return;
+      frame.classList.toggle('is-clipped-start', nav.scrollLeft > 2);
+      frame.classList.toggle('is-clipped-end', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 2);
+    },
+    revealStepTab() {
+      const nav = this.$refs.stepTabs, tab = nav?.querySelector('[aria-selected="true"]');
+      if (!nav?.clientWidth || !tab) return;
+      // Scroll only the strip, keeping the popup and the archive underneath in place.
+      const left = Math.max(0, Math.min(nav.scrollWidth - nav.clientWidth, tab.offsetLeft + tab.offsetWidth / 2 - nav.clientWidth / 2));
+      nav.scrollTo({ left, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      this.updateTabFades();
+    },
+    pick(index) { this.selected = index; this.$nextTick(() => this.revealStepTab()); },
     segKey(event, index) {
-      const count = this.steps().length;
-      if (event.key === 'Escape' && this.selected !== null) { event.stopPropagation(); this.selected = null; return; }
-      const next = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: count - 1 }[event.key];
+      const pages = this.tabPages(), current = pages.indexOf(index), count = pages.length;
+      if (event.key === 'Escape' && this.selected !== null) {
+        event.stopPropagation();
+        this.pick(null);
+        this.$nextTick(() => this.$refs.stepTabs.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true }));
+        return;
+      }
+      const next = { ArrowRight: current + 1, ArrowLeft: current - 1, Home: 0, End: count - 1 }[event.key];
       if (next === undefined) return;
       event.preventDefault();
-      this.selected = (next + count) % count;
-      this.$nextTick(() => event.currentTarget.parentElement?.children[this.selected + 1]?.focus());
+      this.pick(pages[(next + count) % count]);
+      this.$nextTick(() => this.$refs.stepTabs.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true }));
     },
     // Caption: the step on the left, its number on the right; a second line only for problems or skips.
     describe(step) {
@@ -230,9 +248,27 @@ function nookSyncPanel() {
     },
     openScheduleSettings() { this.activityDrawerOpen = false; this.openSettings(); this.$nextTick(() => nookSettingsNavigate(this, 'schedule')); },
     init() {
-      // Reset to the overview each time the panel opens, and drop a stale step pick when a run starts.
-      this.$watch('activityDrawerOpen', open => { if (open) { this.view = 'main'; this.selected = null; } });
-      this.$watch('activity', (now, before) => { if (Boolean(now) !== Boolean(before)) this.selected = null; });
+      this.lastActiveStep = this.activity?.steps?.find(step => step.state === 'active')?.key || null;
+      // Follow each newly active step, while allowing inspection of other steps between transitions.
+      this.$watch('activityDrawerOpen', open => {
+        if (open) { this.view = 'main'; this.selected = null; this.$nextTick(() => this.revealStepTab()); }
+      });
+      this.$watch('activity', (now, before) => {
+        const active = now?.steps?.find(step => step.state === 'active')?.key || null;
+        if (Boolean(now) !== Boolean(before) || (active && active !== this.lastActiveStep)) {
+          this.selected = null;
+          this.$nextTick(() => this.revealStepTab());
+        }
+        this.lastActiveStep = active;
+        this.$nextTick(() => this.updateTabFades());
+      });
+      this.$watch('view', view => { if (view === 'main') this.$nextTick(() => this.revealStepTab()); });
+      this.$nextTick(() => {
+        this.tabsResizeObserver = new ResizeObserver(() => this.revealStepTab());
+        this.tabsResizeObserver.observe(this.$refs.stepTabs);
+        this.revealStepTab();
+      });
     },
+    destroy() { this.tabsResizeObserver?.disconnect(); },
   };
 }
