@@ -261,6 +261,30 @@ def test_restart_completed_import_waits_for_verified_auth(coordinator):
     assert jobs.calls[-1]["kind"] == "enrich"
 
 
+def test_enrichment_exit_waits_for_monitor_before_raising_notice(coordinator):
+    coord, jobs, _ = coordinator
+    jobs.start(kind="enrich", cli_args=["import", "enrich"], origin="web", title="Enrich")
+    coord.state.auto_enrich_run_id = jobs.active_run_id
+    jobs.active = False  # Process exited, but monitor has not recorded its result.
+    coord.reconcile()
+    assert coord.notices.list() == []
+    jobs.finish()
+    assert coord.state.auto_enrich_run_id is None
+    assert coord.notices.list() == []
+    coord.reconcile()
+    assert coord.notices.list() == []
+
+
+def test_successful_enrichment_dismisses_prior_spurious_notice(coordinator):
+    coord, jobs, _ = coordinator
+    jobs.start(kind="enrich", cli_args=["import", "enrich"], origin="web", title="Enrich")
+    coord.state.auto_enrich_run_id = jobs.active_run_id
+    coord.notices.add(f"enrich-{jobs.active_run_id}", "Enrichment needs attention", "Stale warning")
+    jobs.finish()
+    assert coord.state.auto_enrich_run_id is None
+    assert all(notice["dismissed"] for notice in coord.notices.list())
+
+
 def test_interrupted_import_does_not_attach_partial_database(coordinator):
     coord, jobs, _ = coordinator
     coord.begin("import")

@@ -962,6 +962,7 @@ function tweetApp() {
                         if (this.activity) {
                             feedPages.clear();
                             this.threadCache.clear();
+                            this.fetchArchiveEnrichmentStatus();
                         }
                         const lastActivity = data.last_snapshot || this.activity || this.lastActivity;
                         this.lastActivity = this.lastActivity?.run_id === lastActivity?.run_id
@@ -2072,6 +2073,8 @@ function tweetApp() {
         showEmptyUnavailableReasons: false,
         hoveredUnavailableReason: null,
         archiveEnrichmentIncomplete: 0,
+        archiveEnrichmentRefreshing: false,
+        archiveEnrichmentRequestId: 0,
         statsTags: null,
         loadingStatsTags: false,
         loadingStatsSnapshot: false,
@@ -4287,13 +4290,32 @@ function tweetApp() {
             return (reason.count || 0) > 0 ? 'Availability recorded' : 'No unavailable tweets';
         },
 
-        fetchArchiveEnrichmentStatus() {
-            fetch('/api/stats/enrichment-incomplete')
-                .then(r => r.json())
-                .then(d => {
-                    this.archiveEnrichmentIncomplete = d.incomplete || 0;
-                })
-                .catch(e => console.error('Failed to fetch archive enrichment status', e));
+        get showArchiveEnrichmentReminder() {
+            return this.archiveEnrichmentIncomplete > 0
+                && !this.archiveEnrichmentRefreshing
+                && !this.activity && !this.activityStartPending
+                && !this.setupForced
+                && !['running', 'waiting_for_import', 'waiting_for_worker'].includes(
+                    this.setupData?.archive?.enrichment_state);
+        },
+
+        async fetchArchiveEnrichmentStatus() {
+            const requestId = ++this.archiveEnrichmentRequestId;
+            this.archiveEnrichmentRefreshing = true;
+            try {
+                const response = await fetch('/api/stats/enrichment-incomplete');
+                if (!response.ok) throw new Error('Could not load archive enrichment status');
+                const data = await response.json();
+                if (requestId === this.archiveEnrichmentRequestId) {
+                    this.archiveEnrichmentIncomplete = data.incomplete || 0;
+                }
+            } catch (error) {
+                // A stale count must not become a completion warning on refresh failure.
+                if (requestId === this.archiveEnrichmentRequestId) this.archiveEnrichmentIncomplete = 0;
+                console.error('Failed to fetch archive enrichment status', error);
+            } finally {
+                if (requestId === this.archiveEnrichmentRequestId) this.archiveEnrichmentRefreshing = false;
+            }
         },
 
         setHoveredStorage(id) {

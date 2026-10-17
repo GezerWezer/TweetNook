@@ -292,11 +292,17 @@ def _replay_transport(app, *, placeholder_media: bool = True) -> ReplayTransport
     )
 
 
+@pytest.mark.parametrize("enriched_overlap", [False, True])
 async def test_test_install_sync_replays_saved_chain(
-    monkeypatch, source_paths, tmp_path, config
+    monkeypatch, source_paths, tmp_path, config, enriched_overlap
 ) -> None:
     app = _source_app(monkeypatch, source_paths)
     paths = _test_paths(tmp_path)
+    if enriched_overlap:
+        store = open_archive_store(paths, create=True)
+        store.merge_rows([store._tweet_record(_tweet("11"), "bookmark", source="x_archive")])
+        store.persist_tweet_detail(tweet=_tweet("11"), raw_json={"detail": True})
+        store.close()
 
     async def no_sleep(_seconds: float) -> None:
         return None
@@ -313,6 +319,11 @@ async def test_test_install_sync_replays_saved_chain(
     assert result.pages_fetched == 3
     assert result.tweets_seen == 3
     assert result.stop_reason == "empty"
+    store = open_archive_store(paths, create=False)
+    try:
+        assert store.get_collection_tweet_ids("bookmark") == {"11", "12", "13"}
+    finally:
+        store.close()
 
 
 async def test_placeholder_media_is_accepted_by_media_pipeline(

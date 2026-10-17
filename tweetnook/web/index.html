@@ -33,7 +33,6 @@
             <p class="text-sm text-[var(--text-secondary)] mt-2">Browsing becomes available when local initialization finishes.</p>
             <div class="flex gap-3 mt-4"><button class="setup-btn" @click="activityDrawerOpen = true">View activity</button><button class="setup-btn" @click="openSetup()">Open Setup</button></div>
         </section>
-        <p x-cloak x-show="!setupForced && setupData?.archive?.enrichment_state === 'running'" class="p-4 text-sm text-[var(--text-secondary)]" role="status">Archive enrichment is running in the background.</p>
         <!-- HEADER: title, sync / analytics / settings, collection tabs (the tabs tuck away on scroll) -->
         <header data-video-occluder class="nook-header">
             <div class="nook-title-row">
@@ -70,7 +69,7 @@
             </div>
         </header>
 
-        <div x-show="archiveEnrichmentIncomplete > 0 && setupData?.archive?.enrichment_state !== 'running' && !activity?.title?.includes('enrich')" x-cloak role="alert"
+        <div x-show="showArchiveEnrichmentReminder" x-cloak role="alert"
              class="px-4 py-3 border-b border-[var(--border-color)] bg-[color-mix(in_srgb,var(--accent-color)_12%,var(--bg-primary))] text-sm text-[var(--text-primary)]">
             <div class="font-semibold">Archive enrichment is incomplete</div>
             <div class="mt-1 text-[var(--text-secondary)]"><span x-text="archiveEnrichmentIncomplete.toLocaleString()"></span> tweets remain.</div>

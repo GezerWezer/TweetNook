@@ -432,7 +432,6 @@ async def _run_pass(
     prior_backfill_cursor: str | None,
     prior_backfill_incomplete: bool,
     initial_seen_ids: set[str],
-    existing_tweet_ids: set[str],
     is_head_pass: bool,
     console: Console,
     sleep: Callable[[float], Awaitable[None]],
@@ -491,8 +490,11 @@ async def _run_pass(
         )
         duplicate_seen = False
         if is_head_pass and stop_on_duplicate:
+            # Imported/detail-enriched members do not prove timeline coverage.
+            # The previous timeline head is the incremental sync boundary.
             duplicate_seen = any(
-                tweet.tweet_id not in seen_ids and tweet.tweet_id in existing_tweet_ids
+                tweet.tweet_id not in seen_ids
+                and tweet.tweet_id == previous_state.last_head_tweet_id
                 for tweet in tweets
             )
 
@@ -1010,9 +1012,6 @@ async def _sync_collection_ready(
         seen_ids: set[str] = set()
         effective_backfill = backfill or article_backfill
         stop_on_dup = not full and not effective_backfill
-        existing_tweet_ids: set[str] = set()
-        if stop_on_dup:
-            existing_tweet_ids = store.get_collection_tweet_ids(COLLECTION_TO_STORAGE[collection])
         pages_total = 0
         client = build_async_client(
             preflight.auth, timeout=config.sync.timeout, transport=transport
@@ -1062,7 +1061,6 @@ async def _sync_collection_ready(
                     prior_backfill_cursor=prior_backfill_cursor,
                     prior_backfill_incomplete=prior_backfill_incomplete,
                     initial_seen_ids=seen_ids,
-                    existing_tweet_ids=existing_tweet_ids,
                     is_head_pass=True,
                     console=console,
                     sleep=sleep,
@@ -1151,7 +1149,6 @@ async def _sync_collection_ready(
                         prior_backfill_cursor=prior_backfill_cursor,
                         prior_backfill_incomplete=prior_backfill_incomplete,
                         initial_seen_ids=seen_ids,
-                        existing_tweet_ids=set(),
                         is_head_pass=False,
                         console=console,
                         sleep=sleep,

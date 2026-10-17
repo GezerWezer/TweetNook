@@ -249,6 +249,9 @@ def test_import_enrich_help_describes_unbounded_limit() -> None:
     assert "eligible when the command starts" in " ".join(result.stdout.split())
     assert "--limit" in result.stdout
     assert "Omit to process every currently eligible row" in " ".join(result.stdout.split())
+    assert "then sync the configured collections past saved tweets" in " ".join(
+        result.stdout.split()
+    )
 
 
 def test_database_check_help_exposes_full_integrity_option() -> None:
@@ -1113,10 +1116,13 @@ def test_import_x_archive_enrich_reuses_existing_import(paths, monkeypatch, tmp_
     assert "5 pending untouched" in output
 
 
-def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch) -> None:
+@pytest.mark.parametrize("collections", [["bookmarks", "likes"], ["tweets"]])
+def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch, collections) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    config = AppConfig()
+    config.sync.collections = collections
+    monkeypatch.setattr(cli, "load_config", lambda: (config, paths))
     monkeypatch.setattr(
         cli,
         "resolve_auth_bundle",
@@ -1151,17 +1157,61 @@ def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch) ->
 
     monkeypatch.setattr(cli, "enrich_imported_archive", fake_enrich_imported_archive)
 
+    async def fake_sync_all(**kwargs):
+        assert captured["limit"] == 50
+        assert kwargs["backfill"] is True
+        assert kwargs["full"] is False
+        assert kwargs["limit"] is None
+        assert kwargs["config"].sync.collections == collections
+        assert kwargs["followups"].threads
+        captured["syncs"] = captured.get("syncs", 0) + 1
+        return SimpleNamespace(exit_code=0, errors={})
+
+    monkeypatch.setattr(cli, "sync_all", fake_sync_all)
+
     cli.import_archive_enrich(limit=50)
 
     assert captured["limit"] == 50
     assert captured["auth_bundle"].auth_token == "token"
     assert captured["detail_delay"] == 0
+    assert captured["syncs"] == 1
     output = " ".join(buffer.getvalue().split())
     assert "archive enrich: existing imported archive data" in output
     assert "live reconciliation: tweets, likes" in output
     assert "detail enrichment: 9 refreshed, 2 terminal, 1 transient failures" in output
     assert "4 pending untouched" in output
     assert "detail enrichment failed: upstream 429" in output
+
+
+def test_import_enrich_reports_a_failed_automatic_sync_separately(paths, monkeypatch) -> None:
+    buffer = StringIO()
+    _capture_console(monkeypatch, buffer)
+    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    monkeypatch.setattr(cli, "resolve_auth_bundle", lambda config: object())
+    events = []
+
+    async def enrich(**kwargs):
+        events.append("enriched")
+        return SimpleNamespace(
+            warnings=[],
+            reconciled_collections=[],
+            detail_lookups=5,
+            detail_terminal_unavailable=0,
+            detail_transient_failures=0,
+            pending_enrichment=0,
+        )
+
+    async def sync(**kwargs):
+        events.append("sync")
+        return SimpleNamespace(exit_code=2, errors={"likes": "Connection expired"})
+
+    monkeypatch.setattr(cli, "enrich_imported_archive", enrich)
+    monkeypatch.setattr(cli, "sync_all", sync)
+    with pytest.raises(typer.Exit) as raised:
+        cli.import_archive_enrich()
+    assert raised.value.exit_code == 2
+    assert events == ["enriched", "sync"]
+    assert "Archive enrichment saved; automatic sync did not finish" in buffer.getvalue()
 
 
 @pytest.mark.parametrize(
@@ -1195,6 +1245,9 @@ def test_import_enrich_reports_interruption_or_systemic_abort(
         raise raised
 
     monkeypatch.setattr(cli, "enrich_imported_archive", fail_enrichment)
+    monkeypatch.setattr(
+        cli, "sync_all", lambda **kwargs: pytest.fail("aborted enrichment must not start sync")
+    )
 
     with pytest.raises(typer.Exit) as excinfo:
         cli.import_archive_enrich()
