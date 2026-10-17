@@ -3605,12 +3605,28 @@
                 <div x-show="view === 'main'">
                     <div class="cs-top">
                         <div class="cs-head"><strong x-text="headTitle()"></strong><span class="cs-time" x-text="headTime()"></span></div>
-                        <div class="cs-bar" role="tablist" aria-label="Sync steps" x-show="steps().length">
-                            <template x-for="(step, index) in steps()" :key="step.key">
-                                <button type="button" role="tab" class="cs-seg" :class="segClass(step)" :aria-label="step.title + ', ' + stepStateLabel(step)" :aria-selected="selected === index" :tabindex="index === focusIndex() ? 0 : -1" @click="pick(index)" @keydown="segKey($event, index)"><span class="cs-track"><span class="cs-fill" :style="`width:${fill(step)}%`"></span></span></button>
-                            </template>
+                        <div class="cs-tabs-frame" x-ref="stepTabsFrame" x-show="steps().length">
+                            <div class="cs-tabs" x-ref="stepTabs" role="tablist" aria-label="Sync steps" @scroll.passive="updateTabFades()">
+                                <template x-for="index in tabPages()" :key="index === null ? 'overview' : steps()[index].key">
+                                    <button type="button" role="tab" class="cs-step-tab" :class="index === null ? 'is-overview' : 'is-' + stepState(steps()[index])" :aria-label="index === null ? 'Overview, run summary' : steps()[index].title + ', ' + stepStateLabel(steps()[index])" :aria-selected="index === focusIndex()" :tabindex="index === focusIndex() ? 0 : -1" @click="pick(index)" @keydown="segKey($event, index)" x-text="tabLabel(index)"></button>
+                                </template>
+                            </div>
                         </div>
-                        <p class="cs-caption"><span class="cs-l" x-text="caption().left"></span><span class="cs-r" :class="caption().danger && 'is-danger'" x-text="caption().right"></span><span class="cs-subline" x-show="caption().sub" x-text="caption().sub"></span></p>
+                        <p class="cs-caption"><span class="cs-l" x-text="caption().left" :title="caption().left"></span><span class="cs-r" :class="caption().danger && 'is-danger'" x-text="caption().right"></span><span class="cs-line2"><span class="cs-subline" x-text="caption().sub" :title="caption().sub"></span><span class="cs-eta" x-show="eta()" x-text="eta()"></span></span></p>
+                        <section class="cs-detail-host" aria-labelledby="sync-details-heading">
+                            <h3 id="sync-details-heading" class="cs-details-heading" x-text="detail().heading"></h3>
+                            <div class="bd-bar" role="img" :aria-label="detail().label">
+                                <template x-for="(part, partIndex) in detail().bars" :key="partIndex">
+                                    <span class="bd-part" :class="'is-' + part.kind" :style="`width:${part.width}%`"></span>
+                                </template>
+                            </div>
+                            <ul class="bd-stats">
+                                <template x-for="(slot, slotIndex) in detail().slots" :key="slotIndex">
+                                    <li class="bd-stat" :class="detail().slots.length === 1 && 'is-placeholder'"><span class="bd-value" :class="'is-' + slot.kind"><span class="bd-dot" aria-hidden="true"></span><span x-text="slot.value"></span></span><span class="bd-label" x-text="slot.label" :title="slot.label"></span></li>
+                                </template>
+                            </ul>
+                            <p class="cs-status" :class="'is-' + detail().state"><span class="cs-glyph" :class="'is-' + detail().state" x-show="detail().state !== 'active'" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill-rule="evenodd" :d="detailGlyph()"/></svg></span><span class="cs-status-text" tabindex="0" x-text="detail().status" :title="detail().status"></span></p>
+                        </section>
                     </div>
                     <ul class="cs-menu">
                         <template x-if="running()">
