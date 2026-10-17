@@ -3658,15 +3658,26 @@ test('single media layout distinguishes portraits, square boundaries, GIFs and q
     assert.equal(layout('photo', 1000, 1000, 'detail').maxWidth, null);
     assert.equal(layout('photo', 1001, 1000, 'detail').maxWidth, null);
 
-    // A quote's portrait pixels fit a capped image area in a full-width frame,
-    // independently of whether the quote belongs to a list or a main post.
+    // Quoted photo previews crop very tall sources to 3:4. Only list previews
+    // retain the 510px cap; a focal quote fills its available detail column.
     for (const context of ['quote', 'quote-detail']) {
         const quoted = layout('photo', 1536, 2048, context);
         assert.equal(quoted.maxWidth, null);
-        assert.equal(quoted.photoCapWidth, 382.5);
+        assert.equal(quoted.photoCapWidth, context === 'quote' ? 382.5 : null);
         assert.equal(quoted.frameAspect, 0.75);
+        assert.equal(quoted.portraitPhoto, context === 'quote');
         assert.equal(layout('video', 720, 1280, context).frameAspect, 16 / 9);
         assert.equal(layout('animated_gif', 498, 402, context).frameAspect, 16 / 9);
+    }
+    for (const [width, height] of [[360, 640], [600, 900], [750, 1000], [800, 1000]]) {
+        const previewAspect = Math.max(width / height, 3 / 4);
+        for (const context of ['quote', 'quote-detail', 'quote-detail-expanded']) {
+            const photo = layout('photo', width, height, context);
+            assert.equal(photo.sourceAspect, width / height);
+            assert.equal(photo.frameAspect, previewAspect);
+            assert.equal(photo.photoCapWidth, context === 'quote' ? 510 * previewAspect : null);
+        }
+        assert.equal(layout('photo', width, height).frameAspect, width / height);
     }
     const expandedQuote = layout('photo', 2816, 3072, 'quote-detail-expanded');
     assert.equal(expandedQuote.frameAspect, 2816 / 3072);
@@ -3719,10 +3730,20 @@ test('media renderer preserves direct playback parents, placeholders and existin
     assert.match(photo, /<img src="\/media\/a.jpg"/);
 
     const ordinaryQuotedPortrait = app.renderMediaGrid([
-        { type: 'photo', width: 1536, height: 2048, download: { local_path: 'media/quoted.jpg' } },
+        { type: 'photo', width: 360, height: 640, download: { local_path: 'media/quoted.jpg' } },
     ], 'quote-detail');
-    assert.match(ordinaryQuotedPortrait, /--media-photo-cap-width: 382\.5px;/);
-    assert.match(ordinaryQuotedPortrait, /media-frame-portrait-photo/);
+    assert.match(ordinaryQuotedPortrait, /--media-frame-aspect: 0\.75;/);
+    assert.doesNotMatch(ordinaryQuotedPortrait, /--media-photo-cap-width|media-frame-portrait-photo/);
+    const originalPhoto = JSON.parse(parseFakeHTML(ordinaryQuotedPortrait)[0]
+        .querySelector('[data-lightbox-media]').getAttribute('data-lightbox-media'))[0].m;
+    assert.equal(originalPhoto.width, 360);
+    assert.equal(originalPhoto.height, 640);
+
+    const quotedListPhoto = app.renderMediaGrid([
+        { type: 'photo', width: 360, height: 640, download: { local_path: 'media/quoted.jpg' } },
+    ], 'quote');
+    assert.match(quotedListPhoto, /--media-photo-cap-width: 382\.5px;/);
+    assert.match(quotedListPhoto, /media-frame-portrait-photo/);
 
     const expandedQuotedPortrait = app.renderMediaGrid([
         { type: 'photo', width: 2816, height: 3072, download: { local_path: 'media/expanded-quoted.jpg' } },
@@ -3800,6 +3821,16 @@ test('media renderer preserves direct playback parents, placeholders and existin
     ]);
     assert.match(gridVideo, /media-video-player/);
     assert.match(gridVideo, /aria-label="Remaining video duration 0:03">0:03<\/span>/);
+    for (const context of ['feed', 'detail', 'quote', 'quote-detail']) {
+        const gallery = app.renderMediaGrid([
+            { type: 'photo', width: 640, height: 360, download: { local_path: 'media/photo.jpg' } },
+            { type: 'video', width: 360, height: 640, download: { local_path: 'media/video.mp4' } },
+        ], context);
+        const parsed = parseFakeHTML(gallery)[0];
+        assert.ok(parsed.querySelector('img').classList.contains('object-cover'));
+        assert.ok(parsed.querySelector('video').classList.contains('media-grid-video'));
+        assert.ok(!parsed.querySelector('video').classList.contains('object-cover'));
+    }
 
     const videoWithoutArchivedDuration = app.renderMediaGrid([
         { type: 'video', download: { local_path: 'media/no-duration.mp4' } },
@@ -3822,8 +3853,10 @@ test('media renderer preserves direct playback parents, placeholders and existin
     assert.match(css, /\.quote-thumbnail-badge\s*\{[^}]*display: inline-flex;[^}]*align-items: center;/s);
     assert.match(css, /\.quote-thumbnail-duration\s*\{[^}]*background: rgba\(0, 0, 0, 0\.77\);/s);
     assert.match(css, /\.media-frame-video,[\s\S]*object-fit: contain;[\s\S]*background: #000;/);
-    // Quote galleries crop their tiles; only single quoted media letterboxes.
-    assert.match(css, /\.quote-card:not\(\.quote-compact\) > \.quote-media > \.media-single img \{\s*object-fit: contain;/);
+    // Photo previews crop; playing videos contain their pixels in every gallery.
+    assert.match(css, /\.quote-card:not\(\.quote-compact\) > \.quote-media > \.media-single img \{\s*object-fit: cover;/);
+    assert.match(css, /\.media-grid-video\s*\{[^}]*object-fit: contain;[^}]*background: #000;/);
+    assert.match(css, /@media \(max-width: 675px\) \{\s*\.media-frame-feed,\s*\.media-frame-detail,\s*\.media-frame-quote \{\s*--media-max-width: 100%;\s*--media-photo-cap-width: 100%;/);
     assert.match(css, /\.quote-card:not\(\.quote-compact\) > \.quote-media > \.media-single video \{\s*object-fit: contain;/);
     assert.doesNotMatch(css, /\.quote-card:not\(\.quote-compact\) > \.quote-media (img|video) \{/);
 });
