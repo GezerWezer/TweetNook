@@ -57,6 +57,34 @@ def _console() -> Console:
     return Console(file=StringIO(), force_terminal=False, color_system=None)
 
 
+@pytest.mark.parametrize(
+    "connected,skip,expected", [(True, True, True), (True, False, False), (False, True, False)]
+)
+async def test_sync_skips_only_quote_expansion_when_replay_option_is_enabled(
+    paths, config, auth_bundle, monkeypatch, connected, skip, expected
+) -> None:
+    config.replay.url = "http://replay.test" if connected else None
+    config.replay.skip_quote_expansion = skip
+    calls = []
+
+    async def expand(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(processed=1)
+
+    monkeypatch.setattr("tweetnook.threads.expand_threads", expand)
+    await sync_module._run_followup_threads(
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        transport=None,
+        console=_console(),
+        sleep=asyncio.sleep,
+    )
+    assert len(calls) == 1
+    assert calls[0]["skip_quotes"] is expected
+    assert calls[0]["limit"] is None
+
+
 def test_sync_pipeline_is_fully_planned_before_work_and_filters_disabled_followups() -> None:
     reporter = PipelineReporter(_console(), "sync", interactive=False)
     config = AppConfig()

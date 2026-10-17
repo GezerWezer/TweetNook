@@ -81,6 +81,7 @@ def _replay_config_changes(replay: ReplayConfig) -> dict[str, object]:
         "replay.url": replay.url,
         "replay.password": replay.password,
         "replay.placeholder_media": replay.placeholder_media,
+        "replay.skip_quote_expansion": replay.skip_quote_expansion,
     }
 
 
@@ -208,6 +209,7 @@ def _dev_payload(config: AppConfig) -> dict[str, object]:
             "url": replay.url,
             "password": MASKED_SECRET if replay.password else None,
             "placeholder_media": replay.placeholder_media,
+            "skip_quote_expansion": replay.skip_quote_expansion,
             "status": _read_replay_status(server_state.get("paths")) if connected else None,
         },
     }
@@ -219,12 +221,19 @@ class ReplaySourceRequest(BaseModel):
     url: str
     password: str | None = None
     placeholder_media: bool | None = None
+    skip_quote_expansion: bool | None = None
 
 
 class ReplayMediaRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     placeholder_media: bool
+
+
+class ReplayQuoteExpansionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    skip_quote_expansion: bool
 
 
 def _require_dev_tools() -> XDGPaths:
@@ -317,7 +326,16 @@ def put_replay_source(
     config = _apply_replay_config(
         paths,
         _replay_config_changes(
-            ReplayConfig(url=url, password=password, placeholder_media=placeholder_media)
+            ReplayConfig(
+                url=url,
+                password=password,
+                placeholder_media=placeholder_media,
+                skip_quote_expansion=(
+                    current.skip_quote_expansion
+                    if request.skip_quote_expansion is None
+                    else request.skip_quote_expansion
+                ),
+            )
         ),
     )
     return _dev_payload(config)
@@ -332,6 +350,20 @@ def put_replay_placeholder_media(
     if not load_config()[0].replay.url:
         raise HTTPException(status_code=409, detail="No replay source is connected.")
     config = _apply_replay_config(paths, {"replay.placeholder_media": request.placeholder_media})
+    return _dev_payload(config)
+
+
+@router.put("/replay/skip-quote-expansion")
+def put_replay_skip_quote_expansion(
+    request: ReplayQuoteExpansionRequest,
+    _auth: Annotated[bool, Depends(verify_credentials)],
+) -> dict[str, object]:
+    paths = _require_dev_tools()
+    if not load_config()[0].replay.url:
+        raise HTTPException(status_code=409, detail="No replay source is connected.")
+    config = _apply_replay_config(
+        paths, {"replay.skip_quote_expansion": request.skip_quote_expansion}
+    )
     return _dev_payload(config)
 
 

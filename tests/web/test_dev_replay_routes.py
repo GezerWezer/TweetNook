@@ -427,6 +427,12 @@ def test_replay_setup_requires_dev_tools(monkeypatch, tmp_path, make_web_client)
     body = {"url": "http://s.test", "password": "pw"}
     assert client.put("/api/setup/replay", json=body).status_code == 404
     assert (
+        client.put(
+            "/api/setup/replay/skip-quote-expansion", json={"skip_quote_expansion": True}
+        ).status_code
+        == 404
+    )
+    assert (
         client.put("/api/setup/replay/placeholder-media", json={"placeholder_media": False})
     ).status_code == 404
     assert client.delete("/api/setup/replay").status_code == 404
@@ -460,6 +466,7 @@ def test_replay_setup_tests_saves_toggles_and_disconnects(
     assert replay["url"] == "http://source.test:8000"
     assert replay["password"] == "********"
     assert replay["placeholder_media"] is True
+    assert replay["skip_quote_expansion"] is False
     assert replay["status"]["bookmarks_pages"] == 3
     assert replay["status"]["bookmarks_chain_pages"] == 2
     assert isinstance(replay["status"]["checked_at"], int)
@@ -493,6 +500,18 @@ def test_replay_setup_tests_saves_toggles_and_disconnects(
     assert setup_dev["replay"]["status"]["bookmarks_pages"] == 3
     assert setup_dev["replay"]["placeholder_media"] is False
 
+    skipped = client.put(
+        "/api/setup/replay/skip-quote-expansion", json={"skip_quote_expansion": True}
+    )
+    assert skipped.status_code == 200
+    assert skipped.json()["replay"]["skip_quote_expansion"] is True
+    assert config_module.load_config()[0].replay.skip_quote_expansion is True
+    assert client.get("/api/setup").json()["dev"]["replay"]["skip_quote_expansion"] is True
+    reconnected = client.put(
+        "/api/setup/replay", json={"url": "http://source.test:8000", "password": "********"}
+    )
+    assert reconnected.json()["replay"]["skip_quote_expansion"] is True
+
     # Secrets stay masked in Settings > Configuration too.
     from tweetnook.web.routes import config as config_routes
 
@@ -506,10 +525,17 @@ def test_replay_setup_tests_saves_toggles_and_disconnects(
         "url": None,
         "password": None,
         "placeholder_media": True,
+        "skip_quote_expansion": False,
         "status": None,
     }
     assert "replay" not in paths.config_file.read_text()
     assert dev_replay.active_replay() is None
+    assert (
+        client.put(
+            "/api/setup/replay/skip-quote-expansion", json={"skip_quote_expansion": True}
+        ).status_code
+        == 409
+    )
     assert (
         client.put("/api/setup/replay/placeholder-media", json={"placeholder_media": True})
     ).status_code == 409
@@ -586,14 +612,20 @@ def test_cli_jobs_inherit_replay_from_the_saved_config(monkeypatch, tmp_path) ->
 
     paths = _setup_env(monkeypatch, tmp_path)
     config_module.update_config_values(
-        paths, {"replay.url": "http://source.test:8000", "replay.password": PASSWORD}
+        paths,
+        {
+            "replay.url": "http://source.test:8000",
+            "replay.password": PASSWORD,
+            "replay.skip_quote_expansion": True,
+        },
     )
     configure_replay(None)
     code = (
         "from tweetnook.config import load_config\n"
         "from tweetnook.dev_replay import active_replay, client_transport\n"
-        "load_config()\n"
-        "print(active_replay().url, type(client_transport()).__name__)\n"
+        "config, _ = load_config()\n"
+        "print(active_replay().url, type(client_transport()).__name__, "
+        "config.replay.skip_quote_expansion)\n"
     )
     import os
     import sys
@@ -606,4 +638,4 @@ def test_cli_jobs_inherit_replay_from_the_saved_config(monkeypatch, tmp_path) ->
         check=True,
         timeout=60,
     )
-    assert result.stdout.split() == ["http://source.test:8000", "ReplayTransport"]
+    assert result.stdout.split() == ["http://source.test:8000", "ReplayTransport", "True"]

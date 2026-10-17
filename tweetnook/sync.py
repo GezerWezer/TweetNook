@@ -679,6 +679,7 @@ async def _run_followup_threads(
 
     return await expand_threads(
         limit=None,
+        skip_quotes=bool(config.replay.url and config.replay.skip_quote_expansion),
         config=config,
         paths=paths,
         auth_bundle=auth_bundle,

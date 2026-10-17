@@ -2043,7 +2043,7 @@ function tweetApp() {
         setupStartingImport: false,
         setupConfirm: null,
         setupHelp: null,
-        setupReplayForm: { url: '', password: '', placeholder_media: true },
+        setupReplayForm: { url: '', password: '', placeholder_media: true, skip_quote_expansion: false },
         setupReplaySaving: false,
         setupReplayError: '',
         setupHelpOpen: false,
@@ -5966,6 +5966,12 @@ function tweetApp() {
                 : !!this.setupReplayForm.placeholder_media;
         },
 
+        get setupReplaySkipQuotes() {
+            return this.setupReplayConnected
+                ? !!this.setupData.dev.replay.skip_quote_expansion
+                : !!this.setupReplayForm.skip_quote_expansion;
+        },
+
         get setupReplaySummary() {
             const replay = this.setupData?.dev?.replay;
             if (!replay?.connected) return '';
@@ -6001,8 +6007,8 @@ function tweetApp() {
 
         async connectSetupReplay() {
             if (this.setupReplaySaving || !this.setupReplayForm.url.trim()) return;
-            const { url, password, placeholder_media } = this.setupReplayForm;
-            if (await this.setupReplayRequest('PUT', '/api/setup/replay', { url: url.trim(), password, placeholder_media })) {
+            const { url, password, placeholder_media, skip_quote_expansion } = this.setupReplayForm;
+            if (await this.setupReplayRequest('PUT', '/api/setup/replay', { url: url.trim(), password, placeholder_media, skip_quote_expansion })) {
                 this.setupReplayForm.password = '';
             }
         },
@@ -6019,6 +6025,14 @@ function tweetApp() {
                 return;
             }
             await this.setupReplayRequest('PUT', '/api/setup/replay/placeholder-media', { placeholder_media: value });
+        },
+
+        async setSetupReplaySkipQuotes(value) {
+            if (!this.setupReplayConnected) {
+                this.setupReplayForm.skip_quote_expansion = value;
+                return;
+            }
+            await this.setupReplayRequest('PUT', '/api/setup/replay/skip-quote-expansion', { skip_quote_expansion: value });
         },
 
         get setupNoPasswordWarning() {
