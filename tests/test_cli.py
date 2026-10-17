@@ -223,6 +223,8 @@ def test_import_x_archive_help_describes_offline_mode() -> None:
     assert result.exit_code == 0
     assert "--offline" in result.output
     assert "Twitter/X requests" in result.output
+    assert "--defer-followup" in result.output
+    assert "Setup launches live" in result.output
 
 
 def test_import_x_archive_help_describes_sample_limit() -> None:
@@ -1139,6 +1141,9 @@ def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch, co
         transport=None,
         console=None,
     ):
+        from tweetnook.pipeline import current_pipeline
+
+        assert current_pipeline().step_state("archive-auth") == "complete"
         captured.update(
             {
                 "limit": limit,

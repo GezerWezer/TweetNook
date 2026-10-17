@@ -1171,6 +1171,16 @@ def import_x_archive_command(
             ),
         ),
     ] = False,
+    defer_followup: Annotated[
+        bool,
+        typer.Option(
+            "--defer-followup",
+            help=(
+                "Import locally now; Setup launches live enrichment and first sync separately "
+                "after collection choices are confirmed."
+            ),
+        ),
+    ] = False,
     regen: Annotated[
         bool,
         typer.Option(
@@ -1235,12 +1245,13 @@ def import_x_archive_command(
                 enrich=enrich,
                 detail_lookups=detail_lookups,
                 sample_limit=sample_limit,
-                offline=offline,
+                offline=offline or defer_followup,
             )
             result = asyncio.run(
                 import_x_archive(
                     archive,
                     offline=offline,
+                    **({"defer_followup": True} if defer_followup else {}),
                     regen=regen,
                     enrich=enrich,
                     detail_lookups=detail_lookups,
@@ -1332,7 +1343,9 @@ def import_archive_enrich(
                 followups=followups,
                 head_only=False,
             )
+            pipeline.start_step("archive-auth", activity="Resolving Twitter/X authentication")
             auth_bundle = resolve_auth_bundle(config)
+            pipeline.complete_step("archive-auth", "Twitter/X authentication resolved")
 
             async def enrich_then_sync():
                 result = await enrich_imported_archive(
