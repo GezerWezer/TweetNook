@@ -1984,6 +1984,45 @@ body {
 }
 .setup-modal-footer .setup-btn { min-height: 36px; padding: 0 16px; }
 .setup-modal-footer .setup-btn.is-primary { margin-left: auto; min-width: 96px; }
+
+/* Uncounted page shown after Finish; icons remain neutral in every state. */
+.setup-modal-shell.is-complete .setup-modal-inner { max-width: 512px; padding: 24px 16px; }
+.setup-completion { color: var(--text-secondary); font-size: 15px; line-height: 20px; }
+.setup-completion h2 { margin: 0; color: var(--text-primary); font-size: 20px; line-height: 24px; font-weight: 700; }
+.setup-completion h2:focus { outline: none; }
+.setup-completion h3 { margin: 0; color: var(--text-primary); font-size: 15px; line-height: 20px; font-weight: 700; }
+.setup-completion p { margin: 0; }
+.setup-completion .setup-completion-intro { margin-top: 8px; }
+.setup-completion-pipeline { display: flex; flex-direction: column; gap: 8px; margin-top: 24px; }
+.setup-completion-stage { position: relative; display: grid; grid-template-columns: 56px minmax(0, 1fr); grid-template-rows: minmax(20px, max-content) auto; column-gap: 16px; min-height: 72px; }
+.setup-completion-stage-icon { grid-row: 1 / 3; width: 56px; height: 56px; }
+.setup-completion-icon { display: block; position: relative; width: 52px; height: 52px; color: var(--text-secondary); }
+.setup-completion svg { display: block; fill: currentColor; }
+.setup-completion-icon-main { position: absolute; left: 0; top: 0; width: 40px; height: 40px; }
+.setup-completion-icon-badge { position: absolute; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: var(--bg-primary); border-radius: 4px; }
+.setup-completion-icon-detail { width: 20px; height: 20px; }
+.setup-completion-stage-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; align-self: start; }
+.setup-completion-status { display: inline-flex; align-items: center; gap: 4px; }
+.setup-completion-status svg { width: 16px; height: 16px; }
+.setup-completion-stage[data-state="active"] .setup-completion-status,
+.setup-completion-stage[data-state="connection"] .setup-completion-status { color: var(--accent-color); }
+.setup-completion-stage[data-state="attention"] .setup-completion-status { color: var(--destructive-color); }
+.setup-completion-stage > p { margin-top: 4px; align-self: start; }
+.setup-completion-connector { position: absolute; top: 60px; left: 20px; width: 16px; height: 16px; }
+.setup-completion-stage:last-child .setup-completion-connector { display: none; }
+.setup-completion .setup-completion-note { margin-top: 16px; }
+.setup-completion-expectations { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 12px; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-color); }
+.setup-completion-expectations > svg { width: 20px; height: 20px; }
+.setup-completion-expectations p { margin-top: 8px; }
+.setup-completion-footer .setup-btn { font-size: 15px; line-height: 20px; }
+@media (max-width: 767px) {
+    .setup-modal-shell.is-complete .setup-desktop-required { display: none; }
+    .setup-modal-shell.is-complete .setup-modal-content { display: block !important; }
+    .setup-modal-shell.is-complete .setup-completion-footer { display: flex !important; }
+    .setup-completion-stage { grid-template-columns: 48px minmax(0, 1fr); }
+    .setup-completion-stage-icon { width: 48px; }
+    .setup-completion-connector { left: 16px; }
+}
 .setup-link {
     display: block;
     width: fit-content;

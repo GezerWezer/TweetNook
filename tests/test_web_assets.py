@@ -33,9 +33,10 @@ def test_index_loads_local_assets_in_dependency_order():
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
     themes = html.index('<script src="/static/js/themes.js"></script>')
     autocomplete = html.index('<script src="/static/js/autocomplete.js"></script>')
+    completion = html.index('<script src="/static/js/setup-completion.js"></script>')
     app = html.index('<script src="/static/js/app.js"></script>')
 
-    assert themes < autocomplete < app
+    assert themes < autocomplete < completion < app
     assert '<link rel="stylesheet" href="/static/css/styles.css">' in html
     assert 'x-data="tweetApp()"' in html
     assert 'x-data="searchAutocomplete()"' in html
@@ -47,6 +48,7 @@ def test_index_loads_local_assets_in_dependency_order():
         "static/js/themes.js",
         "static/js/autocomplete.js",
         "static/js/app.js",
+        "static/js/setup-completion.js",
         "static/css/styles.css",
     ],
 )

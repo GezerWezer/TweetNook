@@ -60,7 +60,11 @@ def test_setup_status_masks_auth_and_reports_import_readiness(
         "load_config",
         lambda: (
             config_module.AppConfig.model_validate(
-                {"auth": {"auth_token": "secret", "ct0": "csrf", "user_id": "42"}}
+                {
+                    "auth": {"auth_token": "secret", "ct0": "csrf", "user_id": "42"},
+                    "schedule": {"enabled": True},
+                    "sync": {"collections": ["tweets"]},
+                }
             ),
             paths,
         ),
@@ -78,6 +82,7 @@ def test_setup_status_masks_auth_and_reports_import_readiness(
     assert payload["archive"]["imported"] is False
     assert payload["archive"]["enriched"] is False
     assert payload["archive"]["warnings"]
+    assert payload["schedule"] == {"enabled": True, "collections": ["tweets"]}
 
 
 def test_archive_upload_import_and_clear_are_real_guarded_actions(

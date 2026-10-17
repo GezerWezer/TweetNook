@@ -2017,6 +2017,8 @@ function tweetApp() {
         archiveResourcesLoaded: false,
         setupForced: false,
         setupRerun: false,
+        setupCompletionVisible: false,
+        setupCompletionNeedsReload: false,
         setupFlowStep: 1,
         setupDirection: 'forward',
         setupSkipAuth: false,
@@ -5715,11 +5717,17 @@ function tweetApp() {
             }
             if (this.setupForced) return;
             this.setupRerun = false;
+            this.setupCompletionVisible = false;
             this.showSetupModal = false;
+            if (this.setupCompletionNeedsReload) {
+                this.setupCompletionNeedsReload = false;
+                window.location.reload();
+            }
         },
 
         openSetup() {
             if (this.isDemo) return;
+            this.setupCompletionVisible = false;
             if (this.setupData?.completed) this.setupRerun = true;
             this.showSetupModal = true;
             this.showSettingsModal = false;
@@ -5734,6 +5742,33 @@ function tweetApp() {
             this.setupError = '';
             // Move focus to the new step's title so keyboard and screen-reader users follow along.
             this.$nextTick?.(() => document.getElementById(`setup-step-title-${next}`)?.focus({ preventScroll: true }));
+        },
+
+        get setupCompletion() {
+            return nookSetupCompletion(this);
+        },
+
+        showSetupCompletion() {
+            this.setupCompletionVisible = true;
+            this.showSetupModal = true;
+            this.showSettingsModal = false;
+            this.$nextTick?.(() => {
+                const content = document.querySelector('.setup-modal-content');
+                if (content) content.scrollTop = 0;
+                document.getElementById('setup-completion-title')?.focus({ preventScroll: true });
+            });
+        },
+
+        setupCompletionAction() {
+            if (this.setupCompletion.needsConnection) {
+                this.setupCompletionVisible = false;
+                this.setupRerun = true;
+                this.setupSkipAuth = false;
+                this.goToSetupStep(2);
+            } else {
+                this.closeSetup();
+                this.openActivityDrawer();
+            }
         },
 
         // Setup's Schedule step shows only how often and when; Settings → Schedule has the rest.
@@ -6102,6 +6137,16 @@ function tweetApp() {
                 if (!this.setupAuth) this.setupAuth = JSON.parse(JSON.stringify(data.auth.values));
                 this.archiveReady = !!data.archive.ready;
                 this.setupForced = !!data.required;
+                if (data.completed && !data.required) {
+                    // Finish reloads for the new password. Only this tab resumes the
+                    // extra page, once authenticated; no credentials are stored.
+                    try {
+                        if (sessionStorage.getItem('tweetnook.setup-completion') === 'pending') {
+                            sessionStorage.removeItem('tweetnook.setup-completion');
+                            this.showSetupCompletion();
+                        }
+                    } catch (_) { /* Storage can be disabled by browser policy. */ }
+                }
                 if (this.setupForced) {
                     this.showSetupModal = true;
                     this.showSettingsModal = false;
@@ -6177,8 +6222,13 @@ function tweetApp() {
                 this.setupPasswordConfirm = '';
                 this.setupForced = false;
                 this.setupRerun = false;
-                if (data.reload) window.location.reload();
-                else this.closeSetup();
+                this.setupData = { ...this.setupData, completed: true, required: false };
+                this.showSetupCompletion();
+                if (data.reload) {
+                    try { sessionStorage.setItem('tweetnook.setup-completion', 'pending'); }
+                    catch (_) { this.setupCompletionNeedsReload = true; }
+                    if (!this.setupCompletionNeedsReload) window.location.reload();
+                }
             } catch (error) { this.setupError = error.message; }
             finally { this.setupFinishing = false; }
         },

@@ -10,6 +10,7 @@ const JS_DIR = path.join(ROOT, 'tweetnook', 'web', 'static', 'js');
 
 function browserContext(pathname = '/') {
     const stored = new Map();
+    const sessionStored = new Map();
     const cssProperties = new Map();
     const rootClasses = new Set();
     const events = new Map();
@@ -57,6 +58,11 @@ function browserContext(pathname = '/') {
             removeItem(key) {
                 stored.delete(key);
             },
+        },
+        sessionStorage: {
+            getItem(key) { return sessionStored.get(key) ?? null; },
+            setItem(key, value) { sessionStored.set(key, String(value)); },
+            removeItem(key) { sessionStored.delete(key); },
         },
         history: {
             scrollRestoration: 'auto',
@@ -6795,7 +6801,7 @@ test('Settings tabs use the requested order and Appearance is the default', () =
     assert.match(js, /rerunSetup\(\)[\s\S]*?this\.settingsTab = 'setup'/);
 });
 
-test('setup password finalization reloads only after successful completion', async () => {
+test('setup password finalization reloads with a one-time completion marker after success', async () => {
     const context = browserContext();
     let reloaded = false;
     context.window.location = {reload() { reloaded = true; }};
@@ -6814,6 +6820,109 @@ test('setup password finalization reloads only after successful completion', asy
     assert.equal(reloaded, true);
     assert.equal(app.setupForced, false);
     assert.equal(app.setupPassword, '');
+    assert.equal(context.sessionStorage.getItem('tweetnook.setup-completion'), 'pending');
+    assert.equal(app.setupCompletionVisible, true);
+    assert.equal(app.setupFlowStep, 1, 'the explanation is separate from the counted steps');
+});
+
+test('setup completion survives the password reload once and supports both real handoffs', async () => {
+    const context = browserContext();
+    const data = { completed: true, required: false, auth: { verified: false, values: {} }, archive: { ready: true, initialization_mode: 'empty' } };
+    context.fetch = async () => ({ ok: true, json: async () => data });
+    const { tweetApp } = loadScripts(context, ['themes.js', 'setup-completion.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.archiveResourcesLoaded = true;
+    context.sessionStorage.setItem('tweetnook.setup-completion', 'pending');
+    await app.fetchSetup();
+    assert.equal(app.setupCompletionVisible, true);
+    assert.equal(app.showSetupModal, true);
+    assert.equal(app.setupForced, false);
+    assert.equal(context.sessionStorage.getItem('tweetnook.setup-completion'), null);
+    app.setupCompletionAction();
+    assert.equal(app.setupCompletionVisible, false);
+    assert.equal(app.setupFlowStep, 2);
+    assert.equal(app.setupRerun, true);
+    app.closeSetup();
+    await app.fetchSetup();
+    assert.equal(app.showSetupModal, false, 'polling must not reopen a dismissed completion page');
+    data.auth.verified = true;
+    app.showSetupCompletion();
+    app.setupCompletionAction();
+    assert.equal(app.activityDrawerOpen, true);
+    assert.equal(app.showSetupModal, false);
+    assert.equal(app.setupCompletionVisible, false);
+});
+
+test('failed setup completion neither reloads nor queues the explanation', async () => {
+    const context = browserContext();
+    context.fetch = async () => ({ ok: false, json: async () => ({ detail: 'Cannot finish' }) });
+    let reloads = 0;
+    context.window.location.reload = () => reloads++;
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.setupData = { web: { password_configured: true } };
+    app.setupForced = true;
+    await app.finishSetup();
+    assert.equal(app.setupError, 'Cannot finish');
+    assert.equal(app.setupCompletionVisible, false);
+    assert.equal(app.setupForced, true);
+    assert.equal(reloads, 0);
+    assert.equal(context.sessionStorage.getItem('tweetnook.setup-completion'), null);
+});
+
+test('setup still shows completion before reloading when browser storage is disabled', async () => {
+    const context = browserContext();
+    context.sessionStorage.setItem = () => { throw new Error('Storage disabled'); };
+    context.fetch = async () => ({ ok: true, json: async () => ({ completed: true, reload: true }) });
+    let reloads = 0;
+    context.window.location.reload = () => reloads++;
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.setupData = { web: { password_configured: true } };
+    await app.finishSetup();
+    assert.equal(app.setupCompletionVisible, true);
+    assert.equal(reloads, 0);
+    app.closeSetup();
+    assert.equal(reloads, 1);
+});
+
+test('setup completion explains actual import, enrichment, sync and skipped steps', () => {
+    const context = browserContext();
+    const { nookSetupCompletion } = loadScripts(context, ['setup-completion.js'], '({nookSetupCompletion})');
+    const describe = (archive, extra = {}) => nookSetupCompletion({ setupData: {
+        archive, auth: { verified: true }, schedule: { enabled: false, collections: ['bookmarks', 'likes'] },
+    }, ...extra });
+    const pending = { initialization_mode: 'import', initialization_state: 'complete', imported: true, enrichment_state: 'running' };
+    const running = describe(pending);
+    assert.equal(running.stages.map(stage => stage.state).join(','), 'done,active,queued');
+    assert.match(running.note, /sync follows automatically/);
+    assert.match(running.time, /hours or potentially days.*limits/);
+    assert.match(running.usability, /until the first sync finishes/);
+    assert.match(running.stages[1].icon, /data-icon="search"/);
+    const syncing = describe(pending, { activity: { kind: 'enrich', steps: [{ key: 'archive-enrich', state: 'complete' }] } });
+    assert.equal(syncing.stages.map(stage => stage.state).join(','), 'done,done,active');
+    const failed = describe(pending, { lastActivity: { kind: 'enrich', success: false, steps: [{ key: 'archive-enrich', state: 'complete' }] } });
+    assert.equal(failed.stages.at(-1).state, 'attention');
+    assert.doesNotMatch(failed.note, /is complete/);
+    const done = describe({ ...pending, enrichment_state: 'complete', enriched: true }, { lastActivity: { kind: 'enrich', success: true } });
+    assert.equal(done.stages.at(-1).state, 'done');
+    const importing = describe({ ...pending, initialization_state: 'running', enrichment_state: 'waiting_for_import' }, { lastActivity: { kind: 'enrich', success: true, steps: [{ key: 'archive-enrich', state: 'complete' }] } });
+    assert.equal(importing.stages.map(stage => stage.state).join(','), 'active,queued,queued', 'an older success must not complete a new import');
+    const importFailed = describe({ ...pending, initialization_state: 'failed' });
+    assert.equal(importFailed.stages[0].state, 'attention');
+    const offline = describe({}, { setupData: { auth: { verified: false }, archive: pending } });
+    assert.equal(offline.needsConnection, true);
+    assert.equal(offline.stages[1].state, 'connection');
+    const manual = describe({ initialization_mode: 'empty' });
+    assert.equal(manual.stages.length, 1);
+    assert.equal(manual.stages[0].label, 'Not started');
+    assert.match(manual.note, /Nothing is running/);
+    const scheduled = describe({}, { setupData: { auth: { verified: true }, archive: { initialization_mode: 'empty' }, schedule: { enabled: true, collections: ['tweets'] } } });
+    assert.equal(scheduled.stages[0].label, 'Scheduled');
+    assert.match(scheduled.stages[0].description, /authored posts/);
+    assert.doesNotMatch(scheduled.stages[0].description, /bookmarks/);
+    const migration = describe({ initialization_mode: 'migration', initialization_state: 'complete' });
+    assert.equal(migration.stages.map(stage => stage.title).join(','), 'Migration,First sync');
 });
 
 test('automated tagging saves uncertainty policies and exposes their controls', async () => {
