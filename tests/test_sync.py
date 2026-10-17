@@ -1725,3 +1725,40 @@ def test_security_audit_no_logger_calls_with_cookie_values() -> None:
             if "logger." in line:
                 assert "auth_token" not in line
                 assert "ct0" not in line
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["media", "database"])
+async def test_storage_exhaustion_stops_followups_before_link_previews(
+    paths, config, auth_bundle, monkeypatch, failure
+):
+    import errno
+    import sqlite3
+
+    from tweetnook.resource_failure import StorageExhaustedError
+
+    calls = []
+
+    async def full_media(**kwargs):
+        calls.append("media")
+        if failure == "media":
+            raise OSError(errno.ENOSPC, "No space left on device")
+        raise sqlite3.OperationalError("database or disk is full")
+
+    async def unfurl(**kwargs):
+        calls.append("urls")
+        pytest.fail("link previews must not run on a full volume")
+
+    monkeypatch.setattr(sync_module, "_run_followup_media", full_media)
+    monkeypatch.setattr(sync_module, "_run_followup_unfurl", unfurl)
+    with pytest.raises(StorageExhaustedError, match="Free or add disk space"):
+        await sync_module._run_auto_followups(
+            plan=sync_module.SyncFollowupPlan(threads=False, resurrection=False, articles=False),
+            config=config,
+            paths=paths,
+            auth_bundle=auth_bundle,
+            transport=None,
+            console=Console(file=StringIO()),
+            sleep=lambda _: asyncio.sleep(0),
+        )
+    assert calls == ["media"]

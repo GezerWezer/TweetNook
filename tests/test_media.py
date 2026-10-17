@@ -355,3 +355,31 @@ async def test_download_media_interactive_reports_status(paths, config, monkeypa
     output = buffer.getvalue()
     assert "media download: loading pending media rows" in output
     assert "media download: downloading 3 media rows" in output
+
+
+@pytest.mark.asyncio
+async def test_full_disk_aborts_download_without_marking_remaining_rows_failed(
+    paths, config, monkeypatch
+):
+    import errno
+
+    from tweetnook.resource_failure import StorageExhaustedError
+
+    _seed_archive(paths)
+    calls = []
+
+    async def full(*args, **kwargs):
+        calls.append(kwargs["url"])
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr("tweetnook.media._download_file", full)
+    with pytest.raises(StorageExhaustedError):
+        await download_media(config=config, paths=paths, console=Console(file=StringIO()))
+    assert len(calls) == 1
+    store = open_archive_store(paths, create=False)
+    try:
+        rows = store.list_media_rows()
+        assert rows
+        assert all(row["download_state"] == "pending" for row in rows)
+    finally:
+        store.close()

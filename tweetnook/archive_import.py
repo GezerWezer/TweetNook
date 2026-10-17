@@ -53,6 +53,7 @@ from tweetnook.jobs import (
 )
 from tweetnook.pipeline import current_pipeline
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids
+from tweetnook.resource_failure import raise_if_storage_exhausted
 from tweetnook.resurrection import resurrection_retry_schedule, transient_retry_at
 from tweetnook.storage import ArchiveStore, open_archive_store
 from tweetnook.storage.backend import ARCHIVE_SOURCE, LIVE_SOURCE, _PageBuffer
@@ -1082,6 +1083,7 @@ async def _run_live_reconciliation(
             )
             completed.append(collection)
         except Exception as exc:
+            raise_if_storage_exhausted(exc)
             warnings.append(f"{collection} reconciliation failed: {exc}")
     return completed, warnings, resolved_auth
 
@@ -1147,6 +1149,7 @@ async def _run_archive_followup(
                     pending_untouched=remaining,
                 )
         except Exception as exc:
+            raise_if_storage_exhausted(exc)
             async with locked_archive_job(config=config, paths=paths) as job:
                 remaining = job.store.count_incomplete_initial_enrichment()
             raise ArchiveEnrichmentAborted(remaining, exc) from exc
@@ -1736,6 +1739,7 @@ async def enrich_imported_archive(
                 )
         raise ArchiveEnrichmentInterrupted(remaining) from exc
     except Exception as exc:
+        raise_if_storage_exhausted(exc)
         async with locked_archive_job(config=config, paths=paths) as job:
             for manifest_row in _list_import_manifest_rows(job.store):
                 _finalize_import_enrichment_status(
@@ -2646,6 +2650,7 @@ async def import_x_archive(
                     )
             raise ArchiveEnrichmentInterrupted(remaining) from exc
         except Exception as exc:
+            raise_if_storage_exhausted(exc)
             async with locked_archive_job(config=config, paths=paths) as job:
                 manifest_row = job.store.get_import_manifest(digest)
                 if manifest_row is not None:

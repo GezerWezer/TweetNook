@@ -46,7 +46,7 @@
                         <span x-show="isDemo" class="nook-demo-badge">Demo</span>
                         <span x-show="setupReplayConnected" x-cloak class="nook-demo-badge" :title="`Twitter/X requests go to the replay source at ${setupData?.dev?.replay?.url}`">Replay mode</span>
                     </div>
-                    <span x-show="viewMode === 'list'" class="nook-sync" x-text="(activity || activityStartPending) ? activityCommandLabel() + ' in progress…' : lastSyncFormatted ? 'Synced ' + lastSyncFormatted : 'Your saved tweets, in one place'" :title="lastSyncFormatted ? 'Last synced ' + lastSyncFormatted : null"></span>
+                    <span x-show="viewMode === 'list'" class="nook-sync" x-text="activityHeaderText()" :title="displayActivity?.summary || (lastSyncFormatted ? 'Last synced ' + lastSyncFormatted : null)"></span>
                 </div>
                 <div class="nook-utilities">
                     <button x-cloak x-show="viewMode === 'thread' && articleForTweet(threadData?.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg><span class="article-focus-label">Focus mode</span></button>

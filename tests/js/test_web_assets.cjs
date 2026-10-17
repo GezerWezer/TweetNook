@@ -6072,6 +6072,30 @@ test('activity stages use focused pages and finish on a run summary', () => {
     assert.equal(app.activityRunCounts(), '3 stages · 1 completed · 1 skipped · 1 canceled');
 });
 
+test('inactive unknown results are interrupted across the drawer and run history', () => {
+    const context = browserContext();
+    const { tweetApp, nookSyncPanel, nookLogsPage } = loadScripts(context,
+        ['themes.js', 'app.js', 'header.js', 'settings.js'], '({tweetApp, nookSyncPanel, nookLogsPage})');
+    const app = immediateComponent(tweetApp());
+    app.lastActivity = {run_id: 'unknown', running: false, success: null, steps: []};
+    const panel = Object.assign(Object.create(app), nookSyncPanel());
+    assert.equal(panel.headTitle(), 'Sync interrupted');
+    assert.equal(app.activityRunStateLabel(), 'Interrupted');
+    assert.equal(app.activityRunStatusTitle(), 'Last run interrupted');
+    assert.equal(app.activityRunState(), 'failed');
+    app.lastSyncFormatted = 'Oct 17, 2026';
+    assert.equal(app.activityHeaderText(), 'Sync interrupted — open Activity');
+    const logs = nookLogsPage();
+    assert.equal(logs.statusLabel({status: 'interrupted'}), 'Interrupted');
+    assert.equal(logs.statusKind({status: 'interrupted'}), 'failed');
+    app.lastActivity.success = false;
+    assert.equal(panel.headTitle(), 'Sync failed');
+    assert.equal(app.activityHeaderText(), 'Sync failed — open Activity');
+    app.lastActivity.success = true;
+    assert.equal(panel.headTitle(), 'Synced');
+    assert.equal(app.activityHeaderText(), 'Synced Oct 17, 2026');
+});
+
 test('activity schedule footer separates the day from the emphasized run time', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
@@ -6918,6 +6942,12 @@ test('setup completion explains actual import, enrichment, sync and skipped step
     assert.doesNotMatch(failed.note, /is complete/);
     const done = describe({ ...pending, enrichment_state: 'complete', enriched: true }, { lastActivity: { kind: 'enrich', success: true } });
     assert.equal(done.stages.at(-1).state, 'done');
+    const detailsOnly = describe({ ...pending, enriched: false, details_complete: true,
+        followup_state: 'failed', enrichment_state: 'failed', warnings: ['Storage is full. Free disk space, then resume.'],
+    }, { lastActivity: {title: 'tweetnook import enrich', success: false} });
+    assert.equal(detailsOnly.stages[1].state, 'done');
+    assert.equal(detailsOnly.stages[2].state, 'attention');
+    assert.match(detailsOnly.note, /Storage is full/);
     const importing = describe({ ...pending, initialization_state: 'running', enrichment_state: 'waiting_for_import' }, { lastActivity: { kind: 'enrich', success: true, steps: [{ key: 'archive-enrich', state: 'complete' }] } });
     assert.equal(importing.stages.map(stage => stage.state).join(','), 'active,queued,queued', 'an older success must not complete a new import');
     const importFailed = describe({ ...pending, initialization_state: 'failed' });

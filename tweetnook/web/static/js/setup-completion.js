@@ -20,17 +20,18 @@ function nookSetupCompletion(app) {
         ? collections.slice(0, -1).join(', ') + ' and ' + collections.at(-1)
         : collections[0] || 'posts';
     const run = app.activity || app.lastActivity;
-    const enrichStep = run?.kind === 'enrich' && ['running', 'complete', 'failed'].includes(archive.enrichment_state)
+    const runKind = run?.kind || (run?.title === 'tweetnook import enrich' ? 'enrich' : run?.title === 'tweetnook sync' ? 'sync' : null);
+    const enrichStep = runKind === 'enrich' && ['running', 'complete', 'failed'].includes(archive.enrichment_state)
         ? run.steps?.find(step => step.key === 'archive-enrich') : null;
     const enrichmentDone = imported && !importing && !importFailed && (
-        enrichStep?.state === 'complete' || archive.enriched || archive.enrichment_state === 'complete'
+        enrichStep?.state === 'complete' || archive.details_complete || archive.enriched || archive.enrichment_state === 'complete'
     );
     const enrichmentFailed = !enrichmentDone && (archive.enrichment_state === 'failed' || enrichStep?.state === 'failed');
     const enrichmentRunning = imported && !enrichmentDone && !enrichmentFailed && archive.enrichment_state === 'running';
     const syncRun = !importing && !importFailed && (!imported || enrichmentDone)
-        && run && (run.kind === 'sync' || (run.kind === 'enrich' && enrichmentDone));
+        && run && (runKind === 'sync' || (runKind === 'enrich' && enrichmentDone));
     const syncDone = !!syncRun && run.success === true;
-    const syncFailed = !!syncRun && (run.success === false || run.stopped);
+    const syncFailed = archive.followup_state === 'failed' || (!!syncRun && (run.success === false || run.stopped || (!app.activity && run.success !== true)));
     const syncRunning = !!syncRun && !!app.activity && !syncFailed && !syncDone;
     const stages = [];
     const stage = (key, title, description, state, label, main, badge) => {
@@ -65,12 +66,12 @@ function nookSetupCompletion(app) {
     else if (!imported) intro = scheduled
         ? 'Your first scheduled sync will begin building your archive from X.'
         : 'Scheduled syncs are off. Start your first sync from Activity when you’re ready.';
-    if (importFailed || enrichmentFailed || syncFailed) intro = 'Your setup choices are saved. A preparation step needs attention before your archive is ready.';
+    if (importFailed || enrichmentFailed || syncFailed) intro = 'Your setup choices and saved posts are available. A preparation step needs attention.';
     else if (syncDone) intro = 'Your first sync is complete. Your saved posts are ready to browse and search.';
     else if (syncRunning) intro = `Your first sync is running. TweetNook is saving your ${savedItems} from X.`;
     else if (imported && enrichmentDone && !syncRunning) intro = 'Your imported posts are saved and enrichment is complete. The first sync will catch up with X.';
     let note = '';
-    if (importFailed || enrichmentFailed || syncFailed) note = 'A preparation step needs attention. Open Activity to review what stopped; already saved data is kept.';
+    if (importFailed || enrichmentFailed || syncFailed) note = archive.warnings?.[0] || 'A preparation step needs attention. Open Activity to review what stopped; already saved data is kept.';
     else if (syncDone) note = 'Your first sync is complete. Your saved posts are ready to browse and search.';
     else if (syncRunning) note = 'Your first sync is catching up with X. Activity shows the current step and any rate-limit waits.';
     else if (importing) note = `Your ${migration ? 'migration' : 'import'} is still running. You can close this popup while the local work continues.`;

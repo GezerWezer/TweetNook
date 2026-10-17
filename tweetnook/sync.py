@@ -37,6 +37,7 @@ from tweetnook.jobs import (
 from tweetnook.locking import ProcessLock
 from tweetnook.pipeline import PipelineReporter, current_pipeline
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids
+from tweetnook.resource_failure import raise_if_storage_exhausted
 from tweetnook.storage import ArchiveStore, SyncState, open_archive_store
 from tweetnook.utils import resolve_query_ids
 
@@ -791,6 +792,7 @@ async def _run_auto_followups(
                 sleep=sleep,
             )
         except Exception as exc:
+            raise_if_storage_exhausted(exc)
             _log_embedding_warning(
                 console,
                 "sync follow-up threads expand failed; "
@@ -825,6 +827,7 @@ async def _run_auto_followups(
                 sleep=sleep,
             )
         except Exception as exc:
+            raise_if_storage_exhausted(exc)
             _log_embedding_warning(
                 console,
                 f"sync follow-up resurrection failed ({exc})",
@@ -853,6 +856,7 @@ async def _run_auto_followups(
                 sleep=sleep,
             )
         except Exception as exc:
+            raise_if_storage_exhausted(exc)
             _log_embedding_warning(
                 console,
                 "sync follow-up articles refresh failed; "
@@ -877,6 +881,7 @@ async def _run_auto_followups(
                 console=console,
             )
         except Exception as exc:
+            raise_if_storage_exhausted(exc)
             _log_embedding_warning(
                 console,
                 "sync follow-up media download failed; "
@@ -908,6 +913,7 @@ async def _run_auto_followups(
                 console=console,
             )
         except Exception as exc:
+            raise_if_storage_exhausted(exc)
             _log_embedding_warning(
                 console,
                 f"sync follow-up unfurl failed; run 'tweetnook unfurl' later ({exc})",
@@ -931,6 +937,7 @@ async def _run_auto_followups(
                 console=console,
             )
         except Exception as exc:
+            raise_if_storage_exhausted(exc)
             _log_embedding_warning(
                 console,
                 f"sync follow-up tagging failed; run 'tweetnook tag' later ({exc})",
@@ -1213,21 +1220,25 @@ async def _sync_collection_ready(
             except BaseException as exc:
                 if is_interrupt_exception(exc):
                     best_effort_interrupt_optimize(store, write_tracker, console=console)
+                raise_if_storage_exhausted(exc)
                 raise
             else:
                 completed = True
         finally:
-            await client.aclose()
-            if completed and write_tracker.has_writes:
-                try:
-                    _embed_new_tweets(store, console)
-                except Exception as exc:
-                    _log_embedding_warning(
-                        console,
-                        "sync completed, but auto-embedding was skipped; "
-                        f"run 'tweetnook embed' later ({exc})",
-                    )
-            store.close()
+            try:
+                await client.aclose()
+                if completed and write_tracker.has_writes:
+                    try:
+                        _embed_new_tweets(store, console)
+                    except Exception as exc:
+                        raise_if_storage_exhausted(exc)
+                        _log_embedding_warning(
+                            console,
+                            "sync completed, but auto-embedding was skipped; "
+                            f"run 'tweetnook embed' later ({exc})",
+                        )
+            finally:
+                store.close()
     finally:
         lock.release()
 
@@ -1315,6 +1326,7 @@ async def sync_all(
             )
             results.append(result)
         except TweetNookError as exc:
+            raise_if_storage_exhausted(exc)
             exit_code = 2
             errors[collection] = str(exc)
             pipeline = current_pipeline()

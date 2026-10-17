@@ -18,6 +18,7 @@ from tweetnook.dev_replay import client_transport
 from tweetnook.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs import locked_archive_job
 from tweetnook.pipeline import current_pipeline
+from tweetnook.resource_failure import raise_if_storage_exhausted
 from tweetnook.utils import utc_now
 
 _CONTENT_TYPE_EXTENSIONS = {
@@ -140,15 +141,16 @@ async def _download_file(
     content_type: str | None = None
     file_hash = sha256()
     byte_size = 0
-    with tempfile.NamedTemporaryFile(
-        "wb",
-        dir=destination.parent,
-        delete=False,
-        prefix=f"{destination.name}.",
-        suffix=".tmp",
-    ) as handle:
-        temp_path = Path(handle.name)
-        try:
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "wb",
+            dir=destination.parent,
+            delete=False,
+            prefix=f"{destination.name}.",
+            suffix=".tmp",
+        ) as handle:
+            temp_path = Path(handle.name)
             async with client.stream("GET", url) as response:
                 response.raise_for_status()
                 content_type = response.headers.get("content-type")
@@ -156,17 +158,21 @@ async def _download_file(
                     handle.write(chunk)
                     file_hash.update(chunk)
                     byte_size += len(chunk)
-        except Exception:
-            temp_path.unlink(missing_ok=True)
-            raise
-    final_destination = destination
-    if content_type:
-        extension = _content_extension(content_type, url)
-        if destination.suffix.lower() != extension:
-            final_destination = destination.with_suffix(extension)
-    final_destination.parent.mkdir(parents=True, exist_ok=True)
-    temp_path.replace(final_destination)
-    return final_destination, file_hash.hexdigest(), byte_size, content_type
+        final_destination = destination
+        if content_type:
+            extension = _content_extension(content_type, url)
+            if destination.suffix.lower() != extension:
+                final_destination = destination.with_suffix(extension)
+        final_destination.parent.mkdir(parents=True, exist_ok=True)
+        temp_path.replace(final_destination)
+        return final_destination, file_hash.hexdigest(), byte_size, content_type
+    except BaseException:
+        if temp_path is not None:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
 
 
 async def download_media(
@@ -358,6 +364,7 @@ async def download_media(
                                 state.get("thumbnail_byte_size") or 0
                             )
                         except Exception as exc:
+                            raise_if_storage_exhausted(exc)
                             pending_updates.append(
                                 store.build_media_download_update(
                                     row,

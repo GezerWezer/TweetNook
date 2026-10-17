@@ -60,7 +60,8 @@ def test_activity_status_ignores_finished_or_orphaned_snapshots(tmp_path, make_w
     _write_snapshot(status_file, pid=2**31 - 1)
     orphaned = client.get("/api/activity/status").json()
     assert orphaned["active"] is False
-    assert orphaned["last_snapshot"] is None
+    assert orphaned["last_snapshot"]["success"] is None
+    assert orphaned["last_snapshot"]["running"] is False
 
 
 def test_start_activity_launches_a_production_worker(tmp_path, make_web_client) -> None:
@@ -268,3 +269,61 @@ def test_activity_run_log_offset_returns_only_new_complete_lines(tmp_path, make_
     restarted = client.get(f"/api/activity/runs/{run_id}/log", params={"offset": offset})
     assert restarted.text == "new\n"
     assert client.get(f"/api/activity/runs/{run_id}/log", params={"offset": -1}).status_code == 422
+
+
+def test_reloaded_status_restores_failed_automatic_import_enrichment_pipeline(
+    tmp_path, make_web_client
+):
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    server_state["paths"] = paths
+    with PipelineReporter(
+        Console(file=StringIO()),
+        "tweetnook import enrich",
+        interactive=False,
+        state_path=paths.activity_status_file,
+    ) as pipeline:
+        pipeline.add_step("media", "Media", total=4, unit="files")
+        pipeline.start_step("media", activity="Downloading")
+        pipeline.fail_step("media", "Storage is full. Free or add disk space, then resume.")
+    # The final run, rather than the ephemeral shared status file, is authoritative.
+    paths.activity_status_file.unlink()
+    client = make_web_client(activity.router)
+    status = client.get("/api/activity/status").json()
+    assert status["active"] is False
+    assert status["last_snapshot"]["title"] == "tweetnook import enrich"
+    assert status["last_snapshot"]["success"] is False
+    assert status["last_snapshot"]["steps"][0]["state"] == "failed"
+    history = client.get("/api/activity/runs").json()["runs"]
+    assert history[0]["status"] == "failed"
+
+
+def test_newer_orphaned_run_cannot_be_hidden_by_an_older_success(tmp_path, make_web_client):
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    server_state["paths"] = paths
+    with PipelineReporter(
+        Console(file=StringIO()),
+        "tweetnook sync",
+        interactive=False,
+        state_path=paths.activity_status_file,
+    ):
+        pass
+    paths.activity_status_file.write_text(
+        json.dumps(
+            {
+                "run_id": "later-unrecorded-run",
+                "title": "tweetnook import enrich",
+                "pid": 2**31 - 1,
+                "running": True,
+                "started_at": 2**40,
+                "steps": [],
+            }
+        )
+    )
+    status = make_web_client(activity.router).get("/api/activity/status").json()
+    assert status["active"] is False
+    assert status["last_snapshot"]["run_id"] == "later-unrecorded-run"
+    assert status["last_snapshot"]["success"] is None

@@ -33,6 +33,13 @@ class NoticeStore:
         except (OSError, ValueError):
             self.items = []
 
+    def _save(self):
+        try:
+            atomic_json(self.path, self.items)
+        except OSError:
+            # Keep notices readable while a full/read-only volume prevents persistence.
+            pass
+
     def add(self, notice_id, title, message, *, severity="error", action="activity", run_id=None):
         with self.lock:
             if any(item["id"] == notice_id for item in self.items):
@@ -51,7 +58,7 @@ class NoticeStore:
                 item["run_id"] = run_id
             self.items.append(item)
             self.items = self.items[-100:]
-            atomic_json(self.path, self.items)
+            self._save()
 
     def list(self):
         with self.lock:
@@ -65,7 +72,7 @@ class NoticeStore:
             for item in changed:
                 item["dismissed"] = True
             if changed:
-                atomic_json(self.path, self.items)
+                self._save()
             return bool(changed)
 
     def dismiss_all(self):
@@ -74,7 +81,7 @@ class NoticeStore:
             for item in changed:
                 item["dismissed"] = True
             if changed:
-                atomic_json(self.path, self.items)
+                self._save()
             return len(changed)
 
     def clear_dismissed(self):
@@ -84,5 +91,5 @@ class NoticeStore:
             removed = len(self.items) - len(kept)
             if removed:
                 self.items = kept
-                atomic_json(self.path, self.items)
+                self._save()
             return removed

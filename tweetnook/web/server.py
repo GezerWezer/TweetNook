@@ -196,7 +196,11 @@ async def lifespan(app: FastAPI):
                 if setup_job and (store := server_state.get("store")) is not None:
                     # A new archive should not show its pre-import report until tomorrow.
                     web_stats_cache.start_refresh(store)
-                if exit_code != 0 and run.get("status") != "stopped" and not setup_job:
+                if (
+                    (exit_code != 0 or run.get("success") is not True)
+                    and run.get("status") != "stopped"
+                    and not setup_job
+                ):
                     action = (
                         "setup"
                         if coordinator and run_id == coordinator.state.archive_init_run_id

@@ -19,12 +19,18 @@ from tweetnook.activity_history import (
     read_run,
     read_run_log,
     read_run_log_since,
+    terminal_snapshot,
 )
 from tweetnook.config import ScheduleConfig, update_config_values
 from tweetnook.job_supervisor import JobConflictError
 from tweetnook.web.deps import server_state, verify_credentials
 
 router = APIRouter(prefix="/api/activity", tags=["activity"])
+ARCHIVE_PIPELINE_TITLES = {
+    "tweetnook sync",
+    "tweetnook import enrich",
+    "tweetnook import x-archive",
+}
 
 
 class ImportRequest(BaseModel):
@@ -114,18 +120,33 @@ def get_activity_status(
     last_snapshot = None
     if snapshot is None:
         last_snapshot = (
-            latest_finished_snapshot(data_dir, title="tweetnook sync")
+            latest_finished_snapshot(data_dir, titles=ARCHIVE_PIPELINE_TITLES)
             if data_dir is not None
             else None
         )
-        if last_snapshot is None:
-            candidate = _read_snapshot()
-            if (
-                candidate is not None
-                and not candidate.get("running")
-                and candidate.get("title") == "tweetnook sync"
+        candidate = _read_snapshot()
+        if candidate is not None and candidate.get("title") in ARCHIVE_PIPELINE_TITLES:
+            if last_snapshot is None or (
+                candidate.get("run_id") != last_snapshot.get("run_id")
+                and (candidate.get("started_at") or 0) > (last_snapshot.get("started_at") or 0)
             ):
-                last_snapshot = candidate
+                last_snapshot = terminal_snapshot(candidate)
+                if candidate.get("running"):
+                    last_snapshot.update(
+                        success=None,
+                        summary="The worker ended before its final result was saved. "
+                        "Check disk space and review the log, then resume.",
+                    )
+        supervisor = server_state.get("job_supervisor")
+        result = getattr(supervisor, "last_result", None)
+        if result and isinstance(result.get("snapshot"), dict):
+            fallback = result["snapshot"]
+            if (
+                last_snapshot is None
+                or fallback.get("run_id") == last_snapshot.get("run_id")
+                or (fallback.get("updated_at") or 0) > (last_snapshot.get("updated_at") or 0)
+            ):
+                last_snapshot = fallback
     return {
         "active": snapshot is not None,
         "snapshot": snapshot,

@@ -73,3 +73,21 @@ async def test_locked_archive_job_loads_context_and_errors_when_archive_missing(
     with pytest.raises(ConfigError, match="No local archive found."):
         async with jobs.locked_archive_job():
             raise AssertionError("context should not yield without an archive")
+
+
+@pytest.mark.asyncio
+async def test_full_database_aborts_job_and_releases_store_and_lock(paths, config, monkeypatch):
+    import sqlite3
+
+    from tweetnook.locking import ProcessLock
+    from tweetnook.resource_failure import StorageExhaustedError
+
+    store = _FakeStore()
+    monkeypatch.setattr(jobs, "open_archive_store", lambda *args, **kwargs: store)
+    with pytest.raises(StorageExhaustedError, match="Free or add disk space"):
+        async with jobs.locked_archive_job(config=config, paths=paths):
+            raise sqlite3.OperationalError("database or disk is full")
+    assert store.closed is True
+    lock = ProcessLock(paths.lock_file)
+    lock.acquire()
+    lock.release()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -59,6 +60,7 @@ class JobSupervisor:
         self._console_handle: Any | None = None
         self._monitor_thread: threading.Thread | None = None
         self._shutdown = False
+        self.last_result: dict[str, Any] | None = None
 
     @property
     def active(self) -> bool:
@@ -132,13 +134,17 @@ class JobSupervisor:
             self._origin = origin
             self._stopping = False
             self._console_handle = console_handle
-            update_run_metadata(
-                self.paths.data_dir,
-                run_id,
-                status="starting",
-                pid=process.pid,
-                process_group=process.pid,
-            )
+            try:
+                update_run_metadata(
+                    self.paths.data_dir,
+                    run_id,
+                    status="starting",
+                    pid=process.pid,
+                    process_group=process.pid,
+                )
+            except OSError:
+                # Once launched, a worker must always have its monitor installed.
+                logging.getLogger(__name__).exception("Could not save worker PID")
             self._monitor_thread = threading.Thread(
                 target=self._monitor,
                 args=(process, run_id),
@@ -218,26 +224,49 @@ class JobSupervisor:
                 130,
                 -signal.SIGINT,
             }
-            mark_run_process_result(
-                self.paths.data_dir,
-                run_id,
-                exit_code=exit_code,
-                stopped=stopped,
-            )
             handle = self._console_handle if self._run_id == run_id else None
-            if self._run_id == run_id:
-                self._process = None
-                self._run_id = None
-                self._kind = None
-                self._origin = None
-                self._stopping = False
-                self._console_handle = None
+            try:
+                self.last_result = mark_run_process_result(
+                    self.paths.data_dir,
+                    run_id,
+                    exit_code=exit_code,
+                    stopped=stopped,
+                )
+            except OSError:
+                logging.getLogger(__name__).exception("Could not record worker result")
+                self.last_result = {
+                    "run_id": run_id,
+                    "snapshot": {
+                        "run_id": run_id,
+                        "running": False,
+                        "stopped": stopped,
+                        "success": False if exit_code else None,
+                        "summary": "The worker ended, but its final result could not be saved. "
+                        "Check disk space, then resume. Saved progress is preserved.",
+                        "steps": [],
+                    },
+                }
+            finally:
+                if self._run_id == run_id:
+                    self._process = None
+                    self._run_id = None
+                    self._kind = None
+                    self._origin = None
+                    self._stopping = False
+                    self._console_handle = None
         if handle is not None:
-            handle.close()
-        cleanup_runs(
-            self.paths.data_dir,
-            max_runs=self.config.activity.max_runs,
-            retention_days=self.config.activity.retention_days,
-        )
-        if self.on_complete is not None:
-            self.on_complete(run_id, exit_code)
+            try:
+                handle.close()
+            except OSError:
+                pass
+        try:
+            cleanup_runs(
+                self.paths.data_dir,
+                max_runs=self.config.activity.max_runs,
+                retention_days=self.config.activity.retention_days,
+            )
+        except OSError:
+            logging.getLogger(__name__).exception("Could not clean activity history")
+        finally:
+            if self.on_complete is not None:
+                self.on_complete(run_id, exit_code)
