@@ -2021,6 +2021,7 @@ function tweetApp() {
         setupSkipAuth: false,
         setupPassword: '',
         setupPasswordConfirm: '',
+        setupNoPassword: false,
         setupFinishing: false,
         setupError: '',
         setupPolling: false,
@@ -5894,6 +5895,7 @@ function tweetApp() {
 
         get setupCanFinish() {
             if (this.setupFinishing) return false;
+            if (this.setupNoPassword) return true;
             if (!this.setupPasswordRequired && !this.setupPassword) return true;
             return !!this.setupPassword && this.setupPassword === this.setupPasswordConfirm;
         },
@@ -6007,6 +6009,11 @@ function tweetApp() {
             await this.setupReplayRequest('PUT', '/api/setup/replay/placeholder-media', { placeholder_media: value });
         },
 
+        get setupNoPasswordWarning() {
+            const reach = 'Anyone who can reach the TweetNook server, such as other devices on your network, can open your archive and change its settings.';
+            return this.setupData?.web?.password_configured ? `${reach} Your current password is removed.` : reach;
+        },
+
         skipSetupAuth() {
             this.setupSkipAuth = true;
             this.goToSetupStep(3);
@@ -6103,7 +6110,8 @@ function tweetApp() {
                     this.setupArchiveChoice = null;
                 }
                 const body = { skip_auth: this.setupSkipAuth };
-                if (!this.setupData?.web?.password_configured || this.setupPassword) {
+                if (this.setupNoPassword) body.no_password = true;
+                else if (!this.setupData?.web?.password_configured || this.setupPassword) {
                     body.password = this.setupPassword;
                     body.confirm_password = this.setupPasswordConfirm;
                 }

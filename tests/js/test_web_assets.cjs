@@ -3311,6 +3311,18 @@ test('setup password step validates matching passwords before finishing', async 
     // An existing password may be kept by leaving both fields empty.
     app.setupData.web.password_configured = true;
     assert.equal(app.setupCanFinish, true);
+
+    // No password is an explicit choice; typed passwords are not sent with it.
+    app.setupData.web = { password_configured: false };
+    app.setupPassword = 'secret-1';
+    app.setupPasswordConfirm = 'other';
+    app.setupNoPassword = true;
+    assert.equal(app.setupCanFinish, true);
+    assert.match(app.setupNoPasswordWarning, /other devices on your network/);
+    app.setupData.web = { password_configured: true };
+    assert.match(app.setupNoPasswordWarning, /other devices on your network.*current password is removed/);
+    await app.finishSetup();
+    assert.deepEqual(bodies.at(-1), { skip_auth: false, no_password: true });
 });
 
 test('setup cookie help loads the generated guide and opens on the current browser', async () => {
