@@ -2054,6 +2054,8 @@ body {
 .setup-archive-summary { margin: 0 0 16px; }
 .setup-archive-summary > svg { color: var(--text-secondary); }
 .setup-fields { display: flex; flex-direction: column; gap: 16px; }
+.setup-password-fields { min-width: 0; margin: 0; padding: 0; border: 0; transition: opacity 120ms ease; }
+.setup-password-fields:disabled { opacity: .5; }
 .setup-field {
     display: flex;
     align-items: center;

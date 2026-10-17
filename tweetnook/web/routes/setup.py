@@ -533,6 +533,8 @@ class CompleteRequest(BaseModel):
     password: str | None = None
     confirm_password: str | None = None
     skip_auth: bool = False
+    # An explicit choice to open TweetNook without a password; any stored one is removed.
+    no_password: bool = False
 
 
 def _finish_setup(request):
@@ -548,13 +550,24 @@ def _finish_setup(request):
                 status_code=409, detail="Connect Twitter/X or explicitly skip connecting."
             )
         password_hash = server_state.get("password_hash")
+        if request.no_password and request.password is not None:
+            raise HTTPException(
+                status_code=422, detail="Choose a password or no password, not both."
+            )
         if request.password is not None:
             if not request.password or request.password != request.confirm_password:
                 raise HTTPException(status_code=422, detail="Enter matching, nonempty passwords.")
             password_hash = hashlib.sha256(request.password.encode("utf-8")).hexdigest()
-        if not password_hash:
-            raise HTTPException(status_code=422, detail="Create a Web password to finish Setup.")
-        if request.password is not None:
+        if request.no_password:
+            password_hash = None
+        elif not password_hash:
+            raise HTTPException(
+                status_code=422, detail="Create a Web password or choose no password."
+            )
+        password_changed = request.password is not None or (
+            request.no_password and server_state.get("password_hash")
+        )
+        if password_changed:
             update_config_values(coordinator.paths, {"web.password_hash": password_hash})
             config, _ = load_config()
             server_state["config"] = config
@@ -562,7 +575,7 @@ def _finish_setup(request):
         coordinator.complete_walkthrough(skip_auth=request.skip_auth)
         server_state["password_hash"] = password_hash
         coordinator.reconcile()
-    return {"completed": True, "reload": initial or request.password is not None}
+    return {"completed": True, "reload": initial or bool(password_changed)}
 
 
 @router.put("/password")

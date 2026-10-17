@@ -106,6 +106,32 @@ def test_fresh_server_empty_choice_password_and_live_attachment(first_run):
         assert first_run.setup_state_file.read_bytes() == before
 
 
+def test_setup_can_finish_without_a_password_and_later_remove_one(first_run):
+    with TestClient(server.app) as client:
+        assert client.get("/api/setup").json()["web"] == {"password_configured": False}
+        assert client.post("/api/setup/archive/empty").status_code == 200
+        both = {"skip_auth": True, "no_password": True, "password": "x", "confirm_password": "x"}
+        assert client.post("/api/setup/complete", json=both).status_code == 422
+
+        response = client.post("/api/setup/complete", json={"skip_auth": True, "no_password": True})
+
+        assert response.status_code == 200
+        assert response.json() == {"completed": True, "reload": True}
+        assert client.get("/api/tweets").status_code == 200
+        assert client.get("/api/setup").json()["web"]["password_configured"] is False
+
+        # Rerunning Setup can add a password, then remove it again.
+        added = {"password": "test-secret", "confirm_password": "test-secret"}
+        assert client.post("/api/setup/complete", json=added).json()["reload"] is True
+        assert client.get("/api/tweets").status_code == 401
+        removed = client.post(
+            "/api/setup/complete", json={"no_password": True}, auth=("any", "test-secret")
+        )
+        assert removed.json() == {"completed": True, "reload": True}
+        assert client.get("/api/tweets").status_code == 200
+        assert "password_hash" not in first_run.config_file.read_text(encoding="utf-8")
+
+
 def test_upgrade_recognizes_existing_sqlite(first_run):
     store = open_archive_store(first_run, create=True)
     store.close()
