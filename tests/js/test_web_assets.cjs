@@ -5706,7 +5706,11 @@ test('activity polling adapts to idle and visibility while its elapsed clock sta
     context.clearInterval = id => intervals.delete(id);
     let requests = 0;
     let data = {active: true, snapshot: {run_id: 'one', started_at: 90, steps: []}};
-    context.fetch = async () => { requests++; return {ok: true, json: async () => JSON.parse(JSON.stringify(data))}; };
+    context.fetch = async url => {
+        if (url === '/api/stats/enrichment-incomplete') return {ok: true, json: async () => ({incomplete: 0})};
+        requests++;
+        return {ok: true, json: async () => JSON.parse(JSON.stringify(data))};
+    };
     const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.startActivityPolling();
@@ -5769,6 +5773,55 @@ test('incomplete enrichment starts the fixed Web action and refreshes status', a
     assert.equal(enrichmentRefreshes, 1);
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     assert.match(html, /Continue enrichment/);
+});
+
+test('enrichment completion refreshes pending work before showing a reminder', async () => {
+    const context = browserContext();
+    let finishCount;
+    context.fetch = async url => {
+        if (url === '/api/stats/enrichment-incomplete') {
+            return {ok: true, json: () => new Promise(resolve => { finishCount = resolve; })};
+        }
+        assert.equal(url, '/api/activity/status');
+        return {ok: true, json: async () => ({active: false})};
+    };
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.setupForced = false;
+    app.archiveEnrichmentIncomplete = 10;
+    app.activity = {run_id: 'enrichment', title: 'tweetnook import enrich'};
+    assert.equal(app.showArchiveEnrichmentReminder, false);
+    await app.fetchActivityStatus();
+    assert.equal(app.activity, null);
+    assert.equal(app.showArchiveEnrichmentReminder, false);
+    finishCount({incomplete: 0});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(app.archiveEnrichmentIncomplete, 0);
+    assert.equal(app.showArchiveEnrichmentReminder, false);
+    app.archiveEnrichmentIncomplete = 2;
+    assert.equal(app.showArchiveEnrichmentReminder, true);
+    app.activityStartPending = true;
+    assert.equal(app.showArchiveEnrichmentReminder, false);
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.match(html, /x-show="showArchiveEnrichmentReminder"/);
+    assert.doesNotMatch(html, /role="status">Archive enrichment is running in the background/);
+});
+
+test('a slow enrichment count cannot overwrite the completion refresh', async () => {
+    const context = browserContext();
+    const counts = [];
+    context.fetch = async () => ({ok: true, json: () => new Promise(resolve => counts.push(resolve))});
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const older = app.fetchArchiveEnrichmentStatus();
+    const newer = app.fetchArchiveEnrichmentStatus();
+    await new Promise(resolve => setImmediate(resolve));
+    counts[1]({incomplete: 0});
+    await newer;
+    counts[0]({incomplete: 50});
+    await older;
+    assert.equal(app.archiveEnrichmentIncomplete, 0);
+    assert.equal(app.archiveEnrichmentRefreshing, false);
 });
 
 test('schedule settings load, normalize, and save through the activity API', async () => {

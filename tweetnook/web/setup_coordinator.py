@@ -245,18 +245,28 @@ class SetupCoordinator:
                             "Retry enrichment from Activity.",
                         )
             enrich_run = self._run(self.state.auto_enrich_run_id)
+            enrich_finishing = bool(
+                self.state.auto_enrich_run_id
+                and supervisor.active_run_id == self.state.auto_enrich_run_id
+            )
             if (
                 self.state.auto_enrich_run_id
                 and not supervisor.active
+                and not enrich_finishing
                 and (not enrich_run or enrich_run.get("status") not in {"completed", "stopped"})
             ):
                 self.notices.add(
                     f"enrich-{self.state.auto_enrich_run_id}",
-                    "Enrichment needs attention",
-                    "Enrichment was interrupted or failed. "
-                    "Pending tweets can be retried from Activity.",
+                    "Enrichment task needs attention",
+                    "Enrichment or its automatic sync did not finish. "
+                    "Saved progress is preserved. Open Activity to review the failed step.",
                     run_id=self.state.auto_enrich_run_id,
                 )
+            elif enrich_run and enrich_run.get("status") in {"completed", "stopped"}:
+                self.notices.dismiss(f"enrich-{self.state.auto_enrich_run_id}")
+                # Log retention must not turn a successful run into an interruption.
+                self.state.auto_enrich_run_id = None
+                self.save()
             self.start_scheduler()
 
     def complete_walkthrough(self, *, skip_auth=False):

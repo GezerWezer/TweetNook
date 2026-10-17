@@ -1059,6 +1059,70 @@ async def test_collection_scoped_duplicate_detection(paths, config: AppConfig, a
     assert result.pages_fetched == 2
 
 
+@pytest.mark.parametrize("collection", ["likes", "tweets"])
+@pytest.mark.parametrize("prior_head", [None, "98", "97"])
+async def test_imported_membership_is_not_a_live_sync_boundary(
+    paths, config, auth_bundle, collection, prior_head
+) -> None:
+    _save_query_ids(paths)
+    storage_type = {"likes": "like", "tweets": "tweet"}[collection]
+    operation = {"likes": "Likes", "tweets": "UserTweets"}[collection]
+    response_for = {"likes": make_likes_response, "tweets": make_user_tweets_response}[collection]
+    store = open_archive_store(paths, create=True)
+    imported = TimelineTweet(
+        tweet_id="100",
+        text="imported",
+        author_id="42",
+        author_username="owner",
+        author_display_name="Owner",
+        created_at="date",
+        sort_index="-1",
+        raw_json=make_tweet_result("100", "imported"),
+    )
+    store.merge_rows([store._tweet_record(imported, storage_type, source="x_archive")])
+    store.persist_tweet_detail(tweet=imported, raw_json={"enriched": True})
+    assert store.get_collection_tweet_ids(storage_type) == {"100"}
+    if prior_head:
+        store.set_sync_state(storage_type, last_head_tweet_id=prior_head)
+    store.close()
+    pages = []
+
+    async def handler(request):
+        _, variables = _op_and_variables(request)
+        cursor = variables.get("cursor")
+        if variables["count"] == 1:
+            return httpx.Response(200, json=response_for(["100"]), request=request)
+        pages.append(cursor)
+        if cursor is None:
+            payload = response_for(["101", "100"], cursor="c1")
+        elif cursor == "c1":
+            payload = response_for(["99"], cursor="c2")
+        else:
+            assert cursor == "c2"
+            payload = response_for(["98"])
+        return httpx.Response(200, json=payload, request=request)
+
+    result = await sync_collection(
+        collection,
+        full=False,
+        limit=None,
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        query_ids={operation: "query"},
+        transport=httpx.MockTransport(handler),
+        console=_console(),
+        sleep=lambda _: asyncio.sleep(0),
+    )
+    assert result.pages_fetched == 3
+    assert pages == [None, "c1", "c2"]
+    store = open_archive_store(paths, create=False)
+    try:
+        assert store.get_collection_tweet_ids(storage_type) == {"101", "100", "99", "98"}
+    finally:
+        store.close()
+
+
 @pytest.mark.asyncio
 async def test_duplicate_detection_stops_sync(paths, config: AppConfig, auth_bundle) -> None:
     """After a full sync, a normal re-sync should stop on the first page (all dupes)."""

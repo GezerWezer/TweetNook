@@ -1285,7 +1285,10 @@ def import_x_archive_command(
 
 @import_app.command(
     "enrich",
-    help="Process every archive TweetDetail row eligible when the command starts.",
+    help=(
+        "Process every archive TweetDetail row eligible when the command starts, "
+        "then sync the configured collections past saved tweets to fill timeline gaps."
+    ),
 )
 def import_archive_enrich(
     limit: Annotated[
@@ -1321,16 +1324,39 @@ def import_archive_enrich(
                 detail="stable command-start snapshot of eligible sparse archive tweets",
                 rate_unit="tweets/s",
             )
+            followups = SyncFollowupPlan()
+            plan_sync_pipeline(
+                pipeline,
+                config=config,
+                collections=config.sync.collections,
+                followups=followups,
+                head_only=False,
+            )
             auth_bundle = resolve_auth_bundle(config)
-            result = asyncio.run(
-                enrich_imported_archive(
+
+            async def enrich_then_sync():
+                result = await enrich_imported_archive(
                     limit=limit,
                     config=config,
                     paths=paths,
                     auth_bundle=auth_bundle,
                     console=console,
                 )
-            )
+                # Walk through saved tweets to repair gaps left by archive import
+                # or an earlier short sync, without resetting archived data.
+                synced = await sync_all(
+                    full=False,
+                    backfill=True,
+                    limit=None,
+                    config=config,
+                    paths=paths,
+                    auth_bundle=auth_bundle,
+                    console=console,
+                    followups=followups,
+                )
+                return result, synced
+
+            result, synced = asyncio.run(enrich_then_sync())
             if pipeline.step_state("archive-enrich") == "pending" and not pipeline.has_final_note:
                 pipeline.final_note(
                     "archive enrich: existing imported archive data. "
@@ -1341,6 +1367,14 @@ def import_archive_enrich(
                         warning,
                         dedupe_key=f"archive-enrich:{warning.split(':', 1)[0]}",
                     )
+            if synced.exit_code:
+                pipeline.finish(
+                    "Archive enrichment saved; automatic sync did not finish. "
+                    + "; ".join(f"{name}: {error}" for name, error in synced.errors.items()),
+                    success=False,
+                )
+        if synced.exit_code:
+            raise typer.Exit(synced.exit_code)
     except ArchiveEnrichmentInterrupted as exc:
         console.print("Archive enrichment was interrupted.", highlight=False)
         console.print(f"{exc.remaining:,} tweets remain incomplete.", highlight=False)
