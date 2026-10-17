@@ -110,6 +110,9 @@
 .cs-seg:is(:hover, :focus-visible) .cs-track { transform: scaleY(1.65); }
 .cs-seg:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
 .cs-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--accent-color); transition: width 240ms ease; }
+.cs-seg.is-indeterminate .cs-fill { transition: none; animation: nook-sync-bounce 1.2s ease-in-out infinite alternate; }
+@keyframes nook-sync-bounce { from { transform: translateX(0); } to { transform: translateX(233.333333%); } }
+@media (prefers-reduced-motion: reduce) { .cs-seg.is-indeterminate .cs-fill { animation: none; transform: translateX(116.666667%); } }
 .cs-seg.is-active .cs-track { background: color-mix(in srgb, var(--accent-color) 28%, var(--border-color)); }
 .cs-seg.is-skipped .cs-fill, .cs-seg.is-paused .cs-fill { background: var(--text-secondary); }
 .cs-seg.is-failed .cs-track, .cs-seg.is-cancelled .cs-track { background: color-mix(in srgb, var(--destructive-color) 28%, var(--border-color)); }

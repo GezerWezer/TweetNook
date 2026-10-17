@@ -157,12 +157,16 @@ function nookSyncPanel() {
     },
     stepState(step) { return step?.paused && step.state === 'failed' ? 'paused' : this.activitySegmentState(step); },
     stepStateLabel(step) { return { active: 'in progress', complete: 'complete', failed: 'failed', paused: 'paused', cancelled: 'canceled', skipped: 'skipped', pending: 'waiting' }[this.stepState(step)] || 'waiting'; },
+    indeterminate(step) {
+      return this.stepState(step) === 'active' && (step.show_progress === false || !Number.isFinite(Number(step.total)) || Number(step.total) <= 0);
+    },
     segClass(step) {
       const state = this.stepState(step);
-      return `is-${state === 'pending' ? 'waiting' : state}${state === 'active' ? ' is-current' : ''}`;
+      return `is-${state === 'pending' ? 'waiting' : state}${state === 'active' ? ' is-current' : ''}${this.indeterminate(step) ? ' is-indeterminate' : ''}`;
     },
     fill(step) {
       const state = this.stepState(step);
+      if (this.indeterminate(step)) return 30;
       if (state === 'active') return Math.round(this.activityPercent(step));
       return state === 'pending' ? 0 : 100;
     },
@@ -185,7 +189,7 @@ function nookSyncPanel() {
     describe(step) {
       const state = this.stepState(step), summary = String(step.summary || '');
       const first = summary.split(' · ')[0];
-      if (state === 'active') return { left: step.activity || step.title, right: step.total ? `${Number(step.completed || 0).toLocaleString()} / ${Number(step.total).toLocaleString()}` : '' };
+      if (state === 'active') return { left: step.activity || step.title, right: this.indeterminate(step) ? '' : `${Number(step.completed || 0).toLocaleString()} / ${Number(step.total).toLocaleString()}` };
       const reason = String(step.reason || '').replace(/^./, c => c.toUpperCase());
       if (state === 'skipped') return { left: step.title, right: 'Skipped', sub: reason || summary.replace(/^skipped due to /i, '').replace(/^./, c => c.toUpperCase()) };
       if (state === 'pending') return { left: step.title, right: 'Waiting' };
