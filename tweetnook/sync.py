@@ -893,7 +893,13 @@ async def _run_auto_followups(
                 f"{result.failed} failed",
             )
 
-    if plan.enabled and plan.unfurl:
+    skip_previews = bool(config.replay.url and config.replay.skip_link_previews)
+    if plan.enabled and plan.unfurl and skip_previews:
+        pipeline = current_pipeline()
+        if pipeline is not None and pipeline.has_step("urls"):
+            pipeline.skip_step("urls", "link previews being disabled for this replay sync")
+        _log_sync_followup(console, "link previews skipped by developer replay setting")
+    if plan.enabled and plan.unfurl and not skip_previews:
         _log_sync_followup(console, "running unfurl")
         try:
             result = await _run_followup_unfurl(

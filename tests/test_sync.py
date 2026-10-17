@@ -85,6 +85,39 @@ async def test_sync_skips_only_quote_expansion_when_replay_option_is_enabled(
     assert calls[0]["limit"] is None
 
 
+@pytest.mark.parametrize("connected,skip", [(True, True), (True, False), (False, True)])
+async def test_replay_can_skip_only_link_previews(
+    paths, config, auth_bundle, monkeypatch, connected, skip
+):
+    config.replay.url = "http://replay.test" if connected else None
+    config.replay.skip_link_previews = skip
+    calls = []
+
+    async def previews(**kwargs):
+        calls.append("previews")
+        return SimpleNamespace(processed=1, updated=1, failed=0)
+
+    monkeypatch.setattr(sync_module, "_run_followup_unfurl", previews)
+    plan = SyncFollowupPlan(
+        threads=False, resurrection=False, articles=False, media=False, tagging=False
+    )
+    reporter = PipelineReporter(_console(), "sync", interactive=False)
+    with reporter:
+        plan_sync_pipeline(reporter, config=config, collections=[], followups=plan, head_only=False)
+        await sync_module._run_auto_followups(
+            plan=plan,
+            config=config,
+            paths=paths,
+            auth_bundle=auth_bundle,
+            transport=None,
+            console=_console(),
+            sleep=asyncio.sleep,
+        )
+        assert calls == ([] if connected and skip else ["previews"])
+        if connected and skip:
+            assert reporter.step_state("urls") == "skipped"
+
+
 def test_sync_pipeline_is_fully_planned_before_work_and_filters_disabled_followups() -> None:
     reporter = PipelineReporter(_console(), "sync", interactive=False)
     config = AppConfig()

@@ -98,6 +98,7 @@ def _replay_config_changes(replay: ReplayConfig) -> dict[str, object]:
         "replay.password": replay.password,
         "replay.placeholder_media": replay.placeholder_media,
         "replay.skip_quote_expansion": replay.skip_quote_expansion,
+        "replay.skip_link_previews": replay.skip_link_previews,
     }
 
 
@@ -227,6 +228,7 @@ def _dev_payload(config: AppConfig) -> dict[str, object]:
             "password": MASKED_SECRET if replay.password else None,
             "placeholder_media": replay.placeholder_media,
             "skip_quote_expansion": replay.skip_quote_expansion,
+            "skip_link_previews": replay.skip_link_previews,
             "status": _read_replay_status(server_state.get("paths")) if connected else None,
         },
     }
@@ -239,6 +241,7 @@ class ReplaySourceRequest(BaseModel):
     password: str | None = None
     placeholder_media: bool | None = None
     skip_quote_expansion: bool | None = None
+    skip_link_previews: bool | None = None
 
 
 class ReplayMediaRequest(BaseModel):
@@ -251,6 +254,12 @@ class ReplayQuoteExpansionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     skip_quote_expansion: bool
+
+
+class ReplayLinkPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    skip_link_previews: bool
 
 
 def _require_dev_tools() -> XDGPaths:
@@ -352,6 +361,11 @@ def put_replay_source(
                     if request.skip_quote_expansion is None
                     else request.skip_quote_expansion
                 ),
+                skip_link_previews=(
+                    current.skip_link_previews
+                    if request.skip_link_previews is None
+                    else request.skip_link_previews
+                ),
             )
         ),
     )
@@ -381,6 +395,18 @@ def put_replay_skip_quote_expansion(
     config = _apply_replay_config(
         paths, {"replay.skip_quote_expansion": request.skip_quote_expansion}
     )
+    return _dev_payload(config)
+
+
+@router.put("/replay/skip-link-previews")
+def put_replay_skip_link_previews(
+    request: ReplayLinkPreviewRequest,
+    _auth: Annotated[bool, Depends(verify_credentials)],
+) -> dict[str, object]:
+    paths = _require_dev_tools()
+    if not load_config()[0].replay.url:
+        raise HTTPException(status_code=409, detail="No replay source is connected.")
+    config = _apply_replay_config(paths, {"replay.skip_link_previews": request.skip_link_previews})
     return _dev_payload(config)
 
 
@@ -568,8 +594,10 @@ def put_setup_schedule(
     auth = _archive_auth(current.auth)
     coordinator = server_state.get("setup_coordinator")
     connected = bool(coordinator and coordinator.state.auth_verified)
-    if connected and {"likes", "tweets"}.intersection(request.collections) and not (
-        auth.user_id and auth.user_id.isdecimal()
+    if (
+        connected
+        and {"likes", "tweets"}.intersection(request.collections)
+        and not (auth.user_id and auth.user_id.isdecimal())
     ):
         raise HTTPException(
             status_code=422,

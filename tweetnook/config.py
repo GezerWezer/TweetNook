@@ -232,6 +232,7 @@ class ReplayConfig(BaseModel):
     password: str | None = None
     placeholder_media: bool = True
     skip_quote_expansion: bool = False
+    skip_link_previews: bool = False
 
 
 class AppConfig(BaseModel):

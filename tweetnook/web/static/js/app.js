@@ -2065,7 +2065,7 @@ function tweetApp() {
         setupStartingImport: false,
         setupConfirm: null,
         setupHelp: null,
-        setupReplayForm: { url: '', password: '', placeholder_media: true, skip_quote_expansion: false },
+        setupReplayForm: { url: '', password: '', placeholder_media: true, skip_quote_expansion: false, skip_link_previews: false },
         setupReplaySaving: false,
         setupReplayError: '',
         setupHelpOpen: false,
@@ -6058,6 +6058,12 @@ function tweetApp() {
                 : !!this.setupReplayForm.skip_quote_expansion;
         },
 
+        get setupReplaySkipPreviews() {
+            return this.setupReplayConnected
+                ? !!this.setupData.dev.replay.skip_link_previews
+                : !!this.setupReplayForm.skip_link_previews;
+        },
+
         get setupReplaySummary() {
             const replay = this.setupData?.dev?.replay;
             if (!replay?.connected) return '';
@@ -6093,8 +6099,8 @@ function tweetApp() {
 
         async connectSetupReplay() {
             if (this.setupReplaySaving || !this.setupReplayForm.url.trim()) return;
-            const { url, password, placeholder_media, skip_quote_expansion } = this.setupReplayForm;
-            if (await this.setupReplayRequest('PUT', '/api/setup/replay', { url: url.trim(), password, placeholder_media, skip_quote_expansion })) {
+            const { url, password, placeholder_media, skip_quote_expansion, skip_link_previews } = this.setupReplayForm;
+            if (await this.setupReplayRequest('PUT', '/api/setup/replay', { url: url.trim(), password, placeholder_media, skip_quote_expansion, skip_link_previews })) {
                 this.setupReplayForm.password = '';
             }
         },
@@ -6119,6 +6125,14 @@ function tweetApp() {
                 return;
             }
             await this.setupReplayRequest('PUT', '/api/setup/replay/skip-quote-expansion', { skip_quote_expansion: value });
+        },
+
+        async setSetupReplaySkipPreviews(value) {
+            if (!this.setupReplayConnected) {
+                this.setupReplayForm.skip_link_previews = value;
+                return;
+            }
+            await this.setupReplayRequest('PUT', '/api/setup/replay/skip-link-previews', { skip_link_previews: value });
         },
 
         get setupNoPasswordWarning() {
