@@ -912,6 +912,8 @@ function tweetApp() {
         activityStartPending: false,
         activityStartingKind: null,
         activityError: null,
+        feedUpdateAvailable: false,
+        feedContentRevision: 0,
         activityDrawerOpen: false,
         activityPageKey: null,
         activityPageDirection: 'forward',
@@ -936,6 +938,9 @@ function tweetApp() {
                     request.controller.abort();
                 }, 10000);
                 try {
+                    const priorCommittedStages = new Set((this.displayActivity?.steps || [])
+                        .filter(step => step.state === 'complete')
+                        .map(step => `${this.displayActivity.run_id}:${step.key}`));
                     const previousActiveStepKey = this.activity?.active_step
                         || this.activity?.steps?.find(step => step.state === 'active')?.key
                         || null;
@@ -970,6 +975,20 @@ function tweetApp() {
                         this.activity = null;
                         if (lastActivity?.stopped && !this.activityPageKey && previousActiveStepKey) {
                             this.activityPageKey = previousActiveStepKey;
+                        }
+                    }
+                    const committed = data.active ? data.snapshot : data.last_snapshot;
+                    if ((committed?.steps || []).some(step => step.state === 'complete'
+                        && (step.key?.startsWith('sync:') || ['archive-enrich', 'threads', 'resurrection', 'articles', 'media', 'urls'].includes(step.key))
+                        && !priorCommittedStages.has(`${committed.run_id}:${step.key}`))) {
+                        feedPages.clear();
+                        this.threadCache.clear();
+                        this.feedContentRevision++;
+                        this.feedUpdateAvailable = true;
+                        // Populate an empty open collection as soon as its stage commits.
+                        // Keep an occupied list stable while the user is reading it.
+                        if (this.archiveReady && !this.setupForced && this.viewMode === 'list' && !this.tweets.length) {
+                            this.fetchTweets();
                         }
                     }
                 } catch (error) {
@@ -3179,6 +3198,7 @@ function tweetApp() {
 
         async fetchTweets(append = false) {
             if (this.archiveReady === false || this.setupForced) return;
+            const contentRevision = this.feedContentRevision;
             const requestId = ++this.feedRequestId;
             const requestedPage = append ? this.page + 1 : 1;
             let url = this.feedUrl(requestedPage);
@@ -3239,6 +3259,7 @@ function tweetApp() {
                     this.renderFeedList(added, { append: true });
                 } else {
                     this.tweets = data.tweets;
+                    if (contentRevision === this.feedContentRevision) this.feedUpdateAvailable = false;
                     this.searchHighlightTerms = data.highlight_terms || [];
                     this.renderFeedList(data.tweets);
                     this.scheduleFeedPrefetch();
