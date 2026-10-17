@@ -223,7 +223,7 @@ def coordinator(first_run, monkeypatch):
 def test_import_auth_order_enriches_exactly_once(coordinator, auth_first):
     coord, jobs, store = coordinator
     coord.begin("import")
-    assert jobs.calls[0]["cli_args"][-1] == "--offline"
+    assert jobs.calls[0]["cli_args"][-1] == "--defer-followup"
     server_state["config"].auth.auth_token = "candidate"
     server_state["config"].auth.ct0 = "candidate-csrf"
     if auth_first:
@@ -234,6 +234,9 @@ def test_import_auth_order_enriches_exactly_once(coordinator, auth_first):
     if not auth_first:
         assert len(jobs.calls) == 1
         coord.auth_was_verified()
+    assert len(jobs.calls) == 1  # Connecting must not snapshot default collections.
+    coord.complete_walkthrough()
+    coord.reconcile()
     assert jobs.calls[-1]["cli_args"] == ["import", "enrich"]
     for _ in range(3):
         coord.reconcile()
@@ -251,6 +254,7 @@ def test_restart_completed_import_waits_for_verified_auth(coordinator):
     coord.paths.database_path.touch()
     jobs.finish()
     coord.state.auth_verified = True
+    coord.state.completed = True
     coord.save()
     server_state["config"].auth.auth_token = "candidate"
     server_state["config"].auth.ct0 = "candidate-csrf"
@@ -297,14 +301,20 @@ def test_interrupted_import_does_not_attach_partial_database(coordinator):
     assert len(jobs.calls) == 1
 
 
-def test_zero_pending_work_does_not_spawn_enrichment(coordinator):
+def test_zero_pending_details_still_waits_for_confirmed_first_sync(coordinator):
     coord, jobs, store = coordinator
     store.count_incomplete_initial_enrichment = lambda: 0
     coord.begin("import")
     coord.paths.database_path.touch()
     jobs.finish()
-    assert not coord.state.auto_enrich_requested
+    assert coord.state.auto_enrich_requested
+    server_state["config"].auth.auth_token = "candidate"
+    server_state["config"].auth.ct0 = "candidate-csrf"
+    coord.auth_was_verified()
     assert len(jobs.calls) == 1
+    coord.complete_walkthrough()
+    coord.reconcile()
+    assert jobs.calls[-1]["kind"] == "enrich"
 
 
 def test_migration_never_arms_enrichment(coordinator):
@@ -426,3 +436,23 @@ def test_real_offline_import_worker_attaches_archive(first_run, tmp_path, monkey
         assert status["archive"]["enrichment_state"] == "waiting_for_auth"
         assert len(list(first_run.activity_runs_dir.iterdir())) == 1
         assert first_run.media_dir.exists()
+
+
+def test_first_sync_uses_final_collection_choice(coordinator):
+    coord, jobs, _ = coordinator
+    coord.begin("import")
+    coord.paths.database_path.touch()
+    jobs.finish()
+    server_state["config"].auth.auth_token = "synthetic"
+    server_state["config"].auth.ct0 = "synthetic"
+    coord.auth_was_verified()
+    assert len(jobs.calls) == 1
+    server_state["config"].sync.collections = ["bookmarks"]
+    coord.reconcile()
+    assert len(jobs.calls) == 1
+    coord.complete_walkthrough()
+    coord.reconcile()
+    assert len(jobs.calls) == 2
+    assert server_state["config"].sync.collections == ["bookmarks"]
+    assert jobs.calls[-1]["kind"] == "enrich"
+    assert not server_state["config"].schedule.enabled

@@ -63,6 +63,22 @@ def _auth_payload(config: AuthConfig, *, verified: bool = False) -> dict[str, ob
     return {"configured": configured, "verified": verified, "values": values}
 
 
+def _archive_auth(config: AuthConfig) -> AuthConfig:
+    """Use the imported account identity only as a fallback for an unset ID."""
+    if config.user_id:
+        return config
+    store = server_state.get("store")
+    owner = (
+        store.get_archive_owner_id() if store and hasattr(store, "get_archive_owner_id") else None
+    )
+    if owner is None:
+        paths = server_state.get("paths")
+        replay = _read_replay_status(paths)
+        owner = replay.get("owner_user_id") if replay else None
+    owner = str(owner or "")
+    return config.model_copy(update={"user_id": owner}) if owner.isdecimal() else config
+
+
 def _candidate_auth(request: AuthUpdateRequest, current: AuthConfig) -> AuthConfig:
     values: dict[str, str | None] = {}
     for field, value in request.model_dump().items():
@@ -152,7 +168,7 @@ def get_setup(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, 
     return {
         **payload,
         "auth": _auth_payload(
-            config.auth,
+            _archive_auth(config.auth),
             verified=bool(coordinator and coordinator.state.auth_verified),
         ),
         "dev": _dev_payload(config),
@@ -385,7 +401,9 @@ def put_auth(
     if paths is None:
         raise HTTPException(status_code=503, detail="Setup storage is not initialized.")
     current, _ = load_config()
-    candidate = _candidate_auth(request, current.auth)
+    candidate = _archive_auth(_candidate_auth(request, current.auth))
+    if candidate.user_id and not candidate.user_id.isdecimal():
+        raise HTTPException(status_code=422, detail="X user ID must contain only digits.")
     if not candidate.auth_token or not candidate.ct0:
         raise HTTPException(
             status_code=422,
@@ -405,6 +423,8 @@ def put_auth(
         if field in {"auth_token", "ct0"} and value == MASKED_SECRET:
             continue
         changes[f"auth.{field}"] = value.strip() if isinstance(value, str) else value
+    if candidate.user_id:
+        changes["auth.user_id"] = candidate.user_id
     try:
         update_config_values(paths, changes)
         config, _ = load_config()
@@ -544,10 +564,25 @@ def put_setup_schedule(
     paths = server_state.get("paths")
     if paths is None:
         raise HTTPException(status_code=503, detail="Setup storage is not initialized.")
+    current, _ = load_config()
+    auth = _archive_auth(current.auth)
+    coordinator = server_state.get("setup_coordinator")
+    connected = bool(coordinator and coordinator.state.auth_verified)
+    if connected and {"likes", "tweets"}.intersection(request.collections) and not (
+        auth.user_id and auth.user_id.isdecimal()
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Likes and your own tweets require your numeric X user ID. "
+            "Return to Connect to enter it, import your official archive, "
+            "or select only Bookmarks.",
+        )
     changes: dict[str, object] = {
         f"schedule.{key}": value for key, value in request.schedule.model_dump().items()
     }
     changes["sync.collections"] = [c for c in SYNC_COLLECTION_ORDER if c in request.collections]
+    if auth.user_id and not current.auth.user_id:
+        changes["auth.user_id"] = auth.user_id
     try:
         update_config_values(paths, changes)
         config, _ = load_config()

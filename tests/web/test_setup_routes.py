@@ -26,6 +26,9 @@ class SetupStore:
     def count_incomplete_initial_enrichment(self) -> int:
         return self.pending
 
+    def get_archive_owner_id(self):
+        return getattr(self, "owner_id", None)
+
 
 def _paths(tmp_path: Path) -> XDGPaths:
     return ensure_paths(
@@ -104,7 +107,12 @@ def test_archive_upload_import_and_clear_are_real_guarded_actions(
             kwargs.pop("run_id")
             assert kwargs == {
                 "kind": "import",
-                "cli_args": ["import", "x-archive", str(paths.staged_archive_file), "--offline"],
+                "cli_args": [
+                    "import",
+                    "x-archive",
+                    str(paths.staged_archive_file),
+                    "--defer-followup",
+                ],
                 "origin": "web",
                 "title": "tweetnook import x-archive",
             }
@@ -154,7 +162,7 @@ def test_setup_import_can_skip_all_live_followup(tmp_path, make_web_client) -> N
                 "import",
                 "x-archive",
                 str(paths.staged_archive_file),
-                "--offline",
+                "--defer-followup",
             ]
             return {"started": True, "kind": "import", "run_id": kwargs["run_id"]}
 
@@ -295,3 +303,72 @@ def test_setup_schedule_saves_before_the_scheduler_starts(
 
     rejected = client.put("/api/setup/schedule", json={"schedule": schedule, "collections": []})
     assert rejected.status_code == 422
+
+
+def test_archive_owner_prefills_and_persists_connection_id(monkeypatch, tmp_path, make_web_client):
+    paths = _paths(tmp_path)
+    paths.config_file.write_text("", encoding="utf-8")
+    store = SetupStore(imported=True)
+    store.owner_id = "4242"
+    server_state.update(paths=paths, store=store)
+
+    def load():
+        return config_module.AppConfig.model_validate(
+            tomllib.loads(paths.config_file.read_text())
+        ), paths
+
+    monkeypatch.setattr(setup, "load_config", load)
+    candidates = []
+
+    def probe(candidate):
+        candidates.append(candidate)
+        return subprocess.CompletedProcess([], 0, "OK", "")
+
+    monkeypatch.setattr(setup, "_test_auth_candidate", probe)
+    client = make_web_client(setup.router)
+    assert client.get("/api/setup").json()["auth"]["values"]["user_id"] == "4242"
+    response = client.put(
+        "/api/setup/auth", json={"auth_token": "synthetic", "ct0": "synthetic", "user_id": ""}
+    )
+    assert response.status_code == 200
+    assert candidates[-1].user_id == "4242"
+    assert load()[0].auth.user_id == "4242"
+    response = client.put("/api/setup/auth", json={"user_id": "5151"})
+    assert response.status_code == 200
+    assert candidates[-1].user_id == "5151"  # Explicit choices remain editable.
+
+
+def test_replay_owner_is_an_id_fallback(monkeypatch, tmp_path, make_web_client):
+    paths = _paths(tmp_path)
+    monkeypatch.setattr(setup, "load_config", lambda: (config_module.AppConfig(), paths))
+    server_state.update(paths=paths)
+    setup._write_replay_status(paths, {"owner_user_id": "4242"})
+    client = make_web_client(setup.router)
+    assert client.get("/api/setup").json()["auth"]["values"]["user_id"] == "4242"
+
+
+def test_confirmed_collections_require_id_only_when_connected(
+    monkeypatch, tmp_path, make_web_client
+):
+    paths = _paths(tmp_path)
+    paths.config_file.write_text("", encoding="utf-8")
+
+    def load():
+        return config_module.AppConfig.model_validate(
+            tomllib.loads(paths.config_file.read_text())
+        ), paths
+
+    monkeypatch.setattr(setup, "load_config", load)
+    server_state.update(
+        paths=paths, setup_coordinator=SimpleNamespace(state=SimpleNamespace(auth_verified=True))
+    )
+    client = make_web_client(setup.router)
+    payload = {"schedule": config_module.ScheduleConfig().model_dump(), "collections": ["likes"]}
+    response = client.put("/api/setup/schedule", json=payload)
+    assert response.status_code == 422
+    assert "numeric X user ID" in response.json()["detail"]
+    payload["collections"] = ["bookmarks"]
+    assert client.put("/api/setup/schedule", json=payload).status_code == 200
+    server_state["setup_coordinator"].state.auth_verified = False
+    payload["collections"] = ["likes"]
+    assert client.put("/api/setup/schedule", json=payload).status_code == 200
