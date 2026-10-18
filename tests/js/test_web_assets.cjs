@@ -8422,6 +8422,67 @@ test('enrichment status waits for setup and tolerates the archive attachment rac
     assert.equal(app.archiveEnrichmentRefreshing, false);
 });
 
+test('historical activity on first load does not announce fresh content in demos or archives', async () => {
+    for (const isDemo of [true, false]) {
+        for (const feedLoaded of [true, false]) {
+            const context = browserContext();
+            context.window.TWEETNOOK_DEMO = isDemo;
+            const history = {run_id: 'saved-sync', running: false, success: true,
+                steps: [{key: 'sync:likes:head', state: 'complete'}, {key: 'media', state: 'complete'}]};
+            let snapshot = history;
+            context.fetch = async () => ({ok: true, json: async () => ({active: false, last_snapshot: snapshot})});
+            const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+            const app = immediateComponent(tweetApp());
+            app.archiveReady = true;
+            app.tweets = feedLoaded ? [{tweet_id: 'reading'}] : [];
+            let feeds = 0;
+            app.fetchTweets = async () => { feeds++; };
+            await app.fetchActivityStatus();
+            assert.equal(app.lastActivity.run_id, 'saved-sync');
+            assert.equal(app.feedUpdateAvailable, false, `initial history: demo=${isDemo}, feed=${feedLoaded}`);
+            assert.equal(app.feedContentRevision, 0);
+            assert.equal(feeds, 0);
+            await app.fetchActivityStatus();
+            assert.equal(app.feedUpdateAvailable, false);
+            // A different completed run detected later still updates the feed.
+            snapshot = {...history, run_id: 'new-sync'};
+            await app.fetchActivityStatus();
+            assert.equal(app.feedUpdateAvailable, true);
+            assert.equal(app.feedContentRevision, 1);
+            assert.equal(feeds, feedLoaded ? 0 : 1);
+        }
+    }
+});
+
+test('a run finishing between initial status polls still announces new content', async () => {
+    const context = browserContext();
+    let snapshot = null;
+    context.fetch = async () => ({ok: true, json: async () => ({active: false, last_snapshot: snapshot})});
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    app.archiveReady = true;
+    app.tweets = [{tweet_id: 'reading'}];
+    await app.fetchActivityStatus();
+    assert.equal(app.feedUpdateAvailable, false);
+    snapshot = {run_id: 'new-sync', steps: [{key: 'sync:likes:head', state: 'complete'}]};
+    await app.fetchActivityStatus();
+    assert.equal(app.feedUpdateAvailable, true);
+    assert.equal(app.feedContentRevision, 1);
+});
+
+test('a task started before the first status response still announces its saved content', async () => {
+    const context = browserContext();
+    context.fetch = async () => ({ok: true, json: async () => ({active: false,
+        last_snapshot: {run_id: 'requested-sync', steps: [{key: 'sync:likes:head', state: 'complete'}]},
+    })});
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    app.archiveReady = true;
+    app.tweets = [{tweet_id: 'reading'}];
+    app.activityStartPending = true;
+    await app.fetchActivityStatus();
+    assert.equal(app.feedUpdateAvailable, true);
+    assert.equal(app.feedContentRevision, 1);
+});
+
 test('committed collection stages refresh an empty feed and its count while media still runs', async () => {
     const context = browserContext();
     let committed = false, feeds = 0;

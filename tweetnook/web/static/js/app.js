@@ -714,6 +714,7 @@ function reconcileActivityValue(current, next) {
 function tweetApp() {
     // Transport state is deliberately outside Alpine's reactive component.
     let activityRequest = null;
+    let activityStatusLoaded = false;
     let activityPollingEnabled = false;
     let activityClockTimer = null;
     let activityVisibilityHandler = null;
@@ -959,6 +960,12 @@ function tweetApp() {
                     // An action/focus refresh can supersede a slow request, even if
                     // its response body finishes after cancellation.
                     if (activityRequest !== request || request.controller.signal.aborted) return;
+                    // A completed run returned on startup is history, not a new
+                    // change to the feed being loaded. Still catch active tasks
+                    // and tasks requested before the first status response.
+                    const checkForNewContent = activityStatusLoaded || data.active
+                        || Boolean(this.activity) || this.activityStartPending;
+                    activityStatusLoaded = true;
                     this.activityNowSeconds = Math.floor(Date.now() / 1000);
                     this.activitySchedule = reconcileActivityValue(this.activitySchedule, data.schedule || this.activitySchedule);
                     this.activityError = null;
@@ -995,7 +1002,7 @@ function tweetApp() {
                         }
                     }
                     const committed = data.active ? data.snapshot : data.last_snapshot;
-                    if ((committed?.steps || []).some(step => step.state === 'complete'
+                    if (checkForNewContent && (committed?.steps || []).some(step => step.state === 'complete'
                         && (step.key?.startsWith('sync:') || ['archive-enrich', 'threads', 'resurrection', 'articles', 'media', 'urls'].includes(step.key))
                         && !priorCommittedStages.has(`${committed.run_id}:${step.key}`))) {
                         feedPages.clear();
