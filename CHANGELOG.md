@@ -1,7 +1,86 @@
 # Changelog
 
 This changelog records user-visible changes to TweetNook. The project follows
-semantic-style versioning while it is in the `0.x` series.
+semantic-style versioning.
+
+## [1.0.0] - 2026-10-18
+
+### Added
+
+- Added a guided Setup flow for archive imports, Twitter/X connection, schedules,
+  appearance, and an optional Web password, with browser-specific cookie help.
+- Added standalone macOS/Linux installers with private Python environments;
+  fresh Linux systemd installs use a dedicated service account and isolated
+  archive paths. Update and service restart request sudo when needed.
+- Added saved X Article previews, rich-text reading, and a focus mode.
+- Added X-style video controls, autoplay preferences, and an expanded phone
+  photo/GIF viewer with swipe navigation and dismissal.
+- Added `tweetnook prune` to preview and remove context outside the configured
+  linked-depth scope; deletion requires `--apply`.
+
+### Changed
+
+- Redesigned the Web header, sync panel, activity step tabs, tag editor, search
+  suggestions, date picker, and theme controls. New desktop archives default to
+  split view while preserving saved layout preferences.
+- Showed multiple reply recipients and improved quoted media, conversation
+  presentation, video sizing, and feed image loading.
+- Linked notices to run logs, added bulk inbox actions, and timestamped new Web
+  and scheduled-worker log lines for local display and UTC exports.
+- Refreshed the live demo with archived posts, optimized media, and system
+  appearance defaults.
+- Upgrading from v0.3.2 keeps SQLite schema 10, existing archive/configuration
+  paths, and service users. Back up first, stop manual servers/jobs, and update
+  the existing environment; do not rerun the fresh-install service installer.
+  See [maintenance](docs/maintenance.md#upgrade-or-migrate-an-older-archive) for
+  older archives and [updating](README.md#update-tweetnook) for commands.
+
+### Fixed
+
+- Remembered Web password logins with a renewable session cookie.
+- Preserved video aspect ratios and single-video playback across playback modes,
+  and improved mobile media transitions and Safari overlays.
+- Archived link-preview images and rendered quotes consistently in threads.
+- Made setup collection confirmation, archive account identity, authentication,
+  and deferred follow-up status accurate.
+- Completed enrichment within the sync pipeline, refreshed collections after
+  committed stages, and kept disk-full failures visible without losing saved work.
+- Corrected Unicode avatar initials, Archive preparation labels, and Settings
+  log refresh after reopening.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff format --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync pytest -o addopts= -q`
+- `node --test tests/js/test_web_assets.cjs tests/js/test_demo_api.cjs tests/js/test_articles.cjs`
+- `bash -n install.sh`
+- `git diff --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv build --out-dir /tmp/tweetnook-release-1.0.0-20261018`
+- `UV_CACHE_DIR=/tmp/uv-cache uvx --from twine twine check /tmp/tweetnook-release-1.0.0-20261018/tweetnook-1.0.0.tar.gz /tmp/tweetnook-release-1.0.0-20261018/tweetnook-1.0.0-py3-none-any.whl`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --isolated --no-project --with /tmp/tweetnook-release-1.0.0-20261018/tweetnook-1.0.0-py3-none-any.whl -- tweetnook --help`
+- Installer/service privilege and existing-service update behavior are covered
+  by isolated tests; a live Linux systemd installation was not exercised on the
+  macOS release host.
+
+## [0.3.2] - 2026-10-16
+
+### Added
+
+- Added an authenticated developer replay source that lets test installs replay
+  saved Twitter/X responses from an archive without contacting Twitter/X.
+
+### Validation
+
+- `ruff format --check`
+- `ruff check`
+- `pytest -q`
+- `node --test tests/js/test_web_assets.cjs`
+- `node --test tests/js/test_demo_api.cjs`
+- `git diff --check`
+- `UV_CACHE_DIR=/tmp/uv-cache-release-0.3.2 uv build --out-dir /tmp/tweetnook-release-0.3.2`
+- `UV_CACHE_DIR=/tmp/uv-cache-release-0.3.2 uvx --from twine twine check /tmp/tweetnook-release-0.3.2/tweetnook-0.3.2.tar.gz /tmp/tweetnook-release-0.3.2/tweetnook-0.3.2-py3-none-any.whl`
+- `UV_CACHE_DIR=/tmp/uv-cache-release-0.3.2 uv run --isolated --no-project --with /tmp/tweetnook-release-0.3.2/tweetnook-0.3.2-py3-none-any.whl -- tweetnook --help`
 
 ## [0.3.1] - 2026-10-12
 
@@ -430,6 +509,8 @@ semantic-style versioning while it is in the `0.x` series.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[1.0.0]: https://github.com/gezerwezer/tweetnook/compare/v0.3.2...v1.0.0
+[0.3.2]: https://github.com/gezerwezer/tweetnook/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/gezerwezer/tweetnook/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/gezerwezer/tweetnook/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/gezerwezer/tweetnook/compare/v0.1.8...v0.2.0

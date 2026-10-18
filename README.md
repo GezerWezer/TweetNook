@@ -102,8 +102,11 @@ listed in the [CLI reference](docs/cli-reference.md#service).
 
 ### Update TweetNook
 
-Back up your archive before upgrading. For an installer-created systemd service,
-run:
+Back up your archive before upgrading. Version 1.0.0 introduces the redesigned
+Setup and Web UI; v0.3.2 archives already use the current SQLite schema (10) and
+need no format migration. Existing installations keep their service user and
+file paths; update them in place instead of rerunning the installer. For an
+installer-created systemd service, run:
 
 ```bash
 tweetnook update
