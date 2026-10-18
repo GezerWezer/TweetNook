@@ -13,6 +13,25 @@ def account():
     return SimpleNamespace(pw_name="archiver", pw_dir="/home/archiver", pw_uid=1000)
 
 
+@pytest.fixture
+def root_user(monkeypatch):
+    monkeypatch.setattr(service.os, "geteuid", lambda: 0)
+
+
+@pytest.fixture
+def unprivileged_service(tmp_path, monkeypatch):
+    unit_path = tmp_path / "tweetnook.service"
+    python = tmp_path / "service environment/bin/python"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    unit_path.write_text(service.render_unit(account(), python=str(python)))
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    monkeypatch.setattr(service.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(service.shutil, "which", lambda _name: "/usr/bin/sudo")
+    return unit_path
+
+
 def test_unit_uses_exact_environment_and_bounded_graceful_cgroup_shutdown():
     unit = service.render_unit(account(), python="/opt/archive env/bin/python")
     assert 'ExecStart="/opt/archive env/bin/python" -m tweetnook serve' in unit
@@ -138,11 +157,27 @@ def write_managed_unit(unit_path, python):
     unit_path.write_text(service.render_unit(account(), python=str(python)))
 
 
-def test_update_uses_managed_service_python_in_order(tmp_path, monkeypatch):
+@pytest.mark.parametrize("directory", ["runtime with spaces", "runtime%name", "runtime$name"])
+def test_service_update_resolves_escaped_runtime_path(tmp_path, monkeypatch, directory):
+    python = tmp_path / directory / "bin/python"
+    python.parent.mkdir(parents=True)
+    python.touch()
+    unit_path = tmp_path / "tweetnook.service"
+    write_managed_unit(unit_path, python)
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    assert service._service_python() == str(python)
+
+
+def test_update_uses_managed_service_python_in_order(tmp_path, monkeypatch, root_user):
     unit_path = tmp_path / "tweetnook.service"
     service_python = tmp_path / "service-python"
     service_python.touch()
     write_managed_unit(unit_path, service_python)
+    original_unit = unit_path.read_bytes()
+    legacy_data = tmp_path / "legacy-user-data"
+    legacy_data.mkdir()
+    archive = legacy_data / "archive.db"
+    archive.write_bytes(b"existing archive")
     events = []
     versions = iter(["0.0.9\n", "0.0.10\n"])
 
@@ -170,7 +205,7 @@ def test_update_uses_managed_service_python_in_order(tmp_path, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert events == [
-        ("systemd", {"admin": True}),
+        ("systemd", {}),
         (
             "run",
             [str(service_python), "-m", "pip", "--version"],
@@ -205,9 +240,11 @@ def test_update_uses_managed_service_python_in_order(tmp_path, monkeypatch):
     ]
     assert "TweetNook updated: 0.0.9 → 0.0.10" in result.output
     assert "TweetNook service restarted." in result.output
+    assert unit_path.read_bytes() == original_unit
+    assert archive.read_bytes() == b"existing archive"
 
 
-def test_update_reports_already_current(tmp_path, monkeypatch):
+def test_update_reports_already_current(tmp_path, monkeypatch, root_user):
     unit_path = tmp_path / "tweetnook.service"
     service_python = tmp_path / "service-python"
     service_python.touch()
@@ -229,7 +266,7 @@ def test_update_reports_already_current(tmp_path, monkeypatch):
     assert "TweetNook service restarted." in result.output
 
 
-def test_update_restarts_service_after_pip_failure(tmp_path, monkeypatch):
+def test_update_restarts_service_after_pip_failure(tmp_path, monkeypatch, root_user):
     unit_path = tmp_path / "tweetnook.service"
     service_python = tmp_path / "service-python"
     service_python.touch()
@@ -278,7 +315,9 @@ def test_update_restarts_service_after_pip_failure(tmp_path, monkeypatch):
     assert "TweetNook service restarted." in result.output
 
 
-def test_update_refuses_live_manual_web_server_before_subprocesses(tmp_path, monkeypatch):
+def test_update_refuses_live_manual_web_server_before_subprocesses(
+    tmp_path, monkeypatch, root_user
+):
     unit_path = tmp_path / "tweetnook.service"
     service_python = tmp_path / "service-python"
     service_python.touch()
@@ -304,7 +343,9 @@ def test_update_refuses_live_manual_web_server_before_subprocesses(tmp_path, mon
     assert "tweetnook web stop" in result.output
 
 
-def test_update_does_not_claim_restart_when_service_dies_after_start(tmp_path, monkeypatch):
+def test_update_does_not_claim_restart_when_service_dies_after_start(
+    tmp_path, monkeypatch, root_user
+):
     unit_path = tmp_path / "tweetnook.service"
     service_python = tmp_path / "service-python"
     service_python.touch()
@@ -368,7 +409,7 @@ def test_verify_service_running_reports_systemd_state(monkeypatch):
     ]
 
 
-def test_update_refuses_unmanaged_service_before_subprocesses(tmp_path, monkeypatch):
+def test_update_refuses_unmanaged_service_before_subprocesses(tmp_path, monkeypatch, root_user):
     unit_path = tmp_path / "tweetnook.service"
     unit_path.write_text("[Service]\nExecStart=/usr/bin/python -m tweetnook serve\n")
     calls = []
@@ -384,7 +425,7 @@ def test_update_refuses_unmanaged_service_before_subprocesses(tmp_path, monkeypa
     assert "not managed by TweetNook" in result.output
 
 
-def test_update_missing_pip_leaves_service_running(tmp_path, monkeypatch):
+def test_update_missing_pip_leaves_service_running(tmp_path, monkeypatch, root_user):
     unit_path = tmp_path / "tweetnook.service"
     service_python = tmp_path / "service-python"
     service_python.touch()
@@ -409,6 +450,123 @@ def test_update_missing_pip_leaves_service_running(tmp_path, monkeypatch):
     assert "update preflight failed" in result.output
 
 
+@pytest.mark.parametrize("arguments", [["update"], ["service", "restart"]])
+@pytest.mark.parametrize(("child_status", "expected_status"), [(0, 0), (1, 1), (27, 27), (-2, 130)])
+def test_commands_elevate_once_with_exact_interpreter_and_forward_status(
+    unprivileged_service, monkeypatch, arguments, child_status, expected_status
+):
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=child_status)
+
+    monkeypatch.setattr(service.subprocess, "run", run)
+    monkeypatch.setattr(
+        service,
+        "_systemctl",
+        lambda *args: pytest.fail("Parent must not repeat the elevated operation"),
+    )
+    result = CliRunner().invoke(app, arguments)
+    assert result.exit_code == expected_status, result.output
+    assert calls == [
+        (
+            ["/usr/bin/sudo", service.sys.executable, "-I", "-m", "tweetnook", *arguments],
+            {"check": False},
+        )
+    ]
+    assert "requesting sudo" in result.output
+    assert "Stopping TweetNook" not in result.output
+    assert "service restarted" not in result.output
+
+
+@pytest.mark.parametrize("arguments", [["update"], ["service", "restart"]])
+@pytest.mark.parametrize("unit_state", ["missing", "unmanaged", "symlink"])
+def test_commands_reject_invalid_service_before_elevation(
+    unprivileged_service, monkeypatch, arguments, unit_state
+):
+    if unit_state == "missing":
+        unprivileged_service.unlink()
+    elif unit_state == "unmanaged":
+        unprivileged_service.write_text("[Service]\nUser=someone\n")
+    else:
+        target = unprivileged_service.with_name("other.service")
+        unprivileged_service.rename(target)
+        unprivileged_service.symlink_to(target)
+    monkeypatch.setattr(
+        service.subprocess, "run", lambda *args, **kwargs: pytest.fail("Must not request sudo")
+    )
+    result = CliRunner().invoke(app, arguments)
+    assert result.exit_code == 1, result.output
+    assert "not installed" in result.output or "not managed" in result.output
+    assert "requesting sudo" not in result.output
+
+
+@pytest.mark.parametrize("arguments", [["update"], ["service", "restart"]])
+def test_missing_sudo_reports_actionable_error_without_service_changes(
+    unprivileged_service, monkeypatch, arguments
+):
+    monkeypatch.setattr(service.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(
+        service.subprocess, "run", lambda *args, **kwargs: pytest.fail("Must not run subprocesses")
+    )
+    result = CliRunner().invoke(app, arguments)
+    assert result.exit_code == 1, result.output
+    assert "Install sudo or run this command as root" in result.output
+
+
+@pytest.mark.parametrize("arguments", [["update"], ["service", "restart"]])
+def test_failed_elevation_launch_does_not_continue(unprivileged_service, monkeypatch, arguments):
+    def run(*args, **kwargs):
+        raise OSError("sudo could not be executed")
+
+    monkeypatch.setattr(service.subprocess, "run", run)
+    monkeypatch.setattr(
+        service, "_systemctl", lambda *args: pytest.fail("Must not continue after failed elevation")
+    )
+    result = CliRunner().invoke(app, arguments)
+    assert result.exit_code == 1, result.output
+    assert "sudo could not be executed" in result.output
+
+
+@pytest.mark.parametrize("arguments", [["update"], ["service", "restart"]])
+def test_unsupported_platform_never_requests_sudo(monkeypatch, arguments):
+    monkeypatch.setattr(service.sys, "platform", "darwin")
+    monkeypatch.setattr(service.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(
+        service.subprocess, "run", lambda *args, **kwargs: pytest.fail("Must not request sudo")
+    )
+    result = CliRunner().invoke(app, arguments)
+    assert result.exit_code == 1, result.output
+    assert "Linux with a running systemd" in result.output
+    assert "requesting sudo" not in result.output
+
+
+def test_root_restart_runs_directly_once(tmp_path, monkeypatch, root_user):
+    unit_path = tmp_path / "tweetnook.service"
+    write_managed_unit(unit_path, tmp_path / "python")
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    calls = []
+    monkeypatch.setattr(service, "_systemctl", lambda *args: calls.append(args))
+    monkeypatch.setattr(
+        service.subprocess, "run", lambda *args, **kwargs: pytest.fail("Root must not invoke sudo")
+    )
+    result = CliRunner().invoke(app, ["service", "restart"])
+    assert result.exit_code == 0, result.output
+    assert calls == [("restart", service.UNIT_NAME)]
+    assert "requesting sudo" not in result.output
+
+
+def test_status_does_not_request_sudo(unprivileged_service, monkeypatch):
+    calls = []
+    monkeypatch.setattr(service, "_systemctl", lambda *args: calls.append(args))
+    result = CliRunner().invoke(app, ["service", "status"])
+    assert result.exit_code == 0, result.output
+    assert calls == [("status", service.UNIT_NAME)]
+    assert "requesting sudo" not in result.output
+
+
 def test_service_and_serve_help():
     runner = CliRunner()
     assert "foreground" in runner.invoke(app, ["serve", "--help"]).output
@@ -419,4 +577,7 @@ def test_service_and_serve_help():
         assert flag in result.output
     for command in ["start", "stop", "restart", "status", "uninstall"]:
         assert runner.invoke(app, ["service", command, "--help"]).exit_code == 0
-    assert runner.invoke(app, ["update", "--help"]).exit_code == 0
+    for command in [["update"], ["service", "restart"]]:
+        result = runner.invoke(app, [*command, "--help"])
+        assert result.exit_code == 0
+        assert "requests sudo if needed" in " ".join(result.output.split())

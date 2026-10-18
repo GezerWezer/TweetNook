@@ -153,6 +153,10 @@ CLI also derives its PID marker directly from the data root.
 
 ## File ownership and permissions
 
+System installs keep the runtime and launcher root-owned, with state directories
+owned by `tweetnook` and mode 0750. The system launcher supplies the service's
+XDG paths; personal installs and older services retain their existing paths.
+
 Directory/file creation relies on normal process umask. The code does not apply
 0600/0700 to config, database, logs, or ledgers. Configuration can contain Twitter/X
 cookies and Gemini keys; other data roots contain private raw tweets/media.

@@ -105,7 +105,7 @@ app.add_typer(web_app, name="web", help="Manage the background web UI server.")
 
 @app.command("update")
 def update_command() -> None:
-    """Update TweetNook and restart its managed system service."""
+    """Update TweetNook and restart its managed system service; requests sudo if needed."""
     update_managed_installation()
 
 

@@ -14,6 +14,7 @@ links to the code, its design guide, and relevant tests.
 | [tweetnook/__main__.py](../../tweetnook/__main__.py) | `python -m tweetnook` entry into Typer app | [Architecture](architecture.md); CLI tests |
 | [tweetnook/cli.py](../../tweetnook/cli.py) | Root/nested command tree, rendering, command wiring, exit mapping, hidden daemon | [CLI reference](../cli-reference.md); `test_cli.py` |
 | [tweetnook/cli_web.py](../../tweetnook/cli_web.py) | Detached Web start/stop/restart/status/password lifecycle | [Web and Jobs](web-and-jobs.md); `test_cli_web.py` |
+| [tweetnook/system_install.py](../../tweetnook/system_install.py) | Global system launcher: service-account privileges and archive paths; delegates management to the CLI | [Web and Jobs](web-and-jobs.md); `test_system_install.py`, `test_installer.py` |
 | [tweetnook/exceptions.py](../../tweetnook/exceptions.py) | Domain error taxonomy for auth/API/storage/import/search/schedule | [Architecture](architecture.md); exercised throughout |
 | [tweetnook/fastjson.py](../../tweetnook/fastjson.py) | orjson parsing/serialization for read paths with standard-library fallbacks | [Web and Jobs](web-and-jobs.md); `test_fastjson.py` |
 | [tweetnook/interactive.py](../../tweetnook/interactive.py) | TTY-gated status and tqdm callbacks outside active pipeline | [Architecture](architecture.md); `test_interactive.py` |
