@@ -3395,6 +3395,9 @@ function tweetApp() {
                     this.openThread(element.dataset.threadId);
                     return;
                 }
+                // Narrow media leaves a blank region in its full-width wrapper.
+                // That region belongs to the post; only the media frame consumes clicks.
+                if (action === 'media' && !event.target.closest('[data-lightbox-media], .media-video-player, .media-frame')) continue;
                 event.stopPropagation();
                 if (action === 'quote') {
                     this.openThread(element.dataset.threadId);
@@ -3527,7 +3530,7 @@ function tweetApp() {
                 + byline
                 + (replyTo.length ? replyLine(tweet) : '')
                 + `<div class="tweet-text text-[15px] whitespace-pre-wrap break-words" data-action="text">${this.formatText(tweet, false, true)}</div>`
-                + part(this.renderMediaGrid(tweet.media), ' data-action="stop"')
+                + part(this.renderMediaGrid(tweet.media), ' data-action="media"')
                 + part(this.renderCard(tweet), ' data-action="stop"')
                 + quoteBlock
                 + part(this.renderCommunityNote(tweet.raw_json), ' data-action="stop"')

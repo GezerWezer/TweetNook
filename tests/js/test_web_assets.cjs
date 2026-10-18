@@ -7640,6 +7640,25 @@ test('profile search replaces feed cards after its Alpine template closes', asyn
     assert.deepEqual(Array.from(app.tweets, item => item.tweet_id), ['2']);
 });
 
+test('media whitespace opens another post in split view while media surfaces retain their actions', () => {
+    const { app, list } = feedListApp();
+    app.panelStack = [{ tweetId: '999' }];
+    app.panelMode = 'thread';
+    const opened = [];
+    app.openThread = id => opened.push(id);
+    const tweet = JSON.parse(JSON.stringify(WEB_FIXTURE.slim[0]));
+    app.renderFeedList([tweet]);
+    const wrapper = list.querySelector('[data-action="media"]');
+    assert.ok(wrapper);
+    dispatchFeed(list, 'click', wrapper.querySelector('.media-single') || wrapper);
+    assert.deepEqual(opened, [tweet.tweet_id]);
+    const image = wrapper.querySelector('img');
+    assert.ok(image);
+    const event = dispatchFeed(list, 'click', image);
+    assert.equal(event.propagationStopped, true);
+    assert.deepEqual(opened, [tweet.tweet_id]);
+});
+
 test('feed clicks are delegated by data-action like the per-card handlers', () => {
     const { app, list } = feedListApp();
     const opened = [];
