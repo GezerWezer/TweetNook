@@ -7983,15 +7983,16 @@ test('sync panel shows paused and skipped reasons, new tweets, and the server sc
     const paused = { key: 'tagging', title: 'Automated tags', state: 'failed', paused: true, reason: 'daily spend limit reached', summary: 'Stopped at the spend limit' };
     assert.equal(panel.stepState(paused), 'paused');
     assert.equal(panel.stepStateLabel(paused), 'paused');
-    assert.equal(panel.segClass(paused), 'is-paused');
-    assert.deepEqual({ ...panel.describe(paused) }, { left: 'Automated tags', right: 'Paused', sub: 'Daily spend limit reached' });
+    assert.equal(panel.describe(paused).left, 'Tag saved posts');
+    assert.equal(panel.describe(paused).right, 'Paused');
+    assert.equal(panel.describe(paused).status, 'daily spend limit reached');
 
     const failed = { key: 'media', title: 'Media', state: 'failed', summary: 'Disk full', reason: null };
     assert.equal(panel.describe(failed).danger, true);
-    assert.equal(panel.describe(failed).sub, 'Disk full');
+    assert.equal(panel.describe(failed).status, 'Disk full');
 
     const skipped = { key: 'articles', title: 'Articles', state: 'skipped', reason: 'no article rows requiring refresh', summary: 'skipped due to no article rows requiring refresh' };
-    assert.equal(panel.describe(skipped).sub, 'No article rows requiring refresh');
+    assert.equal(panel.describe(skipped).status, 'No article rows requiring refresh');
 
     app.activity = null;
     app.lastActivity = {
@@ -8010,49 +8011,49 @@ test('sync panel shows paused and skipped reasons, new tweets, and the server sc
     assert.equal(panel.scheduleLabel(), 'Scheduled syncs off');
 });
 
-test('sync panel bounces only active steps with unknown totals and suppresses fabricated fractions', () => {
+test('sync panel labels unknown progress without fabricated fractions and animates active work', () => {
     const context = browserContext();
-    const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
+    const { tweetApp, nookSyncPanel, nookSyncBreakdown } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel, nookSyncBreakdown})');
     const panel = Object.assign(Object.create(immediateComponent(tweetApp())), nookSyncPanel());
     const step = { state: 'active', title: 'Bookmarks', activity: 'Fetching page 3', completed: 3, total: 4, show_progress: false };
 
     // Timeline page totals are placeholders even when positive.
     assert.equal(panel.indeterminate(step), true);
-    assert.match(panel.segClass(step), /is-current is-indeterminate/);
-    assert.equal(panel.fill(step), 30);
-    assert.equal(panel.describe(step).right, '');
-    assert.equal(panel.describe(step).left, 'Fetching page 3');
+    assert.equal(panel.describe(step).right, 'Page 3');
+    assert.equal(panel.describe(step).status, 'Fetching page 3');
 
+    step.activity = 'Downloading media';
     step.show_progress = true;
     assert.equal(panel.indeterminate(step), false);
-    assert.equal(panel.fill(step), 75);
     assert.equal(panel.describe(step).right, '3 / 4');
-    assert.doesNotMatch(panel.segClass(step), /is-indeterminate/);
     for (const total of [undefined, null, 0, -1, 'unknown', Infinity]) {
         step.total = total;
         assert.equal(panel.indeterminate(step), true);
-        assert.equal(panel.describe(step).right, '');
+        assert.equal(panel.describe(step).right, 'Working');
     }
 
     step.show_progress = false;
     for (const state of ['pending', 'complete', 'skipped', 'failed', 'cancelled']) {
         step.state = state;
         assert.equal(panel.indeterminate(step), false);
-        assert.doesNotMatch(panel.segClass(step), /is-indeterminate/);
-        assert.equal(panel.fill(step), state === 'pending' ? 0 : 100);
+        const breakdown = nookSyncBreakdown({ state, stats: [], total: 0 });
+        assert.ok(breakdown.bars.every(bar => !bar.kind.includes('is-indeterminate')));
     }
     step.state = 'failed';
     step.paused = true;
     assert.equal(panel.indeterminate(step), false);
-    assert.equal(panel.segClass(step), 'is-paused');
+    assert.equal(panel.describe(step).right, 'Paused');
+
+    const active = nookSyncBreakdown({ state: 'active', stats: [], total: 0 });
+    assert.deepEqual(Array.from(active.bars, bar => ({ ...bar })), [{ kind: 'done is-indeterminate', width: 30 }]);
 
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'header.css'), 'utf8');
-    assert.match(html, /class="cs-seg" :class="segClass\(step\)"/);
-    assert.match(html, /class="cs-fill" :style="`width:\$\{fill\(step\)\}%`"/);
-    assert.match(css, /\.cs-seg\.is-indeterminate \.cs-fill \{[^}]*animation: nook-sync-bounce[^}]*infinite alternate/);
+    assert.match(html, /class="cs-step-tab"[^\n]*stepState\(steps\(\)\[index\]\)/);
+    assert.match(html, /class="bd-part" :class="'is-' \+ part.kind" :style="`width:\$\{part.width\}%`"/);
+    assert.match(css, /\.bd-part\.is-indeterminate \{[^}]*animation: nook-sync-bounce[^}]*infinite alternate/);
     assert.match(css, /@keyframes nook-sync-bounce \{[^\n]*translateX\(233\.333333%\)/);
-    assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.cs-seg\.is-indeterminate \.cs-fill \{ animation: none;/);
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[^\n]*\.bd-part\.is-indeterminate \{ animation: none;/);
 });
 
 test('activity log view follows a running log by byte offset', async () => {
