@@ -164,6 +164,21 @@ Use `tweetnook stats` to check collection coverage and sync progress.
 A saved older-history position means there is unfinished work to resume. A
 completed run can still list follow-up issues, such as media that Twitter/X no longer serves.
 
+**Sync failed** means a critical error prevented the run from completing:
+
+- Missing or rejected Twitter/X credentials, an archive/account mismatch, or a
+  collection access check that fails.
+- A selected collection cannot finish fetching pages after retries (including
+  network errors, exhausted rate limits, or incompatible Twitter/X responses).
+- A collection archive write or checkpoint fails, storage fills up or exceeds its quota,
+  or a fatal error stops the worker.
+
+Thread, unavailable-post, article, media, link-preview, and automated-tagging
+follow-up errors remain visible in Activity without marking a successful
+collection sync as failed. Tagging budget/quota pauses also leave sync successful.
+Storage exhaustion remains critical during follow-ups. User stops are shown as
+**Sync stopped**; a run without a confirmed final result is **Sync interrupted**.
+
 For authentication errors, failed requests, or lock conflicts, use
 [Troubleshooting](troubleshooting.md).
 

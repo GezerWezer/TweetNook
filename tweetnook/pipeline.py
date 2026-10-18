@@ -168,6 +168,8 @@ class PipelineStep:
     reason: str = ""
     # A failed step that stopped on purpose (a budget or quota) rather than on an error.
     paused: bool = False
+    # Preserve stage diagnostics without overturning completed core work.
+    recoverable: bool = False
     metrics: dict[str, int] = field(default_factory=dict)
     started_at: float | None = None
     finished_at: float | None = None
@@ -610,12 +612,14 @@ class PipelineReporter:
         metrics: dict[str, int] | None = None,
         reason: str | None = None,
         paused: bool = False,
+        recoverable: bool = False,
     ) -> None:
         step = self._step_by_key[key]
         step.state = "failed"
         step.summary = message
         step.reason = _clean_line(reason if reason is not None else message)
         step.paused = paused
+        step.recoverable = recoverable or paused
         if metrics is not None:
             step.metrics = {name: max(int(value), 0) for name, value in metrics.items()}
         step.finished_at = time.monotonic()
@@ -631,7 +635,7 @@ class PipelineReporter:
         self._finished = True
         self._finished_at = time.monotonic()
         self._finished_at_unix = time.time()
-        if success and any(step.state == "failed" for step in self.steps):
+        if success and any(step.state == "failed" and not step.recoverable for step in self.steps):
             success = False
             summary = (
                 "Some selected stages did not finish. Saved progress is preserved. "
@@ -774,6 +778,7 @@ class PipelineReporter:
                     "summary": step.summary,
                     "reason": step.reason,
                     "paused": step.paused,
+                    "recoverable": step.recoverable,
                     "metrics": step.metrics,
                     "elapsed_seconds": step.elapsed,
                     "rate": step.rate,

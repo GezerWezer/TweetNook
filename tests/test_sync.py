@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
+from contextlib import nullcontext
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,11 +22,13 @@ from tests.conftest import (
     make_tweet_result,
     make_user_tweets_response,
 )
+from tweetnook.activity_history import mark_run_process_result, read_run
 from tweetnook.client.timelines import TimelineTweet
 from tweetnook.config import AppConfig
 from tweetnook.exceptions import ConfigError, ProcessLockError, TweetNookError
 from tweetnook.pipeline import PipelineReporter
 from tweetnook.query_ids import QueryIdStore
+from tweetnook.resource_failure import StorageExhaustedError
 from tweetnook.storage import open_archive_store
 from tweetnook.sync import (
     ProcessLock,
@@ -390,6 +394,61 @@ async def test_sync_stage_database_opens_never_run_quick_check(
     assert result.pages_fetched == 1
     assert statements
     assert not any("quick_check" in statement for statement in statements)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stage", ["threads", "resurrection", "articles", "media", "unfurl", "tagging"]
+)
+@pytest.mark.parametrize("disk_full", [False, True])
+async def test_followup_outcomes_preserve_success_except_fatal_storage(
+    paths, config, auth_bundle, monkeypatch, stage, disk_full
+):
+    async def fail(**_kwargs):
+        if disk_full:
+            raise OSError(errno.ENOSPC, "Disk full")
+        raise RuntimeError("Provider unavailable")
+
+    if stage == "resurrection":
+        monkeypatch.setattr("tweetnook.resurrection.resurrect_due_tweets", fail)
+    else:
+        monkeypatch.setattr(sync_module, f"_run_followup_{stage}", fail)
+    config.tagging.enabled = True
+    plan = SyncFollowupPlan(
+        **{
+            key: key == stage
+            for key in ("threads", "resurrection", "articles", "media", "unfurl", "tagging")
+        }
+    )
+    path = paths.data_dir / "activity-status.json"
+    reporter = PipelineReporter(_console(), "sync", interactive=False, state_path=path)
+    expected = pytest.raises(StorageExhaustedError) if disk_full else nullcontext()
+    with expected, reporter:
+        plan_sync_pipeline(reporter, config=config, collections=[], followups=plan, head_only=False)
+        await sync_module._run_auto_followups(
+            plan=plan,
+            config=config,
+            paths=paths,
+            auth_bundle=auth_bundle,
+            transport=None,
+            console=_console(),
+            sleep=asyncio.sleep,
+        )
+    snapshot = json.loads(path.read_text())
+    assert snapshot["success"] is not disk_full
+    result = mark_run_process_result(paths.data_dir, reporter.run_id, exit_code=int(disk_full))
+    assert result["status"] == ("failed" if disk_full else "completed")
+    assert read_run(paths.data_dir, reporter.run_id)["snapshot"]["success"] is not disk_full
+    if not disk_full:
+        step = next(
+            step
+            for step in snapshot["steps"]
+            if step["key"] == {"unfurl": "urls"}.get(stage, stage)
+        )
+        assert step["state"] == "failed"
+        assert step["recoverable"] is True
+        assert "Provider unavailable" in step["reason"]
+        assert snapshot["issues"]
 
 
 @pytest.mark.asyncio

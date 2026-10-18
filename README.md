@@ -144,6 +144,11 @@ To automate it, open **Settings → Schedule**, choose when to run, and save.
 The TweetNook server/service must stay running for scheduled syncs to work;
 the browser can be closed.
 
+**Sync failed** is reserved for critical connection, collection capture, archive
+write, storage, or worker errors. Follow-up issues and tagging budget pauses stay
+in Activity while a completed collection sync remains successful. See
+[sync status](docs/syncing.md#understand-waits-and-status) for the failure boundaries.
+
 For a full list of CLI sync commands, see [syncing](docs/syncing.md).
 
 Use **Stop Task** in the web app or **Ctrl+C** in the terminal to interrupt a job.
