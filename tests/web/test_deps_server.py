@@ -10,8 +10,7 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.web import server
-from tweetnook.web import deps
+from tweetnook.web import deps, server
 from tweetnook.web.deps import (
     SESSION_COOKIE,
     SESSION_MAX_AGE,
