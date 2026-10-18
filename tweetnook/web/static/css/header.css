@@ -1,8 +1,11 @@
 /* Header, collection tabs, and the sync panel. All colors follow the app's semantic theme roles. */
-/* The title row and tabs carry their own surface so the tabs can tuck away while the title row stays. */
+/* One glass surface prevents a blur seam between the title and collection tabs. */
 .nook-header { position: sticky; top: 0; z-index: 30; pointer-events: none; }
+.nook-header::before { content: ''; position: absolute; inset: 0; background: var(--bg-header); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); pointer-events: none; transition: bottom 200ms ease; }
+.nook-header.tabs-hidden::before { bottom: 54px; }
+.nook-header:has(> .nook-tabs-frame[style*="display: none"])::before { bottom: 0; }
 .nook-header > * { pointer-events: auto; }
-.nook-title-row { position: relative; z-index: 2; background: var(--bg-header); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 6px 8px 6px 16px; }
+.nook-title-row { position: relative; z-index: 2; min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 6px 8px 6px 16px; }
 .nook-title-block { flex: 1; min-width: 0; }
 .nook-title-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
 .nook-title-line h1 { font-size: calc(var(--font-size-base) * 1.333333); line-height: 24px; font-weight: 800; margin: 0; white-space: nowrap; }
@@ -17,7 +20,7 @@
 .nook-back { margin-left: -8px; }
 .nook-notice-count { position: absolute; top: 3px; right: 1px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9999px; background: var(--accent-color); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--bg-primary); }
 /* Equal tabs while they fit; below that the strip scrolls and fades at the clipped edge. */
-.nook-tabs-frame { position: relative; z-index: 1; background: var(--bg-header); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-color); transition: transform 200ms ease, opacity 200ms ease; }
+.nook-tabs-frame { position: relative; z-index: 1; border-bottom: 1px solid var(--border-color); transition: transform 200ms ease, opacity 200ms ease; }
 .nook-tabs-frame::before, .nook-tabs-frame::after { content: ''; position: absolute; top: 0; bottom: 0; width: 32px; pointer-events: none; opacity: 0; transition: opacity 120ms ease; }
 .nook-tabs-frame::before { left: 0; background: linear-gradient(to left, transparent, var(--bg-primary)); }
 .nook-tabs-frame::after { right: 0; background: linear-gradient(to right, transparent, var(--bg-primary)); }
@@ -187,4 +190,4 @@
 /* Like the search bar, the tabs get out of the way while reading: they tuck under the title row on scroll down and return on scroll up. */
 .nook-header.tabs-hidden .nook-tabs-frame { transform: translateY(-100%); opacity: 0; pointer-events: none; }
 .nook-header.tabs-hidden .nook-title-row, .nook-header:has(> .nook-tabs-frame[style*="display: none"]) .nook-title-row { box-shadow: 0 1px 0 var(--border-color); }
-@media (prefers-reduced-motion: reduce) { .nook-header *, .nook-header *::before, .nook-header *::after, .nook-sort-menu { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .nook-header::before, .nook-header *, .nook-header *::before, .nook-header *::after, .nook-sort-menu { transition: none !important; } }
