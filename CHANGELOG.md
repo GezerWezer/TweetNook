@@ -3,6 +3,33 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning.
 
+## [1.0.2] - 2026-10-18
+
+### Changed
+
+- Moved the feed refresh action into its own full-width row above posts, below
+  the count and sort controls, with theme colors and a visible keyboard focus.
+
+### Fixed
+
+- Opening the demo or an archive no longer treats a previous completed sync as
+  a new update. Refresh notifications still appear for later archive changes.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff format --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync pytest -o addopts= -q`
+- `node --test tests/js/test_web_assets.cjs tests/js/test_demo_api.cjs tests/js/test_articles.cjs`
+- `bash -n install.sh`
+- `git diff --check`
+- Fresh wheel/source build, Twine metadata checks, isolated wheel CLI/Web imports,
+  and package-content checks.
+- Helium checks at desktop and phone widths cover startup, repeated polling,
+  later updates, refresh placement, keyboard activation, and light/dark themes.
+- Installer/service lifecycle tests cover privilege and existing-service behavior;
+  a live Linux systemd installation was not exercised on this macOS release host.
+
 ## [1.0.1] - 2026-10-18
 
 ### Changed
@@ -554,6 +581,7 @@ semantic-style versioning.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[1.0.2]: https://github.com/gezerwezer/tweetnook/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/gezerwezer/tweetnook/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/gezerwezer/tweetnook/compare/v0.3.2...v1.0.0
 [0.3.2]: https://github.com/gezerwezer/tweetnook/compare/v0.3.1...v0.3.2
