@@ -5428,6 +5428,36 @@ test('GIF indicator tracks playback state and toggles the archived animation', a
     assert.equal(event.stopped, true);
 });
 
+test('header collapses after pointer tab selection and keeps keyboard-focused tabs visible', () => {
+    const context = browserContext();
+    const header = new FakeElement('header');
+    const tab = new FakeElement('button');
+    header.appendChild(tab);
+    header.offsetHeight = 110;
+    let keyboardFocus = false;
+    tab.matches = selector => selector === ':focus-visible' && keyboardFocus;
+    context.document.activeElement = tab;
+    context.document.querySelector = () => header;
+    context.requestAnimationFrame = callback => callback();
+    const autoHide = loadScripts(context, ['header.js'], 'nookHeaderAutoHide');
+    autoHide();
+    const scroll = y => { context.window.scrollY = y; context.__state.events.get('scroll')(); };
+    scroll(300);
+    assert.equal(header.classList.contains('tabs-hidden'), true);
+    keyboardFocus = true;
+    scroll(400);
+    assert.equal(header.classList.contains('tabs-hidden'), false);
+    scroll(500);
+    assert.equal(header.classList.contains('tabs-hidden'), false);
+    keyboardFocus = false;
+    scroll(600);
+    assert.equal(header.classList.contains('tabs-hidden'), true);
+    scroll(550);
+    assert.equal(header.classList.contains('tabs-hidden'), false);
+    scroll(20);
+    assert.equal(header.classList.contains('tabs-hidden'), false);
+});
+
 test('autoplay setting plays the topmost visible video muted and shares unmuting', async () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
