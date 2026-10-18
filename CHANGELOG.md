@@ -17,30 +17,41 @@ semantic-style versioning.
   photo/GIF viewer with swipe navigation and dismissal.
 - Added `tweetnook prune` to preview and remove context outside the configured
   linked-depth scope; deletion requires `--apply`.
+- Added replay-source connection controls in Setup for test installs, including
+  placeholder media and options to skip quote expansion and link previews.
 
 ### Changed
 
 - Redesigned the Web header, sync panel, activity step tabs, tag editor, search
-  suggestions, date picker, and theme controls. New desktop archives default to
-  split view while preserving saved layout preferences.
+  suggestions, date picker, and Settings pages. Configuration now groups related
+  fields and shows their units and dependencies.
+- Shared the selected bookmarks, likes, and authored-tweet collections across
+  Sync now, scheduled syncs, and the default CLI sync command.
+- Added confirmations for starting with an empty archive or finishing Setup
+  without a password, and explained archive preparation after Setup finishes.
+- Showed step skip/pause reasons, truthful progress for unknown totals, new-post
+  counts, and schedule labels in the sync panel; live logs load incrementally.
+- Added theme-specific colors for destructive actions and errors, refreshed
+  tweet-menu/article icons, and moved the back-to-top control to the right.
+- New desktop archives default to split view while preserving saved layout
+  preferences.
 - Showed multiple reply recipients and improved quoted media, conversation
   presentation, video sizing, and feed image loading.
 - Linked notices to run logs, added bulk inbox actions, and timestamped new Web
   and scheduled-worker log lines for local display and UTC exports.
 - Refreshed the live demo with archived posts, optimized media, and system
   appearance defaults.
-- Upgrading from v0.3.2 keeps SQLite schema 10, existing archive/configuration
-  paths, and service users. Back up first, stop manual servers/jobs, and update
-  the existing environment; do not rerun the fresh-install service installer.
-  See [maintenance](docs/maintenance.md#upgrade-or-migrate-an-older-archive) for
-  older archives and [updating](README.md#update-tweetnook) for commands.
 
 ### Fixed
 
 - Remembered Web password logins with a renewable session cookie.
 - Preserved video aspect ratios and single-video playback across playback modes,
   and improved mobile media transitions and Safari overlays.
-- Archived link-preview images and rendered quotes consistently in threads.
+- Kept browser keyboard shortcuts working in the video player, made seek arrows
+  move five seconds, and prevented duplicate players after phone-viewer handoff.
+- Archived link-preview images, rendered quotes on thread parents, expanded
+  quoted portraits with main media, and cropped quoted gallery tiles correctly.
+- Removed leftover date-picker markup that prevented Settings from working.
 - Made setup collection confirmation, archive account identity, authentication,
   and deferred follow-up status accurate.
 - Completed enrichment within the sync pipeline, refreshed collections after
