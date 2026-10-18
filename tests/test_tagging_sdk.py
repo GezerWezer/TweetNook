@@ -55,7 +55,13 @@ async def test_token_preflight_uses_supported_developer_api_sdk_request(monkeypa
         "Suggest specific tags",
         "A synthetic post",
     ]
-    files = [part["fileData"] for part in parts if "fileData" in part]
-    assert files == ([{"fileUri": media_uri, "mimeType": media_mime}] if media_mime else [])
+    # SDK versions emit either ProtoJSON casing; validate the same URI/MIME
+    # contract through FileData's aliases instead of requiring one spelling.
+    files = [
+        types.FileData.model_validate(part["fileData"]) for part in parts if "fileData" in part
+    ]
+    assert files == (
+        [types.FileData(file_uri=media_uri, mime_type=media_mime)] if media_mime else []
+    )
     assert "systemInstruction" not in requests[0]
     assert "tools" not in requests[0]
