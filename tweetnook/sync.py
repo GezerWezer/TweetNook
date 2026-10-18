@@ -652,11 +652,11 @@ def _log_embedding_warning(
     pipeline = current_pipeline()
     if pipeline is not None:
         if step_key is not None and pipeline.has_step(step_key):
-            pipeline.fail_step(step_key, message)
+            pipeline.fail_step(step_key, message, recoverable=True)
         else:
             active = pipeline.active_step
             if active is not None and active.state == "active":
-                pipeline.fail_step(active.key, message)
+                pipeline.fail_step(active.key, message, recoverable=True)
         pipeline.issue(message, dedupe_key=f"followup:{message.split(':', 1)[0]}")
     elif console is not None:
         console.print(f"[yellow]{message}[/yellow]")

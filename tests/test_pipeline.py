@@ -27,6 +27,36 @@ def _console(output: StringIO, *, width: int = 160) -> Console:
     )
 
 
+@pytest.mark.parametrize(
+    ("recoverable", "paused", "success"),
+    [(True, False, True), (False, True, True), (False, False, False)],
+)
+def test_only_critical_step_failures_override_run_success(tmp_path, recoverable, paused, success):
+    path = tmp_path / "activity-status.json"
+    with PipelineReporter(_console(StringIO()), "sync", interactive=False, state_path=path) as run:
+        run.add_step("sync:likes:head", "Likes", total=1, unit="pages")
+        run.complete_step("sync:likes:head", "Saved likes")
+        run.add_step("tagging", "Tags", total=1, unit="posts")
+        run.fail_step("tagging", "Could not finish", recoverable=recoverable, paused=paused)
+    snapshot = json.loads(path.read_text())
+    assert snapshot["success"] is success
+    assert snapshot["steps"][0]["state"] == "complete"
+    assert snapshot["steps"][1]["state"] == "failed"
+    assert snapshot["steps"][1]["reason"] == "Could not finish"
+
+
+def test_fatal_error_after_recoverable_step_still_fails_run(tmp_path):
+    path = tmp_path / "activity-status.json"
+    with pytest.raises(RuntimeError, match="writer stopped"):
+        with PipelineReporter(
+            _console(StringIO()), "sync", interactive=False, state_path=path
+        ) as run:
+            run.add_step("media", "Media", total=1, unit="files")
+            run.fail_step("media", "Unavailable media", recoverable=True)
+            raise RuntimeError("writer stopped")
+    assert json.loads(path.read_text())["success"] is False
+
+
 def test_reporter_chooses_one_spinner_for_the_command_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
