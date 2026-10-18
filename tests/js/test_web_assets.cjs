@@ -5458,6 +5458,54 @@ test('header collapses after pointer tab selection and keeps keyboard-focused ta
     assert.equal(header.classList.contains('tabs-hidden'), false);
 });
 
+test('volume and mute are shared in both playback modes and inherited by new players', () => {
+    for (const mode of ['autoplay', 'paused']) {
+        const context = browserContext();
+        const { tweetApp, forcedMuteVideos } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, forcedMuteVideos})');
+        const app = immediateComponent(tweetApp());
+        app.videoPlayback = mode;
+        app.videoObserver = app.videoAutoplayObserver = { observe() {} };
+        const player = (lightbox = false) => {
+            const video = new FakeElement('video', [['controls', '']]);
+            let volume = 1, muted = false;
+            Object.defineProperties(video, {
+                volume: { get: () => volume, set(value) { volume = value; app.handleVideoVolumeChange(video); } },
+                muted: { get: () => muted, set(value) { muted = value; app.handleVideoVolumeChange(video); } },
+            });
+            const closest = video.closest.bind(video);
+            video.closest = selector => lightbox && selector === '.lightbox-stage' ? {} : closest(selector);
+            context.__state.videos.push(video);
+            app.observeVideo(video);
+            return video;
+        };
+        const feed = player(), panel = player(), lightbox = player(true);
+        feed.volume = .3;
+        feed.muted = false;
+        assert.equal(app.videoVolume, .3);
+        for (const video of [panel, lightbox, player()]) {
+            assert.equal(video.volume, .3);
+            assert.equal(video.muted, false);
+        }
+        forcedMuteVideos.add(feed);
+        feed.muted = true;
+        feed.volume = .2;
+        assert.equal(panel.volume, .2);
+        assert.equal(panel.muted, false, 'browser-imposed mute stays local');
+        feed.muted = false;
+        assert.equal(forcedMuteVideos.has(feed), false);
+        lightbox.volume = .7;
+        lightbox.muted = true;
+        assert.equal(feed.volume, .7);
+        assert.equal(panel.muted, true);
+        // GIF playback has its own permanently silent policy.
+        const gif = new FakeElement('video', [['data-animated-gif', '']]);
+        gif.volume = .1;
+        gif.muted = true;
+        app.handleVideoVolumeChange(gif);
+        assert.equal(app.videoVolume, .7);
+    }
+});
+
 test('autoplay setting plays the topmost visible video muted and shares unmuting', async () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');

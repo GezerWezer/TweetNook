@@ -69,6 +69,10 @@ Videos in galleries preserve the complete picture, with bars when their proporti
 differ from the tile. On narrow screens, direct portrait photos and videos fill
 the available width.
 
+Volume and mute changes apply to the other videos on the page, including the
+split panel, fullscreen viewer, and videos loaded as you scroll. This shared
+setting lasts until the page reloads. GIFs remain silent.
+
 ## Read X Articles
 
 X Articles are native long-form publications attached to posts. Feed cards show

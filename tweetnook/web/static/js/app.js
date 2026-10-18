@@ -725,6 +725,7 @@ function tweetApp() {
     let lightboxInlineMount = null;
     let lightboxVideoMotion = null;
     let lightboxVideoReadyCancel = null;
+    let syncingVideoAudio = false;
     // The mobile video backdrop is page content rather than a fixed layer, so
     // Safari paints it beneath its toolbars too. It spans a viewport above and
     // below the visible page without extending the document.
@@ -2152,8 +2153,9 @@ function tweetApp() {
         fontPickerOpen: false,
         fontSize: 'default',
         videoPlayback: 'autoplay', // 'autoplay' | 'paused'
-        // Shared by every player in autoplay mode; each page load starts muted.
+        // Shared by feed, detail, and lightbox players for the current page.
         videoMuted: true,
+        videoVolume: 1,
 
         FONT_OPTIONS: [
             {key: 'system', label: 'System Default', family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'},
@@ -2209,6 +2211,7 @@ function tweetApp() {
             }
             
             this.videoPlayback = localStorage.getItem('tvx-video-playback') === 'paused' ? 'paused' : 'autoplay';
+            this.videoMuted = this.videoPlayback === 'autoplay';
 
             // Restore split panel preference
             const savedSplitPanel = localStorage.getItem('tvx-split-panel');
@@ -2431,20 +2434,35 @@ function tweetApp() {
         },
 
         observeVideo(video) {
-            if (isVideoPlayer(video)) tweetNookInitVideoPlayer(video);
+            if (isVideoPlayer(video)) {
+                this.applyVideoAudio(video);
+                tweetNookInitVideoPlayer(video);
+            }
             this.videoObserver.observe(video);
             if (!isFeedVideoPlayer(video)) return;
-            if (this.videoPlayback === 'autoplay') video.muted = this.videoMuted;
             this.videoAutoplayObserver.observe(video);
+        },
+
+        applyVideoAudio(video) {
+            const previous = syncingVideoAudio;
+            syncingVideoAudio = true;
+            try {
+                if (video.volume !== this.videoVolume) video.volume = this.videoVolume;
+                const muted = forcedMuteVideos.has(video) || this.videoMuted;
+                if (video.muted !== muted) video.muted = muted;
+            } finally {
+                syncingVideoAudio = previous;
+            }
         },
 
         setVideoPlayback(mode) {
             this.videoPlayback = mode === 'autoplay' ? 'autoplay' : 'paused';
             localStorage.setItem('tvx-video-playback', this.videoPlayback);
             const autoplay = this.videoPlayback === 'autoplay';
-            this.videoMuted = true;
+            this.videoMuted = autoplay;
             document.querySelectorAll(VIDEO_PLAYER_SELECTOR).forEach(video => {
-                video.muted = autoplay;
+                forcedMuteVideos.delete(video);
+                this.applyVideoAudio(video);
                 if (!autoplay && isFeedVideoPlayer(video)) video.pause();
             });
             this.autoplayNextVideo();
@@ -2476,7 +2494,7 @@ function tweetApp() {
                 .filter(video => !heldAutoplayVideos.has(video))
                 .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
             if (!next) return;
-            next.muted = this.videoMuted;
+            this.applyVideoAudio(next);
             next.play()?.catch?.(() => {
                 if (next.muted) return;
                 // Browsers can refuse audible autoplay before the page has had a gesture.
@@ -2492,9 +2510,9 @@ function tweetApp() {
             document.querySelectorAll(VIDEO_PLAYER_SELECTOR).forEach(other => {
                 if (other !== video && !other.paused) other.pause();
             });
+            this.applyVideoAudio(video);
             if (this.videoPlayback !== 'autoplay') return;
             heldAutoplayVideos.delete(video);
-            if (!forcedMuteVideos.has(video)) video.muted = this.videoMuted;
         },
 
         handleVideoPause(video) {
@@ -2502,15 +2520,16 @@ function tweetApp() {
         },
 
         handleVideoVolumeChange(video) {
-            if (this.videoPlayback !== 'autoplay' || !isVideoPlayer(video)) return;
-            if (forcedMuteVideos.has(video)) {
-                if (video.muted) return;
-                forcedMuteVideos.delete(video);
-            }
-            if (video.muted === this.videoMuted) return;
-            this.videoMuted = video.muted;
+            if (syncingVideoAudio || !isVideoPlayer(video)) return;
+            // A browser-imposed mute must not silence the other players, but
+            // volume adjustments on that player still belong to the reader.
+            const muted = forcedMuteVideos.has(video) && video.muted ? this.videoMuted : video.muted;
+            if (!video.muted) forcedMuteVideos.delete(video);
+            if (muted === this.videoMuted && video.volume === this.videoVolume) return;
+            this.videoMuted = muted;
+            if (Number.isFinite(video.volume)) this.videoVolume = video.volume;
             document.querySelectorAll(VIDEO_PLAYER_SELECTOR).forEach(other => {
-                other.muted = this.videoMuted;
+                this.applyVideoAudio(other);
             });
         },
 
