@@ -70,12 +70,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Check out changelog
+      - name: Check out changelog and installer
         uses: actions/checkout@v6
         with:
           persist-credentials: false
           fetch-depth: 0
-          sparse-checkout: CHANGELOG.md
+          sparse-checkout: |
+            CHANGELOG.md
+            install.sh
+          sparse-checkout-cone-mode: false
 
       - name: Download distributions
         uses: actions/download-artifact@v6
@@ -126,7 +129,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --repo "$GH_REPO" --verify-tag --notes-file "$RUNNER_TEMP/release-notes.md" --title "$TAG" --latest dist/*
+        run: gh release create "$TAG" --repo "$GH_REPO" --verify-tag --notes-file "$RUNNER_TEMP/release-notes.md" --title "$TAG" --latest dist/* install.sh
 
   pages:
     name: Deploy GitHub Pages demo

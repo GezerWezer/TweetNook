@@ -110,40 +110,64 @@ repair for database corruption.
 
 ## Upgrade or migrate an older archive
 
-TweetNook 0.2.0 upgrades existing SQLite archives to schema 10 automatically the
-first time they open. Schema 9 archives (0.1.7–0.1.8) gain an index of tag
-descriptions; schema 8 archives (0.1.1–0.1.6) also gain derived search-filter
-data. Schema 5 archives (0.0.9–0.1.0) rebuild their derived search indexes too.
-Each upgrade runs in one transaction: tweets and saved responses are preserved,
-and a failure leaves the archive as it was. This can take a few seconds on large
-archives.
+Migrating an older TweetXVault LanceDB archive requires the optional
+`legacy-migration` dependencies. Stop the old app and its archive jobs, and back
+up the complete data folder and configuration before starting.
 
-No automatic backup or downgrade is provided. Stop archive jobs and back up the
-whole data folder before updating, including media, configuration, and activity
-history outside `archive.sqlite`. After updating, run `tweetnook db check` and
-verify collection counts, known tweets, and description searches. To return to
-an older release, stop the service and restore the pre-upgrade backup; a JSON
-export cannot restore an archive.
-
-For the older/upstream LanceDB format, keep `archive.lancedb` in the data folder.
-Before migrating, install the one-time migration support:
+For a new personal installation:
 
 ```bash
-python -m pip install "tweetnook[legacy-migration]"
+bash install.sh --no-service --legacy-migration
 ```
 
-If no SQLite archive exists, Web Setup detects it and offers **Migrate existing
-archive**. Advanced users can run the same migration from the terminal:
+For a Linux service, use `--service` instead of `--no-service`, then stop it as
+root with `tweetnook service stop` before copying the old archive.
+
+If TweetNook is already installed, stop it and install the extra in its existing
+Python environment. For a system install, run as root or prefix these with sudo:
+
+```bash
+tweetnook service stop
+/opt/tweetnook/venv/bin/python -I -m pip --isolated install "tweetnook[legacy-migration]"
+```
+
+For a personal installation or older user-based service:
+
+```bash
+"$HOME/.local/share/tweetnook-runtime/venv/bin/python" -I -m pip --isolated install "tweetnook[legacy-migration]"
+```
+
+Adjust the Python path for a custom environment. Keep using the existing
+environment rather than rerunning the installer.
+
+TweetNook looks for `archive.lancedb/` in its
+[data folder](configuration.md#resolved-directories), alongside `media/`. If the
+old app used a different data folder, copy both folders into TweetNook's data
+folder and keep the originals. Preserve any custom XDG settings so the app and
+migration command use the same archive.
+
+For system installs, the data folder is `/var/lib/tweetnook`; copied files must
+be owned by `tweetnook:tweetnook`. Existing installations keep their current folders.
+
+Start TweetNook with `tweetnook serve`, or run `tweetnook service restart` for an
+existing systemd service so it loads the new dependencies. If no SQLite archive
+exists, Web Setup detects the legacy source and offers **Migrate existing archive**.
+
+Alternatively, keep the server and all archive jobs stopped and run:
 
 ```bash
 tweetnook migrate
+tweetnook db check
+tweetnook stats
 ```
 
-Read the final migration report carefully. A `partial` migration is usable but
-can contain skipped rows, so a zero exit status alone does not prove that every
-source record migrated. Keep the old folder until database checks,
-counts, known tweets, and searches in the new SQLite archive are satisfactory.
-A partial migration may skip unreadable source records.
+For personal installations, run these as the archive's owner.
+
+Start or restart TweetNook after a terminal migration. Read the final migration
+report carefully: a `partial` migration is usable but can skip unreadable source rows,
+so a zero exit status alone does not prove that every record migrated. Keep the
+original data until database checks, collection counts, known tweets, searches,
+and media in the new SQLite archive are satisfactory.
 
 See [Storage](development/storage.md#schema-migration) for format upgrade details.
 

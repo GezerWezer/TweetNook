@@ -20,8 +20,9 @@ Most setup can be done in the web app. Use this page when you need to edit
 ## Edit the configuration file
 
 The default file is `~/Library/Application Support/tweetnook/config.toml` on
-macOS or `~/.config/tweetnook/config.toml` on Linux. Custom XDG folders can
-change these paths.
+macOS or `~/.config/tweetnook/config.toml` for personal Linux installations.
+New system-wide Linux installations use `/etc/tweetnook/config.toml`.
+Custom XDG folders can change personal-install paths.
 
 You do not need to create `config.toml` before Web Setup. Most users should save
 settings through the Web UI. If you prefer to manage the file manually, create
@@ -242,9 +243,13 @@ Default locations are:
 | System | Configuration | Data | Cache |
 |---|---|---|---|
 | macOS | `~/Library/Application Support/tweetnook` | Same as configuration | `~/Library/Caches/tweetnook` |
-| Linux | `~/.config/tweetnook` | `~/.local/share/tweetnook` | `~/.cache/tweetnook` |
+| Linux, personal | `~/.config/tweetnook` | `~/.local/share/tweetnook` | `~/.cache/tweetnook` |
+| Linux, system installer | `/etc/tweetnook` | `/var/lib/tweetnook` | `/var/cache/tweetnook` |
 
-To confirm the exact paths used on your machine without printing secrets:
+System-installed commands use the service account's configuration and ignore
+caller XDG and credential overrides. Older installations keep their existing paths.
+
+For personal installations, confirm the paths without printing secrets:
 
 ```bash
 uv run python -c 'from tweetnook.config import resolve_paths; p = resolve_paths(); print("Config:", p.config_dir); print("Data:", p.data_dir); print("Cache:", p.cache_dir)'
@@ -252,8 +257,8 @@ uv run python -c 'from tweetnook.config import resolve_paths; p = resolve_paths(
 
 ### Use custom folders
 
-Set these environment variables before running a command. Each root receives
-its own `tweetnook` subfolder:
+For a personal installation, set these environment variables before running a
+command. Each root receives its own `tweetnook` subfolder:
 
 ```bash
 export XDG_CONFIG_HOME=/absolute/path/to/custom/config
@@ -292,9 +297,8 @@ avatars, import metadata, and usage logs. Protect it accordingly.
 
 Setup workflow state is stored in `<data>/setup/state.json`; notices are in
 `<data>/notices.json`. These are available before `archive.db` exists. Rerunning
-Setup does not clear them or reset configuration. The Linux service defaults to
-the selected Unix user's home directories; its install options can set explicit
-XDG data/config/cache homes.
+Setup does not clear them or reset configuration. The system installer uses the
+paths above; `tweetnook service install` also supports custom XDG homes.
 
 ## Web configuration surfaces
 

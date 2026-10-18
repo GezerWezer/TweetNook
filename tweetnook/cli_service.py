@@ -112,6 +112,22 @@ def _systemctl(*args):
     subprocess.run(["systemctl", *args], check=True)
 
 
+def _sudo_if_needed(*arguments: str) -> None:
+    """Hand off once to the same installed CLI, preserving interactive sudo I/O."""
+    if os.geteuid() == 0:
+        return
+    sudo = shutil.which("sudo")
+    if sudo is None:
+        raise ValueError("sudo is not installed. Install sudo or run this command as root.")
+    typer.echo("Administrator access is required; requesting sudo...")
+    result = subprocess.run(
+        [sudo, sys.executable, "-I", "-m", "tweetnook", *arguments], check=False
+    )
+    # Returning to the caller would perform the operation twice, once without root.
+    code = result.returncode
+    raise typer.Exit(code if code >= 0 else 128 - code)
+
+
 def _service_environment() -> dict[str, str]:
     environment: dict[str, str] = {}
     for line in UNIT_PATH.read_text().splitlines():
@@ -219,7 +235,8 @@ def _service_python() -> str:
     if len(command) != 4 or command[1:] != ["-m", "tweetnook", "serve"]:
         raise ValueError("The managed TweetNook service has an invalid ExecStart command.")
 
-    python = command[0]
+    # Undo render_unit's systemd escaping before using the path outside systemd.
+    python = command[0].replace("%%", "%").replace("$$", "$")
     if not Path(python).is_file():
         raise ValueError(f"The service Python executable does not exist: {python}")
     return python
@@ -240,16 +257,17 @@ def _service_version(python: str) -> str:
 
 def update_managed_installation() -> None:
     try:
-        _systemd(admin=True)
+        _systemd()
         _owned_unit()
         python = _service_python()
         if manual_pid := _manual_web_pid():
             raise ValueError(
                 f"A manual TweetNook Web server is still running (PID: {manual_pid}). "
                 "Stop it as the service user with `tweetnook web stop`, then rerun "
-                "`sudo tweetnook update`; otherwise it can keep old Python code loaded "
+                "`tweetnook update`; otherwise it can keep old Python code loaded "
                 "and block the managed service port."
             )
+        _sudo_if_needed("update")
         subprocess.run(
             [python, "-m", "pip", "--version"],
             check=True,
@@ -382,7 +400,12 @@ def uninstall():
 def _register_action(action, help_text):
     def command():
         try:
-            _systemd(admin=action != "status")
+            _systemd(admin=action not in {"status", "restart"})
+            if action == "restart":
+                _owned_unit()
+                if not UNIT_PATH.is_file():
+                    raise ValueError("TweetNook's managed service is not installed.")
+                _sudo_if_needed("service", "restart")
             _systemctl(action, UNIT_NAME)
         except (ValueError, OSError, subprocess.CalledProcessError) as exc:
             typer.echo(str(exc), err=True)
@@ -394,7 +417,9 @@ def _register_action(action, help_text):
 for _action, _help in {
     "start": "Start the installed service.",
     "stop": "Stop the service and its managed jobs gracefully.",
-    "restart": "Restart the installed service, stopping active jobs first.",
+    "restart": (
+        "Restart the installed service, stopping active jobs first; requests sudo if needed."
+    ),
     "status": "Show systemd service status.",
 }.items():
     _register_action(_action, _help)

@@ -30,6 +30,11 @@ supported runtime.
 
 ## Managed systemd lifecycle
 
+Fresh system installs use the dedicated `tweetnook` account. Their global launcher
+enters `system_install.py`, which runs archive commands as that account and
+delegates service management to the CLI. Personal installs enter the CLI directly;
+existing service updates retain their unit and paths.
+
 `cli_service.py` writes a managed unit for the invoking Python environment.
 `service install` atomically replaces the unit, calls `daemon-reload`, enables it,
 and explicitly restarts it. `enable --now` alone leaves an active process running:
@@ -45,6 +50,11 @@ immediately exits (for example, because the manual server still owns the port).
 A manual pip upgrade alone does not restart an existing server; follow it with
 `service restart` (or restart the foreground process). Pip installation itself
 never modifies host services.
+
+Update and restart validate the Linux/systemd service before requesting sudo for
+non-root callers. The handoff invokes the absolute `sys.executable` with
+`-I -m tweetnook`, inherits terminal input/output, and returns the child's exit
+status without repeating the operation in the parent. Root callers run directly.
 
 ## FastAPI lifespan
 

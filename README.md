@@ -39,73 +39,94 @@ Thanks to [rrika](https://github.com/rrika) for sharing their
 
 ## Getting started
 
-You need **macOS or Linux** and **Python 3.12 or newer**. Live syncing also needs
+You need macOS or Linux. The installer finds or downloads Python 3.12 and
+creates a private environment for TweetNook. Live syncing also needs
 a browser signed in to your Twitter/X account. You can import a downloaded archive
 without connecting to Twitter/X first.
 
 ### 1. Install
 
-Install TweetNook with pip:
+Download the installer from the latest GitHub release:
 
 ```bash
-python3 -m pip install tweetnook
-````
-
-If you need to migrate from a TweetXVault LanceDB archive, install the migration support too:
-
-```bash
-python3 -m pip install "tweetnook[legacy-migration]"
+curl -fL https://github.com/gezerwezer/tweetnook/releases/latest/download/install.sh -o install.sh
+bash install.sh
 ```
 
-To include automated tagging support:
+On Linux with systemd, the installer starts a background service under a dedicated
+`tweetnook` account. Run as root or allow sudo. On macOS, Linux without systemd,
+or with `--no-service`, run as your regular user for manual startup.
+
+The installer uses the published PyPI package. For development, see the
+[development guide](docs/development/README.md).
+
+To skip the prompt or include optional features:
 
 ```bash
-python3 -m pip install "tweetnook[automated-tagging]"
+bash install.sh --no-service
+bash install.sh --service                          # Linux/systemd; starts the service
+bash install.sh --no-service --automated-tagging    # Gemini tagging support
+bash install.sh --no-service --legacy-migration     # Older TweetXVault LanceDB archives
 ```
 
-### 2. Install the service
+Flags can be combined. Use `bash install.sh --help` for all options, including
+`--version VERSION`, `--python PYTHON`, `--install-dir PATH`, and `--bin-dir PATH`.
+For an existing service, use `tweetnook update` instead of rerunning the installer.
+See [Configuration](docs/configuration.md#resolved-directories) for file locations.
 
-For a persistent homelab/server installation, install TweetNook as a system service:
+If you already manage a Python 3.12+ virtual environment, pip remains supported:
 
 ```bash
-sudo tweetnook service install
+python -m pip install tweetnook
 ```
 
-This installs and enables the TweetNook service so it starts automatically at boot and keeps running in the background. Running it again restarts the service to load the installed code and Web assets together.
+### 2. Start TweetNook
 
-Check its status with:
+For manual startup on macOS or Linux:
 
 ```bash
-tweetnook service status
+tweetnook serve
 ```
 
-You can also manage it with:
+Leave the terminal running while using TweetNook. Press Ctrl+C to stop it.
+
+If you chose service installation, it is already running and starts automatically
+at boot. Check its status with `tweetnook service status`. To restart it:
 
 ```bash
-sudo tweetnook service restart
-sudo tweetnook service stop
-sudo tweetnook service start
+tweetnook service restart
 ```
+
+Restart requests sudo when needed. Other service administration commands are
+listed in the [CLI reference](docs/cli-reference.md#service).
 
 ### Update TweetNook
 
-For an installation created by `tweetnook service install`, update TweetNook with:
+Back up your archive before upgrading. For an installer-created systemd service,
+run:
 
 ```bash
-sudo tweetnook update
+tweetnook update
 ```
 
-The command gracefully stops active Web and scheduled work, upgrades TweetNook in the exact Python
-environment recorded by the managed systemd service, and restarts the service afterward.
+This stops active work, upgrades TweetNook, and restarts the service, requesting
+sudo when needed. Existing installations keep their service user and file paths.
 
-Version 0.2.0 upgrades SQLite archives to schema 10 when first opened, adding an
-index for description searches. Back up your data folder before updating: no
-automatic backup or downgrade is provided. See the
-[archive upgrade guide](docs/maintenance.md#upgrade-or-migrate-an-older-archive).
+For a manual installation, stop the server and all archive jobs, then upgrade
+its private environment and start it again:
+
+```bash
+"$HOME/.local/share/tweetnook-runtime/venv/bin/python" -I -m pip --isolated install --upgrade tweetnook
+tweetnook serve
+```
+
+Include previously selected extras in the upgrade target, for example
+`"tweetnook[automated-tagging]"`, so their dependencies are updated too.
+
 
 ### 3. Open TweetNook
 
-After the service starts, open the Web UI using the address shown by TweetNook, for example:
+After TweetNook starts, open the Web UI using the address it shows, for example:
 
 ```text
 http://[Machine IP]:8000
@@ -170,16 +191,8 @@ your archive.
 ## Optional Gemini tagging
 
 Gemini can suggest tags for text and media tweets and add media descriptions.
-To install support in the active pip environment:
-
-```bash
-python -m pip install "tweetnook[automated-tagging]"
-```
-
-Restart the TweetNook server afterward. For a systemd installation, use the
-service restart command; for a foreground `tweetnook serve` process, stop and
-start it again. Developers using uv can install the extra once with
-`uv sync --extra automated-tagging`.
+Include `--automated-tagging` during installation. To add support later, follow
+the [Automated Tagging setup instructions](docs/automated-tagging.md#set-it-up).
 
 >[!IMPORTANT]
 > Please read [Automated tagging](docs/automated-tagging.md) before enabling.

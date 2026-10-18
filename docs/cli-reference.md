@@ -319,13 +319,17 @@ archive, creates no PID file or default password, and uses configured host/port.
 ## `service`
 
 Linux with running systemd is required. Pip installation does not install a service.
-Install using the exact Python environment that contains TweetNook:
+For a new service, use the [installer](../README.md#1-install). It creates a
+dedicated `tweetnook` account and a global command that uses the service's archive.
+
+To register a service yourself in an existing personal/pip installation,
+use the exact Python environment that contains TweetNook:
 
 ```bash
 sudo /absolute/path/to/venv/bin/python -m tweetnook service install --user your-user
 sudo /absolute/path/to/venv/bin/python -m tweetnook service stop
 sudo /absolute/path/to/venv/bin/python -m tweetnook service start
-sudo /absolute/path/to/venv/bin/python -m tweetnook service restart
+tweetnook service restart
 tweetnook service status
 sudo /absolute/path/to/venv/bin/python -m tweetnook service uninstall
 ```
@@ -339,10 +343,17 @@ direct root installation requires an explicit user.
 when it is already active. This loads updated Python routes together with the
 installed Web assets. An inactive service is started once.
 
-The top-level `sudo tweetnook update` command upgrades the exact Python environment
+`tweetnook service restart` and `tweetnook update` request sudo when needed,
+re-running the same installation through its absolute Python path. They check
+for Linux/systemd and a managed service before requesting elevation. Running
+them explicitly as root still works; start, stop, install and uninstall continue
+to require an explicit root invocation.
+
+The top-level `tweetnook update` command upgrades the exact Python environment
 recorded in the managed unit. It refuses to proceed when a live manual
 `tweetnook web` process is recorded in the service data directory, and verifies
 that the systemd process remains active after startup before reporting success.
+Updates preserve the existing service user, environment, and file paths.
 
 `install` accepts `--data-home`, `--config-home`, and `--cache-home` for absolute
 XDG parent folders (each contains the `tweetnook/` application directory).

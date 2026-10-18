@@ -15,8 +15,8 @@ Trusted Publishing. The workflow builds and checks distributions on `v*` tag
 pushes, publishes them through the protected `pypi` GitHub environment, and then
 creates a GitHub Release with the tagged changelog `Added` (when applicable),
 `Changed`, and `Fixed` sections, a full comparison link, and the exact
-wheel/source artifacts. Do not generate or add a `Highlights` section. No PyPI
-API token belongs in GitHub Secrets.
+wheel/source artifacts plus the standalone `install.sh`. Do not generate or add a
+`Highlights` section. No PyPI API token belongs in GitHub Secrets.
 
 For the first setup, register a pending GitHub publisher at
 <https://pypi.org/manage/account/publishing/> with:
@@ -75,6 +75,12 @@ Use semver-style version bumps:
       `uvx --from twine twine check dist/*`
 - [ ] Smoke-test the built wheel before upload:
       `uv run --isolated --with dist/tweetnook-X.Y.Z-py3-none-any.whl tweetnook --help`
+- [ ] Validate the standalone installer: `bash -n install.sh` and
+      `.venv/bin/pytest tests/test_installer.py tests/test_system_install.py tests/test_cli_service.py -q`;
+      verify `install.sh` is included
+      in the source distribution and attached to the tagged GitHub Release
+- [ ] Smoke-test root/sudo Linux service installs, personal macOS installs, and
+      updates of existing services. Check that `tweetnook.system_install` is packaged.
 - [ ] Stage only release files explicitly and review them:
       `git add ...`, `git diff --staged --name-only`, `git diff --staged`
 - [ ] Commit release metadata:

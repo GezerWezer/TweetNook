@@ -32,12 +32,25 @@ On my instance, using `gemini-3.6-flash`, Flex processing, and High thinking. Th
 
 ## Set it up
 
-If not installed initially, install the optional dependencies once in the Python environment used by the
-TweetNook server:
+For a new installation, include `--automated-tagging` when running `install.sh`.
+To add support later, stop TweetNook and any archive jobs, then install the extra
+in the Python environment used by the server. For a new system-wide Linux
+installation (run from root, or prefix these commands with sudo):
 
 ```bash
-python -m pip install "tweetnook[automated-tagging]"
+tweetnook service stop
+/opt/tweetnook/venv/bin/python -I -m pip --isolated install "tweetnook[automated-tagging]"
 ```
+
+For a personal installation or older user-based service:
+
+```bash
+"$HOME/.local/share/tweetnook-runtime/venv/bin/python" -I -m pip --isolated install "tweetnook[automated-tagging]"
+```
+
+If you chose a custom runtime location or manage your own virtual environment,
+use that environment's Python instead. Developers using a uv checkout can
+install the extra once with `uv sync --extra automated-tagging`.
 
 1. Restart TweetNook after installing the dependencies. For a systemd
    installation use `tweetnook service restart`; for a foreground
