@@ -18,7 +18,7 @@ linked separately in the documentation audit.
 - Version sources:
   - `pyproject.toml`
   - `tweetnook/__init__.py`
-- Current source version: `1.0.0`
+- Current source version: `1.0.1`
 - Build backend: Hatchling
 - Python: ≥3.12
 - Console script: `tweetnook = tweetnook.cli:app`

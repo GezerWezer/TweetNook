@@ -3,6 +3,40 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning.
 
+## [1.0.1] - 2026-10-18
+
+### Changed
+
+- Clarified critical sync failure boundaries and simplified the README introduction.
+
+### Fixed
+
+- Collection tabs collapse on scroll after switching tabs, while keyboard focus
+  keeps the tabs accessible.
+- Removed the visible seam between the archive title and collection tabs by
+  sharing one header backdrop.
+- Successful collection syncs remain successful when optional follow-ups fail or
+  automated tagging pauses at a budget or quota limit. Activity retains the
+  affected step details; critical collection and storage failures still fail the run.
+- Clicking blank space beside narrow media opens another post in split view.
+- Video volume and mute changes apply across feed, detail, and fullscreen players,
+  including newly loaded videos, in both autoplay and click-to-play modes.
+
+### Validation
+
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff format --check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync ruff check`
+- `UV_CACHE_DIR=/tmp/uv-cache uv run --no-sync pytest -o addopts= -q`
+- `node --test tests/js/test_web_assets.cjs tests/js/test_demo_api.cjs tests/js/test_articles.cjs`
+- `bash -n install.sh`
+- `git diff --check`
+- Fresh wheel/source build, Twine metadata checks, isolated wheel CLI/Web imports,
+  and package-content checks.
+- Synthetic-data Helium checks reproduce the split-view click issue and verify
+  header scrolling, shared volume, and desktop/mobile header appearance.
+- Installer/service lifecycle tests cover privilege and existing-service behavior;
+  a live Linux systemd installation was not exercised on this macOS release host.
+
 ## [1.0.0] - 2026-10-18
 
 ### Added
@@ -520,6 +554,7 @@ semantic-style versioning.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[1.0.1]: https://github.com/gezerwezer/tweetnook/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/gezerwezer/tweetnook/compare/v0.3.2...v1.0.0
 [0.3.2]: https://github.com/gezerwezer/tweetnook/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/gezerwezer/tweetnook/compare/v0.3.0...v0.3.1
