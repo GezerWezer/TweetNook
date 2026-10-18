@@ -53,7 +53,10 @@ function nookHeaderAutoHide() {
     queued = false;
     const y = Math.max(0, window.scrollY), delta = y - last;
     last = y;
-    if (y <= header.offsetHeight || header.contains(document.activeElement)) { header.classList.remove('tabs-hidden'); travel = 0; return; }
+    // Pointer clicks leave tabs focused too. Only keyboard focus should keep
+    // the strip visible while the reader scrolls through a collection.
+    const keyboardFocus = header.contains(document.activeElement) && document.activeElement?.matches(':focus-visible');
+    if (y <= header.offsetHeight || keyboardFocus) { header.classList.remove('tabs-hidden'); travel = 0; return; }
     travel = Math.sign(delta) === Math.sign(travel) ? travel + delta : delta;
     if (travel > 24) header.classList.add('tabs-hidden');
     else if (travel < -24) header.classList.remove('tabs-hidden');
