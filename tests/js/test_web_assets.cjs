@@ -2627,6 +2627,109 @@ test('goBack tears down playing videos before navigating history', () => {
     assert.equal(context.__state.historyCalls.at(-1)[0], 'back');
 });
 
+test('tag settings bound rendered rows and reuse archive-wide counts for large catalogs', () => {
+    const { nookTagsPage } = loadScripts(browserContext(), ['settings.js'], '({nookTagsPage})');
+    const page = nookTagsPage();
+    let reads = 0;
+    page.globalTags = Array.from({ length: 20000 }, (_, index) => ({
+        tag: `Tag ${String(index).padStart(5, '0')}`,
+        get count() { reads++; return index + 1; },
+    }));
+    assert.equal(page.rows().length, 100);
+    assert.equal(page.rows()[0].tag, 'Tag 19999');
+    assert.equal(page.pageCount(), 200);
+    assert.equal(page.pageLabel(), '1–100 of 20,000 tags');
+    assert.equal(page.share(20000), 100);
+    assert.equal(page.share(1), 4);
+    assert.equal(page.countOf('Tag 19999'), 20000);
+    assert.match(page.summary(), /200,010,000 times/);
+    const warmedReads = reads;
+    const seen = new Set();
+    for (let index = 1; index <= page.pageCount(); index++) {
+        page.page = index;
+        for (const tag of page.rows()) {
+            seen.add(tag.tag);
+            page.share(index);
+            page.countOf(tag.tag);
+        }
+        page.summary();
+    }
+    assert.equal(seen.size, 20000);
+    assert.equal(reads, warmedReads, 'paging and row bars must not rescan the catalog');
+    assert.equal(page.globalTags[0].tag, 'Tag 00000', 'sorting must preserve the source array');
+
+    // More tags than can be spread into Math.max() arguments.
+    page.globalTags = Array.from({ length: 150000 }, (_, index) => ({ tag: `New ${index}`, count: index + 1 }));
+    assert.equal(page.share(150000), 100);
+    assert.equal(page.countOf('Tag 19999'), 0);
+    assert.equal(page.countOf('New 149999'), 150000);
+});
+
+test('tag settings search all pages and preserve merge selection through paging and refreshes', async () => {
+    const context = browserContext();
+    const requests = [];
+    context.fetch = async (url, options) => { requests.push([url, options]); return { ok: true }; };
+    const { nookTagsPage } = loadScripts(context, ['settings.js'], '({nookTagsPage})');
+    const watchers = new Map();
+    const page = Object.assign(nookTagsPage(), {
+        globalTags: Array.from({ length: 205 }, (_, index) => ({ tag: `Tag ${String(index).padStart(3, '0')}`, count: index + 1 })),
+        $watch: (key, callback) => watchers.set(key, callback),
+        $el: { scrollTop: 500 },
+        $refs: { tagListHeading: { focus() {} } },
+        $nextTick: callback => callback(),
+    });
+    page.init();
+    page.toggleSelect();
+    page.toggle('Tag 204');
+    page.changePage(1);
+    assert.equal(page.currentPage(), 2);
+    assert.equal(page.$el.scrollTop, 0);
+    page.toggle(page.rows()[0].tag);
+    page.changePage(1);
+    assert.equal(page.rows().length, 5);
+    assert.equal(page.pageLabel(), '201–205 of 205 tags');
+    page.query = 'TAG 000';
+    watchers.get('query')();
+    assert.equal(page.currentPage(), 1);
+    assert.equal(page.rows().length, 1);
+    assert.equal(page.rows()[0].tag, 'Tag 000');
+    assert.equal(page.selected.length, 2);
+    page.query = '';
+    watchers.get('query')();
+    page.sort = 'name';
+    watchers.get('sort')();
+    assert.equal(page.rows()[0].tag, 'Tag 000');
+    page.changePage(1);
+    page.changePage(1);
+    page.globalTags = page.globalTags.slice(0, 100);
+    assert.equal(page.rows().length, 100, 'a shrinking result set must not leave a blank page');
+    watchers.get('globalTags')();
+    assert.equal(page.page, 1);
+    page.globalTags = [{ tag: 'Tag 204', count: 205 }, { tag: 'Tag 104', count: 105 }];
+    watchers.get('globalTags')();
+    page.keep = 'Tag 204';
+    page.fetchGlobalTags = async () => { page.globalTags = [{ tag: 'Tag 204', count: 310 }]; };
+    await page.submitMerge();
+    assert.equal(requests[0][0], '/api/tags/merge');
+    assert.deepEqual(JSON.parse(requests[0][1].body), { primary_tag: 'Tag 204', merge_tags: ['Tag 104'] });
+    assert.equal(page.countOf('Tag 204'), 310);
+    assert.equal(page.selected.length, 0);
+    page.confirmDelete = 'Tag 204';
+    await page.deleteTag();
+    assert.equal(page.rows().length, 0);
+    assert.equal(page.countOf('Tag 204'), 0);
+    assert.match(page.summary(), /Tag a tweet/);
+});
+
+test('tag settings only mount when open and expose accessible bounded page controls', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.match(html, /<template x-if="showSettingsModal && settingsTab === 'tags'">/);
+    assert.match(html, /<template x-for="tag in rows\(\)"/);
+    assert.match(html, /aria-label="Tag pages" x-show="filteredRows\(\).length > pageSize"/);
+    assert.match(html, /:disabled="currentPage\(\) <= 1" @click="changePage\(-1\)"/);
+    assert.match(html, /:disabled="currentPage\(\) >= pageCount\(\)" @click="changePage\(1\)"/);
+});
+
 test('tag editing deduplicates case-insensitively and persists response state', async () => {
     const context = browserContext();
     const requests = [];

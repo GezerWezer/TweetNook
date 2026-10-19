@@ -210,23 +210,67 @@ function nookTrapFocus(event, container) {
 
 // Tags: browse, search, sort; select to merge; per-tag menu for search and delete.
 function nookTagsPage() {
+  // Global tag updates replace the array. Keep derived data outside Alpine's reactive
+  // state so every row can reuse it without rescanning (or tracking) the whole archive.
+  let source, catalog, filteredSource, filteredQuery, filteredSort, filtered;
   return {
+    page: 1, pageSize: 100,
     query: '', sort: 'count', selecting: false, selected: [], keep: '', merge: false, confirmDelete: null,
     menu: null, menuTop: 0, menuRight: 0, menuTrigger: null, busy: false, status: '', returnFocus: null,
-    rows() {
+    init() {
+      for (const key of ['query', 'sort', 'globalTags']) this.$watch(key, () => { this.page = 1; this.closeMenu(false); });
+    },
+    catalog() {
+      const tags = this.globalTags;
+      if (source !== tags) {
+        const counts = new Map();
+        let total = 0, max = 1;
+        for (const tag of tags) {
+          const count = tag.count || 0;
+          counts.set(tag.tag, count);
+          total += count;
+          max = Math.max(max, count);
+        }
+        source = tags;
+        catalog = { counts, total, max };
+      }
+      return catalog;
+    },
+    filteredRows() {
+      const tags = this.globalTags, sort = this.sort;
       const term = this.query.trim().toLowerCase();
-      const tags = term ? this.globalTags.filter(tag => tag.tag.toLowerCase().includes(term)) : [...this.globalTags];
-      return tags.sort((a, b) => this.sort === 'name' ? a.tag.localeCompare(b.tag) : (b.count - a.count) || a.tag.localeCompare(b.tag));
+      if (filteredSource !== tags || filteredQuery !== term || filteredSort !== sort) {
+        filtered = term ? tags.filter(tag => tag.tag.toLowerCase().includes(term)) : [...tags];
+        filtered.sort((a, b) => sort === 'name' ? a.tag.localeCompare(b.tag) : (b.count - a.count) || a.tag.localeCompare(b.tag));
+        filteredSource = tags; filteredQuery = term; filteredSort = sort;
+      }
+      return filtered;
+    },
+    pageCount() { return Math.max(1, Math.ceil(this.filteredRows().length / this.pageSize)); },
+    currentPage() { return Math.min(this.page, this.pageCount()); },
+    rows() {
+      const start = (this.currentPage() - 1) * this.pageSize;
+      return this.filteredRows().slice(start, start + this.pageSize);
+    },
+    pageLabel() {
+      const count = this.filteredRows().length;
+      const start = (this.currentPage() - 1) * this.pageSize;
+      return `${(start + 1).toLocaleString()}–${Math.min(start + this.pageSize, count).toLocaleString()} of ${count.toLocaleString()} tags`;
+    },
+    changePage(step) {
+      this.page = Math.max(1, Math.min(this.currentPage() + step, this.pageCount()));
+      this.closeMenu(false);
+      this.$el.scrollTop = 0;
+      this.$nextTick(() => this.$refs.tagListHeading?.focus());
     },
     summary() {
-      const total = this.globalTags.reduce((sum, tag) => sum + (tag.count || 0), 0);
+      const total = this.catalog().total;
       return this.globalTags.length ? `${this.globalTags.length} tags · used ${total.toLocaleString()} times` : 'Tag a tweet from its menu to start.';
     },
     countLabel: nookCountLabel,
-    countOf(name) { return this.globalTags.find(tag => tag.tag === name)?.count || 0; },
+    countOf(name) { return this.catalog().counts.get(name) || 0; },
     share(count) {
-      const max = Math.max(...this.globalTags.map(tag => tag.count || 0), 1);
-      return Math.max(4, Math.round((count / max) * 100));
+      return Math.max(4, Math.round((count / this.catalog().max) * 100));
     },
     isSelected(name) { return this.selected.includes(name); },
     toggle(name) { this.selected = this.isSelected(name) ? this.selected.filter(item => item !== name) : [...this.selected, name]; },

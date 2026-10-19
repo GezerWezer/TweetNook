@@ -1404,14 +1404,15 @@
                     </div>
 
                     <!-- Tags: one list for browsing, selecting, merging and deleting -->
-                    <div class="nook-setting-body nook-tags-page" x-show="settingsTab === 'tags'" x-data="nookTagsPage()" @keydown.escape="escape($event)" @scroll="menu && closeMenu(false)">
-                        <div class="nook-settings-intro"><p>Tags you've added to saved tweets.</p><span x-text="summary()"></span></div>
+                    <template x-if="showSettingsModal && settingsTab === 'tags'">
+                    <div class="nook-setting-body nook-tags-page" x-data="nookTagsPage()" @keydown.escape="escape($event)" @scroll="menu && closeMenu(false)">
+                        <div class="nook-settings-intro" tabindex="-1" x-ref="tagListHeading"><p>Tags you've added to saved tweets.</p><span x-text="summary()"></span></div>
                         <div class="nook-tag-toolbar">
                             <label class="nook-search-pill">
                                 <span class="nook-search-pill-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M10.25 3.75c-3.59 0-6.5 2.91-6.5 6.5s2.91 6.5 6.5 6.5c1.795 0 3.419-.726 4.596-1.904 1.178-1.177 1.904-2.801 1.904-4.596 0-3.59-2.91-6.5-6.5-6.5zm-8.5 6.5c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5c0 1.986-.682 3.815-1.824 5.262l4.781 4.781-1.414 1.414-4.781-4.781c-1.447 1.142-3.276 1.824-5.262 1.824-4.694 0-8.5-3.806-8.5-8.5z" />
 </svg></span>
-                                <input type="search" x-model="query" placeholder="Search tags" aria-label="Search tags" autocomplete="off" spellcheck="false">
+                                <input type="search" x-model.debounce.150ms="query" placeholder="Search tags" aria-label="Search tags" autocomplete="off" spellcheck="false">
                             </label>
                             <div class="nook-tag-controls">
                                 <div class="nook-segmented" role="radiogroup" aria-label="Sort tags">
@@ -1445,6 +1446,11 @@
                                 </li>
                             </template>
                         </ul>
+                        <nav class="nook-tag-pagination" aria-label="Tag pages" x-show="filteredRows().length > pageSize">
+                            <span role="status" x-text="pageLabel()"></span>
+                            <button type="button" class="nook-secondary-button" :disabled="currentPage() <= 1" @click="changePage(-1)">Previous</button>
+                            <button type="button" class="nook-secondary-button" :disabled="currentPage() >= pageCount()" @click="changePage(1)">Next</button>
+                        </nav>
                         <div class="nook-menu" role="menu" x-cloak x-show="menu" x-transition.opacity.duration.100ms :aria-label="menu ? 'Options for ' + menu : ''"
                              :style="'top:' + menuTop + 'px;right:' + menuRight + 'px'" @click.outside="menu && closeMenu(false)" @keydown.arrow-down.prevent="moveMenu(1)" @keydown.arrow-up.prevent="moveMenu(-1)" @keydown.tab="closeMenu(false)">
                             <button type="button" role="menuitem" @click="showTweets(menu)"><span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
@@ -1497,6 +1503,7 @@
                             </div>
                         </div>
                     </div>
+                    </template>
 
                     <!-- Optional direct-Gemini automated tagging -->
                     <div class="nook-setting-body nook-original-body" x-show="settingsTab === 'automated-tagging' && automatedTaggingInstalled">
