@@ -83,6 +83,7 @@ class SyncConfig(BaseModel):
     timeout: float = Field(default=30.0, ge=1.0)
     max_linked_depth: int = Field(default=50, ge=0)
     reply_linked_depth: int = Field(default=0, ge=0, le=1)
+    reply_linked_limit: int = Field(default=50, ge=1)
 
     @field_validator("collections")
     @classmethod
@@ -515,6 +516,7 @@ def load_config(env: Mapping[str, str] | None = None) -> tuple[AppConfig, XDGPat
         "timeout": _env_float(env, "TWEETNOOK_TIMEOUT"),
         "max_linked_depth": _env_int(env, "TWEETNOOK_MAX_LINKED_DEPTH"),
         "reply_linked_depth": _env_int(env, "TWEETNOOK_REPLY_LINKED_DEPTH"),
+        "reply_linked_limit": _env_int(env, "TWEETNOOK_REPLY_LINKED_LIMIT"),
     }
     sync_updates = {key: value for key, value in sync_updates.items() if value is not None}
 
@@ -601,6 +603,7 @@ def get_config_ui_schema() -> dict[str, Any]:
             "web.avatar_cache_limit_mb",
             "web.host",
             "web.port",
+            "sync.reply_linked_depth",
         ],
         "blacklist": [
             "auth.auth_token",
@@ -662,7 +665,11 @@ def get_config_ui_schema() -> dict[str, Any]:
             },
             {
                 "title": "Quoted and linked posts",
-                "fields": ["sync.max_linked_depth", "sync.reply_linked_depth"],
+                "fields": [
+                    "sync.max_linked_depth",
+                    "sync.reply_linked_depth",
+                    "sync.reply_linked_limit",
+                ],
             },
             {
                 "title": "Database",
@@ -696,6 +703,8 @@ def get_config_ui_schema() -> dict[str, Any]:
             "web.avatar_cache_limit_enabled": ["web.fetch_avatars"],
             "web.avatar_cache_limit_mb": ["web.fetch_avatars", "web.avatar_cache_limit_enabled"],
         },
+        "visible_when": {"sync.reply_linked_limit": ["sync.reply_linked_depth"]},
+        "number_constraints": {"sync.reply_linked_limit": {"min": 1, "step": 1}},
         "labels": {
             "auth": "Authentication",
             "sync": "Sync",
@@ -718,6 +727,7 @@ def get_config_ui_schema() -> dict[str, Any]:
             "sync.timeout": "Request timeout",
             "sync.max_linked_depth": "Follow depth",
             "sync.reply_linked_depth": "Include links in replies",
+            "sync.reply_linked_limit": "Maximum reply links per sync",
             "web.host": "Host",
             "web.port": "Port",
             "web.fetch_avatars": "Download missing avatars",
@@ -768,6 +778,10 @@ def get_config_ui_schema() -> dict[str, Any]:
             "sync.reply_linked_depth": (
                 "Also save tweets quoted or linked in other people's replies to saved "
                 "conversations, one hop only."
+            ),
+            "sync.reply_linked_limit": (
+                "Unique quoted or linked tweets to fetch from replies per sync or thread "
+                "expansion. Failed lookups count toward the limit."
             ),
             "web.fetch_avatars": (
                 "When a profile picture isn't saved yet, the server downloads it from X the "

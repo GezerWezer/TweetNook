@@ -8458,7 +8458,8 @@ test('Configuration page groups and formats fields from the server schema', () =
         },
     };
     const basic = nookConfigSections(app, 'basic');
-    assert.deepEqual([...basic.map(group => group.title)], ['Web server', 'Avatars']);
+    assert.deepEqual([...basic.map(group => group.title)], ['Web server', 'Avatars', 'Quoted and linked posts']);
+    assert.ok(basic.flatMap(group => group.fields).some(field => field.path === 'sync.reply_linked_depth'));
     assert.equal(basic[0].note, 'Restart TweetNook after changing these.');
     assert.equal(nookConfigSections(app, 'advanced').length, 0);
 
@@ -8466,15 +8467,27 @@ test('Configuration page groups and formats fields from the server schema', () =
     const advanced = nookConfigSections(app, 'advanced');
     const fields = [...basic, ...advanced].flatMap(group => group.fields);
     const paths = fields.map(field => field.path);
-    // Every field outside the blacklist appears exactly once; the rest stay out.
+    // Every visible field outside the blacklist appears exactly once.
     const expected = Object.entries(defaults).flatMap(([section, values]) => Object.keys(values).map(key => `${section}.${key}`))
-        .filter(item => !schema.blacklist.includes(item));
+        .filter(item => !schema.blacklist.includes(item) && item !== 'sync.reply_linked_limit');
     assert.deepEqual([...paths].sort(), [...expected].sort());
     assert.ok(!paths.includes('sync.collections'));
 
     const field = name => fields.find(item => item.path === name);
     assert.equal(field('web.analytics_refresh_time').type, 'time');
     assert.equal(field('sync.reply_linked_depth').type, 'toggle01');
+    assert.ok(!paths.includes('sync.reply_linked_limit'));
+    app.configData.sync.reply_linked_depth = 1;
+    const replyLimit = nookConfigSections(app, 'advanced').flatMap(group => group.fields)
+        .find(item => item.path === 'sync.reply_linked_limit');
+    assert.equal(replyLimit.type, 'number');
+    assert.equal(replyLimit.number.min, 1);
+    assert.equal(replyLimit.number.step, 1);
+    app.configData.sync.reply_linked_limit = 3;
+    app.configData.sync.reply_linked_depth = 0;
+    assert.ok(!nookConfigSections(app, 'advanced').flatMap(group => group.fields)
+        .some(item => item.path === 'sync.reply_linked_limit'));
+    assert.equal(app.configData.sync.reply_linked_limit, 3, 'hiding the limit preserves the saved choice');
     assert.equal(nookConfigFormat(field('database.cache_size_kb'), 524288), '512 MiB');
     assert.equal(nookConfigFormat(field('sync.page_delay'), 2), `2 ${schema.units['sync.page_delay']}`);
     // Avatar cache limits depend on fetching avatars.

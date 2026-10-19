@@ -308,6 +308,7 @@ class LinkedStatusWalk:
     url_ref_count: int = 0
     self_thread_ids: list[str] = field(default_factory=list)
     reply_ids: list[str] = field(default_factory=list)
+    reply_target_ids: set[str] = field(default_factory=set)
     reply_hop_count: int = 0
 
 
@@ -346,7 +347,7 @@ def walk_linked_statuses(
     )
     depths = walk.depths
 
-    def follow_edges(sources: list[str], depth: int) -> list[str]:
+    def follow_edges(sources: list[str], depth: int, *, deterministic: bool = False) -> list[str]:
         """Record unseen quote/link targets of ``sources`` at ``depth``."""
         quote_edges: dict[str, list[str]] = {}
         for row in store.list_quote_relation_rows(set(sources)):
@@ -361,6 +362,8 @@ def walk_linked_statuses(
                 *(("quote", target_id) for target_id in quote_edges.get(source_id, [])),
                 *(("linked", target_id) for target_id in url_edges.get(source_id, [])),
             ]
+            if deterministic:
+                candidates.sort(key=lambda item: (item[0] != "quote", item[1]))
             for kind, target_id in candidates:
                 if kind == "quote":
                     walk.reachable_quote_count += 1
@@ -395,7 +398,8 @@ def walk_linked_statuses(
     # the save path so its depths win. Reached targets are fetched but never join
     # a frontier, so neither their replies nor their own links are followed.
     if max_linked_depth > 0 and reply_linked_depth > 0 and walk.reply_ids:
-        walk.reply_hop_count = len(follow_edges(walk.reply_ids, 1))
+        walk.reply_target_ids.update(follow_edges(walk.reply_ids, 1, deterministic=True))
+        walk.reply_hop_count = len(walk.reply_target_ids)
     return walk
 
 
@@ -451,6 +455,7 @@ async def expand_threads(
         pending_membership_ids: list[str] = []
         pending_quote_ids: list[str] = []
         pending_linked_ids: list[str] = []
+        reply_target_ids: set[str] = set()
 
         if targets:
             requested, duplicate_count = _dedupe_targets(
@@ -496,6 +501,7 @@ async def expand_threads(
             result.skipped += walk.edges_skipped
 
             membership_id_set = set(membership_ids)
+            reply_target_ids = walk.reply_target_ids
             for target_id, depth in walk.depths.items():
                 if depth == 0:
                     continue
@@ -585,6 +591,7 @@ async def expand_threads(
             transport=transport,
         )
         attempted_targets: set[str] = set()
+        attempted_reply_count = 0
         pacer = AdaptiveRequestPacer(config.sync.detail_delay)
         absence_tracker = _FocalAbsenceTracker()
         client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
@@ -604,6 +611,10 @@ async def expand_threads(
                     ):
                         result.skipped += 1
                         continue
+                    if tweet_id in reply_target_ids:
+                        if attempted_reply_count >= config.sync.reply_linked_limit:
+                            continue
+                        attempted_reply_count += 1
                     if pipeline is not None:
                         pipeline.update_step(
                             step_key,

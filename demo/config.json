@@ -5,7 +5,8 @@
       "web.avatar_cache_limit_enabled",
       "web.avatar_cache_limit_mb",
       "web.host",
-      "web.port"
+      "web.port",
+      "sync.reply_linked_depth"
     ],
     "blacklist": [
       "auth.auth_token",
@@ -102,7 +103,8 @@
         "title": "Quoted and linked posts",
         "fields": [
           "sync.max_linked_depth",
-          "sync.reply_linked_depth"
+          "sync.reply_linked_depth",
+          "sync.reply_linked_limit"
         ]
       },
       {
@@ -151,6 +153,17 @@
         "web.avatar_cache_limit_enabled"
       ]
     },
+    "visible_when": {
+      "sync.reply_linked_limit": [
+        "sync.reply_linked_depth"
+      ]
+    },
+    "number_constraints": {
+      "sync.reply_linked_limit": {
+        "min": 1,
+        "step": 1
+      }
+    },
     "labels": {
       "auth": "Authentication",
       "sync": "Sync",
@@ -173,6 +186,7 @@
       "sync.timeout": "Request timeout",
       "sync.max_linked_depth": "Follow depth",
       "sync.reply_linked_depth": "Include links in replies",
+      "sync.reply_linked_limit": "Maximum reply links per sync",
       "web.host": "Host",
       "web.port": "Port",
       "web.fetch_avatars": "Download missing avatars",
@@ -213,6 +227,7 @@
       "sync.timeout": "Give up on a slow request after this long.",
       "sync.max_linked_depth": "How far to follow quoted tweets and linked posts from saved tweets and their author's thread. 0 turns this off.",
       "sync.reply_linked_depth": "Also save tweets quoted or linked in other people's replies to saved conversations, one hop only.",
+      "sync.reply_linked_limit": "Unique quoted or linked tweets to fetch from replies per sync or thread expansion. Failed lookups count toward the limit.",
       "web.fetch_avatars": "When a profile picture isn't saved yet, the server downloads it from X the first time it's shown and keeps a copy. When off, only saved avatars appear.",
       "web.avatar_cache_limit_enabled": "Each week, remove the least recently used avatars once the cache is over its limit.",
       "web.avatar_cache_limit_mb": "",
@@ -255,7 +270,8 @@
       "cooldown_duration": 300.0,
       "timeout": 30.0,
       "max_linked_depth": 50,
-      "reply_linked_depth": 0
+      "reply_linked_depth": 0,
+      "reply_linked_limit": 50
     },
     "web": {
       "password_hash": null,
