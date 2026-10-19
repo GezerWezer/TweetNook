@@ -66,7 +66,9 @@ class ActivityStream:
                 try:
                     payload = await asyncio.wait_for(queue.get(), timeout=self.heartbeat)
                 except TimeoutError:
-                    yield ": keepalive\n\n"
+                    # Comments keep intermediaries alive; the named event also
+                    # lets browsers detect a silently stalled open connection.
+                    yield ": keepalive\nevent: heartbeat\ndata: {}\n\n"
                     continue
                 if payload is None:
                     break
