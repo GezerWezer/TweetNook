@@ -3,6 +3,36 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning.
 
+## [1.0.3] - 2026-10-18
+
+### Changed
+
+- The installer now offers a clearer setup flow and verifies service startup
+  before showing the configured address.
+- Sync controls stay in a stable position while a sync starts, runs, and stops;
+  folded activity steps align with their message text.
+- Web tweet details request available Grok translations.
+
+### Fixed
+
+- Tag settings remain responsive when editing large archives.
+
+### Validation
+
+- `.venv/bin/ruff format --check`
+- `.venv/bin/ruff check`
+- `.venv/bin/pytest -q` (three optional SDK skips)
+- `node --test tests/js/test_web_assets.cjs tests/js/test_demo_api.cjs tests/js/test_articles.cjs`
+- `bash -n install.sh`
+- `.venv/bin/pytest tests/test_installer.py tests/test_system_install.py tests/test_cli_service.py -q`
+- `git diff --check`
+- Fresh `uv build`, `uvx --from twine twine check`, isolated wheel CLI help
+  smoke test, and source/wheel content inspection (including `install.sh` and
+  `tweetnook.system_install`).
+- Helium desktop/mobile checks cover sync controls and activity alignment;
+  installer/service lifecycle coverage includes startup verification. A live
+  Linux systemd installation was not exercised on this macOS release host.
+
 ## [1.0.2] - 2026-10-18
 
 ### Changed
@@ -581,6 +611,7 @@ semantic-style versioning.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[1.0.3]: https://github.com/gezerwezer/tweetnook/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/gezerwezer/tweetnook/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/gezerwezer/tweetnook/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/gezerwezer/tweetnook/compare/v0.3.2...v1.0.0
