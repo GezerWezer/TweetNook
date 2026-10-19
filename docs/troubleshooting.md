@@ -8,6 +8,7 @@ remain in the archive.
 
 | Problem | Start here |
 |---|---|
+| Installer fails when pasted | [Terminal paste](#installer-fails-when-pasted) |
 | Cannot connect to Twitter/X | [Authentication](#authentication-problems) |
 | Sync waits or fails | [Sync and request errors](#sync-waits-or-fails) |
 | Another command is running | [Active jobs](#another-command-is-running) |
@@ -18,6 +19,19 @@ remain in the archive.
 | Search misses results | [Search](#search-results-are-missing-or-a-query-is-rejected) |
 | Tagging is unavailable or stops | [Automated tagging](#automated-tagging-problems) |
 | Database checks fail | [Database](#database-problems) |
+
+## Installer fails when pasted
+
+Older installer copies can trigger Bash's `event not found` history expansion,
+garble pasted symbols in a non-UTF-8 locale, or close the shell on an error.
+Use the current installer, or save it as `install.sh` and run:
+
+```bash
+bash install.sh
+```
+
+Service installation that requests sudo must run from a saved file so it can
+restart as root. Pasting the current script directly as root is also supported.
 
 ## Authentication problems
 
@@ -115,6 +129,19 @@ For systemd installations run `tweetnook service status` and inspect
 intended archive/configuration folders.
 
 ### Startup succeeds but the page does not load
+
+An older installer may report a missing `/etc/tweetnook/config.toml` just after
+starting the service. Its startup check read the file before the app created it.
+The package and service may already be installed; check the service and browser
+before reinstalling. Current installers wait first and use normal defaults when
+the file is not yet present, while still checking the responding Web app.
+
+The installer checks the service and the local Web app before reporting success.
+If either check fails, use the displayed diagnostic log and
+`journalctl -u tweetnook -n 50 --no-pager`. A local check cannot confirm that
+another computer can reach the server: containers need the configured Web port
+published, and the network/firewall must allow it. Use the container host's
+published address when connecting from outside its network.
 
 Run `tweetnook service status` (systemd) or `tweetnook web status` (manual
 background server), allow a moment for startup, and open the server
