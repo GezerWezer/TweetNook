@@ -3630,14 +3630,13 @@
                         </section>
                     </div>
                     <ul class="cs-menu">
+                        <li><button type="button" class="cs-row" :class="running() && 'is-danger'" @click="running() ? stopActivity() : startActivity('sync')" :disabled="!running() && (archiveReady === false || setupForced)">
+                            <svg x-show="running()" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/><path d="M8 8h8v8H8z"/></svg>
+                            <svg x-show="!running()" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a1 1 0 0 1 1 1v9.59l3.3-3.3 1.4 1.42L12 17.41l-5.7-5.7 1.4-1.42 3.3 3.3V4a1 1 0 0 1 1-1zM5 19h14v2H5z"/></svg>
+                            <span class="cs-grow" x-text="running() ? 'Stop sync' : 'Sync now'"></span>
+                        </button></li>
                         <template x-if="running()">
                             <li><button type="button" class="cs-row" @click="openLogs()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v2H4zm0 6h16v2H4zm0 6h10v2H4z"/></svg><span class="cs-grow">View live log</span></button></li>
-                        </template>
-                        <template x-if="running()">
-                            <li><button type="button" class="cs-row is-danger" @click="stopActivity()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z"/></svg><span class="cs-grow">Stop sync</span></button></li>
-                        </template>
-                        <template x-if="!running()">
-                            <li><button type="button" class="cs-row" @click="startActivity('sync')" :disabled="archiveReady === false || setupForced"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a1 1 0 0 1 1 1v9.59l3.3-3.3 1.4 1.42L12 17.41l-5.7-5.7 1.4-1.42 3.3 3.3V4a1 1 0 0 1 1-1zM5 19h14v2H5z"/></svg><span class="cs-grow">Sync now</span></button></li>
                         </template>
                         <template x-if="!running() && displayActivity">
                             <li><button type="button" class="cs-row" @click="openLogs()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v2H4zm0 6h16v2H4zm0 6h10v2H4z"/></svg><span class="cs-grow">View run log</span><span class="cs-detail" x-text="activityIssueCount() ? (activityIssueCount() === 1 ? '1 issue' : activityIssueCount() + ' issues') : ''"></span></button></li>
