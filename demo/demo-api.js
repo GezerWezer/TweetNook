@@ -424,6 +424,12 @@
                 const direction = sort === 'liked_latest' ? -1 : 1;
                 return copy.sort((left, right) => direction * (Number(left._demo.liked_order || 0) - Number(right._demo.liked_order || 0)));
             }
+            if (sort === 'most_likes') {
+                return copy.sort((left, right) =>
+                    Number(right.raw_json?.legacy?.favorite_count || 0) - Number(left.raw_json?.legacy?.favorite_count || 0)
+                    || fixtureDate(right.created_at) - fixtureDate(left.created_at)
+                    || String(right.tweet_id).localeCompare(String(left.tweet_id)));
+            }
             if (sort === 'default' && groups.length) {
                 return copy.sort((left, right) =>
                     relevanceScore(right, groups) - relevanceScore(left, groups)

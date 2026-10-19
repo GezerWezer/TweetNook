@@ -829,6 +829,7 @@ function tweetApp() {
                 { value: 'newest', label: 'Latest' },
                 { value: 'oldest', label: 'Oldest' },
                 { value: 'random', label: 'Random' },
+                { value: 'most_likes', label: 'Most likes' },
             ];
         },
         feedValue(kind) {

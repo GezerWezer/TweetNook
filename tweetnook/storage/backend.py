@@ -5018,7 +5018,11 @@ class ArchiveStore:
         # Preserve the index-ordered ordinary-feed path. It already deduplicates
         # logical tweets before LIMIT/OFFSET and avoids building a search CTE when
         # there is no query to evaluate.
-        if not query_groups and sort != "random" and (not collections or len(collections) == 1):
+        if (
+            not query_groups
+            and sort not in {"random", "most_likes"}
+            and (not collections or len(collections) == 1)
+        ):
             collection = next(iter(collections)) if collections else "all"
             filter_expr = "record_type = 'tweet'"
             if collection != "all":
@@ -5200,11 +5204,19 @@ class ArchiveStore:
             where.append(hidden_expr)
         where.extend(group_conditions)
         score_expr = " + ".join(group_scores) if group_scores else "0.0"
+        likes_column = ", favorite_count" if sort == "most_likes" else ""
+        likes_value = (
+            ", MAX(COALESCE((SELECT favorite_count FROM archive_tweet_facts "
+            "WHERE row_key = archive.row_key), 0))"
+            if sort == "most_likes"
+            else ""
+        )
         ctes.append(
-            "matches(tweet_id, match_score, created_at_ts, sort_index) AS NOT MATERIALIZED ("
+            f"matches(tweet_id, match_score, created_at_ts, sort_index{likes_column}) "
+            "AS NOT MATERIALIZED ("
             "SELECT archive.tweet_id, "
             f"MAX({score_expr}), MAX(archive.created_at_ts), "
-            "MAX(CAST(archive.sort_index AS INTEGER)) "
+            f"MAX(CAST(archive.sort_index AS INTEGER)){likes_value} "
             f"FROM {from_sql} {' '.join(dict.fromkeys(joins))} "
             f"WHERE {' AND '.join(where)} GROUP BY archive.tweet_id)"
         )
@@ -5233,6 +5245,11 @@ class ArchiveStore:
         elif sort == "newest":
             order_by = (
                 "matches.created_at_ts IS NULL, matches.created_at_ts DESC, "
+                "matches.sort_index DESC, matches.tweet_id DESC"
+            )
+        elif sort == "most_likes":
+            order_by = (
+                "matches.favorite_count DESC, matches.created_at_ts DESC, "
                 "matches.sort_index DESC, matches.tweet_id DESC"
             )
         elif sort == "random":
