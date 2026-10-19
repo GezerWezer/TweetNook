@@ -442,7 +442,12 @@ def test_run_server_sets_state_and_invokes_uvicorn(monkeypatch, tmp_path: Path) 
     assert run_calls == [
         (
             server.app,
-            {"host": "127.0.0.2", "port": 9123, "log_level": "info"},
+            {
+                "host": "127.0.0.2",
+                "port": 9123,
+                "log_level": "info",
+                "timeout_graceful_shutdown": 5,
+            },
         )
     ]
 

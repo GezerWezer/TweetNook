@@ -30,6 +30,11 @@ const server = http.createServer((req, res) => {
     const route = url.pathname;
     requests.push(req.url);
     let data;
+    if (route === '/api/activity/events') {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+        res.write('event: activity\ndata: {"active":false}\n\n');
+        return;
+    }
     if (route === '/api/tweets') data = { tweets: [tweet], page: 1, pages: 1, total: 1 };
     else if (route === '/api/tweets/100') data = { main: tweet, parents: [], children: [], op_replies: [] };
     else if (route === '/api/automated-tagging') data = { installed: true, values: { ...defaults.automatedTagging, api_key: 'fixture-key' }, accounting: {} };
@@ -41,7 +46,7 @@ const server = http.createServer((req, res) => {
     else if (route === '/api/activity/schedule') data = { config: { enabled: false, cadence: 'daily', hour: 12, minute: 0 } };
     else if (route === '/api/config/schema') data = {};
     else if (route === '/api/config/defaults') data = {};
-    else if (route === '/api/config') data = { values: {}, explicit: {} };
+    else if (route === '/api/config') data = { values: {}, explicit: [] };
     else if (route === '/api/setup') data = { required: false, completed: true, web: {password_configured: true}, auth: {values: {}}, archive: {ready: true} };
     else if (route === '/api/notices') data = {notices: []};
     else if (route.startsWith('/api/avatar/')) {
@@ -135,7 +140,12 @@ const server = http.createServer((req, res) => {
         phone.on('pageerror', error => errors.push(error.message));
         await phone.goto(origin);
         await phone.getByText('Offline archive fixture', { exact: true }).first().waitFor();
-        for (const kind of ['collection', 'sort']) {
+        for (const name of ['Bookmarks', 'Likes']) {
+            const tab = phone.getByRole('tab', { name, exact: true });
+            await tab.tap();
+            assert.equal(await tab.getAttribute('aria-selected'), 'true');
+        }
+        for (const kind of ['sort']) {
             const trigger = phone.locator(`#feed-trigger-${kind}`);
             const menu = phone.locator(`#feed-menu-${kind}`);
             await trigger.tap();
@@ -148,7 +158,7 @@ const server = http.createServer((req, res) => {
             await menu.waitFor({ state: 'hidden' });
             await trigger.tap();
             await menu.waitFor({ state: 'visible' });
-            await phone.getByRole('heading', { name: 'Your Archive', exact: true }).tap();
+            await phone.getByRole('heading', { name: 'Your archive', exact: true }).tap();
             await menu.waitFor({ state: 'hidden' });
             await trigger.press('ArrowDown');
             await menu.waitFor({ state: 'visible' });
@@ -165,7 +175,7 @@ const server = http.createServer((req, res) => {
         assert.deepEqual(external, []);
         assert.deepEqual(unexpected, []);
         assert.deepEqual(errors, []);
-        console.log('Offline browser smoke passed: cold load, styles, feed/search/thread, fonts, mobile menu toggle/outside tap/selection/keyboard; zero external requests.');
+        console.log('Offline browser smoke passed: cold load, styles, feed/search/thread, fonts, collection tabs, mobile sort toggle/outside tap/selection/keyboard; zero external requests.');
     } finally {
         if (browser) await browser.close();
         await new Promise(resolve => server.close(resolve));

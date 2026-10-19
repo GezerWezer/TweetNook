@@ -456,4 +456,6 @@ def run_server(
     server_state["config"] = config
     server_state["paths"] = paths
     server_state["password_hash"] = password_hash
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    # Persistent SSE clients must not keep Uvicorn waiting forever before it
+    # enters lifespan shutdown and stops the worker (up to another 70 seconds).
+    uvicorn.run(app, host=host, port=port, log_level="info", timeout_graceful_shutdown=5)

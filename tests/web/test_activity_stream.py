@@ -70,7 +70,7 @@ async def test_keepalive_and_shutdown_release_waiting_connections():
     stream = ActivityStream(lambda: {"active": False}, interval=0.01, heartbeat=0.02)
     events = stream.events()
     await _next_status(events)
-    assert await anext(events) == ": keepalive\n\n"
+    assert await anext(events) == ": keepalive\nevent: heartbeat\ndata: {}\n\n"
     waiting = asyncio.create_task(anext(events))
     await stream.close()
     with pytest.raises(StopAsyncIteration):
