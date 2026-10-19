@@ -4560,6 +4560,12 @@ test('custom players retain native fallback, seek, toggle sound, and isolate key
     tweetNookInitVideoPlayer(video);
     assert.equal(player.listeners.length, listeners);
 
+    for (const modifiers of [{button: 2}, {button: 0, ctrlKey: true}]) {
+        const click = dispatchFeed(player, 'click', video, modifiers);
+        assert.equal(click.defaultPrevented, false, 'native context-menu clicks keep their default action');
+        assert.equal(video.paused, true, 'native context-menu clicks do not toggle playback');
+    }
+
     video.duration = 120;
     tweetNookSyncVideoDuration(video);
     assert.equal(seek.disabled, false);
@@ -8064,6 +8070,12 @@ test('feed overflow buttons keep the long-press Tags shortcut and avatars their 
     const button = card.querySelector('[data-action="menu"]');
     const icon = button.querySelector('svg');
 
+    const timerCount = timers.length;
+    for (const modifiers of [{button: 2}, {button: 0, ctrlKey: true}]) {
+        dispatchFeed(list, 'pointerdown', icon, {pointerType: 'mouse', ...modifiers});
+        assert.equal(timers.length, timerCount, 'native menu gestures do not start the Tags hold timer');
+    }
+
     const down = dispatchFeed(list, 'pointerdown', icon, { pointerType: 'touch', button: 0 });
     assert.equal(down.propagationStopped, true, 'pressing the button does not prefetch the thread');
     const press = timers.at(-1);
@@ -8087,7 +8099,8 @@ test('feed overflow buttons keep the long-press Tags shortcut and avatars their 
     assert.equal(timers.at(-1).cleared, undefined, 'leaving a child does not cancel');
     dispatchFeed(list, 'pointerleave', button);
     assert.equal(timers.at(-1).cleared, true);
-    assert.equal(dispatchFeed(list, 'contextmenu', icon).defaultPrevented, true);
+    assert.equal(dispatchFeed(list, 'contextmenu', icon).defaultPrevented, false);
+    assert.equal(dispatchFeed(list, 'contextmenu', button).defaultPrevented, false);
     assert.equal(dispatchFeed(list, 'contextmenu', card).defaultPrevented, false);
     assert.equal(dispatchFeed(list, 'pointerdown', card, { pointerType: 'mouse', button: 0 }).propagationStopped, false);
     assert.ok(list.listeners.some(entry => entry.type === 'pointerleave' && entry.capture));

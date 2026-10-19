@@ -2473,7 +2473,6 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
 .lightbox-media {
     user-select: none;
     -webkit-user-drag: none;
-    -webkit-touch-callout: none;
 }
 .lightbox-gesture-surface {
     touch-action: pinch-zoom;
@@ -2574,8 +2573,6 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
 /* Measurements and SVG geometry come from X's live desktop/mobile player.
    The 62px gradient holds a 20px seek hit area and a 40px control row. */
 .media-video-player { position: relative; container-type: inline-size; }
-.has-custom-controls > video { pointer-events: none; }
-.video-motion-surface { pointer-events: none; }
 .media-video-player [hidden] { display: none !important; }
 .video-control-bar {
     position: absolute;
