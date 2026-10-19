@@ -3,11 +3,15 @@
  */
 
 const statsSuspendedVideos = new Set();
-// Autoplay mode: feed players at least this visible are candidates; the topmost one
-// plays. A candidate paused while on screen stays paused until it scrolls away.
-const VIDEO_AUTOPLAY_VISIBLE_RATIO = 0.5;
+// Measure the picture the reader can actually see, excluding sticky headers.
+// A manually paused candidate stays paused until it leaves the viewport.
+const VIDEO_AUTOPLAY_VISIBLE_RATIO = 0.6;
 const autoplayVideos = new Set();
 const heldAutoplayVideos = new WeakSet();
+const automaticallyPausedVideos = new WeakSet();
+const preparedMediaVideos = new WeakSet();
+const failedAutoplayVideos = new WeakSet();
+const pendingAutoplayRequests = new WeakMap();
 // Players muted only because the browser refused audible autoplay.
 const forcedMuteVideos = new WeakSet();
 const AVATAR_URL_VERSION = 3;
@@ -492,6 +496,32 @@ function videoFeedInsets(source, raised = [], clipToViewport = true) {
         right: edge(clipToViewport, Math.min(source.width, Math.max(0, source.left + source.width - right)))};
 }
 
+function feedVideoVisibility(video) {
+    const rect = video.getBoundingClientRect();
+    // Non-layout hosts (including the asset harness) can supply only position.
+    if (!Number.isFinite(rect.height) || !Number.isFinite(rect.width)) return { ratio: 1, top: rect.top };
+    if (!rect.height || !rect.width) return { ratio: 0, top: rect.top };
+    const insets = videoFeedInsets(rect);
+    let top = rect.top + insets.top, bottom = rect.top + rect.height - insets.bottom;
+    let left = rect.left + insets.left, right = rect.left + rect.width - insets.right;
+    // A split conversation can scroll independently of the window.
+    for (let node = video.parentElement; node && node !== document.body; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (!/(auto|scroll|hidden|clip)/.test(`${style.overflowX} ${style.overflowY}`)) continue;
+        const clip = node.getBoundingClientRect();
+        top = Math.max(top, clip.top); bottom = Math.min(bottom, clip.bottom);
+        left = Math.max(left, clip.left); right = Math.min(right, clip.right);
+    }
+    // A portrait video taller than the available viewport can still fill it.
+    const viewport = window.visualViewport;
+    const viewportTop = viewport?.offsetTop || 0;
+    const viewportHeight = viewport?.height || window.innerHeight || rect.height;
+    const occlusion = Math.max(0, rect.top + insets.top - Math.max(rect.top, viewportTop));
+    const availableHeight = Math.max(1, viewportHeight - occlusion);
+    return { ratio: Math.max(0, bottom - top) / Math.min(rect.height, availableHeight)
+        * Math.max(0, right - left) / rect.width, top: rect.top };
+}
+
 // Feed media is rounded by its own frame or by the grid around it, so only the
 // corners that meet that rounded edge are curved.
 function feedMediaRadii(element, rect = element.getBoundingClientRect()) {
@@ -727,6 +757,9 @@ function tweetApp() {
     let lightboxVideoMotion = null;
     let lightboxVideoReadyCancel = null;
     let syncingVideoAudio = false;
+    let videoVisibilityFrame = null;
+    let autoplayRequest = null;
+    let autoplayTarget = null;
     // The mobile video backdrop is page content rather than a fixed layer, so
     // Safari paints it beneath its toolbars too. It spans a viewport above and
     // below the visible page without extending the document.
@@ -2303,6 +2336,7 @@ function tweetApp() {
             };
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden) pollStatus();
+                this.autoplayNextVideo();
             });
             setInterval(() => {
                 if (!document.hidden) pollStatus();
@@ -2316,6 +2350,7 @@ function tweetApp() {
             this.$watch('showStatsModal', val => {
                 if (val) this.lockModalScroll();
                 else if (!this.showSettingsModal && !this.showSetupModal && !this.lightboxOpen) this.unlockModalScroll();
+                this.autoplayNextVideo();
             });
             this.$watch('showSettingsModal', val => {
                 if (val) {
@@ -2333,6 +2368,7 @@ function tweetApp() {
                     if (!this.showSetupModal && !this.lightboxOpen) this.unlockModalScroll();
                     this.autoplayNextVideo();
                 }
+                if (val) this.autoplayNextVideo();
             });
             // The full tag list is only shown in Tag Management; load it there.
             this.$watch('settingsTab', tab => {
@@ -2344,6 +2380,7 @@ function tweetApp() {
             this.$watch('showSetupModal', val => {
                 if (val) this.lockModalScroll();
                 else if (!this.showSettingsModal && !this.lightboxOpen) this.unlockModalScroll();
+                this.autoplayNextVideo();
             });
             this.$watch('lightboxOpen', val => {
                 // The mobile viewer blocks pan gestures itself. Changing body
@@ -2382,11 +2419,24 @@ function tweetApp() {
             }, { threshold: 0.1 });
 
             this.videoAutoplayObserver = new IntersectionObserver((entries) => {
-                entries.forEach(e => this.updateAutoplayVisibility(
-                    e.target,
-                    e.isIntersecting && e.intersectionRatio >= VIDEO_AUTOPLAY_VISIBLE_RATIO,
-                ));
-            }, { threshold: VIDEO_AUTOPLAY_VISIBLE_RATIO });
+                // Apply a whole observer batch before selecting a player. Choosing
+                // per entry makes playback depend on callback/feed insertion order.
+                entries.forEach(e => this.updateAutoplayVisibility(e.target, e.isIntersecting, false));
+                this.autoplayNextVideo();
+            }, { rootMargin: '200px 0px', threshold: 0 });
+            // IntersectionObserver ignores sticky occluders and cannot report a
+            // visibility change when their edge crosses a playing picture. Check
+            // the small near-viewport candidate set on the next scroll frame.
+            const queueVideoVisibility = () => {
+                if (videoVisibilityFrame !== null) return;
+                videoVisibilityFrame = requestAnimationFrame(() => {
+                    videoVisibilityFrame = null;
+                    this.autoplayNextVideo();
+                });
+            };
+            document.addEventListener('scroll', queueVideoVisibility, { capture: true, passive: true });
+            window.addEventListener('resize', queueVideoVisibility, { passive: true });
+            window.visualViewport?.addEventListener('resize', queueVideoVisibility, { passive: true });
             // Media events do not bubble, so players are followed in the capture phase.
             document.addEventListener('play', event => this.handleVideoPlay(event.target), true);
             document.addEventListener('pause', event => this.handleVideoPause(event.target), true);
@@ -2394,14 +2444,32 @@ function tweetApp() {
 
             this.mediaPrefetchObserver = new IntersectionObserver((entries) => {
                 entries.forEach(e => {
+                    // Lay out and paint a bounded ring of cards ahead of scrolling.
+                    // Otherwise content-visibility can reveal their media a frame
+                    // after the card itself, even when the bytes are already cached.
+                    if (e.target.classList?.contains('feed-card')) {
+                        e.target.style.contentVisibility = e.isIntersecting ? 'visible' : '';
+                    } else if (e.isIntersecting) this.mediaPrefetchObserver.unobserve(e.target);
                     if (!e.isIntersecting) return;
-                    this.mediaPrefetchObserver.unobserve(e.target);
                     this.prefetchMedia(e.target);
                 });
             }, { rootMargin: `${MEDIA_PREFETCH_MARGIN_PX}px 0px` });
 
             const domObserver = new MutationObserver((mutations) => {
                 mutations.forEach(m => {
+                    m.removedNodes.forEach(node => {
+                        // Moving a live player into the viewer is not teardown.
+                        if (node.nodeType !== 1 || node.isConnected) return;
+                        for (const target of [node, ...node.querySelectorAll('.feed-card, img, video')]) {
+                            if (target.isConnected) continue;
+                            this.mediaPrefetchObserver.unobserve(target);
+                            if (target.tagName !== 'VIDEO') continue;
+                            this.videoObserver.unobserve(target);
+                            this.videoAutoplayObserver.unobserve(target);
+                            autoplayVideos.delete(target);
+                            this.pauseAutoplayVideo(target);
+                        }
+                    });
                     m.addedNodes.forEach(node => {
                         if (node.nodeType === 1) {
                             if (node.tagName === 'VIDEO') this.observeVideo(node);
@@ -2428,6 +2496,11 @@ function tweetApp() {
                 if (image.loading !== 'lazy') return;
                 this.mediaPrefetchObserver.observe(image.closest('.feed-card') || image);
             });
+            const videos = node.tagName === 'VIDEO' ? [node] : node.querySelectorAll?.('video') || [];
+            videos.forEach(video => {
+                if (video.tagName !== 'VIDEO') return;
+                this.mediaPrefetchObserver.observe(video.closest('.feed-card') || video);
+            });
         },
 
         // Load and decode ahead of time, so the image paints with its card instead
@@ -2437,6 +2510,14 @@ function tweetApp() {
             images.forEach(image => {
                 image.loading = 'eager';
                 image.decode?.().catch(() => {});
+            });
+            const videos = target.tagName === 'VIDEO' ? [target] : target.querySelectorAll?.('video') || [];
+            videos.forEach(video => {
+                if (video.tagName !== 'VIDEO' || preparedMediaVideos.has(video)) return;
+                preparedMediaVideos.add(video);
+                // Metadata preparation avoids waiting for the first visible frame
+                // to fetch the decoder headers, without buffering entire videos.
+                if (video.preload === 'none') video.preload = 'metadata';
             });
         },
 
@@ -2463,6 +2544,8 @@ function tweetApp() {
         },
 
         setVideoPlayback(mode) {
+            autoplayRequest = null;
+            autoplayTarget = null;
             this.videoPlayback = mode === 'autoplay' ? 'autoplay' : 'paused';
             localStorage.setItem('tvx-video-playback', this.videoPlayback);
             const autoplay = this.videoPlayback === 'autoplay';
@@ -2475,54 +2558,105 @@ function tweetApp() {
             this.autoplayNextVideo();
         },
 
-        updateAutoplayVisibility(video, visible) {
-            if (!isFeedVideoPlayer(video)) return;
+        updateAutoplayVisibility(video, visible, select = true) {
+            if (!isFeedVideoPlayer(video)) {
+                autoplayVideos.delete(video);
+                return;
+            }
             if (visible) {
                 autoplayVideos.add(video);
             } else {
                 autoplayVideos.delete(video);
                 heldAutoplayVideos.delete(video);
-                if (this.videoPlayback === 'autoplay' && !video.paused) video.pause();
+                failedAutoplayVideos.delete(video);
+                if (this.videoPlayback === 'autoplay') this.pauseAutoplayVideo(video);
             }
-            this.autoplayNextVideo();
+            if (select) this.autoplayNextVideo();
         },
 
-        // Starts the topmost visible player unless one is already playing, the
-        // viewer paused it, or an overlay covers the feed.
+        pauseAutoplayVideo(video) {
+            if (video.paused) return;
+            automaticallyPausedVideos.add(video);
+            video.pause();
+        },
+
+        // Pause before starting the next player, including during fast scrolling.
         autoplayNextVideo() {
             if (this.videoPlayback !== 'autoplay') return;
-            if (this.lightboxOpen || this.showSettingsModal || this.showStatsModal) return;
             autoplayVideos.forEach(video => {
-                if (!video.isConnected) autoplayVideos.delete(video);
+                // Mobile viewing moves the live inline decoder into the viewer.
+                // Its playback belongs to that viewer until the handoff returns it.
+                if (!video.isConnected || !isFeedVideoPlayer(video)) autoplayVideos.delete(video);
             });
             const players = [...autoplayVideos];
-            if (players.some(video => !video.paused)) return;
-            const next = players
-                .filter(video => !heldAutoplayVideos.has(video))
-                .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
-            if (!next) return;
+            const blocked = document.hidden || this.lightboxOpen || this.showSettingsModal || this.showStatsModal || this.showSetupModal;
+            const visible = players.map(video => ({video, ...feedVideoVisibility(video)}));
+            visible.forEach(({video, ratio}) => {
+                if (ratio <= 0) {
+                    heldAutoplayVideos.delete(video);
+                    failedAutoplayVideos.delete(video);
+                }
+            });
+            const next = blocked ? null : visible
+                .filter(({video, ratio}) => ratio >= VIDEO_AUTOPLAY_VISIBLE_RATIO && !heldAutoplayVideos.has(video) && !failedAutoplayVideos.has(video))
+                .sort((a, b) => a.top - b.top)[0]?.video;
+            autoplayTarget = next;
+            players.forEach(video => { if (video !== next) this.pauseAutoplayVideo(video); });
+            if (autoplayRequest?.video !== next) autoplayRequest = null;
+            if (!next || !next.paused || autoplayRequest?.video === next) return;
+            const request = { video: next };
+            autoplayRequest = request;
+            pendingAutoplayRequests.set(next, request);
             this.applyVideoAudio(next);
-            next.play()?.catch?.(() => {
-                if (next.muted) return;
+            const stillSelected = () => autoplayTarget === next && next.isConnected && !heldAutoplayVideos.has(next)
+                && this.videoPlayback === 'autoplay' && !document.hidden
+                && !this.lightboxOpen && !this.showSettingsModal && !this.showStatsModal && !this.showSetupModal
+                && feedVideoVisibility(next).ratio >= VIDEO_AUTOPLAY_VISIBLE_RATIO;
+            const activeRequest = () => autoplayRequest === request && stillSelected();
+            const finish = failed => {
+                if (pendingAutoplayRequests.get(next) === request) pendingAutoplayRequests.delete(next);
+                if (autoplayRequest !== request) return;
+                autoplayRequest = null;
+                if (failed) failedAutoplayVideos.add(next);
+            };
+            const played = () => {
+                // A newer request for the same video owns any resumed playback.
+                const viewerOwnsPlayback = this.lightboxOpen && next.closest?.('.lightbox-stage');
+                if (!stillSelected() && !viewerOwnsPlayback) this.pauseAutoplayVideo(next);
+                finish(false);
+            };
+            const result = next.play();
+            result?.then?.(played, () => {
+                if (!activeRequest()) { finish(false); return; }
+                if (next.muted) { finish(true); return; }
                 // Browsers can refuse audible autoplay before the page has had a gesture.
                 forcedMuteVideos.add(next);
                 next.muted = true;
-                next.play()?.catch?.(() => {});
+                next.play()?.then?.(played, () => finish(activeRequest()));
             });
         },
 
         // Only one player runs at a time, however it was started.
         handleVideoPlay(video) {
             if (!isVideoPlayer(video)) return;
+            // A late play event from a superseded decoder must not interrupt
+            // the player now selected by the scroll/observer pass.
+            const pending = pendingAutoplayRequests.get(video);
+            if (pending && this.videoPlayback === 'autoplay' && isFeedVideoPlayer(video) && autoplayTarget !== video) {
+                this.pauseAutoplayVideo(video);
+                return;
+            }
             document.querySelectorAll(VIDEO_PLAYER_SELECTOR).forEach(other => {
                 if (other !== video && !other.paused) other.pause();
             });
             this.applyVideoAudio(video);
             if (this.videoPlayback !== 'autoplay') return;
             heldAutoplayVideos.delete(video);
+            failedAutoplayVideos.delete(video);
         },
 
         handleVideoPause(video) {
+            if (automaticallyPausedVideos.delete(video)) return;
             if (this.videoPlayback === 'autoplay' && autoplayVideos.has(video)) heldAutoplayVideos.add(video);
         },
 
@@ -2840,6 +2974,11 @@ function tweetApp() {
                 this.$refs.lightboxViewer.style.display = 'none';
             }
             this.restoreInlineLightboxVideo();
+            if (origin?.isConnected && isFeedVideoPlayer(origin)) {
+                // Rejoin even when portaling happened within the observer's
+                // near-viewport margin and produced no new intersection entry.
+                this.updateAutoplayVisibility(origin, true, false);
+            }
             lightboxOriginVideo = null;
             this.pauseLightboxPlayback();
             this.resetLightboxMotion();
