@@ -29,7 +29,7 @@ _TIMELINE_FEATURES = {
     "tweet_awards_web_tipping_enabled": False,
     "content_disclosure_indicator_enabled": True,
     "content_disclosure_ai_generated_indicator_enabled": True,
-    "responsive_web_grok_show_grok_translated_post": False,
+    "responsive_web_grok_show_grok_translated_post": True,
     "responsive_web_grok_analysis_button_from_backend": True,
     "post_ctas_fetch_enabled": False,
     "freedom_of_speech_not_reach_fetch_enabled": True,
