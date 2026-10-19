@@ -345,7 +345,6 @@
                                         @pointerup.stop="cancelTweetMenuPress()"
                                         @pointercancel.stop="cancelTweetMenuPress()"
                                         @pointerleave="cancelTweetMenuPress()"
-                                        @contextmenu.prevent
                                         @click.stop="toggleTweetMenu('detail:' + threadData.main.tweet_id)">
                                     <svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
                                 </button>
@@ -768,7 +767,6 @@
                                         @pointerup.stop="cancelTweetMenuPress()"
                                         @pointercancel.stop="cancelTweetMenuPress()"
                                         @pointerleave="cancelTweetMenuPress()"
-                                        @contextmenu.prevent
                                         @click.stop="toggleTweetMenu('panel:' + panelThreadData.main.tweet_id)">
                                     <svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
                                 </button>

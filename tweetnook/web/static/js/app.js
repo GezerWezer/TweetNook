@@ -440,8 +440,10 @@ function tweetNookInitVideoPlayer(video) {
     player.classList.add('has-custom-controls');
     player.addEventListener('click', event => {
         const video = player.querySelector('video');
-        event.preventDefault();
         event.stopPropagation();
+        // Right-click and macOS Control-click belong to the browser's menu.
+        if (event.button > 0 || event.ctrlKey) return;
+        event.preventDefault();
         if (isMobileInlineVideo(video) && Date.now() < videoTapBlockedUntil) return;
         const button = event.target.closest('[data-video-action]');
         const surface = event.target === video || event.target === player;
@@ -3798,9 +3800,6 @@ function tweetApp() {
                     this.cancelTweetMenuPress();
                 });
             }
-            list.addEventListener('contextmenu', event => {
-                if (menuButton(event)) event.preventDefault();
-            });
             // pointerleave, load, and error do not bubble; catch them on the way down.
             list.addEventListener('pointerleave', event => {
                 if (event.target?.dataset?.action === 'menu') this.cancelTweetMenuPress();
@@ -4982,7 +4981,7 @@ function tweetApp() {
         },
 
         startTweetMenuPress(event, tweetId, tagsData) {
-            if (event?.pointerType === 'mouse' && event.button !== 0) return;
+            if (event?.ctrlKey || (event?.pointerType === 'mouse' && event.button !== 0)) return;
             this.cancelTweetMenuPress();
             this.tweetMenuPressTimer = setTimeout(() => {
                 this.tweetMenuPressTimer = null;
