@@ -6,11 +6,12 @@ import json
 import os
 import signal
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from tweetnook.activity_history import (
@@ -19,10 +20,12 @@ from tweetnook.activity_history import (
     read_run,
     read_run_log,
     read_run_log_since,
+    runs_root,
     terminal_snapshot,
 )
 from tweetnook.config import ScheduleConfig, update_config_values
 from tweetnook.job_supervisor import JobConflictError
+from tweetnook.web.activity_stream import ActivityStream
 from tweetnook.web.deps import server_state, verify_credentials
 
 router = APIRouter(prefix="/api/activity", tags=["activity"])
@@ -110,17 +113,19 @@ def _schedule_status() -> dict[str, Any]:
     }
 
 
-@router.get("/status")
-def get_activity_status(
-    _auth: Annotated[bool, Depends(verify_credentials)],
+def activity_status_payload(
+    *, finished_snapshot: Callable[..., dict[str, Any] | None] | None = None
 ) -> dict[str, Any]:
+    """Build the same current-state snapshot for polling and stream clients."""
     snapshot = _read_active_snapshot()
     paths = server_state.get("paths")
     data_dir = getattr(paths, "data_dir", None)
     last_snapshot = None
     if snapshot is None:
         last_snapshot = (
-            latest_finished_snapshot(data_dir, titles=ARCHIVE_PIPELINE_TITLES)
+            (finished_snapshot or latest_finished_snapshot)(
+                data_dir, titles=ARCHIVE_PIPELINE_TITLES
+            )
             if data_dir is not None
             else None
         )
@@ -153,6 +158,55 @@ def get_activity_status(
         "last_snapshot": last_snapshot,
         "schedule": _schedule_status(),
     }
+
+
+@router.get("/status")
+def get_activity_status(
+    _auth: Annotated[bool, Depends(verify_credentials)],
+) -> dict[str, Any]:
+    return activity_status_payload()
+
+
+@router.get("/events")
+async def activity_events(
+    _auth: Annotated[bool, Depends(verify_credentials)],
+) -> StreamingResponse:
+    stream = server_state.get("activity_stream")
+    if stream is None:
+        stream = ActivityStream(_stream_snapshot_reader())
+        server_state["activity_stream"] = stream
+    return StreamingResponse(
+        stream.events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
+
+
+def _stream_snapshot_reader() -> Callable[[], dict[str, Any]]:
+    # Idle clients should not scan retained history four times a second. Current
+    # snapshot replacement / new run directories invalidate immediately; the
+    # bounded refresh also picks up history repaired by another process.
+    history_key = None
+    history = None
+
+    def read_history(data_dir: Path, **kwargs) -> dict[str, Any] | None:
+        nonlocal history_key, history
+        paths = server_state.get("paths")
+        files = [runs_root(data_dir), getattr(paths, "activity_status_file", None)]
+        stamps = []
+        for path in files:
+            try:
+                stat = path.stat() if path is not None else None
+                stamps.append((stat.st_mtime_ns, stat.st_size) if stat else None)
+            except OSError:
+                stamps.append(None)
+        key = (data_dir, tuple(stamps), int(time.monotonic() // 5))
+        if key != history_key:
+            history = latest_finished_snapshot(data_dir, **kwargs)
+            history_key = key
+        return history
+
+    return lambda: activity_status_payload(finished_snapshot=read_history)
 
 
 @router.post("/stop", status_code=status.HTTP_202_ACCEPTED)
