@@ -14,6 +14,11 @@ const failedAutoplayVideos = new WeakSet();
 const pendingAutoplayRequests = new WeakMap();
 // Players muted only because the browser refused audible autoplay.
 const forcedMuteVideos = new WeakSet();
+const videoPosterStates = new WeakMap();
+const preparingVideoPosters = new WeakMap();
+// Bounded, page-local previews also cover repeated media and freshly mounted
+// cards before their decoders have loaded again.
+const generatedVideoPosters = new Map();
 const AVATAR_URL_VERSION = 3;
 const avatarInitialSegmenter = typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
@@ -76,6 +81,52 @@ function isPhoneLayout() {
 
 function tweetNookVideoPlayer(video) {
     return video?.closest?.('.media-video-player') || video?.parentElement;
+}
+
+// Native posters can disappear as soon as play() starts, before the decoder has
+// presented a picture. Keep a separately painted image until that first frame.
+function tweetNookWatchVideoPoster(video) {
+    if (videoPosterStates.has(video)) return;
+    const state = { generation: 0, frame: null };
+    videoPosterStates.set(video, state);
+    const poster = () => tweetNookVideoPlayer(video)?.querySelector?.('[data-video-poster]');
+    const reset = () => {
+        state.generation++;
+        if (state.frame !== null) video.cancelVideoFrameCallback?.(state.frame);
+        state.frame = null;
+        const image = poster();
+        if (image) image.hidden = !image.getAttribute('src');
+    };
+    state.reset = reset;
+    const ready = () => {
+        if (!poster() || state.frame !== null) return;
+        const generation = state.generation;
+        const reveal = () => {
+            state.frame = null;
+            if (generation === state.generation && video.readyState >= 2) {
+                const image = poster();
+                if (image) image.hidden = true;
+            }
+        };
+        if (video.requestVideoFrameCallback) state.frame = video.requestVideoFrameCallback(reveal);
+        // Older engines lack presentation callbacks; playing plus two paints
+        // gives the decoded picture time to replace the native poster.
+        else if (!video.paused) window.requestAnimationFrame(() => window.requestAnimationFrame(reveal));
+    };
+    video.addEventListener('emptied', reset);
+    video.addEventListener('loadstart', reset);
+    video.addEventListener('loadeddata', ready);
+    video.addEventListener('playing', ready);
+    ready();
+}
+
+// Handle audio intent in the original gesture, before asynchronous volumechange
+// events. Safari grants audible playback to an element, not the whole feed.
+function tweetNookChangeVideoAudio(video, muted, volume = video.volume) {
+    window.dispatchEvent(new CustomEvent('video-audio-intent', {detail: {video, muted, volume}}));
+    // Players also work independently of the main application (native fallback).
+    if (video.volume !== volume) video.volume = volume;
+    if (video.muted !== muted) video.muted = muted;
 }
 
 function isMobileFullscreenVideo(video) {
@@ -361,8 +412,7 @@ function tweetNookPlayerAction(video, action) {
         if (video.paused || video.ended) video.play()?.catch?.(() => tweetNookSyncVideoUi(video));
         else video.pause();
     } else if (action === 'mute') {
-        if (video.volume === 0) { video.volume = 1; video.muted = false; }
-        else video.muted = !video.muted;
+        tweetNookChangeVideoAudio(video, video.volume === 0 ? false : !video.muted, video.volume || 1);
     } else if (action === 'fullscreen') {
         if (document.fullscreenElement) document.exitFullscreen()?.catch?.(() => {});
         else if (isMobileInlineVideo(video)) tweetNookOpenMobileVideo(video);
@@ -389,6 +439,7 @@ function tweetNookInitVideoPlayer(video) {
     controls.hidden = false;
     player.classList.add('has-custom-controls');
     player.addEventListener('click', event => {
+        const video = player.querySelector('video');
         event.preventDefault();
         event.stopPropagation();
         if (isMobileInlineVideo(video) && Date.now() < videoTapBlockedUntil) return;
@@ -404,22 +455,25 @@ function tweetNookInitVideoPlayer(video) {
         }
     });
     player.addEventListener('input', event => {
+        const video = player.querySelector('video');
         if (event.target.hasAttribute('data-video-seek') && Number.isFinite(video.duration)) {
             const state = videoScrubStates.get(video);
             if (state?.pointerControlled) return;
             video.currentTime = Math.max(0, Math.min(video.duration, Number(event.target.value) / 100 * video.duration));
             if (state) state.targetTime = video.currentTime;
         } else if (event.target.hasAttribute('data-video-volume')) {
-            video.volume = Math.max(0, Math.min(1, Number(event.target.value)));
-            video.muted = video.volume === 0;
+            const volume = Math.max(0, Math.min(1, Number(event.target.value)));
+            tweetNookChangeVideoAudio(video, volume === 0, volume);
         }
         tweetNookShowVideoUi(video);
         tweetNookSyncVideoDuration(video);
     });
     player.addEventListener('pointerdown', event => {
+        const video = player.querySelector('video');
         if (event.target.hasAttribute('data-video-seek') && !(event.button > 0)) tweetNookStartVideoScrub(video, event);
     });
     player.addEventListener('keydown', event => {
+        const video = player.querySelector('video');
         // Leave browser and system shortcuts (Cmd/Ctrl+F, Ctrl+K, ...) alone.
         if (event.metaKey || event.ctrlKey || event.altKey) return;
         // The seek slider's native step is 0.1% of the video; arrows seek by seconds instead.
@@ -442,19 +496,25 @@ function tweetNookInitVideoPlayer(video) {
     player.setAttribute('role', 'group');
     player.setAttribute('aria-label', 'Video player');
     for (const name of ['pointermove', 'pointerenter']) player.addEventListener(name, event => {
+        const video = player.querySelector('video');
         if (event.pointerType !== 'touch' && !isMobileFullscreenVideo(video)) tweetNookShowVideoUi(video);
     });
     player.addEventListener('focusin', event => {
+        const video = player.querySelector('video');
         if (event.target.matches(':focus-visible')) tweetNookShowVideoUi(video);
     });
     player.addEventListener('pointerleave', event => {
+        const video = player.querySelector('video');
         if (event.pointerType !== 'touch' && !isMobileFullscreenVideo(video)) tweetNookLeaveVideoUi(video);
     });
-    player.addEventListener('focusout', () => tweetNookShowVideoUi(video, isMobileFullscreenVideo(video) ? VIDEO_UI_IDLE_MS : VIDEO_UI_LEAVE_MS));
+    player.addEventListener('focusout', () => {
+        const video = player.querySelector('video');
+        tweetNookShowVideoUi(video, isMobileFullscreenVideo(video) ? VIDEO_UI_IDLE_MS : VIDEO_UI_LEAVE_MS);
+    });
     for (const name of ['loadedmetadata', 'durationchange', 'timeupdate', 'volumechange']) video.addEventListener(name, () => tweetNookSyncVideoDuration(video));
     video.addEventListener('play', () => tweetNookShowVideoUi(video));
     for (const name of ['pause', 'ended']) video.addEventListener(name, () => tweetNookSyncVideoUi(video));
-    player.addEventListener('fullscreenchange', () => tweetNookShowVideoUi(video));
+    player.addEventListener('fullscreenchange', () => tweetNookShowVideoUi(player.querySelector('video')));
     tweetNookSyncVideoDuration(video);
     tweetNookSyncVideoUi(video);
 }
@@ -764,6 +824,7 @@ function tweetApp() {
     let videoVisibilityFrame = null;
     let autoplayRequest = null;
     let autoplayTarget = null;
+    let audibleFeedVideo = null;
     // The mobile video backdrop is page content rather than a fixed layer, so
     // Safari paints it beneath its toolbars too. It spans a viewport above and
     // below the visible page without extending the document.
@@ -2492,6 +2553,7 @@ function tweetApp() {
             this.videoObserver = new IntersectionObserver((entries) => {
                 entries.forEach(e => {
                     if (e.target.tagName === 'VIDEO') {
+                        if (preparingVideoPosters.has(e.target)) return;
                         // The lightbox owns playback; observer callbacks arriving
                         // after dismissal must never restart its hidden player.
                         if (e.target.closest?.('.lightbox-stage')) {
@@ -2530,6 +2592,10 @@ function tweetApp() {
             document.addEventListener('play', event => this.handleVideoPlay(event.target), true);
             document.addEventListener('pause', event => this.handleVideoPause(event.target), true);
             document.addEventListener('volumechange', event => this.handleVideoVolumeChange(event.target), true);
+            window.addEventListener('video-audio-intent', event => {
+                const {video, muted, volume} = event.detail;
+                this.setSharedVideoAudio(video, muted, volume, true);
+            });
 
             this.mediaPrefetchObserver = new IntersectionObserver((entries) => {
                 entries.forEach(e => {
@@ -2537,8 +2603,9 @@ function tweetApp() {
                     // Otherwise content-visibility can reveal their media a frame
                     // after the card itself, even when the bytes are already cached.
                     if (e.target.classList?.contains('feed-card')) {
-                        e.target.style.contentVisibility = e.isIntersecting ? 'visible' : '';
-                    } else if (e.isIntersecting) this.mediaPrefetchObserver.unobserve(e.target);
+                        if (e.isIntersecting) e.target.style.contentVisibility = 'visible';
+                    }
+                    if (e.isIntersecting) this.mediaPrefetchObserver.unobserve(e.target);
                     if (!e.isIntersecting) return;
                     this.prefetchMedia(e.target);
                 });
@@ -2556,6 +2623,7 @@ function tweetApp() {
                             this.videoObserver.unobserve(target);
                             this.videoAutoplayObserver.unobserve(target);
                             autoplayVideos.delete(target);
+                            preparingVideoPosters.get(target)?.();
                             this.pauseAutoplayVideo(target);
                         }
                     });
@@ -2607,10 +2675,66 @@ function tweetApp() {
                 // Metadata preparation avoids waiting for the first visible frame
                 // to fetch the decoder headers, without buffering entire videos.
                 if (video.preload === 'none') video.preload = 'metadata';
+                // The poster property resolves poster="" to the document URL.
+                // Read the raw attribute to distinguish an absent preview.
+                if (!video.getAttribute?.('poster') && isFeedVideoPlayer(video) && video.play && video.addEventListener) {
+                    const cached = generatedVideoPosters.get(video.src);
+                    if (cached) {
+                        video.poster = cached;
+                        const image = tweetNookVideoPlayer(video)?.querySelector('[data-video-poster]');
+                        if (image) { image.src = cached; image.hidden = false; }
+                    } else this.prepareVideoPoster(video);
+                }
             });
         },
 
+        prepareVideoPoster(video) {
+            if (preparingVideoPosters.has(video) || document.hidden) return;
+            let timer;
+            const finish = (capture = false, cancelled = false) => {
+                if (!preparingVideoPosters.delete(video)) return;
+                clearTimeout(timer);
+                video.removeEventListener('loadeddata', ready);
+                if (capture && video.videoWidth && video.videoHeight) {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.min(640, video.videoWidth);
+                        canvas.height = Math.round(canvas.width * video.videoHeight / video.videoWidth);
+                        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+                        video.poster = canvas.toDataURL('image/jpeg', 0.85);
+                        generatedVideoPosters.delete(video.src);
+                        generatedVideoPosters.set(video.src, video.poster);
+                        if (generatedVideoPosters.size > 48) generatedVideoPosters.delete(generatedVideoPosters.keys().next().value);
+                        const image = tweetNookVideoPlayer(video)?.querySelector('[data-video-poster]');
+                        if (image) { image.src = video.poster; image.hidden = false; }
+                    } catch { /* A remote demo video may not allow canvas capture. */ }
+                }
+                // Only the selected player can retain playback after preparation.
+                const selected = !cancelled && autoplayTarget === video && this.videoPlayback === 'autoplay'
+                    && !document.hidden && !this.lightboxOpen && !this.showSettingsModal
+                    && !this.showStatsModal && !this.showSetupModal;
+                if (!selected) this.pauseAutoplayVideo(video);
+                this.applyVideoAudio(video);
+                if (selected && !video.paused) this.handleVideoPlay(video);
+                if (!cancelled) this.autoplayNextVideo();
+            };
+            const ready = () => {
+                // Offscreen decoders have data but do not present frames, so a
+                // presentation callback can wait forever here. loadeddata is
+                // enough to copy their decoded picture into a canvas.
+                if (preparingVideoPosters.has(video) && video.readyState >= 2) finish(true);
+            };
+            preparingVideoPosters.set(video, () => finish(false, true));
+            // Silent, bounded first-frame decoding is necessary on iOS: metadata
+            // alone does not paint a preview for a file without an archived poster.
+            video.muted = true;
+            video.addEventListener('loadeddata', ready);
+            timer = setTimeout(() => finish(), 4000);
+            video.play()?.then?.(ready, () => finish());
+        },
+
         observeVideo(video) {
+            tweetNookWatchVideoPoster(video);
             if (isVideoPlayer(video)) {
                 this.applyVideoAudio(video);
                 tweetNookInitVideoPlayer(video);
@@ -2625,11 +2749,65 @@ function tweetApp() {
             syncingVideoAudio = true;
             try {
                 if (video.volume !== this.videoVolume) video.volume = this.videoVolume;
-                const muted = forcedMuteVideos.has(video) || this.videoMuted;
+                const muted = preparingVideoPosters.has(video) || forcedMuteVideos.has(video) || this.videoMuted;
                 if (video.muted !== muted) video.muted = muted;
             } finally {
                 syncingVideoAudio = previous;
             }
+        },
+
+        setSharedVideoAudio(video, muted, volume, fromGesture = false) {
+            const resume = !video.paused;
+            if (fromGesture) preparingVideoPosters.get(video)?.();
+            this.videoMuted = muted;
+            if (Number.isFinite(volume)) this.videoVolume = volume;
+            document.querySelectorAll(VIDEO_PLAYER_SELECTOR).forEach(other => {
+                forcedMuteVideos.delete(other);
+                this.applyVideoAudio(other);
+            });
+            if (!muted && (isFeedVideoPlayer(video) || lightboxInlineMount?.player === tweetNookVideoPlayer(video))) {
+                audibleFeedVideo = video;
+                // Explicit play() in the unmute gesture also unlocks this decoder
+                // when Safari paused it while its muted property changed.
+                if (fromGesture && resume) video.play()?.catch?.(() => {});
+            }
+        },
+
+        // iOS audible permission belongs to this exact video element. Reuse the
+        // reader-unmuted decoder as the feed advances, including newly appended
+        // pages; leave an ordinary paused decoder and poster in the previous tile.
+        reuseAudibleFeedVideo(next) {
+            const video = audibleFeedVideo;
+            if (this.videoMuted || !isPhoneLayout() || !video || video === next || !next
+                || video.closest?.('.lightbox-stage') || !video.parentElement || !next.parentElement) return next;
+            preparingVideoPosters.get(next)?.();
+            preparingVideoPosters.get(video)?.();
+            this.pauseAutoplayVideo(video);
+            this.pauseAutoplayVideo(next);
+            const attributes = node => [...node.attributes].map(attribute => [attribute.name, attribute.value]);
+            const previous = attributes(video), incoming = attributes(next);
+            const time = video.currentTime;
+            const nextTime = next.currentTime;
+            const oldPlayer = video.parentElement, newPlayer = next.parentElement;
+            oldPlayer.replaceChild(next, video);
+            newPlayer.prepend(video);
+            const restore = (node, attrs, position) => {
+                for (const attribute of [...node.attributes]) node.removeAttribute(attribute.name);
+                for (const [name, value] of attrs) if (name !== 'src') node.setAttribute(name, value);
+                // Mask a previously presented frame synchronously, before src is
+                // changed; loadstart/emptied arrive in a later event task.
+                videoPosterStates.get(node)?.reset();
+                node.src = attrs.find(([name]) => name === 'src')?.[1] || '';
+                if (position > 0) node.currentTime = position;
+                heldAutoplayVideos.delete(node);
+                failedAutoplayVideos.delete(node);
+                forcedMuteVideos.delete(node);
+                tweetNookSyncVideoDuration(node);
+                tweetNookSyncVideoUi(node);
+            };
+            restore(next, previous, time);
+            restore(video, incoming, nextTime);
+            return video;
         },
 
         setVideoPlayback(mode) {
@@ -2658,7 +2836,7 @@ function tweetApp() {
                 autoplayVideos.delete(video);
                 heldAutoplayVideos.delete(video);
                 failedAutoplayVideos.delete(video);
-                if (this.videoPlayback === 'autoplay') this.pauseAutoplayVideo(video);
+                if (this.videoPlayback === 'autoplay' && !preparingVideoPosters.has(video)) this.pauseAutoplayVideo(video);
             }
             if (select) this.autoplayNextVideo();
         },
@@ -2686,13 +2864,14 @@ function tweetApp() {
                     failedAutoplayVideos.delete(video);
                 }
             });
-            const next = blocked ? null : visible
+            let next = blocked ? null : visible
                 .filter(({video, ratio}) => ratio >= VIDEO_AUTOPLAY_VISIBLE_RATIO && !heldAutoplayVideos.has(video) && !failedAutoplayVideos.has(video))
                 .sort((a, b) => a.top - b.top)[0]?.video;
+            next = this.reuseAudibleFeedVideo(next);
             autoplayTarget = next;
-            players.forEach(video => { if (video !== next) this.pauseAutoplayVideo(video); });
+            players.forEach(video => { if (video !== next && !preparingVideoPosters.has(video)) this.pauseAutoplayVideo(video); });
             if (autoplayRequest?.video !== next) autoplayRequest = null;
-            if (!next || !next.paused || autoplayRequest?.video === next) return;
+            if (!next || preparingVideoPosters.has(next) || !next.paused || autoplayRequest?.video === next) return;
             const request = { video: next };
             autoplayRequest = request;
             pendingAutoplayRequests.set(next, request);
@@ -2715,8 +2894,12 @@ function tweetApp() {
                 finish(false);
             };
             const result = next.play();
-            result?.then?.(played, () => {
+            result?.then?.(played, error => {
                 if (!activeRequest()) { finish(false); return; }
+                // Source changes and interrupted loads reject with AbortError.
+                // They say nothing about audible permission and must not mute
+                // a decoder the reader already authorized.
+                if (error?.name !== 'NotAllowedError') { finish(error?.name !== 'AbortError'); return; }
                 if (next.muted) { finish(true); return; }
                 // Browsers can refuse audible autoplay before the page has had a gesture.
                 forcedMuteVideos.add(next);
@@ -2727,7 +2910,7 @@ function tweetApp() {
 
         // Only one player runs at a time, however it was started.
         handleVideoPlay(video) {
-            if (!isVideoPlayer(video)) return;
+            if (!isVideoPlayer(video) || video.paused || preparingVideoPosters.has(video)) return;
             // A late play event from a superseded decoder must not interrupt
             // the player now selected by the scroll/observer pass.
             const pending = pendingAutoplayRequests.get(video);
@@ -2736,7 +2919,7 @@ function tweetApp() {
                 return;
             }
             document.querySelectorAll(VIDEO_PLAYER_SELECTOR).forEach(other => {
-                if (other !== video && !other.paused) other.pause();
+                if (other !== video && !other.paused && !preparingVideoPosters.has(other)) other.pause();
             });
             this.applyVideoAudio(video);
             if (this.videoPlayback !== 'autoplay') return;
@@ -2745,22 +2928,20 @@ function tweetApp() {
         },
 
         handleVideoPause(video) {
-            if (automaticallyPausedVideos.delete(video)) return;
+            // Media events are queued. A pause from the previous source can be
+            // delivered after this decoder has already resumed in another tile.
+            if (automaticallyPausedVideos.delete(video) || !video.paused) return;
             if (this.videoPlayback === 'autoplay' && autoplayVideos.has(video)) heldAutoplayVideos.add(video);
         },
 
         handleVideoVolumeChange(video) {
-            if (syncingVideoAudio || !isVideoPlayer(video)) return;
+            if (syncingVideoAudio || preparingVideoPosters.has(video) || !isVideoPlayer(video)) return;
             // A browser-imposed mute must not silence the other players, but
             // volume adjustments on that player still belong to the reader.
             const muted = forcedMuteVideos.has(video) && video.muted ? this.videoMuted : video.muted;
             if (!video.muted) forcedMuteVideos.delete(video);
             if (muted === this.videoMuted && video.volume === this.videoVolume) return;
-            this.videoMuted = muted;
-            if (Number.isFinite(video.volume)) this.videoVolume = video.volume;
-            document.querySelectorAll(VIDEO_PLAYER_SELECTOR).forEach(other => {
-                this.applyVideoAudio(other);
-            });
+            this.setSharedVideoAudio(video, muted, video.volume);
         },
 
         pauseAllVideos() {
@@ -2806,6 +2987,7 @@ function tweetApp() {
             lightboxOriginVideo = originVideo;
             lightboxOriginHolder = origin?.closest?.('[data-lightbox-media]') || null;
             if (originVideo && this.lightboxMedia[this.lightboxIndex]) {
+                preparingVideoPosters.get(originVideo)?.();
                 const inlinePlayer = this.isMobileVideoViewer() && Boolean(tweetNookVideoPlayer(originVideo)?.cloneNode);
                 this.lightboxMedia = this.lightboxMedia.map((item, itemIndex) => itemIndex === this.lightboxIndex
                     ? { ...item, currentTime: originVideo.currentTime, muted: originVideo.muted, volume: originVideo.volume, loop: originVideo.loop, inlinePlayer }
@@ -2877,7 +3059,9 @@ function tweetApp() {
         lightboxMotionOrigin() {
             if (lightboxInlineMount) return lightboxInlineMount.placeholder;
             if (lightboxOriginVideo) return lightboxOriginVideo;
-            const element = lightboxOriginHolder?.querySelectorAll?.('img, video')[this.lightboxIndex];
+            const pictures = [...(lightboxOriginHolder?.querySelectorAll?.('img, video') || [])]
+                .filter(element => !element.hasAttribute?.('data-video-poster'));
+            const element = pictures[this.lightboxIndex];
             return element?.isConnected ? element : null;
         },
 
@@ -7556,6 +7740,7 @@ function tweetApp() {
 
             const getSrc = m => this.mediaSource(m);
             const getPoster = m => this.mediaPoster(m);
+            const posterImage = poster => `<img ${poster ? `src="${this.escapeHTML(poster)}"` : 'hidden'} data-video-poster loading="lazy" decoding="async" alt="" aria-hidden="true">`;
 
             const allMedia = mediaList.map(m => {
                 const type = (m.type === 'video' || m.type === 'animated_gif') ? 'video' : 'photo';
@@ -7612,6 +7797,7 @@ function tweetApp() {
 
                     return wrap(`<div class="relative max-w-full rounded-2xl border border-[var(--border-color)] overflow-hidden block ${isGif ? '' : 'media-video-player'} ${frameClass}" ${isGif ? mediaAttr : ''} @click.stop>
                                 <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} ${isGif ? 'onclick="window.tweetNookOpenGif(event, this, 0)"' : ''} class="${isGif ? 'media-frame-gif-video' : 'media-frame-video'} outline-none block"></video>
+                                ${posterImage(poster)}
                                 ${indicator}
                                 ${isGif ? '' : renderVideoControls()}
                             </div>`);
@@ -7647,6 +7833,7 @@ function tweetApp() {
                         const indicator = this.renderMediaPlaybackIndicator(item);
                         html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass} ${isGif ? '' : 'media-video-player'}">
                                     <video src="${src}" poster="${poster || ''}" preload="${poster ? 'none' : 'metadata'}" ${autoplayAttr} ${loopAttr} ${controlsAttr} ${gifEvents} ${videoEvents} class="absolute inset-0 w-full h-full media-grid-video outline-none"></video>
+                                    ${posterImage(poster)}
                                     ${indicator}
                                     ${isGif ? '' : renderVideoControls()}
                                 </div>`;

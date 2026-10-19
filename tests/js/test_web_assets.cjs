@@ -4637,7 +4637,9 @@ test('mobile feed taps open a video viewer, sound stays inline, and desktop clic
     assert.equal(sound.querySelectorAll('path')[1].getAttribute('d'), 'm17 10 4 4m0-4-4 4');
     dispatchFeed(player, 'click', sound);
     assert.equal(video.muted, false);
-    assert.equal(opened.length, 1);
+    assert.equal(opened.filter(event => event.type === 'open-lightbox').length, 1);
+    assert.equal(opened.at(-1).type, 'video-audio-intent');
+    assert.equal(opened.at(-1).detail.muted, false);
     // Taps inside the viewer still reveal/dismiss chrome without pausing.
     timers.at(-1)();
     video.closest = selector => selector === '.lightbox-stage' ? {} : null;
@@ -5048,6 +5050,8 @@ test('phone photos expand from their tile and return to the one on screen, or fa
     feed.connected = true;
     feed.rect = {left: 50, top: 300, width: 302, height: 170};
     const tiles = feed.querySelectorAll('img');
+    // A video poster in an earlier gallery cell is decoration, not another slide.
+    tiles[0].parentElement.appendChild(new FakeElement('img', [['data-video-poster', '']]));
     tiles[0].rect = {left: 51, top: 301, width: 149, height: 168};
     tiles[1].rect = {left: 202, top: 301, width: 149, height: 168};
     const tileValues = tiles.map(tile => { const values = new Map(); tile.style = styleOf(values); return values; });

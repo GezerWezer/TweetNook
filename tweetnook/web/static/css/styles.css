@@ -3180,6 +3180,23 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     object-fit: contain;
     background: #000;
 }
+/* Keep the poster above the native video surface until a decoded frame has
+   actually been presented. Controls stay above it and receive all input. */
+[data-video-poster] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+    pointer-events: none;
+}
+[data-video-poster][hidden] { display: none; }
+@media (max-width: 640px), (pointer: coarse) {
+    .lightbox-video-player > [data-video-poster] {
+        height: calc(100% - 72px - var(--video-controls-bottom));
+    }
+}
 /* X releases portrait preview caps below its 676px layout breakpoint. Override
    the inherited caps on the frame so resizing also updates existing media. */
 @media (max-width: 675px) {
@@ -3207,6 +3224,12 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
 .feed-card {
     content-visibility: auto;
     contain-intrinsic-size: auto 420px;
+}
+/* Media already has explicit aspect ratios. Skipping its layout replaces those
+   stable boxes with estimated card heights and can expose blank layers while
+   scrolling, especially in Safari. Keep text-only cards eligible for skipping. */
+.feed-card:has(.media-single, .media-photo, video) {
+    content-visibility: visible;
 }
 
 /* Community notes use distinct spacing in feeds, quotes, and detail views. */
