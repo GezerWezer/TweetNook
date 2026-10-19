@@ -472,8 +472,8 @@ def _effective_sort(sort: str, *, has_positive_text: bool) -> str:
         return sort
     if sort == "oldest":
         return "oldest"
-    if sort == "random":
-        return "random"
+    if sort in {"random", "most_likes"}:
+        return sort
     if sort == "relevance" and has_positive_text:
         return "relevance"
     if sort == "default":
