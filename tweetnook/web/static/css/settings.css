@@ -45,7 +45,7 @@
 .nook-font-slider input::-moz-range-track { height:4px; border-radius:9999px; background:color-mix(in srgb,var(--accent-color) 45%,var(--bg-primary)); }
 .nook-font-slider input::-moz-range-progress { background:var(--accent-color); height:4px; }
 .nook-font-slider input::-moz-range-thumb { width:20px; height:20px; border:0; border-radius:50%; background:var(--accent-color); }
-.nook-accent-choices { display:flex; justify-content:space-between; gap:4px; max-width:410px; }
+.nook-accent-choices { display:flex; flex-wrap:wrap; gap:8px; max-width:410px; }
 .nook-accent-choice { flex:0 0 44px; display:flex; align-items:center; justify-content:center; width:44px; height:44px; padding:2px; border:0; background:transparent; border-radius:50%; cursor:pointer; }
 .nook-accent-choice > span { display:flex; align-items:center; justify-content:center; width:40px; height:40px; background:var(--swatch); color:var(--swatch-text); border-radius:50%; }
 .nook-accent-choice svg { width:22px; height:22px; opacity:0; }
@@ -218,6 +218,22 @@
 .nook-theme-tile:focus-visible { outline:none!important; }
 .nook-theme-tile:focus-visible .nook-theme-sample { outline:2px solid var(--accent-color); outline-offset:6px; }
 @media (prefers-reduced-motion:reduce) { .nook-theme-sample { transition:none; } }
+
+/* Setup keeps every theme and its accent palette visible in a short dialog. */
+.setup-modal-shell.is-appearance .setup-modal-inner { max-width:544px; padding-top:16px; padding-bottom:16px; }
+.setup-appearance .setup-step-header { margin-bottom:12px; }
+.setup-appearance .nook-theme-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.setup-appearance .nook-theme-tile { gap:6px; }
+.setup-appearance .nook-theme-group + .nook-theme-group { margin-top:12px; }
+.setup-appearance .nook-theme-label { font-size:12px; }
+.setup-appearance .cts-post { padding:8px; gap:6px; }
+.setup-appearance .cts-avatar { flex-basis:14px; height:14px; }
+.setup-appearance .cts-body { gap:4px; }
+.setup-appearance .cts-actions { display:none; }
+.setup-accent-section { margin-top:16px; }
+.setup-accent-section h3 { margin:0; font-size:15px; line-height:20px; font-weight:700; }
+.setup-accent-section .nook-accent-choices { margin-top:6px; }
+.setup-appearance button:focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
 
 @media (max-width:799px) { .nook-tag-share { display:none; } }
 @media (max-width:599px) { .nook-tag-controls { width:100%; justify-content:space-between; } }
