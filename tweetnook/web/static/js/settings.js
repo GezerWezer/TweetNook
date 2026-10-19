@@ -90,6 +90,7 @@ function nookConfigField(app, path) {
     help: schema.descriptions?.[path] || '',
     bytes: schema.byte_units?.[path] || 0,
     requires: schema.requires?.[path] || [],
+    number: schema.number_constraints?.[path] || {},
   };
 }
 function nookConfigSections(app, tier) {
@@ -99,6 +100,7 @@ function nookConfigSections(app, tier) {
   const inTier = path => {
     const [section, key] = nookConfigPath(path);
     if (!app.configData[section] || !(key in app.configData[section]) || schema.blacklist.includes(path)) return false;
+    if ((schema.visible_when?.[path] || []).some(required => !nookConfigAt(app.configData, required))) return false;
     return schema.whitelist.includes(path) === (tier === 'basic');
   };
   const grouped = new Set((schema.groups || []).flatMap(group => group.fields));

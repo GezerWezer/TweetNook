@@ -346,6 +346,7 @@ def test_config_ui_schema_only_references_real_fields_and_masks_secrets() -> Non
     advanced = editable - basic
 
     assert basic
+    assert "sync.reply_linked_depth" in basic
     assert basic.isdisjoint(blocked)
     assert all(exists(path) for path in basic | blocked)
     assert set(schema["full_width"]) <= editable
@@ -370,7 +371,7 @@ def test_config_ui_schema_only_references_real_fields_and_masks_secrets() -> Non
         "sync.cooldown_duration",
         "sync.timeout",
         "sync.max_linked_depth",
-        "sync.reply_linked_depth",
+        "sync.reply_linked_limit",
         "database.cache_size_kb",
         "database.mmap_size_bytes",
     } <= advanced
