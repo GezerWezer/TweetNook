@@ -4005,6 +4005,7 @@ function tweetApp() {
             }
 
             if (persist) localStorage.setItem('tvx-theme', key);
+            this.updateFavicon();
         },
 
         setAccent(accent) {
@@ -4014,6 +4015,24 @@ function tweetApp() {
             root.style.setProperty('--accent-hover', accent.hover);
             root.style.setProperty('--accent-text', accent.text);
             localStorage.setItem('tvx-accent-' + this.currentTheme, accent.color);
+            this.updateFavicon();
+        },
+
+        // Redraws the tab icon in the active theme: corner in the accent,
+        // bookmark in the text color, on a tile of the page background.
+        updateFavicon() {
+            const link = document.querySelector('link[rel="icon"]');
+            if (!link) return;
+            const style = document.documentElement.style;
+            const bg = style.getPropertyValue('--bg-primary') || '#ffffff';
+            const text = style.getPropertyValue('--text-primary') || '#0f1419';
+            const accent = style.getPropertyValue('--accent-color') || '#1d9bf0';
+            const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+                + `<rect width="32" height="32" rx="7.5" fill="${bg}"/>`
+                + `<path d="M8 8v12a4 4 0 0 0 4 4h12" fill="none" stroke="${accent}" stroke-width="4" stroke-linecap="round"/>`
+                + `<path d="M14 7.5A1.5 1.5 0 0 1 15.5 6h7A1.5 1.5 0 0 1 24 7.5V18l-5-3-5 3z" fill="${text}"/>`
+                + '</svg>';
+            link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
         },
 
         canDiscoverFonts() {
