@@ -2468,7 +2468,7 @@
              x-cloak
              @click.self="closeSetup()">
             <div class="setup-modal-shell bg-[var(--bg-primary)] w-full h-full flex flex-col overflow-hidden relative"
-                 :class="{ 'is-complete': setupCompletionVisible }"
+                 :class="{ 'is-complete': setupCompletionVisible, 'is-appearance': setupFlowStep === 4 && !setupCompletionVisible }"
                  @keydown.tab="if (setupCompletionVisible) nookTrapFocus($event, $event.currentTarget)"
                  role="dialog" aria-modal="true" aria-labelledby="setup-modal-title">
                     <!-- Focused first-run setup in its own Twitter/X-style modal -->
@@ -2751,8 +2751,8 @@
                                     </div>
                                 </div>
 
-                                <!-- ── Step 4 · Appearance: themes only; Settings has the rest ── -->
-                                <div class="setup-step setup-flow-panel" x-show="setupFlowStep === 4"
+                                <!-- ── Step 4 · Appearance ──────────────────────── -->
+                                <div class="setup-step setup-flow-panel setup-appearance" x-show="setupFlowStep === 4"
                                      :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
                                      x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
                                     <div class="setup-step-body">
@@ -2785,7 +2785,15 @@
                                                 </div>
                                             </div>
                                         </template>
-                                        <p class="setup-help">Accent colors, text size, fonts and layout are in Settings → Appearance.</p>
+                                        <section class="setup-accent-section" x-show="THEMES[currentTheme]?._accents?.length">
+                                            <div class="nook-section-title"><h3 id="setup-accent-label">Accent color</h3><span x-text="THEMES[currentTheme]?._accents?.find(a => a.color === currentAccent)?.name"></span></div>
+                                            <div class="nook-accent-choices" role="radiogroup" aria-labelledby="setup-accent-label">
+                                                <template x-for="a in THEMES[currentTheme]._accents || []" :key="currentTheme + a.color">
+                                                    <button type="button" role="radio" :aria-label="a.name" :aria-checked="currentAccent === a.color" @click="setAccent(a)" class="nook-accent-choice" :style="'--swatch:' + a.color + ';--swatch-text:' + a.text"><span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" /></svg></span></button>
+                                                </template>
+                                            </div>
+                                        </section>
+                                        <p class="setup-help">Text size, fonts and layout are in Settings → Appearance.</p>
                                     </div>
                                 </div>
 
