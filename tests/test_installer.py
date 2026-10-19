@@ -7,6 +7,7 @@ import os
 import pty
 import select
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -42,7 +43,9 @@ elif args[:2] == ['-m', 'pip']:
     if '--version' in args:
         sys.exit(0 if (root / 'pip-ready').exists() else 1)
     if os.environ.get('TEST_FAIL_INSTALL'):
+        print('Simulated package download failed.', file=sys.stderr)
         sys.exit(9)
+    print('Downloading dependency metadata ...')
     version = args[-1].split('==')[-1] if '==' in args[-1] else '9.8.7'
     (root / 'installed-version').write_text(version)
 elif args[:1] == ['-m'] and args[1] in ('tweetnook', 'tweetnook.system_install'):
@@ -50,13 +53,23 @@ elif args[:1] == ['-m'] and args[1] in ('tweetnook', 'tweetnook.system_install')
         print('tweetnook ' + (root / 'installed-version').read_text())
     elif args[2:] == ['--help']:
         sys.exit(5 if os.environ.get('TEST_FAIL_HELP') else 0)
+    elif args[2:4] == ['service', 'install']:
+        print('Created symlink /etc/systemd/system/example.service')
+        print('TweetNook service enabled and restarted.')
     elif args[2:4] != ['service', 'install'] and args[2:] not in (
-        ['serve'], ['update'], ['service', 'restart']
+        ['serve'], ['update'], ['service', 'restart'], ['service', 'status']
     ):
         raise AssertionError(args)
 elif args == ['-']:
     sys.prefix = str(root)
-    exec(compile(sys.stdin.read(), '<installer-check>', 'exec'))
+    source = sys.stdin.read()
+    if 'def wait_for_web(' in source:
+        if os.environ.get('TEST_WEB_FAIL'):
+            print('The web app did not respond on port 8000.', file=sys.stderr)
+            sys.exit(4)
+        print(os.environ.get('TEST_WEB_STATUS', 'network http://192.0.2.10:8000 8000'))
+    else:
+        exec(compile(source, '<installer-check>', 'exec'))
 else:
     raise AssertionError(args)
 """
@@ -66,9 +79,12 @@ import json
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 
 args = sys.argv[1:]
+if os.environ.get('TEST_PAUSE_UV'):
+    time.sleep(4)
 with open(os.environ['TEST_EVENTS'], 'a') as log:
     log.write(json.dumps(['uv', *args, os.environ.get('UV_PYTHON_INSTALL_DIR')]) + '\\n')
 if 'venv' in args:
@@ -165,6 +181,7 @@ fi
     executable(commands / "ps", 'printf "%s\\n" "${TEST_PROCESSES:-}"\n')
     env = {
         "HOME": str(home),
+        "TMPDIR": str(tmp_path),
         "PATH": f"{commands}{os.pathsep}{os.defpath}",
         "TEST_EVENTS": str(events),
         "TEST_PYTHON": str(fake_python),
@@ -202,7 +219,31 @@ fi
                 cwd=tmp_path,
             )
 
-        def interactive(self, choice, **changes):
+        def pasted(self, *args, **changes):
+            args = self.system_args(args, changes)
+            source = INSTALLER.read_text()
+            # -i enables real interactive history expansion even with piped stdin.
+            # The trailing commands must still run after installer exit/error.
+            commands = (
+                "set -H\n"
+                f"set -- {shlex.join(args)}\n"
+                f"{source}\n"
+                'printf "PARENT_ALIVE:%s:%s\\n" "$?" "$-"\n'
+                'printf "PARENT_PATH:%s\\n" "$PATH"\n'
+                "trap -p EXIT INT TERM\n"
+                "exit 0\n"
+            )
+            return subprocess.run(
+                ["/bin/bash", "--noprofile", "--norc", "--login", "-i"],
+                input=commands,
+                env={**env, **changes},
+                capture_output=True,
+                text=True,
+                timeout=20,
+                cwd=tmp_path,
+            )
+
+        def interactive(self, choice, *, interrupt_at=None, **changes):
             master, slave = pty.openpty()
             process = None
             try:
@@ -213,6 +254,7 @@ fi
                     stdout=slave,
                     stderr=slave,
                     cwd=tmp_path,
+                    start_new_session=True,
                 )
                 os.close(slave)
                 slave = None
@@ -232,6 +274,9 @@ fi
                     if not chunk:
                         break
                     output += chunk
+                    if interrupt_at and interrupt_at in output.decode():
+                        os.killpg(process.pid, signal.SIGINT)
+                        interrupt_at = None
                 return process.wait(timeout=2), output.decode()
             finally:
                 if process is not None and process.poll() is None:
@@ -242,7 +287,11 @@ fi
                     os.close(slave)
 
         def events(self):
-            return [json.loads(line) for line in events.read_text().splitlines()]
+            return (
+                [json.loads(line) for line in events.read_text().splitlines()]
+                if events.exists()
+                else []
+            )
 
         def pip_installs(self):
             return [e for e in self.events() if e[0] == "python" and "install" in e and "pip" in e]
@@ -266,12 +315,15 @@ def test_help_is_available_without_python_or_root_permissions(installation):
         "--python",
         "--install-dir",
         "--bin-dir",
+        "--details",
     ):
         assert flag in result.stdout
     assert "Linux with running systemd defaults to a system-wide service" in result.stdout
     for path in ("/opt/tweetnook", "/usr/local/bin", "/var/lib/tweetnook", "/etc/tweetnook"):
         assert path in result.stdout
     assert "These defaults also apply without a terminal" in result.stdout
+    assert "recommended choice is always option 1" in result.stdout
+    assert "--details              Show file locations and maintenance commands" in result.stdout
     assert not installation.runtime.exists()
 
 
@@ -304,11 +356,11 @@ def test_fresh_manual_install_rerun_and_launcher_preserve_data(installation):
     archive = installation.runtime.parent / "tweetnook/archive.db"
     archive.parent.mkdir(parents=True)
     archive.write_bytes(b"existing archive")
-    result = installation.run()
+    result = installation.run("--details")
     assert result.returncode == 0, result.stderr
     assert "tweetnook 9.8.7" in result.stdout
-    assert "To start TweetNook" in result.stdout
-    assert "service is running" not in result.stdout
+    assert "TweetNook is installed" in result.stdout
+    assert "TweetNook is running" not in result.stdout
     assert "export PATH=" in result.stdout
     assert "--upgrade" in result.stdout
     creation = next(e for e in installation.events() if e[0] == "uv")
@@ -333,14 +385,16 @@ def test_fresh_manual_install_rerun_and_launcher_preserve_data(installation):
     assert not (installation.runtime / ".install-lock").exists()
 
 
-@pytest.mark.parametrize("choice", ["\n", "1\n", "2\n"])
+@pytest.mark.parametrize("choice", ["\n\n", "1\n\n", "2\n\n"])
 def test_interactive_linux_startup_choice(installation, choice):
     code, output = installation.interactive(choice, TEST_OS="Linux", TEST_SYSTEMD="yes")
     assert code == 0, output
     assert "How should TweetNook run?" in output
-    assert "Choose [2]:" in output
-    assert ("service is running" in output) == (choice != "1\n")
-    assert ("To start TweetNook" in output) == (choice == "1\n")
+    assert "Choose [1]" in output
+    assert "1. Background service (recommended)" in output
+    assert ("TweetNook is running" in output) == (choice != "2\n\n")
+    assert ("TweetNook is installed" in output) == (choice == "2\n\n")
+    assert output.count("Ready to install") == 1
 
 
 @pytest.mark.parametrize(
@@ -354,22 +408,22 @@ def test_interactive_linux_startup_choice(installation, choice):
 def test_unattended_platform_default(installation, platform, service_expected):
     result = installation.run(**platform)
     assert result.returncode == 0, result.stderr
-    assert ("service is running" in result.stdout) == service_expected
+    assert ("TweetNook is running" in result.stdout) == service_expected
     assert any("service" in event for event in installation.events()) == service_expected
 
 
 def test_no_service_overrides_linux_service_default(installation):
     result = installation.run("--no-service", TEST_OS="Linux", TEST_SYSTEMD="yes")
     assert result.returncode == 0, result.stderr
-    assert "To start TweetNook" in result.stdout
+    assert "TweetNook is installed" in result.stdout
     assert not any("service" in event for event in installation.events())
 
 
-def test_interactive_service_selection_on_macos_is_rejected(installation):
-    code, output = installation.interactive("2\n")
-    assert code != 0
-    assert "requires Linux with running systemd" in output
-    assert not installation.runtime.exists()
+def test_interactive_invalid_choice_on_macos_reprompts(installation):
+    code, output = installation.interactive("2\n1\n\n")
+    assert code == 0, output
+    assert "Choose 1, or q to cancel" in output
+    assert "TweetNook is installed" in output
 
 
 def test_extras_exact_version_and_custom_directories(installation, tmp_path):
@@ -518,6 +572,7 @@ def test_linux_system_service_uses_dedicated_account_and_paths(installation, tmp
     bin_dir = tmp_path / "custom command directory"
     result = installation.run(
         "--service",
+        "--details",
         "--bin-dir",
         str(bin_dir),
         TEST_OS="Linux",
@@ -544,13 +599,15 @@ def test_linux_system_service_uses_dedicated_account_and_paths(installation, tmp
     assert (
         installation.system_runtime / ".tweetnook-installer"
     ).read_text().strip() == "tweetnook-system-installer-v1"
-    assert "service is running" in result.stdout
+    assert "TweetNook is running" in result.stdout
     commands = [
-        shlex.split(line.strip())
-        for line in result.stdout.splitlines()
-        if line.startswith("  tweetnook ")
+        shlex.split(line.strip()) for line in result.stdout.splitlines() if line.startswith("  /")
     ]
-    assert commands == [["tweetnook", "update"], ["tweetnook", "service", "restart"]]
+    assert commands == [
+        [str(bin_dir / "tweetnook"), "service", "status"],
+        [str(bin_dir / "tweetnook"), "service", "restart"],
+        [str(bin_dir / "tweetnook"), "update"],
+    ]
     # Exercise both printed commands through PATH, including a custom bin directory.
     for index, command in enumerate(commands):
         events_path = tmp_path / f"command-{index}.jsonl"
@@ -573,7 +630,7 @@ def test_failed_service_activation_does_not_claim_running(installation):
     )
     assert result.returncode != 0
     assert "did not remain active" in result.stderr
-    assert "service is running" not in result.stdout
+    assert "TweetNook is running" not in result.stdout
 
 
 def test_service_install_refuses_existing_personal_environment(installation):
@@ -594,7 +651,7 @@ def test_root_service_install_does_not_require_sudo_or_home(installation, tmp_pa
     (tmp_path / "commands/sudo").unlink()
     result = installation.run(TEST_OS="Linux", TEST_SYSTEMD="yes", TEST_UID="0", HOME="")
     assert result.returncode == 0, result.stderr
-    assert "service is running as tweetnook" in result.stdout
+    assert "TweetNook is running" in result.stdout
     assert "sudo" not in installation.admin_events()
     assert (installation.system_bin / "tweetnook").is_file()
 
@@ -694,3 +751,157 @@ def test_uv_bootstrap_is_private_and_does_not_edit_profiles(installation, tmp_pa
     assert result.returncode == 0, result.stderr
     assert (installation.runtime / "bootstrap/uv").exists()
     assert not (installation.launcher.parent.parent.parent / ".profile").exists()
+
+
+@pytest.mark.parametrize("answers", ["q\n", "\nn\n", "\nq\n", "\x04"])
+def test_interactive_cancellation_makes_no_changes(installation, tmp_path, answers):
+    code, output = installation.interactive(answers, TEST_OS="Linux", TEST_SYSTEMD="yes")
+    assert code == 0, output
+    assert "Installation cancelled. No changes made." in output
+    assert not installation.events()
+    assert not installation.admin_events()
+    assert not installation.system_runtime.exists()
+    assert not list(tmp_path.glob("tweetnook-install.*"))
+
+
+def test_interactive_invalid_choices_retry_and_review_once(installation):
+    code, output = installation.interactive("7\n1\nmaybe\ny\n", TEST_OS="Linux", TEST_SYSTEMD="yes")
+    assert code == 0, output
+    assert "Choose 1 or 2, or q to cancel" in output
+    assert "Enter y to continue or n to cancel" in output
+    assert output.count("Ready to install") == 1
+    assert output.count("TweetNook · Install") == 1
+    assert "TweetNook is running" in output
+
+
+def test_compact_success_hides_dependency_and_service_noise(installation, tmp_path):
+    result = installation.run("--service", TEST_OS="Linux", TEST_SYSTEMD="yes")
+    assert result.returncode == 0, result.stderr
+    assert "Downloading dependency metadata" not in result.stdout
+    assert "Created symlink" not in result.stdout
+    assert "enabled and restarted" not in result.stdout
+    assert "Installation details" not in result.stdout
+    assert result.stdout.count("TweetNook is running") == 1
+    assert "http://192.0.2.10:8000" in result.stdout
+    assert "<server-or-container-IP>" not in result.stdout
+    assert "\x1b" not in result.stdout
+    assert not list(tmp_path.glob("tweetnook-install.*"))
+
+
+def test_http_startup_failure_retains_diagnostics_without_success(installation, tmp_path):
+    result = installation.run("--service", TEST_OS="Linux", TEST_SYSTEMD="yes", TEST_WEB_FAIL="1")
+    assert result.returncode == 4
+    assert "TweetNook is running" not in result.stdout
+    assert "! Check web server" in result.stdout
+    assert "web app did not respond" in result.stderr
+    assert "Diagnostic log:" in result.stderr
+    assert "journalctl -u tweetnook" in result.stderr
+    assert "enabled and restarted" not in result.stderr
+    logs = list(tmp_path.glob("tweetnook-install.*"))
+    assert len(logs) == 1
+    assert "web app did not respond" in logs[0].read_text()
+    assert logs[0].stat().st_mode & 0o777 == 0o600
+    assert not (installation.system_runtime / ".install-lock").exists()
+
+
+@pytest.mark.parametrize(
+    ("status", "expected", "excluded"),
+    [
+        (
+            "unknown http://127.0.0.1:9123 9123",
+            "Open that IP address on port 9123",
+            "Open in your browser to finish setup",
+        ),
+        (
+            "local http://[::1]:9123 9123",
+            "browser on this server",
+            "hostname -I",
+        ),
+    ],
+)
+def test_local_and_unknown_addresses_have_honest_guidance(installation, status, expected, excluded):
+    result = installation.run(
+        "--service", TEST_OS="Linux", TEST_SYSTEMD="yes", TEST_WEB_STATUS=status
+    )
+    assert result.returncode == 0, result.stderr
+    assert expected in result.stdout
+    assert excluded not in result.stdout
+
+
+def test_package_failure_exposes_the_error_and_preserves_exit_status(installation):
+    result = installation.run("--no-service", TEST_FAIL_INSTALL="1")
+    assert result.returncode == 9
+    assert "! Install TweetNook" in result.stdout
+    assert "Simulated package download failed" in result.stderr
+    assert "Diagnostic log:" in result.stderr
+    assert "TweetNook is installed" not in result.stdout
+
+
+def test_malformed_address_check_result_cannot_claim_success(installation):
+    result = installation.run(
+        "--service", TEST_OS="Linux", TEST_SYSTEMD="yes", TEST_WEB_STATUS="invalid"
+    )
+    assert result.returncode != 0
+    assert "invalid address" in result.stderr
+    assert "TweetNook is running" not in result.stdout
+
+
+def test_ctrl_c_during_installation_preserves_log_and_releases_lock(installation, tmp_path):
+    code, output = installation.interactive(
+        "\n\n",
+        interrupt_at="· Prepare Python environment",
+        TEST_PAUSE_UV="1",
+        TERM="xterm-256color",
+    )
+    assert code == 130, output
+    assert "! Prepare Python environment" in output
+    assert "Diagnostic log:" in output
+    assert "TweetNook is installed" not in output
+    assert not (installation.runtime / ".install-lock").exists()
+    assert len(list(tmp_path.glob("tweetnook-install.*"))) == 1
+
+
+@pytest.mark.parametrize(
+    ("args", "changes", "status", "message"),
+    [
+        ((), {"TEST_OS": "Linux", "TEST_SYSTEMD": "yes"}, 0, "TweetNook is running"),
+        (("--help",), {}, 0, "Usage: bash install.sh"),
+        (("--version", "not-a-version"), {}, 1, "--version must be a version number"),
+    ],
+)
+def test_pasting_in_root_login_shell_preserves_history_options_and_shell(
+    installation, args, changes, status, message
+):
+    result = installation.pasted(*args, TEST_UID="0", **changes)
+    assert result.returncode == 0, result.stderr
+    if status == 0:
+        assert message in result.stdout
+    else:
+        assert f"Error: {message}" in result.stderr
+    assert "event not found" not in result.stderr
+    parent = next(line for line in result.stdout.splitlines() if line.startswith("PARENT_ALIVE:"))
+    _marker, code, flags = parent.split(":")
+    assert int(code) == status
+    assert "H" in flags and "i" in flags
+    assert "e" not in flags and "u" not in flags
+    assert "PARENT_PATH:" in result.stdout
+    assert "trap --" not in result.stdout
+
+
+def test_outer_and_embedded_installer_bash_syntax():
+    source = INSTALLER.read_text()
+    assert source.isascii(), "Pasted UTF-8 source is corrupted by Bash 3.2 readline in C locales."
+    body = source.split("<<'TWEETNOOK_INSTALL_SCRIPT' || :\n", 1)[1].rsplit(
+        "\nTWEETNOOK_INSTALL_SCRIPT\n", 1
+    )[0]
+    for args in ([str(INSTALLER)], ["-c", body]):
+        result = subprocess.run(["/bin/bash", "-n", *args], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+
+
+def test_non_root_service_paste_requires_a_file_before_sudo(installation):
+    result = installation.pasted(TEST_OS="Linux", TEST_SYSTEMD="yes")
+    assert "Download install.sh to a file before requesting sudo" in result.stderr
+    assert "PARENT_ALIVE:1:" in result.stdout
+    assert not installation.admin_events()
+    assert not installation.system_runtime.exists()
