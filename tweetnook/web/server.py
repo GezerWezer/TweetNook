@@ -231,6 +231,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         server_state["shutting_down"] = True
+        if stream := server_state.pop("activity_stream", None):
+            await stream.close()
         stop_avatar_cache_manager()
         stop_scheduler()
         if supervisor := server_state.get("job_supervisor"):
@@ -255,7 +257,7 @@ async def gate_initial_setup(request: Request, call_next):
             or path.startswith("/api/setup/")
             or path == "/api/notices"
             or path.startswith("/api/notices/")
-            or path in {"/api/activity/status", "/api/activity/stop"}
+            or path in {"/api/activity/status", "/api/activity/events", "/api/activity/stop"}
         )
         if not coordinator.state.completed and not safe:
             return JSONResponse(
@@ -313,6 +315,8 @@ class TextGZipMiddleware:
 
 
 def _compressible_path(path: str) -> bool:
+    if path == "/api/activity/events":
+        return False
     if path.startswith(("/media/", "/api/avatar/")):
         return False
     if path.startswith("/api/dev/replay/x/") and ".twimg.com/" in path:
