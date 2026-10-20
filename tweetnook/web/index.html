@@ -324,7 +324,7 @@
 
                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
                                 <div x-html="renderCard(parent)" @click.stop></div>
-                                <div x-html="renderMediaGrid(parent.media)" @click.stop></div>
+                                <div x-html="renderMediaGrid(parent.media, 'feed', parent)" @click.stop></div>
                                 <div x-html="renderQuoteCard(parent)" @click.stop="handleThreadParentQuoteClick($event, parent)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                 <div x-html="renderCommunityNote(parent.raw_json)" @click.stop></div>
                                 <div x-html="renderActionBar(parent)"></div>
@@ -393,7 +393,7 @@
 
                         <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
                         <div x-html="renderCard(threadData.main, 'detail')" @click.stop></div>
-                        <div x-html="renderMediaGrid(threadData.main.media, 'detail')" @click.stop></div>
+                        <div x-html="renderMediaGrid(threadData.main.media, 'detail', threadData.main)" @click.stop></div>
 
                         <!-- Quote Tweet -->
                         <template x-if="getQuoteTweet(threadData?.main)">
@@ -420,7 +420,7 @@
 
                                         <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(threadData?.main))" @click="handleTextClick($event)"></div>
                                         <div x-html="renderCard({raw_json: getQuoteTweet(threadData?.main)})" @click.stop></div>
-                                        <div class="quote-media" x-html="renderMediaGrid(threadData?.main?.qt_media, (threadData.main.media || []).length ? 'quote-detail-expanded' : 'quote-detail')" @click.stop></div>
+                                        <div class="quote-media" x-html="renderMediaGrid(threadData?.main?.qt_media, (threadData.main.media || []).length ? 'quote-detail-expanded' : 'quote-detail', getQuoteTweet(threadData.main))" @click.stop></div>
                                         <div x-html="renderNestedQuote(getQuoteTweet(threadData?.main))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                         <div x-html="renderCommunityNote(getQuoteTweet(threadData?.main), true, false, Boolean(threadData?.main?.qt_media?.length))" @click.stop></div>
                                     </div>
@@ -491,7 +491,7 @@
 
                                     <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(child)" @click="handleTextClick($event)"></div>
                                     <div x-html="renderCard(child)" @click.stop></div>
-                                    <div x-html="renderMediaGrid(child.media)" @click.stop></div>
+                                    <div x-html="renderMediaGrid(child.media, 'feed', child)" @click.stop></div>
 
                                     <!-- Quote Tweet -->
                                     <template x-if="getQuoteTweet(child)">
@@ -516,7 +516,7 @@
                                                     </template>
                                                     <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(child), isMediaQuotingMedia(child))" @click="handleTextClick($event)"></div>
                                                     <div x-html="renderCard({raw_json: getQuoteTweet(child)})" @click.stop></div>
-                                                    <div class="quote-media" x-html="isMediaQuotingMedia(child) ? renderQuoteThumbnail(child.qt_media) : renderMediaGrid(child.qt_media, 'quote')" @click="if (!isMediaQuotingMedia(child)) $event.stopPropagation()"></div>
+                                                    <div class="quote-media" x-html="isMediaQuotingMedia(child) ? renderQuoteThumbnail(child.qt_media) : renderMediaGrid(child.qt_media, 'quote', getQuoteTweet(child))" @click="if (!isMediaQuotingMedia(child)) $event.stopPropagation()"></div>
                                                     <div x-html="renderNestedQuote(getQuoteTweet(child))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                                     <div x-html="renderCommunityNote(getQuoteTweet(child), true, false, Boolean(child?.qt_media?.length))" @click.stop></div>
                                                 </div>
@@ -568,7 +568,7 @@
 
                                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(reply)" @click="handleTextClick($event)"></div>
                                                 <div x-html="renderCard(reply)" @click.stop></div>
-                                                <div x-html="renderMediaGrid(reply.media)" @click.stop></div>
+                                                <div x-html="renderMediaGrid(reply.media, 'feed', reply)" @click.stop></div>
 
                                                 <!-- Quote Tweet -->
                                                 <template x-if="getQuoteTweet(reply)">
@@ -593,7 +593,7 @@
                                                                 </template>
                                                                 <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(reply), isMediaQuotingMedia(reply))" @click="handleTextClick($event)"></div>
                                                                 <div x-html="renderCard({raw_json: getQuoteTweet(reply)})" @click.stop></div>
-                                                                <div class="quote-media" x-html="isMediaQuotingMedia(reply) ? renderQuoteThumbnail(reply.qt_media) : renderMediaGrid(reply.qt_media, 'quote')" @click="if (!isMediaQuotingMedia(reply)) $event.stopPropagation()"></div>
+                                                                <div class="quote-media" x-html="isMediaQuotingMedia(reply) ? renderQuoteThumbnail(reply.qt_media) : renderMediaGrid(reply.qt_media, 'quote', getQuoteTweet(reply))" @click="if (!isMediaQuotingMedia(reply)) $event.stopPropagation()"></div>
                                                                 <div x-html="renderNestedQuote(getQuoteTweet(reply))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                                                 <div x-html="renderCommunityNote(getQuoteTweet(reply), true, false, Boolean(reply?.qt_media?.length))" @click.stop></div>
                                                             </div>
@@ -651,7 +651,7 @@
                                     </div>
                                 </div>
                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
-                                <div x-html="renderMediaGrid(threadData.main.media)" @click.stop></div>
+                                <div x-html="renderMediaGrid(threadData.main.media, 'feed', threadData.main)" @click.stop></div>
                             </div>
                         </div>
                     </div>
@@ -678,7 +678,7 @@
 
                             <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(tweet)" @click="handleTextClick($event)"></div>
                             <div x-html="renderCard(tweet)" @click.stop></div>
-                            <div x-html="renderMediaGrid(tweet.media)" @click.stop></div>
+                            <div x-html="renderMediaGrid(tweet.media, 'feed', tweet)" @click.stop></div>
                             <div x-html="renderCommunityNote(tweet.raw_json)" @click.stop></div>
                             <div x-html="renderActionBar(tweet)"></div>
                         </div>
@@ -748,7 +748,7 @@
                                 </template>
                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
                                 <div x-html="renderCard(parent)" @click.stop></div>
-                                <div x-html="renderMediaGrid(parent.media)" @click.stop></div>
+                                <div x-html="renderMediaGrid(parent.media, 'feed', parent)" @click.stop></div>
                                 <div x-html="renderQuoteCard(parent)" @click.stop="handleThreadParentQuoteClick($event, parent)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                 <div x-html="renderCommunityNote(parent.raw_json)" @click.stop></div>
                                 <div x-html="renderActionBar(parent)"></div>
@@ -813,7 +813,7 @@
                         </template>
                         <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(panelThreadData.main)" @click="handleTextClick($event)"></div>
                         <div x-html="renderCard(panelThreadData.main, 'detail')" @click.stop></div>
-                        <div x-html="renderMediaGrid(panelThreadData.main.media, 'detail')" @click.stop></div>
+                        <div x-html="renderMediaGrid(panelThreadData.main.media, 'detail', panelThreadData.main)" @click.stop></div>
 
                         <!-- Quote Tweet -->
                         <template x-if="getQuoteTweet(panelThreadData?.main)">
@@ -838,7 +838,7 @@
                                         </template>
                                         <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(panelThreadData?.main))" @click="handleTextClick($event)"></div>
                                         <div x-html="renderCard({raw_json: getQuoteTweet(panelThreadData?.main)})" @click.stop></div>
-                                        <div class="quote-media" x-html="renderMediaGrid(panelThreadData?.main?.qt_media, (panelThreadData.main.media || []).length ? 'quote-detail-expanded' : 'quote-detail')" @click.stop></div>
+                                        <div class="quote-media" x-html="renderMediaGrid(panelThreadData?.main?.qt_media, (panelThreadData.main.media || []).length ? 'quote-detail-expanded' : 'quote-detail', getQuoteTweet(panelThreadData.main))" @click.stop></div>
                                         <div x-html="renderNestedQuote(getQuoteTweet(panelThreadData?.main))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                         <div x-html="renderCommunityNote(getQuoteTweet(panelThreadData?.main), true, false, Boolean(panelThreadData?.main?.qt_media?.length))" @click.stop></div>
                                     </div>
@@ -902,7 +902,7 @@
                                     </template>
                                     <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(child)" @click="handleTextClick($event)"></div>
                                     <div x-html="renderCard(child)" @click.stop></div>
-                                    <div x-html="renderMediaGrid(child.media)" @click.stop></div>
+                                    <div x-html="renderMediaGrid(child.media, 'feed', child)" @click.stop></div>
 
                                     <!-- Quote Tweet -->
                                     <template x-if="getQuoteTweet(child)">
@@ -927,7 +927,7 @@
                                                     </template>
                                                     <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(child), isMediaQuotingMedia(child))" @click="handleTextClick($event)"></div>
                                                     <div x-html="renderCard({raw_json: getQuoteTweet(child)})" @click.stop></div>
-                                                    <div class="quote-media" x-html="isMediaQuotingMedia(child) ? renderQuoteThumbnail(child.qt_media) : renderMediaGrid(child.qt_media, 'quote')" @click="if (!isMediaQuotingMedia(child)) $event.stopPropagation()"></div>
+                                                    <div class="quote-media" x-html="isMediaQuotingMedia(child) ? renderQuoteThumbnail(child.qt_media) : renderMediaGrid(child.qt_media, 'quote', getQuoteTweet(child))" @click="if (!isMediaQuotingMedia(child)) $event.stopPropagation()"></div>
                                                     <div x-html="renderNestedQuote(getQuoteTweet(child))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                                     <div x-html="renderCommunityNote(getQuoteTweet(child), true, false, Boolean(child?.qt_media?.length))" @click.stop></div>
                                                 </div>
@@ -969,7 +969,7 @@
                                                 </template>
                                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(reply)" @click="handleTextClick($event)"></div>
                                                 <div x-html="renderCard(reply)" @click.stop></div>
-                                                <div x-html="renderMediaGrid(reply.media)" @click.stop></div>
+                                                <div x-html="renderMediaGrid(reply.media, 'feed', reply)" @click.stop></div>
 
                                                 <!-- Quote Tweet -->
                                                 <template x-if="getQuoteTweet(reply)">
@@ -994,7 +994,7 @@
                                                                 </template>
                                                                 <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(reply), isMediaQuotingMedia(reply))" @click="handleTextClick($event)"></div>
                                                                 <div x-html="renderCard({raw_json: getQuoteTweet(reply)})" @click.stop></div>
-                                                                <div class="quote-media" x-html="isMediaQuotingMedia(reply) ? renderQuoteThumbnail(reply.qt_media) : renderMediaGrid(reply.qt_media, 'quote')" @click="if (!isMediaQuotingMedia(reply)) $event.stopPropagation()"></div>
+                                                                <div class="quote-media" x-html="isMediaQuotingMedia(reply) ? renderQuoteThumbnail(reply.qt_media) : renderMediaGrid(reply.qt_media, 'quote', getQuoteTweet(reply))" @click="if (!isMediaQuotingMedia(reply)) $event.stopPropagation()"></div>
                                                                 <div x-html="renderNestedQuote(getQuoteTweet(reply))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
                                                                 <div x-html="renderCommunityNote(getQuoteTweet(reply), true, false, Boolean(reply?.qt_media?.length))" @click.stop></div>
                                                             </div>
@@ -1051,7 +1051,7 @@
                                     </div>
                                 </div>
                                 <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(panelThreadData.main)" @click="handleTextClick($event)"></div>
-                                <div x-html="renderMediaGrid(panelThreadData.main.media)" @click.stop></div>
+                                <div x-html="renderMediaGrid(panelThreadData.main.media, 'feed', panelThreadData.main)" @click.stop></div>
                             </div>
                         </div>
                     </div>
@@ -1075,7 +1075,7 @@
                             </template>
                             <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(tweet)" @click="handleTextClick($event)"></div>
                             <div x-html="renderCard(tweet)" @click.stop></div>
-                            <div x-html="renderMediaGrid(tweet.media)" @click.stop></div>
+                            <div x-html="renderMediaGrid(tweet.media, 'feed', tweet)" @click.stop></div>
                             <div x-html="renderCommunityNote(tweet.raw_json)" @click.stop></div>
                             <div x-html="renderActionBar(tweet)"></div>
                         </div>
@@ -2464,11 +2464,32 @@
                             </div>
                         </section>
                         <section class="nook-setting-section">
-                            <h3>Media</h3>
-                            <div role="radiogroup" aria-label="Multi-media layout">
-                                <button type="button" role="radio" class="nook-choice-row" :aria-checked="mediaGallery === 'grid'" @click="setMediaGallery('grid')"><span><strong>Grid</strong><span>Show multiple photos and videos in the original grid.</span></span><span class="nook-radio-mark" aria-hidden="true">✓</span></button>
-                                <button type="button" role="radio" class="nook-choice-row" :aria-checked="mediaGallery === 'carousel'" @click="setMediaGallery('carousel')"><span><strong>Twitter carousel</strong><span>Scroll through individual media tiles, like Twitter.</span></span><span class="nook-radio-mark" aria-hidden="true">✓</span></button>
+                            <h3>Media layout</h3>
+                            <p class="nook-setting-help nook-help-above">For tweets with multiple photos, videos, or GIFs.</p>
+                            <div class="nook-media-tiles" role="radiogroup" aria-label="Multi-media layout">
+                                <button type="button" role="radio" class="nook-theme-tile nook-media-tile" aria-label="Grid" :aria-checked="mediaGallery === 'grid'" @click="setMediaGallery('grid')">
+                                    <span class="nook-theme-sample nook-media-sample" aria-hidden="true"><span class="cms-media is-grid"><span></span><span></span><span></span><span></span></span></span>
+                                    <span class="nook-theme-label"><span>Grid</span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></span>
+                                </button>
+                                <button type="button" role="radio" class="nook-theme-tile nook-media-tile" aria-label="Carousel" :aria-checked="mediaGallery === 'carousel'" @click="setMediaGallery('carousel')">
+                                    <span class="nook-theme-sample nook-media-sample" aria-hidden="true"><span class="cms-media is-carousel"><span></span><span></span></span></span>
+                                    <span class="nook-theme-label"><span>Carousel</span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></span>
+                                </button>
+                                <button type="button" role="radio" class="nook-theme-tile nook-media-tile" aria-label="By post date" aria-describedby="media-date-description" :aria-checked="mediaGallery === 'date'" @click="setMediaGallery('date')">
+                                    <span class="nook-theme-sample nook-media-sample" aria-hidden="true"><span class="cms-media is-date"><span class="cms-media is-grid"><span></span><span></span><span></span><span></span></span><span class="cms-media is-carousel"><span></span><span></span></span></span></span>
+                                    <span class="nook-theme-label"><span>By post date</span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></span>
+                                    <span class="nook-media-tile-help" id="media-date-description">Grid for tweets posted before July 10, 2026; carousel from then on.</span>
+                                </button>
                             </div>
+                        </section>
+                        <section class="nook-setting-section">
+                            <h3>Playback</h3>
                             <div class="nook-choice-row nook-autoplay-row"><span><strong>Autoplay videos</strong><span>Play videos muted as they scroll into view.</span></span><button type="button" role="switch" aria-label="Autoplay videos" :aria-checked="videoPlayback === 'autoplay'" @click="setVideoPlayback(videoPlayback === 'autoplay' ? 'paused' : 'autoplay')" class="nook-switch-button"><span class="nook-switch-track"><span></span></span></button></div>
                         </section>
                     </div>

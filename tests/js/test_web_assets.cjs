@@ -2946,8 +2946,8 @@ test('thread reply surfaces render quoted tweets in both presentations', () => {
     assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet\(reply\)\)/g) || []).length, 2);
     assert.equal((html.match(/formatText\(getQuoteTweet\(child\), isMediaQuotingMedia\(child\)\)/g) || []).length, 2);
     assert.equal((html.match(/formatText\(getQuoteTweet\(reply\), isMediaQuotingMedia\(reply\)\)/g) || []).length, 2);
-    assert.equal((html.match(/renderMediaGrid\(child\.qt_media, 'quote'\)/g) || []).length, 2);
-    assert.equal((html.match(/renderMediaGrid\(reply\.qt_media, 'quote'\)/g) || []).length, 2);
+    assert.equal((html.match(/renderMediaGrid\(child\.qt_media, 'quote', getQuoteTweet\(child\)\)/g) || []).length, 2);
+    assert.equal((html.match(/renderMediaGrid\(reply\.qt_media, 'quote', getQuoteTweet\(reply\)\)/g) || []).length, 2);
     assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(child\)\)\)/);
     assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(child\)\), false, true\)/);
     assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(reply\)\)\)/);
@@ -3865,7 +3865,7 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     for (const name of ['child', 'reply']) {
         assert.equal(html.split(`:class="{ 'quote-compact': isMediaQuotingMedia(${name}) }"`).length - 1, 2);
-        assert.equal(html.split(`isMediaQuotingMedia(${name}) ? renderQuoteThumbnail(${name}.qt_media) : renderMediaGrid(${name}.qt_media, 'quote')`).length - 1, 2);
+        assert.equal(html.split(`isMediaQuotingMedia(${name}) ? renderQuoteThumbnail(${name}.qt_media) : renderMediaGrid(${name}.qt_media, 'quote', getQuoteTweet(${name}))`).length - 1, 2);
         assert.equal(html.split(`@click="if (!isMediaQuotingMedia(${name})) $event.stopPropagation()"`).length - 1, 2);
         const replyLines = html.split(`<template x-if="getReplyRecipients({raw_json: getQuoteTweet(${name})}).length">`).slice(1);
         assert.equal(replyLines.length, 2);
@@ -3879,9 +3879,9 @@ test('media quoting media is compact in lists and flush in the detail view', () 
         assert.match(mainQuote, /class="quote-card quote-card-detail /);
         const mediaOwner = main === 'threadData?.main' ? 'threadData' : 'panelThreadData';
         assert.ok(html.includes(`class="main-tweet-quote" :class="{ 'main-tweet-quote-after-single-media': (${mediaOwner}.main.media || []).length === 1 }"`));
-        assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media, (${mediaOwner}.main.media || []).length ? 'quote-detail-expanded' : 'quote-detail')" @click.stop></div>`));
+        assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media, (${mediaOwner}.main.media || []).length ? 'quote-detail-expanded' : 'quote-detail', getQuoteTweet(${mediaOwner}.main))" @click.stop></div>`));
     }
-    assert.equal((html.match(/renderMediaGrid\((?:threadData|panelThreadData)\.main\.media, 'detail'\)/g) || []).length, 2);
+    assert.equal((html.match(/renderMediaGrid\((?:threadData|panelThreadData)\.main\.media, 'detail', (?:threadData|panelThreadData)\.main\)/g) || []).length, 2);
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
     assert.match(css, /\.quote-compact > \.quote-text \{[^}]*-webkit-line-clamp: 4;/);
     assert.match(css, /\.quote-compact \{[^}]*grid-template-columns: calc\(\(100% \+ 12px\) \/ 5\) minmax\(0, 1fr\);/);
@@ -8865,10 +8865,10 @@ test('committed content offers a refresh without disturbing a populated feed', a
     assert.match(markup, /x-show="feedUpdateAvailable"[^>]*@click="fetchTweets\(\)"/);
 });
 
-test('gallery preference defaults to the grid and changes the already rendered feed', () => {
+test('gallery preference defaults to the post date and changes the already rendered feed', () => {
     const context = browserContext();
     const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
-    assert.equal(app.mediaGallery, 'grid');
+    assert.equal(app.mediaGallery, 'date');
     const calls = [];
     app.tweets = [{tweet_id: 'keep'}];
     app.renderFeedList = tweets => calls.push(tweets);
@@ -8877,12 +8877,70 @@ test('gallery preference defaults to the grid and changes the already rendered f
     assert.equal(calls[0], app.tweets);
     app.setMediaGallery('carousel');
     assert.equal(calls.length, 1);
-    app.setMediaGallery('unknown');
-    assert.equal(app.mediaGallery, 'grid');
+    app.setMediaGallery('grid');
     assert.equal(context.localStorage.getItem('tvx-media-gallery'), 'grid');
+    assert.equal(calls.length, 2);
+    app.setMediaGallery('unknown');
+    assert.equal(app.mediaGallery, 'date');
+    assert.equal(context.localStorage.getItem('tvx-media-gallery'), 'date');
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
-    assert.match(html, /role="radiogroup" aria-label="Multi-media layout"/);
-    assert.match(html, /@click="setMediaGallery\('carousel'\)"/);
+    assert.match(html, /class="nook-media-tiles" role="radiogroup" aria-label="Multi-media layout"/);
+    assert.match(html, /id="media-date-description">Grid for tweets posted before July 10, 2026; carousel from then on\.</);
+    assert.match(html, /role="radio" class="nook-theme-tile nook-media-tile" aria-label="Carousel" :aria-checked="mediaGallery === 'carousel'" @click="setMediaGallery\('carousel'\)"/);
+    assert.match(html, /role="radio" class="nook-theme-tile nook-media-tile" aria-label="By post date" aria-describedby="media-date-description" :aria-checked="mediaGallery === 'date'" @click="setMediaGallery\('date'\)"/);
+});
+
+test('date-based media layout uses the UTC launch day and ignores archive dates', () => {
+    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    app.mediaGallery = 'date';
+    const photos = Array(2).fill({type:'photo', width:480, height:480, download:{local_path:'media/p.webp'}});
+    const hasCarousel = created_at => app.renderMediaGrid(photos, 'feed', {created_at}).includes('media-carousel-track');
+    assert.equal(hasCarousel('2026-07-09T23:59:59.999Z'), false);
+    assert.equal(hasCarousel('2026-07-10T00:00:00Z'), true);
+    assert.equal(hasCarousel('2026-07-09T20:00:00-04:00'), true);
+    assert.equal(hasCarousel('2026-07-10T00:59:59+01:00'), false);
+    assert.equal(hasCarousel('Fri Jul 10 00:00:00 +0000 2026'), true);
+    for (const created of [undefined, '', 'unknown', null]) assert.equal(hasCarousel(created), false);
+    assert.equal(app.useCarouselForTweet({created_at:'2020-01-01T00:00:00Z', synced_at:'2026-10-20T00:00:00Z'}), false);
+    assert.equal(app.useCarouselForTweet({synced_at:'2026-10-20T00:00:00Z'}), false);
+    const single = app.renderMediaGrid(photos.slice(0, 1), 'feed', {created_at:'2020-01-01'});
+    assert.equal(app.renderMediaGrid(photos.slice(0, 1), 'feed', {created_at:'2026-10-20'}), single);
+    app.mediaGallery = 'carousel';
+    assert.equal(hasCarousel('2020-01-01T00:00:00Z'), true);
+    app.mediaGallery = 'grid';
+    assert.equal(hasCarousel('2026-10-20T00:00:00Z'), false);
+});
+
+test('quoted and reposted media use their original posting dates independently', () => {
+    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    app.mediaGallery = 'date';
+    const photos = Array(2).fill({type:'photo', width:480, height:480, download:{local_path:'media/p.webp'}});
+    const parent = {tweet_id:'1', text:'New quote', created_at:'2026-10-20T00:00:00Z', media:photos,
+        qt_media:photos, quoted_tweet:{id_str:'2', text:'Old photos', legacy:{created_at:'Wed Jan 01 00:00:00 +0000 2020'}}};
+    assert.match(app.renderMediaGrid(parent.media, 'detail', parent), /media-carousel-track/);
+    assert.doesNotMatch(app.renderQuoteCard({...parent, media:[]}), /media-carousel-track/);
+    parent.quoted_tweet.legacy.created_at = 'Fri Jul 10 00:00:00 +0000 2026';
+    assert.match(app.renderQuoteCard({...parent, media:[]}), /media-carousel-track/);
+    const repost = {tweet_id:'3', text:'Repost', author:{}, media:photos, created_at:parent.created_at,
+        raw_json:{retweeted_status:{id_str:'4', full_text:'Original', created_at:'2020-01-01T00:00:00Z'}}};
+    assert.equal(app.useCarouselForTweet(repost), false);
+    assert.doesNotMatch(app.renderFeedCard(repost), /media-carousel-track/);
+    delete repost.raw_json.retweeted_status.created_at;
+    assert.doesNotMatch(app.renderFeedCard(repost), /media-carousel-track/, 'an undated original must not borrow its newer repost date');
+    repost.raw_json.retweeted_status.created_at = '2026-10-01T00:00:00Z';
+    repost.created_at = '2020-01-01T00:00:00Z';
+    assert.equal(app.useCarouselForTweet(repost), true);
+});
+
+test('all media layout preferences restore after initialization, with a safe default', () => {
+    for (const saved of ['grid', 'carousel', 'date', 'invalid', null]) {
+        const context = browserContext();
+        if (saved !== null) context.localStorage.setItem('tvx-media-gallery', saved);
+        const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+        for (const method of ['fetchSetup', 'fetchNotices', 'fetchActivityStatus', 'fetchTweets', 'fetchStats', 'fetchArchiveEnrichmentStatus', 'fetchAutomatedTagging']) app[method] = async () => {};
+        app.initApp();
+        assert.equal(app.mediaGallery, ['grid', 'carousel', 'date'].includes(saved) ? saved : 'date');
+    }
 });
 
 test('carousel uses shared heights, native pair packing, and independent quoted proportions', () => {

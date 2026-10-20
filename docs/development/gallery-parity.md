@@ -1,9 +1,46 @@
 # Optional Twitter carousel: verification record
 
-Verified on 2026-10-20. **Settings → Appearance → Media → Twitter carousel**
+Verified on 2026-10-20. **Settings → Appearance → Media layout → Carousel**
 changes inline multi-media tweets and expanded quoted galleries. Grid remains
 the default. Single attachments and the existing fullscreen viewer retain their
 layout. The choice is stored in this browser as `tvx-media-gallery`.
+
+## Date-based layout policy and improved selector
+
+Appearance now offers illustrated native radio controls for **Grid**, **Carousel**,
+and **By post date**. Existing `grid` and `carousel` preferences remain valid;
+`date` is the new optional value. Grid remains the default. Native radio inputs
+provide grouped keyboard navigation and accessible labels/descriptions.
+
+Research found the [July 10, 2026 iOS announcement](https://x.com/dinkin_flickaa/status/2075693625149653331),
+quoted in [contemporary July 11 coverage](https://news.denfaminicogamer.jp/news/260711d).
+Its follow-up says Android and web were still to come. Later reporting describes
+the [gradual rollout across clients](https://www.comnico.jp/we-love-social/x-carousel).
+There is no single verified global activation date for every client/account.
+Direct retrieval of the announcement returned HTTP 403 during research; the
+announcement and follow-up are reproduced in the contemporary coverage.
+
+The selected policy uses **2026-07-10 00:00:00 UTC**, the first publicly announced
+launch day, as its calendar boundary. This is a TweetNook appearance policy,
+not a claim that X changed all authors' layouts at that instant. Posts on or after
+the boundary use carousel; earlier or undated posts use grid. It uses the original
+post's date, including each quoted/reposted source, never collection or archive
+time. All feed, parent, detail, reply, quote-list and split-panel media calls
+receive their own tweet context. Single attachments and compact quote thumbnails
+keep their existing behavior.
+
+Scoped automated checks cover the UTC boundary and offsets, legacy dates,
+missing/invalid dates, recently archived old tweets, independent quote/repost
+dates, setting overrides, unchanged singles, and preference restoration.
+The disposable demo includes seven additional old/new, quote and reply examples;
+the published fixture is unchanged. Live UI results, source hashes, fixture
+examples and responsive screenshots are retained locally under
+`design-assets/gallery-date-20261020/`. This selector/policy change does not alter
+the previously compared gallery dimensions or arrow behavior. Validation passed
+all six JavaScript harnesses (221 asset cases), 17 scoped Python tests, and 15
+live UI checks covering keyboard selection, restoration, mixed feeds, quotes,
+replies, split panels, and the selector at 1200px / 518px / 390px widths in dark
+and light appearance, plus removal of the rollout note at the user's request.
 
 ## Method and environment
 

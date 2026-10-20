@@ -309,6 +309,9 @@ window.tweetNookShowVideoUi = tweetNookShowVideoUi;
 window.tweetNookLeaveVideoUi = tweetNookLeaveVideoUi;
 
 const galleryObservers = new WeakMap();
+// First public carousel launch day (iOS); other clients rolled out later.
+// The date-based appearance policy uses this UTC day, not an account's rollout.
+const MEDIA_CAROUSEL_INTRODUCED_AT = Date.parse('2026-07-10T00:00:00Z');
 function tweetNookGalleryScroll(track) {
     const nav = track.parentElement;
     const end = Math.max(0, track.scrollWidth - track.clientWidth);
@@ -2413,7 +2416,7 @@ function tweetApp() {
         fontPickerOpen: false,
         fontSize: 'default',
         videoPlayback: 'autoplay', // 'autoplay' | 'paused'
-        mediaGallery: 'grid', // 'grid' | 'carousel'; browser-local appearance
+        mediaGallery: 'date', // 'grid' | 'carousel' | 'date'; browser-local appearance
         // Shared by feed, detail, and lightbox players for the current page.
         videoMuted: true,
         videoVolume: 1,
@@ -2473,7 +2476,8 @@ function tweetApp() {
             
             this.videoPlayback = localStorage.getItem('tvx-video-playback') === 'paused' ? 'paused' : 'autoplay';
             this.videoMuted = this.videoPlayback === 'autoplay';
-            this.mediaGallery = localStorage.getItem('tvx-media-gallery') === 'carousel' ? 'carousel' : 'grid';
+            const savedMediaGallery = localStorage.getItem('tvx-media-gallery');
+            this.mediaGallery = ['grid', 'carousel', 'date'].includes(savedMediaGallery) ? savedMediaGallery : 'date';
 
             // Restore split panel preference
             const savedSplitPanel = localStorage.getItem('tvx-split-panel');
@@ -2910,13 +2914,23 @@ function tweetApp() {
         },
 
         setMediaGallery(style) {
-            const next = style === 'carousel' ? 'carousel' : 'grid';
+            const next = ['grid', 'carousel', 'date'].includes(style) ? style : 'date';
             if (next === this.mediaGallery) return;
             this.mediaGallery = next;
             localStorage.setItem('tvx-media-gallery', next);
             // Detail/reply templates react to the preference. The feed is rendered
             // outside Alpine, so refresh its cards explicitly as well.
             this.renderFeedList(this.tweets);
+        },
+
+        useCarouselForTweet(tweet) {
+            if (this.mediaGallery !== 'date') return this.mediaGallery === 'carousel';
+            const source = this.getRetweet(tweet) || tweet;
+            const raw = source?.raw_json || source;
+            const created = raw?.legacy?.created_at || raw?.created_at || source?.created_at;
+            // Unknown dates keep the grid; collection and archive dates never
+            // tell us when the author composed the attachment layout.
+            return typeof created === 'string' && Date.parse(created) >= MEDIA_CAROUSEL_INTRODUCED_AT;
         },
 
         updateAutoplayVisibility(video, visible, select = true) {
@@ -4014,7 +4028,7 @@ function tweetApp() {
                 + `<div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" data-action="text">${this.formatText(quote, compact, highlightSearch)}</div>`
                 + (compact
                     ? part(this.renderQuoteThumbnail(tweet.qt_media), ' class="quote-media"')
-                    : part(this.renderMediaGrid(tweet.qt_media, 'quote'), ' class="quote-media" data-action="stop"'))
+                    : part(this.renderMediaGrid(tweet.qt_media, 'quote', quote), ' class="quote-media" data-action="stop"'))
                 + part(this.renderCard({ raw_json: quote }), ' data-action="stop"')
                 + this.renderNestedQuote(quote, highlightSearch)
                 + part(this.renderCommunityNote(quote, true, false, Boolean(tweet.qt_media?.length)), ' data-action="stop"')
@@ -4065,7 +4079,7 @@ function tweetApp() {
                 + byline
                 + (replyTo.length ? replyLine(tweet) : '')
                 + `<div class="tweet-text text-[15px] whitespace-pre-wrap break-words" data-action="text">${this.formatText(tweet, false, true)}</div>`
-                + part(this.renderMediaGrid(tweet.media), ' data-action="media"')
+                + part(this.renderMediaGrid(tweet.media, 'feed', retweet || tweet), ' data-action="media"')
                 + part(this.renderCard(tweet), ' data-action="stop"')
                 + quoteBlock
                 + part(this.renderCommunityNote(tweet.raw_json), ' data-action="stop"')
@@ -7881,7 +7895,7 @@ function tweetApp() {
             return `<div class="quote-thumbnail">${stills[0]}${badge}</div>`;
         },
 
-        renderMediaGrid(mediaList, context = 'feed') {
+        renderMediaGrid(mediaList, context = 'feed', tweet = null) {
             if (!mediaList || mediaList.length === 0) return '';
 
             const getSrc = m => this.mediaSource(m);
@@ -7950,7 +7964,7 @@ function tweetApp() {
                 }
             }
             
-            const carousel = this.mediaGallery === 'carousel';
+            const carousel = this.useCarouselForTweet(tweet);
             const gallery = carousel ? this.mediaCarouselLayout(allMedia.map(item => item.m), context) : null;
             const gridClass = allMedia.length === 2 ? 'grid-cols-2' : 'grid-cols-2 grid-rows-2';
             const arrow = (direction, label) => `<button type="button" class="media-carousel-arrow media-carousel-${direction}" aria-label="${label}" disabled onclick="event.stopPropagation(); window.tweetNookScrollGallery(this, ${direction === 'previous' ? -1 : 1})"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${direction === 'previous' ? 'M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z' : 'M12.957 4.54L20.414 12l-7.457 7.46-1.414-1.42L16.586 13H3v-2h13.586l-5.043-5.04 1.414-1.42z'}"/></svg></button>`;

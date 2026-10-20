@@ -69,13 +69,27 @@ Videos in the default grid preserve the complete picture, with bars when their p
 differ from the tile. On narrow screens, direct portrait photos and videos fill
 the available width.
 
-In **Settings → Appearance → Media**, choose **Grid** (the default) or
-**Twitter carousel** for tweets with multiple photos, videos, or GIFs. The
-carousel shows separate rounded tiles: scroll horizontally or swipe through
+In **Settings → Appearance → Media layout**, choose how tweets with multiple
+photos, videos, or GIFs appear:
+
+- **Grid** (the default) shows all attachments together.
+- **Carousel** uses X's horizontally scrolling tiles for every multi-media tweet.
+- **By post date** keeps the grid for tweets before July 10, 2026 (UTC), and uses
+  the carousel from that date onward. Quotes and reposts use the original tweet's
+  posting date, independently of the parent tweet. Unknown dates keep the grid;
+  liking or archiving an old tweet recently does not change its layout.
+
+The cutoff follows the first public iOS carousel launch announcement, documented
+in [contemporary reporting](https://news.denfaminicogamer.jp/news/260711d).
+X rolled the change out gradually across clients, so this is a historical
+approximation rather than an exact record of every author's experience.
+
+The carousel shows separate rounded tiles: scroll horizontally or swipe through
 them, or use the arrows on desktop. Focus the strip to use Left/Right and
 Home/End. Select a photo to open the existing fullscreen viewer. Wide pictures
 and videos may be cropped in carousel tiles. Quoted galleries use the same
-choice. This preference is saved in the current browser; single attachments
+choice. The choices include small layout previews and support arrow-key selection.
+This preference is saved in the current browser; single attachments
 keep their existing layout.
 
 Volume and mute changes apply to the other videos on the page, including the
