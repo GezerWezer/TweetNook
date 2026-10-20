@@ -855,6 +855,8 @@ function tweetApp() {
     const feedPages = new Map();
     let feedListUrl = null;
     let feedPrefetchScheduled = false;
+    // Settles when the startup request for the first page does (see afterStartupFeed).
+    let startupFeedSettled = Promise.resolve();
     // The list element whose delegated listeners are bound, and the card button
     // currently covered by the shared list menu.
     let boundFeedList = null;
@@ -2486,6 +2488,7 @@ function tweetApp() {
                     this.setupForced = false;
                     this.loadArchiveResources();
                 }, () => {});
+                if (firstPage) startupFeedSettled = firstPage.promise.then(() => {}, () => {});
                 if (initialRoute?.viewMode === 'thread') this.prefetchThread(initialRoute.tweetId);
                 this.fetchSetup();
             }
@@ -3586,6 +3589,12 @@ function tweetApp() {
         scrollToTop() {
             const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
             window.scrollTo({ top: 0, behavior: reducedMotion ? 'instant' : 'smooth' });
+        },
+
+        // Startup requests the first screen does not need wait for the first page, so
+        // they do not compete with it on the server.
+        afterStartupFeed(callback) {
+            return startupFeedSettled.then(callback);
         },
 
         feedUrl(page) {
@@ -6718,8 +6727,9 @@ function tweetApp() {
             if (this.archiveResourcesLoaded) return;
             this.archiveResourcesLoaded = true;
             const feed = this.fetchTweets();
-            const resources = Promise.all([feed, this.fetchStats(),
-                this.fetchArchiveEnrichmentStatus(), this.fetchAutomatedTagging()]);
+            // Counters ask once the feed is in, so their queries do not slow it on the server.
+            const resources = feed.then(() => Promise.all([this.fetchStats(),
+                this.fetchArchiveEnrichmentStatus(), this.fetchAutomatedTagging()]));
             const pendingRoute = this.pendingRoute;
             const pendingRouteState = this.pendingRouteState;
             if (pendingRoute) {

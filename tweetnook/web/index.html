@@ -38,7 +38,7 @@
 </head>
 <body class="antialiased min-h-screen flex justify-center">
 
-    <div x-data="tweetApp()" x-init="initApp(); $nextTick(() => { nookSettingsInit($data); nookLoadSyncCollections($data); })" class="flex justify-center w-full">
+    <div x-data="tweetApp()" x-init="initApp(); $nextTick(() => { nookSettingsInit($data); afterStartupFeed(() => nookLoadSyncCollections($data)); })" class="flex justify-center w-full">
     <!-- LEFT COLUMN (Main Feed) -->
     <div :class="splitPanel && panelStack.length > 0 ? 'border-l border-[var(--border-color)]' : 'border-x border-[var(--border-color)]'" class="w-full max-w-[600px] min-h-screen relative bg-[var(--bg-primary)] flex-shrink-0">
         

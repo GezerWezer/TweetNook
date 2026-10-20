@@ -6898,47 +6898,77 @@ test('a linked conversation opens without waiting for the feed and counters; a l
     const setup = { required: false, completed: true, web: {password_configured: true},
         auth: {configured: true, verified: true, values: {auth_token: '', ct0: '', user_id: ''}},
         archive: {ready: true, uploaded: false} };
+    const flush = () => new Promise(resolve => setImmediate(resolve));
     const load = route => {
         const context = browserContext();
         context.fetch = async () => ({ ok: true, json: async () => setup });
         const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
         const pending = {};
+        const requested = [];
         for (const method of ['fetchTweets', 'fetchStats', 'fetchArchiveEnrichmentStatus', 'fetchAutomatedTagging']) {
-            app[method] = () => new Promise(resolve => { pending[method] = resolve; });
+            app[method] = () => new Promise(resolve => { requested.push(method); pending[method] = resolve; });
         }
         const applied = [];
         app.applyRoute = async next => { applied.push(app.routeKey(next)); };
         app.activeRoute = route;
         app.pendingRoute = route;
         app.pendingRouteState = { ...route, tweetNookDepth: 0 };
-        return { app, pending, applied, setupDone: app.fetchSetup() };
+        const finish = async () => {
+            pending.fetchTweets();
+            await flush();
+            Object.values(pending).forEach(resolve => resolve());
+            await setupDone;
+        };
+        const setupDone = app.fetchSetup();
+        return { app, pending, requested, applied, finish };
     };
-    const flush = () => new Promise(resolve => setImmediate(resolve));
 
     const thread = load({ viewMode: 'thread', tweetId: '123' });
     await flush();
     assert.deepEqual(thread.applied, ['thread:123']);
     assert.equal(thread.app.pendingRoute, null);
-    Object.values(thread.pending).forEach(resolve => resolve());
-    await thread.setupDone;
+    assert.deepEqual(thread.requested, ['fetchTweets'], 'counters wait for the feed so they do not slow it');
+    await thread.finish();
+    assert.deepEqual(thread.requested, ['fetchTweets', 'fetchStats', 'fetchArchiveEnrichmentStatus', 'fetchAutomatedTagging']);
     assert.deepEqual(thread.applied, ['thread:123']);
 
     const list = load({ viewMode: 'list' });
     await flush();
     assert.deepEqual(list.applied, [], 'the list restores scroll only once its tweets are in');
-    list.pending.fetchTweets();
-    await flush();
+    await list.finish();
     assert.deepEqual(list.applied, ['list']);
-    Object.values(list.pending).forEach(resolve => resolve());
-    await list.setupDone;
 
     const moved = load({ viewMode: 'list' });
     await flush();
     moved.app.activeRoute = { viewMode: 'thread', tweetId: '9' };
-    moved.pending.fetchTweets();
-    Object.values(moved.pending).forEach(resolve => resolve());
-    await moved.setupDone;
+    await moved.finish();
     assert.deepEqual(moved.applied, [], 'a stale list route never replaces one opened meanwhile');
+});
+
+test('settings for later menus are requested after the first feed page', async () => {
+    const context = browserContext();
+    const requests = [];
+    let answerFeed;
+    context.fetch = url => {
+        requests.push(url);
+        if (url.startsWith('/api/tweets?')) return new Promise(resolve => { answerFeed = resolve; });
+        return new Promise(() => {});
+    };
+    const { tweetApp, nookLoadSyncCollections } = loadScripts(
+        context, ['themes.js', 'header.js', 'app.js'], '({tweetApp, nookLoadSyncCollections})',
+    );
+    const app = immediateComponent(tweetApp());
+    app.fetchNotices = async () => {};
+    app.fetchActivityStatus = async () => {};
+    app.initApp();
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    assert.ok(html.includes('afterStartupFeed(() => nookLoadSyncCollections($data))'));
+    app.afterStartupFeed(() => nookLoadSyncCollections(app));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(!requests.includes('/api/config'));
+    answerFeed({ ok: false, status: 409, json: async () => ({}) });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(requests.includes('/api/config'), 'a refused first page still releases them');
 });
 
 test('notification badge counts every unread item and actions use Settings destinations', async () => {
