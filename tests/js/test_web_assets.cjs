@@ -7526,6 +7526,59 @@ test('pressing or hovering a tweet starts loading its conversation once', () => 
     assert.ok(html.includes('data-thread-main="page"') && html.includes('data-thread-main="panel"'));
 });
 
+test('the page requests the first feed page and a linked conversation before its scripts load', async () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const startup = /<script>([\s\S]*?)<\/script>/.exec(html);
+    assert.ok(startup && startup.index < html.indexOf('<link rel="stylesheet"'), 'runs before any stylesheet or script');
+    const run = (pathname, demo = false) => {
+        const context = browserContext(pathname);
+        const requests = [];
+        context.fetch = url => { requests.push(url); return new Promise(() => {}); };
+        context.window.TWEETNOOK_DEMO = demo;
+        vm.runInContext(startup[1], context);
+        return { context, requests };
+    };
+    const { context, requests } = run('/post/42');
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    assert.deepEqual(requests, [`${app.feedUrl(1)}&cursor=`, '/api/tweets/42'], 'matches the app\'s first page');
+    assert.deepEqual(run('/post/42/quotes').requests, [`${app.feedUrl(1)}&cursor=`]);
+    assert.deepEqual(run('/', true).requests, [], 'the static demo has no API');
+
+    // The app adopts each early request once instead of asking again.
+    app.requestFeedPage(`${app.feedUrl(1)}&cursor=`, { speculative: true });
+    app.loadThread('42').catch(() => {});
+    assert.equal(requests.length, 2);
+    assert.deepEqual(Object.keys(context.window.TWEETNOOK_STARTUP), []);
+    app.threadCache.clear();
+    app.loadThread('42').catch(() => {});
+    assert.equal(requests.at(-1), '/api/tweets/42');
+    assert.equal(requests.length, 3);
+});
+
+test('a first feed page is shown without waiting for Setup status', async () => {
+    const start = async status => {
+        const context = browserContext();
+        context.fetch = url => (url.startsWith('/api/tweets?')
+            ? Promise.resolve({ ok: status === 200, status, json: async () => ({ tweets: [] }) })
+            : new Promise(() => {}));
+        const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+        app.fetchNotices = async () => {};
+        app.fetchActivityStatus = async () => {};
+        let loads = 0;
+        app.loadArchiveResources = async () => { loads++; };
+        app.initApp();
+        await new Promise(resolve => setImmediate(resolve));
+        return { app, loads };
+    };
+    const ready = await start(200);
+    assert.equal(ready.app.archiveReady, true);
+    assert.equal(ready.app.setupForced, false);
+    assert.equal(ready.loads, 1);
+    const gated = await start(409);
+    assert.notEqual(gated.app.archiveReady, true, 'Setup status still decides when the server refuses');
+    assert.equal(gated.loads, 0);
+});
+
 test('feeds reuse recent first pages and keep the old list while loading', async () => {
     const context = browserContext();
     const requests = [];

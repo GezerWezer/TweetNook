@@ -783,6 +783,15 @@ function outsideAlpine(update) {
     return window.Alpine?.mutateDom ? window.Alpine.mutateDom(update) : update();
 }
 
+// index.html requests the first feed page and a linked conversation before the
+// scripts load. Each response is used once, by the first request for its URL.
+function takeStartupRequest(url) {
+    const requests = window.TWEETNOOK_STARTUP;
+    const response = requests?.[url] || null;
+    if (response) delete requests[url];
+    return response;
+}
+
 // Status responses are JSON trees. Retain unchanged reactive objects so polling
 // doesn't invalidate every binding in the mounted (including hidden) tray pages.
 function reconcileActivityValue(current, next) {
@@ -2467,7 +2476,16 @@ function tweetApp() {
             } else {
                 // Ask for the first page and any linked conversation alongside setup
                 // status instead of after it; fetchTweets() reuses the request.
-                this.requestFeedPage(`${this.feedUrl(1)}&cursor=`, { speculative: true });
+                const firstPage = this.requestFeedPage(`${this.feedUrl(1)}&cursor=`, { speculative: true });
+                // The server answers a feed request only once Setup is complete and the
+                // archive is open (409 or 503 otherwise), so a first page can be shown
+                // without waiting for Setup status.
+                firstPage?.promise.then(result => {
+                    if (!result.ok || this.archiveResourcesLoaded) return;
+                    this.archiveReady = true;
+                    this.setupForced = false;
+                    this.loadArchiveResources();
+                }, () => {});
                 if (initialRoute?.viewMode === 'thread') this.prefetchThread(initialRoute.tweetId);
                 this.fetchSetup();
             }
@@ -3592,7 +3610,7 @@ function tweetApp() {
             const forget = () => {
                 if (feedPages.get(url) === entry) feedPages.delete(url);
             };
-            entry.promise = globalThis.fetch(url).then(async response => {
+            entry.promise = (takeStartupRequest(url) || globalThis.fetch(url)).then(async response => {
                 let data;
                 try {
                     data = await response.json();
@@ -4520,7 +4538,8 @@ function tweetApp() {
             }
 
             const request = (async () => {
-                const res = await fetch(`/api/tweets/${tweetId}`);
+                const url = `/api/tweets/${tweetId}`;
+                const res = await (takeStartupRequest(url) || fetch(url));
                 if (!res.ok) throw new Error('Failed to load thread');
                 return res.json();
             })();
@@ -6685,30 +6704,36 @@ function tweetApp() {
                     this.resumeSetupStep();
                 }
                 if (this.archiveReady && !this.setupForced && !this.archiveResourcesLoaded) {
-                    this.archiveResourcesLoaded = true;
-                    const feed = this.fetchTweets();
-                    const resources = Promise.all([feed, this.fetchStats(),
-                        this.fetchArchiveEnrichmentStatus(), this.fetchAutomatedTagging()]);
-                    const pendingRoute = this.pendingRoute;
-                    const pendingRouteState = this.pendingRouteState;
-                    if (pendingRoute) {
-                        this.pendingRoute = null;
-                        this.pendingRouteState = null;
-                        // A linked conversation needs none of these; open it now. A list
-                        // restores its scroll position, so it waits for its tweets unless
-                        // another route was opened meanwhile.
-                        if (pendingRoute.viewMode === 'list') await feed;
-                        if (pendingRoute.viewMode !== 'list' || this.routeKey(this.activeRoute) === 'list') {
-                            await this.applyRoute(pendingRoute, { state: pendingRouteState });
-                        }
-                    }
-                    await resources;
+                    await this.loadArchiveResources();
                 }
             } catch (error) {
                 this.setupError = error.message;
             } finally {
                 this.setupPolling = false;
             }
+        },
+
+        // Runs once, when Setup status or the first feed page shows the archive is ready.
+        async loadArchiveResources() {
+            if (this.archiveResourcesLoaded) return;
+            this.archiveResourcesLoaded = true;
+            const feed = this.fetchTweets();
+            const resources = Promise.all([feed, this.fetchStats(),
+                this.fetchArchiveEnrichmentStatus(), this.fetchAutomatedTagging()]);
+            const pendingRoute = this.pendingRoute;
+            const pendingRouteState = this.pendingRouteState;
+            if (pendingRoute) {
+                this.pendingRoute = null;
+                this.pendingRouteState = null;
+                // A linked conversation needs none of these; open it now. A list
+                // restores its scroll position, so it waits for its tweets unless
+                // another route was opened meanwhile.
+                if (pendingRoute.viewMode === 'list') await feed;
+                if (pendingRoute.viewMode !== 'list' || this.routeKey(this.activeRoute) === 'list') {
+                    await this.applyRoute(pendingRoute, { state: pendingRouteState });
+                }
+            }
+            await resources;
         },
 
         // Starts the upstream migration; an empty archive is created by finishSetup().
