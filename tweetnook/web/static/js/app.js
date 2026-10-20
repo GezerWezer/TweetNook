@@ -20,6 +20,12 @@ const preparingVideoPosters = new WeakMap();
 // cards before their decoders have loaded again.
 const generatedVideoPosters = new Map();
 const AVATAR_URL_VERSION = 3;
+// Saving the avatar download setting changes avatar URLs, so placeholders the
+// browser kept while downloads were off are asked for again (see avatarUrl and
+// submitConfigChanges).
+const AVATAR_REVISION_KEY = 'tweetnook.avatar-revision';
+let avatarRevision = '';
+try { avatarRevision = localStorage.getItem(AVATAR_REVISION_KEY) || ''; } catch (_) { /* Storage can be disabled. */ }
 const avatarInitialSegmenter = typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
 function avatarInitial(name) {
@@ -6690,7 +6696,8 @@ function tweetApp() {
                 const data = await response.json();
                 // A transient polling failure should not outlive the next successful poll.
                 if (this.setupError === SETUP_LOAD_ERROR) this.setupError = '';
-                this.setupData = data;
+                // Polling every few seconds; keep unchanged parts so their bindings stay put.
+                this.setupData = this.setupData ? reconcileActivityValue(this.setupData, data) : data;
                 if (!this.setupAuth) this.setupAuth = JSON.parse(JSON.stringify(data.auth.values));
                 else if (!this.setupAuthEdited && !this.setupAuth.user_id && data.auth.values.user_id) {
                     this.setupAuth.user_id = data.auth.values.user_id;
@@ -7087,6 +7094,10 @@ function tweetApp() {
                     return false;
                 }
                 const config = await res.json();
+                if ('web.fetch_avatars' in changes) {
+                    avatarRevision = Date.now().toString(36);
+                    try { localStorage.setItem(AVATAR_REVISION_KEY, avatarRevision); } catch (_) { /* Storage can be disabled. */ }
+                }
                 this.configData = JSON.parse(JSON.stringify(config.values));
                 this.configOriginal = JSON.parse(JSON.stringify(config.values));
                 this.configExplicit = config.explicit;
@@ -7634,7 +7645,8 @@ function tweetApp() {
         avatarUrl(userId) {
             if (this.isDemo) return window.TweetNookDemo?.avatarUrl(userId) || '';
             const encodedUserId = encodeURIComponent(userId || 'unknown');
-            return '/api/avatar/' + encodedUserId + '?v=' + AVATAR_URL_VERSION;
+            const revision = avatarRevision ? '&r=' + encodeURIComponent(avatarRevision) : '';
+            return '/api/avatar/' + encodedUserId + '?v=' + AVATAR_URL_VERSION + revision;
         },
 
         avatarLoaded(image) {

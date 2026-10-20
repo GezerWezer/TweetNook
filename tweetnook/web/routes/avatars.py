@@ -25,6 +25,10 @@ AVATAR_FETCH_BUDGET_SECONDS = 20.0
 # Avatars rarely change; reuse them for a day, then refresh in the background.
 AVATAR_CACHE_HEADERS = {"Cache-Control": "private, max-age=86400, stale-while-revalidate=604800"}
 TRANSPARENT_CACHE_HEADERS = {"Cache-Control": "no-store, max-age=0"}
+# With downloads off, a missing avatar stays missing until the setting changes, so the
+# browser may reuse the placeholder briefly instead of asking on every page load. The
+# Web UI changes avatar URLs when it saves that setting.
+DISABLED_CACHE_HEADERS = {"Cache-Control": "private, max-age=300"}
 # Remote avatar fetches can take seconds. Running avatar work on its own small
 # pool keeps a page of new authors from occupying the shared request threads
 # that feed, search, and thread requests need.
@@ -153,17 +157,13 @@ def _avatar_response(user_id: str, store: Any):
                 avatar_path, media_type=image_format[1], headers=AVATAR_CACHE_HEADERS
             )
 
-    def return_transparent():
+    def return_transparent(headers=TRANSPARENT_CACHE_HEADERS):
         # A failed fetch must not become a persistent negative cache entry. The
         # source URL or archive metadata may become available later.
-        return Response(
-            content=TRANSPARENT_PNG,
-            media_type="image/png",
-            headers=TRANSPARENT_CACHE_HEADERS,
-        )
+        return Response(content=TRANSPARENT_PNG, media_type="image/png", headers=headers)
 
     if not config or not config.web.fetch_avatars:
-        return return_transparent()
+        return return_transparent(DISABLED_CACHE_HEADERS)
 
     urls = store.avatar_source_urls(user_id, limit=AVATAR_CANDIDATE_LIMIT)
     attempted_urls: set[str] = set()

@@ -256,7 +256,7 @@ def test_avatar_tries_next_candidate_after_fetch_failure(
     ]
 
 
-def test_disabled_avatar_fetch_returns_nonpersistent_transparent_png(
+def test_disabled_avatar_fetch_returns_briefly_cached_transparent_png(
     monkeypatch, make_web_client, tmp_path: Path
 ) -> None:
     paths = _paths(tmp_path)
@@ -279,7 +279,8 @@ def test_disabled_avatar_fetch_returns_nonpersistent_transparent_png(
     assert first.content == second.content == avatars.TRANSPARENT_PNG
     assert first.headers["content-type"] == "image/png"
     assert second.headers["content-type"] == "image/png"
-    assert first.headers["cache-control"] == "no-store, max-age=0"
+    # Nothing is fetched or stored; the browser may reuse the placeholder briefly.
+    assert first.headers["cache-control"] == "private, max-age=300"
     assert store.author_ids == []
     assert not (paths.media_dir / "avatars" / "42.png").exists()
 
@@ -426,7 +427,7 @@ def test_cached_jpg_placeholder_is_invalidated(
     if fetch_enabled:
         assert path.read_bytes() == JPEG
     else:
-        assert response.headers["cache-control"] == "no-store, max-age=0"
+        assert response.headers["cache-control"] == "private, max-age=300"
 
 
 def test_downloaded_placeholder_does_not_block_next_source(
