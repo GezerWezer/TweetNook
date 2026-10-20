@@ -6894,6 +6894,53 @@ test('first-run gating loads archive resources only after completion and preserv
     assert.equal(app.showSetupModal, false);
 });
 
+test('a linked conversation opens without waiting for the feed and counters; a list waits for its feed', async () => {
+    const setup = { required: false, completed: true, web: {password_configured: true},
+        auth: {configured: true, verified: true, values: {auth_token: '', ct0: '', user_id: ''}},
+        archive: {ready: true, uploaded: false} };
+    const load = route => {
+        const context = browserContext();
+        context.fetch = async () => ({ ok: true, json: async () => setup });
+        const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+        const pending = {};
+        for (const method of ['fetchTweets', 'fetchStats', 'fetchArchiveEnrichmentStatus', 'fetchAutomatedTagging']) {
+            app[method] = () => new Promise(resolve => { pending[method] = resolve; });
+        }
+        const applied = [];
+        app.applyRoute = async next => { applied.push(app.routeKey(next)); };
+        app.activeRoute = route;
+        app.pendingRoute = route;
+        app.pendingRouteState = { ...route, tweetNookDepth: 0 };
+        return { app, pending, applied, setupDone: app.fetchSetup() };
+    };
+    const flush = () => new Promise(resolve => setImmediate(resolve));
+
+    const thread = load({ viewMode: 'thread', tweetId: '123' });
+    await flush();
+    assert.deepEqual(thread.applied, ['thread:123']);
+    assert.equal(thread.app.pendingRoute, null);
+    Object.values(thread.pending).forEach(resolve => resolve());
+    await thread.setupDone;
+    assert.deepEqual(thread.applied, ['thread:123']);
+
+    const list = load({ viewMode: 'list' });
+    await flush();
+    assert.deepEqual(list.applied, [], 'the list restores scroll only once its tweets are in');
+    list.pending.fetchTweets();
+    await flush();
+    assert.deepEqual(list.applied, ['list']);
+    Object.values(list.pending).forEach(resolve => resolve());
+    await list.setupDone;
+
+    const moved = load({ viewMode: 'list' });
+    await flush();
+    moved.app.activeRoute = { viewMode: 'thread', tweetId: '9' };
+    moved.pending.fetchTweets();
+    Object.values(moved.pending).forEach(resolve => resolve());
+    await moved.setupDone;
+    assert.deepEqual(moved.applied, [], 'a stale list route never replaces one opened meanwhile');
+});
+
 test('notification badge counts every unread item and actions use Settings destinations', async () => {
     const context = browserContext();
     const requests = [];
