@@ -556,6 +556,16 @@ def _urls(items: Any, fields: tuple[str, ...]) -> list[Any]:
     return [_pick(item, fields) for item in items] if isinstance(items, list) else items
 
 
+_URL_FIELDS = ("url", "expanded_url", "display_url")
+
+
+def _note_urls(raw: dict[str, Any]) -> list[Any]:
+    note = ((raw.get("note_tweet") or {}).get("note_tweet_results") or {}).get("result")
+    entity_set = note.get("entity_set") if isinstance(note, dict) else None
+    urls = entity_set.get("urls") if isinstance(entity_set, dict) else None
+    return [item for item in urls if isinstance(item, dict)] if isinstance(urls, list) else []
+
+
 def slim_raw_tweet(raw: Any) -> Any:
     """Keep only the raw tweet fields the Web UI renders, preserving their shape."""
     if not isinstance(raw, dict):
@@ -582,12 +592,21 @@ def slim_raw_tweet(raw: Any) -> Any:
             slim_legacy["entities"] = {
                 key: _urls(entities[key], fields)
                 for key, fields in (
-                    ("urls", ("url", "expanded_url", "display_url")),
+                    ("urls", _URL_FIELDS),
                     ("media", ("url",)),
                     ("user_mentions", ("screen_name", "indices")),
                 )
                 if key in entities
             }
+        # Note tweets render their full text, whose links past the legacy cutoff
+        # only appear in the note's own entity set.
+        if note_urls := _note_urls(raw):
+            urls = slim_legacy.setdefault("entities", {}).setdefault("urls", [])
+            if isinstance(urls, list):
+                known = {item.get("url") for item in urls if isinstance(item, dict)}
+                urls.extend(
+                    _pick(item, _URL_FIELDS) for item in note_urls if item.get("url") not in known
+                )
         extended = legacy.get("extended_entities")
         if isinstance(extended, dict) and "media" in extended:
             slim_legacy["extended_entities"] = {"media": _urls(extended["media"], ("url",))}

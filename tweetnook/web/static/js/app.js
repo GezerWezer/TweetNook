@@ -7529,6 +7529,14 @@ function tweetApp() {
             return true;
         },
         
+        // Card links point at t.co; the tweet's URL entities carry the destination.
+        expandShortURL(raw, url) {
+            if (!url) return url;
+            const note = raw?.note_tweet?.note_tweet_results?.result?.entity_set?.urls;
+            const entities = [...(raw?.legacy?.entities?.urls || []), ...(Array.isArray(note) ? note : [])];
+            return entities.find(entity => entity?.url === url && entity.expanded_url)?.expanded_url || url;
+        },
+
         renderCard(tweet, context = 'preview') {
             if (this.isPlaceholderTweet(tweet)) return '';
             if (this.articleForTweet(tweet)) return this.renderArticle(tweet, context === 'detail');
@@ -7591,9 +7599,9 @@ function tweetApp() {
                 const title = this.escapeHTML(binding.title?.string_value || '');
                 const desc = this.escapeHTML(binding.description?.string_value || '');
                 const vanityUrl = this.escapeHTML(binding.vanity_url?.string_value || '');
-                const expandedUrl = this.safeURL(
-                    binding.card_url?.string_value || binding.vanity_url?.string_value || '#'
-                );
+                const expandedUrl = this.safeURL(this.expandShortURL(
+                    raw, binding.card_url?.string_value || card.legacy?.url || card.url
+                ) || binding.vanity_url?.string_value || '#');
                 let imageHtml = '';
                 
                 const imageKeys = [

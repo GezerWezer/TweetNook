@@ -403,6 +403,26 @@ def test_slim_raw_tweet_drops_unrendered_fields_and_keeps_shape() -> None:
     assert slim_raw_tweet(None) is None and slim_raw_tweet("text") == "text"
 
 
+def test_slim_raw_tweet_keeps_note_tweet_links_for_the_full_text() -> None:
+    legacy_url = {"url": "https://t.co/a", "expanded_url": "https://a.example", "indices": [0, 1]}
+    note_url = {"url": "https://t.co/b", "expanded_url": "https://b.example", "display_url": "b"}
+    raw = {
+        "rest_id": "1",
+        "legacy": {"full_text": "short", "entities": {"urls": [legacy_url]}},
+        "note_tweet": {
+            "note_tweet_results": {
+                "result": {"text": "long", "entity_set": {"urls": [dict(legacy_url), note_url]}}
+            }
+        },
+    }
+
+    assert slim_raw_tweet(raw)["legacy"]["entities"]["urls"] == [
+        {"url": "https://t.co/a", "expanded_url": "https://a.example"},
+        note_url,
+    ]
+    assert "note_tweet" not in slim_raw_tweet(raw)
+
+
 def test_lists_abbreviate_raw_json_and_raw_endpoint_returns_stored_documents(tmp_path) -> None:
     store = ArchiveStore(tmp_path / "archive.db", create=True)
     member_raw = {"rest_id": "1", "edit_control": {"x": 1}, "legacy": {"full_text": "member"}}

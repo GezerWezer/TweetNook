@@ -2988,6 +2988,27 @@ test('reply-recipient markup opens profile cards on every tweet surface', () => 
     assert.match(card, /data-action="reply-profile" data-username="frank">@frank</);
 });
 
+test('tweet text and link cards open expanded destinations instead of t.co', () => {
+    const context = browserContext();
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const entity = { url: 'https://t.co/late', expanded_url: 'https://late.example/post', display_url: 'late.example/post' };
+    const longText = `${'word '.repeat(70)}see https://t.co/late`;
+    const note = { tweet_id: '1', text: longText, raw_json: { rest_id: '1', legacy: { full_text: 'word', entities: { urls: [entity] } } } };
+    const body = app.formatText(note, true);
+    assert.match(body, /href="https:\/\/late\.example\/post"[^>]*>late\.example\/post<\/a>$/);
+    assert.doesNotMatch(body, /t\.co/);
+
+    const card = (bindings, legacy = {}) => app.renderCard({ tweet_id: '2', raw_json: {
+        rest_id: '2',
+        legacy: { full_text: 'https://t.co/card', entities: { urls: [{ url: 'https://t.co/card', expanded_url: 'https://story.example/a' }] }, ...legacy },
+        card: { name: 'summary', binding_values: bindings },
+    } });
+    const title = { key: 'title', value: { string_value: 'Story' } };
+    assert.match(card([title, { key: 'card_url', value: { string_value: 'https://t.co/card' } }]), /href="https:\/\/story\.example\/a"/);
+    assert.match(card([title, { key: 'card_url', value: { string_value: 'https://t.co/other' } }]), /href="https:\/\/t\.co\/other"/,
+        'an unmatched short link still opens');
+});
+
 test('demo reply metadata keeps body mentions out of the automatic recipient label', () => {
     const context = browserContext();
     const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
