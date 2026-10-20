@@ -1229,6 +1229,47 @@ test('tweet app starts with coherent list, panel, modal, and theme state', () =>
     assert.equal(app.avatarUrl('user/42'), '/api/avatar/user%2F42?v=3');
 });
 
+test('saving the avatar download setting changes avatar URLs, here and after reloads', async () => {
+    const context = browserContext();
+    context.fetch = async () => ({ ok: true, json: async () => ({ values: {}, explicit: [] }) });
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    await app.submitConfigChanges({ 'web.avatar_cache_limit_mb': 256 });
+    assert.equal(app.avatarUrl('42'), '/api/avatar/42?v=3', 'other settings keep cached avatars');
+    await app.submitConfigChanges({ 'web.fetch_avatars': true });
+    const revision = context.localStorage.getItem('tweetnook.avatar-revision');
+    assert.ok(revision);
+    assert.equal(app.avatarUrl('42'), `/api/avatar/42?v=3&r=${revision}`);
+    const reload = browserContext();
+    reload.localStorage.setItem('tweetnook.avatar-revision', revision);
+    const reloaded = immediateComponent(loadScripts(reload, ['themes.js', 'app.js'], 'tweetApp')());
+    assert.equal(reloaded.avatarUrl('42'), `/api/avatar/42?v=3&r=${revision}`);
+});
+
+test('setup polling keeps unchanged status objects and updates only what changed', async () => {
+    const context = browserContext();
+    const status = () => ({ required: false, completed: true, web: { password_configured: true },
+        auth: { configured: true, verified: true, values: { auth_token: '', ct0: '', user_id: '' } },
+        archive: { ready: true, pending_enrichment: 3, warnings: ['a'] } });
+    let next = status();
+    context.fetch = async () => ({ ok: true, json: async () => next });
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    app.archiveResourcesLoaded = true;
+    await app.fetchSetup();
+    const first = app.setupData;
+    const archive = first.archive;
+    next = status();
+    await app.fetchSetup();
+    assert.equal(app.setupData, first);
+    assert.equal(app.setupData.archive, archive);
+    next = status();
+    next.archive.pending_enrichment = 0;
+    next.archive.warnings = [];
+    await app.fetchSetup();
+    assert.equal(app.setupData.archive, archive);
+    assert.equal(app.setupData.archive.pending_enrichment, 0);
+    assert.deepEqual(Array.from(app.setupData.archive.warnings), []);
+});
+
 test('lazy feed images are observed per card and loaded and decoded ahead of scrolling', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
