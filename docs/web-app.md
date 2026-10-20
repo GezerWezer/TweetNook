@@ -65,9 +65,18 @@ was saved but the local media file is missing; see
 [Download media](enrichment.md#download-media).
 
 Tall quoted photos use cropped previews; open the photo to see the full image.
-Videos in galleries preserve the complete picture, with bars when their proportions
+Videos in the default grid preserve the complete picture, with bars when their proportions
 differ from the tile. On narrow screens, direct portrait photos and videos fill
 the available width.
+
+In **Settings → Appearance → Media**, choose **Grid** (the default) or
+**Twitter carousel** for tweets with multiple photos, videos, or GIFs. The
+carousel shows separate rounded tiles: scroll horizontally or swipe through
+them, or use the arrows on desktop. Focus the strip to use Left/Right and
+Home/End. Select a photo to open the existing fullscreen viewer. Wide pictures
+and videos may be cropped in carousel tiles. Quoted galleries use the same
+choice. This preference is saved in the current browser; single attachments
+keep their existing layout.
 
 Volume and mute changes apply to the other videos on the page, including the
 split panel, fullscreen viewer, and videos loaded as you scroll. This shared

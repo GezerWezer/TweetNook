@@ -2465,6 +2465,10 @@
                         </section>
                         <section class="nook-setting-section">
                             <h3>Media</h3>
+                            <div role="radiogroup" aria-label="Multi-media layout">
+                                <button type="button" role="radio" class="nook-choice-row" :aria-checked="mediaGallery === 'grid'" @click="setMediaGallery('grid')"><span><strong>Grid</strong><span>Show multiple photos and videos in the original grid.</span></span><span class="nook-radio-mark" aria-hidden="true">✓</span></button>
+                                <button type="button" role="radio" class="nook-choice-row" :aria-checked="mediaGallery === 'carousel'" @click="setMediaGallery('carousel')"><span><strong>Twitter carousel</strong><span>Scroll through individual media tiles, like Twitter.</span></span><span class="nook-radio-mark" aria-hidden="true">✓</span></button>
+                            </div>
                             <div class="nook-choice-row nook-autoplay-row"><span><strong>Autoplay videos</strong><span>Play videos muted as they scroll into view.</span></span><button type="button" role="switch" aria-label="Autoplay videos" :aria-checked="videoPlayback === 'autoplay'" @click="setVideoPlayback(videoPlayback === 'autoplay' ? 'paused' : 'autoplay')" class="nook-switch-button"><span class="nook-switch-track"><span></span></span></button></div>
                         </section>
                     </div>

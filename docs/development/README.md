@@ -42,6 +42,7 @@ Start with [Architecture](architecture.md), then choose the area you are changin
 | Tweet extraction, threads, media, and availability | [Enrichment](enrichment.md) |
 | Query parsing and archive read APIs | [Search and web API](search-and-web-api.md) |
 | Server lifecycle, routes, and worker processes | [Web and jobs](web-and-jobs.md) |
+| Optional inline media carousel and live X comparison results | [Gallery parity](gallery-parity.md) |
 | Recurrence and persisted schedule state | [Scheduler](scheduler.md) |
 | Gemini requests, prompts, and usage accounting | [Automated tagging](automated-tagging.md) |
 | Settings, environment variables, and paths | [Configuration and paths](configuration-and-paths.md) |

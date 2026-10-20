@@ -3177,6 +3177,80 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     object-fit: contain;
     background: #000;
 }
+/* Optional native-style strip. Its query container is the tweet content column;
+   the scrollport bleeds to the card edges without changing any single media. */
+.media-carousel {
+    container-type: inline-size;
+    --gallery-left: 64px;
+    --gallery-right: 16px;
+}
+.media-carousel-detail { --gallery-left: 16px; }
+.media-carousel-nav { position: relative; margin: -2px; }
+.media-carousel-track {
+    display: flex;
+    gap: 4px;
+    margin-left: calc(2px - var(--gallery-left));
+    margin-right: calc(2px - var(--gallery-right));
+    padding: 2px var(--gallery-right) 2px var(--gallery-left);
+    scroll-padding: 0 var(--gallery-right) 0 var(--gallery-left);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    cursor: auto;
+}
+.media-carousel-track::-webkit-scrollbar { display: none; }
+.media-carousel-item {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    height: var(--gallery-height);
+    width: calc(var(--gallery-height) * min(var(--gallery-item-aspect), var(--gallery-max-aspect)));
+}
+.media-carousel-tile {
+    height: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.media-carousel-tile img,
+.media-carousel-tile .media-grid-video,
+.media-carousel-tile [data-video-poster] { object-fit: cover; }
+.media-carousel-track:focus-visible,
+.media-carousel-tile img:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
+.media-carousel-arrow {
+    position: absolute;
+    top: calc(50% - 18px);
+    z-index: 25;
+    width: 36px;
+    height: 36px;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    background: rgba(15,20,25,.75);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: background-color 200ms, box-shadow 200ms;
+}
+.media-carousel-previous { left: 4px; }
+.media-carousel-next { right: 4px; }
+.media-carousel-arrow svg { width: 20px; height: 20px; fill: currentColor; }
+.media-carousel-nav:hover > .media-carousel-arrow:not(:disabled),
+.media-carousel-nav:has(:focus-visible) > .media-carousel-arrow:not(:disabled) { opacity: 1; }
+.media-carousel-nav > .media-carousel-arrow:active:not(:disabled) { opacity: .5; }
+.media-carousel-arrow:disabled { visibility: hidden; }
+.quote-card:not(.quote-compact) > .quote-media:has(> .media-carousel) {
+    margin: 12px 0 0;
+}
+.quote-media > .media-carousel {
+    --gallery-left: 12px;
+    --gallery-right: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .media-carousel-arrow { transition: none; }
+}
 /* Keep the poster above the native video surface until a decoded frame has
    actually been presented. Controls stay above it and receive all input. */
 [data-video-poster] {
