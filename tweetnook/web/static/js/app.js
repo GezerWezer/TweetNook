@@ -6686,15 +6686,23 @@ function tweetApp() {
                 }
                 if (this.archiveReady && !this.setupForced && !this.archiveResourcesLoaded) {
                     this.archiveResourcesLoaded = true;
-                    await Promise.all([this.fetchTweets(), this.fetchStats(),
+                    const feed = this.fetchTweets();
+                    const resources = Promise.all([feed, this.fetchStats(),
                         this.fetchArchiveEnrichmentStatus(), this.fetchAutomatedTagging()]);
                     const pendingRoute = this.pendingRoute;
                     const pendingRouteState = this.pendingRouteState;
                     if (pendingRoute) {
                         this.pendingRoute = null;
                         this.pendingRouteState = null;
-                        await this.applyRoute(pendingRoute, { state: pendingRouteState });
+                        // A linked conversation needs none of these; open it now. A list
+                        // restores its scroll position, so it waits for its tweets unless
+                        // another route was opened meanwhile.
+                        if (pendingRoute.viewMode === 'list') await feed;
+                        if (pendingRoute.viewMode !== 'list' || this.routeKey(this.activeRoute) === 'list') {
+                            await this.applyRoute(pendingRoute, { state: pendingRouteState });
+                        }
                     }
+                    await resources;
                 }
             } catch (error) {
                 this.setupError = error.message;
