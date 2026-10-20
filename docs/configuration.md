@@ -99,6 +99,7 @@ for copying session values from your browser.
 | `timeout` | `30.0` | ≥ 1 second | HTTP request timeout |
 | `max_linked_depth` | `50` | ≥ 0 | Safety cap on quote/linked-status hops followed from saved tweets and their author's own thread in the same conversation; `0` disables linked discovery |
 | `reply_linked_depth` | `0` | 0–1 | `1` also fetches statuses quoted or linked by other people's replies in saved conversations, one hop only (needs `max_linked_depth` ≥ 1) |
+| `reply_linked_limit` | `50` | ≥ 1 | Maximum unique reply-linked statuses fetched per sync or thread expansion when `reply_linked_depth` is `1`; failed lookups count toward the limit |
 
 Environment overrides:
 
@@ -114,6 +115,7 @@ TWEETNOOK_COOLDOWN_DURATION
 TWEETNOOK_TIMEOUT
 TWEETNOOK_MAX_LINKED_DEPTH
 TWEETNOOK_REPLY_LINKED_DEPTH
+TWEETNOOK_REPLY_LINKED_LIMIT
 ```
 
 Keep environment values within the same ranges shown in the table. Values outside

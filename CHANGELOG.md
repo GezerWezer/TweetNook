@@ -3,6 +3,50 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning.
 
+## [1.1.0] - 2026-10-20
+
+### Added
+
+- Feeds can be sorted by most likes.
+- Settings can include tweets quoted or linked in other people's replies, with
+  a maximum number of reply links fetched per sync.
+- The sync activity panel streams live updates and falls back to polling when
+  the stream is unavailable.
+- Added a favicon that follows the current theme and accent color.
+
+### Changed
+
+- Archives open faster: the first feed page and linked conversations no longer
+  wait for Setup status, counters, or sync settings.
+- Setup's Appearance step includes accent colors, and theme choices fit the step.
+- Missing-avatar placeholders are cached briefly when avatar downloads are off,
+  and Setup status polls no longer re-render unchanged pages.
+
+### Fixed
+
+- Right-click and Control-click open the browser's context menu on posts and
+  videos again.
+- Mobile videos keep their sound setting and poster image while moving between
+  players.
+- Feed media prepares ahead of scrolling, and visible videos hand off playback
+  without blank frames.
+
+### Validation
+
+- `.venv/bin/ruff format --check`
+- `.venv/bin/ruff check`
+- `.venv/bin/pytest -q` (three optional SDK skips)
+- `node --test tests/js/*.cjs`
+- `bash -n install.sh`
+- `.venv/bin/pytest tests/test_installer.py tests/test_system_install.py tests/test_cli_service.py -q`
+- `git diff --check`
+- Fresh `uv build`, `uvx --from twine twine check`, isolated wheel CLI help
+  smoke test, and source/wheel content inspection (including `install.sh`,
+  `tweetnook.system_install`, and the static favicon).
+- Startup timings were measured against a copy of a real archive, locally and
+  with added API latency. A live Linux systemd installation was not exercised
+  on this macOS release host.
+
 ## [1.0.3] - 2026-10-18
 
 ### Changed
@@ -611,6 +655,7 @@ semantic-style versioning.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[1.1.0]: https://github.com/gezerwezer/tweetnook/compare/v1.0.3...v1.1.0
 [1.0.3]: https://github.com/gezerwezer/tweetnook/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/gezerwezer/tweetnook/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/gezerwezer/tweetnook/compare/v1.0.0...v1.0.1
