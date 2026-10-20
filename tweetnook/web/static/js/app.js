@@ -308,6 +308,57 @@ window.tweetNookSyncVideoUi = tweetNookSyncVideoUi;
 window.tweetNookShowVideoUi = tweetNookShowVideoUi;
 window.tweetNookLeaveVideoUi = tweetNookLeaveVideoUi;
 
+const galleryObservers = new WeakMap();
+function tweetNookGalleryScroll(track) {
+    const nav = track.parentElement;
+    const end = Math.max(0, track.scrollWidth - track.clientWidth);
+    nav.querySelector('.media-carousel-previous').disabled = track.scrollLeft <= 1;
+    nav.querySelector('.media-carousel-next').disabled = track.scrollLeft >= end - 1;
+}
+function tweetNookGalleryTracks(root) {
+    return [...(root.matches?.('.media-carousel-track') ? [root] : []),
+        ...root.querySelectorAll('.media-carousel-track')];
+}
+function tweetNookInitGalleries(root) {
+    for (const track of tweetNookGalleryTracks(root)) {
+        if (galleryObservers.has(track)) continue;
+        const observer = new ResizeObserver(() => tweetNookGalleryScroll(track));
+        galleryObservers.set(track, observer);
+        observer.observe(track);
+        tweetNookGalleryScroll(track);
+    }
+}
+function tweetNookDisposeGalleries(root) {
+    for (const track of tweetNookGalleryTracks(root)) {
+        galleryObservers.get(track)?.disconnect();
+        galleryObservers.delete(track);
+    }
+}
+function tweetNookScrollGallery(source, direction) {
+    const track = source.classList.contains('media-carousel-track') ? source
+        : source.closest('.media-carousel-nav').querySelector('.media-carousel-track');
+    // Native arrows advance one tile, including when several fit in the viewport.
+    const items = [...track.children];
+    const positions = items.map(item => item.offsetLeft - items[0].offsetLeft);
+    let target = direction > 0
+        ? positions.find(position => position > track.scrollLeft + 1)
+        : positions.filter(position => position < track.scrollLeft - 1).at(-1);
+    target ??= direction > 0 ? track.scrollWidth - track.clientWidth : 0;
+    // Match X's immediate arrow steps; browser gestures retain native momentum.
+    track.scrollTo({left: target, behavior: 'auto'});
+}
+window.tweetNookGalleryScroll = tweetNookGalleryScroll;
+window.tweetNookScrollGallery = tweetNookScrollGallery;
+window.tweetNookGalleryKey = (event, track) => {
+    if (event.target !== track) return; // Keep video/slider keyboard controls.
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'Home' || event.key === 'End') {
+        track.scrollTo({left: event.key === 'Home' ? 0 : track.scrollWidth, behavior: 'instant'});
+    } else tweetNookScrollGallery(track, event.key === 'ArrowLeft' ? -1 : 1);
+};
+
 const VIDEO_PLAYER_SELECTOR = 'video[controls], video[data-video-custom], video[data-video-player]';
 // SVG geometry read from X's live player in Helium (2026-10-12).
 const VIDEO_ICONS = {
@@ -2362,6 +2413,7 @@ function tweetApp() {
         fontPickerOpen: false,
         fontSize: 'default',
         videoPlayback: 'autoplay', // 'autoplay' | 'paused'
+        mediaGallery: 'grid', // 'grid' | 'carousel'; browser-local appearance
         // Shared by feed, detail, and lightbox players for the current page.
         videoMuted: true,
         videoVolume: 1,
@@ -2421,6 +2473,7 @@ function tweetApp() {
             
             this.videoPlayback = localStorage.getItem('tvx-video-playback') === 'paused' ? 'paused' : 'autoplay';
             this.videoMuted = this.videoPlayback === 'autoplay';
+            this.mediaGallery = localStorage.getItem('tvx-media-gallery') === 'carousel' ? 'carousel' : 'grid';
 
             // Restore split panel preference
             const savedSplitPanel = localStorage.getItem('tvx-split-panel');
@@ -2645,6 +2698,7 @@ function tweetApp() {
                     m.removedNodes.forEach(node => {
                         // Moving a live player into the viewer is not teardown.
                         if (node.nodeType !== 1 || node.isConnected) return;
+                        tweetNookDisposeGalleries(node);
                         for (const target of [node, ...node.querySelectorAll('.feed-card, img, video')]) {
                             if (target.isConnected) continue;
                             this.mediaPrefetchObserver.unobserve(target);
@@ -2658,6 +2712,7 @@ function tweetApp() {
                     });
                     m.addedNodes.forEach(node => {
                         if (node.nodeType === 1) {
+                            tweetNookInitGalleries(node);
                             if (node.tagName === 'VIDEO') this.observeVideo(node);
                             node.querySelectorAll('video').forEach(v => this.observeVideo(v));
                             const player = node.closest?.('.media-video-player');
@@ -2852,6 +2907,16 @@ function tweetApp() {
                 if (!autoplay && isFeedVideoPlayer(video)) video.pause();
             });
             this.autoplayNextVideo();
+        },
+
+        setMediaGallery(style) {
+            const next = style === 'carousel' ? 'carousel' : 'grid';
+            if (next === this.mediaGallery) return;
+            this.mediaGallery = next;
+            localStorage.setItem('tvx-media-gallery', next);
+            // Detail/reply templates react to the preference. The feed is rendered
+            // outside Alpine, so refresh its cards explicitly as well.
+            this.renderFeedList(this.tweets);
         },
 
         updateAutoplayVisibility(video, visible, select = true) {
@@ -7885,13 +7950,19 @@ function tweetApp() {
                 }
             }
             
-            let gridClass = allMedia.length === 2 ? 'grid-cols-2' : 'grid-cols-2 grid-rows-2';
-            let html = `<div class="mt-3 grid gap-[2px] rounded-2xl overflow-hidden border border-[var(--border-color)] aspect-[16/9] ${gridClass}" ${mediaAttr} @click.stop>`;
+            const carousel = this.mediaGallery === 'carousel';
+            const gallery = carousel ? this.mediaCarouselLayout(allMedia.map(item => item.m), context) : null;
+            const gridClass = allMedia.length === 2 ? 'grid-cols-2' : 'grid-cols-2 grid-rows-2';
+            const arrow = (direction, label) => `<button type="button" class="media-carousel-arrow media-carousel-${direction}" aria-label="${label}" disabled onclick="event.stopPropagation(); window.tweetNookScrollGallery(this, ${direction === 'previous' ? -1 : 1})"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${direction === 'previous' ? 'M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z' : 'M12.957 4.54L20.414 12l-7.457 7.46-1.414-1.42L16.586 13H3v-2h13.586l-5.043-5.04 1.414-1.42z'}"/></svg></button>`;
+            let html = carousel
+                ? `<div class="media-carousel media-carousel-${context} mt-3" style="--gallery-height: ${gallery.height}; --gallery-max-aspect: ${gallery.maxAspect}" ${mediaAttr} data-action="stop" @click.stop><div class="media-carousel-nav">${arrow('previous', 'Previous')}${arrow('next', 'Next')}<div class="media-carousel-track" role="group" aria-label="Tweet media" tabindex="0" onscroll="window.tweetNookGalleryScroll(this)" onkeydown="window.tweetNookGalleryKey(event, this)">`
+                : `<div class="mt-3 grid gap-[2px] rounded-2xl overflow-hidden border border-[var(--border-color)] aspect-[16/9] ${gridClass}" ${mediaAttr} @click.stop>`;
             
             let downloadedIdx = 0;
             allMedia.forEach((item, idx) => {
                 const { src, poster, type, isGif, isShort } = item;
-                let itemClass = (allMedia.length === 3 && idx === 0) ? 'row-span-2 col-span-1' : (allMedia.length === 3 ? 'col-span-1' : '');
+                let itemClass = carousel ? 'media-carousel-tile' : (allMedia.length === 3 && idx === 0) ? 'row-span-2 col-span-1' : (allMedia.length === 3 ? 'col-span-1' : '');
+                if (carousel) html += `<div class="media-carousel-item" role="group" aria-label="Media ${idx + 1} of ${allMedia.length}" style="--gallery-item-aspect: ${gallery.aspects[idx]}">`;
                 
                 if (!src) {
                     html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass}">
@@ -7901,7 +7972,7 @@ function tweetApp() {
                     const currentDlIdx = downloadedIdx++;
                     if (type === 'photo') {
                         html += `<div class="relative w-full h-full bg-[var(--border-color)] ${itemClass} media-photo">
-                                    <img src="${src}" loading="lazy" decoding="async" onclick="window.tweetNookOpenLightbox(this, ${currentDlIdx})" class="absolute inset-0 w-full h-full object-cover cursor-pointer">
+                                    <img src="${src}" loading="lazy" decoding="async" ${carousel ? `alt="Image ${idx + 1}" tabindex="0" role="button" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); window.tweetNookOpenLightbox(this, ${currentDlIdx}); }"` : ''} onclick="window.tweetNookOpenLightbox(this, ${currentDlIdx})" class="absolute inset-0 w-full h-full object-cover cursor-pointer">
                                 </div>`;
                     } else {
                         const loopAttr = (isGif || isShort) ? 'loop' : '';
@@ -7920,10 +7991,36 @@ function tweetApp() {
                                 </div>`;
                     }
                 }
+                if (carousel) html += '</div>';
             });
             
-            html += `</div>`;
+            html += carousel ? '</div></div></div>' : '</div>';
             return html;
+        },
+
+        mediaCarouselLayout(media, context = 'feed') {
+            const sourceAspects = media.map(item => this.mediaFrameLayout(item).sourceAspect);
+            const aspects = sourceAspects.map(aspect => Math.min(9 / 4, aspect));
+            const quoted = context.startsWith('quote');
+            const min = Math.min(...aspects), max = Math.max(...aspects);
+            // Native X packs portrait/square pairs at their source proportions.
+            // Other strips use a shared height and crop wide photos to 80% of
+            // the content column. Quotes reduce the common height by 15%.
+            const packed = media.length === 2 && (min < 1 || max === 1);
+            if (packed) {
+                const sum = aspects.reduce((a, b) => a + b, 0);
+                // A capped panoramic pair leaves a 16px trailing inset in X.
+                const inset = Math.max(...sourceAspects) > 9 / 4 ? 20 : 4;
+                const height = `calc((100cqw - ${inset}px) / ${sum})`;
+                return {aspects, height: quoted ? `min(66cqw, ${height})` : height, maxAspect: max};
+            }
+            const factor = max <= 1 && min < 1 ? 0.8 : 0.68;
+            const percent = Number((factor * (quoted ? 0.85 : 1) * 100).toFixed(6));
+            // Keep roughly 1.67 of the widest tiles visible when that needs
+            // more height than the standard strip (notably quoted squares).
+            const height = `max(${percent}cqw, calc((100cqw - 4px) / ${1.67 * max}))`;
+            return {aspects, height: quoted ? `min(66cqw, ${height})` : height,
+                maxAspect: 0.8 / (factor * (quoted ? 0.85 : 1))};
         },
 
         escapeHTML(str) {

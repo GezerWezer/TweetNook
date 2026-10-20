@@ -8865,6 +8865,103 @@ test('committed content offers a refresh without disturbing a populated feed', a
     assert.match(markup, /x-show="feedUpdateAvailable"[^>]*@click="fetchTweets\(\)"/);
 });
 
+test('gallery preference defaults to the grid and changes the already rendered feed', () => {
+    const context = browserContext();
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    assert.equal(app.mediaGallery, 'grid');
+    const calls = [];
+    app.tweets = [{tweet_id: 'keep'}];
+    app.renderFeedList = tweets => calls.push(tweets);
+    app.setMediaGallery('carousel');
+    assert.equal(context.localStorage.getItem('tvx-media-gallery'), 'carousel');
+    assert.equal(calls[0], app.tweets);
+    app.setMediaGallery('carousel');
+    assert.equal(calls.length, 1);
+    app.setMediaGallery('unknown');
+    assert.equal(app.mediaGallery, 'grid');
+    assert.equal(context.localStorage.getItem('tvx-media-gallery'), 'grid');
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.match(html, /role="radiogroup" aria-label="Multi-media layout"/);
+    assert.match(html, /@click="setMediaGallery\('carousel'\)"/);
+});
+
+test('carousel uses shared heights, native pair packing, and independent quoted proportions', () => {
+    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    const portrait = {type:'photo', width:360, height:640};
+    const landscape = {type:'photo', width:640, height:360};
+    const square = {type:'photo', width:480, height:480};
+    const panorama = {type:'photo', width:1000, height:160};
+    assert.equal(app.mediaCarouselLayout([portrait, landscape]).height,
+        `calc((100cqw - 4px) / ${9 / 16 + 16 / 9})`);
+    assert.equal(app.mediaCarouselLayout([square, square]).height, 'calc((100cqw - 4px) / 2)');
+    assert.match(app.mediaCarouselLayout([landscape, landscape]).height, /^max\(68cqw,/);
+    assert.match(app.mediaCarouselLayout([portrait, landscape, square], 'quote').height, /^min\(66cqw, max\(57\.8cqw,/);
+    assert.match(app.mediaCarouselLayout([square, square, square], 'quote').height, /\/ 1\.67\)/);
+    assert.equal(app.mediaCarouselLayout([portrait, panorama]).maxAspect, 9 / 4);
+    assert.equal(app.mediaCarouselLayout([portrait, panorama]).height, 'calc((100cqw - 20px) / 2.8125)');
+    assert.ok(app.mediaCarouselLayout([portrait, portrait, portrait], 'quote').height.startsWith('min(66cqw,'));
+    assert.ok(app.mediaCarouselLayout([portrait, portrait, portrait]).height.includes(String(1.67 * 9 / 16)));
+    assert.ok(Number.isFinite(app.mediaCarouselLayout([{}, {}]).maxAspect));
+});
+
+test('carousel arrows advance one tile, clamp at the ends, and retain player keyboard controls', () => {
+    const context = browserContext();
+    const app = loadScripts(context, ['themes.js', 'app.js'], 'window');
+    const calls = [];
+    const buttons = {'.media-carousel-previous':{}, '.media-carousel-next':{}};
+    const track = {scrollLeft:0, scrollWidth:1471, clientWidth:598,
+        children:[64,266,684,1040].map(offsetLeft => ({offsetLeft})),
+        classList:{contains: name => name === 'media-carousel-track'},
+        parentElement:{querySelector: selector => buttons[selector]},
+        scrollTo(options) {calls.push(options); this.scrollLeft = Math.max(0, Math.min(873, options.left));},
+    };
+    app.tweetNookGalleryScroll(track);
+    assert.equal(buttons['.media-carousel-previous'].disabled, true);
+    assert.equal(buttons['.media-carousel-next'].disabled, false);
+    app.tweetNookScrollGallery(track, 1);
+    assert.equal(track.scrollLeft, 202, 'advance to the second tile, not the next page');
+    assert.equal(calls.at(-1).behavior, 'auto', 'native arrow clicks move immediately, without a smooth slide');
+    app.tweetNookScrollGallery(track, 1);
+    assert.equal(track.scrollLeft, 620);
+    app.tweetNookScrollGallery(track, 1);
+    assert.equal(track.scrollLeft, 873);
+    app.tweetNookGalleryScroll(track);
+    assert.equal(buttons['.media-carousel-next'].disabled, true);
+    const key = (name, target = track) => ({key:name, target, preventDefault(){}, stopPropagation(){}});
+    app.tweetNookGalleryKey(key('Home'), track);
+    assert.equal(track.scrollLeft, 0);
+    app.tweetNookGalleryKey(key('End'), track);
+    assert.equal(track.scrollLeft, 873);
+    app.tweetNookGalleryKey(key('ArrowLeft', {}), track);
+    assert.equal(track.scrollLeft, 873, 'a video/slider owns its own arrow keys');
+    context.window.matchMedia = () => ({matches:true});
+    app.tweetNookScrollGallery(track, -1);
+    assert.equal(calls.at(-1).behavior, 'auto');
+});
+
+test('optional carousel preserves original indices, placeholders, GIFs, and single-media markup', () => {
+    const context = browserContext();
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const photo = {type:'photo', width:360, height:640, download:{local_path:'media/p.webp'}};
+    const gif = {type:'animated_gif', width:480, height:480, download:{local_path:'media/g.mp4'}};
+    const video = {type:'video', width:640, height:360, download:{local_path:'media/v.mp4'}};
+    const missing = {type:'photo', width:480, height:480};
+    const single = app.renderMediaGrid([photo]);
+    const original = app.renderMediaGrid([photo, video]);
+    app.mediaGallery = 'carousel';
+    assert.equal(app.renderMediaGrid([photo]), single);
+    const html = app.renderMediaGrid([missing, photo, gif, video]);
+    assert.equal((html.match(/class="media-carousel-item"/g) || []).length, 4);
+    assert.ok(html.includes('Media not downloaded'));
+    assert.match(html, /tweetNookOpenLightbox\(this, 0\)/);
+    assert.match(html, /tweetNookOpenGif\(event, this, 1\)/);
+    assert.match(html, /data-video-custom/);
+    assert.match(html, /aria-label="Media 4 of 4"/);
+    assert.match(html, /M12\.957 4\.54L20\.414 12/, 'use the native arrow with a stem');
+    app.mediaGallery = 'grid';
+    assert.equal(app.renderMediaGrid([photo, video]), original);
+});
+
 async function main() {
     let failures = 0;
     for (const { name, fn } of tests) {
