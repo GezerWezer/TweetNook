@@ -4,6 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TweetNook</title>
+    <script>
+        // Ask for the first feed page, and a linked conversation, while the page and its
+        // scripts load; app.js adopts each response by URL (takeStartupRequest).
+        if (window.TWEETNOOK_DEMO !== true && typeof fetch === 'function') {
+            window.TWEETNOOK_STARTUP = {};
+            const linked = /^\/post\/(\d+)$/.exec(location.pathname);
+            for (const url of ['/api/tweets?collection=likes&sort=liked_latest&page=1&cursor=', linked && `/api/tweets/${linked[1]}`]) {
+                if (!url) continue;
+                window.TWEETNOOK_STARTUP[url] = fetch(url);
+                window.TWEETNOOK_STARTUP[url].catch(() => {});
+            }
+        }
+    </script>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="stylesheet" href="/static/css/tailwind.css">
     <script defer src="/static/vendor/intersect.min.js"></script>
