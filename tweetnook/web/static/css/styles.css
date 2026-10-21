@@ -3156,6 +3156,32 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
    permanent because switching overflow or visibility restyles every card. */
 #nook-feed { overflow-y: clip; }
 #nook-feed.feed-collapsed { height: 0; padding-bottom: 0; }
+.detail-layer, .detail-underlay {
+    --detail-bar: 56px;
+    position: fixed; top: 0; bottom: 0; left: 0; right: 0; margin: 0 auto; max-width: 600px;
+    overflow-y: auto; overscroll-behavior: contain; background: var(--bg-primary);
+}
+.detail-layer { z-index: 35; display: none; touch-action: pan-y; }
+.detail-layer.is-open { display: block; }
+/* Always scrollable, so a drag at either end never scrolls the feed beneath. */
+.detail-layer > .detail-body { min-height: calc(100% + 1px); }
+.detail-layer.is-moving { box-shadow: 0 0 24px rgba(0, 0, 0, 0.18); }
+.detail-layer-header.nook-header { position: fixed; top: 0; left: 0; right: 0; margin: 0 auto; max-width: 600px; z-index: 36; }
+.detail-layer > .detail-body, .detail-underlay > .detail-body { padding-top: var(--detail-bar); }
+.detail-layer.is-moving { background: linear-gradient(transparent var(--detail-bar), var(--bg-primary) var(--detail-bar)); }
+/* The page header stays still beneath a moving post; its title and tabs fade
+   (tabs tucked away by scrolling keep their more specific hiding rule), with
+   the tabs' own slide transition paused so nothing trails the finger. */
+.nook-header > .nook-title-row, .nook-header > .nook-tabs-frame { opacity: var(--detail-beneath, 1); }
+.nook-header.is-beneath-detail > .nook-tabs-frame { transition: none; }
+/* The still copy takes taps (so none reach the feed) but none of its links do. */
+.detail-underlay { z-index: 33; display: none; overflow: hidden; }
+.detail-underlay > * { pointer-events: none; }
+.detail-underlay.is-shown { display: block; }
+.detail-shade { position: fixed; inset: 0; z-index: 34; display: none; background: #000; opacity: 0; pointer-events: none; }
+.detail-shade.is-shown { display: block; }
+.detail-layer-header .nook-title-row { box-shadow: 0 1px 0 var(--border-color); }
+.nook-title-line .detail-layer-title { font-size: calc(var(--font-size-base) * 1.333333); line-height: 24px; font-weight: 800; margin: 0; white-space: nowrap; }
 .media-frame {
     width: min(100%, var(--media-max-width, 100%));
     --media-border-size: 2px;

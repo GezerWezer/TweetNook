@@ -225,14 +225,19 @@ test('reopening focus replaces the reader and native close still cleans up once'
         assert.equal(focusCalls.length, 1);
     });
 });
-test('article focus controls are in both sticky headers and absent from body markup', () => {
+test('article focus controls are in the sticky headers and absent from body markup', () => {
     const html = fs.readFileSync(path.join(root, 'tweetnook/web/index.html'), 'utf8');
-    assert.equal((html.match(/aria-label="Open article focus mode"/g) || []).length, 2);
+    assert.equal((html.match(/aria-label="Open article focus mode"/g) || []).length, 3);
     const mainHeader = html.slice(html.indexOf('<header data-video-occluder'), html.indexOf('</header>'));
+    const layerStart = html.indexOf('detail-layer-header">');
+    const layerHeader = html.slice(layerStart, html.indexOf('</header>', layerStart));
     const panelHeader = html.slice(html.indexOf('<!-- Panel Header -->'), html.indexOf('<!-- Panel Thread View -->'));
     assert.match(mainHeader, /openArticleFocus\(threadData.main\)/);
+    assert.match(layerHeader, /openArticleFocus\(threadData.main\)/);
     assert.match(panelHeader, /openArticleFocus\(panelThreadData.main\)/);
-    assert.match(mainHeader, /viewMode === 'thread' &amp;&amp;|viewMode === 'thread' &&/);
+    // The page header shows it for a post in the page; a phone's post layer has its own.
+    assert.match(mainHeader, /pageView === 'thread' &amp;&amp;|pageView === 'thread' &&/);
+    assert.match(layerHeader, /viewMode === 'thread' &amp;&amp;|viewMode === 'thread' &&/);
     assert.match(panelHeader, /panelMode === 'thread' &amp;&amp;|panelMode === 'thread' &&/);
 });
 console.log(`${cases}/${cases} article renderer cases passed`);

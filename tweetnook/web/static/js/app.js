@@ -85,6 +85,106 @@ function isPhoneLayout() {
     return Boolean(window.matchMedia?.(PHONE_MEDIA_QUERY)?.matches);
 }
 
+// Phones open a post on a layer over the feed, as X's app pushes a screen. The
+// numbers are measured frame by frame from X on an iPhone: the post springs in
+// from the right (critically damped, settled in about 150ms) while the view it
+// covers drifts left by 30% of the post's travel under a shade reaching 40%
+// black. A rightward drag pulls the post back with the finger; a release springs
+// it back the same way, or carries the finger's speed off screen in about 150ms.
+const DETAIL_SPRING = 51; // rad/s, opening
+const DETAIL_RETURN_SPRING = 58; // rad/s, springing back from a drag
+const DETAIL_LEAVE_MS = 150;
+const DETAIL_PARALLAX = 0.3;
+const DETAIL_SHADE = 0.4;
+// The post layer while it is on screen. Feed videos beneath it are covered.
+let openDetailLayer = null;
+
+// A touch becomes a back swipe once it travels 10px mostly rightward; a
+// vertical or leftward start is left to scrolling. null means undecided.
+function swipeBackIntent(dx, dy) {
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return null;
+    return dx > 0 && dx > Math.abs(dy) * 1.2;
+}
+
+// A flick (px/ms) decides by its direction; a slow release by how far the post
+// moved. X springs a post let go 56% of the way across back, and lets one at 63% go.
+function swipeBackCompletes(offset, width, velocity) {
+    if (velocity > 0.3) return true;
+    if (velocity < -0.3) return false;
+    return offset > width * 0.6;
+}
+
+// The post's offset `t` ms into a settle toward `to`, starting from `from` at
+// `velocity` px/ms, and whether it has arrived. Settling back to open is a
+// critically damped spring that snaps home over the last 2.5px, as X does;
+// leaving is a cubic that starts at the finger's speed and eases out exactly at
+// the edge.
+function detailSettle(from, to, velocity, t, leaving, width) {
+    if (leaving) {
+        const distance = Math.abs(to - from);
+        const duration = DETAIL_LEAVE_MS * Math.min(1.3, Math.max(0.55, Math.sqrt(distance / (0.85 * width || 1))));
+        const p = Math.min(1, t / duration);
+        const m = Math.max(0, velocity) * duration / (distance || 1);
+        const progress = (p ** 3 - 2 * p ** 2 + p) * m + (3 * p ** 2 - 2 * p ** 3);
+        return { offset: from + (to - from) * progress, done: p >= 1 };
+    }
+    const w = (from >= width ? DETAIL_SPRING : DETAIL_RETURN_SPRING) / 1000;
+    const delta = from - to;
+    const offset = to + (delta + (velocity + w * delta) * t) * Math.exp(-w * t);
+    return { offset, done: Math.abs(offset - to) < 2.5 };
+}
+
+// Where each piece sits with the post `offset` px from its open position.
+function detailTransitionStyles(offset, width) {
+    const covered = width ? 1 - offset / width : 1;
+    return {
+        layer: `translate3d(${offset}px, 0, 0)`,
+        under: `translate3d(${-DETAIL_PARALLAX * width * covered}px, 0, 0)`,
+        shade: String(DETAIL_SHADE * covered),
+    };
+}
+
+// How visible the post's top bar and the bar beneath it are, measured from X:
+// pulling a post back, its bar is half gone 9% of the way and gone by 32%; the
+// one beneath stays hidden until 60% and is in by 80%. An opening post's bar
+// shows from its first frame.
+function detailBarOpacities(offset, width, opening) {
+    if (opening) return { top: 1, beneath: 0 };
+    const pulled = width ? offset / width : 0;
+    return {
+        top: Math.max(0, 1 - pulled / 0.32) ** 2,
+        beneath: Math.min(1, Math.max(0, (pulled - 0.6) / 0.2)),
+    };
+}
+
+// Carousels and other sideways scrollers keep their own horizontal drags.
+function startsInSideScroller(target, layer) {
+    for (let node = target; node && node !== layer; node = node.parentElement) {
+        if (node.matches?.('input, textarea, select, .video-control-bar')) return true;
+        if (node.scrollWidth > node.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(node).overflowX)) return true;
+    }
+    return false;
+}
+
+// A still copy of a post view, shown beneath the next post while it slides.
+// It keeps the classes and inline styles Alpine produced, but nothing Alpine,
+// the thread pinning or the players would recognise, and its videos never load.
+function detailSnapshot(source) {
+    const copy = source.cloneNode(true);
+    copy.querySelectorAll('template, source').forEach(node => node.remove());
+    for (const element of [copy, ...copy.querySelectorAll('*')]) {
+        for (const {name} of [...element.attributes]) {
+            if (/^(x-|:|@|on|id$|data-thread-)/.test(name)) element.removeAttribute(name);
+        }
+        if (element.tagName === 'VIDEO') {
+            element.removeAttribute('src');
+            element.removeAttribute('autoplay');
+            element.preload = 'none';
+        }
+    }
+    return copy;
+}
+
 function tweetNookVideoPlayer(video) {
     return video?.closest?.('.media-video-player') || video?.parentElement;
 }
@@ -652,6 +752,8 @@ function feedVideoVisibility(video) {
     // Non-layout hosts (including the asset harness) can supply only position.
     if (!Number.isFinite(rect.height) || !Number.isFinite(rect.width)) return { ratio: 1, top: rect.top };
     if (!rect.height || !rect.width) return { ratio: 0, top: rect.top };
+    // A post layer covers the feed and anything else beneath it.
+    if (openDetailLayer && !openDetailLayer.contains(video)) return { ratio: 0, top: rect.top };
     const insets = videoFeedInsets(rect);
     let top = rect.top + insets.top, bottom = rect.top + rect.height - insets.bottom;
     let left = rect.left + insets.left, right = rect.left + rect.width - insets.right;
@@ -950,6 +1052,17 @@ function tweetApp() {
     // currently covered by the shared list menu.
     let boundFeedList = null;
     let listMenuButton = null;
+    // The post layer (phones): still copies of covered posts by history depth,
+    // the depth on screen, whether a slide or drag is moving it, and a back
+    // navigation this page started and is waiting on popstate to finish.
+    const detailSnapshots = new Map();
+    let shownDepth = 0;
+    let detailMotion = false;
+    let detailPop = null;
+    // A post's slide in, while it runs. Its replies wait for it: rendering them
+    // mid-slide stalls iOS long enough to lose most of the motion.
+    let detailSlide = null;
+    const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
 
     return {
         isDemo: window.TWEETNOOK_DEMO === true,
@@ -959,6 +1072,8 @@ function tweetApp() {
         pendingRouteState: null,
         navigationDepth: 0,
         routeUsesPanel: false,
+        detailLayer: false,
+        detailLayerOpen: false,
         tweets: [],
         loading: true,
         loadingMore: false,
@@ -2527,7 +2642,8 @@ function tweetApp() {
             }
 
             window.addEventListener('popstate', (event) => {
-                this.pauseAllVideos();
+                // A back this page started already stopped the post's videos.
+                if (!detailPop) this.pauseAllVideos();
                 const route = this.routeFromHistoryState(event.state)
                     || this.parseRoute(window.location.pathname);
                 if (route) return this.applyRoute(route, { fromPopState: true, state: event.state });
@@ -2535,12 +2651,16 @@ function tweetApp() {
             window.addEventListener('resize', () => {
                 this.placeListMenu();
                 const usePanel = this.shouldUseSplitPanel();
-                if (usePanel === this.routeUsesPanel) return;
+                if (usePanel === this.routeUsesPanel && this.usesDetailLayer() === this.detailLayer) return;
                 this.routeUsesPanel = usePanel;
                 if (this.activeRoute.viewMode !== 'list' && this.archiveResourcesLoaded) {
                     this.applyRoute(this.activeRoute, { state: history.state });
                 }
             });
+
+            this.$nextTick?.(() => this.attachDetailSwipe());
+            // Search and other list views reached without a route leave the post layer.
+            this.$watch?.('viewMode', mode => { if (mode === 'list' && this.detailLayerOpen && !detailMotion) this.closeDetailLayer(); });
 
             this.fetchNotices();
             if (this.isDemo) {
@@ -2729,6 +2849,8 @@ function tweetApp() {
 
             const domObserver = new MutationObserver((mutations) => {
                 mutations.forEach(m => {
+                    // A post's still copy beneath a sliding post holds no live media.
+                    if (m.target.closest?.('[data-detail-snapshot]')) return;
                     m.removedNodes.forEach(node => {
                         // Moving a live player into the viewer is not teardown.
                         if (node.nodeType !== 1 || node.isConnected) return;
@@ -4394,7 +4516,7 @@ function tweetApp() {
                 return this.replaceRoute(route, { scrollY: window.scrollY });
             }
             if (this.shouldUseSplitPanel()) this.savePanelSnapshot();
-            return this.replaceRoute(route, { scrollY: window.scrollY });
+            return this.replaceRoute(route, { scrollY: this.detailScrollY() });
         },
 
         async applyRoute(route, { fromPopState = false, state = null } = {}) {
@@ -4407,6 +4529,7 @@ function tweetApp() {
                 this.navigationDepth = 0;
             }
             this.activeRoute = { ...route };
+            const previousDepth = shownDepth;
 
             if (!this.archiveResourcesLoaded) {
                 this.pendingRoute = { ...route };
@@ -4417,6 +4540,23 @@ function tweetApp() {
             this.pendingRoute = null;
             this.pendingRouteState = null;
             this.routeUsesPanel = this.shouldUseSplitPanel();
+            shownDepth = this.navigationDepth;
+            const useLayer = this.usesDetailLayer();
+            if (this.detailLayer && !useLayer) this.closeDetailLayer();
+            this.detailLayer = useLayer;
+            if (route.viewMode === 'list' && (this.detailLayerOpen || detailPop)) {
+                // The feed stayed laid out and scrolled beneath the post.
+                const pop = detailPop;
+                detailPop = null;
+                if (pop) await pop.done;
+                else {
+                    detailSnapshots.clear();
+                    await this.slideDetailAway(0, { instant: !this.historyPopAnimates() });
+                }
+                this.closePanel(false);
+                this.viewMode = 'list';
+                return true;
+            }
             if (route.viewMode === 'list') {
                 this.closePanel(false);
                 this.viewMode = 'list';
@@ -4438,9 +4578,260 @@ function tweetApp() {
             }
 
             this.closePanel(false);
+            if (this.detailLayer) {
+                await this.showDetailRoute(route, routeState, previousDepth);
+                return true;
+            }
             if (route.viewMode === 'thread') await this.showFullThread(route.tweetId);
             else await this.showFullQuotes(route.quotesTweetId);
             return true;
+        },
+
+        // Phones show a post on a layer pushed over the feed (see DETAIL_SPRING).
+        usesDetailLayer() {
+            return !this.shouldUseSplitPanel() && this.isPhoneLayout();
+        },
+
+        // The view the page header and feed belong to: the list stays beneath a post layer.
+        get pageView() {
+            return this.detailLayer ? 'list' : this.viewMode;
+        },
+
+        detailScrollY() {
+            return this.detailLayer ? this.$refs.detailStage?.scrollTop || 0 : window.scrollY;
+        },
+
+        // In a browser tab, Safari's own back swipe has already animated the page.
+        historyPopAnimates() {
+            const ios = /iP(hone|ad|od)/.test(globalThis.navigator?.userAgent || '');
+            return !ios || Boolean(globalThis.navigator?.standalone);
+        },
+
+        detailAnimates() {
+            return !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+        },
+
+        // The pieces a slide moves: the post layer, what lies beneath it (the feed,
+        // or the still copy of the post it covers) and the shade between them.
+        detailParts(snapshot = null) {
+            const layer = this.$refs.detailStage;
+            const underlay = layer.parentElement.querySelector('.detail-underlay');
+            const under = snapshot ? [underlay] : [...document.querySelectorAll('[data-feed-stage]')];
+            // As in X, the top bars do not slide: over the feed, the post's bar fades
+            // out in place while the page header's title and tabs fade in. Between
+            // two posts the bar reads the same and stays.
+            const bars = snapshot ? {} : {
+                top: layer.parentElement.querySelector('.detail-layer-header'),
+                beneath: document.querySelector('.nook-header'),
+            };
+            return { layer, underlay, snapshot, under, bars, shade: this.$refs.detailShade, width: layer.clientWidth || window.innerWidth };
+        },
+
+        setDetailOffset(parts, offset) {
+            const styles = detailTransitionStyles(offset, parts.width);
+            parts.layer.style.transform = styles.layer;
+            parts.under.forEach(element => { element.style.transform = styles.under; });
+            parts.shade.style.opacity = styles.shade;
+            const bars = detailBarOpacities(offset, parts.width, parts.opening);
+            if (parts.bars.top) parts.bars.top.style.opacity = String(bars.top);
+            // A variable, so tabs tucked away by scrolling stay hidden (header.css).
+            parts.bars.beneath?.style.setProperty('--detail-beneath', String(bars.beneath));
+        },
+
+        // Settle the post frame by frame (see detailSettle). The clock advances at
+        // most one 60Hz frame per frame, so a frame iOS stalls pauses the motion
+        // instead of skipping most of it.
+        animateDetailOffset(parts, from, to, { velocity = 0, animate = true } = {}) {
+            if (!animate) {
+                this.setDetailOffset(parts, to);
+                return Promise.resolve();
+            }
+            const leaving = to > from;
+            return new Promise(resolve => {
+                let clock = 0, last = null;
+                const step = now => {
+                    clock += last === null ? 0 : Math.min(now - last, 1000 / 60);
+                    last = now;
+                    const { offset, done } = detailSettle(from, to, velocity, clock, leaving, parts.width);
+                    this.setDetailOffset(parts, done ? to : offset);
+                    if (done) resolve();
+                    else requestAnimationFrame(step);
+                };
+                step(performance.now());
+            });
+        },
+
+        beginDetailMotion(parts) {
+            detailMotion = true;
+            if (parts.snapshot) {
+                parts.underlay.replaceChildren(parts.snapshot.node);
+                parts.underlay.classList.add('is-shown');
+                parts.underlay.scrollTop = parts.snapshot.scrollTop;
+            }
+            parts.shade.classList.add('is-shown');
+            parts.bars.beneath?.classList.add('is-beneath-detail');
+            parts.layer.classList.add('is-moving');
+            parts.under.forEach(element => { element.style.willChange = 'transform'; });
+        },
+
+        endDetailMotion(parts) {
+            parts.layer.classList.remove('is-moving');
+            parts.layer.style.transform = '';
+            parts.under.forEach(element => { element.style.transform = ''; element.style.willChange = ''; });
+            if (parts.bars.top) parts.bars.top.style.opacity = '';
+            parts.bars.beneath?.style.removeProperty('--detail-beneath');
+            parts.bars.beneath?.classList.remove('is-beneath-detail');
+            parts.shade.classList.remove('is-shown');
+            parts.shade.style.opacity = '';
+            parts.underlay.classList.remove('is-shown');
+            parts.underlay.replaceChildren();
+            detailMotion = false;
+        },
+
+        closeDetailLayer(parts = this.detailParts()) {
+            // Hidden now, not on Alpine's next pass, so it never shows again at full strength.
+            if (parts.bars.top) parts.bars.top.style.display = 'none';
+            this.endDetailMotion(parts);
+            parts.layer.classList.remove('is-open');
+            this.detailLayerOpen = false;
+            openDetailLayer = null;
+            detailSnapshots.clear();
+            this.autoplayNextVideo();
+        },
+
+        // Slide a post in over the feed, or over the post it was opened from.
+        async pushDetailLayer(show, coveredDepth, animate) {
+            const layer = this.$refs.detailStage;
+            let snapshot = null;
+            if (this.detailLayerOpen) {
+                snapshot = { node: detailSnapshot(layer.firstElementChild), scrollTop: layer.scrollTop };
+                for (const depth of [...detailSnapshots.keys()]) if (depth >= coveredDepth) detailSnapshots.delete(depth);
+                detailSnapshots.set(coveredDepth, snapshot);
+            } else {
+                detailSnapshots.clear();
+            }
+            this.detailLayerOpen = true;
+            layer.classList.add('is-open');
+            openDetailLayer = layer;
+            this.autoplayNextVideo();
+            const parts = animate && this.detailAnimates() ? this.detailParts(snapshot) : null;
+            if (parts) {
+                // Paint the post in place, all but transparent, before sliding it in:
+                // iOS paints nothing off screen, and painting it in the slide's first
+                // frame stalls that frame for 100ms while the clock runs on.
+                parts.opening = true;
+                this.beginDetailMotion(parts);
+                this.setDetailOffset(parts, parts.width);
+                layer.style.opacity = '0.01';
+            }
+            const shown = show();
+            await this.$nextTick();
+            if (parts) {
+                await nextFrame();
+                await nextFrame();
+                layer.style.opacity = '';
+                detailSlide = this.animateDetailOffset(parts, parts.width, 0);
+                await detailSlide;
+                detailSlide = null;
+                this.endDetailMotion(parts);
+            }
+            await shown;
+        },
+
+        // Slide the post away, uncovering the view beneath. A back swipe hands
+        // over its pieces, where the finger let go and how fast it was moving.
+        // Uncovering the feed closes the layer; uncovering a post's still copy
+        // leaves it on screen until the route has rendered the post itself.
+        async slideDetailAway(targetDepth, { from = 0, velocity = 0, parts = null, instant = false } = {}) {
+            if (!parts) {
+                parts = this.detailParts(detailSnapshots.get(targetDepth) || null);
+                this.beginDetailMotion(parts);
+            }
+            await this.animateDetailOffset(parts, from, parts.width, { velocity, animate: !instant && this.detailAnimates() });
+            if (parts.snapshot) return parts;
+            this.closeDetailLayer(parts);
+            return null;
+        },
+
+        async showDetailRoute(route, state, previousDepth) {
+            const depth = this.navigationDepth;
+            const pop = detailPop;
+            detailPop = null;
+            const restore = { scrollTop: undefined };
+            const show = () => route.viewMode === 'thread'
+                ? this.showFullThread(route.tweetId, restore)
+                : this.showFullQuotes(route.quotesTweetId, restore);
+            const goingBack = pop || (this.detailLayerOpen && depth < previousDepth);
+            if (!goingBack) {
+                // A forward step slides in; the same depth (a resize) or the first route does not.
+                await this.pushDetailLayer(show, previousDepth, depth > previousDepth);
+                return;
+            }
+            const parts = pop ? await pop.done : await this.slideDetailAway(depth, { instant: !this.historyPopAnimates() });
+            if (!parts) {
+                // Nothing of this post was kept, so it returns without a slide.
+                await this.pushDetailLayer(show, previousDepth, false);
+                return;
+            }
+            // Render the post beneath its still copy, where the reader left it, then swap.
+            restore.scrollTop = parts.snapshot.scrollTop;
+            detailSnapshots.delete(depth);
+            await show();
+            await this.$nextTick();
+            this.endDetailMotion(parts);
+            this.autoplayNextVideo();
+        },
+
+        // A rightward drag anywhere on a post pulls it back toward the view
+        // beneath, following the finger, as in X's app.
+        attachDetailSwipe() {
+            const layer = this.$refs.detailStage;
+            if (!layer?.addEventListener) return;
+            let gesture = null;
+            layer.addEventListener('touchstart', event => {
+                gesture = null;
+                if (!this.detailLayerOpen || detailMotion || detailPop || event.touches.length !== 1) return;
+                if (startsInSideScroller(event.target, layer)) return;
+                const touch = event.touches[0];
+                gesture = { x: touch.clientX, y: touch.clientY, offset: 0, samples: [], parts: null };
+            }, { passive: true });
+            layer.addEventListener('touchmove', event => {
+                if (!gesture) return;
+                const touch = event.touches[0];
+                if (!gesture.parts) {
+                    const intent = event.touches.length === 1 ? swipeBackIntent(touch.clientX - gesture.x, touch.clientY - gesture.y) : false;
+                    if (intent === false) { gesture = null; return; }
+                    // Hold the page still while a sideways start is still undecided.
+                    if (intent === null) {
+                        if (Math.abs(touch.clientX - gesture.x) > Math.abs(touch.clientY - gesture.y)) event.preventDefault();
+                        return;
+                    }
+                    // Follow the finger from here, so the post does not jump by the slop.
+                    gesture.x = touch.clientX;
+                    gesture.parts = this.detailParts(detailSnapshots.get(Math.max(0, this.navigationDepth - 1)) || null);
+                    this.beginDetailMotion(gesture.parts);
+                }
+                event.preventDefault();
+                gesture.offset = Math.max(0, touch.clientX - gesture.x);
+                gesture.samples.push([event.timeStamp, touch.clientX]);
+                while (gesture.samples.length > 2 && event.timeStamp - gesture.samples[0][0] > 100) gesture.samples.shift();
+                this.setDetailOffset(gesture.parts, gesture.offset);
+            }, { passive: false });
+            const release = event => {
+                const ended = gesture;
+                gesture = null;
+                if (!ended?.parts) return;
+                const [first, last] = [ended.samples[0], ended.samples.at(-1)];
+                const velocity = first && last && last[0] > first[0] ? (last[1] - first[1]) / (last[0] - first[0]) : 0;
+                if (event.type !== 'touchcancel' && swipeBackCompletes(ended.offset, ended.parts.width, velocity)) {
+                    this.goBack({ from: ended.offset, velocity, parts: ended.parts });
+                    return;
+                }
+                this.animateDetailOffset(ended.parts, ended.offset, 0, { velocity, animate: this.detailAnimates() })
+                    .then(() => this.endDetailMotion(ended.parts));
+            };
+            layer.addEventListener('touchend', release);
+            layer.addEventListener('touchcancel', release);
         },
 
         async applyPanelRoute(route, state) {
@@ -4562,6 +4953,7 @@ function tweetApp() {
                 const after = visibleTop();
                 if (after === undefined || after === before) return;
                 if (panel) root.scrollTop += after - before;
+                else if (this.detailLayer) this.$refs.detailStage.scrollTop += after - before;
                 else window.scrollBy(0, after - before);
             });
         },
@@ -4569,14 +4961,15 @@ function tweetApp() {
         // Like X, a page with few replies still scrolls far enough for the focal
         // tweet to sit at the top: add the missing room below the thread first.
         scrollPageBy(delta) {
-            this.scrollPageTo(window.scrollY + delta);
+            this.scrollPageTo(this.detailScrollY() + delta);
         },
 
         // Scroll, then add whatever room was missing (a short page's minimum height
         // absorbs part of any spacer) and try again.
         scrollPageTo(target, attempts = 3) {
-            window.scrollTo({ top: target, behavior: 'instant' });
-            const missing = Math.ceil(target - window.scrollY);
+            if (this.detailLayer) this.$refs.detailStage.scrollTop = target;
+            else window.scrollTo({ top: target, behavior: 'instant' });
+            const missing = Math.ceil(target - this.detailScrollY());
             if (missing <= 0 || attempts <= 0) return;
             // A screen of room always suffices; never grow past it.
             this.threadBottomSpace = Math.min(this.threadBottomSpace + missing, window.innerHeight);
@@ -4598,12 +4991,12 @@ function tweetApp() {
                     }
                     return;
                 }
-                const delta = main.getBoundingClientRect().top - first.getBoundingClientRect().top - window.scrollY;
+                const delta = main.getBoundingClientRect().top - first.getBoundingClientRect().top - this.detailScrollY();
                 if (Math.abs(delta) >= 1) this.scrollPageBy(delta);
             });
         },
 
-        async showFullThread(tweetId) {
+        async showFullThread(tweetId, restore = {}) {
             this.viewMode = 'thread';
             const seed = this.threadSeed(tweetId);
             this.threadData = seed;
@@ -4611,10 +5004,12 @@ function tweetApp() {
             this.threadOtherReplies = false;
             this.threadBottomSpace = 0;
             this.loadingThread = !seed;
-            window.scrollTo(0, 0);
+            if (this.detailLayer) this.$refs.detailStage.scrollTop = 0;
+            else window.scrollTo(0, 0);
             let pin = false;
             try {
                 const data = await this.loadThread(tweetId);
+                await detailSlide;
                 if (this.routeKey(this.activeRoute) === `thread:${tweetId}` && !this.shouldUseSplitPanel()) {
                     // Parents arrive above the focal tweet; pinThreadMain keeps it in place.
                     this.threadData = data;
@@ -4626,17 +5021,26 @@ function tweetApp() {
             } finally {
                 this.loadingThread = false;
             }
-            if (pin) this.pinThreadMain();
+            if (restore.scrollTop !== undefined) await this.restoreDetailScroll(restore.scrollTop);
+            else if (pin) this.pinThreadMain();
         },
 
-        async showFullQuotes(tweetId) {
+        // A post returned to by going back sits where the reader left it.
+        async restoreDetailScroll(scrollTop) {
+            await this.$nextTick();
+            this.$refs.detailStage.scrollTop = scrollTop;
+        },
+
+        async showFullQuotes(tweetId, restore = {}) {
             this.viewMode = 'quotes';
             this.quotesTweetId = tweetId;
             this.quotesPage = 1;
             this.quotesList = [];
             this.quotesLoading = true;
-            window.scrollTo(0, 0);
+            if (this.detailLayer) this.$refs.detailStage.scrollTop = 0;
+            else window.scrollTo(0, 0);
             await this.fetchQuotes();
+            if (restore.scrollTop !== undefined) await this.restoreDetailScroll(restore.scrollTop);
         },
 
         toggleSplitPanel(val) {
@@ -4764,6 +5168,8 @@ function tweetApp() {
             if (typeof tweetId !== 'string' || !/^\d+$/.test(tweetId)) return;
             const route = { viewMode: 'thread', tweetId };
             if (fromPopState) return this.applyRoute(route, { fromPopState: true });
+            // A tap during a slide waits for it; X ignores taps on a moving screen.
+            if (detailMotion || detailPop) return;
             this.saveCurrentRouteState();
             const state = this.pushRoute(route);
             return this.applyRoute(route, { state });
@@ -4773,6 +5179,7 @@ function tweetApp() {
             void fromPanel;
             if (typeof tweetId !== 'string' || !/^\d+$/.test(tweetId)) return;
             const route = { viewMode: 'quotes', quotesTweetId: tweetId };
+            if (detailMotion || detailPop) return;
             this.saveCurrentRouteState();
             const state = this.pushRoute(route);
             return this.applyRoute(route, { state });
@@ -4798,9 +5205,22 @@ function tweetApp() {
             }
         },
         
-        goBack() {
+        goBack(swipe = {}) {
             this.pauseAllVideos();
             this.savePanelSnapshot();
+            if (this.detailLayer && this.detailLayerOpen && !detailPop) {
+                // The post slides away now; the route catches up when popstate arrives,
+                // which iOS can deliver hundreds of milliseconds later.
+                if (detailMotion && !swipe.parts) return;
+                const targetDepth = Math.max(0, this.navigationDepth - 1);
+                detailPop = { done: this.slideDetailAway(targetDepth, swipe) };
+                if (this.navigationDepth > 0) {
+                    history.back();
+                    return;
+                }
+            } else if (detailPop) {
+                return;
+            }
             if (this.navigationDepth > 0) {
                 history.back();
                 return;

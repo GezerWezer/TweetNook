@@ -51,19 +51,19 @@
         <!-- HEADER: title, sync / analytics / settings, collection tabs (the tabs tuck away on scroll) -->
         <header data-video-occluder class="nook-header">
             <div class="nook-title-row">
-                <button x-cloak x-show="viewMode !== 'list'" @click="goBack()" class="nook-icon-button nook-back" type="button" aria-label="Back to archive"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                <button x-cloak x-show="pageView !== 'list'" @click="goBack()" class="nook-icon-button nook-back" type="button" aria-label="Back to archive"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
 </svg></button>
                 <div class="nook-title-block">
                     <div class="nook-title-line">
-                        <h1 x-text="viewMode === 'list' ? 'Your archive' : viewMode === 'quotes' ? 'Quote tweets' : (articleForTweet(threadData?.main) ? 'Article' : 'Tweet')"></h1>
+                        <h1 x-text="pageView === 'list' ? 'Your archive' : viewMode === 'quotes' ? 'Quote tweets' : (articleForTweet(threadData?.main) ? 'Article' : 'Tweet')"></h1>
                         <span x-show="isDemo" class="nook-demo-badge">Demo</span>
                         <span x-show="setupReplayConnected" x-cloak class="nook-demo-badge" :title="`Twitter/X requests go to the replay source at ${setupData?.dev?.replay?.url}`">Replay mode</span>
                     </div>
-                    <span x-show="viewMode === 'list'" class="nook-sync" x-text="activityHeaderText()" :title="displayActivity?.summary || (lastSyncFormatted ? 'Last synced ' + lastSyncFormatted : null)"></span>
+                    <span x-show="pageView === 'list'" class="nook-sync" x-text="activityHeaderText()" :title="displayActivity?.summary || (lastSyncFormatted ? 'Last synced ' + lastSyncFormatted : null)"></span>
                 </div>
                 <div class="nook-utilities">
-                    <button x-cloak x-show="viewMode === 'thread' && articleForTweet(threadData?.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg><span class="article-focus-label">Focus mode</span></button>
+                    <button x-cloak x-show="pageView === 'thread' && articleForTweet(threadData?.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg><span class="article-focus-label">Focus mode</span></button>
                     <button type="button" class="nook-icon-button nook-activity-button" @click="nookToggleActivity($data, $el)" aria-controls="nook-activity-drawer" :aria-expanded="activityDrawerOpen" :aria-label="(activity || activityStartPending) ? activityCommandLabel() + ', in progress' : 'Sync activity'" :title="(activity || activityStartPending) ? activityCommandLabel() + ' in progress' : 'Sync activity'"><span x-show="!(activity || activityStartPending)" class="nook-activity-glyph"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M11.99 16l-5.7-5.7L7.7 8.88l3.29 3.3V2.59h2v9.59l3.3-3.3 1.41 1.42-5.71 5.7zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z" />
 </svg></span><span x-cloak x-show="activity || activityStartPending" class="nook-activity-spinner" aria-hidden="true"></span></button>
@@ -75,7 +75,7 @@
 </svg><span x-cloak x-show="noticeCount" class="nook-notice-count" aria-hidden="true" x-text="noticeCount > 9 ? '9+' : noticeCount"></span></button>
                 </div>
             </div>
-            <div x-show="viewMode === 'list'" class="nook-tabs-frame" x-init="nookTabsInit($el)">
+            <div x-show="pageView === 'list'" class="nook-tabs-frame" x-init="nookTabsInit($el)">
                 <nav class="nook-tabs" role="tablist" aria-label="Archive collection">
                     <template x-for="option in feedOptions('collection')" :key="option.value">
                         <button type="button" role="tab" class="nook-tab" :id="'nook-tab-' + option.value" aria-controls="nook-feed" :aria-selected="collectionFilter === option.value" :tabindex="collectionFilter === option.value ? 0 : -1" @click="selectFeedOption('collection', option.value); nookRevealTab($el)" @keydown="nookTabKey($event, $data)"><span x-text="option.label"></span></button>
@@ -84,7 +84,7 @@
             </div>
         </header>
 
-        <div x-show="showArchiveEnrichmentReminder" x-cloak role="alert"
+        <div x-show="showArchiveEnrichmentReminder" x-cloak role="alert" data-feed-stage
              class="px-4 py-3 border-b border-[var(--border-color)] bg-[color-mix(in_srgb,var(--accent-color)_12%,var(--bg-primary))] text-sm text-[var(--text-primary)]">
             <div class="font-semibold">Archive enrichment is incomplete</div>
             <div class="mt-1 text-[var(--text-secondary)]"><span x-text="archiveEnrichmentIncomplete.toLocaleString()"></span> tweets remain.</div>
@@ -93,7 +93,7 @@
         </div>
 
         <!-- LIST VIEW -->
-        <div id="nook-feed" role="tabpanel" :aria-labelledby="'nook-tab-' + collectionFilter" x-show="archiveReady && !setupForced" :class="{ 'feed-collapsed': viewMode !== 'list' }" :aria-hidden="viewMode !== 'list' ? 'true' : null" class="pb-4">
+        <div id="nook-feed" role="tabpanel" :aria-labelledby="'nook-tab-' + collectionFilter" x-show="archiveReady && !setupForced" :class="{ 'feed-collapsed': pageView !== 'list' }" :aria-hidden="viewMode !== 'list' ? 'true' : null" data-feed-stage class="pb-4">
             <div class="nook-search-wrap relative" x-data="searchAutocomplete()" @click.away="showDropdown = false">
                 <div class="nook-search-field relative w-full">
                     <span class="nook-search-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
@@ -284,6 +284,10 @@
             </div>
         </div>
 
+        <!-- POST AND QUOTE VIEWS (single column). On phones this is a layer pushed over
+             the feed, with its own header; elsewhere it follows the feed in the page. -->
+        <div x-ref="detailStage" class="detail-stage" :class="{ 'detail-layer': detailLayer, 'is-open': detailLayerOpen }" :aria-hidden="detailLayer && !detailLayerOpen ? 'true' : null">
+        <div class="detail-body">
         <!-- THREAD VIEW (single-column only) -->
         <div x-show="viewMode === 'thread' && !(splitPanel && panelMode)" x-cloak class="pb-20">
             <template x-if="loadingThread"><div class="p-8 text-center text-gray-500">Loading thread...</div></template>
@@ -692,7 +696,28 @@
                 <div class="p-4 text-center text-[var(--text-secondary)]">Loading more...</div>
             </template>
         </div>
-        
+        </div><!-- /detail-body -->
+        </div><!-- /detail-stage -->
+        <!-- The post layer's top bar sits outside its scroller, so it can stay put
+             while the post slides, as X's does. -->
+        <header x-cloak x-show="detailLayer && detailLayerOpen" data-video-occluder class="nook-header detail-layer-header">
+            <div class="nook-title-row">
+                <button @click="goBack()" class="nook-icon-button nook-back" type="button" aria-label="Back"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
+</svg></button>
+                <div class="nook-title-block">
+                    <div class="nook-title-line"><h2 class="detail-layer-title" x-text="viewMode === 'quotes' ? 'Quote tweets' : (articleForTweet(threadData?.main) ? 'Article' : 'Tweet')"></h2></div>
+                </div>
+                <div class="nook-utilities">
+                    <button x-cloak x-show="viewMode === 'thread' && articleForTweet(threadData?.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg><span class="article-focus-label">Focus mode</span></button>
+                </div>
+            </div>
+        </header>
+        <!-- While a post slides, the view it covers or uncovers: a still copy of the
+             previous post, under a shade that also dims the feed. -->
+        <div x-ignore data-detail-snapshot class="detail-underlay" aria-hidden="true"></div>
+        <div x-ref="detailShade" class="detail-shade" aria-hidden="true"></div>
+
     </div><!-- /LEFT COLUMN -->
 
     <!-- RIGHT DETAIL PANEL (split mode only, hidden on mobile via CSS) -->
