@@ -9053,13 +9053,96 @@ test('a conversation collapses the feed instead of removing it', () => {
     const feed = html.match(/<div id="nook-feed"[^>]*>/)[0];
     // display: none made WebKit lay out every card of a long feed again on return.
     assert.doesNotMatch(feed, /x-show="[^"]*viewMode/);
-    assert.match(feed, /:class="\{ 'feed-collapsed': viewMode !== 'list' \}"/);
+    // A phone's post layer covers the feed instead, so it stays expanded beneath (pageView).
+    assert.match(feed, /:class="\{ 'feed-collapsed': pageView !== 'list' \}"/);
     assert.match(feed, /:aria-hidden="viewMode !== 'list' \? 'true' : null"/);
     assert.match(css, /#nook-feed \{ overflow-y: clip; \}/);
     const collapsed = css.match(/#nook-feed\.feed-collapsed \{([^}]*)\}/)[1];
     assert.match(collapsed, /height: 0;/);
     // Toggling these restyles every card.
     assert.doesNotMatch(collapsed, /visibility|overflow|content-visibility|display/);
+});
+
+test('a phone post slides as a layer over the feed, with its own header', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const stage = html.match(/<div x-ref="detailStage"[^>]*>/)[0];
+    assert.match(stage, /'detail-layer': detailLayer, 'is-open': detailLayerOpen/);
+    const body = html.slice(html.indexOf(stage), html.indexOf('<!-- /detail-stage -->'));
+    // The post and quote views scroll on the layer; its top bar with Back sits
+    // outside the scroller, so it can stay put while the post slides.
+    const bar = html.slice(html.indexOf('<!-- /detail-stage -->'), html.indexOf('<div x-ignore data-detail-snapshot'));
+    assert.match(bar, /<header x-cloak x-show="detailLayer && detailLayerOpen" data-video-occluder class="nook-header detail-layer-header">/);
+    assert.match(bar, /@click="goBack\(\)" class="nook-icon-button nook-back" type="button" aria-label="Back"/);
+    assert.doesNotMatch(body, /detail-layer-header/);
+    assert.match(css, /\.detail-layer-header\.nook-header \{ position: fixed;/);
+    assert.match(body, /<!-- THREAD VIEW/);
+    assert.match(body, /<!-- QUOTES VIEW/);
+    // The feed drifts beneath a post; the page header stays put.
+    assert.equal((html.match(/data-feed-stage/g) || []).length, 2);
+    assert.match(html, /<header data-video-occluder class="nook-header">/);
+    assert.doesNotMatch(html, /data-feed-stage class="nook-tabs-frame"/);
+    // Its title and tabs fade through a variable, so tucked-away tabs stay hidden,
+    // and the tabs' slide transition is paused while a post moves.
+    const header = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/header.css'), 'utf8');
+    assert.match(css, /\.nook-header > \.nook-title-row, \.nook-header > \.nook-tabs-frame \{ opacity: var\(--detail-beneath, 1\); \}/);
+    assert.match(header, /\.nook-header\.tabs-hidden \.nook-tabs-frame \{[^}]*opacity: 0;/);
+    assert.match(css, /\.nook-header\.is-beneath-detail > \.nook-tabs-frame \{ transition: none; \}/);
+    assert.match(html, /<div x-ignore data-detail-snapshot class="detail-underlay" aria-hidden="true"><\/div>/);
+    assert.match(html, /<div x-ref="detailShade" class="detail-shade" aria-hidden="true"><\/div>/);
+    const z = name => Number(css.match(new RegExp(`\\.${name} \\{[^}]*z-index: (\\d+)`))[1]);
+    assert.ok(z('detail-underlay') < z('detail-shade') && z('detail-shade') < z('detail-layer') && z('detail-layer') < 100);
+    // Vertical scrolling stays native; a drag at either end never scrolls the feed.
+    assert.match(css, /\.detail-layer \{[^}]*touch-action: pan-y;/);
+    assert.match(css, /\.detail-layer > \.detail-body \{ min-height: calc\(100% \+ 1px\); \}/);
+    assert.match(css, /overscroll-behavior: contain/);
+});
+
+test('the post layer moves as X does: spring in, follow the finger, spring back or leave', () => {
+    const context = browserContext();
+    const { swipeBackIntent, swipeBackCompletes, detailSettle, detailTransitionStyles, detailBarOpacities } = loadScripts(context, ['themes.js', 'app.js'],
+        '({swipeBackIntent, swipeBackCompletes, detailSettle, detailTransitionStyles, detailBarOpacities})');
+    // Undecided until 10px; rightward and mostly sideways becomes a back swipe.
+    assert.equal(swipeBackIntent(6, 2), null);
+    assert.equal(swipeBackIntent(14, 4), true);
+    assert.equal(swipeBackIntent(-14, 2), false);
+    assert.equal(swipeBackIntent(10, 12), false);
+    // X springs a post let go 56% across back and lets one at 63% go; flicks decide by direction.
+    assert.equal(swipeBackCompletes(0.56 * 430, 430, 0), false);
+    assert.equal(swipeBackCompletes(0.63 * 430, 430, 0), true);
+    assert.equal(swipeBackCompletes(40, 430, 0.8), true);
+    assert.equal(swipeBackCompletes(380, 430, -0.8), false);
+    // Opening, sampled at 60Hz, against X frame by frame (430pt screen, 196/116/65/35/19).
+    const opening = [37, 53, 70, 87, 103].map(t => detailSettle(430, 0, 0, t, false, 430).offset);
+    [196, 116, 65, 35, 19].forEach((x, i) => assert.ok(Math.abs(opening[i] - x) < 20, `${opening[i]} vs X ${x}`));
+    assert.equal(detailSettle(430, 0, 0, 200, false, 430).done, true);
+    // Springing back from a held drag lands in seven frames (X: six).
+    assert.equal(detailSettle(177, 0, 0, 100, false, 430).done, false);
+    assert.equal(detailSettle(177, 0, 0, 117, false, 430).done, true);
+    // A flick leaves at the finger's speed and stops exactly at the edge (X: 63 -> 100 -> 147).
+    const flick = [17, 33].map(t => detailSettle(63, 430, 37 / 16.7, t, true, 430).offset);
+    assert.ok(Math.abs(flick[0] - 100) < 15 && Math.abs(flick[1] - 147) < 15, flick.join());
+    assert.deepEqual({ ...detailSettle(63, 430, 37 / 16.7, 1000, true, 430) }, { offset: 430, done: true });
+    // What it covers drifts 30% of the post's travel under a shade reaching 40% black.
+    assert.deepEqual({ ...detailTransitionStyles(0, 430) }, { layer: 'translate3d(0px, 0, 0)', under: 'translate3d(-129px, 0, 0)', shade: '0.4' });
+    // Top bars stay put: pulled back, the post's is gone by a third of the way and the
+    // feed's appears only near the end; an opening post's bar shows at once.
+    const bars = pulled => ({ ...detailBarOpacities(pulled * 430, 430, false) });
+    assert.deepEqual(bars(0), { top: 1, beneath: 0 });
+    assert.ok(bars(0.09).top > 0.4 && bars(0.09).top < 0.6);
+    assert.deepEqual(bars(0.5), { top: 0, beneath: 0 });
+    assert.deepEqual(bars(0.8), { top: 0, beneath: 1 });
+    assert.deepEqual({ ...detailBarOpacities(300, 430, true) }, { top: 1, beneath: 0 });
+    assert.deepEqual({ ...detailTransitionStyles(430, 430) }, { layer: 'translate3d(430px, 0, 0)', under: 'translate3d(0px, 0, 0)', shade: '0' });
+});
+
+test('the page header and feed stay on the list beneath a post layer', () => {
+    const context = browserContext();
+    const app = loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')();
+    app.viewMode = 'thread';
+    assert.equal(app.pageView, 'thread');
+    app.detailLayer = true;
+    assert.equal(app.pageView, 'list');
 });
 
 test('phone avatar shrinks to clear a scrolled carousel and restores at the first photo', () => {
