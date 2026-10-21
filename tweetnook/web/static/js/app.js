@@ -2907,6 +2907,13 @@ function tweetApp() {
             const time = video.currentTime;
             const nextTime = next.currentTime;
             const oldPlayer = video.parentElement, newPlayer = next.parentElement;
+            // A single video sizes its tile. Between the two moves one tile is
+            // empty, and iOS re-anchors the scroll to that collapse, jumping the
+            // feed and stopping its momentum; hold both heights until both are filled.
+            const players = [oldPlayer, newPlayer];
+            const heights = players.map(player => player.style.height);
+            const locked = players.map(player => player.offsetHeight);
+            players.forEach((player, index) => { if (locked[index]) player.style.height = `${locked[index]}px`; });
             oldPlayer.replaceChild(next, video);
             newPlayer.prepend(video);
             const restore = (node, attrs, position) => {
@@ -2925,6 +2932,7 @@ function tweetApp() {
             };
             restore(next, previous, time);
             restore(video, incoming, nextTime);
+            players.forEach((player, index) => { player.style.height = heights[index]; });
             return video;
         },
 

@@ -198,9 +198,9 @@ test('mobile audible handoffs reuse the gesture-authorized element across new pa
         video.removeAttribute=name=>attrs.delete(name);
         video.hasAttribute=name=>attrs.has(name);
         video.currentTime=0;
-        const holder={video,querySelector:()=>null,
-            replaceChild(incoming,outgoing){assert.equal(this.video,outgoing);incoming.parentElement.video=null;this.video=incoming;incoming.parentElement=this;outgoing.parentElement=null;},
-            prepend(incoming){this.video=incoming;incoming.parentElement=this;},
+        const holder={video,querySelector:()=>null,style:{height:''},offsetHeight:300,
+            replaceChild(incoming,outgoing){assert.equal(this.video,outgoing);const from=incoming.parentElement;assert.equal(from.style.height,'300px');from.video=null;this.video=incoming;incoming.parentElement=this;outgoing.parentElement=null;},
+            prepend(incoming){assert.equal(this.style.height,'300px');this.video=incoming;incoming.parentElement=this;},
         };
         video.parentElement=holder;
         return holder;
@@ -211,6 +211,8 @@ test('mobile audible handoffs reuse the gesture-authorized element across new pa
     assert.equal(app.reuseAudibleFeedVideo(upcoming),authorized);
     assert.equal(nextHolder.video,authorized);assert.equal(authorized.src,'second.mp4');
     assert.equal(firstHolder.video,upcoming);assert.equal(upcoming.src,'first.mp4');
+    // Tile heights are held only while one of them is empty.
+    assert.equal(firstHolder.style.height,'');assert.equal(nextHolder.style.height,'');
     const appended=player(1500),lastHolder=prepare(appended,'third.mp4');
     assert.equal(app.reuseAudibleFeedVideo(appended),authorized);
     assert.equal(lastHolder.video,authorized);assert.equal(authorized.src,'third.mp4');
