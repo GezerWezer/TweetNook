@@ -3868,7 +3868,7 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     for (const name of ['child', 'reply']) {
         assert.equal(html.split(`:class="{ 'quote-compact': isMediaQuotingMedia(${name}) }"`).length - 1, 2);
         assert.equal(html.split(`isMediaQuotingMedia(${name}) ? renderQuoteThumbnail(${name}.qt_media) : renderMediaGrid(${name}.qt_media, 'quote', getQuoteTweet(${name}))`).length - 1, 2);
-        assert.equal(html.split(`@click="if (!isMediaQuotingMedia(${name})) $event.stopPropagation()"`).length - 1, 2);
+        assert.equal(html.split(`@click="if (!isMediaQuotingMedia(${name})) stopMediaClick($event)"`).length - 1, 2);
         const replyLines = html.split(`<template x-if="getReplyRecipients({raw_json: getQuoteTweet(${name})}).length">`).slice(1);
         assert.equal(replyLines.length, 2);
         for (const line of replyLines) {
@@ -3881,7 +3881,7 @@ test('media quoting media is compact in lists and flush in the detail view', () 
         assert.match(mainQuote, /class="quote-card quote-card-detail /);
         const mediaOwner = main === 'threadData?.main' ? 'threadData' : 'panelThreadData';
         assert.ok(html.includes(`class="main-tweet-quote" :class="{ 'main-tweet-quote-after-single-media': (${mediaOwner}.main.media || []).length === 1 }"`));
-        assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media, (${mediaOwner}.main.media || []).length ? 'quote-detail-expanded' : 'quote-detail', getQuoteTweet(${mediaOwner}.main))" @click.stop></div>`));
+        assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media, (${mediaOwner}.main.media || []).length ? 'quote-detail-expanded' : 'quote-detail', getQuoteTweet(${mediaOwner}.main))" @click="stopMediaClick($event)"></div>`));
     }
     assert.equal((html.match(/renderMediaGrid\((?:threadData|panelThreadData)\.main\.media, 'detail', (?:threadData|panelThreadData)\.main\)/g) || []).length, 2);
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
@@ -9006,6 +9006,8 @@ test('phone carousel scrolls freely by touch and its padding opens the post', ()
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     // pointer-events: none on a scroller stops iOS touch scrolling even when its children accept touches.
     assert.doesNotMatch(css, /\.media-carousel-track \{ pointer-events: none; \}/);
+    // Its padding opens the post, so it keeps the post's pointer cursor.
+    assert.doesNotMatch(css.match(/\.media-carousel-track \{[^}]*\}/)[0], /cursor/);
     assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.media-carousel-track \{\s*scroll-snap-type: none;\s*\}/);
     assert.match(css, /@media \(hover: none\) \{\s*\.media-carousel-arrow \{ display: none; \}/);
 
@@ -9016,16 +9018,20 @@ test('phone carousel scrolls freely by touch and its padding opens the post', ()
         tagName: 'DIV', dataset, parentElement,
         classList: {contains: name => classes.includes(name)},
         closest(selector) {
+            const matches = (el, part) => part === '[data-lightbox-media]'
+                ? 'lightboxMedia' in el.dataset : el.classList.contains(part.slice(1));
             for (let el = this; el; el = el.parentElement) {
-                if (selector.split(',').some(part => el.classList.contains(part.trim().slice(1)))) return el;
+                if (selector.split(',').some(part => matches(el, part.trim()))) return el;
             }
             return null;
         },
     });
+    // The feed's markup: the carousel carries the lightbox data inside the media wrapper.
     const list = node([]);
     const card = node([], {action: 'thread', threadId: '7'}, list);
-    const carousel = node(['media-carousel'], {action: 'stop'}, card);
-    const track = node(['media-carousel-track'], {}, carousel);
+    const media = node([], {action: 'media'}, card);
+    const carousel = node(['media-carousel'], {action: 'stop', lightboxMedia: '[]'}, media);
+    const track = node(['media-carousel-track'], {}, node(['media-carousel-nav'], {}, carousel));
     const item = node(['media-carousel-item'], {}, track);
     const click = target => {
         let stopped = false;
@@ -9036,6 +9042,36 @@ test('phone carousel scrolls freely by touch and its padding opens the post', ()
     assert.deepEqual(opened, ['7']);
     assert.equal(click(item), true);
     assert.deepEqual(opened, ['7']);
+
+    // A quoted carousel bleeds into the quote's padding, which opens the quote.
+    const quote = node(['quote-card'], {action: 'quote', threadId: '9'}, card);
+    const quoteMedia = node(['quote-media'], {action: 'stop'}, quote);
+    const quoteCarousel = node(['media-carousel'], {action: 'stop', lightboxMedia: '[]'}, quoteMedia);
+    const quoteTrack = node(['media-carousel-track'], {}, node(['media-carousel-nav'], {}, quoteCarousel));
+    const quoteItem = node(['media-carousel-item'], {}, quoteTrack);
+    assert.equal(click(quoteTrack), true);
+    assert.deepEqual(opened, ['7', '9']);
+    assert.equal(click(quoteItem), true);
+    assert.deepEqual(opened, ['7', '9']);
+
+    // Thread views wrap x-html media in stopMediaClick, which lets the same gaps through.
+    const stops = target => {
+        let stopped = false;
+        app.stopMediaClick({target, stopPropagation: () => { stopped = true; }});
+        return stopped;
+    };
+    assert.equal(stops(track), false);
+    assert.equal(stops(item), true);
+    assert.equal(stops(node([], {}, media)), true);
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.doesNotMatch(html, /x-html="[^"]*renderMediaGrid\([^"]*"[^>]*@click\.stop/);
+    assert.doesNotMatch(html, /renderMediaGrid\([^"]*"[^>]*\$event\.stopPropagation\(\)/);
+    // Alpine binds handlers inside x-html, so the carousel itself must not stop clicks.
+    app.mediaGallery = 'carousel';
+    const photos = Array(2).fill({type: 'photo', width: 480, height: 480, download: {local_path: 'media/p.webp'}});
+    const strip = app.renderMediaGrid(photos, 'feed', null);
+    assert.match(strip, /media-carousel-track/);
+    assert.doesNotMatch(strip.match(/<div class="media-carousel [^>]*>/)[0], /@click/);
 });
 
 test('opening a conversation in the split panel keeps the column width', () => {

@@ -447,6 +447,13 @@ function tweetNookGalleryAvatar(track) {
     if (scrolled && Number(avatar.style.getPropertyValue('--avatar-yield-scale')) >= 1) return;
     avatar.classList.toggle('avatar-yield', scrolled);
 }
+// The carousel scrollport bleeds past its wrappers (under the avatar column, into
+// a quote's padding); only its tiles and arrows are media. pointer-events on the
+// padding would stop iOS scrolling, so click handlers ask this instead.
+function isCarouselGap(target) {
+    return Boolean(target?.closest?.('.media-carousel'))
+        && !target.closest('.media-carousel-item, .media-carousel-arrow');
+}
 function tweetNookGalleryTracks(root) {
     return [...(root.matches?.('.media-carousel-track') ? [root] : []),
         ...root.querySelectorAll('.media-carousel-track')];
@@ -4119,6 +4126,7 @@ function tweetApp() {
         // wins, and every action except opening the card's thread stops propagation,
         // as the per-card template's @click.stop handlers did.
         handleFeedClick(event, list) {
+            const carouselGap = isCarouselGap(event.target);
             for (let element = event.target; element && element !== list; element = element.parentElement) {
                 // Links (tweet text, link cards, Open on X) navigate on their own.
                 if (element.tagName === 'A') {
@@ -4135,13 +4143,12 @@ function tweetApp() {
                     this.openThread(element.dataset.threadId);
                     return;
                 }
+                // A carousel's padding and gaps belong to the post or quote around it,
+                // so none of the media wrappers it sits in consume them.
+                if (carouselGap && (action === 'media' || action === 'stop')) continue;
                 // Narrow media leaves a blank region in its full-width wrapper.
                 // That region belongs to the post; only the media frame consumes clicks.
                 if (action === 'media' && !event.target.closest('[data-lightbox-media], .media-video-player, .media-frame')) continue;
-                // The carousel scrollport bleeds under the avatar column; its padding
-                // and gaps belong to the post too. (pointer-events would stop iOS scrolling.)
-                if (action === 'stop' && element.classList.contains('media-carousel')
-                    && !event.target.closest('.media-carousel-item, .media-carousel-arrow')) continue;
                 event.stopPropagation();
                 if (action === 'quote') {
                     this.openThread(element.dataset.threadId);
@@ -4155,6 +4162,12 @@ function tweetApp() {
                 }
                 return;
             }
+        },
+
+        // Thread views wrap x-html media in this instead of @click.stop, so a
+        // carousel's padding and gaps open the row or quote around it.
+        stopMediaClick(event) {
+            if (!isCarouselGap(event.target)) event.stopPropagation();
         },
 
         // Thread ancestors use the same quote markup and data-action map as feed
@@ -8551,7 +8564,7 @@ function tweetApp() {
             const gridClass = allMedia.length === 2 ? 'grid-cols-2' : 'grid-cols-2 grid-rows-2';
             const arrow = (direction, label) => `<button type="button" class="media-carousel-arrow media-carousel-${direction}" aria-label="${label}" disabled onclick="event.stopPropagation(); window.tweetNookScrollGallery(this, ${direction === 'previous' ? -1 : 1})"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${direction === 'previous' ? 'M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z' : 'M12.957 4.54L20.414 12l-7.457 7.46-1.414-1.42L16.586 13H3v-2h13.586l-5.043-5.04 1.414-1.42z'}"/></svg></button>`;
             let html = carousel
-                ? `<div class="media-carousel media-carousel-${context} mt-3" style="--gallery-height: ${gallery.height}; --gallery-max-aspect: ${gallery.maxAspect}${gallery.appHeight ? `; --gallery-height-app: ${gallery.appHeight}` : ''}" ${mediaAttr} data-action="stop" @click.stop>${indicator && context === 'feed' ? `<div class="media-carousel-dots" aria-hidden="true">${allMedia.map((_, idx) => `<span style="--dot-active: ${idx ? 0 : 1}"></span>`).join('')}</div>` : ''}<div class="media-carousel-nav">${arrow('previous', 'Previous')}${arrow('next', 'Next')}<div class="media-carousel-track" role="group" aria-label="Tweet media" tabindex="0" onscroll="window.tweetNookGalleryScroll(this)" onkeydown="window.tweetNookGalleryKey(event, this)">`
+                ? `<div class="media-carousel media-carousel-${context} mt-3" style="--gallery-height: ${gallery.height}; --gallery-max-aspect: ${gallery.maxAspect}${gallery.appHeight ? `; --gallery-height-app: ${gallery.appHeight}` : ''}" ${mediaAttr} data-action="stop">${indicator && context === 'feed' ? `<div class="media-carousel-dots" aria-hidden="true">${allMedia.map((_, idx) => `<span style="--dot-active: ${idx ? 0 : 1}"></span>`).join('')}</div>` : ''}<div class="media-carousel-nav">${arrow('previous', 'Previous')}${arrow('next', 'Next')}<div class="media-carousel-track" role="group" aria-label="Tweet media" tabindex="0" onscroll="window.tweetNookGalleryScroll(this)" onkeydown="window.tweetNookGalleryKey(event, this)">`
                 : `<div class="mt-3 grid gap-[2px] rounded-2xl overflow-hidden border border-[var(--border-color)] aspect-[16/9] ${gridClass}" ${mediaAttr} @click.stop>`;
             
             let downloadedIdx = 0;

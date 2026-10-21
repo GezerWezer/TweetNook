@@ -3242,7 +3242,6 @@ html { touch-action: manipulation; }
     scrollbar-width: none;
     scroll-snap-type: x mandatory;
     overscroll-behavior-x: contain;
-    cursor: auto;
 }
 .media-carousel-track::-webkit-scrollbar { display: none; }
 .media-carousel-item {
