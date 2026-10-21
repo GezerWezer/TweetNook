@@ -3157,7 +3157,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
 #nook-feed { overflow-y: clip; }
 #nook-feed.feed-collapsed { height: 0; padding-bottom: 0; }
 .detail-layer, .detail-underlay {
-    --detail-bar: 56px;
+    --detail-bar: 38px;
     position: fixed; top: 0; bottom: 0; left: 0; right: 0; margin: 0 auto; max-width: 600px;
     overflow-y: auto; overscroll-behavior: contain; background: var(--bg-primary);
 }
@@ -3174,14 +3174,21 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
    the tabs' own slide transition paused so nothing trails the finger. */
 .nook-header > .nook-title-row, .nook-header > .nook-tabs-frame { opacity: var(--detail-beneath, 1); }
 .nook-header.is-beneath-detail > .nook-tabs-frame { transition: none; }
+/* Pages don't zoom: no double-tap zoom anywhere, and no pinch on the app's
+   content (app.js also blocks Safari's pinch gestures). The media viewer sits
+   outside these and keeps its native pinch zoom (.lightbox-gesture-surface). */
+html { touch-action: manipulation; }
+.app-column, .detail-layer-header, .detail-underlay { touch-action: pan-x pan-y; }
 /* The still copy takes taps (so none reach the feed) but none of its links do. */
 .detail-underlay { z-index: 33; display: none; overflow: hidden; }
 .detail-underlay > * { pointer-events: none; }
 .detail-underlay.is-shown { display: block; }
 .detail-shade { position: fixed; inset: 0; z-index: 34; display: none; background: #000; opacity: 0; pointer-events: none; }
 .detail-shade.is-shown { display: block; }
-.detail-layer-header .nook-title-row { box-shadow: 0 1px 0 var(--border-color); }
-.nook-title-line .detail-layer-title { font-size: calc(var(--font-size-base) * 1.333333); line-height: 24px; font-weight: 800; margin: 0; white-space: nowrap; }
+.detail-layer-header .nook-title-row { min-height: var(--detail-bar); height: var(--detail-bar); padding: 4px 8px 0 16px; }
+.detail-layer-header .nook-back { height: 34px; margin-left: -14px; }
+.detail-layer-header .nook-title-block { position: absolute; left: 60px; right: 60px; top: 4px; bottom: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.nook-title-line .detail-layer-title { font-size: 17px; line-height: 21px; font-weight: 700; margin: 0; white-space: nowrap; }
 .media-frame {
     width: min(100%, var(--media-max-width, 100%));
     --media-border-size: 2px;
@@ -3507,10 +3514,6 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     .feed-card [data-action="media"] > .mt-3 {
         margin-top: 8px;
     }
-
-    [data-thread-main].thread-row {
-        padding-top: 7px;
-    }
     .tweet-text:has(> .tweet-text-clamp) {
         position: relative;
     }
@@ -3534,11 +3537,39 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     }
     .tweet-text-detail {
         margin-top: 21px;
+        margin-bottom: 3px;
         font-size: 17.8px;
         line-height: 24.5px;
     }
+    [data-thread-main].thread-row {
+        padding-top: 13px;
+    }
+    [data-thread-main] > div > .mt-3 {
+        margin-top: 22px;
+    }
+    [data-thread-main] > .tweet-text-detail:empty {
+        display: none;
+    }
+    [data-thread-main] > .tweet-text-detail:empty + div > .mt-3,
+    [data-thread-main] > .tweet-text-detail:empty + div:empty + div > .mt-3,
+    [data-thread-main] > .tweet-text-detail:empty + div:empty + div:empty ~ .main-tweet-quote > .mt-3 {
+        margin-top: 6px;
+    }
+    [data-thread-main] .tweet-timestamp {
+        padding: 22px 0 6px;
+    }
     .tweet-actions-main {
+        height: 38px;
         border-top-width: 0;
+    }
+    .thread-row:not([data-thread-main]) > .flex-1 {
+        margin-top: -3.5px;
+    }
+    .thread-row:not([data-thread-main]) .tweet-reply-context {
+        margin-bottom: 6px;
+    }
+    .thread-row:not([data-thread-main]) .tweet-actions {
+        margin-top: 7px;
     }
 
     .date-web {

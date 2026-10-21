@@ -395,7 +395,7 @@
                             <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-2" x-html="renderReplyRecipientContent(threadData.main)" @click="handleReplyRecipientClick($event)"></div>
                         </template>
 
-                        <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
+                        <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(threadData.main, true)" @click="handleTextClick($event)"></div>
                         <div x-html="renderCard(threadData.main, 'detail')" @click.stop></div>
                         <div x-html="renderMediaGrid(threadData.main.media, 'detail', threadData.main)" @click.stop></div>
 
@@ -837,7 +837,7 @@
                         <template x-if="getReplyRecipients(panelThreadData.main).length && panelThreadData.parents.length === 0">
                             <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-2" x-html="renderReplyRecipientContent(panelThreadData.main)" @click="handleReplyRecipientClick($event)"></div>
                         </template>
-                        <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(panelThreadData.main)" @click="handleTextClick($event)"></div>
+                        <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(panelThreadData.main, true)" @click="handleTextClick($event)"></div>
                         <div x-html="renderCard(panelThreadData.main, 'detail')" @click.stop></div>
                         <div x-html="renderMediaGrid(panelThreadData.main.media, 'detail', panelThreadData.main)" @click.stop></div>
 
