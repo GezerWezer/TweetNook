@@ -40,7 +40,7 @@
 
     <div x-data="tweetApp()" x-init="initApp(); $nextTick(() => { nookSettingsInit($data); afterStartupFeed(() => nookLoadSyncCollections($data)); })" class="flex justify-center w-full">
     <!-- LEFT COLUMN (Main Feed) -->
-    <div :class="splitPanel && panelStack.length > 0 ? 'border-l border-[var(--border-color)]' : 'border-x border-[var(--border-color)]'" class="w-full max-w-[600px] min-h-screen relative bg-[var(--bg-primary)] flex-shrink-0">
+    <div :class="splitPanel && panelStack.length > 0 ? 'border-l border-[var(--border-color)]' : 'border-x border-[var(--border-color)]'" class="app-column w-full max-w-[600px] min-h-screen relative bg-[var(--bg-primary)] flex-shrink-0">
         
         <section x-cloak x-show="setupData && !setupForced && !archiveReady" class="setup-card m-4" role="status">
             <h2 class="text-xl font-bold" x-text="['failed', 'interrupted'].includes(setupData?.archive?.initialization_state) ? 'Archive setup needs attention' : 'Your archive is being initialized'"></h2>
@@ -292,7 +292,7 @@
                 <div>
                     <!-- PARENTS -->
                     <template x-for="(parent, index) in threadData.parents" :key="parent.tweet_id">
-                        <div class="px-4 pt-3 flex relative cursor-pointer hover-bg" :data-thread-id="parent.tweet_id" @click="openThread(parent.tweet_id)">
+                        <div class="thread-row px-4 pt-3 flex relative cursor-pointer hover-bg" :data-thread-id="parent.tweet_id" @click="openThread(parent.tweet_id)">
                             
                             <template x-if="index > 0">
                                 <div class="thread-connector-up w-0.5 bg-[var(--thread-line)] absolute top-0 left-[36px] -translate-x-1/2 z-0"></div>
@@ -312,7 +312,7 @@
                                     <span class="text-[var(--text-secondary)]">·</span>
                                     <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
                                         <div class="roll-inner">
-                                            <span class="roll-item hover:underline" x-text="formatDate(parent.created_at)"></span>
+                                            <span class="roll-item hover:underline" x-html="dateLabel(parent.created_at)"></span>
                                             <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(parent)"></span>
                                         </div>
                                     </div>
@@ -333,7 +333,7 @@
                     </template>
 
                     <!-- MAIN TWEET -->
-                    <div class="px-4 pt-3 pb-3 tweet-border relative" data-thread-main="page">
+                    <div class="thread-row px-4 pt-3 pb-3 tweet-border relative" data-thread-main="page">
                         <template x-if="threadData.parents.length > 0">
                             <div class="thread-connector-up absolute w-0.5 bg-[var(--thread-line)] top-0 left-[36px] -translate-x-1/2 z-0"></div>
                         </template>
@@ -411,7 +411,7 @@
                                             <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(threadData?.main)).name"></span>
                                             <span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + getQuoteAuthor(getQuoteTweet(threadData?.main)).screen_name"></span>
                                             <span class="text-[var(--text-secondary)]">·</span>
-                                            <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(threadData?.main)?.legacy?.created_at || getQuoteTweet(threadData?.main)?.created_at)"></span>
+                                            <span class="text-[var(--text-secondary)] tweet-byline-detail" x-html="dateLabel(getQuoteTweet(threadData?.main)?.legacy?.created_at || getQuoteTweet(threadData?.main)?.created_at)"></span>
                                         </div>
                                         
                                         <template x-if="getReplyRecipients({raw_json: getQuoteTweet(threadData?.main)}).length">
@@ -433,7 +433,7 @@
                             <div class="tweet-timestamp-meta flex flex-wrap items-center gap-x-1">
                                 <div class="roll-wrapper cursor-default">
                                     <div class="roll-inner">
-                                        <span class="roll-item" x-text="formatDate(threadData.main.created_at, true)"></span>
+                                        <span class="roll-item" x-html="dateLabel(threadData.main.created_at, true)"></span>
                                         <span class="roll-item text-[var(--accent-color)] font-medium" x-text="formatSyncDate(threadData.main)"></span>
                                     </div>
                                 </div>
@@ -461,7 +461,7 @@
                                 <h2 class="px-4 pt-4 pb-1 text-xl font-extrabold text-[var(--text-primary)]">Other replies</h2>
                             </template>
                             <!-- Direct Reply Card -->
-                            <div class="px-4 py-3 flex relative cursor-pointer hover-bg" :data-thread-id="child.tweet_id" @click="openThread(child.tweet_id)">
+                            <div class="thread-row px-4 py-3 flex relative cursor-pointer hover-bg" :data-thread-id="child.tweet_id" @click="openThread(child.tweet_id)">
                                 <!-- Connecting line down to nested replies (legacy op_replies key) -->
                                 <template x-if="child.op_replies && child.op_replies.length > 0">
                                     <div class="thread-connector-down w-0.5 bg-[var(--thread-line)] absolute bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
@@ -479,7 +479,7 @@
                                         <span class="text-[var(--text-secondary)]">·</span>
                                         <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
                                             <div class="roll-inner">
-                                                <span class="roll-item hover:underline" x-text="formatDate(child.created_at)"></span>
+                                                <span class="roll-item hover:underline" x-html="dateLabel(child.created_at)"></span>
                                                 <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(child)"></span>
                                             </div>
                                         </div>
@@ -509,7 +509,7 @@
                                                         <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(child)).name"></span>
                                                         <span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + getQuoteAuthor(getQuoteTweet(child)).screen_name"></span>
                                                         <span class="text-[var(--text-secondary)]">·</span>
-                                                        <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
+                                                        <span class="text-[var(--text-secondary)] tweet-byline-detail" x-html="dateLabel(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
                                                     </div>
                                                     <template x-if="getReplyRecipients({raw_json: getQuoteTweet(child)}).length">
                                                         <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(child)})" @click="handleReplyRecipientClick($event)"></div>
@@ -533,7 +533,7 @@
                             <template x-if="child.op_replies && child.op_replies.length > 0">
                                 <div>
                                     <template x-for="(reply, rIdx) in child.op_replies" :key="reply.tweet_id">
-                                        <div class="thread-nested-row px-4 pb-3 flex relative cursor-pointer hover-bg" :style="{ marginLeft: nestedReplyIndent(reply) + 'px' }" :data-thread-id="reply.tweet_id" @click="openThread(reply.tweet_id)">
+                                        <div class="thread-row thread-nested-row px-4 pb-3 flex relative cursor-pointer hover-bg" :style="{ marginLeft: nestedReplyIndent(reply) + 'px' }" :data-thread-id="reply.tweet_id" @click="openThread(reply.tweet_id)">
                                             
                                             <!-- Top Line Bridge from Child -->
                                             <div class="thread-connector-up w-0.5 bg-[var(--thread-line)] absolute top-0 left-[36px] -translate-x-1/2 z-0"></div>
@@ -556,7 +556,7 @@
                                                     <span class="text-[var(--text-secondary)]">·</span>
                                                     <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
                                                         <div class="roll-inner">
-                                                            <span class="roll-item hover:underline" x-text="formatDate(reply.created_at)"></span>
+                                                            <span class="roll-item hover:underline" x-html="dateLabel(reply.created_at)"></span>
                                                             <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(reply)"></span>
                                                         </div>
                                                     </div>
@@ -586,7 +586,7 @@
                                                                     <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(reply)).name"></span>
                                                                     <span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + getQuoteAuthor(getQuoteTweet(reply)).screen_name"></span>
                                                                     <span class="text-[var(--text-secondary)]">·</span>
-                                                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
+                                                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-html="dateLabel(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
                                                                 </div>
                                                                 <template x-if="getReplyRecipients({raw_json: getQuoteTweet(reply)}).length">
                                                                     <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(reply)})" @click="handleReplyRecipientClick($event)"></div>
@@ -623,6 +623,7 @@
                     </template>
                 </div>
             </template>
+            <div class="thread-bottom-space" :style="threadBottomSpace ? `height: ${threadBottomSpace}px` : ''" aria-hidden="true"></div>
         </div>
         <!-- QUOTES VIEW (single-column only) -->
         <div x-show="viewMode === 'quotes' && !(splitPanel && panelMode)" x-cloak class="pb-20">
