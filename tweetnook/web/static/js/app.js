@@ -2641,6 +2641,15 @@ function tweetApp() {
                 history.replaceState(initialState, '', this.routeUrl(initialRoute));
             }
 
+            // Pages never zoom on touch screens; the media viewer keeps its pinch zoom.
+            // Safari ignores user-scalable=no, but honours a cancelled pinch gesture.
+            if (window.matchMedia?.('(pointer: coarse)')?.matches) {
+                const blockZoom = event => {
+                    if (!event.target?.closest?.('.lightbox-viewer')) event.preventDefault();
+                };
+                document.addEventListener('gesturestart', blockZoom, { passive: false });
+                document.addEventListener('gesturechange', blockZoom, { passive: false });
+            }
             window.addEventListener('popstate', (event) => {
                 // A back this page started already stopped the post's videos.
                 if (!detailPop) this.pauseAllVideos();
@@ -4973,6 +4982,11 @@ function tweetApp() {
             if (missing <= 0 || attempts <= 0) return;
             // A screen of room always suffices; never grow past it.
             this.threadBottomSpace = Math.min(this.threadBottomSpace + missing, window.innerHeight);
+            // Safari can still lay out the old height on the next tick, so every retry
+            // fell short (a reply opened under its parent's tail): size the spacer now.
+            const root = this.detailLayer ? this.$refs.detailStage : globalThis.document;
+            const spacer = root?.querySelector?.('.thread-bottom-space');
+            if (spacer) spacer.style.height = `${this.threadBottomSpace}px`;
             this.$nextTick(() => this.scrollPageTo(target, attempts - 1));
         },
 

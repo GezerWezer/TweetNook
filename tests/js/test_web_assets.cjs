@@ -572,6 +572,8 @@ test('demo follows system appearance until an explicit theme is chosen', () => {
             },
         };
         context.window.matchMedia = query => {
+            // Startup also asks whether this is a touch screen (zoom blocking).
+            if (query === '(pointer: coarse)') return { matches: false };
             assert.equal(query, '(prefers-color-scheme: dark)');
             return scheme;
         };
@@ -9134,6 +9136,74 @@ test('the post layer moves as X does: spring in, follow the finger, spring back 
     assert.deepEqual(bars(0.8), { top: 0, beneath: 1 });
     assert.deepEqual({ ...detailBarOpacities(300, 430, true) }, { top: 1, beneath: 0 });
     assert.deepEqual({ ...detailTransitionStyles(430, 430) }, { layer: 'translate3d(430px, 0, 0)', under: 'translate3d(0px, 0, 0)', shade: '0' });
+});
+
+test('pages never zoom on touch screens, except media in the fullscreen viewer', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
+    // No double-tap zoom anywhere; no pinch on the app's content.
+    assert.match(css, /html \{ touch-action: manipulation; \}/);
+    assert.match(css, /\.app-column, \.detail-layer-header, \.detail-underlay \{ touch-action: pan-x pan-y; \}/);
+    // The viewer is outside the column, so its surface keeps native pinch zoom.
+    assert.ok(html.indexOf('class="lightbox-viewer') > html.indexOf('<!-- /LEFT COLUMN -->'));
+    assert.match(css, /\.lightbox-gesture-surface \{\s*touch-action: pinch-zoom;/);
+    // Safari ignores user-scalable=no; its pinch gestures are cancelled outside the viewer.
+    assert.match(js, /addEventListener\('gesturestart', blockZoom, \{ passive: false \}\)/);
+    assert.match(js, /if \(!event\.target\?\.closest\?\.\('\.lightbox-viewer'\)\) event\.preventDefault\(\);/);
+    assert.doesNotMatch(html, /user-scalable|maximum-scale/);
+});
+
+test('the feed scroll indicator is never hidden or rebuilt around a post layer', () => {
+    // iOS never shows the page's indicator again once scrollbar-width or
+    // ::-webkit-scrollbar hides it, and an overflow change to rebuild it made the
+    // feed jump; the brief indicator over a post opened mid-scroll is the lesser cost.
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
+    assert.doesNotMatch(css, /detail-covering/);
+    assert.doesNotMatch(js, /detail-covering|overflowY = 'scroll'/);
+});
+
+test('the phone post page spaces its parts and replies like X and shows the whole post', () => {
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.match(css, /--detail-bar: 38px;/);
+    assert.doesNotMatch(css, /\.detail-layer-header \.nook-title-row \{[^}]*box-shadow/);
+    assert.match(css, /\.detail-layer-header \.nook-title-block \{[^}]*justify-content: center/);
+    const phone = css.slice(css.indexOf('@media (max-width: 640px)'));
+    assert.match(phone, /\[data-thread-main\]\.thread-row \{\s*padding-top: 13px;/);
+    assert.match(phone, /\[data-thread-main\] > div > \.mt-3 \{\s*margin-top: 22px;/);
+    assert.match(phone, /\[data-thread-main\] > \.tweet-text-detail:empty \{\s*display: none;/);
+    assert.match(phone, /\[data-thread-main\] \.tweet-timestamp \{\s*padding: 22px 0 6px;/);
+    assert.match(phone, /\.tweet-actions-main \{\s*height: 38px;/);
+    assert.match(phone, /\.thread-row:not\(\[data-thread-main\]\) > \.flex-1 \{\s*margin-top: -3\.5px;/);
+    assert.match(phone, /\.thread-row:not\(\[data-thread-main\]\) \.tweet-actions \{\s*margin-top: 7px;/);
+    assert.ok(html.includes('x-html="formatText(threadData.main, true)"'));
+    assert.ok(html.includes('x-html="formatText(panelThreadData.main, true)"'));
+});
+
+test('a short reply page sizes its spacer before retrying the scroll to the post', () => {
+    const context = browserContext();
+    const app = loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')();
+    const spacer = {style: {}};
+    let scrollTop = 0;
+    const stage = {
+        querySelector: selector => (selector === '.thread-bottom-space' ? spacer : null),
+        get scrollTop() { return scrollTop; },
+        // The page can scroll only as far as the spacer's applied height allows.
+        set scrollTop(value) { scrollTop = Math.min(value, 378 + (parseInt(spacer.style.height, 10) || 0)); },
+    };
+    app.$refs = {detailStage: stage};
+    app.detailLayer = true;
+    app.detailScrollY = () => scrollTop;
+    const ticks = [];
+    app.$nextTick = fn => ticks.push(fn);
+    context.window.innerHeight = 873;
+    app.threadBottomSpace = 0;
+    app.scrollPageTo(558);
+    assert.equal(spacer.style.height, '180px');
+    while (ticks.length) ticks.shift()();
+    assert.equal(scrollTop, 558);
 });
 
 test('the page header and feed stay on the list beneath a post layer', () => {
