@@ -9036,6 +9036,32 @@ test('phone carousel scrolls freely by touch and its padding opens the post', ()
     assert.deepEqual(opened, ['7']);
 });
 
+test('opening a conversation in the split panel keeps the column width', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    // Swapping border-x for border-l narrowed the column by 1px and re-wrapped the feed.
+    const column = html.match(/<div [^>]*class="[^"]*app-column[^"]*"[^>]*>/)[0];
+    assert.match(column, /class="border-x [^"]*app-column/);
+    assert.doesNotMatch(column, /border-l\b/);
+    assert.match(column, /:class="\{ 'app-column-split': splitPanel && panelStack\.length > 0 \}"/);
+    assert.match(css, /\.app-column\.app-column-split \{ border-right-color: transparent; \}/);
+});
+
+test('a conversation collapses the feed instead of removing it', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const feed = html.match(/<div id="nook-feed"[^>]*>/)[0];
+    // display: none made WebKit lay out every card of a long feed again on return.
+    assert.doesNotMatch(feed, /x-show="[^"]*viewMode/);
+    assert.match(feed, /:class="\{ 'feed-collapsed': viewMode !== 'list' \}"/);
+    assert.match(feed, /:aria-hidden="viewMode !== 'list' \? 'true' : null"/);
+    assert.match(css, /#nook-feed \{ overflow-y: clip; \}/);
+    const collapsed = css.match(/#nook-feed\.feed-collapsed \{([^}]*)\}/)[1];
+    assert.match(collapsed, /height: 0;/);
+    // Toggling these restyles every card.
+    assert.doesNotMatch(collapsed, /visibility|overflow|content-visibility|display/);
+});
+
 test('phone avatar shrinks to clear a scrolled carousel and restores at the first photo', () => {
     const context = browserContext();
     context.window.matchMedia = query => ({matches: query.includes('(max-width: 640px)')});

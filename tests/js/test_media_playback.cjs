@@ -48,6 +48,19 @@ test('sticky headers stop audio while the raw viewport still contains most of th
     app.autoplayNextVideo();assert.equal(video.paused,true);
     video.top=120;app.autoplayNextVideo();await settle();assert.equal(video.paused,false,'automatic pauses do not leave a manual hold');
 });
+test('leaving a view rewinds played videos and leaves untouched players alone', () => {
+    const {app,player}=fixture();
+    const played=player(0),untouched=player(500);
+    played.paused=false;played.currentTime=12;untouched.currentTime=0;
+    let seeks=0;
+    for(const video of [played,untouched]){
+        let time=video.currentTime;
+        Object.defineProperty(video,'currentTime',{get:()=>time,set(value){seeks++;time=value;}});
+    }
+    app.pauseAllVideos();
+    assert.equal(played.paused,true);assert.equal(played.currentTime,0);
+    assert.equal(untouched.pauseCalls,0);assert.equal(seeks,1);
+});
 test('a tall portrait video can autoplay while filling a short viewport', async () => {
     const {app,player,visibility}=fixture();const video=player(0,1600);
     assert.equal(visibility(video).ratio,1);app.updateAutoplayVisibility(video,true);await settle();assert.equal(video.paused,false);

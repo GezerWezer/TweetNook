@@ -3090,10 +3090,13 @@ function tweetApp() {
             this.setSharedVideoAudio(video, muted, video.volume);
         },
 
+        // Leaving a view stops playback and rewinds what played. Untouched players
+        // are left alone: a seek on each of a long feed's videos rewrote every
+        // player's time labels and forced the whole feed to lay out again.
         pauseAllVideos() {
             document.querySelectorAll('video').forEach(v => {
-                v.pause();
-                v.currentTime = 0;
+                if (!v.paused) v.pause();
+                if (v.currentTime > 0) v.currentTime = 0;
             });
         },
 

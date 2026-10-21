@@ -3146,6 +3146,16 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
 .media-single {
     container-type: inline-size;
 }
+/* The split panel draws the column's right rule. Hiding this one by colour, not
+   width, keeps the column's content width, so opening a conversation does not
+   re-wrap every card in a long feed. */
+.app-column.app-column-split { border-right-color: transparent; }
+/* A conversation opened from the list collapses the feed instead of removing it
+   (display: none), so a long feed keeps its layout: WebKit spent seconds tearing
+   it down and laying every card out again. Only the height changes; the clip is
+   permanent because switching overflow or visibility restyles every card. */
+#nook-feed { overflow-y: clip; }
+#nook-feed.feed-collapsed { height: 0; padding-bottom: 0; }
 .media-frame {
     width: min(100%, var(--media-max-width, 100%));
     --media-border-size: 2px;
