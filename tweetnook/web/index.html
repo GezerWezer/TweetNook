@@ -40,7 +40,7 @@
 
     <div x-data="tweetApp()" x-init="initApp(); $nextTick(() => { nookSettingsInit($data); afterStartupFeed(() => nookLoadSyncCollections($data)); })" class="flex justify-center w-full">
     <!-- LEFT COLUMN (Main Feed) -->
-    <div :class="splitPanel && panelStack.length > 0 ? 'border-l border-[var(--border-color)]' : 'border-x border-[var(--border-color)]'" class="app-column w-full max-w-[600px] min-h-screen relative bg-[var(--bg-primary)] flex-shrink-0">
+    <div :class="{ 'app-column-split': splitPanel && panelStack.length > 0 }" class="border-x border-[var(--border-color)] app-column w-full max-w-[600px] min-h-screen relative bg-[var(--bg-primary)] flex-shrink-0">
         
         <section x-cloak x-show="setupData && !setupForced && !archiveReady" class="setup-card m-4" role="status">
             <h2 class="text-xl font-bold" x-text="['failed', 'interrupted'].includes(setupData?.archive?.initialization_state) ? 'Archive setup needs attention' : 'Your archive is being initialized'"></h2>
@@ -93,7 +93,7 @@
         </div>
 
         <!-- LIST VIEW -->
-        <div id="nook-feed" role="tabpanel" :aria-labelledby="'nook-tab-' + collectionFilter" x-show="archiveReady && !setupForced && viewMode === 'list'" class="pb-4">
+        <div id="nook-feed" role="tabpanel" :aria-labelledby="'nook-tab-' + collectionFilter" x-show="archiveReady && !setupForced" :class="{ 'feed-collapsed': viewMode !== 'list' }" :aria-hidden="viewMode !== 'list' ? 'true' : null" class="pb-4">
             <div class="nook-search-wrap relative" x-data="searchAutocomplete()" @click.away="showDropdown = false">
                 <div class="nook-search-field relative w-full">
                     <span class="nook-search-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
