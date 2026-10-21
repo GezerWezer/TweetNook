@@ -3186,6 +3186,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
 }
 .media-carousel-detail { --gallery-left: 16px; }
 .media-carousel-nav { position: relative; margin: -2px; }
+.media-carousel-dots { display: none; }
 .media-carousel-track {
     display: flex;
     gap: 4px;
@@ -3250,6 +3251,10 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
 }
 @media (prefers-reduced-motion: reduce) {
     .media-carousel-arrow { transition: none; }
+}
+/* Touch screens keep :hover after a tap; the app has no arrows, only swiping. */
+@media (hover: none) {
+    .media-carousel-arrow { display: none; }
 }
 /* Keep the poster above the native video surface until a decoded frame has
    actually been presented. Controls stay above it and receive all input. */
@@ -3410,4 +3415,219 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
 .link-card-text {
     flex: 1;
     min-width: 0;
+}
+
+/* Large link cards: X's apps show the image with the headline over it and the
+   site underneath. Desktop keeps the bordered card; phones use the app layout. */
+.link-card-overlay-title,
+.link-card-from {
+    display: none;
+}
+
+.date-app {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    .app-column {
+        border-left-width: 0;
+        border-right-width: 0;
+    }
+    .feed-card,
+    .thread-row {
+        padding-left: 9px;
+        padding-right: 9px;
+    }
+    .feed-card > .flex > .avatar,
+    .thread-row > .avatar,
+    .thread-row > .tweet-detail-header > .avatar {
+        width: 48px;
+        height: 48px;
+    }
+    .thread-row > .thread-connector-up,
+    .thread-row > .thread-connector-down {
+        left: 33px;
+    }
+    .tweet-text,
+    .tweet-byline,
+    .tweet-reply-context {
+        font-size: 15.7px;
+        line-height: 20.5px;
+    }
+    .tweet-byline .roll-wrapper,
+    .tweet-byline .roll-item {
+        height: 20.5px;
+    }
+    .tweet-byline-name {
+        flex-shrink: 0;
+        max-width: 70%;
+    }
+    .feed-card > .flex > .flex-1 {
+        margin-top: -3.5px;
+    }
+    .feed-card .tweet-byline {
+        margin-bottom: 1.5px;
+    }
+    .feed-card [data-action="media"] > .mt-3 {
+        margin-top: 8px;
+    }
+
+    [data-thread-main].thread-row {
+        padding-top: 7px;
+    }
+    .tweet-text:has(> .tweet-text-clamp) {
+        position: relative;
+    }
+    .tweet-text-clamp {
+        display: block;
+        max-height: calc(9 * 20.5px);
+        overflow: hidden;
+    }
+    .tweet-text-more {
+        display: none;
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        padding-left: 6px;
+        background: var(--bg-primary);
+        color: var(--accent-color);
+        cursor: pointer;
+    }
+    .tweet-text-clamp.is-clamped + .tweet-text-more {
+        display: block;
+    }
+    .tweet-text-detail {
+        margin-top: 21px;
+        font-size: 17.8px;
+        line-height: 24.5px;
+    }
+    .tweet-actions-main {
+        border-top-width: 0;
+    }
+
+    .date-web {
+        display: none;
+    }
+    .date-app {
+        display: inline;
+    }
+    .tweet-action-views {
+        display: none;
+    }
+
+    .media-frame-feed,
+    .media-frame-detail {
+        width: min(100%, calc(100cqw * var(--media-frame-aspect) * 1.245));
+    }
+    .media-frame-portrait-photo > .media-frame-image,
+    .media-frame-portrait-photo > .media-frame-placeholder {
+        width: 100%;
+    }
+    .media-frame-detail.media-photo > .media-frame-image {
+        aspect-ratio: var(--media-source-aspect, var(--media-frame-aspect));
+    }
+
+    .quote-compact {
+        grid-template-columns: 100px minmax(0, 1fr);
+    }
+
+    .media-carousel {
+        --gallery-left: 65px;
+        --gallery-right: 9px;
+    }
+    .media-carousel-detail {
+        --gallery-left: 9px;
+    }
+    .media-carousel-track {
+        scroll-snap-type: none;
+    }
+    /* Scrolled strips pass under the avatar column; the avatar shrinks to
+       clear them (size and shift set in tweetNookGalleryAvatar). */
+    .feed-card > .flex > .avatar,
+    .thread-row > .avatar {
+        transform-origin: 50% 0;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+        .feed-card > .flex > .avatar,
+        .thread-row > .avatar {
+            transition: transform 160ms ease;
+        }
+    }
+    .avatar.avatar-yield {
+        transform: translateY(var(--avatar-yield-shift, 0)) scale(var(--avatar-yield-scale, 1));
+    }
+    .feed-card [data-action="media"] > .media-carousel:has(> .media-carousel-dots) {
+        margin-top: 7px;
+    }
+    .media-carousel-dots {
+        display: flex;
+        gap: 5px;
+        height: 4px;
+        margin-bottom: 12px;
+    }
+    .media-carousel-dots > span {
+        width: calc(12px + 10px * var(--dot-active, 0));
+        border-radius: 2px;
+        background: color-mix(in srgb, var(--text-primary) calc(23% + 43% * var(--dot-active, 0)), transparent);
+    }
+    .media-carousel-feed .media-carousel-item,
+    .media-carousel-detail .media-carousel-item {
+        height: var(--gallery-height-app, var(--gallery-height));
+        width: min(calc(var(--gallery-height-app, var(--gallery-height)) * var(--gallery-item-aspect)), 80cqw);
+    }
+
+    .quote-card:not(.quote-compact) > .quote-media:has(> .media-single > :is(.media-video-player, .media-frame-gif)) {
+        margin: 12px 0 0;
+    }
+    .quote-card:not(.quote-compact) > .quote-media > .media-single > :is(.media-video-player, .media-frame-gif) {
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+    }
+    .quote-card:not(.quote-compact) > .quote-media > .media-single > .media-frame > video,
+    .quote-card:not(.quote-compact) > .quote-media > .media-single > .media-frame > [data-video-poster] {
+        aspect-ratio: clamp(1, var(--media-source-aspect), 1.7778);
+        object-fit: cover;
+    }
+
+    .link-card-large:has(.link-card-image) {
+        border-width: 0;
+        border-radius: 0;
+        overflow: visible;
+        background: transparent;
+    }
+    .link-card-large:has(.link-card-image) > .link-card-image {
+        position: relative;
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        overflow: hidden;
+    }
+    .link-card-large:has(.link-card-image) > .link-card-text {
+        display: none;
+    }
+    .link-card-large:has(.link-card-image) .link-card-overlay-title {
+        display: block;
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        width: fit-content;
+        max-width: calc(100% - 24px);
+        padding: 0 4px;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.77);
+        color: #fff;
+        font-size: 13px;
+        line-height: 20px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .link-card-large:has(.link-card-image) > .link-card-from {
+        display: block;
+        margin-top: 4px;
+        padding-left: 12px;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 16px;
+    }
 }

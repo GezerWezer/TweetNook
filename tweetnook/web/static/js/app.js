@@ -317,6 +317,35 @@ function tweetNookGalleryScroll(track) {
     const end = Math.max(0, track.scrollWidth - track.clientWidth);
     nav.querySelector('.media-carousel-previous').disabled = track.scrollLeft <= 1;
     nav.querySelector('.media-carousel-next').disabled = track.scrollLeft >= end - 1;
+    // Page indicator: each dash widens and brightens as the strip passes it, linearly in scroll.
+    const dots = nav.parentElement?.querySelector(':scope > .media-carousel-dots')?.children || [];
+    const page = end > 0 ? Math.min(1, Math.max(0, track.scrollLeft / end)) * (dots.length - 1) : 0;
+    for (let idx = 0; idx < dots.length; idx++) {
+        dots[idx].style.setProperty('--dot-active', Math.max(0, 1 - Math.abs(page - idx)).toFixed(3));
+    }
+    tweetNookGalleryAvatar(track);
+}
+// The X app shrinks a post's avatar while its strip is scrolled, so photos can
+// pass under the avatar column, and restores it at the first photo. Measured on
+// four posts: the avatar becomes (strip top - avatar top - 6pt) tall, centered
+// 18pt below its resting top; strips 54pt or more below keep the full avatar.
+function tweetNookGalleryAvatar(track) {
+    if (!isPhoneLayout() || track.closest('.quote-card')) return;
+    const row = track.closest('.feed-card, .thread-row');
+    const avatar = row?.querySelector(':scope > .flex > .avatar, :scope > .avatar');
+    if (!avatar) return;
+    const scrolled = track.scrollLeft > 1;
+    if (scrolled === avatar.classList.contains('avatar-yield')) return;
+    if (scrolled && !avatar.style.getPropertyValue('--avatar-yield-scale')) {
+        // Measured once, while the avatar is still untransformed.
+        const size = avatar.offsetHeight;
+        const scale = Math.min(1, (track.firstElementChild.getBoundingClientRect().top
+            - avatar.getBoundingClientRect().top - 6) / size);
+        avatar.style.setProperty('--avatar-yield-scale', scale.toFixed(3));
+        avatar.style.setProperty('--avatar-yield-shift', `${(size * (0.375 - scale / 2)).toFixed(2)}px`);
+    }
+    if (scrolled && Number(avatar.style.getPropertyValue('--avatar-yield-scale')) >= 1) return;
+    avatar.classList.toggle('avatar-yield', scrolled);
 }
 function tweetNookGalleryTracks(root) {
     return [...(root.matches?.('.media-carousel-track') ? [root] : []),
@@ -1019,6 +1048,7 @@ function tweetApp() {
         threadData: null,
         threadReplyLimit: THREAD_REPLY_BATCH,
         threadOtherReplies: false,
+        threadBottomSpace: 0, // px below a short thread, so its focal tweet can reach the top
         loadingThread: false,
         threadCache: new Map(),
         threadCacheTtlMs: 60000,
@@ -3891,6 +3921,25 @@ function tweetApp() {
                 if (append) list.insertAdjacentHTML('beforeend', html);
                 else list.innerHTML = html;
             });
+            this.measureTextClamps(list);
+        },
+
+        isPhoneLayout() {
+            return Boolean(globalThis.matchMedia?.('(max-width: 640px)')?.matches);
+        },
+
+        // Mark clamped post text that really overflows, so only it shows Show more.
+        measureTextClamps(root) {
+            if (!this.isPhoneLayout()) return;
+            const measure = () => {
+                for (const clamp of root.querySelectorAll?.('.tweet-text-clamp') || []) {
+                    if ('measured' in clamp.dataset) continue;
+                    clamp.dataset.measured = '';
+                    clamp.classList.toggle('is-clamped', clamp.scrollHeight > clamp.clientHeight + 1);
+                }
+            };
+            if (typeof globalThis.requestAnimationFrame === 'function') globalThis.requestAnimationFrame(measure);
+            else measure();
         },
 
         bindFeedList(list) {
@@ -3947,6 +3996,10 @@ function tweetApp() {
                 // Narrow media leaves a blank region in its full-width wrapper.
                 // That region belongs to the post; only the media frame consumes clicks.
                 if (action === 'media' && !event.target.closest('[data-lightbox-media], .media-video-player, .media-frame')) continue;
+                // The carousel scrollport bleeds under the avatar column; its padding
+                // and gaps belong to the post too. (pointer-events would stop iOS scrolling.)
+                if (action === 'stop' && element.classList.contains('media-carousel')
+                    && !event.target.closest('.media-carousel-item, .media-carousel-arrow')) continue;
                 event.stopPropagation();
                 if (action === 'quote') {
                     this.openThread(element.dataset.threadId);
@@ -4060,7 +4113,7 @@ function tweetApp() {
                 + `<span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle">${escape(`@${author.username || 'unknown'}`)}</span>`
                 + '<span class="text-[var(--text-secondary)]">·</span>'
                 + '<div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" data-action="stop"><div class="roll-inner">'
-                + `<span class="roll-item hover:underline">${escape(this.formatDate(tweet.created_at))}</span>`
+                + `<span class="roll-item hover:underline">${this.dateLabel(tweet.created_at)}</span>`
                 + `<span class="roll-item text-[var(--accent-color)] text-[13px] font-medium">${escape(this.formatSyncDate(tweet))}</span>`
                 + '</div></div></div>'
                 + '<div class="tweet-menu-trigger">'
@@ -4069,6 +4122,7 @@ function tweetApp() {
                 + '</button></div></div>';
 
             const quoteBlock = this.renderQuoteCard(tweet);
+            const text = this.formatText(tweet, false, true, true);
 
             return `<div class="px-4 pt-3 pb-3 tweet-border feed-card hover-bg transition duration-200 cursor-pointer" data-tweet-id="${escape(tweetObj.tweet_id)}"`
                 + `${tweet.tweet_id ? ` data-thread-id="${escape(tweet.tweet_id)}"` : ''} data-action="thread">`
@@ -4078,8 +4132,8 @@ function tweetApp() {
                 + '<div class="flex-1 min-w-0">'
                 + byline
                 + (replyTo.length ? replyLine(tweet) : '')
-                + `<div class="tweet-text text-[15px] whitespace-pre-wrap break-words" data-action="text">${this.formatText(tweet, false, true)}</div>`
-                + part(this.renderMediaGrid(tweet.media, 'feed', retweet || tweet), ' data-action="media"')
+                + `<div class="tweet-text text-[15px] whitespace-pre-wrap break-words" data-action="text">${text}</div>`
+                + part(this.renderMediaGrid(tweet.media, 'feed', retweet || tweet, { indicator: !text.replace(/<[^>]*>/g, '').trim() }), ' data-action="media"')
                 + part(this.renderCard(tweet), ' data-action="stop"')
                 + quoteBlock
                 + part(this.renderCommunityNote(tweet.raw_json), ' data-action="stop"')
@@ -4501,18 +4555,59 @@ function tweetApp() {
             });
         },
 
+        // Like X, a page with few replies still scrolls far enough for the focal
+        // tweet to sit at the top: add the missing room below the thread first.
+        scrollPageBy(delta) {
+            this.scrollPageTo(window.scrollY + delta);
+        },
+
+        // Scroll, then add whatever room was missing (a short page's minimum height
+        // absorbs part of any spacer) and try again.
+        scrollPageTo(target, attempts = 3) {
+            window.scrollTo({ top: target, behavior: 'instant' });
+            const missing = Math.ceil(target - window.scrollY);
+            if (missing <= 0 || attempts <= 0) return;
+            // A screen of room always suffices; never grow past it.
+            this.threadBottomSpace = Math.min(this.threadBottomSpace + missing, window.innerHeight);
+            this.$nextTick(() => this.scrollPageTo(target, attempts - 1));
+        },
+
+        // Parents render above the focal tweet; scroll so it sits where the first
+        // parent starts, whether or not a seed was already on screen (a prefetched
+        // conversation can replace the seed before it is ever measured).
+        pinThreadMain(frames = 10) {
+            this.$nextTick(() => {
+                const main = globalThis.document?.querySelector?.('[data-thread-main="page"]');
+                const first = main?.parentElement?.querySelector?.(':scope > .thread-row');
+                if (!main || !first || main === first) return;
+                // The view can still be hidden for a frame or two after the route change.
+                if (!main.getClientRects?.().length) {
+                    if (frames > 0 && typeof globalThis.requestAnimationFrame === 'function') {
+                        globalThis.requestAnimationFrame(() => this.pinThreadMain(frames - 1));
+                    }
+                    return;
+                }
+                const delta = main.getBoundingClientRect().top - first.getBoundingClientRect().top - window.scrollY;
+                if (Math.abs(delta) >= 1) this.scrollPageBy(delta);
+            });
+        },
+
         async showFullThread(tweetId) {
             this.viewMode = 'thread';
             const seed = this.threadSeed(tweetId);
             this.threadData = seed;
             this.threadReplyLimit = THREAD_REPLY_BATCH;
             this.threadOtherReplies = false;
+            this.threadBottomSpace = 0;
             this.loadingThread = !seed;
             window.scrollTo(0, 0);
+            let pin = false;
             try {
                 const data = await this.loadThread(tweetId);
                 if (this.routeKey(this.activeRoute) === `thread:${tweetId}` && !this.shouldUseSplitPanel()) {
-                    this.keepThreadMainInPlace(false, () => { this.threadData = data; });
+                    // Parents arrive above the focal tweet; pinThreadMain keeps it in place.
+                    this.threadData = data;
+                    pin = Boolean(data?.parents?.length);
                 }
             } catch (error) {
                 console.error(error);
@@ -4520,6 +4615,7 @@ function tweetApp() {
             } finally {
                 this.loadingThread = false;
             }
+            if (pin) this.pinThreadMain();
         },
 
         async showFullQuotes(tweetId) {
@@ -5799,6 +5895,29 @@ function tweetApp() {
             return d.toLocaleDateString('en-US', options);
         },
         
+        // X's apps: age in s/m/h/d inside a week, then a numeric date (10/9/26).
+        formatAppDate(dateStr, includeTime = false) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            if (Number.isNaN(d.getTime())) return '';
+            const numeric = d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
+            if (includeTime) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + ' · ' + numeric;
+            const diff = Math.max(0, (new Date() - d) / 1000);
+            if (diff < 60) return Math.floor(diff) + 's';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm';
+            if (diff < 86400) return Math.floor(diff / 3600) + 'h';
+            if (diff < 7 * 86400) return Math.floor(diff / 86400) + 'd';
+            return numeric;
+        },
+
+        // Both date styles, escaped; CSS shows the app one at phone widths.
+        dateLabel(dateStr, includeTime = false) {
+            const web = this.formatDate(dateStr, includeTime);
+            const app = this.formatAppDate(dateStr, includeTime);
+            if (!app || app === web) return this.escapeHTML(web);
+            return `<span class="date-web">${this.escapeHTML(web)}</span><span class="date-app">${this.escapeHTML(app)}</span>`;
+        },
+
         formatRelativeDate(dateStr) {
             if (!dateStr) return '';
             const d = new Date(dateStr);
@@ -7478,7 +7597,9 @@ function tweetApp() {
             window.TweetNookArticles?.focus(this, tweet);
         },
 
-        formatText(tweet, forceFull = false, highlightSearch = false) {
+        // appClamp: list cards on phones clamp long posts to 9 lines, as X's apps do,
+        // instead of cutting at 280 characters.
+        formatText(tweet, forceFull = false, highlightSearch = false, appClamp = false) {
             if (!tweet || this.articleForTweet(tweet)) return '';
             if (this.isPlaceholderTweet(tweet)) return this.renderTweetPlaceholder(tweet);
             const raw = tweet.raw_json?.raw_json || tweet.raw_json || tweet;
@@ -7513,8 +7634,10 @@ function tweetApp() {
             
             let isTruncated = false;
             let tweetId = tweet.tweet_id || (raw && raw.rest_id);
-            
-            if (!forceFull && text.length > 280 && tweetId && !this.expandedTweets[tweetId]) {
+            const clampLines = appClamp && !forceFull && text.length > 280 && tweetId
+                && !this.expandedTweets[tweetId] && this.isPhoneLayout();
+
+            if (!clampLines && !forceFull && text.length > 280 && tweetId && !this.expandedTweets[tweetId]) {
                 let truncated = text.substring(0, 280);
                 let lastSpace = truncated.lastIndexOf(' ');
                 if (lastSpace > 200) {
@@ -7570,7 +7693,12 @@ function tweetApp() {
             if (isTruncated) {
                 text += `<span class="text-[var(--accent-color)] hover:underline cursor-pointer block mt-1 expand-tweet" data-id="${this.escapeHTML(tweetId)}">Show more</span>`;
             }
-            
+            if (clampLines) {
+                // Show more covers the end of the ninth line, once measuring finds overflow.
+                return `<span class="tweet-text-clamp">${text.trim()}</span>`
+                    + `<span class="tweet-text-more expand-tweet" data-id="${this.escapeHTML(tweetId)}">Show more</span>`;
+            }
+
             return text.trim();
         },
 
@@ -7699,13 +7827,16 @@ function tweetApp() {
                 }
                 
                 if (title || desc || imageHtml) {
-                    html += `<a href="${expandedUrl}" target="_blank" rel="noopener noreferrer" class="link-card${name === 'summary' ? ' link-card-summary' : ''} mt-3 block border border-[var(--border-color)] rounded-xl overflow-hidden hover-bg transition cursor-pointer">
+                    const large = name === 'summary_large_image' && imageHtml;
+                    if (large) imageHtml = imageHtml.replace(/<\/div>\s*$/, `${title ? `<span class="link-card-overlay-title">${title}</span>` : ''}</div>`);
+                    html += `<a href="${expandedUrl}" target="_blank" rel="noopener noreferrer" class="link-card${name === 'summary' ? ' link-card-summary' : ''}${large ? ' link-card-large' : ''} mt-3 block border border-[var(--border-color)] rounded-xl overflow-hidden hover-bg transition cursor-pointer">
                                 ${imageHtml}
                                 <div class="link-card-text p-3">
                                     <div class="text-[13px] text-[var(--text-secondary)] mb-1">${vanityUrl}</div>
                                     <div class="text-[15px] text-[var(--text-primary)] font-bold leading-tight mb-1" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${title}</div>
                                     <div class="text-[14px] text-[var(--text-secondary)]" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${desc}</div>
                                 </div>
+                                ${large && vanityUrl ? `<div class="link-card-from">From ${vanityUrl}</div>` : ''}
                              </a>`;
                 }
             }
@@ -7770,9 +7901,14 @@ function tweetApp() {
         },
 
         // Like X, a quote is compact when both it and the tweet quoting it have media.
+        // Whether lists show the quote compactly (thumbnail beside its text). On phones
+        // X's app also does this for a quote with media whose own quote shows as a card.
         isMediaQuotingMedia(tweet) {
-            return !this.articleForTweet(this.getQuoteTweet(tweet))
-                && Boolean(tweet?.media?.length && tweet?.qt_media?.length);
+            const quote = this.getQuoteTweet(tweet);
+            if (this.articleForTweet(quote) || !tweet?.qt_media?.length) return false;
+            if (tweet?.media?.length) return true;
+            const nested = quote && this.getQuoteTweet(quote);
+            return Boolean(nested && !this.isTombstone(nested) && this.isPhoneLayout());
         },
 
         // X shows a quote's avatar at 24px and a nested quote's at 20px.
@@ -7786,7 +7922,7 @@ function tweetApp() {
                 + `<span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name">${escape(author.name)}</span>`
                 + `<span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle">${escape(`@${author.screen_name}`)}</span>`
                 + '<span class="text-[var(--text-secondary)]">·</span>'
-                + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${escape(this.formatDate(quote.legacy?.created_at || quote.created_at))}</span>`
+                + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${this.dateLabel(quote.legacy?.created_at || quote.created_at)}</span>`
                 + '</div>';
         },
 
@@ -7895,7 +8031,8 @@ function tweetApp() {
             return `<div class="quote-thumbnail">${stills[0]}${badge}</div>`;
         },
 
-        renderMediaGrid(mediaList, context = 'feed', tweet = null) {
+        // indicator: the post has no text, so the X app shows a page indicator above its strip.
+        renderMediaGrid(mediaList, context = 'feed', tweet = null, { indicator = false } = {}) {
             if (!mediaList || mediaList.length === 0) return '';
 
             const getSrc = m => this.mediaSource(m);
@@ -7926,7 +8063,7 @@ function tweetApp() {
                 const item = allMedia[0];
                 const { src, poster, type, isGif, isShort } = item;
                 const layout = this.mediaFrameLayout(item.m, context);
-                const sizing = `--media-frame-aspect: ${layout.frameAspect};`
+                const sizing = `--media-frame-aspect: ${layout.frameAspect}; --media-source-aspect: ${layout.sourceAspect};`
                     + (layout.maxWidth === null ? '' : ` --media-max-width: ${layout.maxWidth}px;`)
                     + (layout.photoCapWidth === null ? '' : ` --media-photo-cap-width: ${layout.photoCapWidth}px;`);
                 const frameClass = `media-frame media-frame-${context}${isGif ? ' media-frame-gif' : ''}`
@@ -7969,7 +8106,7 @@ function tweetApp() {
             const gridClass = allMedia.length === 2 ? 'grid-cols-2' : 'grid-cols-2 grid-rows-2';
             const arrow = (direction, label) => `<button type="button" class="media-carousel-arrow media-carousel-${direction}" aria-label="${label}" disabled onclick="event.stopPropagation(); window.tweetNookScrollGallery(this, ${direction === 'previous' ? -1 : 1})"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${direction === 'previous' ? 'M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z' : 'M12.957 4.54L20.414 12l-7.457 7.46-1.414-1.42L16.586 13H3v-2h13.586l-5.043-5.04 1.414-1.42z'}"/></svg></button>`;
             let html = carousel
-                ? `<div class="media-carousel media-carousel-${context} mt-3" style="--gallery-height: ${gallery.height}; --gallery-max-aspect: ${gallery.maxAspect}" ${mediaAttr} data-action="stop" @click.stop><div class="media-carousel-nav">${arrow('previous', 'Previous')}${arrow('next', 'Next')}<div class="media-carousel-track" role="group" aria-label="Tweet media" tabindex="0" onscroll="window.tweetNookGalleryScroll(this)" onkeydown="window.tweetNookGalleryKey(event, this)">`
+                ? `<div class="media-carousel media-carousel-${context} mt-3" style="--gallery-height: ${gallery.height}; --gallery-max-aspect: ${gallery.maxAspect}${gallery.appHeight ? `; --gallery-height-app: ${gallery.appHeight}` : ''}" ${mediaAttr} data-action="stop" @click.stop>${indicator && context === 'feed' ? `<div class="media-carousel-dots" aria-hidden="true">${allMedia.map((_, idx) => `<span style="--dot-active: ${idx ? 0 : 1}"></span>`).join('')}</div>` : ''}<div class="media-carousel-nav">${arrow('previous', 'Previous')}${arrow('next', 'Next')}<div class="media-carousel-track" role="group" aria-label="Tweet media" tabindex="0" onscroll="window.tweetNookGalleryScroll(this)" onkeydown="window.tweetNookGalleryKey(event, this)">`
                 : `<div class="mt-3 grid gap-[2px] rounded-2xl overflow-hidden border border-[var(--border-color)] aspect-[16/9] ${gridClass}" ${mediaAttr} @click.stop>`;
             
             let downloadedIdx = 0;
@@ -8026,15 +8163,19 @@ function tweetApp() {
                 // A capped panoramic pair leaves a 16px trailing inset in X.
                 const inset = Math.max(...sourceAspects) > 9 / 4 ? 20 : 4;
                 const height = `calc((100cqw - ${inset}px) / ${sum})`;
-                return {aspects, height: quoted ? `min(66cqw, ${height})` : height, maxAspect: max};
+                return {aspects, height: quoted ? `min(66cqw, ${height})` : height, maxAspect: max,
+                    appHeight: quoted ? null : height};
             }
             const factor = max <= 1 && min < 1 ? 0.8 : 0.68;
             const percent = Number((factor * (quoted ? 0.85 : 1) * 100).toFixed(6));
             // Keep roughly 1.67 of the widest tiles visible when that needs
             // more height than the standard strip (notably quoted squares).
             const height = `max(${percent}cqw, calc((100cqw - 4px) / ${1.67 * max}))`;
+            // X's iOS app sizes the strip from its first item instead: wide enough to
+            // show ~59.5% of the column, between 68% and 100% of the column tall.
             return {aspects, height: quoted ? `min(66cqw, ${height})` : height,
-                maxAspect: 0.8 / (factor * (quoted ? 0.85 : 1))};
+                maxAspect: 0.8 / (factor * (quoted ? 0.85 : 1)),
+                appHeight: quoted ? null : `clamp(68cqw, calc(59.5cqw / ${aspects[0]}), 100cqw)`};
         },
 
         escapeHTML(str) {
@@ -8170,7 +8311,7 @@ function tweetApp() {
                     ${likeIcon}
                     <span class="tweet-action-count">${formatNum(likeCount)}</span>
                 </div>
-                ${isMain ? '' : `<div class="flex items-center">
+                ${isMain ? '' : `<div class="flex items-center tweet-action-views">
                     <svg viewBox="0 0 24 24" class="w-[18.5px] h-[18.5px] fill-current"><path d="M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21l.004-10h2L6 21H4zm9.248 0v-7h2v7h-2z"></path></svg>
                     <span class="tweet-action-count">${formatNum(viewCount)}</span>
                 </div>`}

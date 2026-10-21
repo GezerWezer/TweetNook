@@ -8962,6 +8962,141 @@ test('carousel uses shared heights, native pair packing, and independent quoted 
     assert.ok(Number.isFinite(app.mediaCarouselLayout([{}, {}]).maxAspect));
 });
 
+test('phone layout follows the X app: strip heights, dates, large link cards, compact nested quotes', () => {
+    const context = browserContext();
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const portrait = {type:'photo', width:360, height:640};
+    const landscape = {type:'photo', width:640, height:360};
+    assert.equal(app.mediaCarouselLayout([portrait, landscape, landscape]).appHeight,
+        `clamp(68cqw, calc(59.5cqw / ${9 / 16}), 100cqw)`);
+    const pair = app.mediaCarouselLayout([portrait, landscape]);
+    assert.equal(pair.appHeight, pair.height);
+    assert.equal(app.mediaCarouselLayout([portrait, portrait, portrait], 'quote').appHeight, null);
+
+    assert.equal(app.formatAppDate(new Date(Date.now() - 3 * 86400e3 - 5000).toISOString()), '3d');
+    assert.equal(app.formatAppDate(new Date(Date.now() - 2 * 3600e3 - 5000).toISOString()), '2h');
+    assert.equal(app.dateLabel('2024-01-05T12:00:00Z'),
+        '<span class="date-web">Jan 5, 2024</span><span class="date-app">1/5/24</span>');
+    assert.match(app.dateLabel('2024-01-05T12:00:00Z', true), /<span class="date-app">[^<]+ · 1\/5\/24<\/span>/);
+
+    const html = app.renderCard({
+        raw_json: {card: {name: 'summary_large_image', binding_values: {
+            title: {string_value: 'Headline <b>'}, vanity_url: {string_value: 'example.com'},
+            thumbnail_image_large: {image_value: {url: 'https://pbs.example/card.jpg'}},
+        }}},
+        card_media: [{thumbnail_url: 'https://pbs.example/card.jpg', download: {thumbnail_local_path: 'media/cards/card.jpg'}}],
+    });
+    assert.match(html, /class="link-card link-card-large /);
+    assert.match(html, /<span class="link-card-overlay-title">Headline &lt;b&gt;<\/span><\/div>/);
+    assert.match(html, /<div class="link-card-from">From example\.com<\/div>/);
+
+    const outer = {quote: {quote: {}}, qt_media: [{type: 'photo'}]};
+    app.getQuoteTweet = tweet => tweet?.quote;
+    app.isTombstone = () => false;
+    app.articleForTweet = () => null;
+    assert.equal(app.isMediaQuotingMedia(outer), false);
+    context.matchMedia = query => ({matches: query === '(max-width: 640px)'});
+    assert.equal(app.isMediaQuotingMedia(outer), true);
+    assert.equal(app.isMediaQuotingMedia({...outer, quote: {}}), false);
+});
+
+test('phone carousel scrolls freely by touch and its padding opens the post', () => {
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    // pointer-events: none on a scroller stops iOS touch scrolling even when its children accept touches.
+    assert.doesNotMatch(css, /\.media-carousel-track \{ pointer-events: none; \}/);
+    assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.media-carousel-track \{\s*scroll-snap-type: none;\s*\}/);
+    assert.match(css, /@media \(hover: none\) \{\s*\.media-carousel-arrow \{ display: none; \}/);
+
+    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    const opened = [];
+    app.openThread = id => opened.push(id);
+    const node = (classes, dataset = {}, parentElement = null) => ({
+        tagName: 'DIV', dataset, parentElement,
+        classList: {contains: name => classes.includes(name)},
+        closest(selector) {
+            for (let el = this; el; el = el.parentElement) {
+                if (selector.split(',').some(part => el.classList.contains(part.trim().slice(1)))) return el;
+            }
+            return null;
+        },
+    });
+    const list = node([]);
+    const card = node([], {action: 'thread', threadId: '7'}, list);
+    const carousel = node(['media-carousel'], {action: 'stop'}, card);
+    const track = node(['media-carousel-track'], {}, carousel);
+    const item = node(['media-carousel-item'], {}, track);
+    const click = target => {
+        let stopped = false;
+        app.handleFeedClick({target, stopPropagation: () => { stopped = true; }}, list);
+        return stopped;
+    };
+    assert.equal(click(track), false);
+    assert.deepEqual(opened, ['7']);
+    assert.equal(click(item), true);
+    assert.deepEqual(opened, ['7']);
+});
+
+test('phone avatar shrinks to clear a scrolled carousel and restores at the first photo', () => {
+    const context = browserContext();
+    context.window.matchMedia = query => ({matches: query.includes('(max-width: 640px)')});
+    const app = loadScripts(context, ['themes.js', 'app.js'], 'window');
+    const avatar = (() => {
+        const classes = new Set(['avatar']);
+        const props = {};
+        return {
+            offsetHeight: 48, props, classes,
+            getBoundingClientRect: () => ({top: 159}),
+            classList: {contains: name => classes.has(name), toggle: (name, on) => on ? classes.add(name) : classes.delete(name)},
+            style: {setProperty: (name, value) => { props[name] = value; }, getPropertyValue: name => props[name] || ''},
+        };
+    })();
+    const buttons = {'.media-carousel-previous': {}, '.media-carousel-next': {}};
+    const track = (stripTop, quote = false) => ({
+        scrollLeft: 0, scrollWidth: 900, clientWidth: 430,
+        firstElementChild: {getBoundingClientRect: () => ({top: stripTop})},
+        parentElement: {querySelector: selector => buttons[selector]},
+        closest: selector => selector === '.quote-card' ? (quote ? {} : null)
+            : {querySelector: () => avatar},
+    });
+    const strip = track(199);
+    strip.scrollLeft = 40;
+    app.tweetNookGalleryScroll(strip);
+    assert.equal(avatar.classes.has('avatar-yield'), true);
+    assert.equal(avatar.props['--avatar-yield-scale'], (34 / 48).toFixed(3), 'X: strip top - avatar top - 6pt');
+    assert.equal(avatar.props['--avatar-yield-shift'], `${(18 - 34 / 2).toFixed(2)}px`, 'centered 18pt below the resting top');
+    strip.scrollLeft = 0;
+    app.tweetNookGalleryScroll(strip);
+    assert.equal(avatar.classes.has('avatar-yield'), false);
+
+    const low = track(260);
+    low.scrollLeft = 40;
+    delete avatar.props['--avatar-yield-scale'];
+    app.tweetNookGalleryScroll(low);
+    assert.equal(avatar.props['--avatar-yield-scale'], '1.000');
+    assert.equal(avatar.classes.has('avatar-yield'), false, 'strips 54pt or more below the avatar leave it alone');
+    const quoted = track(199, true);
+    quoted.scrollLeft = 40;
+    app.tweetNookGalleryScroll(quoted);
+    assert.equal(avatar.classes.has('avatar-yield'), false, 'quoted strips stay inside their card');
+
+    const dots = [0, 1, 2, 3].map(() => {
+        const props = {};
+        return {props, style: {setProperty: (name, value) => { props[name] = value; }}};
+    });
+    const dotted = track(207);
+    dotted.parentElement.parentElement = {querySelector: selector =>
+        selector === ':scope > .media-carousel-dots' ? {children: dots} : null};
+    dotted.scrollLeft = 470 * 1.5 / 3;  // halfway between the second and third photo
+    app.tweetNookGalleryScroll(dotted);
+    assert.deepEqual(dots.map(dot => dot.props['--dot-active']), ['0.000', '0.500', '0.500', '0.000']);
+
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    assert.match(css, /\.avatar\.avatar-yield \{\s*transform: translateY\(var\(--avatar-yield-shift, 0\)\) scale\(var\(--avatar-yield-scale, 1\)\);/);
+    assert.match(css, /\.feed-card \[data-action="media"\] > \.mt-3 \{\s*margin-top: 8px;/);
+    assert.match(css, /\.media-carousel-dots > span \{\s*width: calc\(12px \+ 10px \* var\(--dot-active, 0\)\);/);
+    assert.match(css, /@media \(prefers-reduced-motion: no-preference\) \{[^}]*\.thread-row > \.avatar \{\s*transition: transform 160ms ease;/);
+});
+
 test('carousel arrows advance one tile, clamp at the ends, and retain player keyboard controls', () => {
     const context = browserContext();
     const app = loadScripts(context, ['themes.js', 'app.js'], 'window');
@@ -9010,6 +9145,10 @@ test('optional carousel preserves original indices, placeholders, GIFs, and sing
     assert.equal(app.renderMediaGrid([photo]), single);
     const html = app.renderMediaGrid([missing, photo, gif, video]);
     assert.equal((html.match(/class="media-carousel-item"/g) || []).length, 4);
+    assert.doesNotMatch(html, /media-carousel-dots/);
+    const dotted = app.renderMediaGrid([photo, gif, video], 'feed', null, {indicator: true});
+    assert.match(dotted, /<div class="media-carousel-dots" aria-hidden="true"><span style="--dot-active: 1"><\/span>(<span style="--dot-active: 0"><\/span>){2}<\/div><div class="media-carousel-nav">/);
+    assert.doesNotMatch(app.renderMediaGrid([photo, gif], 'detail', null, {indicator: true}), /media-carousel-dots/);
     assert.ok(html.includes('Media not downloaded'));
     assert.match(html, /tweetNookOpenLightbox\(this, 0\)/);
     assert.match(html, /tweetNookOpenGif\(event, this, 1\)/);
