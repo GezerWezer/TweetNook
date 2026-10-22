@@ -94,25 +94,30 @@ function nookConfigField(app, path) {
     number: schema.number_constraints?.[path] || {},
   };
 }
-function nookConfigSections(app, tier) {
+// One list of sections: basic fields always, plus advanced ones (flagged) while the switch is on.
+// A section with only advanced fields is flagged too, and is hidden while the switch is off.
+function nookConfigSections(app, tier = 'all') {
   if (!app.configData || !app.configSchema) return [];
   if (tier === 'advanced' && !app.showAdvancedConfig) return [];
   const schema = app.configSchema;
-  const inTier = path => {
+  const advanced = path => !schema.whitelist.includes(path);
+  const shown = path => {
     const [section, key] = nookConfigPath(path);
     if (!app.configData[section] || !(key in app.configData[section]) || schema.blacklist.includes(path)) return false;
     if ((schema.visible_when?.[path] || []).some(required => !nookConfigAt(app.configData, required))) return false;
     if (Object.entries(schema.visible_values?.[path] || {}).some(([required, value]) => nookConfigAt(app.configData, required) !== value)) return false;
-    return schema.whitelist.includes(path) === (tier === 'basic');
+    if (tier === 'all') return !advanced(path) || app.showAdvancedConfig;
+    return advanced(path) === (tier === 'advanced');
   };
+  const field = path => ({ ...nookConfigField(app, path), advanced: advanced(path) });
   const grouped = new Set((schema.groups || []).flatMap(group => group.fields));
-  const groups = (schema.groups || []).map(group => ({ ...group, fields: group.fields.filter(inTier).map(path => nookConfigField(app, path)) }));
+  const groups = (schema.groups || []).map(group => ({ ...group, fields: group.fields.filter(shown).map(field) }));
   // Settings config.toml gains later still appear, under their schema section.
   for (const [section, fields] of Object.entries(app.configData)) {
-    const rest = Object.keys(fields).map(key => `${section}.${key}`).filter(path => inTier(path) && !grouped.has(path));
-    if (rest.length) groups.push({ title: nookConfigSentence(schema.labels?.[section] || section), fields: rest.map(path => nookConfigField(app, path)) });
+    const rest = Object.keys(fields).map(key => `${section}.${key}`).filter(path => shown(path) && !grouped.has(path));
+    if (rest.length) groups.push({ title: nookConfigSentence(schema.labels?.[section] || section), fields: rest.map(field) });
   }
-  return groups.filter(group => group.fields.length);
+  return groups.filter(group => group.fields.length).map(group => ({ ...group, advanced: group.fields.every(item => item.advanced) }));
 }
 function nookConfigSet(app, field, value) { app.configData[field.section][field.key] = value; app.nookConfigSaved = false; }
 function nookConfigSame(a, b) { return JSON.stringify(a) === JSON.stringify(b); }

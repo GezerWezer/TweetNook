@@ -721,6 +721,19 @@ def get_config_ui_schema() -> dict[str, Any]:
                 ],
             },
             {
+                "title": "FxTwitter",
+                "note": (
+                    "Cookie-free post lookups that don't use your X session. Your login is "
+                    "still used for protected accounts and anything FxTwitter can't answer."
+                ),
+                "fields": [
+                    "fxtwitter.enabled",
+                    "fxtwitter.base_url",
+                    "fxtwitter.concurrency",
+                    "fxtwitter.timeout",
+                ],
+            },
+            {
                 "title": "Nightly check",
                 "note": (
                     "Checks saved tweets and retries unavailable tweets. Optionally include a "
@@ -735,19 +748,6 @@ def get_config_ui_schema() -> dict[str, Any]:
                     "check.context_enabled",
                     "check.context_days",
                     "check.detail_budget",
-                ],
-            },
-            {
-                "title": "FxTwitter",
-                "note": (
-                    "Cookie-free post lookups that don't use your X session. Your login is "
-                    "still used for protected accounts and anything FxTwitter can't answer."
-                ),
-                "fields": [
-                    "fxtwitter.enabled",
-                    "fxtwitter.base_url",
-                    "fxtwitter.concurrency",
-                    "fxtwitter.timeout",
                 ],
             },
             {
