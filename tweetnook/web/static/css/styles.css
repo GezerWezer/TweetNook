@@ -255,6 +255,26 @@ body {
     position: absolute;
     top: -8px;
     right: -8px;
+    display: flex;
+    align-items: center;
+}
+/* A missing tweet's warning sits at the right, just before the overflow button. */
+.tweet-byline-feed.has-missing {
+    padding-right: 52px;
+}
+.tweet-detail-missing {
+    display: flex;
+    flex-shrink: 0;
+    align-self: flex-start;
+}
+.tweet-detail-missing:empty,
+.quote-missing-slot:empty {
+    display: none;
+}
+.quote-card .quote-byline > .tweet-missing-badge,
+.quote-card .quote-byline > .quote-missing-slot {
+    display: flex;
+    margin-left: auto;
 }
 
 /* Flex keeps the intentional gaps even when the tweet has no visible text. */
@@ -3460,6 +3480,28 @@ html { touch-action: manipulation; }
 }
 .community-note-header span {
     padding: 2px 0;
+}
+.community-note-history {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: -4px -4px -4px auto;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.community-note-history:hover {
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    color: var(--accent-color);
+}
+.community-note .community-note-history svg {
+    width: 18px;
+    height: 18px;
 }
 .community-note-body {
     white-space: pre-wrap;

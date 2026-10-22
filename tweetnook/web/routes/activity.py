@@ -31,6 +31,7 @@ from tweetnook.web.deps import server_state, verify_credentials
 router = APIRouter(prefix="/api/activity", tags=["activity"])
 ARCHIVE_PIPELINE_TITLES = {
     "tweetnook sync",
+    "tweetnook check",
     "tweetnook import enrich",
     "tweetnook import x-archive",
 }

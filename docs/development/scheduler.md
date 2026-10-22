@@ -22,6 +22,24 @@ across restarts. Its lifetime is tied to the FastAPI application.
 
 Default schedule is disabled, daily 03:00 local, random delay 0–2 hours.
 
+## Availability checks
+
+The same manager owns a separate `check_next_run_at` and check fingerprint.
+`CheckConfig` defaults to disabled, weekly Monday at 04:00, using
+`schedule.timezone` without random delay. Daily and monthly frequencies are
+also supported, with monthly dates clamped at month end. Checks run independently
+of scheduled syncs, require FxTwitter, and defer 15 minutes on job conflicts.
+
+Context checks are separately opt-in (`check.context_enabled=false`), with a
+60-day target cycle. The runner scales the rolling batch by frequency (1/7/31
+days per run), while saved and retryable unavailable tweets are checked every
+run. Quotes embedded in saved-tweet responses remain processed.
+
+Saving `check.*` or `fxtwitter.*` through `/api/config` reloads the manager with
+`reset=False`: changed fingerprints recalculate the check, while an unchanged
+sync schedule retains its persisted next time. Other generic config edits do
+not reload the manager.
+
 ## Timezone resolution
 
 Named zones use `zoneinfo.ZoneInfo`. `local` first resolves `/etc/localtime` to a
@@ -127,8 +145,8 @@ The dedicated schedule PUT route:
 3. reloads global config and updates supervisor config;
 4. recomputes next state.
 
-Generic `/api/config` persistence does not reload the manager and should not be
-used as the runtime schedule control path.
+Use the dedicated route for sync schedule edits. Generic `/api/config` reloads
+the manager only for check/FxTwitter changes, preserving an unchanged sync time.
 
 ## Status contract
 

@@ -508,3 +508,63 @@ fieldset:disabled .nook-select-trigger { cursor:default; }
   .nook-td { max-width:none; height:100dvh; max-height:none; border-radius:0; }
   .nook-td-textarea { max-height:40dvh; }
 }
+
+/* Missing-tweet marker and the History dialog */
+.tweet-missing-badge { display:inline-flex; flex:none; align-items:center; justify-content:center; width:20px; height:20px; padding:0; border:0; background:none; color:var(--destructive-color); cursor:pointer; }
+.tweet-missing-badge svg { width:17px; height:17px; }
+.nook-history {
+  --history-on:var(--accent-color);
+  --history-missing:var(--destructive-color);
+  --history-quiet:var(--text-secondary);
+  --history-rail-on:color-mix(in srgb,var(--history-on) 55%,var(--bg-primary));
+  --history-rail-missing:color-mix(in srgb,var(--history-missing) 55%,var(--bg-primary));
+  --history-rail-quiet:color-mix(in srgb,var(--history-quiet) 65%,var(--bg-primary));
+}
+.nook-post-history .nook-td-head { gap:20px; padding-top:4px; padding-bottom:4px; border-bottom:0; }
+.nook-post-history .nook-td-title { font-weight:800; }
+.nook-post-history .nook-td-body { padding-bottom:0; }
+.nook-history-status { display:grid; grid-template-columns:24px minmax(0,1fr); gap:12px; padding:20px 16px 24px; border-bottom:1px solid var(--border-color); }
+.nook-history-status > div { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.nook-history-status strong { color:var(--text-primary); font-size:17px; line-height:24px; font-weight:700; }
+.nook-history-status span:not(.nook-history-status-icon) { color:var(--text-secondary); }
+.nook-history-status-meta { font-size:13px; line-height:16px; }
+.nook-history-status-icon { display:grid; place-items:center; align-self:start; height:24px; color:var(--history-on); }
+.nook-history-status.is-missing .nook-history-status-icon { color:var(--history-missing); }
+.nook-history-status-icon svg { width:20px; height:20px; }
+.nook-history-empty { margin:0; padding:16px; color:var(--text-secondary); }
+.nook-post-history .nook-history-empty { padding:24px 16px 32px 52px; }
+/* Vertical timeline, newest first: a dot per event; the rail below each dot is coloured
+   by the tweet's state from the older event up to that one. */
+.nook-timeline { margin:0; padding:24px 16px 0; list-style:none; }
+.nook-timeline-item { position:relative; display:grid; grid-template-columns:24px minmax(0,1fr); column-gap:12px; padding-bottom:24px; }
+.nook-timeline-rail { position:relative; display:flex; justify-content:center; padding-top:5px; }
+.nook-timeline-item::before { content:""; position:absolute; left:11.5px; top:14px; bottom:-5px; width:1px; background:var(--border-color); }
+.nook-timeline-item.seg-none::before { display:none; }
+.nook-timeline-item.seg-on::before { background:var(--history-rail-on); }
+.nook-timeline-item.seg-missing::before { background:var(--history-rail-missing); }
+.nook-timeline-item.seg-protected::before { background:repeating-linear-gradient(to bottom, var(--history-rail-quiet) 0 3px, transparent 3px 7px); }
+.nook-timeline-dot { position:relative; z-index:1; width:10px; height:10px; border-radius:9999px; border:2px solid var(--history-quiet); background:var(--bg-primary); }
+.nook-timeline-item.is-available .nook-timeline-dot { border-color:var(--history-on); background:var(--history-on); }
+.nook-timeline-item.is-missing .nook-timeline-dot { border-color:var(--history-missing); background:var(--history-missing); }
+.nook-timeline-item.is-note .nook-timeline-dot { border-color:var(--accent-color); }
+.nook-timeline-title { color:var(--text-primary); font-size:15px; line-height:20px; font-weight:700; }
+.nook-timeline-meta { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; color:var(--text-secondary); font-size:13px; line-height:16px; }
+.nook-timeline-detail { margin:8px 0 0; color:var(--text-secondary); overflow-wrap:anywhere; }
+.nook-timeline-legend { display:flex; flex-wrap:wrap; gap:12px 24px; padding:16px 16px 20px 52px; border-top:1px solid var(--border-color); color:var(--text-secondary); font-size:13px; line-height:16px; }
+.nook-timeline-legend span { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.nook-timeline-legend span::before { content:""; width:16px; height:1px; background:var(--history-rail-on); }
+.nook-timeline-legend .seg-missing::before { background:var(--history-rail-missing); }
+.nook-timeline-legend .seg-protected::before { background:repeating-linear-gradient(to right, var(--history-rail-quiet) 0 3px, transparent 3px 6px); }
+@media (max-width:599px) {
+  .nook-timeline-legend { column-gap:16px; padding-left:16px; }
+}
+/* Community notes dialog: each version is the feed's note card; section titles and
+   fine rules group the current note and earlier ones. */
+.nook-notes-section + .nook-notes-section { border-top:1px solid var(--border-color); }
+.nook-notes-heading { margin:0; padding:16px 16px 0; font-size:15px; line-height:20px; font-weight:700; }
+.nook-notes-version { padding:12px 16px 4px; }
+.nook-notes-version .community-note-detail { margin-top:0; }
+.nook-notes-version .community-note svg { width:18.75px; height:18.75px; flex:0 0 auto; }
+.nook-notes-version.is-earlier .community-note-body { color:var(--text-secondary); }
+.nook-notes-dates { margin:6px 0 8px; color:var(--text-secondary); font-size:13px; line-height:16px; }
+.nook-notes-none { margin:0; padding:16px 16px 0; color:var(--text-secondary); }

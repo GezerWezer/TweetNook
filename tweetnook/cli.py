@@ -130,7 +130,10 @@ HEAD_ONLY_HELP = (
     "Does not resume older historical backfill state."
 )
 SYNC_LIMIT_HELP = "Maximum number of pages to fetch for this run."
-SYNC_SKIP_RESURRECTION_HELP = "Skip bounded unavailable-tweet resurrection checks after sync."
+SYNC_SKIP_RESURRECTION_HELP = (
+    "Skip bounded unavailable-tweet resurrection checks after sync. Sync only runs them "
+    "while the nightly check is off or FxTwitter is disabled; otherwise 'tweetnook check' does."
+)
 SYNC_SKIP_ARTICLES_HELP = "Skip automatic article-body refresh after sync."
 SYNC_SKIP_MEDIA_HELP = "Skip automatic media downloads after sync."
 SYNC_SKIP_UNFURL_HELP = "Skip automatic URL unfurls after sync."
@@ -1097,6 +1100,86 @@ def expand_archive_threads(
                     f"{result.skipped} skipped, "
                     f"{result.failed} failed"
                 )
+    except ConfigError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+    except TweetNookError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from exc
+
+
+CHECK_HELP = (
+    "Check that archived tweets still exist: every saved tweet and the post it quotes, a "
+    "rolling share of context tweets when check.context_enabled is on, and every "
+    "unavailable tweet that may come back. "
+    "Looks up through FxTwitter, then uses your login for protected accounts and results "
+    "FxTwitter can't confirm. Runs at the configured frequency (weekly by default) from "
+    "the Web service when check.enabled is on."
+)
+
+
+@app.command("check", help=CHECK_HELP)
+def check_command(
+    skip_saves: Annotated[
+        bool, typer.Option("--skip-saves", help="Don't check saved tweets.")
+    ] = False,
+    skip_context: Annotated[
+        bool,
+        typer.Option("--skip-context", help="Don't check the rolling share of context tweets."),
+    ] = False,
+    skip_unavailable: Annotated[
+        bool,
+        typer.Option(
+            "--skip-unavailable", help="Don't recheck unavailable tweets through FxTwitter."
+        ),
+    ] = False,
+    detail_budget: Annotated[
+        int | None,
+        typer.Option(
+            "--detail-budget",
+            min=0,
+            help=(
+                "Most tweets to look up with your login after FxTwitter. Defaults to "
+                "check.detail_budget; 0 skips login lookups."
+            ),
+        ),
+    ] = None,
+) -> None:
+    from tweetnook.nightly import run_nightly_check
+
+    console = _configure_logging()
+    try:
+        config, paths = load_config()
+        with _web_pipeline(console, "tweetnook check", paths) as pipeline:
+            result = asyncio.run(
+                run_nightly_check(
+                    config=config,
+                    paths=paths,
+                    saves=not skip_saves,
+                    context=False if skip_context else None,
+                    unavailable=not skip_unavailable,
+                    detail_budget=detail_budget,
+                    console=console,
+                )
+            )
+            summary = (
+                f"checked {result.checked} tweets ({result.saves_checked} saved, "
+                f"{result.context_checked} context, {result.unavailable_checked} unavailable, "
+                f"{result.quotes_checked} quoted) · {result.restored} restored · "
+                f"{result.enriched} enriched · {result.became_unavailable} newly unavailable · "
+                f"{result.suspect} to recheck · {result.protected} protected · "
+                f"{result.errors} failed · community notes: "
+                f"{result.notes_added} added, {result.notes_changed} changed, "
+                f"{result.notes_removed} removed"
+            )
+            if result.detail is not None:
+                summary += (
+                    f" · login lookups: {result.detail.attempted} checked, "
+                    f"{result.detail.resurrected} restored"
+                )
+            for warning in result.warnings:
+                console.print(f"[yellow]{warning}[/yellow]")
+            pipeline.final_note(summary)
     except ConfigError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from exc

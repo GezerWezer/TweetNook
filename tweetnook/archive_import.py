@@ -22,6 +22,7 @@ import httpx
 from rich.console import Console
 
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
+from tweetnook.client import fxtwitter
 from tweetnook.client.base import AdaptiveRequestPacer, build_async_client
 from tweetnook.client.timelines import (
     MAX_CONSECUTIVE_FOCAL_ABSENCES,
@@ -65,6 +66,7 @@ _MANIFEST_ASSIGNMENT_RE = re.compile(r"^\s*window\.__THAR_CONFIG\s*=\s*", re.DOT
 _AUTHORED_IMPORT_PREFETCH_CHUNK = 50
 _LIKE_IMPORT_PREFETCH_CHUNK = 200
 _DETAIL_ENRICH_WRITE_BATCH = 100
+_FX_ENRICH_PREFETCH = 100
 _T = TypeVar("_T")
 
 
@@ -1256,6 +1258,11 @@ async def _enrich_pending_rows(
         write_buffer = _PageBuffer()
         buffered_writes = 0
         absence_tracker = absence_tracker or _FocalAbsenceTracker()
+        # FxTwitter answers most lookups without the login; TweetDetail handles the rest.
+        fx_client = fxtwitter.build_fx_client(config) if fxtwitter.fx_enabled(config) else None
+        fx_results: dict[str, fxtwitter.FxLookup] = {}
+        fx_served = 0
+        detail_attempts = 0
 
         def flush_detail_writes() -> None:
             nonlocal buffered_writes
@@ -1287,7 +1294,53 @@ async def _enrich_pending_rows(
                         )
                     wrote_row = False
                     absence_error: RepeatedFocalAbsenceError | None = None
-                    await pacer.wait(attempted=index - 1)
+                    if fx_client is not None and (index - 1) % _FX_ENRICH_PREFETCH == 0:
+                        fx_results, fx_down = await fxtwitter.fetch_fx_statuses(
+                            fx_client,
+                            [
+                                str(item["tweet_id"])
+                                for item in rows[index - 1 : index - 1 + _FX_ENRICH_PREFETCH]
+                            ],
+                            concurrency=config.fxtwitter.concurrency,
+                        )
+                        if fx_down:
+                            # FxTwitter is down; TweetDetail handles the rest of this run.
+                            await fx_client.aclose()
+                            fx_client = None
+                            console.print(
+                                "[yellow]FxTwitter isn't answering; using TweetDetail "
+                                "for the rest of this run.[/yellow]"
+                            )
+                    fx_lookup = fx_results.get(tweet_id)
+                    if fx_lookup is not None and fx_lookup.kind == "available":
+                        assert fx_lookup.status is not None
+                        store.persist_fx_status(
+                            tweet=fxtwitter.fx_timeline_tweet(
+                                fxtwitter.fx_status_to_graphql(fx_lookup.status)
+                            ),
+                            payload=fx_lookup.payload,
+                            http_status=fx_lookup.http_status or 200,
+                            cursor=write_buffer,
+                        )
+                        succeeded += 1
+                        fx_served += 1
+                        buffered_writes += 1
+                        if buffered_writes >= _DETAIL_ENRICH_WRITE_BATCH:
+                            flush_detail_writes()
+                        if detail_progress:
+                            detail_progress(index, len(rows))
+                        if pipeline is not None:
+                            pipeline.update_step(
+                                step_key,
+                                completed=index,
+                                counters=(
+                                    f"{index} selected · {succeeded} refreshed · "
+                                    f"{terminal} unavailable · {transient} transient"
+                                ),
+                            )
+                        continue
+                    await pacer.wait(attempted=detail_attempts)
+                    detail_attempts += 1
 
                     async def refresh_once(tweet_id: str = tweet_id) -> str:
                         refreshed = await refresh_query_ids(
@@ -1496,6 +1549,8 @@ async def _enrich_pending_rows(
         finally:
             try:
                 await client.aclose()
+                if fx_client is not None:
+                    await fx_client.aclose()
             finally:
                 flush_detail_writes()
         result = _archive_enrich_counts(store)
@@ -1509,7 +1564,8 @@ async def _enrich_pending_rows(
         if pipeline is not None:
             pipeline.complete_step(
                 step_key,
-                f"{succeeded} refreshed · {terminal} unavailable · {transient} transient · "
+                f"{succeeded} refreshed ({fx_served} via FxTwitter) · "
+                f"{terminal} unavailable · {transient} transient · "
                 f"{result.pending_untouched} pending untouched · "
                 f"{result.transient_due} due · {result.transient_delayed} delayed",
             )

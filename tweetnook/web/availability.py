@@ -26,6 +26,8 @@ UNAVAILABLE_MESSAGES = {
     "unavailable_unknown": "This tweet is unavailable.",
 }
 
+DELETED_REASONS = frozenset({"deleted_by_author", "archive_deleted"})
+
 _OBJECT_COLUMNS = [
     "tweet_id",
     "text",
@@ -96,6 +98,14 @@ def _fallback_unavailable_reason(tweet: dict[str, Any]) -> str | None:
     return None
 
 
+def _has_archived_copy(tweet: dict[str, Any]) -> bool:
+    raw = _json_dict(tweet.get("raw_json"))
+    if raw is None or _direct_tombstone(raw) is not None:
+        return False
+    legacy = raw.get("legacy")
+    return isinstance(legacy, dict) and bool(legacy.get("full_text") or raw.get("note_tweet"))
+
+
 def availability_for_tweet(
     tweet: dict[str, Any],
     object_row: dict[str, Any] | None,
@@ -113,7 +123,10 @@ def availability_for_tweet(
             "enrichment_state": enrichment_state,
             "reason": reason,
             "message": UNAVAILABLE_MESSAGES[reason],
-            "placeholder": True,
+            # A tweet captured before it went missing (suspended, protected, gone) keeps
+            # showing its archived copy, marked as missing. Deleted tweets and tweets
+            # never captured stay placeholders.
+            "placeholder": reason in DELETED_REASONS or not _has_archived_copy(tweet),
             "confirmed": True,
             "retryable": bool(object_row.get("enrichment_retry_eligible")),
             "checked_at": object_row.get("enrichment_checked_at"),
@@ -376,7 +389,63 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
 
     annotate_web_articles(store, tweets)
     annotate_web_link_cards(store, tweets)
+    _overlay_community_notes(store, [*tweets, *originals, *quotes])
     return tweets
+
+
+def _overlay_community_notes(store: Any, tweets: list[dict[str, Any]]) -> None:
+    """Show the note the nightly check last saw in place of the captured one, and flag
+    tweets with recorded note versions (``note_history``) for the Web menu.
+
+    A tweet whose recorded notes were all removed shows none. The stored X payload is
+    left unchanged; only the Web copy changes.
+    """
+    table_exists = getattr(store, "_table_exists", None)
+    if not tweets or table_exists is None or not table_exists("community_notes"):
+        return
+    by_id: dict[str, list[dict[str, Any]]] = {}
+    for tweet in tweets:
+        if tweet.get("tweet_id") and not tweet.get("availability", {}).get("placeholder"):
+            by_id.setdefault(str(tweet["tweet_id"]), []).append(tweet)
+    ids = list(by_id)
+    if not ids:
+        return
+    from tweetnook.client.fxtwitter import community_note_pivot
+
+    for start in range(0, len(ids), 500):
+        chunk = ids[start : start + 500]
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = store.conn.execute(
+            f"SELECT tweet_id, raw_json, removed_at FROM community_notes "
+            f"WHERE tweet_id IN ({placeholders})",
+            chunk,
+        ).fetchall()
+        current: dict[str, dict[str, Any] | None] = {}
+        for tweet_id, note_json, removed_at in rows:
+            tweet_id = str(tweet_id)
+            current.setdefault(tweet_id, None)
+            if removed_at is None:
+                note = _json_dict(note_json)
+                current[tweet_id] = community_note_pivot(note) if note else None
+        for tweet_id, pivot in current.items():
+            for tweet in by_id.get(tweet_id, []):
+                tweet["note_history"] = True
+                raw = _json_dict(tweet.get("raw_json"))
+                if raw is None:
+                    continue
+                if pivot is not None:
+                    tweet["raw_json"] = {**raw, "birdwatch_pivot": pivot}
+                elif raw.get("birdwatch_pivot"):
+                    tweet["raw_json"] = {
+                        key: value for key, value in raw.items() if key != "birdwatch_pivot"
+                    }
+    # Notes with recorded versions get a history button in their header.
+    for tweets_for_id in by_id.values():
+        for tweet in tweets_for_id:
+            raw = _json_dict(tweet.get("raw_json"))
+            pivot = raw.get("birdwatch_pivot") if raw is not None else None
+            if tweet.get("note_history") and isinstance(pivot, dict):
+                tweet["raw_json"] = {**raw, "birdwatch_pivot": {**pivot, "note_history": True}}
 
 
 def _attach_targets(

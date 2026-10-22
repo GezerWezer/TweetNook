@@ -15,8 +15,11 @@ from threading import Thread
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from tweetnook.config import AppConfig, ScheduleConfig, XDGPaths, load_config
+from tweetnook.client.fxtwitter import fx_enabled
+from tweetnook.config import AppConfig, CheckConfig, ScheduleConfig, XDGPaths, load_config
 from tweetnook.job_supervisor import JobConflictError, JobSupervisor
+
+CHECK_CONFLICT_RETRY_SECONDS = 15 * 60
 
 
 def _timezone(value: str) -> tzinfo:
@@ -202,6 +205,7 @@ class ScheduleManager:
         self._thread: Thread | None = None
         self._state = self._load_state()
         self._ensure_next_run(reset=False)
+        self._ensure_next_check(reset=False)
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -226,6 +230,7 @@ class ScheduleManager:
             self.config = config
             self.supervisor.config = config
             self._ensure_next_run(reset=reset)
+            self._ensure_next_check(reset=reset)
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -273,45 +278,135 @@ class ScheduleManager:
     def tick(self, *, now: float | None = None) -> None:
         timestamp = time.time() if now is None else now
         with self._lock:
-            schedule = self.config.schedule
-            if not schedule.enabled:
+            self._tick_sync(timestamp)
+            self._tick_check(timestamp)
+
+    def _tick_sync(self, timestamp: float) -> None:
+        schedule = self.config.schedule
+        if not schedule.enabled:
+            return
+        next_at = self._state.get("next_run_at")
+        if next_at is None:
+            self._ensure_next_run(reset=True, now=timestamp)
+            return
+        if float(next_at) > timestamp:
+            return
+        try:
+            result = self.supervisor.start(
+                kind="sync",
+                cli_args=["sync"],
+                origin="schedule",
+                title="tweetnook sync",
+            )
+            self._state["last_result"] = "started"
+            self._state["last_run_id"] = result["run_id"]
+        except JobConflictError:
+            if self.supervisor.active_kind == "check":
+                # The check runs at most once a night, so a sync due during it waits
+                # for it instead of losing its slot.
+                self._state["last_result"] = "deferred: waiting for the availability check"
+                self._state["next_run_at"] = timestamp + CHECK_CONFLICT_RETRY_SECONDS
+                self._save_state()
                 return
-            next_at = self._state.get("next_run_at")
-            if next_at is None:
-                self._ensure_next_run(reset=True, now=timestamp)
-                return
-            if float(next_at) > timestamp:
-                return
-            try:
-                result = self.supervisor.start(
-                    kind="sync",
-                    cli_args=["sync"],
-                    origin="schedule",
-                    title="tweetnook sync",
-                )
-                self._state["last_result"] = "started"
-                self._state["last_run_id"] = result["run_id"]
-            except JobConflictError:
-                self._state["last_result"] = "skipped: another command was running"
-                if self.on_job_conflict is not None:
-                    context = {
-                        "scheduled_at": float(next_at),
-                        "active_run_id": self.supervisor.active_run_id,
-                        "active_kind": self.supervisor.active_kind,
-                    }
-                    try:
-                        self.on_job_conflict(context)
-                    except Exception:
-                        # A notification failure must not interrupt schedule advancement.
-                        pass
-            self._state["last_run_at"] = timestamp
-            self._state["next_run_at"] = next_run_after(
-                schedule,
-                datetime.fromtimestamp(timestamp, UTC),
-                occurrence_consumed=True,
-            ).timestamp()
-            self._state["fingerprint"] = self._fingerprint(schedule)
+            self._state["last_result"] = "skipped: another command was running"
+            if self.on_job_conflict is not None:
+                context = {
+                    "scheduled_at": float(next_at),
+                    "active_run_id": self.supervisor.active_run_id,
+                    "active_kind": self.supervisor.active_kind,
+                }
+                try:
+                    self.on_job_conflict(context)
+                except Exception:
+                    # A notification failure must not interrupt schedule advancement.
+                    pass
+        self._state["last_run_at"] = timestamp
+        self._state["next_run_at"] = next_run_after(
+            schedule,
+            datetime.fromtimestamp(timestamp, UTC),
+            occurrence_consumed=True,
+        ).timestamp()
+        self._state["fingerprint"] = self._fingerprint(schedule)
+        self._save_state()
+
+    def _check_on(self) -> bool:
+        # The check is FxTwitter lookups; with FxTwitter off, sync owns the retries.
+        return self.config.check.enabled and fx_enabled(self.config)
+
+    def _check_schedule(self, check: CheckConfig) -> ScheduleConfig:
+        # Checks have their own cadence/time, in the sync schedule's time zone.
+        return ScheduleConfig(
+            cadence=check.cadence,
+            weekday=check.weekday,
+            day_of_month=check.day_of_month,
+            time=check.time,
+            randomize_time=False,
+            timezone=self.config.schedule.timezone,
+        )
+
+    def _check_fingerprint(self) -> str:
+        return json.dumps(
+            {
+                "check": self.config.check.model_dump(),
+                "fxtwitter": fx_enabled(self.config),
+                "timezone": self.config.schedule.timezone,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    def _ensure_next_check(self, *, reset: bool, now: float | None = None) -> None:
+        check = self.config.check
+        fingerprint = self._check_fingerprint()
+        if not self._check_on():
+            self._state["check_next_run_at"] = None
+            self._state["check_fingerprint"] = fingerprint
             self._save_state()
+            return
+        if (
+            reset
+            or self._state.get("check_fingerprint") != fingerprint
+            or not self._state.get("check_next_run_at")
+        ):
+            timestamp = time.time() if now is None else now
+            self._state["check_next_run_at"] = next_run_after(
+                self._check_schedule(check),
+                datetime.fromtimestamp(timestamp, UTC),
+            ).timestamp()
+            self._state["check_fingerprint"] = fingerprint
+            self._save_state()
+
+    def _tick_check(self, timestamp: float) -> None:
+        check = self.config.check
+        if not self._check_on():
+            return
+        next_at = self._state.get("check_next_run_at")
+        if next_at is None:
+            self._ensure_next_check(reset=True, now=timestamp)
+            return
+        if float(next_at) > timestamp:
+            return
+        try:
+            result = self.supervisor.start(
+                kind="check",
+                cli_args=["check"],
+                origin="schedule",
+                title="tweetnook check",
+            )
+        except JobConflictError:
+            # Unlike a missed sync, tonight's check waits for the running command.
+            self._state["check_last_result"] = "deferred: another command was running"
+            self._state["check_next_run_at"] = timestamp + CHECK_CONFLICT_RETRY_SECONDS
+        else:
+            self._state["check_last_result"] = "started"
+            self._state["check_last_run_id"] = result["run_id"]
+            self._state["check_last_run_at"] = timestamp
+            self._state["check_next_run_at"] = next_run_after(
+                self._check_schedule(check),
+                datetime.fromtimestamp(timestamp, UTC),
+            ).timestamp()
+        self._state["check_fingerprint"] = self._check_fingerprint()
+        self._save_state()
 
     def _ensure_next_run(self, *, reset: bool, now: float | None = None) -> None:
         schedule = self.config.schedule

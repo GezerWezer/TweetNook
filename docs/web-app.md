@@ -194,6 +194,16 @@ tries once and then resumes the schedule; it does not replay every missed run.
 Scheduled sync saves **bookmarks and likes**. Save your own tweets separately with
 `tweetnook sync tweets`.
 
+## Configure availability checks
+
+In **Settings → Config → Check**, enable **Check automatically** and select Daily,
+Weekly (default), or Monthly. Set its time and the weekday or monthly date.
+**Check context tweets** is a separate basic toggle, off by default. Turn it on to
+show **Context cycle**, which defaults to 60 days. The rolling batch size follows
+the check frequency; saved tweets and quotes returned with them are checked every
+run. Checks require FxTwitter and the running Web service. Saved changes take
+effect immediately; the login lookup budget remains under Advanced.
+
 ## Update your Twitter/X connection or import an archive
 
 **Settings → Setup** lets you replace your Twitter/X session values. New

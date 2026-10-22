@@ -4,10 +4,27 @@ import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
 
 from tweetnook.auth import ResolvedAuthBundle
 from tweetnook.config import AppConfig, AuthConfig, SyncConfig, XDGPaths, ensure_paths
+
+
+@pytest.fixture(autouse=True)
+def offline_fxtwitter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep tests off the real FxTwitter API: every lookup fails unless a test supplies a
+    transport, so code under test falls back to its mocked TweetDetail path."""
+
+    from tweetnook.client import fxtwitter
+
+    real_build = fxtwitter.build_fx_client
+
+    def build(config, *, transport=None):
+        offline = httpx.MockTransport(lambda request: httpx.Response(418, json={"code": 418}))
+        return real_build(config, transport=transport or offline)
+
+    monkeypatch.setattr(fxtwitter, "build_fx_client", build)
 
 
 @pytest.fixture
