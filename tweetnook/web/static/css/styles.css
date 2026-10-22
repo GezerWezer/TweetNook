@@ -3359,6 +3359,11 @@ html { touch-action: manipulation; }
     height: var(--gallery-height);
     width: calc(var(--gallery-height) * min(var(--gallery-item-aspect), var(--gallery-max-aspect)));
 }
+.media-carousel-feed .media-carousel-item,
+.media-carousel-detail .media-carousel-item {
+    height: var(--gallery-height-app, var(--gallery-height));
+    width: min(calc(var(--gallery-height-app, var(--gallery-height)) * var(--gallery-item-aspect)), 80cqw);
+}
 .media-carousel-tile {
     height: 100%;
     border: 1px solid var(--border-color);
@@ -3402,6 +3407,45 @@ html { touch-action: manipulation; }
 }
 @media (prefers-reduced-motion: reduce) {
     .media-carousel-arrow { transition: none; }
+}
+/* X's desktop web, measured in October 2026. Phones keep their own app rules. */
+@media (min-width: 641px) {
+    /* Posts without text show 4px dashes under the name, 12px wide (22px for
+       the current photo), in the secondary text color at 35% → 100%. */
+    .feed-card [data-action="media"] > .media-carousel:has(> .media-carousel-dots) {
+        margin-top: 6px;
+    }
+    .media-carousel-dots {
+        display: flex;
+        gap: 5px;
+        height: 4px;
+        margin-bottom: 12px;
+    }
+    .media-carousel-dots > span {
+        width: calc(12px + 10px * var(--dot-active, 0));
+        border-radius: 2px;
+        background: var(--text-secondary);
+        opacity: calc(0.35 + 0.65 * var(--dot-active, 0));
+    }
+    .quote-card:not(.quote-compact) > .quote-text {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 5;
+        line-clamp: 5;
+        overflow: hidden;
+    }
+    /* An empty media slot keeps a text-only quote's bottom padding. */
+    .quote-card:not(.quote-compact) > .quote-media:empty {
+        margin-bottom: 0;
+    }
+    .quote-card:not(.quote-compact) > .quote-media:has(> .media-carousel) {
+        margin-top: 16px;
+    }
+    /* A quote sits 4px below a single photo or video in list rows. */
+    .feed-card [data-action="media"]:has(> .media-single) + .quote-card,
+    div:has(> .media-single) + template + div > .quote-card {
+        margin-top: 4px;
+    }
 }
 /* Touch screens keep :hover after a tap; the app has no arrows, only swiping. */
 @media (hover: none) {
@@ -3590,11 +3634,58 @@ html { touch-action: manipulation; }
     min-width: 0;
 }
 
-/* Large link cards: X's apps show the image with the headline over it and the
-   site underneath. Desktop keeps the bordered card; phones use the app layout. */
+/* Large link cards: X shows the image with the headline over it and the site
+   underneath, on the web and in its apps. Cards without an image keep the text. */
 .link-card-overlay-title,
 .link-card-from {
     display: none;
+}
+
+.link-card-large:has(.link-card-image) {
+    border-width: 0;
+    border-radius: 0;
+    overflow: visible;
+    background: transparent;
+}
+.link-card-large:has(.link-card-image) > .link-card-image {
+    position: relative;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    overflow: hidden;
+}
+.link-card-large:has(.link-card-image) > .link-card-text {
+    display: none;
+}
+.link-card-large:has(.link-card-image) .link-card-overlay-title {
+    display: block;
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: fit-content;
+    max-width: calc(100% - 24px);
+    padding: 0 4px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.77);
+    color: #fff;
+    font-size: 13px;
+    line-height: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.link-card-large:has(.link-card-image) > .link-card-from {
+    display: block;
+    margin-top: 4px;
+    padding-left: 12px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 16px;
+}
+@media (min-width: 641px) {
+    .link-card-large:has(.link-card-image) > .link-card-from {
+        padding-left: 0;
+    }
 }
 
 .date-app {
@@ -3767,11 +3858,6 @@ html { touch-action: manipulation; }
         border-radius: 2px;
         background: color-mix(in srgb, var(--text-primary) calc(23% + 43% * var(--dot-active, 0)), transparent);
     }
-    .media-carousel-feed .media-carousel-item,
-    .media-carousel-detail .media-carousel-item {
-        height: var(--gallery-height-app, var(--gallery-height));
-        width: min(calc(var(--gallery-height-app, var(--gallery-height)) * var(--gallery-item-aspect)), 80cqw);
-    }
 
     .quote-card:not(.quote-compact) > .quote-media:has(> .media-single > :is(.media-video-player, .media-frame-gif)) {
         margin: 12px 0 0;
@@ -3784,47 +3870,5 @@ html { touch-action: manipulation; }
     .quote-card:not(.quote-compact) > .quote-media > .media-single > .media-frame > [data-video-poster] {
         aspect-ratio: clamp(1, var(--media-source-aspect), 1.7778);
         object-fit: cover;
-    }
-
-    .link-card-large:has(.link-card-image) {
-        border-width: 0;
-        border-radius: 0;
-        overflow: visible;
-        background: transparent;
-    }
-    .link-card-large:has(.link-card-image) > .link-card-image {
-        position: relative;
-        border: 1px solid var(--border-color);
-        border-radius: 16px;
-        overflow: hidden;
-    }
-    .link-card-large:has(.link-card-image) > .link-card-text {
-        display: none;
-    }
-    .link-card-large:has(.link-card-image) .link-card-overlay-title {
-        display: block;
-        position: absolute;
-        left: 12px;
-        right: 12px;
-        bottom: 12px;
-        width: fit-content;
-        max-width: calc(100% - 24px);
-        padding: 0 4px;
-        border-radius: 4px;
-        background: rgba(0, 0, 0, 0.77);
-        color: #fff;
-        font-size: 13px;
-        line-height: 20px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .link-card-large:has(.link-card-image) > .link-card-from {
-        display: block;
-        margin-top: 4px;
-        padding-left: 12px;
-        color: var(--text-secondary);
-        font-size: 13px;
-        line-height: 16px;
     }
 }

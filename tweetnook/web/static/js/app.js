@@ -8382,7 +8382,7 @@ function tweetApp() {
                 if (lastSpace > 200) {
                     truncated = truncated.substring(0, lastSpace);
                 }
-                text = truncated + '...';
+                text = truncated;
                 isTruncated = true;
             }
             
@@ -8430,7 +8430,7 @@ function tweetApp() {
             text = html + this.highlightSearchText(text.slice(offset), highlightSearch, ranges, offset);
             
             if (isTruncated) {
-                text += `<span class="text-[var(--accent-color)] hover:underline cursor-pointer block mt-1 expand-tweet" data-id="${this.escapeHTML(tweetId)}">Show more</span>`;
+                text += `<span class="text-[var(--accent-color)] hover:underline cursor-pointer block expand-tweet" data-id="${this.escapeHTML(tweetId)}">Show more</span>`;
             }
             if (clampLines) {
                 // Show more covers the end of the ninth line, once measuring finds overflow.
@@ -8911,8 +8911,9 @@ function tweetApp() {
             // Keep roughly 1.67 of the widest tiles visible when that needs
             // more height than the standard strip (notably quoted squares).
             const height = `max(${percent}cqw, calc((100cqw - 4px) / ${1.67 * max}))`;
-            // X's iOS app sizes the strip from its first item instead: wide enough to
-            // show ~59.5% of the column, between 68% and 100% of the column tall.
+            // X's web and apps size inline strips from their first item instead: wide
+            // enough to show ~59.5% of the column, between 68% and 100% of it tall.
+            // The shared height above remains for quoted strips.
             return {aspects, height: quoted ? `min(66cqw, ${height})` : height,
                 maxAspect: 0.8 / (factor * (quoted ? 0.85 : 1)),
                 appHeight: quoted ? null : `clamp(68cqw, calc(59.5cqw / ${aspects[0]}), 100cqw)`};
