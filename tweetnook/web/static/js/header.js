@@ -198,25 +198,114 @@ function nookSyncBreakdown(model) {
   if (!slots.length) slots = [{ value: '—', label: { pending: 'Not started', skipped: 'Skipped', active: 'Starting', paused: 'Paused', cancelled: 'Nothing counted', failed: 'Nothing counted', complete: 'Nothing to count' }[model.state] || 'Nothing to count', num: null, kind: 'plain' }];
   return { ...model, slots: slots.map(slot => ({ ...slot, label: ({ 'already known': 'Known', 'posts saved': 'Saved' }[slot.label] || slot.label.replace(/^./, c => c.toUpperCase())) })), bars, label };
 }
+// Jobs list: every job the CLI can run. The server (/api/jobs) owns state and option specs;
+// the panel shows the selected job's run on top and the rest as rows.
+const NOOK_JOB_ICONS = {
+  options: 'M4 6h5V4h2v6H9V8H4zm9 0h7v2h-7zM4 16h9v-2h2v6h-2v-2H4zm13 0h3v2h-3z',
+  sync: 'M11.99 16l-5.7-5.7L7.7 8.88l3.29 3.3V2.59h2v9.59l3.3-3.3 1.41 1.42-5.71 5.7zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z',
+  check: 'M12 2c2.4 0 4.6.85 6.33 2.26l.96-.97 1.42 1.42-8 8a1 1 0 1 1-1.42-1.42l2.38-2.37a3.5 3.5 0 1 0 1.73 3.93l1.98-1.99A5.52 5.52 0 0 1 12 17.5a5.5 5.5 0 1 1 3.12-10.03l1.78-1.79a8 8 0 1 0 2.46 3.2l1.5-1.5A10 10 0 1 1 12 2',
+  threads: 'M1.75 10a8 8 0 0 1 8-8h4.37a8.13 8.13 0 0 1 3.93 15.24L10 21.7V18h-.07a8 8 0 0 1-8.18-8m2 0a6 6 0 0 0 6.14 6H12v2.3l5.09-2.8A6.13 6.13 0 0 0 14.12 4H9.75a6 6 0 0 0-6 6',
+  articles: 'M8 4a5 5 0 0 1 4 2 5 5 0 0 1 4-2h6v15h-7a2 2 0 0 0-2 2h-2a2 2 0 0 0-2-2H2V4zM4 17h5q1.1.02 2 .54V9a3 3 0 0 0-3-3H4zM16 6a3 3 0 0 0-3 3v8.54a4 4 0 0 1 2-.54h5V6z',
+  media: 'M15 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4 M14.1 2.5q1.65-.02 2.7.06c.74.06 1.38.18 1.97.48a5 5 0 0 1 2.19 2.19c.3.6.42 1.23.48 1.96q.08 1.06.06 2.71v4.2q.02 1.65-.06 2.7a5 5 0 0 1-.48 1.97 5 5 0 0 1-2.19 2.19c-.6.3-1.23.42-1.96.48q-1.06.08-2.71.06H9.9q-1.65.02-2.7-.06a5 5 0 0 1-1.97-.48 5 5 0 0 1-2.19-2.19c-.3-.6-.42-1.23-.48-1.96q-.07-1.06-.06-2.71V9.9q-.02-1.65.06-2.7c.06-.74.18-1.38.48-1.97a5 5 0 0 1 2.19-2.19c.6-.3 1.23-.42 1.96-.48q1.06-.07 2.71-.06zM4.5 15.44q.01.7.05 1.2c.05.61.14.96.28 1.22a3 3 0 0 0 1.3 1.31c.27.14.62.23 1.22.28.62.05 1.41.05 2.55.05h5.18l-7.12-7.13zM9.9 4.5c-1.14 0-1.93 0-2.55.05-.6.05-.95.14-1.21.28a3 3 0 0 0-1.31 1.3 3 3 0 0 0-.28 1.22c-.05.62-.05 1.41-.05 2.55v2.87l3.54-3.14 9.63 9.63.2-.09a3 3 0 0 0 1.3-1.3c.14-.27.23-.62.28-1.22.05-.62.05-1.41.05-2.55V9.9c0-1.14 0-1.93-.05-2.55a3 3 0 0 0-.28-1.21 3 3 0 0 0-1.3-1.31 3 3 0 0 0-1.22-.28c-.62-.05-1.41-.05-2.55-.05z',
+  urls: 'M1 12a7 7 0 0 1 7-7h2v2H8a5 5 0 1 0 0 10h2v2H8a7 7 0 0 1-7-7m20 0a5 5 0 0 0-5-5h-2V5h2a7 7 0 1 1 0 14h-2v-2h2a5 5 0 0 0 5-5m-4-1v2H7v-2z',
+  tagging: 'M10.09 3.1 9.72 7h5.99l.39-4.09 1.99.19-.37 3.9h3.78v2h-3.97l-.56 6h3.53v2h-3.72l-.38 4.09-1.99-.19.36-3.9H8.78l-.38 4.09-1.99-.19.36-3.9H2.5v-2h4.46l.56-6H3.5V7h4.21l.39-4.09zM14.96 15l.56-6H9.53l-.56 6z',
+  import: 'M12 16h-2v-2h2zm2-2h-2v-2h2zm-2-2h-2v-2h2zm2-2h-2V8h2zm-2-2h-2V6h2z M14.1 2.5q1.65-.02 2.7.06c.74.06 1.38.18 1.97.48a5 5 0 0 1 2.19 2.19c.3.6.42 1.23.48 1.96q.08 1.06.06 2.71v4.2q.02 1.65-.06 2.7a5 5 0 0 1-.48 1.97 5 5 0 0 1-2.19 2.19c-.6.3-1.23.42-1.96.48q-1.06.08-2.71.06H9.9q-1.65.02-2.7-.06a5 5 0 0 1-1.97-.48 5 5 0 0 1-2.19-2.19c-.3-.6-.42-1.23-.48-1.96q-.07-1.06-.06-2.71V9.9q-.02-1.65.06-2.7c.06-.74.18-1.38.48-1.97a5 5 0 0 1 2.19-2.19c.6-.3 1.23-.42 1.96-.48q1.06-.07 2.71-.06zm-4.2 2c-1.14 0-1.93 0-2.55.05-.6.05-.95.14-1.21.28a3 3 0 0 0-1.31 1.3 3 3 0 0 0-.28 1.22c-.05.62-.05 1.41-.05 2.55v4.2c0 1.14 0 1.93.05 2.55.05.6.14.95.28 1.21a3 3 0 0 0 1.3 1.31c.27.14.62.23 1.22.28.62.05 1.41.05 2.55.05h4.2c1.14 0 1.93 0 2.55-.05.6-.05.95-.14 1.21-.28a3 3 0 0 0 1.31-1.3c.14-.27.23-.62.28-1.22.05-.62.05-1.41.05-2.55V9.9c0-1.14 0-1.93-.05-2.55a3 3 0 0 0-.28-1.21 3 3 0 0 0-1.3-1.31 3 3 0 0 0-1.22-.28c-.62-.05-1.41-.05-2.55-.05H14V6h-2V4.5z',
+  enrich: 'M21.45 13A9.5 9.5 0 0 1 5 18.42V21H3v-5.96L2.99 15H9v2H6.41a7.5 7.5 0 0 0 13.02-4zM12 2.5a9.5 9.5 0 0 1 7 3.08V3h2v5.96l.01.04H15V7h2.59a7.5 7.5 0 0 0-13.02 4H2.55A9.5 9.5 0 0 1 12 2.5',
+  queued: 'M10.13 19.78c1.2.29 2.48.3 3.74 0l.77 1.86c-1.77.5-3.6.47-5.28 0zm10.56-2.83a10 10 0 0 1-3.74 3.74l-.77-1.87c1.1-.67 2-1.59 2.64-2.64zm-15.51-.77c.67 1.1 1.59 2 2.64 2.64l-.77 1.87a10 10 0 0 1-3.74-3.74zm16.46-6.82c.5 1.77.47 3.6 0 5.28l-1.86-.77c.29-1.2.3-2.48 0-3.74zm-17.42.77a8 8 0 0 0 0 3.74l-1.86.77a10 10 0 0 1 0-5.28zm12.73-6.82a10 10 0 0 1 3.74 3.74l-1.87.77c-.67-1.1-1.59-2-2.64-2.64zM7.82 5.18c-1.1.67-2 1.59-2.64 2.64L3.3 7.05A10 10 0 0 1 7.05 3.3zm1.54-2.82a10 10 0 0 1 5.28 0l-.77 1.86a8 8 0 0 0-3.74 0z',
+  failed: 'M12 15.2a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4m0-6.45c.8 0 1.4.7 1.29 1.48L12.75 14h-1.5l-.54-3.77A1.3 1.3 0 0 1 12 8.75 M9.4 3.5a3 3 0 0 1 5.2 0L22.4 17a3 3 0 0 1-2.6 4.5H4.2A3 3 0 0 1 1.6 17zm3.47 1a1 1 0 0 0-1.74 0L3.34 18a1 1 0 0 0 .87 1.5h15.58a1 1 0 0 0 .87-1.5z',
+  stop: 'M5 7c0-1.1.9-2 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z',
+  play: 'M6 17.93V6.07a2 2 0 0 1 3.05-1.7l9.67 5.92a2 2 0 0 1 0 3.42l-9.67 5.92A2 2 0 0 1 6 17.93',
+  remove: 'M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z',
+  history: 'M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5 m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z',
+};
+const NOOK_JOB_VERBS = { sync: 'Syncing', check: 'Checking', threads: 'Expanding conversations', articles: 'Refreshing articles', media: 'Downloading media', urls: 'Refreshing link previews', tagging: 'Tagging posts', import: 'Importing archive', enrich: 'Refreshing archive details' };
+// A run's headline is computed by the panel's own caption logic against that run.
+let nookRunOverride;
+function nookClock(ts) { return new Date(ts * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+// When a past run happened: its time today, then Yesterday, then the date.
+function nookJobWhen(ts) {
+  if (!ts) return '';
+  const date = new Date(ts * 1000), today = new Date(), yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return nookClock(ts);
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+// When a future run happens: its time within a day, then the weekday, then the date.
+function nookJobNextTime(ts) {
+  const seconds = ts - Date.now() / 1000;
+  if (seconds < 86400) return nookClock(ts);
+  if (seconds < 6 * 86400) return new Date(ts * 1000).toLocaleDateString([], { weekday: 'short' });
+  return new Date(ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+function nookDuration(seconds) {
+  const whole = Math.max(Math.round(Number(seconds) || 0), 0);
+  if (whole < 60) return `${whole}s`;
+  const minutes = Math.round(whole / 60);
+  return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
 function nookSyncPanel() {
   return {
-    view: 'main', selected: null, lastActiveStep: null, tabsResizeObserver: null,
-    running() { return Boolean(this.activity || this.activityStartPending); },
+    view: 'main', viewDir: '', selected: null, lastActiveStep: null, tabsResizeObserver: null,
+    jobs: [], jobsRunning: null, jobsWeekRuns: 0, jobsTimer: null, focusKey: null, moreOpen: false,
+    optKey: null, optValues: {}, jobError: '', jobBusy: false, archiveInfo: null, uploadPct: null,
+    history: [], historyLoaded: false,
+    // The top block shows the focused job: the one tapped below, else whatever
+    // runs, else a failed one, else the most recent run.
+    get displayActivity() {
+      if (nookRunOverride !== undefined) return nookRunOverride;
+      if (this.live()) return this.activity;
+      const shown = this.jobBy(this.shownKey());
+      if (shown) return this.jobSnapshot(shown);
+      // Once the jobs are known, a job that never ran shows as not run yet.
+      return this.jobs.length ? null : this.lastActivity;
+    },
+    jobBy(key) { return this.jobs.find(job => job.key === key) || null; },
+    jobSnapshot(job) {
+      const saved = job.last_snapshot || null, latest = this.lastActivity;
+      // Activity can finish before the jobs refresh. Keep that result through the handoff.
+      return latest?.title === job.command && (!saved || (latest.started_at || 0) >= (saved.started_at || 0)) ? latest : saved;
+    },
+    // A worker that's still starting reports a short title ("tweetnook media"); match it too.
+    runningKey() {
+      const title = String(this.activity?.title || '');
+      // The activity stream can move to Setup's next job before the Jobs response does.
+      return (title && this.jobs.find(job => job.command === title || job.command.startsWith(`${title} `))?.key) || this.jobsRunning?.key || null;
+    },
+    defaultFocus() {
+      if (this.activity && this.runningKey()) return this.runningKey();
+      const runs = this.jobs.map(job => ({job, run: this.jobSnapshot(job) || job.last})).filter(item => item.run)
+        .sort((a, b) => (b.run.completed_at || b.run.started_at || 0) - (a.run.completed_at || a.run.started_at || 0));
+      const failed = runs.find(({run}) => !run.stopped && run.status !== 'stopped' && run.success !== true);
+      return (failed || runs[0])?.job.key || 'sync';
+    },
+    shownKey() { return this.focusKey || this.defaultFocus(); },
+    // Live when the top block follows the running job rather than a past run.
+    live() {
+      if (!this.activity) return false;
+      return !this.focusKey || this.focusKey === this.runningKey() || (!this.runningKey() && !this.jobs.length);
+    },
+    running() { return this.live() || (this.activityStartPending && !this.focusKey); },
     steps() { return this.activitySteps(); },
     escape(text) { return String(text ?? ''); },
     headTitle() {
-      if (this.activityStartPending && !this.activity) return 'Starting sync…';
+      if (this.activityStartPending && !this.activity && !this.focusKey) return 'Starting…';
       const check = this.activityIsCheck();
-      if (this.activity) return check ? 'Checking' : 'Syncing';
+      if (this.live()) return NOOK_JOB_VERBS[this.runningKey()] || (check ? 'Checking' : 'Syncing');
       const last = this.displayActivity;
-      if (!last) return 'Not synced yet';
+      const job = this.jobBy(this.shownKey());
+      if (job && !job.scheduled) {
+        const name = {import: 'Import', enrich: 'Enrichment'}[job.key] || job.name;
+        return !last ? `${name} not run yet` : `${name} ${last.stopped ? 'stopped' : last.success === false ? 'failed' : last.success === true ? 'finished' : 'interrupted'}`;
+      }
+      if (!last) return this.shownKey() === 'check' ? 'Not checked yet' : 'Not synced yet';
       if (last.stopped) return check ? 'Check stopped' : 'Sync stopped';
       if (last.success === false) return check ? 'Check failed' : 'Sync failed';
       if (last.success === true) return check ? 'Checked' : 'Synced';
       return check ? 'Check interrupted' : 'Sync interrupted';
     },
     headTime() {
-      if (this.activity?.started_at) return this.formatActivityDuration(this.activityNowSeconds - this.activity.started_at);
+      if (this.live() && this.activity?.started_at) return this.formatActivityDuration(this.activityNowSeconds - this.activity.started_at);
       const done = this.displayActivity?.completed_at;
       return !this.running() && done ? this.formatRelativeDate(new Date(done * 1000)) : '';
     },
@@ -228,7 +317,9 @@ function nookSyncPanel() {
     tabPages() { return (this.running() ? [] : [null]).concat(this.steps().map((_, index) => index)); },
     tabLabel(index) {
       if (index === null) return 'Overview';
-      const step = this.steps()[index];
+      return this.tabLabelFor(this.steps()[index]);
+    },
+    tabLabelFor(step) {
       const labels = { 'archive-auth': 'Connect', 'archive-enrich': 'Refresh', threads: 'Conversations', resurrection: 'Retry', articles: 'Articles', media: 'Media', urls: 'Links', 'check:saves': 'Saved', 'check:unavailable': 'Unavailable', 'check:context': 'Context' };
       if (step.key?.startsWith('preflight:')) return 'Access';
       return labels[step.key] || step.title;
@@ -302,8 +393,16 @@ function nookSyncPanel() {
     caption() {
       const step = this.selectedStep();
       if (step) return this.describe(step);
-      if (this.activityStartPending) return { left: 'Connecting to X…', right: '', sub: 'Preparing to sync your selected collections.', detailLabel: 'Status', status: 'Waiting for the sync to start.', detail: '' };
-      if (!this.displayActivity) return { left: 'Your archive hasn’t been synced yet', right: '', sub: 'A sync will check your collections and update the archive.', detailLabel: 'Status', status: 'Choose Sync now to get started.', detail: '' };
+      return this.overview();
+    },
+    // The run summary shown on the Overview tab, also used as a job row's last result.
+    overview() {
+      if (this.activityStartPending && !this.focusKey && nookRunOverride === undefined) return { left: 'Connecting to X…', right: '', sub: 'Preparing to sync your selected collections.', detailLabel: 'Status', status: 'Waiting for the sync to start.', detail: '' };
+      if (!this.displayActivity) {
+        const job = this.jobBy(this.shownKey());
+        if (job && !job.scheduled) return { left: `${job.name} hasn’t run yet`, right: '', sub: job.description || '', detailLabel: 'Status', status: 'Choose run options to get started.', detail: '' };
+        return { left: 'Your archive hasn’t been synced yet', right: '', sub: 'A sync will check your collections and update the archive.', detailLabel: 'Status', status: 'Choose Sync now to get started.', detail: '' };
+      }
       const metric = label => Number(String(this.activitySummaryMetrics().find(item => item.label === label)?.value || 0).replace(/,/g, '')) || 0;
       const bookmarks = metric('New bookmarks'), likes = metric('New liked tweets'), tweets = metric('New tweets');
       const parts = [bookmarks && `${bookmarks.toLocaleString()} bookmark${bookmarks === 1 ? '' : 's'}`, likes && `${likes.toLocaleString()} like${likes === 1 ? '' : 's'}`, tweets && `${tweets.toLocaleString()} tweet${tweets === 1 ? '' : 's'}`].filter(Boolean);
@@ -312,6 +411,10 @@ function nookSyncPanel() {
       this.steps().forEach(item => { const state = this.stepState(item); tally[state] = (tally[state] || 0) + 1; });
       const detail = [['complete', 'complete'], ['skipped', 'skipped'], ['failed', 'failed'], ['cancelled', 'canceled'], ['paused', 'paused'], ['pending', 'not run']].filter(([key]) => tally[key]).map(([key, label]) => `${tally[key]} ${label}`).join(' · ');
       const stopped = this.displayActivity.stopped || this.displayActivity.success !== true;
+      const job = this.jobs.find(item => item.command === this.displayActivity.title);
+      if (job && !job.scheduled) {
+        return { left: this.displayActivity.summary || `${job.name} ${stopped ? 'stopped before all steps finished.' : 'finished.'}`, right: issues ? `${issues} issue${issues === 1 ? '' : 's'}` : 'No issues', danger: Boolean(issues), sub: `${job.name} ${stopped ? 'stopped before all steps finished.' : 'finished.'}`, detailLabel: 'Run result', detail, status: stopped ? this.displayActivity.summary || 'Stopped before all steps finished.' : 'All steps finished.' };
+      }
       if (this.activityIsCheck()) {
         const total = (keys, label) => this.steps().filter(item => keys.includes(item.key))
           .reduce((sum, item) => sum + (nookSyncStats(item.summary || item.counters).find(stat => stat.label === label)?.num || 0), 0);
@@ -348,20 +451,263 @@ function nookSyncPanel() {
       const day = this.activityScheduleDayText(), time = this.activityScheduleTimeText();
       return [day, time].filter(Boolean).join(' ');
     },
-    openSettingsView() { this.view = 'settings'; this.$nextTick(() => this.$refs.settingsBack?.focus()); },
-    back() { this.view = 'main'; this.$nextTick(() => this.$root.querySelector('.cs-menu li:last-child .cs-row')?.focus()); },
-    openLogs() {
-      const runId = this.displayActivity?.run_id || null;
+    openSettingsView() { this.go('settings'); this.$nextTick(() => this.$refs.settingsBack?.focus()); },
+    go(view) { this.viewDir = 'is-push'; this.view = view; this.jobError = ''; },
+    back() {
+      const from = this.view;
+      this.viewDir = 'is-pop'; this.view = 'main'; this.jobError = '';
+      this.$nextTick(() => this.$root.querySelector(from === 'history' ? '[data-view="history"]' : from === 'options' ? `[data-job="${this.optKey}"] .cs-job-body` : '[data-view="settings"]')?.focus());
+    },
+    openRunLog(runId) {
       this.activityDrawerOpen = false; this.openSettings();
       this.$nextTick(() => { nookSettingsNavigate(this, 'logs'); this.nookLogOpenRunId = runId; });
     },
+    // --- jobs ---
+    async loadJobs() {
+      try {
+        const response = await fetch('/api/jobs');
+        if (!response.ok) return;
+        const data = await response.json();
+        this.jobs = data.jobs || [];
+        this.jobsRunning = data.running || null;
+        this.jobsWeekRuns = data.runs_this_week || 0;
+        if (this.uploadPct === null) this.archiveInfo = data.archive || null;
+      } catch (_) {
+        // Keep the last list; the top block still follows the activity stream.
+      }
+    },
+    scheduledJobs() { return this.jobs.filter(job => job.scheduled); },
+    onDemandJobs() { return this.jobs.filter(job => !job.scheduled); },
+    // Keep used and waiting jobs visible, including Setup's initial import and enrichment.
+    onDemandShown() { return this.moreOpen ? this.onDemandJobs() : this.onDemandJobs().filter(job => this.jobSnapshot(job) || job.last || ['running', 'queued'].includes(job.state)); },
+    moreLabel() { return this.moreOpen ? 'Show less' : `${this.onDemandJobs().length - this.onDemandShown().length} more`; },
+    isFocused(job) { return job.key === this.shownKey(); },
+    focus(key) { this.focusKey = key === this.defaultFocus() && !this.activity ? null : key; this.selected = null; this.$nextTick(() => this.revealStepTab()); },
+    jobGlyph(job) { return NOOK_JOB_ICONS[job.state === 'queued' ? 'queued' : job.state === 'failed' ? 'failed' : job.key] || NOOK_JOB_ICONS.sync; },
+    headline(job) {
+      if (!job.last_snapshot) return '';
+      nookRunOverride = job.last_snapshot;
+      try { return this.overview().left; } finally { nookRunOverride = undefined; }
+    },
+    liveProgress() {
+      const step = (this.activity?.steps || []).find(item => item.state === 'active');
+      if (!step) return 'Starting';
+      const index = this.activity.steps.indexOf(step), label = this.tabLabelFor(step, index);
+      return step.show_progress === false || !(Number(step.total) > 0) ? label : `${label} ${Number(step.completed || 0).toLocaleString()} / ${Number(step.total).toLocaleString()}`;
+    },
+    startedBy() {
+      const origin = this.jobsRunning?.origin, at = this.jobsRunning?.started_at;
+      const who = origin === 'schedule' ? 'Scheduled' : origin === 'cli' ? 'Started from the command line' : 'Started by you';
+      return at ? `${who} · ${nookClock(at)}` : who;
+    },
+    jobSub(job) {
+      if (!job.available) return job.unavailable_reason || 'Unavailable';
+      if (job.state === 'running') return this.isFocused(job) ? this.startedBy() : `Running · ${this.liveProgress()}`;
+      if (job.state === 'in_sync') return 'Running now as part of Sync';
+      if (job.state === 'queued') {
+        const running = this.jobBy(this.runningKey());
+        return running ? `Waiting for ${running.name} to finish` : 'Waiting for another command to finish';
+      }
+      if (!job.last) return 'Never run';
+      const when = nookJobWhen(job.last.completed_at || job.last.started_at);
+      if (job.last.status === 'stopped') return `${when} · Stopped`;
+      const result = job.scheduled ? this.headline(job) : '';
+      if (job.state === 'failed') return `${when} · ${String(job.last.summary || 'Failed').replace(/\.$/, '')}`;
+      return result ? `${when} · ${result}` : `${when} · Finished`;
+    },
+    jobNext(job) {
+      if (job.state === 'running') return 'Now';
+      if (job.state === 'queued') return job.queue?.retry_at ? nookClock(job.queue.retry_at) : 'Next';
+      if (job.next?.at) return nookJobNextTime(job.next.at);
+      return job.next?.label || '';
+    },
+    jobActionLabel(job) {
+      if (job.state === 'running') return `Stop ${job.name}`;
+      if (job.state === 'queued') return job.queue?.removable === false ? `${job.name} is waiting` : `Remove ${job.name} from the queue`;
+      if (job.key === 'import') return `Choose an archive to import`;
+      return this.activity ? `Queue ${job.name} after the current job` : `Run ${job.name} now`;
+    },
+    jobActionGlyph(job) { return NOOK_JOB_ICONS[job.state === 'running' ? 'stop' : job.state === 'queued' ? 'remove' : 'play']; },
+    jobActionDisabled(job) {
+      if (job.state === 'running') return false;
+      if (job.state === 'queued') return job.queue?.removable === false;
+      return this.jobBusy || !job.available || job.state === 'in_sync' || this.archiveReady === false || this.setupForced;
+    },
+    jobAction(job) {
+      if (job.state === 'running') return this.stopActivity();
+      if (job.state === 'queued') return this.unqueue(job.key);
+      if (job.key === 'import') return this.openOptions(job.key);
+      return this.runJob(job.key);
+    },
+    async runJob(key, options = {}) {
+      this.jobBusy = true; this.jobError = '';
+      try {
+        const response = await fetch(`/api/jobs/${key}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ options }) });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || 'Could not start the job');
+        if (data.started) { this.focusKey = this.jobBy(key)?.scheduled ? key : null; this.activityStartPending = true; }
+        await new Promise(resolve => setTimeout(resolve, 250));
+        await Promise.all([this.fetchActivityStatus(true), this.loadJobs()]);
+        return true;
+      } catch (error) {
+        this.jobError = error.message;
+        return false;
+      } finally {
+        this.jobBusy = false;
+      }
+    },
+    async unqueue(key) {
+      this.jobError = '';
+      const response = await fetch(`/api/jobs/${key}/queue`, { method: 'DELETE' }).catch(() => null);
+      if (!response?.ok) this.jobError = 'Could not remove it from the queue';
+      await this.loadJobs();
+    },
+    // --- run options: one control per CLI flag ---
+    optJob() { return this.jobBy(this.optKey); },
+    openOptions(key) {
+      this.optKey = key;
+      const job = this.jobBy(key);
+      this.optValues = { ...(job?.defaults || {}), ...(this.optValues.__key === key ? this.optValues : {}), __key: key };
+      this.go('options');
+      if (key === 'import') this.loadJobs();
+      this.$nextTick(() => this.$refs.optionsBack?.focus());
+    },
+    optValue(option) { return this.optValues[option.key]; },
+    optDisabled(option) { return (option.disabled_when || []).some(([other, value]) => this.optValues[other] === value); },
+    optToggle(option) { this.optValues[option.key] = !this.optValues[option.key]; },
+    optSet(option, raw) {
+      const text = String(raw ?? '').trim();
+      this.optValues[option.key] = text === '' ? null : option.kind === 'int' ? Number(text) : text;
+    },
+    optReset() { this.optValues = { ...(this.optJob()?.defaults || {}), __key: this.optKey }; this.jobError = ''; },
+    // Only options that differ from their default are sent, as the CLI would be called.
+    optChanges() {
+      const job = this.optJob(), changes = {};
+      for (const option of job?.options || []) {
+        if (option.kind === 'archive' || this.optDisabled(option)) continue;
+        const value = this.optValues[option.key], fallback = job.defaults?.[option.key];
+        if (value === fallback || value == null || (typeof value === 'number' && !Number.isFinite(value))) continue;
+        changes[option.key] = value;
+      }
+      return changes;
+    },
+    optCommand() {
+      const job = this.optJob();
+      if (!job) return '';
+      const changes = this.optChanges(), parts = [job.command], positional = [];
+      for (const option of job.options) {
+        if (option.kind === 'archive') { positional.push(this.archiveInfo?.filename || 'archive.zip'); continue; }
+        if (!(option.key in changes)) continue;
+        const value = changes[option.key];
+        if (option.kind === 'flag') parts.push(option.flag);
+        else if (option.kind === 'negflag') parts.push(option.flag);
+        else if (option.kind === 'level') parts.push(`${option.flag} ${value ? 1 : 0}`);
+        else if (!option.flag) positional.push(/\s/.test(value) ? `"${value}"` : value);
+        else parts.push(`${option.flag} ${/\s/.test(value) ? `"${value}"` : value}`);
+      }
+      return [...parts, ...positional].join(' ');
+    },
+    optNote() {
+      const job = this.optJob();
+      if (!job) return '';
+      if (job.state === 'in_sync') return 'Running now as part of Sync';
+      const running = this.jobBy(this.runningKey());
+      return this.activity ? `Starts after ${running?.name || 'the current job'}` : '';
+    },
+    optRunLabel() { const job = this.optJob(); return job?.state === 'in_sync' ? 'Running in Sync' : job?.state === 'queued' ? 'Queued' : this.activity ? 'Queue run' : 'Run'; },
+    optRunDisabled() {
+      const job = this.optJob();
+      if (!job || this.jobBusy || this.uploadPct !== null || ['in_sync', 'queued', 'running'].includes(job.state)) return true;
+      if (this.archiveReady === false && job.key !== 'import') return true;
+      return job.key === 'import' && !this.archiveInfo?.uploaded;
+    },
+    async runOptions() {
+      if (await this.runJob(this.optKey, this.optChanges())) this.back();
+    },
+    archiveLabel() {
+      if (this.uploadPct !== null) return `Uploading… ${this.uploadPct}%`;
+      const info = this.archiveInfo;
+      if (!info?.uploaded) return 'No archive chosen';
+      return info.size ? `${info.filename} · ${this.formatActivityBytes(info.size)}` : info.filename;
+    },
+    uploadArchive(file) {
+      if (!file) return;
+      this.jobError = ''; this.uploadPct = 0;
+      const request = new XMLHttpRequest();
+      request.open('PUT', '/api/setup/archive');
+      request.upload.onprogress = event => { if (event.lengthComputable) this.uploadPct = Math.floor(event.loaded / event.total * 100); };
+      request.onload = () => {
+        this.uploadPct = null;
+        let data = {};
+        try { data = JSON.parse(request.responseText || '{}'); } catch (_) { /* keep empty */ }
+        if (request.status >= 200 && request.status < 300) this.archiveInfo = data;
+        else this.jobError = data.detail || 'Could not upload the archive';
+      };
+      request.onerror = () => { this.uploadPct = null; this.jobError = 'Could not upload the archive'; };
+      request.send(file);
+    },
+    // --- run history ---
+    async openHistory() {
+      this.go('history');
+      this.$nextTick(() => this.$refs.historyBack?.focus());
+      try {
+        const response = await fetch('/api/activity/runs?limit=30');
+        if (response.ok) this.history = (await response.json()).runs || [];
+      } catch (_) {
+        // Leave the previous list.
+      }
+      this.historyLoaded = true;
+    },
+    runJobFor(run) { return this.jobs.find(job => job.command === run.title) || null; },
+    runName(run) { return this.runJobFor(run)?.name || String(run.title || 'Command').replace(/^tweetnook\s+/, ''); },
+    runGlyph(run) { return run.success === false && run.status !== 'stopped' ? NOOK_JOB_ICONS.failed : NOOK_JOB_ICONS[this.runJobFor(run)?.key] || NOOK_JOB_ICONS.history; },
+    runResult(run) {
+      if (['running', 'starting'].includes(run.status)) return 'Running';
+      if (run.status === 'stopped') return 'Stopped';
+      const summary = String(run.summary || '').trim();
+      return summary || (run.success ? 'Finished' : run.success === false ? 'Failed' : 'Interrupted');
+    },
+    runTone(run) { return ['running', 'starting'].includes(run.status) ? '' : run.success === false && run.status !== 'stopped' ? 'is-danger' : ''; },
+    runDuration(run) { return run.completed_at && run.started_at ? nookDuration(run.completed_at - run.started_at) : ''; },
+    // --- phone sheet: drag the grabber down to dismiss ---
+    grab(event) {
+      const panel = this.$root, start = event.clientY;
+      let dy = 0;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      panel.style.transition = 'none';
+      const move = moveEvent => { dy = Math.max(0, moveEvent.clientY - start); panel.style.transform = `translateY(${dy}px)`; };
+      const up = upEvent => {
+        upEvent.currentTarget.removeEventListener('pointermove', move);
+        panel.style.transition = 'transform .22s ease-out';
+        if (dy > Math.min(120, panel.offsetHeight / 4)) {
+          panel.style.transform = 'translateY(100%)';
+          setTimeout(() => { this.activityDrawerOpen = false; panel.style.transform = ''; panel.style.transition = ''; }, 220);
+        } else {
+          panel.style.transform = '';
+          setTimeout(() => { panel.style.transition = ''; }, 220);
+        }
+      };
+      event.currentTarget.addEventListener('pointermove', move);
+      event.currentTarget.addEventListener('pointerup', up, { once: true });
+      event.currentTarget.addEventListener('pointercancel', up, { once: true });
+    },
+    // Desktop: arrows page through the step tabs when they overflow.
+    scrollTabs(direction) { const nav = this.$refs.stepTabs; nav?.scrollBy({ left: direction * nav.clientWidth * 0.7, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); },
     openScheduleSettings() { this.activityDrawerOpen = false; this.openSettings(); this.$nextTick(() => nookSettingsNavigate(this, 'schedule')); },
     init() {
       this.lastActiveStep = this.activity?.steps?.find(step => step.state === 'active')?.key || null;
       // Follow each newly active step, while allowing inspection of other steps between transitions.
       this.$watch('activityDrawerOpen', open => {
-        if (open) { this.view = 'main'; this.selected = null; this.$nextTick(() => this.revealStepTab()); }
+        clearInterval(this.jobsTimer);
+        if (!open) return;
+        this.view = 'main'; this.viewDir = ''; this.selected = null; this.focusKey = null; this.moreOpen = false; this.jobError = '';
+        this.loadJobs().then(() => this.$nextTick(() => this.revealStepTab()));
+        // Times and queue positions drift while the panel stays open.
+        this.jobsTimer = setInterval(() => this.loadJobs(), 30000);
+        this.$nextTick(() => this.revealStepTab());
       });
+      // A job starting or finishing changes every row.
+      this.$watch('activity?.run_id', () => { if (this.activityDrawerOpen) this.loadJobs(); });
       this.$watch('activity', (now, before) => {
         const active = now?.steps?.find(step => step.state === 'active')?.key || null;
         if (Boolean(now) !== Boolean(before) || (active && active !== this.lastActiveStep)) {
@@ -378,6 +724,6 @@ function nookSyncPanel() {
         this.revealStepTab();
       });
     },
-    destroy() { this.tabsResizeObserver?.disconnect(); },
+    destroy() { this.tabsResizeObserver?.disconnect(); clearInterval(this.jobsTimer); },
   };
 }

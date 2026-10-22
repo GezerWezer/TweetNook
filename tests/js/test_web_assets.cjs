@@ -217,6 +217,11 @@ function loadScripts(context, names, exportExpression) {
     return context.__exports;
 }
 
+// Like Alpine's nested x-data scopes: the child's own properties, getters included, win.
+function nookMergeScope(parent, child) {
+    return Object.defineProperties(Object.create(parent), Object.getOwnPropertyDescriptors(child));
+}
+
 function immediateComponent(component) {
     component.$nextTick = callback => callback();
     component.$watch = () => {};
@@ -6479,7 +6484,7 @@ test('inactive unknown results are interrupted across the drawer and run history
         ['themes.js', 'app.js', 'header.js', 'settings.js'], '({tweetApp, nookSyncPanel, nookLogsPage})');
     const app = immediateComponent(tweetApp());
     app.lastActivity = {run_id: 'unknown', running: false, success: null, steps: []};
-    const panel = Object.assign(Object.create(app), nookSyncPanel());
+    const panel = nookMergeScope(app, nookSyncPanel());
     assert.equal(panel.headTitle(), 'Sync interrupted');
     assert.equal(app.activityRunStateLabel(), 'Interrupted');
     assert.equal(app.activityRunStatusTitle(), 'Last run interrupted');
@@ -8506,7 +8511,7 @@ test('sync panel shows paused and skipped reasons, new tweets, and the server sc
     const context = browserContext();
     const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
     const app = immediateComponent(tweetApp());
-    const panel = Object.assign(Object.create(app), nookSyncPanel());
+    const panel = nookMergeScope(app, nookSyncPanel());
 
     const paused = { key: 'tagging', title: 'Automated tags', state: 'failed', paused: true, reason: 'daily spend limit reached', summary: 'Stopped at the spend limit' };
     assert.equal(panel.stepState(paused), 'paused');
@@ -8539,10 +8544,73 @@ test('sync panel shows paused and skipped reasons, new tweets, and the server sc
     assert.equal(panel.scheduleLabel(), 'Scheduled syncs off');
 });
 
+test('jobs panel retains import and enrichment results and keeps them selectable', () => {
+    const context = browserContext();
+    const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
+    for (const key of ['import', 'enrich']) {
+        for (const success of [true, false, null]) {
+            const app = immediateComponent(tweetApp());
+            const panel = nookMergeScope(app, nookSyncPanel());
+            const title = `tweetnook import ${key === 'import' ? 'x-archive' : 'enrich'}`;
+            const snapshot = {
+                run_id: `${key}-run`, title, started_at: 100, completed_at: 200,
+                success, summary: success ? '12 posts enriched' : 'Replay source unavailable',
+                steps: [{key: 'archive-enrich', title: 'Enrichment', state: success ? 'complete' : 'failed', reason: success ? null : 'Replay source unavailable'}],
+                issues: [],
+            };
+            panel.jobs = [
+                {key: 'sync', command: 'tweetnook sync', name: 'Sync', scheduled: true, state: 'never'},
+                {key, command: title, name: key === 'import' ? 'Import X archive' : 'Enrich archive', scheduled: false, state: 'running'},
+                {key: 'media', command: 'tweetnook media download', name: 'Download media', scheduled: false, state: 'never'},
+            ];
+            app.activity = {...snapshot, running: true, success: null};
+            panel.jobsRunning = {key: 'media'}; // Previous Jobs response during a Setup handoff.
+            assert.equal(panel.shownKey(), key);
+            assert.equal(panel.live(), true);
+            assert.equal(panel.runningKey(), key);
+            // Completion arrives through activity before the Jobs request finishes.
+            app.lastActivity = snapshot;
+            app.activity = null;
+            assert.equal(panel.shownKey(), key);
+            assert.equal(panel.displayActivity.run_id, snapshot.run_id);
+            panel.jobs[1] = {...panel.jobs[1], state: success ? 'ok' : 'failed', last: snapshot, last_snapshot: snapshot};
+            assert.equal(panel.displayActivity.run_id, snapshot.run_id);
+            assert.equal(panel.steps()[0].key, 'archive-enrich');
+            assert.equal(panel.headTitle(), `${key === 'import' ? 'Import' : 'Enrichment'} ${success ? 'finished' : success === false ? 'failed' : 'interrupted'}`);
+            assert.equal(panel.overview().status, success ? 'All steps finished.' : snapshot.summary);
+            assert.ok(!/Sync|Nothing new/.test(panel.overview().left));
+            assert.equal(panel.onDemandShown()[0].key, key);
+            assert.equal(panel.isFocused(panel.jobs[1]), true);
+            // A following Setup job must not erase the import's retained details.
+            const media = {run_id: 'media-run', title: 'tweetnook media download', started_at: 300, completed_at: 400, success: true, steps: []};
+            panel.jobs[2] = {...panel.jobs[2], state: 'ok', last: media, last_snapshot: media};
+            app.lastActivity = media;
+            panel.focus(key);
+            assert.equal(panel.displayActivity.run_id, snapshot.run_id);
+            assert.equal(panel.caption().status, success ? 'All steps finished.' : snapshot.summary);
+            app.lastActivity = null; // Reload: only persisted Jobs data remains.
+            panel.focusKey = null;
+            assert.equal(panel.shownKey(), success ? 'media' : key);
+            snapshot.stopped = true;
+            snapshot.success = false;
+            panel.focus(key);
+            assert.equal(panel.headTitle(), `${key === 'import' ? 'Import' : 'Enrichment'} stopped`);
+            panel.focusKey = null;
+            assert.equal(panel.shownKey(), 'media');
+            panel.jobs[1] = {...panel.jobs[1], last: null, last_snapshot: null, state: 'never'};
+            panel.focus(key);
+            assert.match(panel.overview().left, /hasn’t run yet/);
+            assert.equal(panel.onDemandShown().length, 1);
+            panel.moreOpen = true;
+            assert.equal(panel.onDemandShown().length, 2);
+        }
+    }
+});
+
 test('sync panel labels unknown progress without fabricated fractions and animates active work', () => {
     const context = browserContext();
     const { tweetApp, nookSyncPanel, nookSyncBreakdown } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel, nookSyncBreakdown})');
-    const panel = Object.assign(Object.create(immediateComponent(tweetApp())), nookSyncPanel());
+    const panel = nookMergeScope(immediateComponent(tweetApp()), nookSyncPanel());
     const step = { state: 'active', title: 'Bookmarks', activity: 'Fetching page 3', completed: 3, total: 4, show_progress: false };
 
     // Timeline page totals are placeholders even when positive.

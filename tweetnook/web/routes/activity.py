@@ -29,11 +29,17 @@ from tweetnook.web.activity_stream import ActivityStream
 from tweetnook.web.deps import server_state, verify_credentials
 
 router = APIRouter(prefix="/api/activity", tags=["activity"])
+# Every job the Web jobs list can run reports through the same pipeline.
 ARCHIVE_PIPELINE_TITLES = {
     "tweetnook sync",
     "tweetnook check",
     "tweetnook import enrich",
     "tweetnook import x-archive",
+    "tweetnook threads expand",
+    "tweetnook articles refresh",
+    "tweetnook media download",
+    "tweetnook unfurl",
+    "tweetnook tag",
 }
 
 
@@ -89,7 +95,7 @@ def _read_active_snapshot() -> dict[str, Any] | None:
         "run_id": supervisor.active_run_id,
         "origin": supervisor.active_origin or "web",
         "pid": supervisor.active_pid,
-        "title": f"tweetnook {kind}",
+        "title": getattr(supervisor, "active_title", None) or f"tweetnook {kind}",
         "running": True,
         "success": None,
         "summary": "Starting worker process",

@@ -329,6 +329,43 @@ class ScheduleManager:
         self._state["fingerprint"] = self._fingerprint(schedule)
         self._save_state()
 
+    def check_status(self) -> dict[str, Any]:
+        """The nightly check's schedule for the Web jobs list."""
+
+        with self._lock:
+            next_at = self._state.get("check_next_run_at") if self._check_on() else None
+            last_result = str(self._state.get("check_last_result") or "")
+            return {
+                "on": self._check_on(),
+                "next_run_at": next_at,
+                # A due check that found another command running retries every 15 minutes.
+                "deferred": bool(next_at) and last_result.startswith("deferred"),
+                "last_run_at": self._state.get("check_last_run_at"),
+            }
+
+    def sync_deferred(self) -> bool:
+        """Whether a due scheduled sync is waiting for the availability check."""
+
+        with self._lock:
+            return str(self._state.get("last_result") or "").startswith(
+                "deferred: waiting for the availability check"
+            )
+
+    def skip_deferred_check(self, *, now: float | None = None) -> bool:
+        """Drop tonight's deferred check; the next one runs at its usual time."""
+
+        with self._lock:
+            if not self.check_status()["deferred"]:
+                return False
+            timestamp = time.time() if now is None else now
+            self._state["check_next_run_at"] = next_run_after(
+                self._check_schedule(self.config.check),
+                datetime.fromtimestamp(timestamp, UTC),
+            ).timestamp()
+            self._state["check_last_result"] = "skipped: removed from the queue"
+            self._save_state()
+            return True
+
     def _check_on(self) -> bool:
         # The check is FxTwitter lookups; with FxTwitter off, sync owns the retries.
         return self.config.check.enabled and fx_enabled(self.config)
