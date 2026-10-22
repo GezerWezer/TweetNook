@@ -1980,7 +1980,8 @@ function tweetApp() {
         activityHeaderText() {
             if (this.activity || this.activityStartPending) return this.activityCommandLabel() + ' in progress…';
             const last = this.lastActivity;
-            const noun = this.activityIsCheck(last) ? 'Check' : 'Sync';
+            const command = String(last?.title || '').replace(/^tweetnook\s+/i, '').trim();
+            const noun = this.activityIsCheck(last) ? 'Check' : !command || command === 'sync' ? 'Sync' : 'Job';
             if (last?.stopped) return `${noun} stopped — open Activity`;
             if (last?.success === false) return `${noun} failed — open Activity`;
             if (last && last.success !== true) return `${noun} interrupted — open Activity`;

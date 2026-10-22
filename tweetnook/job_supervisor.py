@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -29,6 +30,9 @@ WORKER_INTERRUPT_TIMEOUT = 45
 WORKER_TERMINATE_TIMEOUT = 10
 WORKER_KILL_TIMEOUT = 5
 WEB_STOP_TIMEOUT = 70
+# A queued job waiting on a command this supervisor didn't start (a CLI run) looks again
+# this often.
+QUEUE_RETRY_SECONDS = 30
 SERVICE_STOP_TIMEOUT = 90
 
 
@@ -37,7 +41,11 @@ class JobConflictError(RuntimeError):
 
 
 class JobSupervisor:
-    """Launch one guarded tweetnook worker process at a time."""
+    """Launch one guarded tweetnook worker process at a time.
+
+    Jobs started while another runs can wait in a queue; each starts when the one before
+    it finishes, in order.
+    """
 
     def __init__(
         self,
@@ -55,11 +63,14 @@ class JobSupervisor:
         self._process: subprocess.Popen[bytes] | None = None
         self._run_id: str | None = None
         self._kind: str | None = None
+        self._title: str | None = None
         self._origin: str | None = None
         self._stopping = False
         self._console_handle: Any | None = None
         self._monitor_thread: threading.Thread | None = None
         self._shutdown = False
+        self._queue: list[dict[str, Any]] = []
+        self._retry_timer: threading.Timer | None = None
         self.last_result: dict[str, Any] | None = None
 
     @property
@@ -81,6 +92,11 @@ class JobSupervisor:
     def active_kind(self) -> str | None:
         with self._lock:
             return self._kind if self.active else None
+
+    @property
+    def active_title(self) -> str | None:
+        with self._lock:
+            return self._title if self.active else None
 
     @property
     def active_origin(self) -> str | None:
@@ -131,6 +147,7 @@ class JobSupervisor:
             self._process = process
             self._run_id = run_id
             self._kind = kind
+            self._title = title
             self._origin = origin
             self._stopping = False
             self._console_handle = console_handle
@@ -155,6 +172,78 @@ class JobSupervisor:
             if self.on_start is not None:
                 self.on_start(run_id, process.pid)
             return {"started": True, "kind": kind, "run_id": run_id, "pid": process.pid}
+
+    @property
+    def queue(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return [
+                {key: value for key, value in item.items() if key != "cli_args"}
+                for item in self._queue
+            ]
+
+    def enqueue(
+        self,
+        *,
+        kind: str,
+        cli_args: list[str],
+        origin: str,
+        title: str,
+    ) -> dict[str, Any]:
+        """Start the job now if nothing runs, otherwise queue it behind what does."""
+
+        with self._lock:
+            if self._shutdown:
+                raise JobConflictError("The server is stopping.")
+            if any(item["kind"] == kind for item in self._queue):
+                raise JobConflictError(f"{title} is already queued.")
+            self._queue.append(
+                {
+                    "kind": kind,
+                    "cli_args": list(cli_args),
+                    "origin": origin,
+                    "title": title,
+                    "queued_at": time.time(),
+                }
+            )
+            position = len(self._queue)
+        started = self._start_next()
+        if started is not None and started.get("kind") == kind:
+            return started
+        return {"started": False, "queued": True, "kind": kind, "position": position}
+
+    def dequeue(self, kind: str) -> bool:
+        with self._lock:
+            before = len(self._queue)
+            self._queue = [item for item in self._queue if item["kind"] != kind]
+            return len(self._queue) != before
+
+    def _start_next(self) -> dict[str, Any] | None:
+        with self._lock:
+            if self._retry_timer is not None:
+                self._retry_timer.cancel()
+                self._retry_timer = None
+            if not self._queue or self._shutdown or self._run_id is not None:
+                return None
+            item = self._queue[0]
+            try:
+                started = self.start(
+                    kind=item["kind"],
+                    cli_args=item["cli_args"],
+                    origin=item["origin"],
+                    title=item["title"],
+                )
+            except JobConflictError:
+                # Another process holds the archive; look again shortly.
+                self._retry_timer = threading.Timer(QUEUE_RETRY_SECONDS, self._start_next)
+                self._retry_timer.daemon = True
+                self._retry_timer.start()
+                return None
+            except OSError:
+                logging.getLogger(__name__).exception("Could not start a queued job")
+                self._queue.pop(0)
+                return None
+            self._queue.pop(0)
+            return started
 
     def _external_activity_is_running(self) -> bool:
         try:
@@ -191,6 +280,10 @@ class JobSupervisor:
         """Stop managed workers cooperatively, escalating only after bounded waits."""
         with self._lock:
             self._shutdown = True
+            self._queue.clear()
+            if self._retry_timer is not None:
+                self._retry_timer.cancel()
+                self._retry_timer = None
             process = self._process
             monitor = self._monitor_thread
             if process is not None and process.poll() is None:
@@ -251,6 +344,7 @@ class JobSupervisor:
                     self._process = None
                     self._run_id = None
                     self._kind = None
+                    self._title = None
                     self._origin = None
                     self._stopping = False
                     self._console_handle = None
@@ -268,5 +362,8 @@ class JobSupervisor:
         except OSError:
             logging.getLogger(__name__).exception("Could not clean activity history")
         finally:
-            if self.on_complete is not None:
-                self.on_complete(run_id, exit_code)
+            try:
+                if self.on_complete is not None:
+                    self.on_complete(run_id, exit_code)
+            finally:
+                self._start_next()

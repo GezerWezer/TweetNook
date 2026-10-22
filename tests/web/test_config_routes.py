@@ -143,7 +143,7 @@ def test_post_check_settings_reloads_schedule_without_moving_sync(
     assert manager._state["next_run_at"] == sync_next
     response = client.post("/api/config", json={"changes": {"check.enabled": False}})
     assert response.status_code == 200
-    assert manager._check_on() is False
+    assert manager.check_status()["on"] is False
     assert manager._state["check_next_run_at"] is None
 
 

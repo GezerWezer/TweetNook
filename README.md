@@ -12,6 +12,8 @@ Want to see TweetNook before installing it? [View the live demo](https://gezerwe
 
 - **Archive your tweets:** save bookmarks, likes, and your own tweets, along with replies and quoted tweets
 - **Import existing data:** bring in an official Twitter/X archive.
+- **Inspect job results:** import, enrichment, and other used jobs stay in the Jobs
+  panel after completion or failure. Select a job to review its saved steps and errors.
 - **Browse in your browser:** read saved threads, view photos and videos, and
   explore quoted tweets, or read saved X Articles with rich text and focus mode.
 - **Search and organize:** combine search filters, add your own tags, edit

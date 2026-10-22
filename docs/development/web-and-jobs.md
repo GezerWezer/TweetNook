@@ -323,7 +323,12 @@ tweet data.
 Activity status considers a run active only when snapshot state is running and
 the PID exists. A supervisor worker before its first snapshot receives a
 synthetic “Starting worker process” status. Last activity in the main drawer is
-restricted to completed runs titled exactly `tweetnook sync`.
+selected from all Jobs commands. `/api/jobs` includes the last saved snapshot for
+each job, including Setup's import and enrichment. The panel follows live work,
+then prefers an unsuccessful run or the most recent result. Used and queued
+on-demand jobs remain visible when the list is collapsed; selecting a row opens
+its steps, while its options button opens run settings. Activity's terminal
+snapshot bridges the interval before the Jobs response refreshes.
 
 ## Frontend
 

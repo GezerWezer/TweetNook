@@ -32,6 +32,7 @@ from tweetnook.web.routes.automated_tagging import router as automated_tagging_r
 from tweetnook.web.routes.avatars import router as avatars_router
 from tweetnook.web.routes.config import router as config_router
 from tweetnook.web.routes.dev_replay import router as dev_replay_router
+from tweetnook.web.routes.jobs import router as jobs_router
 from tweetnook.web.routes.notices import router as notices_router
 from tweetnook.web.routes.setup import router as setup_router
 from tweetnook.web.routes.stats import router as stats_router
@@ -289,6 +290,7 @@ app.include_router(stats_router)
 app.include_router(avatars_router)
 app.include_router(storage_stats_router)
 app.include_router(activity_router)
+app.include_router(jobs_router)
 app.include_router(setup_router)
 app.include_router(notices_router)
 app.include_router(dev_replay_router)
