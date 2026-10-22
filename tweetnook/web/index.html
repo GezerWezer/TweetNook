@@ -1117,7 +1117,7 @@
 
         <!-- Lightbox Modal -->
         <div x-ref="lightboxViewer" x-show="lightboxOpen"
-             :class="{ 'is-video-viewer': lightboxMedia[lightboxIndex]?.type === 'video' && !lightboxMedia[lightboxIndex]?.isGif, 'is-video-motion': !!lightboxVideoMotionPhase, 'is-video-preparing': lightboxVideoMotionPhase === 'preparing', 'is-video-closed': !lightboxOpen }"
+             :class="{ 'is-video-viewer': lightboxMedia[lightboxIndex]?.type === 'video' && !lightboxMedia[lightboxIndex]?.isGif, 'is-video-motion': !!lightboxVideoMotionPhase, 'is-video-preparing': lightboxVideoMotionPhase === 'preparing', 'is-video-closed': !lightboxOpen, 'is-chrome-hidden': lightboxChromeHidden }"
              @keydown.window.escape="closeLightbox()"
              @keydown.window.right="if(lightboxOpen) nextLightbox()" 
              @keydown.window.left="if(lightboxOpen) prevLightbox()"
@@ -1145,6 +1145,11 @@
                 <div x-show="lightboxMedia.length > 1" class="lightbox-position" aria-live="polite">
                     <span x-text="lightboxIndex + 1"></span><span aria-hidden="true"> / </span><span class="sr-only"> of </span><span x-text="lightboxMedia.length"></span>
                 </div>
+                <!-- Phones: X's page dots and the post's counts above where its reply box sits. -->
+                <div x-show="lightboxMedia.length > 1" class="lightbox-dots" aria-hidden="true">
+                    <template x-for="(_, dotIndex) in lightboxMedia" :key="dotIndex"><span :class="{ 'is-current': dotIndex === lightboxIndex }"></span></template>
+                </div>
+                <div x-show="lightboxTweet" class="lightbox-actions" x-html="lightboxTweet ? renderActionBar(lightboxTweet) : ''" @click.stop></div>
             </div>
 
             <button x-show="lightboxMedia.length > 1 && lightboxIndex > 0" :disabled="lightboxGestureAnimating" @click.stop="prevLightbox()" aria-label="Previous image" title="Previous image" :style="lightboxChromeStyle()" class="lightbox-nav-button absolute left-4 p-3 text-white hover:bg-gray-800 rounded-full transition z-50">
@@ -1166,12 +1171,12 @@
                          :style="lightboxSlideStyle(mediaIndex)"
                          :aria-hidden="mediaIndex !== lightboxIndex">
                     <template x-if="lightboxMedia[mediaIndex]?.type === 'photo'">
-                        <img :src="lightboxMedia[mediaIndex]?.src" class="lightbox-media max-w-full max-h-full object-contain lightbox-gesture-surface" draggable="false" @click.stop>
+                        <img :src="lightboxMedia[mediaIndex]?.src" class="lightbox-media max-w-full max-h-full object-contain lightbox-gesture-surface" decoding="async" draggable="false" @click.stop="lightboxTap($event, true)">
                     </template>
                     <template x-if="lightboxMedia[mediaIndex]?.type === 'video'">
                         <div style="display: contents">
                             <template x-if="lightboxMedia[mediaIndex]?.isGif">
-                                <video :src="lightboxMedia[mediaIndex]?.src" :autoplay="lightboxOpen && mediaIndex === lightboxIndex" loop muted playsinline class="lightbox-media max-w-[90%] max-h-[90%] outline-none lightbox-gesture-surface" @click.stop></video>
+                                <video :src="lightboxMedia[mediaIndex]?.src" :autoplay="lightboxOpen && mediaIndex === lightboxIndex" loop muted playsinline class="lightbox-media max-w-[90%] max-h-[90%] outline-none lightbox-gesture-surface" @click.stop="lightboxTap($event, true)"></video>
                             </template>
                             <template x-if="!lightboxMedia[mediaIndex]?.isGif && !lightboxMedia[mediaIndex]?.inlinePlayer">
                                 <div class="media-video-player lightbox-video-player" @click.stop>

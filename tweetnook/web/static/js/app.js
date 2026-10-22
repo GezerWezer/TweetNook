@@ -96,6 +96,12 @@ const DETAIL_RETURN_SPRING = 58; // rad/s, springing back from a drag
 const DETAIL_LEAVE_MS = 150;
 const DETAIL_PARALLAX = 0.3;
 const DETAIL_SHADE = 0.4;
+// X's media viewer pages and springs back with one critically damped spring that
+// starts at the finger's speed (fitted to its spring-back, slow-drag finish and
+// flick on an iPhone recording). A slow release pages past half the width; a
+// flick at 0.3 px/ms pages in its direction.
+const LIGHTBOX_SPRING = 34; // rad/s
+const LIGHTBOX_FLICK = 0.3; // px/ms
 // The post layer while it is on screen. Feed videos beneath it are covered.
 let openDetailLayer = null;
 
@@ -119,6 +125,33 @@ function swipeBackCompletes(offset, width, velocity) {
 // critically damped spring that snaps home over the last 2.5px, as X does;
 // leaving is a cubic that starts at the finger's speed and eases out exactly at
 // the edge.
+// The viewer's offset `t` ms after release from `from` px moving at `velocity` px/ms.
+function lightboxSpring(from, velocity, t) {
+    const w = LIGHTBOX_SPRING / 1000;
+    return (from + (velocity + w * from) * t) * Math.exp(-w * t);
+}
+
+// iOS keeps an animation's clock running while its first frames stall (as when
+// the full-size picture decodes), so the motion looked finished on its first
+// visible frame. Step the clock at most one display frame per frame instead.
+function stepAnimationClock(animations, duration) {
+    if (typeof requestAnimationFrame !== 'function' || !animations.every(animation => animation.pause && animation.finish)) return;
+    animations.forEach(animation => animation.pause());
+    let clock = 0, last = null;
+    const step = now => {
+        if (animations.some(animation => animation.playState === 'idle')) return;
+        clock += last === null ? 0 : Math.min(now - last, 1000 / 60);
+        last = now;
+        if (clock >= duration) {
+            animations.forEach(animation => animation.finish());
+            return;
+        }
+        animations.forEach(animation => { animation.currentTime = clock; });
+        requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+}
+
 function detailSettle(from, to, velocity, t, leaving, width) {
     if (leaving) {
         const distance = Math.abs(to - from);
@@ -642,7 +675,9 @@ function tweetNookInitVideoPlayer(video) {
         event.preventDefault();
         if (isMobileInlineVideo(video) && Date.now() < videoTapBlockedUntil) return;
         const button = event.target.closest('[data-video-action]');
-        const surface = event.target === video || event.target === player;
+        // In the phone viewer, a tap anywhere off the controls shows or hides them, as in X.
+        const surface = event.target === video || event.target === player
+            || (isMobileFullscreenVideo(video) && !event.target.closest('.video-control-bar, [data-video-action], input'));
         if (isMobileInlineVideo(video) && (surface || button?.dataset.videoAction === 'play')) tweetNookOpenMobileVideo(video);
         else if (button) tweetNookPlayerAction(video, button.dataset.videoAction);
         else if (surface) {
@@ -906,10 +941,16 @@ function animateMobileMediaBounds(media, origin, opening, duration, startBounds 
     };
     const feed = bounds(source, feedMediaRadii(origin, source), feedInsets);
     const fullscreen = bounds(startBounds || fitted, Array(4).fill(startBounds?.radius || 0));
-    if (ownSurface) style(surface, [['transform-origin', '0 0'], ['will-change', 'transform']]);
-    else {
+    if (ownSurface) {
         const parent = surface.parentElement.getBoundingClientRect();
-        style(surface, [['position', 'absolute'], ['left', `${fitted.left - parent.left}px`], ['top', `${fitted.top - parent.top}px`], ['width', `${fitted.width}px`], ['height', `${fitted.height}px`], ['max-width', 'none'], ['aspect-ratio', 'auto'], ['overflow', 'hidden'], ['border', '0'], ['background', 'transparent'], ['transform-origin', '0 0'], ['will-change', 'transform']]);
+        // Fullscreen photos fill the available box, which can letterbox them.
+        // Move their fitted picture, keeping the transform origin on its edge.
+        style(surface, [['position', 'absolute'], ['left', `${fitted.left - parent.left}px`], ['top', `${fitted.top - parent.top}px`], ['width', `${fitted.width}px`], ['height', `${fitted.height}px`], ['max-width', 'none'], ['max-height', 'none'], ['transform-origin', '0 0'], ['will-change', 'transform']]);
+    } else {
+        const parent = surface.parentElement.getBoundingClientRect();
+        // fitted already includes the resting video's individual CSS translate.
+        // Applying that lift again shifts the whole flight and its last frame.
+        style(surface, [['position', 'absolute'], ['left', `${fitted.left - parent.left}px`], ['top', `${fitted.top - parent.top}px`], ['width', `${fitted.width}px`], ['height', `${fitted.height}px`], ['max-width', 'none'], ['aspect-ratio', 'auto'], ['overflow', 'hidden'], ['border', '0'], ['background', 'transparent'], ['translate', 'none'], ['transform-origin', '0 0'], ['will-change', 'transform']]);
         style(media, [['position', 'absolute'], ['left', '0'], ['top', '0'], ['width', '100%'], ['height', '100%'], ['max-width', 'none'], ['max-height', 'none'], ['object-fit', 'contain']]);
     }
     const options = { duration, easing: opening ? 'cubic-bezier(0.22, 0.75, 0.2, 1)' : 'cubic-bezier(0.22, 0.65, 0.3, 1)', fill: 'both' };
@@ -923,6 +964,7 @@ function animateMobileMediaBounds(media, origin, opening, duration, startBounds 
     const backdrop = shade?.animate?.(fade.map(opacity => ({opacity})), fadeOptions);
     // Raised headers left the backdrop early, so they fade in with the page.
     const headerFades = raised.map(header => header.animate?.([{opacity: 1 - fade[0]}, {opacity: 1}], fadeOptions));
+    stepAnimationClock([animation, backdrop, ...headerFades].filter(Boolean), duration);
     let cleaned = false;
     const cleanup = () => {
         if (cleaned) return;
@@ -1022,6 +1064,7 @@ function tweetApp() {
     let activityStreamRetryTimer = null;
     let activityStreamWatchdog = null;
     let lightboxMotionTimer = null;
+    let lightboxSpringFrame = null;
     // Mobile video viewing hands playback back to the original inline player.
     let lightboxOriginVideo = null;
     // Photos and GIFs return to their tile in the post that opened them.
@@ -1194,6 +1237,9 @@ function tweetApp() {
         lightboxGestureAnimating: false,
         lightboxDismissPending: false,
         lightboxVideoMotionPhase: '',
+        lightboxChromeHidden: false,
+        lightboxSettledIndex: 0,
+        lightboxTweet: null,
         videoObserver: null,
         videoAutoplayObserver: null,
         mediaPrefetchObserver: null,
@@ -2657,6 +2703,9 @@ function tweetApp() {
                 document.addEventListener('gesturestart', blockZoom, { passive: false });
                 document.addEventListener('gesturechange', blockZoom, { passive: false });
             }
+            // A new finger-down is a fresh tap. Only the compatibility click
+            // following the previous dismissal should remain blocked.
+            document.addEventListener('touchstart', () => { videoTapBlockedUntil = 0; }, { passive: true });
             window.addEventListener('popstate', (event) => {
                 // A back this page started already stopped the post's videos.
                 if (!detailPop) this.pauseAllVideos();
@@ -3256,6 +3305,8 @@ function tweetApp() {
             this.lightboxVideoMotionPhase = '';
             clearTimeout(lightboxMotionTimer);
             lightboxMotionTimer = null;
+            if (lightboxSpringFrame !== null) cancelAnimationFrame(lightboxSpringFrame);
+            lightboxSpringFrame = null;
             this.lightboxGestureStart = null;
             this.lightboxGestureAxis = null;
             this.lightboxGestureOffsetX = 0;
@@ -3271,8 +3322,11 @@ function tweetApp() {
             this.lightboxMedia = Array.isArray(media) ? media : [];
             const lastIndex = Math.max(0, this.lightboxMedia.length - 1);
             this.lightboxIndex = Math.min(lastIndex, Math.max(0, Number(index) || 0));
+            this.lightboxSettledIndex = this.lightboxIndex;
             lightboxOriginVideo = originVideo;
             lightboxOriginHolder = origin?.closest?.('[data-lightbox-media]') || null;
+            this.lightboxChromeHidden = false;
+            this.lightboxTweet = this.lightboxTweetFor(origin || originVideo);
             if (originVideo && this.lightboxMedia[this.lightboxIndex]) {
                 preparingVideoPosters.get(originVideo)?.();
                 const inlinePlayer = this.isMobileVideoViewer() && Boolean(tweetNookVideoPlayer(originVideo)?.cloneNode);
@@ -3401,6 +3455,9 @@ function tweetApp() {
                 viewer.classList.add('is-video-viewer');
                 if (this.lightboxVideoMotionPhase) viewer.classList.add('is-video-motion');
                 viewer.style.display = 'flex';
+                // The synchronous first animation frame precedes Alpine's style
+                // update; measure with the same lift the resting viewer will use.
+                viewer.style.setProperty?.('--lightbox-video-lift', `${this.lightboxVideoLift()}px`);
                 slot.style.display = '';
                 slot.classList.add('is-active');
             }
@@ -3577,8 +3634,11 @@ function tweetApp() {
 
         lightboxVisibleIndices() {
             if (this.lightboxMedia[this.lightboxIndex]?.inlinePlayer) return [];
-            const first = Math.max(0, this.lightboxIndex - 1);
-            const last = Math.min(this.lightboxMedia.length - 1, this.lightboxIndex + 1);
+            // While a page settles, the next neighbour mounts only once it stops:
+            // mounting it mid-motion stalled a frame on the phone.
+            const center = this.lightboxGestureAnimating ? this.lightboxSettledIndex : this.lightboxIndex;
+            const first = Math.max(0, Math.min(this.lightboxIndex, center - 1));
+            const last = Math.min(this.lightboxMedia.length - 1, Math.max(this.lightboxIndex, center + 1));
             const indices = [];
             for (let index = first; index <= last; index += 1) indices.push(index);
             return indices;
@@ -3599,9 +3659,10 @@ function tweetApp() {
             };
         },
 
-        // Photos keep a hint of the page behind them; video gets a solid backdrop.
+        // Desktop photos keep a hint of the page behind them; phones (as in X) and
+        // video get a solid backdrop.
         lightboxRestingOpacity() {
-            return this.isMobileVideoViewer() ? 1 : 0.95;
+            return this.isMobileViewer() ? 1 : 0.95;
         },
 
         lightboxBackdropStyle() {
@@ -3609,14 +3670,27 @@ function tweetApp() {
             const progress = Math.min(1, Math.max(0, this.lightboxGestureOffsetY) / (height * 0.7));
             const opacity = this.lightboxVideoMotionPhase === 'preparing' || this.lightboxDismissPending ? 0
                 : this.lightboxRestingOpacity() * (1 - progress * 0.72);
-            const transitionDuration = this.lightboxDismissPending
-                ? this.lightboxMotionDuration(180)
-                : (this.lightboxGestureAnimating ? this.lightboxMotionDuration(260) : 0);
+            // The spring sets the drag offset every frame, so only a dismissal fades.
+            const transitionDuration = this.lightboxDismissPending ? this.lightboxMotionDuration(180) : 0;
             return {
                 backgroundColor: `rgba(0, 0, 0, ${opacity})`,
                 '--lightbox-backdrop-opacity': String(opacity),
+                '--lightbox-video-lift': `${this.lightboxVideoLift()}px`,
                 transition: transitionDuration ? `background-color ${transitionDuration}ms linear` : 'none',
             };
+        },
+
+        // X centres a phone video between the top of the screen and its playback
+        // bar, 29.5pt above the middle of the space this page has under the status
+        // bar. Lift it that far, or as far as the space above the picture allows.
+        lightboxVideoLift() {
+            const item = this.lightboxMedia[this.lightboxIndex];
+            if (!this.isMobileVideoViewer() || !item) return 0;
+            const width = window.innerWidth || 0;
+            const box = (window.innerHeight || 0) - 80;
+            const aspect = this.mediaFrameLayout(item.m || {}, 'detail').sourceAspect;
+            const height = Math.min(box, width / aspect);
+            return Math.round(Math.max(0, Math.min(29.5, (box - height) / 2)) * 10) / 10;
         },
 
         // The phone backdrop is a black page layer whose opacity follows the drag.
@@ -3626,9 +3700,40 @@ function tweetApp() {
         },
 
         lightboxChromeStyle() {
-            if (this.lightboxGestureAnimating || this.lightboxVideoMotionPhase) return { opacity: '0' };
-            const distance = Math.hypot(this.lightboxGestureOffsetX, this.lightboxGestureOffsetY);
+            // X fades a photo's controls in while the photo flies open.
+            const photoOpening = this.lightboxVideoMotionPhase === 'opening' && this.isMobileViewer() && !this.isMobileVideoViewer();
+            if ((this.lightboxVideoMotionPhase && !photoOpening) || this.lightboxDismissPending) return { opacity: '0' };
+            // Phone controls stay put while photos page, as in X; a drag down fades them.
+            const phonePaging = this.isMobileViewer() && this.lightboxGestureAxis === 'horizontal';
+            if (this.lightboxGestureAnimating && !phonePaging) return { opacity: '0' };
+            const distance = phonePaging ? Math.abs(this.lightboxGestureOffsetY) : Math.hypot(this.lightboxGestureOffsetX, this.lightboxGestureOffsetY);
             return { opacity: String(Math.max(0, 1 - distance / 180)) };
+        },
+
+        // The post whose media is open, for the viewer's counts and X link.
+        lightboxTweetFor(origin) {
+            const id = origin?.closest?.('[data-thread-id]')?.dataset?.threadId;
+            if (id) return this.threadSeed(id)?.main || null;
+            const main = origin?.closest?.('[data-thread-main]')?.dataset?.threadMain;
+            if (main) return (main === 'panel' ? this.panelThreadData : this.threadData)?.main || null;
+            const card = origin?.closest?.('[data-tweet-id]')?.dataset?.tweetId;
+            return card ? this.threadSeed(card)?.main || null : null;
+        },
+
+        // A phone photo viewer shows or hides its controls on a tap, as X does;
+        // elsewhere a tap beside the media closes it.
+        lightboxTap(event, onMedia = false) {
+            if (this.lightboxVideoMotionPhase) return;
+            if (Date.now() < this.lightboxSuppressClickUntil) {
+                this.lightboxSuppressClickUntil = 0;
+                event?.stopPropagation?.();
+                return;
+            }
+            if (this.isMobileViewer() && !this.isMobileVideoViewer()) {
+                this.lightboxChromeHidden = !this.lightboxChromeHidden;
+                return;
+            }
+            if (!onMedia) this.closeLightbox();
         },
 
         prevLightbox() {
@@ -3739,7 +3844,11 @@ function tweetApp() {
                 return;
             }
 
-            const movement = this.updateLightboxGesture(touch, event.timeStamp, start.moved);
+            // A lift right where the last move ended keeps that move's speed (Safari
+            // reports the lift a few ms later); one after a pause still slows it.
+            const still = touch.clientX === start.lastX && touch.clientY === start.lastY;
+            const recent = (Number(event.timeStamp) || Date.now()) - start.lastTime < 50;
+            const movement = this.updateLightboxGesture(touch, event.timeStamp, start.moved && !(still && recent));
             this.lightboxGestureStart = null;
             if (!movement) return;
 
@@ -3756,11 +3865,10 @@ function tweetApp() {
                     ? this.lightboxIndex < this.lightboxMedia.length - 1
                     : this.lightboxIndex > 0;
                 const width = Math.max(1, window.innerWidth || 320);
-                const projectedDistance = Math.abs(this.lightboxGestureOffsetX + start.velocityX * 150);
-                const threshold = Math.min(68, Math.max(50, width * 0.16));
-                if (canNavigate && (projectedDistance >= threshold
-                    || (Math.abs(start.velocityX) >= 0.45 && Math.abs(deltaX) >= 24))) {
-                    this.commitLightboxNavigation(direction);
+                // A slow release past half the width, or a flick that way, pages.
+                const flick = -start.velocityX * direction >= LIGHTBOX_FLICK && Math.abs(deltaX) >= 24;
+                if (canNavigate && (Math.abs(this.lightboxGestureOffsetX) > width / 2 || flick)) {
+                    this.commitLightboxNavigation(direction, start.velocityX);
                     return;
                 }
             } else if (this.lightboxGestureAxis === 'vertical') {
@@ -3773,30 +3881,46 @@ function tweetApp() {
                 }
             }
 
-            this.snapBackLightbox();
+            this.snapBackLightbox(start.velocityX, start.velocityY);
         },
 
-        commitLightboxNavigation(direction) {
-            const duration = this.lightboxMotionDuration(220);
+        commitLightboxNavigation(direction, velocity = 0) {
             const width = Math.max(1, window.innerWidth || 320);
-            const retainedOffset = this.lightboxGestureOffsetX + direction * width;
-            this.lightboxGestureAnimating = true;
             this.lightboxGestureAxis = 'horizontal';
-            this.lightboxGestureTransition = 'none';
             this.lightboxIndex += direction;
-            this.lightboxGestureOffsetX = retainedOffset;
-            this.$nextTick(() => {
-                this.lightboxGestureTransition = duration
-                    ? `transform ${duration}ms cubic-bezier(0.22, 0.72, 0, 1)`
-                    : 'none';
+            this.lightboxGestureOffsetX += direction * width;
+            this.$nextTick(() => this.syncLightboxPlayback());
+            this.springLightbox(velocity, 0);
+        },
+
+        // Settle the drag offsets at rest with X's spring, a display frame at a
+        // time so an iOS stall pauses the motion instead of skipping it.
+        springLightbox(velocityX = 0, velocityY = 0) {
+            if (lightboxSpringFrame !== null) cancelAnimationFrame(lightboxSpringFrame);
+            lightboxSpringFrame = null;
+            const fromX = this.lightboxGestureOffsetX, fromY = this.lightboxGestureOffsetY;
+            this.lightboxGestureAnimating = true;
+            this.lightboxGestureTransition = 'none';
+            const settle = () => {
+                lightboxSpringFrame = null;
+                this.lightboxSettledIndex = this.lightboxIndex;
                 this.lightboxGestureOffsetX = 0;
-                this.syncLightboxPlayback();
-            });
-            this.queueLightboxMotion(() => {
-                this.lightboxGestureTransition = 'none';
+                this.lightboxGestureOffsetY = 0;
                 this.lightboxGestureAxis = null;
                 this.lightboxGestureAnimating = false;
-            }, 220);
+            };
+            if (!this.lightboxMotionDuration(1) || typeof requestAnimationFrame !== 'function') { settle(); return; }
+            let clock = 0, last = null;
+            const step = now => {
+                clock += last === null ? 0 : Math.min(now - last, 1000 / 60);
+                last = now;
+                const x = lightboxSpring(fromX, velocityX, clock), y = lightboxSpring(fromY, velocityY, clock);
+                if (clock > 0 && Math.abs(x) < 0.5 && Math.abs(y) < 0.5) { settle(); return; }
+                this.lightboxGestureOffsetX = x;
+                this.lightboxGestureOffsetY = y;
+                lightboxSpringFrame = requestAnimationFrame(step);
+            };
+            step(performance.now());
         },
 
         animateLightboxDismiss() {
@@ -3819,19 +3943,8 @@ function tweetApp() {
             this.queueLightboxMotion(() => this.resetLightboxMotion(), 180);
         },
 
-        snapBackLightbox() {
-            const duration = this.lightboxMotionDuration(260);
-            this.lightboxGestureAnimating = true;
-            this.lightboxGestureTransition = duration
-                ? `transform ${duration}ms cubic-bezier(0.22, 0.72, 0, 1)`
-                : 'none';
-            this.lightboxGestureOffsetX = 0;
-            this.lightboxGestureOffsetY = 0;
-            this.queueLightboxMotion(() => {
-                this.lightboxGestureTransition = 'none';
-                this.lightboxGestureAxis = null;
-                this.lightboxGestureAnimating = false;
-            }, 260);
+        snapBackLightbox(velocityX = 0, velocityY = 0) {
+            this.springLightbox(velocityX, velocityY);
         },
 
         cancelLightboxGesture() {
@@ -3841,13 +3954,7 @@ function tweetApp() {
         },
 
         handleLightboxBackdropClick(event) {
-            if (this.lightboxVideoMotionPhase) return;
-            if (Date.now() < this.lightboxSuppressClickUntil) {
-                this.lightboxSuppressClickUntil = 0;
-                event.stopPropagation();
-                return;
-            }
-            this.closeLightbox();
+            this.lightboxTap(event);
         },
 
         scrollToTop() {

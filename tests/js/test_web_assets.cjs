@@ -1453,17 +1453,24 @@ test('lightbox touch drags track the finger, navigate, and protect the following
     assert.equal(app.lightboxOpen, true);
     app.resetLightboxMotion();
 
+    // Like X, a slow release short of half the width springs back; past it, pages.
+    context.window.innerWidth = 400;
     app.startLightboxGesture({...touchEvent(220, 180), target: backdropTarget});
     app.endLightboxGesture({...touchEvent(145, 184), target: backdropTarget});
-    assert.equal(app.lightboxIndex, 2);
+    assert.equal(app.lightboxIndex, 1);
     const swipeClick = touchEvent(145, 184);
     app.handleLightboxBackdropClick(swipeClick);
     assert.equal(swipeClick.stopped, true);
     assert.equal(app.lightboxOpen, true);
     app.resetLightboxMotion();
 
+    app.startLightboxGesture({...touchEvent(320, 180), target: backdropTarget});
+    app.endLightboxGesture({...touchEvent(100, 184), target: backdropTarget});
+    assert.equal(app.lightboxIndex, 2);
+    app.resetLightboxMotion();
+
     app.startLightboxGesture({...touchEvent(100, 180), target: backdropTarget});
-    app.endLightboxGesture({...touchEvent(170, 175), target: backdropTarget});
+    app.endLightboxGesture({...touchEvent(320, 175), target: backdropTarget});
     assert.equal(app.lightboxIndex, 1);
     assert.match(html, /@touchstart\.passive="startLightboxGesture\(\$event\)"/);
     assert.match(html, /@touchmove="moveLightboxGesture\(\$event\)"/);
@@ -1560,7 +1567,61 @@ test('lightbox gestures use edge resistance and velocity-aware flick navigation'
     app.moveLightboxGesture(event(174, 101, 320));
     app.endLightboxGesture(event(170, 101, 330));
     assert.equal(app.lightboxIndex, 1);
-    assert.equal(app.lightboxGestureAnimating, true);
+    // Without animation frames the spring settles at once.
+    assert.equal(app.lightboxGestureOffsetX, 0);
+    assert.equal(app.lightboxGestureAnimating, false);
+});
+
+test('the phone viewer pages and springs back on X\'s measured spring', () => {
+    const context = browserContext();
+    loadScripts(context, ['themes.js', 'app.js'], 'tweetApp');
+    const spring = vm.runInContext('lightboxSpring', context);
+    // X's spring-back from a 131pt drag at its recorded frame times (iPhone recording).
+    [[17, -116], [34, -88], [51, -63], [67, -44], [84, -28], [101, -17]]
+        .forEach(([t, x]) => assert.ok(Math.abs(spring(-131, 0, t) - x) <= 4, `${spring(-131, 0, t)} vs ${x} at ${t}ms`));
+    // Finishing a slow drag from 148pt at the finger's 0.42 px/ms: X had 133, 103, 76, 53 pt left.
+    [[12, 133], [29, 103], [46, 76], [62, 53]]
+        .forEach(([t, x]) => assert.ok(Math.abs(spring(148, -0.42, t) - x) <= 6, `${spring(148, -0.42, t)} vs ${x} at ${t}ms`));
+    assert.ok(Math.abs(spring(148, -0.42, 400)) < 0.5);
+});
+
+test('the phone video viewer sits where X puts it and shows the post\'s counts', () => {
+    const context = browserContext();
+    context.window.matchMedia = query => ({matches: query.includes('(max-width: 640px)')});
+    context.window.innerWidth = 430;
+    context.window.innerHeight = 873;
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    // A 16:9 video lifts the full 29.5pt; a 9:16 one only as far as its free space allows.
+    app.lightboxMedia = [{type: 'video', m: {type: 'video', aspect_ratio: [16, 9]}}];
+    assert.equal(app.lightboxVideoLift(), 29.5);
+    assert.equal(app.lightboxBackdropStyle()['--lightbox-video-lift'], '29.5px');
+    app.lightboxMedia = [{type: 'video', m: {type: 'video', aspect_ratio: [9, 16]}}];
+    assert.equal(app.lightboxVideoLift(), 14.3);
+    app.lightboxMedia = [{type: 'photo', m: {type: 'photo'}}];
+    assert.equal(app.lightboxVideoLift(), 0);
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    assert.match(css, /\.lightbox-video-player > \.video-motion-surface \{ translate: 0 calc\(-1 \* var\(--lightbox-video-lift, 0px\)\); \}/);
+    assert.match(css, /\.lightbox-viewer \.lightbox-actions \{\s*position: absolute;\s*right: 14px;\s*bottom: 105px;/);
+    assert.match(css, /\.lightbox-video-player \.video-control-row \{ height: 62px; padding-bottom: 32px; \}/);
+});
+
+test('a tap shows or hides the phone photo viewer\'s controls instead of closing it', () => {
+    const context = browserContext();
+    context.window.matchMedia = query => ({matches: query.includes('(max-width: 640px)')});
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    app.lightboxOpen = true;
+    app.lightboxMedia = [{type: 'photo'}, {type: 'photo'}];
+    app.closeLightbox = () => { app.closed = true; };
+    app.lightboxTap({stopPropagation() {}}, true);
+    assert.equal(app.lightboxChromeHidden, true);
+    app.handleLightboxBackdropClick({stopPropagation() {}});
+    assert.equal(app.lightboxChromeHidden, false);
+    assert.equal(app.closed, undefined);
+    assert.equal(app.lightboxRestingOpacity(), 1);
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.match(html, /'is-chrome-hidden': lightboxChromeHidden/);
+    assert.match(html, /class="lightbox-dots"/);
+    assert.match(html, /class="lightbox-actions" x-html="lightboxTweet \? renderActionBar\(lightboxTweet\) : ''"/);
 });
 
 test('lightbox playback follows the active animated slide and pauses on close', () => {
@@ -4813,7 +4874,7 @@ test('mobile video bounds wait for a playback frame, return to the feed, and res
         let backdropCancels = 0;
         const viewer = {};
         app.$refs.lightboxShade = {style: {}, animate: () => ({cancel() {backdropCancels++;}})};
-        const active = new FakeElement('video', [['autoplay', ''], ['data-lightbox-index', '0']]);
+        const active = new FakeElement('video', [['autoplay', ''], ['data-lightbox-index', '0'], ['data-video-player', '']]);
         Object.assign(active, {readyState: 0, paused: true, ended: false, currentTime: 0, muted: false, volume: 1,
             videoWidth: 720, videoHeight: 1280,
             style: {getPropertyValue: name => values.get(name) || '', setProperty: (name, value) => values.set(name, value), removeProperty: name => values.delete(name)},
@@ -4868,6 +4929,35 @@ test('mobile video bounds wait for a playback frame, return to the feed, and res
         assert.equal(values.size, 0);
         assert.equal(surfaceValues.size, 0);
         assert.equal(motions.length, reduced ? 0 : 2);
+    }
+});
+
+test('video motion keeps the resting lift exactly once in both directions', async () => {
+    for (const opening of [true, false]) {
+        const context = browserContext();
+        const values = new Map();
+        const style = {getPropertyValue: name => values.get(name) || '',
+            setProperty: (name, value) => values.set(name, value), removeProperty: name => values.delete(name)};
+        const surface = {style, parentElement: {getBoundingClientRect: () => ({left: 0, top: 0})},
+            getBoundingClientRect: () => ({left: 0, top: Number.parseFloat(values.get('top') || '0')
+                + (values.get('translate') === 'none' ? 0 : -29.5),
+                width: Number.parseFloat(values.get('width') || '390'), height: Number.parseFloat(values.get('height') || '772')})};
+        const video = {tagName: 'VIDEO', hasAttribute: () => true, parentElement: surface,
+            style: {getPropertyValue: () => '', setProperty() {}, removeProperty() {}},
+            videoWidth: 690, videoHeight: 1156, closest: () => null,
+            getBoundingClientRect: surface.getBoundingClientRect};
+        context.getComputedStyle = () => ({objectFit: 'contain'});
+        let complete;
+        surface.animate = () => ({finished: new Promise(resolve => {complete = resolve;}), cancel() {}});
+        const origin = {isConnected: true, getBoundingClientRect: () => ({left: 65, top: 300, width: 316, height: 178})};
+        const {animateMobileMediaBounds, fittedMediaRect} = loadScripts(context, ['app.js'], '({animateMobileMediaBounds, fittedMediaRect})');
+        const resting = fittedMediaRect(video);
+        const motion = animateMobileMediaBounds(video, origin, opening, 280);
+        assert.ok(Math.abs(surface.getBoundingClientRect().top - resting.top) < .001);
+        assert.equal(values.get('translate'), 'none');
+        complete(); await motion.finished;
+        motion.cancel();
+        assert.equal(values.size, 0); // The CSS lift resumes only when temporary absolute sizing is removed.
     }
 });
 
@@ -5150,10 +5240,12 @@ test('phone photos expand from their tile and return to the one on screen, or fa
     assert.equal(expand.target, 'image'); // The photo moves itself; it has no player wrapper.
     const darken = motions.find(motion => motion.target === 'shade');
     // Ends at the photo backdrop's resting opacity, so nothing snaps when the motion is released.
-    assert.equal(JSON.stringify(darken.frames), '[{"opacity":0},{"opacity":0.95}]');
-    assert.equal(app.lightboxRestingOpacity(), 0.95);
+    assert.equal(JSON.stringify(darken.frames), '[{"opacity":0},{"opacity":1}]');
+    assert.equal(app.lightboxRestingOpacity(), 1);
     assert.equal(images[1].style.getPropertyValue('transform-origin'), '0 0');
-    assert.equal(images[1].style.getPropertyValue('position'), ''); // Its layout box is already the fitted picture.
+    assert.equal(images[1].style.getPropertyValue('position'), 'absolute');
+    assert.equal(images[1].style.getPropertyValue('width'), '390px'); // The moving surface fits the picture, excluding letterbox space.
+    assert.equal(images[1].style.getPropertyValue('height'), '520px');
     assert.match(expand.frames[0].clipPath, /^inset\([\d.]+px 0px [\d.]+px 0px round 0px [1-9][\d.]*px [1-9][\d.]*px 0px\)$/);
     assert.equal(app.lightboxVideoMotionPhase, 'opening');
     assert.equal(tileValues[1].get('visibility'), 'hidden'); // One copy of the photo on screen at a time.
@@ -5192,6 +5284,31 @@ test('phone photos expand from their tile and return to the one on screen, or fa
     fades.forEach(fade => fade.complete());
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     assert.equal(app.lightboxOpen, false);
+});
+
+test('a fresh touch reopens photos and videos immediately while dismissal compatibility clicks stay blocked', () => {
+    const context = browserContext();
+    context.window.matchMedia = () => ({matches: true});
+    const {tweetApp, tweetNookOpenLightbox, tweetNookOpenMobileVideo} = loadScripts(context,
+        ['themes.js', 'app.js'], '({tweetApp, tweetNookOpenLightbox, tweetNookOpenMobileVideo})');
+    const app = immediateComponent(tweetApp());
+    app.fetchSetup = app.fetchNotices = app.fetchActivityStatus = async () => {};
+    app.initApp();
+    const opened = [];
+    context.window.dispatchEvent = event => opened.push(event);
+    const holder = {dataset: {lightboxMedia: JSON.stringify([{type: 'photo', src: '/photo.png'}])}};
+    const photo = {closest: () => holder};
+    for (const open of [() => tweetNookOpenLightbox(photo, 0), () => tweetNookOpenMobileVideo({src: '/video.mp4'})]) {
+        app.lightboxMedia = [{type: 'photo'}];
+        app.lightboxOpen = true;
+        app.finishCloseLightbox();
+        const before = opened.length;
+        open();
+        assert.equal(opened.length, before); // No new finger-down: the late compatibility click is ignored.
+        context.__state.events.get('document:touchstart')();
+        open();
+        assert.equal(opened.length, before + 1); // A new tap needs no timeout or second tap.
+    }
 });
 
 test('phone GIF taps open the viewer, which continues from the feed frame', async () => {
@@ -5447,13 +5564,13 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     assert.equal(fades[0].cancelled, true);
     assert.equal(JSON.stringify(fades[1].frames), '[{"opacity":0.6},{"opacity":0}]'); // Continue from the dragged shade.
     assert.equal(slot.style.transform, 'translate3d(0, 0, 0)');
-    assert.equal(viewerValues.size, 0); // The viewer stays fixed in place; only the page shade fades.
+    assert.deepEqual([...viewerValues], [['--lightbox-video-lift', `${app.lightboxVideoLift()}px`]]); // Resting lift is set before the first motion measurement.
     assert.equal(fades[1].options.duration, 120);
     assert.match(motions[1].frames[0].transform, /translate3d\(0px, 180px, 0\)/); // Continue from the finger, with no doubled/stale drag transform.
     motions[1].complete(); await Promise.resolve(); await Promise.resolve();
     assert.equal(app.lightboxOpen, false);
     assert.equal(viewer.style.display, 'none');
-    assert.equal(viewerValues.size, 0);
+    assert.deepEqual([...viewerValues], [['--lightbox-video-lift', `${app.lightboxVideoLift()}px`]]);
     assert.equal(context.window.scrollY, 240);
     assert.equal(fades[1].cancelled, true);
     app.followLightboxShade(false);

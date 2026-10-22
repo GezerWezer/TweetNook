@@ -2487,6 +2487,8 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     left: max(16px, env(safe-area-inset-left));
 }
 .lightbox-video-back-icon { display: none; }
+.lightbox-dots,
+.lightbox-actions { display: none; }
 .lightbox-position {
     position: absolute;
     top: max(22px, calc(env(safe-area-inset-top) + 6px));
@@ -2816,6 +2818,82 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     }
     .is-video-viewer .lightbox-close-icon { display: none; }
     .is-video-viewer .lightbox-video-back-icon { display: block; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-close-button {
+        top: calc(var(--lightbox-bleed) + 14px);
+        left: calc(var(--lightbox-bleed) + 14px);
+        width: 40px;
+        height: 40px;
+        padding: 10px;
+        background: rgba(32, 32, 32, .8);
+    }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-close-button svg { width: 20px; height: 20px; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-close-icon { display: none; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-video-back-icon { display: block; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-position { display: none; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-slide { padding-bottom: 123px; }
+    .lightbox-viewer img.lightbox-media { width: 100%; height: 100%; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-dots {
+        position: absolute;
+        bottom: 159px;
+        left: 50%;
+        display: flex;
+        transform: translateX(-50%);
+    }
+    .lightbox-dots > span {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 11px;
+        height: 8px;
+    }
+    .lightbox-dots > span::before {
+        content: '';
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, .35);
+    }
+    .lightbox-dots > span.is-current::before {
+        width: 8px;
+        height: 8px;
+        background: #fff;
+    }
+    .lightbox-viewer .lightbox-actions {
+        position: absolute;
+        right: 14px;
+        bottom: 105px;
+        left: 14px;
+        display: block;
+        pointer-events: auto;
+    }
+    .lightbox-actions .tweet-actions {
+        gap: 7px;
+        height: 40px;
+        margin: 0;
+        color: #fff;
+    }
+    .lightbox-actions .tweet-actions > div {
+        flex: 1 1 0;
+        justify-content: center;
+        height: 40px;
+        border-radius: 20px;
+        background: rgba(32, 32, 32, .8);
+    }
+    .lightbox-actions .tweet-actions > div:nth-last-child(-n + 2) { flex: 0 0 40px; }
+    .lightbox-actions .tweet-actions > .tweet-action-views { display: none; }
+    .lightbox-actions .tweet-actions svg { width: 20px; height: 20px; }
+    .lightbox-actions .tweet-action-count {
+        padding: 0 0 0 6px;
+        font-size: 15px;
+        font-weight: 500;
+    }
+    .lightbox-viewer.is-chrome-hidden .lightbox-close-button,
+    .lightbox-viewer.is-chrome-hidden .lightbox-chrome {
+        opacity: 0 !important;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 180ms ease, visibility 0s 180ms;
+    }
     .lightbox-video-player {
         /* Safari keeps fixed content above the strip its toolbar reserves, so
            the controls sit directly on it. Standalone reaches the screen's
@@ -2857,7 +2935,9 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     }
     .lightbox-video-player .video-seek-wrap { width: calc(100% + 24px); margin: -10px -12px 0; }
     .lightbox-video-player .video-seek { width: 100%; margin: 0; }
-    .lightbox-video-player .video-control-row { height: 62px; }
+    .lightbox-video-player .video-control-row { height: 62px; padding-bottom: 32px; }
+    .lightbox-video-player > video,
+    .lightbox-video-player > .video-motion-surface { translate: 0 calc(-1 * var(--lightbox-video-lift, 0px)); }
     .lightbox-video-player [data-video-time] { display: none; }
     .lightbox-video-player .video-mobile-time { display: inline; margin: 0 auto 0 8px; color: #999; transition: opacity 160ms ease; }
     .lightbox-video-player .video-scrub-time {
