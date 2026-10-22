@@ -265,6 +265,16 @@
                         <svg class="w-5 h-5 flex-shrink-0"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="m10.85 10.5-3.11 3.42-1.48-1.34 1.89-2.08-1.89-2.08 1.48-1.34z"/><path d="M14.1 2.5q1.65-.02 2.7.06c.74.06 1.38.18 1.97.48a5 5 0 0 1 2.19 2.19c.3.6.42 1.23.48 1.96q.08 1.06.06 2.71v4.2q.02 1.65-.06 2.7a5 5 0 0 1-.48 1.97 5 5 0 0 1-2.19 2.19c-.6.3-1.23.42-1.96.48q-1.06.08-2.71.06H9.9q-1.65.02-2.7-.06a5 5 0 0 1-1.97-.48 5 5 0 0 1-2.19-2.19c-.3-.6-.42-1.23-.48-1.96q-.07-1.06-.06-2.71V9.9q-.02-1.65.06-2.7c.06-.74.18-1.38.48-1.97a5 5 0 0 1 2.19-2.19c.6-.3 1.23-.42 1.96-.48q1.06-.07 2.71-.06zm-4.2 2c-1.14 0-1.93 0-2.55.05-.6.05-.95.14-1.21.28a3 3 0 0 0-1.31 1.3 3 3 0 0 0-.28 1.22c-.05.62-.05 1.41-.05 2.55v4.2c0 1.14 0 1.93.05 2.55.05.6.14.95.28 1.21a3 3 0 0 0 1.3 1.31c.27.14.62.23 1.22.28.62.05 1.41.05 2.55.05h4.2c1.14 0 1.93 0 2.55-.05.6-.05.95-.14 1.21-.28a3 3 0 0 0 1.31-1.3c.14-.27.23-.62.28-1.22.05-.62.05-1.41.05-2.55V9.9c0-1.14 0-1.93-.05-2.55a3 3 0 0 0-.28-1.21 3 3 0 0 0-1.3-1.31 3 3 0 0 0-1.22-.28c-.62-.05-1.41-.05-2.55-.05z"/></svg>
                         <span>Copy raw</span>
                     </button>
+                    <button type="button" role="menuitem" @click.stop="openTweetHistory(listMenu.key.slice('list:'.length))"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5"/><path d="m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z"/></svg>
+                        <span>History</span>
+                    </button>
+                    <button type="button" role="menuitem" x-show="hasNoteHistory(listMenu.tweet)" @click.stop="openNoteHistory(listMenu.key.slice('list:'.length))"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg>
+                        <span>Community notes</span>
+                    </button>
                     <button type="button" role="menuitem" @click.stop="setTweetHidden(listMenu.key.slice('list:'.length), !listMenu.hidden)"
                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
                         <svg class="w-5 h-5 flex-shrink-0" x-show="!listMenu.hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10"/></svg>
@@ -352,6 +362,7 @@
                                 <div class="font-bold text-[var(--text-primary)] hover:underline" x-text="threadData.main.author.display_name || 'Unknown'"></div>
                                 <div class="text-[var(--text-secondary)]" x-text="'@' + (threadData.main.author.username || 'unknown')"></div>
                             </div>
+                            <span class="tweet-detail-missing" x-html="missingBadge(threadData.main)" @click.stop="openTweetHistory(threadData.main.tweet_id)"></span>
                             <div class="relative -mr-2 -mt-2 flex-shrink-0" @click.outside="closeTweetMenu('detail:' + threadData.main.tweet_id)" @keydown.escape.window="closeTweetMenu('detail:' + threadData.main.tweet_id)">
                                 <button type="button"
                                         class="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)] select-none touch-manipulation"
@@ -380,6 +391,16 @@
                                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
                                         <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M8 7V3h13v13h-4v5H3V7h5Zm2 0h7v7h2V5h-9v2Zm5 2H5v10h10V9Z"></path></svg>
                                         <span>Copy raw</span>
+                                    </button>
+                                    <button type="button" role="menuitem" @click.stop="openTweetHistory(threadData.main.tweet_id)"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5"/><path d="m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z"/></svg>
+                        <span>History</span>
+                    </button>
+                    <button type="button" role="menuitem" x-show="hasNoteHistory(threadData.main)" @click.stop="openNoteHistory(threadData.main.tweet_id)"
+                                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg>
+                                        <span>Community notes</span>
                                     </button>
                                     <button type="button" role="menuitem" @click.stop="setTweetHidden(threadData.main.tweet_id, !threadData.main.hidden)"
                                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
@@ -416,6 +437,7 @@
                                             <span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + getQuoteAuthor(getQuoteTweet(threadData?.main)).screen_name"></span>
                                             <span class="text-[var(--text-secondary)]">·</span>
                                             <span class="text-[var(--text-secondary)] tweet-byline-detail" x-html="dateLabel(getQuoteTweet(threadData?.main)?.legacy?.created_at || getQuoteTweet(threadData?.main)?.created_at)"></span>
+                                            <span class="quote-missing-slot" x-html="missingBadge(getQuoteTweet(threadData?.main))" @click.stop="openTweetHistory(getTweetId(getQuoteTweet(threadData?.main)))"></span>
                                         </div>
                                         
                                         <template x-if="getReplyRecipients({raw_json: getQuoteTweet(threadData?.main)}).length">
@@ -796,6 +818,7 @@
                                 <div class="font-bold text-[var(--text-primary)] hover:underline" x-text="panelThreadData.main.author.display_name || 'Unknown'"></div>
                                 <div class="text-[var(--text-secondary)]" x-text="'@' + (panelThreadData.main.author.username || 'unknown')"></div>
                             </div>
+                            <span class="tweet-detail-missing" x-html="missingBadge(panelThreadData.main)" @click.stop="openTweetHistory(panelThreadData.main.tweet_id)"></span>
                             <div class="relative -mr-2 -mt-2 flex-shrink-0" @click.outside="closeTweetMenu('panel:' + panelThreadData.main.tweet_id)" @keydown.escape.window="closeTweetMenu('panel:' + panelThreadData.main.tweet_id)">
                                 <button type="button"
                                         class="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)] select-none touch-manipulation"
@@ -824,6 +847,16 @@
                                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
                                         <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M8 7V3h13v13h-4v5H3V7h5Zm2 0h7v7h2V5h-9v2Zm5 2H5v10h10V9Z"></path></svg>
                                         <span>Copy raw</span>
+                                    </button>
+                                    <button type="button" role="menuitem" @click.stop="openTweetHistory(panelThreadData.main.tweet_id)"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5"/><path d="m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z"/></svg>
+                        <span>History</span>
+                    </button>
+                    <button type="button" role="menuitem" x-show="hasNoteHistory(panelThreadData.main)" @click.stop="openNoteHistory(panelThreadData.main.tweet_id)"
+                                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg>
+                                        <span>Community notes</span>
                                     </button>
                                     <button type="button" role="menuitem" @click.stop="setTweetHidden(panelThreadData.main.tweet_id, !panelThreadData.main.hidden)"
                                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
@@ -858,6 +891,7 @@
                                             <span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + getQuoteAuthor(getQuoteTweet(panelThreadData?.main)).screen_name"></span>
                                             <span class="text-[var(--text-secondary)]">·</span>
                                             <span class="text-[var(--text-secondary)] tweet-byline-detail" x-text="formatDate(getQuoteTweet(panelThreadData?.main)?.legacy?.created_at || getQuoteTweet(panelThreadData?.main)?.created_at)"></span>
+                                            <span class="quote-missing-slot" x-html="missingBadge(getQuoteTweet(panelThreadData?.main))" @click.stop="openTweetHistory(getTweetId(getQuoteTweet(panelThreadData?.main)))"></span>
                                         </div>
                                         <template x-if="getReplyRecipients({raw_json: getQuoteTweet(panelThreadData?.main)}).length">
                                             <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(panelThreadData?.main)})" @click="handleReplyRecipientClick($event)"></div>
@@ -1343,6 +1377,102 @@
                     <button type="button" class="nook-secondary-button" id="nook-td-confirm-cancel" @click="closeDeleteConfirm()">Cancel</button>
                 </section>
             </div>
+        </div>
+
+        <!-- Community note history: every recorded version of one tweet's note. -->
+        <div class="nook-td-layer" x-show="notesOpen" x-cloak
+             @keydown.escape.window="notesOpen && closeNoteHistory()">
+            <div class="nook-td-backdrop" @click="closeNoteHistory()"></div>
+            <section class="nook-td nook-history" role="dialog" aria-modal="true" aria-labelledby="nook-notes-title">
+                <header class="nook-td-head">
+                    <button type="button" class="nook-icon-button" @click="closeNoteHistory()" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
+</svg></button>
+                    <h2 class="nook-td-title" id="nook-notes-title">Community notes</h2>
+                </header>
+                <div class="nook-td-body">
+                    <p class="nook-history-empty" x-show="notesLoading">Loading…</p>
+                    <div class="nook-td-error" role="alert" x-show="notesError"><span x-text="notesError"></span></div>
+                    <template x-if="notesData">
+                        <div>
+                            <!-- Versions use the same note card as the feed; the current one leads. -->
+                            <section class="nook-notes-section" x-show="notesCurrent()">
+                                <h3 class="nook-notes-heading">Showing now</h3>
+                                <template x-if="notesCurrent()">
+                                    <div class="nook-notes-version">
+                                        <div class="community-note community-note-detail">
+                                            <div class="community-note-header"><svg viewBox="0 0 24 24" fill="var(--accent-color)" aria-hidden="true"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg><span>Readers added context</span></div>
+                                            <div class="community-note-body" x-text="notesCurrent().text"></div>
+                                        </div>
+                                        <p class="nook-notes-dates" x-text="noteVersionDates(notesCurrent())"></p>
+                                    </div>
+                                </template>
+                            </section>
+                            <p class="nook-notes-none" x-show="notesData.versions.length && !notesCurrent()">No note is showing on this tweet now.</p>
+                            <section class="nook-notes-section" x-show="notesEarlier().length">
+                                <h3 class="nook-notes-heading">Earlier versions</h3>
+                                <template x-for="(version, index) in notesEarlier()" :key="index">
+                                    <div class="nook-notes-version is-earlier">
+                                        <div class="community-note community-note-detail">
+                                            <div class="community-note-header"><svg viewBox="0 0 24 24" fill="var(--accent-color)" aria-hidden="true"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg><span>Readers added context</span></div>
+                                            <div class="community-note-body" x-text="version.text"></div>
+                                        </div>
+                                        <p class="nook-notes-dates" x-text="noteVersionDates(version)"></p>
+                                    </div>
+                                </template>
+                            </section>
+                            <p class="nook-history-empty" x-show="!notesData.versions.length">No community notes recorded for this tweet.</p>
+                        </div>
+                    </template>
+                </div>
+            </section>
+        </div>
+
+        <!-- Tweet History: availability checks, lookups and community-note versions. -->
+        <div class="nook-td-layer" x-show="historyOpen" x-cloak
+             @keydown.escape.window="historyOpen && closeTweetHistory()">
+            <div class="nook-td-backdrop" @click="closeTweetHistory()"></div>
+            <section class="nook-td nook-history nook-post-history" role="dialog" aria-modal="true" aria-labelledby="nook-history-title">
+                <header class="nook-td-head">
+                    <button type="button" class="nook-icon-button" @click="closeTweetHistory()" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
+</svg></button>
+                    <h2 class="nook-td-title" id="nook-history-title">History</h2>
+                </header>
+                <div class="nook-td-body">
+                    <p class="nook-history-empty" x-show="historyLoading">Loading…</p>
+                    <div class="nook-td-error" role="alert" x-show="historyError"><span x-text="historyError"></span></div>
+                    <template x-if="historyData">
+                        <div>
+                            <div class="nook-history-status" :class="historyData.status.state === 'missing' ? 'is-missing' : 'is-available'">
+                                <span class="nook-history-status-icon" x-html="historyData.status.state === 'missing' ? missingIcon() : availableIcon()"></span>
+                                <div>
+                                    <strong x-text="historyData.status.state === 'missing' ? 'Missing from X' : 'On X'"></strong>
+                                    <span x-show="historyData.status.message" x-text="historyData.status.message"></span>
+                                    <span class="nook-history-status-meta" x-text="historyStatusMeta()"></span>
+                                </div>
+                            </div>
+                            <!-- Rail segments show the tweet's state between events; dots mark the events. -->
+                            <ol class="nook-timeline" x-show="historyData.events.length" aria-label="History, newest first">
+                                <template x-for="(event, index) in historyTimeline()" :key="index">
+                                    <li class="nook-timeline-item" :class="['is-' + event.status, 'seg-' + event.segment]">
+                                        <span class="nook-timeline-rail" aria-hidden="true"><span class="nook-timeline-dot"></span></span>
+                                        <div class="nook-timeline-body">
+                                            <div class="nook-timeline-title" x-text="event.event"></div>
+                                            <div class="nook-timeline-meta"><span x-text="historyTime(event.at)"></span><span aria-hidden="true">·</span><span x-text="event.source"></span></div>
+                                            <p class="nook-timeline-detail" x-show="event.detail" x-text="event.detail"></p>
+                                        </div>
+                                    </li>
+                                </template>
+                            </ol>
+                            <div class="nook-timeline-legend" x-show="historyLegend().length" aria-hidden="true">
+                                <template x-for="[segment, label] in historyLegend()" :key="segment"><span :class="'seg-' + segment" x-text="label"></span></template>
+                            </div>
+                            <p class="nook-history-empty" x-show="!historyData.events.length">No history recorded yet.</p>
+                        </div>
+                    </template>
+                </div>
+            </section>
         </div>
 
         <!-- Settings Modal: master list of categories, detail page on the right (one page at a time on phones) -->
@@ -1923,7 +2053,7 @@
 
                                 <section class="nook-setting-section nook-config-advanced">
                                     <div class="nook-config-line">
-                                        <span class="nook-config-copy"><h3 id="nook-config-advanced-title">Advanced</h3><span class="nook-setting-help">Analytics timing, sync speed, rate limits, linked posts, and database memory.</span></span>
+                                        <span class="nook-config-copy"><h3 id="nook-config-advanced-title">Advanced</h3><span class="nook-setting-help">Analytics timing, sync speed, rate limits, linked posts, nightly check details, FxTwitter, and database memory.</span></span>
                                         <button type="button" role="switch" class="nook-switch-button" aria-labelledby="nook-config-advanced-title" :aria-checked="showAdvancedConfig" @click="showAdvancedConfig = !showAdvancedConfig"><span class="nook-switch-track"><span></span></span></button>
                                     </div>
                                 </section>
@@ -1938,7 +2068,7 @@
                                                         <div class="nook-config-line"><span class="nook-config-copy"><span class="nook-config-label" :id="'nook-config-' + field.path.replace('.', '-')" x-text="field.label"></span><span class="nook-setting-help" x-show="nookConfigHelp($data, field)" x-text="nookConfigHelp($data, field)"></span><span class="nook-config-state" x-show="nookConfigState($data, field) !== 'default'"><span x-text="nookConfigStateText($data, field)"></span><button type="button" @click="nookConfigStateAction($data, field)" x-text="nookConfigState($data, field) === 'dirty' ? 'Undo' : 'Use default'"></button></span></span><button type="button" role="switch" class="nook-switch-button" :aria-labelledby="'nook-config-' + field.path.replace('.', '-')" :aria-checked="nookConfigOn($data, field)" :disabled="nookConfigDisabled($data, field)" @click="nookConfigToggle($data, field)"><span class="nook-switch-track"><span></span></span></button></div>
                                                     </template>
                                                     <template x-if="field.type === 'number'">
-                                                        <div class="nook-config-line"><span class="nook-config-copy"><label class="nook-config-label" :for="'nook-config-' + field.path.replace('.', '-')" x-text="field.label"></label><span class="nook-setting-help" x-show="nookConfigHelp($data, field)" x-text="nookConfigHelp($data, field)"></span><span class="nook-config-state" x-show="nookConfigState($data, field) !== 'default'"><span x-text="nookConfigStateText($data, field)"></span><button type="button" @click="nookConfigStateAction($data, field)" x-text="nookConfigState($data, field) === 'dirty' ? 'Undo' : 'Use default'"></button></span></span><span class="nook-config-input is-number" :class="{ 'is-long': String(configData[field.section][field.key] ?? '').length > 6 }"><input type="number" :step="field.number.step || 'any'" :min="field.number.min ?? null" inputmode="decimal" :id="'nook-config-' + field.path.replace('.', '-')" x-model.number="configData[field.section][field.key]" :disabled="nookConfigDisabled($data, field)"><span class="nook-config-unit" x-show="field.unit" x-text="field.unit"></span></span></div>
+                                                        <div class="nook-config-line"><span class="nook-config-copy"><label class="nook-config-label" :for="'nook-config-' + field.path.replace('.', '-')" x-text="field.label"></label><span class="nook-setting-help" x-show="nookConfigHelp($data, field)" x-text="nookConfigHelp($data, field)"></span><span class="nook-config-state" x-show="nookConfigState($data, field) !== 'default'"><span x-text="nookConfigStateText($data, field)"></span><button type="button" @click="nookConfigStateAction($data, field)" x-text="nookConfigState($data, field) === 'dirty' ? 'Undo' : 'Use default'"></button></span></span><span class="nook-config-input is-number" :class="{ 'is-long': String(configData[field.section][field.key] ?? '').length > 6 }"><input type="number" :step="field.number.step || 'any'" :min="field.number.min ?? null" :max="field.number.max ?? null" inputmode="decimal" :id="'nook-config-' + field.path.replace('.', '-')" x-model.number="configData[field.section][field.key]" :disabled="nookConfigDisabled($data, field)"><span class="nook-config-unit" x-show="field.unit" x-text="field.unit"></span></span></div>
                                                     </template>
                                                     <template x-if="field.type === 'text'">
                                                         <div class="nook-config-line"><span class="nook-config-copy"><label class="nook-config-label" :for="'nook-config-' + field.path.replace('.', '-')" x-text="field.label"></label><span class="nook-setting-help" x-show="nookConfigHelp($data, field)" x-text="nookConfigHelp($data, field)"></span><span class="nook-config-state" x-show="nookConfigState($data, field) !== 'default'"><span x-text="nookConfigStateText($data, field)"></span><button type="button" @click="nookConfigStateAction($data, field)" x-text="nookConfigState($data, field) === 'dirty' ? 'Undo' : 'Use default'"></button></span></span><span class="nook-config-input is-text"><input type="text" spellcheck="false" autocomplete="off" :id="'nook-config-' + field.path.replace('.', '-')" x-model="configData[field.section][field.key]" :disabled="nookConfigDisabled($data, field)"><span class="nook-config-unit" x-show="field.unit" x-text="field.unit"></span></span></div>
@@ -1949,7 +2079,7 @@
                                                     <template x-if="field.type === 'select'">
                                                         <div class="nook-config-line"><span class="nook-config-copy"><span class="nook-config-label" x-text="field.label"></span><span class="nook-setting-help" x-show="nookConfigHelp($data, field)" x-text="nookConfigHelp($data, field)"></span><span class="nook-config-state" x-show="nookConfigState($data, field) !== 'default'"><span x-text="nookConfigStateText($data, field)"></span><button type="button" @click="nookConfigStateAction($data, field)" x-text="nookConfigState($data, field) === 'dirty' ? 'Undo' : 'Use default'"></button></span></span><div class="nook-select is-compact" x-data="nookSelect({ label: field.label, searchable: false, options: () => configSchema.select_options[field.path] || [], value: () => configData[field.section][field.key], choose: value => { configData[field.section][field.key] = value; nookConfigSaved = false } })"
                  @click.outside="open && close(false)" @keydown="open && key($event)">
-                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                <button type="button" class="nook-select-trigger" x-ref="trigger" :disabled="nookConfigDisabled($data, field)" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
                         aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
                     <span class="nook-select-label" x-text="label"></span>
                     <span class="nook-select-value" x-text="currentLabel()"></span>
@@ -1976,7 +2106,7 @@
                                                     <template x-if="field.type === 'time'">
                                                         <div class="nook-config-line"><span class="nook-config-copy"><span class="nook-config-label" x-text="field.label"></span><span class="nook-setting-help" x-show="nookConfigHelp($data, field)" x-text="nookConfigHelp($data, field)"></span><span class="nook-config-state" x-show="nookConfigState($data, field) !== 'default'"><span x-text="nookConfigStateText($data, field)"></span><button type="button" @click="nookConfigStateAction($data, field)" x-text="nookConfigState($data, field) === 'dirty' ? 'Undo' : 'Use default'"></button></span></span><div class="nook-select is-compact" x-data="nookSelect({ label: field.label, searchable: false, options: () => nookConfigTimeOptions(configData[field.section][field.key]), value: () => configData[field.section][field.key], choose: value => { configData[field.section][field.key] = value; nookConfigSaved = false } })"
                  @click.outside="open && close(false)" @keydown="open && key($event)">
-                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                <button type="button" class="nook-select-trigger" x-ref="trigger" :disabled="nookConfigDisabled($data, field)" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
                         aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
                     <span class="nook-select-label" x-text="label"></span>
                     <span class="nook-select-value" x-text="currentLabel()"></span>
@@ -3716,7 +3846,7 @@
                         <li><button type="button" class="cs-row" :class="running() && 'is-danger'" @click="running() ? stopActivity() : startActivity('sync')" :disabled="!running() && (archiveReady === false || setupForced)">
                             <svg x-show="running()" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/><path d="M8 8h8v8H8z"/></svg>
                             <svg x-show="!running()" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a1 1 0 0 1 1 1v9.59l3.3-3.3 1.4 1.42L12 17.41l-5.7-5.7 1.4-1.42 3.3 3.3V4a1 1 0 0 1 1-1zM5 19h14v2H5z"/></svg>
-                            <span class="cs-grow" x-text="running() ? 'Stop sync' : 'Sync now'"></span>
+                            <span class="cs-grow" x-text="running() ? (activityIsCheck() ? 'Stop check' : 'Stop sync') : 'Sync now'"></span>
                         </button></li>
                         <template x-if="running()">
                             <li><button type="button" class="cs-row" @click="openLogs()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v2H4zm0 6h16v2H4zm0 6h10v2H4z"/></svg><span class="cs-grow">View live log</span></button></li>

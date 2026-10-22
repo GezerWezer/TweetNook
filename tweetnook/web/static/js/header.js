@@ -146,6 +146,9 @@ function nookSyncStepCopy(step, state) {
     'archive-enrich': ['Refresh saved post details', 'refresh details for posts in your archive', 'Refreshing details for posts in your archive.', 'Refreshed details for posts in your archive.'],
     threads: ['Expand conversations', 'find replies and quotes for saved posts', 'Finding replies and quotes for saved posts.', 'Found replies and quotes for saved posts.'],
     resurrection: ['Retry unavailable posts', 'retry posts that were unavailable', 'Retrying posts that were unavailable.', 'Retried unavailable posts.'],
+    'check:saves': ['Check saved posts', 'check that saved posts are still on X', 'Checking that saved posts are still on X.', 'Checked saved posts.'],
+    'check:unavailable': ['Recheck unavailable posts', 'see whether unavailable posts are back', 'Checking whether unavailable posts are back.', 'Rechecked unavailable posts.'],
+    'check:context': ['Check context posts', 'check tonight’s share of quoted and thread posts', 'Checking tonight’s share of quoted and thread posts.', 'Checked tonight’s share of context posts.'],
     articles: ['Refresh article details', 'update article details in saved posts', 'Updating article details in saved posts.', 'Updated article details in saved posts.'],
     media: ['Download media', 'download photos, GIFs, and videos', 'Downloading photos, GIFs, and videos.', 'Downloaded media attached to saved posts.'],
     urls: ['Refresh link previews', 'refresh previews for saved links', 'Refreshing previews for saved links.', 'Refreshed previews for saved links.'],
@@ -203,13 +206,14 @@ function nookSyncPanel() {
     escape(text) { return String(text ?? ''); },
     headTitle() {
       if (this.activityStartPending && !this.activity) return 'Starting sync…';
-      if (this.activity) return 'Syncing';
+      const check = this.activityIsCheck();
+      if (this.activity) return check ? 'Checking' : 'Syncing';
       const last = this.displayActivity;
       if (!last) return 'Not synced yet';
-      if (last.stopped) return 'Sync stopped';
-      if (last.success === false) return 'Sync failed';
-      if (last.success === true) return 'Synced';
-      return 'Sync interrupted';
+      if (last.stopped) return check ? 'Check stopped' : 'Sync stopped';
+      if (last.success === false) return check ? 'Check failed' : 'Sync failed';
+      if (last.success === true) return check ? 'Checked' : 'Synced';
+      return check ? 'Check interrupted' : 'Sync interrupted';
     },
     headTime() {
       if (this.activity?.started_at) return this.formatActivityDuration(this.activityNowSeconds - this.activity.started_at);
@@ -225,7 +229,7 @@ function nookSyncPanel() {
     tabLabel(index) {
       if (index === null) return 'Overview';
       const step = this.steps()[index];
-      const labels = { 'archive-auth': 'Connect', 'archive-enrich': 'Refresh', threads: 'Conversations', resurrection: 'Retry', articles: 'Articles', media: 'Media', urls: 'Links' };
+      const labels = { 'archive-auth': 'Connect', 'archive-enrich': 'Refresh', threads: 'Conversations', resurrection: 'Retry', articles: 'Articles', media: 'Media', urls: 'Links', 'check:saves': 'Saved', 'check:unavailable': 'Unavailable', 'check:context': 'Context' };
       if (step.key?.startsWith('preflight:')) return 'Access';
       return labels[step.key] || step.title;
     },
@@ -308,7 +312,15 @@ function nookSyncPanel() {
       this.steps().forEach(item => { const state = this.stepState(item); tally[state] = (tally[state] || 0) + 1; });
       const detail = [['complete', 'complete'], ['skipped', 'skipped'], ['failed', 'failed'], ['cancelled', 'canceled'], ['paused', 'paused'], ['pending', 'not run']].filter(([key]) => tally[key]).map(([key, label]) => `${tally[key]} ${label}`).join(' · ');
       const stopped = this.displayActivity.stopped || this.displayActivity.success !== true;
-      return { left: parts.length ? `${parts.join(' and ')} added` : 'Nothing new', right: issues ? `${issues} issue${issues === 1 ? '' : 's'}` : 'No issues', danger: Boolean(issues), sub: stopped ? 'Sync stopped before all steps finished.' : 'Sync finished.', detailLabel: 'Run result', detail, status: stopped ? this.displayActivity.summary || 'Stopped before all steps finished.' : 'All steps finished.' };
+      if (this.activityIsCheck()) {
+        const total = (keys, label) => this.steps().filter(item => keys.includes(item.key))
+          .reduce((sum, item) => sum + (nookSyncStats(item.summary || item.counters).find(stat => stat.label === label)?.num || 0), 0);
+        const missing = total(['check:saves', 'check:context'], 'unavailable');
+        const restored = total(['check:saves', 'check:unavailable', 'check:context'], 'restored');
+        const changes = [missing && `${missing.toLocaleString()} missing`, restored && `${restored.toLocaleString()} restored`].filter(Boolean);
+        parts.splice(0, parts.length, ...changes);
+      }
+      return { left: parts.length ? `${parts.join(' and ')}${this.activityIsCheck() ? '' : ' added'}` : this.activityIsCheck() ? 'Everything still on X' : 'Nothing new', right: issues ? `${issues} issue${issues === 1 ? '' : 's'}` : 'No issues', danger: Boolean(issues), sub: `${this.activityIsCheck() ? 'Check' : 'Sync'} ${stopped ? 'stopped before all steps finished.' : 'finished.'}`, detailLabel: 'Run result', detail, status: stopped ? this.displayActivity.summary || 'Stopped before all steps finished.' : 'All steps finished.' };
     },
     detail() {
       const step = this.selectedStep(), caption = this.caption(), last = this.displayActivity;

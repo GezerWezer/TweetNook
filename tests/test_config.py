@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from tweetnook.config import (
     AppConfig,
     AuthConfig,
+    CheckConfig,
     DatabaseConfig,
     SyncConfig,
     TaggingConfig,
@@ -328,6 +329,34 @@ def test_database_defaults_are_fixed() -> None:
 def test_avatar_cache_limit_defaults_are_fixed() -> None:
     assert WebConfig().avatar_cache_limit_enabled is True
     assert WebConfig().avatar_cache_limit_mb == 512
+
+
+def test_check_defaults_and_saved_overrides(tmp_path: Path) -> None:
+    env = _xdg_env(tmp_path)
+    config, paths = load_config(env)
+    assert config.check.cadence == "weekly"
+    assert config.check.context_enabled is False
+    assert config.check.context_days == 60
+    update_config_values(
+        paths,
+        {"check.cadence": "monthly", "check.context_enabled": True, "check.context_days": 90},
+    )
+    saved, _ = load_config(env)
+    assert saved.check.cadence == "monthly"
+    assert saved.check.context_enabled is True
+    assert saved.check.context_days == 90
+    update_config_values(paths, {"check.context_enabled": False})
+    saved, _ = load_config(env)
+    assert saved.check.context_days == 90
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"cadence": "hourly"}, {"weekday": 7}, {"day_of_month": 0}, {"context_days": 0}],
+)
+def test_check_rejects_invalid_schedule_and_cycle(changes) -> None:
+    with pytest.raises(ValidationError):
+        CheckConfig(**changes)
 
 
 def test_config_ui_schema_only_references_real_fields_and_masks_secrets() -> None:

@@ -20,6 +20,7 @@ from tweetnook.search import (
 )
 from tweetnook.web.availability import annotate_web_tweets, missing_web_tweet, slim_web_tweets
 from tweetnook.web.deps import require_store, verify_credentials
+from tweetnook.web.history import tweet_history, tweet_note_history
 
 router = APIRouter()
 
@@ -733,6 +734,30 @@ def api_tweet_raw(
     if not isinstance(raw_json, dict):
         raise HTTPException(status_code=404, detail="No stored JSON for this tweet")
     return _json({"tweet_id": tweet_id, "raw_json": raw_json})
+
+
+@router.get("/api/tweets/{tweet_id}/history")
+def api_tweet_history(
+    tweet_id: str,
+    store=Depends(require_store),  # noqa: B008
+    _auth: bool = Depends(verify_credentials),
+):
+    """Availability checks, lookups, copies, and community-note versions for one tweet."""
+    if not tweet_id.isdigit():
+        raise HTTPException(status_code=404, detail="Unknown tweet")
+    return _json(tweet_history(store, tweet_id))
+
+
+@router.get("/api/tweets/{tweet_id}/notes")
+def api_tweet_notes(
+    tweet_id: str,
+    store=Depends(require_store),  # noqa: B008
+    _auth: bool = Depends(verify_credentials),
+):
+    """Every recorded version of one tweet's community note."""
+    if not tweet_id.isdigit():
+        raise HTTPException(status_code=404, detail="Unknown tweet")
+    return _json(tweet_note_history(store, tweet_id))
 
 
 @router.put("/api/tweets/{tweet_id}/hidden")

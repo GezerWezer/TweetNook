@@ -45,6 +45,8 @@ CONFIG_SECTION_ORDER = (
     "sync",
     "web",
     "schedule",
+    "check",
+    "fxtwitter",
     "activity",
     "database",
     "tagging",
@@ -142,11 +144,37 @@ class ScheduleConfig(BaseModel):
         return self
 
 
+class CheckConfig(BaseModel):
+    """Nightly availability check of saved tweets, their context, and unavailable tweets."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = False
+    time: str = Field(default="04:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    cadence: Literal["daily", "weekly", "monthly"] = "weekly"
+    weekday: int = Field(default=0, ge=0, le=6)
+    day_of_month: int = Field(default=1, ge=1, le=31)
+    context_enabled: bool = False
+    context_days: int = Field(default=60, ge=1, le=365)
+    detail_budget: int = Field(default=200, ge=0, le=10_000)
+
+
+class FxTwitterConfig(BaseModel):
+    """Cookie-free post lookups through the FxTwitter API (or a self-hosted copy)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = True
+    base_url: str = Field(default="https://api.fxtwitter.com", min_length=1)
+    concurrency: int = Field(default=4, ge=1, le=16)
+    timeout: float = Field(default=30.0, ge=1.0)
+
+
 class ActivityConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    max_runs: int = Field(default=100, ge=1, le=10_000)
-    retention_days: int = Field(default=90, ge=1, le=3650)
+    max_runs: int = Field(default=200, ge=1, le=10_000)
+    retention_days: int = Field(default=180, ge=1, le=3650)
 
 
 class DatabaseConfig(BaseModel):
@@ -243,6 +271,8 @@ class AppConfig(BaseModel):
     sync: SyncConfig = Field(default_factory=SyncConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
+    check: CheckConfig = Field(default_factory=CheckConfig)
+    fxtwitter: FxTwitterConfig = Field(default_factory=FxTwitterConfig)
     activity: ActivityConfig = Field(default_factory=ActivityConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     tagging: TaggingConfig = Field(default_factory=TaggingConfig)
@@ -604,6 +634,13 @@ def get_config_ui_schema() -> dict[str, Any]:
             "web.host",
             "web.port",
             "sync.reply_linked_depth",
+            "check.enabled",
+            "check.cadence",
+            "check.time",
+            "check.weekday",
+            "check.day_of_month",
+            "check.context_enabled",
+            "check.context_days",
         ],
         "blacklist": [
             "auth.auth_token",
@@ -626,9 +663,21 @@ def get_config_ui_schema() -> dict[str, Any]:
             *[f"tagging.{field}" for field in TaggingConfig.model_fields],
             *[f"replay.{field}" for field in ReplayConfig.model_fields],
         ],
-        "types": {},
+        "types": {"check.cadence": "select", "check.weekday": "select"},
         "full_width": [],
-        "select_options": {},
+        "select_options": {
+            "check.cadence": [
+                {"value": "daily", "label": "Daily"},
+                {"value": "weekly", "label": "Weekly"},
+                {"value": "monthly", "label": "Monthly"},
+            ],
+            "check.weekday": [
+                {"value": index, "label": day}
+                for index, day in enumerate(
+                    ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                )
+            ],
+        },
         "groups": [
             {
                 "title": "Web server",
@@ -672,6 +721,36 @@ def get_config_ui_schema() -> dict[str, Any]:
                 ],
             },
             {
+                "title": "Nightly check",
+                "note": (
+                    "Checks saved tweets and retries unavailable tweets. Optionally include a "
+                    "rolling share of quoted and thread tweets."
+                ),
+                "fields": [
+                    "check.enabled",
+                    "check.cadence",
+                    "check.time",
+                    "check.weekday",
+                    "check.day_of_month",
+                    "check.context_enabled",
+                    "check.context_days",
+                    "check.detail_budget",
+                ],
+            },
+            {
+                "title": "FxTwitter",
+                "note": (
+                    "Cookie-free post lookups that don't use your X session. Your login is "
+                    "still used for protected accounts and anything FxTwitter can't answer."
+                ),
+                "fields": [
+                    "fxtwitter.enabled",
+                    "fxtwitter.base_url",
+                    "fxtwitter.concurrency",
+                    "fxtwitter.timeout",
+                ],
+            },
+            {
                 "title": "Database",
                 "note": (
                     "Memory the local database may use. Larger values can speed up big archives."
@@ -694,17 +773,44 @@ def get_config_ui_schema() -> dict[str, Any]:
             "sync.cooldown_threshold": "errors",
             "sync.cooldown_duration": "sec",
             "sync.max_linked_depth": "hops",
+            "check.context_days": "days",
+            "check.detail_budget": "tweets",
+            "fxtwitter.concurrency": "requests",
+            "fxtwitter.timeout": "sec",
             "database.cache_size_kb": "KiB",
             "database.mmap_size_bytes": "bytes",
         },
         "byte_units": {"database.cache_size_kb": 1024, "database.mmap_size_bytes": 1},
-        "controls": {"web.analytics_refresh_time": "time", "sync.reply_linked_depth": "switch"},
+        "controls": {
+            "web.analytics_refresh_time": "time",
+            "sync.reply_linked_depth": "switch",
+            "check.time": "time",
+        },
         "requires": {
             "web.avatar_cache_limit_enabled": ["web.fetch_avatars"],
             "web.avatar_cache_limit_mb": ["web.fetch_avatars", "web.avatar_cache_limit_enabled"],
+            "check.enabled": ["fxtwitter.enabled"],
+            "check.cadence": ["fxtwitter.enabled", "check.enabled"],
+            "check.time": ["fxtwitter.enabled", "check.enabled"],
+            "check.weekday": ["fxtwitter.enabled", "check.enabled"],
+            "check.day_of_month": ["fxtwitter.enabled", "check.enabled"],
+            "check.context_enabled": ["fxtwitter.enabled"],
+            "check.context_days": ["fxtwitter.enabled", "check.context_enabled"],
+            "check.detail_budget": ["fxtwitter.enabled", "check.enabled"],
         },
-        "visible_when": {"sync.reply_linked_limit": ["sync.reply_linked_depth"]},
-        "number_constraints": {"sync.reply_linked_limit": {"min": 1, "step": 1}},
+        "visible_when": {
+            "sync.reply_linked_limit": ["sync.reply_linked_depth"],
+            "check.context_days": ["check.context_enabled"],
+        },
+        "visible_values": {
+            "check.weekday": {"check.cadence": "weekly"},
+            "check.day_of_month": {"check.cadence": "monthly"},
+        },
+        "number_constraints": {
+            "sync.reply_linked_limit": {"min": 1, "step": 1},
+            "check.context_days": {"min": 1, "max": 365, "step": 1},
+            "check.day_of_month": {"min": 1, "max": 31, "step": 1},
+        },
         "labels": {
             "auth": "Authentication",
             "sync": "Sync",
@@ -749,6 +855,20 @@ def get_config_ui_schema() -> dict[str, Any]:
             "activity.retention_days": "Log retention",
             "database.cache_size_kb": "Page cache",
             "database.mmap_size_bytes": "Memory-mapped I/O",
+            "check": "Nightly check",
+            "fxtwitter": "FxTwitter",
+            "check.enabled": "Check automatically",
+            "check.cadence": "Check frequency",
+            "check.time": "Time",
+            "check.weekday": "Weekday",
+            "check.day_of_month": "Day of the month",
+            "check.context_enabled": "Check context tweets",
+            "check.context_days": "Context cycle",
+            "check.detail_budget": "Login lookups per night",
+            "fxtwitter.enabled": "Use FxTwitter",
+            "fxtwitter.base_url": "API address",
+            "fxtwitter.concurrency": "Parallel lookups",
+            "fxtwitter.timeout": "Request timeout",
         },
         "descriptions": {
             "auth.auth_token": "Your Twitter/X authentication token. See README",
@@ -816,6 +936,39 @@ def get_config_ui_schema() -> dict[str, Any]:
             "schedule.weekday": "Weekday for weekly runs, where Monday is zero.",
             "schedule.day_of_month": "Preferred calendar day for monthly runs.",
             "schedule.timezone": "IANA time zone name, or local for the system time zone.",
+            "check.enabled": (
+                "Check that saved tweets are still on X, retry unavailable ones, "
+                "and keep community note versions. Needs FxTwitter. While off, sync retries "
+                "unavailable tweets."
+            ),
+            "check.cadence": "How often automatic checks run. Weekly by default.",
+            "check.time": "When the check starts, in the schedule's time zone.",
+            "check.weekday": "Day of the week for weekly checks.",
+            "check.day_of_month": "Day for monthly checks, clamped to the month's last day.",
+            "check.context_enabled": (
+                "Include a rolling share of quoted, thread, and other context tweets in "
+                "each check. Off by default. Quotes returned with saved tweets are still checked."
+            ),
+            "check.context_days": (
+                "Quoted, thread, and other context tweets are each checked once per this many "
+                "days, spread across runs at the selected check frequency. Saved tweets are "
+                "checked every run."
+            ),
+            "check.detail_budget": (
+                "Most tweets the nightly check may look up with your login, for protected "
+                "accounts and results FxTwitter can't confirm. 0 uses FxTwitter only."
+            ),
+            "fxtwitter.enabled": (
+                "Look up posts through FxTwitter first when enriching imported tweets and "
+                "during the nightly check. While off, the nightly check doesn't run."
+            ),
+            "fxtwitter.base_url": (
+                "The public service, or the address of your own FxEmbed install."
+            ),
+            "fxtwitter.concurrency": (
+                "Lookups in flight at once. The public service allows about 1,000 a minute."
+            ),
+            "fxtwitter.timeout": "Give up on a slow FxTwitter request after this long.",
             "activity.max_runs": "Maximum number of completed command histories to retain.",
             "activity.retention_days": "Maximum age of completed command histories.",
         },

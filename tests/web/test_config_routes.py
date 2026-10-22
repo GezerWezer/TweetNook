@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from tweetnook.config import AppConfig, load_config
+from tweetnook.config import AppConfig, load_config, update_config_values
+from tweetnook.scheduler import ScheduleManager
+from tweetnook.web.deps import server_state
 from tweetnook.web.routes import config as config_routes
 
 
@@ -113,6 +116,35 @@ def test_post_config_accepts_one_field_and_returns_refreshed_state(
     assert response.json()["explicit"] == ["web.port"]
     raw = tomllib.loads(paths.config_file.read_text(encoding="utf-8"))
     assert raw["web"] == {"port": 8123}
+
+
+def test_post_check_settings_reloads_schedule_without_moving_sync(
+    monkeypatch, make_web_client, tmp_path: Path
+) -> None:
+    _, paths = _use_temp_config(monkeypatch, tmp_path)
+    update_config_values(paths, {"schedule.enabled": True, "check.enabled": True})
+    config, _ = load_config(_env(tmp_path))
+    monkeypatch.setattr("tweetnook.scheduler.load_config", lambda: load_config(_env(tmp_path)))
+    manager = ScheduleManager(paths, config, SimpleNamespace(config=config))
+    client = make_web_client(config_routes.router)
+    monkeypatch.setitem(server_state, "schedule_manager", manager)
+    sync_next = manager._state["next_run_at"]
+    manager._state["check_next_run_at"] = 1_000
+
+    response = client.post(
+        "/api/config",
+        json={"changes": {"check.cadence": "monthly", "check.context_enabled": True}},
+    )
+
+    assert response.status_code == 200
+    assert manager.config.check.cadence == "monthly"
+    assert manager.config.check.context_enabled is True
+    assert manager._state["check_next_run_at"] > 1_000
+    assert manager._state["next_run_at"] == sync_next
+    response = client.post("/api/config", json={"changes": {"check.enabled": False}})
+    assert response.status_code == 200
+    assert manager._check_on() is False
+    assert manager._state["check_next_run_at"] is None
 
 
 def test_post_config_null_resets_field(monkeypatch, make_web_client, tmp_path: Path) -> None:

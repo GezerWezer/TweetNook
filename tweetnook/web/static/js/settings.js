@@ -90,6 +90,7 @@ function nookConfigField(app, path) {
     help: schema.descriptions?.[path] || '',
     bytes: schema.byte_units?.[path] || 0,
     requires: schema.requires?.[path] || [],
+    options: schema.select_options?.[path] || [],
     number: schema.number_constraints?.[path] || {},
   };
 }
@@ -101,6 +102,7 @@ function nookConfigSections(app, tier) {
     const [section, key] = nookConfigPath(path);
     if (!app.configData[section] || !(key in app.configData[section]) || schema.blacklist.includes(path)) return false;
     if ((schema.visible_when?.[path] || []).some(required => !nookConfigAt(app.configData, required))) return false;
+    if (Object.entries(schema.visible_values?.[path] || {}).some(([required, value]) => nookConfigAt(app.configData, required) !== value)) return false;
     return schema.whitelist.includes(path) === (tier === 'basic');
   };
   const grouped = new Set((schema.groups || []).flatMap(group => group.fields));
@@ -131,6 +133,7 @@ function nookConfigBytes(bytes) {
 function nookConfigFormat(field, value) {
   if (field.type === 'boolean' || field.type === 'toggle01') return (field.type === 'toggle01' ? Number(value) >= 1 : value) ? 'On' : 'Off';
   if (field.type === 'time') return nookTimeLabel(value);
+  if (field.type === 'select') return field.options.find(option => option.value === value)?.label || String(value);
   if (field.type === 'password') return value ? 'set' : 'empty';
   if (value === null || value === undefined || value === '') return 'empty';
   if (field.bytes) return nookConfigBytes(Number(value) * field.bytes);

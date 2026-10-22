@@ -51,6 +51,10 @@ const FEED_PREFETCH_MARGIN_PX = 1200;
 const MEDIA_PREFETCH_MARGIN_PX = 1600;
 // Hovering a tweet this long starts loading its conversation.
 const THREAD_HOVER_PREFETCH_MS = 150;
+// warning-fill from icons.md: marks an archived tweet that is no longer on X.
+// checkmark-circle from icons.md: the History dialog's "On X" status.
+const AVAILABLE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>';
+const MISSING_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9.4 3.5a3 3 0 0 1 5.2 0L22.4 17a3 3 0 0 1-2.6 4.5H4.2A3 3 0 0 1 1.6 17zM12 15.2a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4m0-6.95c-.8 0-1.4.7-1.3 1.49l.55 4.01h1.5l.55-4.01A1.3 1.3 0 0 0 12 8.25"/></svg>';
 const SETUP_LOAD_ERROR = 'Could not load setup';
 // Archive, Connect, Schedule, Appearance, Password.
 const SETUP_STEP_COUNT = 5;
@@ -1267,6 +1271,16 @@ function tweetApp() {
         tweetMenuClickBlockedUntil: 0,
 
         tagModalOpen: false,
+        historyOpen: false,
+        historyTweetId: null,
+        historyData: null,
+        historyLoading: false,
+        historyError: '',
+        notesOpen: false,
+        notesTweetId: null,
+        notesData: null,
+        notesLoading: false,
+        notesError: '',
         tagModalData: null,
         tagModalTweetId: null,
         
@@ -1897,6 +1911,11 @@ function tweetApp() {
             return this.activitySteps().find(step => step.state === 'active') || null;
         },
 
+        // The nightly availability check shares the sync drawer; its wording follows the run.
+        activityIsCheck(run = this.displayActivity) {
+            return !this.activityStartPending && /^tweetnook\s+check$/i.test(String(run?.title || '').trim());
+        },
+
         activityCommandLabel() {
             const pending = this.activityStartingKind || 'sync';
             const rawTitle = String(
@@ -1912,6 +1931,7 @@ function tweetApp() {
                 'import enrich': 'Archive Preparation',
                 'import x-archive': 'Archive Import',
                 'threads expand': 'Thread Expansion',
+                check: 'Availability Check',
                 'articles refresh': 'Article Refresh',
                 'media download': 'Media Download',
                 unfurl: 'Link Preview Refresh',
@@ -1960,9 +1980,10 @@ function tweetApp() {
         activityHeaderText() {
             if (this.activity || this.activityStartPending) return this.activityCommandLabel() + ' in progress…';
             const last = this.lastActivity;
-            if (last?.stopped) return 'Sync stopped — open Activity';
-            if (last?.success === false) return 'Sync failed — open Activity';
-            if (last && last.success !== true) return 'Sync interrupted — open Activity';
+            const noun = this.activityIsCheck(last) ? 'Check' : 'Sync';
+            if (last?.stopped) return `${noun} stopped — open Activity`;
+            if (last?.success === false) return `${noun} failed — open Activity`;
+            if (last && last.success !== true) return `${noun} interrupted — open Activity`;
             return this.lastSyncFormatted ? 'Synced ' + this.lastSyncFormatted : 'Your saved tweets, in one place';
         },
 
@@ -2775,6 +2796,15 @@ function tweetApp() {
             let hoverTimer = null;
             const threadTarget = event => event.target?.closest?.('[data-thread-id]')?.dataset.threadId;
             document.addEventListener('pointerdown', event => this.prefetchThread(threadTarget(event)), { passive: true });
+            // Community notes render as markup inside many click-stopping wrappers, so their
+            // history button is handled here, before any of them.
+            document.addEventListener('click', event => {
+                const button = event.target?.closest?.('[data-note-history]');
+                if (!button) return;
+                event.preventDefault();
+                event.stopPropagation();
+                this.openNoteHistory(button.dataset.noteHistory);
+            }, true);
             document.addEventListener('mouseover', event => {
                 clearTimeout(hoverTimer);
                 const tweetId = threadTarget(event);
@@ -4266,6 +4296,8 @@ function tweetApp() {
                     this.openUsernameProfileCard({ currentTarget: element }, element.dataset.username);
                 } else if (action === 'menu') {
                     this.toggleListTweetMenu(element);
+                } else if (action === 'history') {
+                    this.openTweetHistory(element.dataset.historyId);
                 }
                 return;
             }
@@ -4370,15 +4402,19 @@ function tweetApp() {
             const avatar = '<div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden" data-action="profile">'
                 + `<span class="avatar-initial">${escape(this.getInitial(tweet))}</span>`
                 + `<img src="${escape(this.avatarUrl(author.id))}" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy"></div>`;
-            const byline = '<div class="tweet-byline tweet-byline-feed flex items-start text-[15px]"><div class="flex items-center space-x-1 min-w-0">'
+            // The missing marker sits at the right, beside the overflow button.
+            const missing = this.missingBadge(tweet);
+            const byline = `<div class="tweet-byline tweet-byline-feed flex items-start text-[15px]${missing ? ' has-missing' : ''}"><div class="flex items-center space-x-1 min-w-0">`
                 + `<span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" data-action="profile">${escape(author.display_name || 'Unknown')}</span>`
                 + `<span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle">${escape(`@${author.username || 'unknown'}`)}</span>`
                 + '<span class="text-[var(--text-secondary)]">·</span>'
                 + '<div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" data-action="stop"><div class="roll-inner">'
                 + `<span class="roll-item hover:underline">${this.dateLabel(tweet.created_at)}</span>`
                 + `<span class="roll-item text-[var(--accent-color)] text-[13px] font-medium">${escape(this.formatSyncDate(tweet))}</span>`
-                + '</div></div></div>'
+                + '</div></div>'
+                + '</div>'
                 + '<div class="tweet-menu-trigger">'
+                + missing
                 + `<button type="button" class="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)] select-none touch-manipulation${menuOpen ? ' opacity-0' : ''}" aria-label="More actions" aria-haspopup="menu" aria-expanded="${menuOpen}" title="More actions (hold for Tags)" data-action="menu">`
                 + '<svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>'
                 + '</button></div></div>';
@@ -5788,6 +5824,143 @@ function tweetApp() {
                 clearTimeout(this.tweetMenuPressTimer);
                 this.tweetMenuPressTimer = null;
             }
+        },
+
+        // A red warning after the date: the tweet is archived but no longer on X.
+        missingBadge(tweet) {
+            const availability = tweet?.availability;
+            if (!availability || availability.state !== 'unavailable' || availability.placeholder) return '';
+            const label = `Missing from X. ${availability.message || 'This tweet is unavailable.'}`;
+            return `<button type="button" class="tweet-missing-badge" aria-label="${this.escapeHTML(`${label} Show history`)}"`
+                + ` title="${this.escapeHTML(label)}" data-action="history" data-history-id="${this.escapeHTML(tweet.tweet_id)}">`
+                + `${MISSING_ICON}</button>`;
+        },
+
+        missingIcon() {
+            return MISSING_ICON;
+        },
+
+        availableIcon() {
+            return AVAILABLE_ICON;
+        },
+
+        async openTweetHistory(tweetId) {
+            this.closeTweetMenu();
+            const id = String(tweetId || '');
+            if (!/^\d+$/.test(id)) return;
+            this.historyTweetId = id;
+            this.historyData = null;
+            this.historyError = '';
+            this.historyOpen = true;
+            if (this.isDemo || typeof globalThis.fetch !== 'function') {
+                this.historyError = 'History is not available in the demo.';
+                return;
+            }
+            this.historyLoading = true;
+            try {
+                const response = await globalThis.fetch(`/api/tweets/${id}/history`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                if (this.historyTweetId === id) this.historyData = data;
+            } catch {
+                if (this.historyTweetId === id) this.historyError = "Couldn't load this tweet's history.";
+            } finally {
+                if (this.historyTweetId === id) this.historyLoading = false;
+            }
+        },
+
+        closeTweetHistory() {
+            this.historyOpen = false;
+        },
+
+        // Offered only on tweets that have, or once had, a community note.
+        hasNoteHistory(tweet) {
+            const raw = tweet?.raw_json;
+            return Boolean(tweet?.note_history || (raw && typeof raw === 'object' && raw.birdwatch_pivot));
+        },
+
+        async openNoteHistory(tweetId) {
+            this.closeTweetMenu();
+            const id = String(tweetId || '');
+            if (!/^\d+$/.test(id)) return;
+            this.notesTweetId = id;
+            this.notesData = null;
+            this.notesError = '';
+            this.notesOpen = true;
+            if (this.isDemo || typeof globalThis.fetch !== 'function') {
+                this.notesError = 'Community note history is not available in the demo.';
+                return;
+            }
+            this.notesLoading = true;
+            try {
+                const response = await globalThis.fetch(`/api/tweets/${id}/notes`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                if (this.notesTweetId === id) this.notesData = data;
+            } catch {
+                if (this.notesTweetId === id) this.notesError = "Couldn't load this tweet's community notes.";
+            } finally {
+                if (this.notesTweetId === id) this.notesLoading = false;
+            }
+        },
+
+        closeNoteHistory() {
+            this.notesOpen = false;
+        },
+
+        notesCurrent() {
+            return this.notesData?.versions?.find(version => version.current) || null;
+        },
+
+        notesEarlier() {
+            return (this.notesData?.versions || []).filter(version => !version.current);
+        },
+
+        noteVersionDates(version) {
+            const day = value => this.historyTime(value);
+            const saved = version.source === 'Saved with the tweet' ? ' · saved with the tweet' : '';
+            if (!version.first_seen_at) return `Shown at an unknown time${saved}`;
+            if (version.removed_at) return `Shown ${day(version.first_seen_at)} – ${day(version.removed_at)}${saved}`;
+            return `Shown since ${day(version.first_seen_at)}${saved}`;
+        },
+
+        historyLegend() {
+            const shown = new Set(this.historyTimeline().map(event => event.segment));
+            return [['on', 'On X'], ['missing', 'Missing'], ['protected', 'Protected']]
+                .filter(([segment]) => shown.has(segment));
+        },
+
+        historyStatusMeta() {
+            const status = this.historyData?.status || {};
+            const parts = [status.last_checked_at ? `Last checked ${this.historyTime(status.last_checked_at)}` : 'Not checked yet'];
+            if (status.next_login_check_at) parts.push(`next login check ${this.historyTime(status.next_login_check_at)}`);
+            return parts.join(' · ');
+        },
+
+        // Newest first. Each event's segment is the tweet's state from the older event
+        // below it up to this one, so the rail reads as stretches on X, missing, or private.
+        historyTimeline() {
+            const events = this.historyData?.events || [];
+            const stateOf = { available: 'on', missing: 'missing', protected: 'protected' };
+            const states = new Array(events.length);
+            let state = 'unknown';
+            for (let index = events.length - 1; index >= 0; index--) {
+                const event = events[index];
+                // Being saved to the archive means the tweet was on X at the time.
+                const saved = event.source === 'Archive' && state === 'unknown';
+                state = stateOf[event.status] || (saved ? 'on' : state);
+                states[index] = state;
+            }
+            return events.map((event, index) => ({
+                ...event,
+                segment: index + 1 < events.length ? states[index + 1] : 'none',
+            }));
+        },
+
+        historyTime(value) {
+            const date = value ? new Date(value) : null;
+            if (!date || Number.isNaN(date.getTime())) return '—';
+            return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
         },
 
         openTagsFromTweetMenu(tweetId, tagsData) {
@@ -8488,6 +8661,7 @@ function tweetApp() {
                 + `<span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle">${escape(`@${author.screen_name}`)}</span>`
                 + '<span class="text-[var(--text-secondary)]">·</span>'
                 + `<span class="text-[var(--text-secondary)] tweet-byline-detail">${this.dateLabel(quote.legacy?.created_at || quote.created_at)}</span>`
+                + this.missingBadge(quote)
                 + '</div>';
         },
 
@@ -8803,11 +8977,18 @@ function tweetApp() {
 
             const iconSvg = `<svg viewBox="0 0 24 24" fill="var(--accent-color)" class="w-[18px] h-[18px]"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg>`;
             
+            // Notes with recorded versions get a history button that opens the Community notes
+            // dialog (see the capture listener in init).
+            const noteTweetId = String(raw_json.rest_id || raw_json.legacy?.id_str || '');
+            const historyButton = bw.note_history && /^\d+$/.test(noteTweetId) && !this.isDemo
+                ? `<button type="button" class="community-note-history" data-note-history="${noteTweetId}" aria-label="Community note history" title="Community note history"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5"/><path d="m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z"/></svg></button>`
+                : '';
             return `
             <div class="${containerClass}" ${!isQuote ? 'onclick="event.stopPropagation()"' : ''}>
                 <div class="community-note-header">
                     ${iconSvg}
                     <span>${this.escapeHTML(title)}</span>
+                    ${historyButton}
                 </div>
                 <div class="community-note-body">${textHtml}</div>
             </div>`;

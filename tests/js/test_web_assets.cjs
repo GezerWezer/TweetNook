@@ -8781,13 +8781,21 @@ test('Configuration page groups and formats fields from the server schema', () =
         showAdvancedConfig: false,
         configSaving: false,
         getFieldType(section, key) {
+            if (this.configSchema.types?.[`${section}.${key}`]) return this.configSchema.types[`${section}.${key}`];
             const value = this.configData[section][key];
             return typeof value === 'boolean' ? 'boolean' : typeof value === 'number' ? 'number' : 'text';
         },
     };
     const basic = nookConfigSections(app, 'basic');
-    assert.deepEqual([...basic.map(group => group.title)], ['Web server', 'Avatars', 'Quoted and linked posts']);
+    assert.deepEqual([...basic.map(group => group.title)], ['Web server', 'Avatars', 'Quoted and linked posts', 'Nightly check']);
     assert.ok(basic.flatMap(group => group.fields).some(field => field.path === 'sync.reply_linked_depth'));
+    // Frequency and the independent context toggle are basic settings.
+    assert.deepEqual(basic.find(group => group.title === 'Nightly check').fields.map(field => field.path), [
+        'check.enabled', 'check.cadence', 'check.time', 'check.weekday', 'check.context_enabled',
+    ]);
+    assert.equal(defaults.check.cadence, 'weekly');
+    assert.equal(defaults.check.context_enabled, false);
+    assert.equal(defaults.check.context_days, 60);
     assert.equal(basic[0].note, 'Restart TweetNook after changing these.');
     assert.equal(nookConfigSections(app, 'advanced').length, 0);
 
@@ -8797,7 +8805,7 @@ test('Configuration page groups and formats fields from the server schema', () =
     const paths = fields.map(field => field.path);
     // Every visible field outside the blacklist appears exactly once.
     const expected = Object.entries(defaults).flatMap(([section, values]) => Object.keys(values).map(key => `${section}.${key}`))
-        .filter(item => !schema.blacklist.includes(item) && item !== 'sync.reply_linked_limit');
+        .filter(item => !schema.blacklist.includes(item) && !['sync.reply_linked_limit', 'check.context_days', 'check.day_of_month'].includes(item));
     assert.deepEqual([...paths].sort(), [...expected].sort());
     assert.ok(!paths.includes('sync.collections'));
 
@@ -8816,6 +8824,24 @@ test('Configuration page groups and formats fields from the server schema', () =
     assert.ok(!nookConfigSections(app, 'advanced').flatMap(group => group.fields)
         .some(item => item.path === 'sync.reply_linked_limit'));
     assert.equal(app.configData.sync.reply_linked_limit, 3, 'hiding the limit preserves the saved choice');
+    assert.equal(field('check.cadence').type, 'select');
+    assert.equal(nookConfigFormat(field('check.cadence'), 'weekly'), 'Weekly');
+    assert.deepEqual(field('check.cadence').options.map(option => option.value), ['daily', 'weekly', 'monthly']);
+    assert.equal(nookConfigDisabled(app, field('check.context_enabled')), false, 'context can be configured while automatic checks are off');
+    app.configData.check.context_enabled = true;
+    const contextCycle = nookConfigSections(app, 'basic').flatMap(group => group.fields).find(item => item.path === 'check.context_days');
+    assert.equal(contextCycle.advanced, undefined);
+    assert.equal(nookConfigDisabled(app, contextCycle), false);
+    app.configData.check.context_days = 90;
+    app.configData.check.context_enabled = false;
+    assert.ok(!nookConfigSections(app).flatMap(group => group.fields).some(item => item.path === 'check.context_days'));
+    assert.equal(app.configData.check.context_days, 90);
+    app.configData.check.cadence = 'monthly';
+    const monthly = nookConfigSections(app, 'basic').flatMap(group => group.fields);
+    assert.ok(monthly.some(item => item.path === 'check.day_of_month'));
+    assert.ok(!monthly.some(item => item.path === 'check.weekday'));
+    app.configData.check.cadence = 'daily';
+    assert.ok(!nookConfigSections(app).flatMap(group => group.fields).some(item => ['check.weekday', 'check.day_of_month'].includes(item.path)));
     assert.equal(nookConfigFormat(field('database.cache_size_kb'), 524288), '512 MiB');
     assert.equal(nookConfigFormat(field('sync.page_delay'), 2), `2 ${schema.units['sync.page_delay']}`);
     // Avatar cache limits depend on fetching avatars.

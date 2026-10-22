@@ -40,6 +40,18 @@ def test_activity_status_returns_active_pipeline(tmp_path, make_web_client, monk
     assert response.json()["last_snapshot"] is None
 
 
+def test_finished_availability_check_is_the_last_run(tmp_path, make_web_client) -> None:
+    status_file = tmp_path / "activity-status.json"
+    server_state["paths"] = SimpleNamespace(activity_status_file=status_file, data_dir=tmp_path)
+    client = make_web_client(activity.router)
+
+    _write_snapshot(status_file, pid=os.getpid(), running=False, title="tweetnook check")
+    status = client.get("/api/activity/status").json()
+
+    assert status["active"] is False
+    assert status["last_snapshot"]["title"] == "tweetnook check"
+
+
 def test_activity_status_ignores_finished_or_orphaned_snapshots(tmp_path, make_web_client) -> None:
     status_file = tmp_path / "activity-status.json"
     server_state["paths"] = SimpleNamespace(activity_status_file=status_file, data_dir=tmp_path)

@@ -585,6 +585,14 @@ class PipelineReporter:
             self._log(step.title, "complete", " · ".join(fields))
         self._refresh()
 
+    def revise_step(self, key: str, summary: str) -> None:
+        """Replace a finished step's summary and counters after a later correction."""
+
+        step = self._step_by_key[key]
+        step.summary = summary
+        step.counters = summary
+        self._refresh()
+
     def skip_step(self, key: str, reason: str) -> None:
         """Resolve a planned step that has no work without treating it as success work."""
 

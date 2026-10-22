@@ -182,6 +182,32 @@ The scheduler runs only inside the Web service. Its next time is stored in
 `schedule-state.json`; editing schedule fields through the dedicated Web pane
 reloads it. It launches bookmarks/likes sync, not `sync tweets`.
 
+## `[check]`
+
+| Field | Default | Validation | Meaning |
+|---|---:|---:|---|
+| `enabled` | `false` | Boolean | Run automatic availability checks while the web service is running |
+| `cadence` | `weekly` | `daily`, `weekly`, `monthly` | Check frequency |
+| `time` | `04:00` | `HH:MM`, 24-hour | Start time in `schedule.timezone` |
+| `weekday` | `0` | 0–6 | Weekly check day, Monday=0 |
+| `day_of_month` | `1` | 1–31 | Monthly check day, clamped at month end |
+| `context_enabled` | `false` | Boolean | Also check a rolling share of context tweets |
+| `context_days` | `60` | 1–365 | Target context cycle in days |
+| `detail_budget` | `200` | 0–10,000 | Maximum login lookups per check; 0 uses only FxTwitter |
+
+Frequency, time, calendar day, and the separate context toggle are basic controls
+in **Settings → Config → Check**. The cycle appears when context is enabled;
+login lookup budget is Advanced. Saving check settings updates the running
+scheduler immediately. Existing explicit values are preserved; omitted fields use
+the defaults above.
+
+Checks require `fxtwitter.enabled`. Saved and retryable unavailable tweets are
+checked every run. Context batches scale with frequency (1, 7, or up to 31 days
+per run); context cycles shorter than the frequency run at most once per check.
+Quotes returned with saved tweets are still processed when context is off.
+`tweetnook check` follows the context toggle; `--skip-context` suppresses that
+pass even when enabled.
+
 ## `[activity]`
 
 | Field | Default | Validation | Meaning |
