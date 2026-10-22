@@ -5,6 +5,38 @@ changes inline multi-media tweets and expanded quoted galleries. Grid remains
 the default. Single attachments and the existing fullscreen viewer retain their
 layout. The choice is stored in this browser as `tvx-media-gallery`.
 
+## Mobile fullscreen fixes (2026-10-22)
+
+Reproduced the four reported viewer issues against the current source in an
+isolated Chromium mobile fixture (390 × 844, touch and coarse pointer), before
+changing their behavior:
+
+- A 152 × 155 photo stayed at its intrinsic size. Phone photos now fill the
+  available viewer box with `object-fit: contain`; motion uses the fitted picture
+  so letterbox space does not distort the animation.
+- A fresh tap immediately after closing was swallowed by the 500 ms dismissal
+  guard. A new `touchstart` clears that guard, while a compatibility click without
+  a new touch remains blocked. Other possible causes of intermittent missed taps
+  were not established.
+- Video opening and closing could end 29.5 px away from their resting picture.
+  The animation positioned its surface using already lifted bounds, then applied
+  the CSS lift again. Temporary absolute surfaces now suppress that translate;
+  synchronous inline mounting sets the resting lift before measuring it.
+
+Afterward, the small photo's visible picture measures 390 × 397.697 px; a tall
+1080 × 2342 photo fits at 332.485 × 721 px. Paging from a landscape photo to the
+small photo preserves that enlarged fit. Six opening/closing video handoffs
+(portrait, a letterboxed portrait, and a real landscape clip) differ by at most
+0.008 px across cleanup. A fresh post-close tap opens immediately, and the desktop
+small photo remains 152 × 155. Browser console has no errors. Scoped validation:
+238 asset cases, 25 playback cases, the four other JavaScript suites, and eight
+Python web asset/playback tests pass.
+
+Local before/after JSON, screenshots, and the reproduction harness are under
+`design-assets/gallery-fixes-20261022/` (ignored by Git). These are browser
+reproductions, not an X parity comparison or a physical iPhone verification:
+the previously configured iPhone automation endpoint was unreachable.
+
 ## Date-based layout policy and improved selector
 
 Appearance now offers illustrated native radio controls for **Grid**, **Carousel**,
