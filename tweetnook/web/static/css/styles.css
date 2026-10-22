@@ -35,6 +35,15 @@ body {
     transition: background-color 0.2s, color 0.2s;
 }
 
+/* Desktop edge bounce moves sticky headers with their scroll container. Apply
+   the boundary policy to both the viewport and the independent post panel. */
+@media (min-width: 641px) {
+    html,
+    .nook-detail-panel {
+        overscroll-behavior-y: none;
+    }
+}
+
 .avatar-image {
     visibility: hidden;
 }
