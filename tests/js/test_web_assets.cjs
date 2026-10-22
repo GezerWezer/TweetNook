@@ -9190,6 +9190,28 @@ test('carousel uses shared heights, native pair packing, and independent quoted 
     assert.ok(Number.isFinite(app.mediaCarouselLayout([{}, {}]).maxAspect));
 });
 
+test('desktop list and post layouts follow X web: strips, page dashes, quotes, Show more, large cards', () => {
+    const context = browserContext();
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const desktop = css.slice(css.indexOf("/* X's desktop web, measured in October 2026."));
+    const block = desktop.slice(0, desktop.indexOf('\n}\n'));
+    // Inline strips use the first-item height at every width; quotes keep the shared height.
+    assert.match(css, /^\.media-carousel-feed \.media-carousel-item,\n\.media-carousel-detail \.media-carousel-item \{\s*height: var\(--gallery-height-app, var\(--gallery-height\)\);/m);
+    assert.match(block, /\.media-carousel-dots \{\s*display: flex;/);
+    assert.match(block, /opacity: calc\(0\.35 \+ 0\.65 \* var\(--dot-active, 0\)\);/);
+    assert.match(block, /\.quote-card:not\(\.quote-compact\) > \.quote-text \{[^}]*-webkit-line-clamp: 5;/);
+    assert.match(block, /\.quote-card:not\(\.quote-compact\) > \.quote-media:empty \{\s*margin-bottom: 0;/);
+    assert.match(block, /\.quote-media:has\(> \.media-carousel\) \{\s*margin-top: 16px;/);
+    assert.match(block, /\[data-action="media"\]:has\(> \.media-single\) \+ \.quote-card,[^{]*\{\s*margin-top: 4px;/);
+    // Large link cards are no longer limited to phone widths.
+    assert.match(css, /^\.link-card-large:has\(\.link-card-image\) > \.link-card-text \{\s*display: none;/m);
+
+    const long = app.formatText({tweet_id: 'long-show-more', text: 'word '.repeat(80)});
+    assert.doesNotMatch(long, /\.\.\.|…/);
+    assert.match(long, /class="text-\[var\(--accent-color\)\] hover:underline cursor-pointer block expand-tweet"/);
+});
+
 test('phone layout follows the X app: strip heights, dates, large link cards, compact nested quotes', () => {
     const context = browserContext();
     const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
