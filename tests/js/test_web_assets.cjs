@@ -8798,9 +8798,24 @@ test('Configuration page groups and formats fields from the server schema', () =
     assert.equal(defaults.check.context_days, 60);
     assert.equal(basic[0].note, 'Restart TweetNook after changing these.');
     assert.equal(nookConfigSections(app, 'advanced').length, 0);
+    // The page renders one list: with the switch off it is just the basic sections.
+    assert.deepEqual(nookConfigSections(app).map(group => group.title), basic.map(group => group.title));
+    assert.ok(nookConfigSections(app).every(group => !group.advanced && group.fields.every(item => !item.advanced)));
 
     app.showAdvancedConfig = true;
     const advanced = nookConfigSections(app, 'advanced');
+    // With the switch on, advanced fields join their own sections in schema order, flagged.
+    const merged = nookConfigSections(app);
+    assert.deepEqual(merged.slice(0, 3).map(group => group.title), ['Web server', 'Avatars', 'Analytics']);
+    const check = merged.find(group => group.title === 'Nightly check');
+    assert.equal(check.advanced, false);
+    assert.deepEqual(check.fields.map(item => [item.path, item.advanced]), [
+        ['check.enabled', false], ['check.cadence', false], ['check.time', false],
+        ['check.weekday', false], ['check.context_enabled', false], ['check.detail_budget', true],
+    ]);
+    assert.equal(merged.find(group => group.title === 'Sync speed').advanced, true);
+    assert.deepEqual(merged.flatMap(group => group.fields).map(item => item.path).sort(),
+        [...basic, ...advanced].flatMap(group => group.fields).map(item => item.path).sort());
     const fields = [...basic, ...advanced].flatMap(group => group.fields);
     const paths = fields.map(field => field.path);
     // Every visible field outside the blacklist appears exactly once.
@@ -8830,7 +8845,7 @@ test('Configuration page groups and formats fields from the server schema', () =
     assert.equal(nookConfigDisabled(app, field('check.context_enabled')), false, 'context can be configured while automatic checks are off');
     app.configData.check.context_enabled = true;
     const contextCycle = nookConfigSections(app, 'basic').flatMap(group => group.fields).find(item => item.path === 'check.context_days');
-    assert.equal(contextCycle.advanced, undefined);
+    assert.equal(contextCycle.advanced, false);
     assert.equal(nookConfigDisabled(app, contextCycle), false);
     app.configData.check.context_days = 90;
     app.configData.check.context_enabled = false;
