@@ -15,16 +15,25 @@ Install TweetNook on macOS or Linux without changing system Python or shell prof
 Linux with running systemd defaults to a system-wide service (requests sudo).
 macOS and systems without systemd default to manual startup.
 These defaults also apply without a terminal. Use --no-service for manual startup.
-With a terminal, choose startup mode interactively. Manual mode does not start a server.
-The recommended choice is always option 1. Review it before installation begins.
-Explicit --service / --no-service flags skip both prompts.
+With a terminal, choose startup mode and add-ons interactively. Manual mode does not
+start a server. The recommended choice is always option 1; automated tagging defaults
+to no. Review it before installation begins.
+Explicit --service / --no-service flags skip all prompts.
+
+Run the installer again to update, reinstall, or add add-ons. An existing installation
+keeps its startup mode, paths, add-ons, archive, and settings; without a terminal it
+is updated. Stop manually started TweetNook processes first. A background service is
+stopped and restarted automatically.
 
 Options:
   --service              Install and start the system-wide Linux service (default with systemd).
   --no-service           Install for manual startup; do not prompt or start a server.
   --automated-tagging    Include the optional Gemini tagging dependencies.
   --legacy-migration     Include support for migrating older LanceDB archives.
+  --reinstall            Reinstall the installed version of an existing installation
+                         instead of updating it.
   --version VERSION      Install an exact published version (default: latest stable).
+                         An existing installation is updated to that version.
   --python PYTHON        Python version or executable for a new environment (default: 3.12).
   --install-dir PATH     Absolute runtime directory (service: /opt/tweetnook;
                          personal: $XDG_DATA_HOME/tweetnook-runtime or ~/.local/share/tweetnook-runtime).
@@ -39,11 +48,9 @@ Existing archives/configuration are kept in their normal locations, outside the 
 Run service installation as root or allow sudo. It creates a dedicated tweetnook
 account, with data in /var/lib/tweetnook, config in /etc/tweetnook, and cache in
 /var/cache/tweetnook. Personal/manual installation must run as a regular user.
-Existing installations keep their paths; use tweetnook update, not this installer.
 The installer checks the service and its Web app before showing a setup address.
 Failures show the relevant error and retain a private diagnostic log.
-Stop manual TweetNook processes before rerunning. For an installed service, use its
-existing updater instead; this installer does not replace an existing service.
+A service unit this installer did not create is never replaced; use its own updater.
 HELP
 }
 
@@ -92,6 +99,7 @@ bin_dir_option=false
 original_args=("$@")
 tagging=false
 migration=false
+reinstall=false
 details=false
 version=
 python_request=3.12
@@ -106,6 +114,7 @@ while [[ $# -gt 0 ]]; do
             shift ;;
         --automated-tagging) tagging=true; shift ;;
         --legacy-migration) migration=true; shift ;;
+        --reinstall) reinstall=true; shift ;;
         --details) details=true; shift ;;
         --version|--python|--install-dir|--bin-dir)
             [[ $# -ge 2 && -n $2 && $2 != --* ]] || die "$1 requires a value."
@@ -132,23 +141,93 @@ if [[ -n $version && ! $version =~ ^[0-9][a-zA-Z0-9.!+_-]*$ ]]; then
     die '--version must be a version number, not a package name, URL, or path.'
 fi
 
+installer_marker() { cat "$1/.tweetnook-installer" 2>/dev/null || true; }
+installed_version_in() {
+    [[ ! -L $1/venv && -f $1/venv/pyvenv.cfg && -x $1/venv/bin/python ]] || return 1
+    "$1/venv/bin/python" -I -c 'from importlib.metadata import version; print(version("tweetnook"))' 2>/dev/null
+}
+has_modules() {
+    "$1" -I -c 'import importlib.util, sys
+try:
+    found = all(importlib.util.find_spec(name) for name in sys.argv[1:])
+except ModuleNotFoundError:
+    found = False
+sys.exit(0 if found else 1)' "${@:2}" 2>/dev/null
+}
+
+existing=
+existing_version=
+existing_runtime=
 systemd=false
 if [[ $os == Linux ]] && command -v systemctl >/dev/null 2>&1; then
-    # Also finds disabled or failed units. Never silently repoint an older installation.
+    # Also finds disabled or failed units. Only a unit this installer created is
+    # updated in place; never silently repoint or adopt another installation.
     unit_state=$(systemctl show tweetnook.service --property=LoadState --value 2>/dev/null || true)
     if [[ -n $unit_state && $unit_state != not-found ]]; then
-        die 'A tweetnook.service unit already exists. Use tweetnook update from that installation; do not install a second copy. See README.md for migration guidance.'
+        existing_runtime=/opt/tweetnook
+        if $install_dir_option; then existing_runtime=$install_dir; fi
+        if [[ $(installer_marker "$existing_runtime") == tweetnook-system-installer-v1 ]] \
+            && existing_version=$(installed_version_in "$existing_runtime"); then
+            existing=service
+        else
+            die 'A tweetnook.service unit already exists that this installer did not create. Use tweetnook update from that installation; do not install a second copy. See README.md for migration guidance.'
+        fi
     fi
     if systemctl show --property=Version --value >/dev/null 2>&1; then systemd=true; fi
 fi
+if [[ -z $existing && $(installer_marker "$install_dir") == tweetnook-installer-v1 ]] \
+    && existing_version=$(installed_version_in "$install_dir"); then
+    existing=manual
+    existing_runtime=$install_dir
+fi
+existing_tagging=false
+existing_migration=false
+if [[ -n $existing ]]; then
+    if $mode_option && [[ $mode != "$existing" ]]; then
+        if [[ $existing == service ]]; then
+            die 'TweetNook is already installed as a background service. Rerun without --no-service to update it.'
+        fi
+        die 'An existing personal installation was found. Rerun without --service to update it; moving it to a service must be done explicitly.'
+    fi
+    mode=$existing
+    # Updates must keep previously installed add-ons and refresh their dependencies.
+    if has_modules "$existing_runtime/venv/bin/python" google.genai PIL; then existing_tagging=true; fi
+    if has_modules "$existing_runtime/venv/bin/python" lancedb; then existing_migration=true; fi
+    if $reinstall && [[ -n $version && $version != "$existing_version" ]]; then
+        die "--reinstall keeps the installed version ($existing_version). Use --version without --reinstall to change versions."
+    fi
+elif $reinstall; then
+    die 'TweetNook is not installed here, so there is nothing to reinstall.'
+fi
+action=install
+if [[ -n $existing ]]; then
+    action=update
+    if $reinstall; then action=reinstall; fi
+fi
+
 prompt=false
+if [[ -t 0 && -t 1 ]] && ! $mode_option; then prompt=true; fi
 trap cancel INT
 if [[ ${TWEETNOOK_INSTALL_REVIEWED:-} != 1 ]]; then heading $'TweetNook \302\267 Install'; fi
+if $prompt && [[ $action == update ]]; then
+    heading "TweetNook $existing_version is already installed"
+    if [[ -n $version ]]; then
+        styled 1 "1. Install version $version (recommended)"
+    else
+        styled 1 '1. Update to the latest version (recommended)'
+    fi
+    say '   Keeps your archive, settings, and add-ons.'
+    printf '\n'
+    say "2. Reinstall $existing_version"
+    say '   Repairs this version. Use it to add an add-on without updating.'
+    printf '\n'
+    ask 'Choose [1] (q to cancel):' 1 'Choose 1 or 2, or q to cancel.' 1 2
+    if [[ $choice == 2 ]]; then action=reinstall; fi
+fi
 if [[ $mode == ask ]]; then
     mode=manual
     if $systemd; then mode=service; fi
-    if [[ -t 0 && -t 1 ]]; then
-        prompt=true
+    if $prompt; then
         heading 'How should TweetNook run?'
         if $systemd; then
             styled 1 '1. Background service (recommended)'
@@ -168,6 +247,18 @@ if [[ $mode == ask ]]; then
         if [[ $choice == 2 ]]; then mode=manual; fi
     fi
 fi
+if $prompt && ! $tagging && ! $existing_tagging; then
+    heading 'Add automated tagging?'
+    styled 1 '1. No'
+    say '   You can add it later by running the installer again.'
+    printf '\n'
+    say '2. Yes'
+    say '   Suggests tags and describes media with Google Gemini.'
+    say '   Requires a Gemini API key.'
+    printf '\n'
+    ask 'Choose [1] (q to cancel):' 1 'Choose 1 or 2, or q to cancel.' 1 2
+    if [[ $choice == 2 ]]; then tagging=true; fi
+fi
 needs_sudo=false
 if [[ $mode == service ]]; then
     $systemd || die '--service requires Linux with running systemd. Use --no-service for manual startup.'
@@ -178,7 +269,7 @@ if [[ $mode == service ]]; then
     done
     if [[ $(id -u) != 0 ]]; then
         # Never turn an existing personal install into a different, empty archive.
-        [[ -z $(command -v tweetnook || true) ]] || die 'TweetNook is already on PATH. Keep using that installation; do not install a second copy.'
+        [[ $existing == service || -z $(command -v tweetnook || true) ]] || die 'TweetNook is already on PATH. Keep using that installation; do not install a second copy.'
         command -v sudo >/dev/null 2>&1 || die 'Run service installation as root or install sudo.'
         [[ -f $0 ]] || die 'Download install.sh to a file before requesting sudo.'
         needs_sudo=true
@@ -199,18 +290,27 @@ validate_path "$install_dir"
 validate_path "$bin_dir"
 
 if [[ ${TWEETNOOK_INSTALL_REVIEWED:-} != 1 ]]; then
-    heading 'Ready to install'
     release=${version:-latest stable}
+    startup='Manual startup'
+    if [[ $mode == service ]]; then startup='Background service'; fi
+    case "$action" in
+        install) heading 'Ready to install'; say "$startup"$' \302\267 '"$release" ;;
+        update) heading 'Ready to update'; say "$startup"$' \302\267 '"$existing_version"$' \342\206\222 '"$release" ;;
+        reinstall) heading 'Ready to reinstall'; say "$startup"$' \302\267 '"$existing_version" ;;
+    esac
     if [[ $mode == service ]]; then
-        say $'Background service \302\267 '"$release"
-        say 'Uses a dedicated tweetnook account.'
+        if [[ -n $existing ]]; then say 'The service stops briefly and restarts.'
+        else say 'Uses a dedicated tweetnook account.'; fi
         say 'Administrator access required.'
+    elif [[ -n $existing ]]; then
+        say 'Keeps your archive and settings. Stop TweetNook before continuing.'
     else
-        say $'Manual startup \302\267 '"$release"
         say 'Uses your regular account. No administrator access needed.'
     fi
-    $tagging && say 'Optional feature: Gemini automated tagging'
-    $migration && say 'Optional feature: legacy archive migration'
+    if $existing_tagging; then say 'Add-on: Gemini automated tagging (installed)'
+    elif $tagging; then say 'Add-on: Gemini automated tagging'; fi
+    if $existing_migration; then say 'Add-on: legacy archive migration (installed)'
+    elif $migration; then say 'Add-on: legacy archive migration'; fi
     if $prompt; then
         printf '\n'
         ask 'Continue with installation? [Y/n]:' y 'Enter y to continue or n to cancel.' y Y yes YES n N no NO
@@ -219,6 +319,8 @@ if [[ ${TWEETNOOK_INSTALL_REVIEWED:-} != 1 ]]; then
 fi
 if $needs_sudo; then
     $mode_option || original_args+=(--service)
+    if $tagging; then original_args+=(--automated-tagging); fi
+    if [[ $action == reinstall ]]; then original_args+=(--reinstall); fi
     say 'Requesting administrator access...'
     # This marker only avoids repeating the reviewed UI; explicit flags already
     # skip prompts. The elevated process repeats every installation safety check.
@@ -233,6 +335,7 @@ lock_dir=
 download_file=
 launcher_temp=
 service_attempted=false
+service_stopped=false
 cleanup() {
     local status=$?
     exec 1>&3 2>&4 3>&- 4>&-
@@ -241,6 +344,13 @@ cleanup() {
         heading 'Installation needs attention' >&2
         if [[ -s $log_file ]]; then
             sed -n "${step_log_start:-1},\$p" "$log_file" | tail -n 12 >&2
+        fi
+        if $service_stopped; then
+            if systemctl start tweetnook.service >> "$log_file" 2>&1; then
+                printf '\n  The background service was started again.\n' >&2
+            else
+                printf '\n  The background service could not be started again.\n' >&2
+            fi
         fi
         printf '\n  Diagnostic log:\n  %s\n' "$log_file" >&2
         if $service_attempted; then
@@ -353,24 +463,18 @@ start_step 'Prepare Python environment'
 prepare_environment >> "$log_file" 2>&1
 finish_step
 
-package=tweetnook
+requirement=tweetnook
 extras=
-if $tagging; then extras=automated-tagging; fi
-if $migration; then extras=${extras:+$extras,}legacy-migration; fi
-if [[ -n $extras ]]; then package="${package}[$extras]"; fi
+if $tagging || $existing_tagging; then extras=automated-tagging; fi
+if $migration || $existing_migration; then extras=${extras:+$extras,}legacy-migration; fi
+if [[ -n $extras ]]; then requirement="${requirement}[$extras]"; fi
+package=$requirement
 if [[ -n $version ]]; then package="$package==$version"; fi
 
-install_package() {
-    # No --upgrade: reruns keep the installed version and previously installed extras.
-    # Version changes must use the managed updater or a deliberate stopped manual upgrade.
-    installed_version=$("$python" -I -c 'from importlib.metadata import version; print(version("tweetnook"))' 2>/dev/null || true)
-    if [[ -n $installed_version && -n $version && $installed_version != "$version" ]]; then
-        die "TweetNook $installed_version is already installed here. Stop it and upgrade explicitly; --version only selects a fresh installation."
-    fi
-    if [[ -n $installed_version && ( -n $extras || $mode == service ) ]]; then
-        # A foreground server has no PID file. Inspect processes using this environment
-        # instead of opening the archive/config just to check whether it is in use.
-        "$python" -I - <<'PY'
+check_stopped() {
+    # A foreground server has no PID file. Inspect processes using this environment
+    # instead of opening the archive/config just to check whether it is in use.
+    "$python" -I - <<'PY'
 import os
 import subprocess
 import sys
@@ -390,15 +494,53 @@ for line in result.stdout.splitlines():
             f"Stop TweetNook processes in this environment before changing the installation (PID {fields[0]})."
         )
 PY
-    fi
-    if [[ -z $installed_version || -n $extras ]]; then
-        say "Installing $package ... Stop any manually started TweetNook processes before adding extras."
-        "$python" -I -m pip --isolated install --disable-pip-version-check "$package"
+}
+
+pip_install() { "$python" -I -m pip --isolated install --disable-pip-version-check "$@"; }
+read_version() {
+    "$python" -I -c 'from importlib.metadata import version; print(version("tweetnook"))' 2>/dev/null || true
+}
+install_package() {
+    installed_version=$(read_version)
+    if [[ -n $existing ]]; then
+        # Any background service was stopped above; a remaining process would keep
+        # old code loaded while its files change underneath it.
+        check_stopped
+        if [[ $action == reinstall ]]; then
+            say "Reinstalling tweetnook==$installed_version ..."
+            # Repair TweetNook's own files, then add dependencies for any new add-on.
+            pip_install --force-reinstall --no-deps "tweetnook==$installed_version"
+            pip_install "$requirement==$installed_version"
+        else
+            say "Updating to $package ..."
+            pip_install --upgrade "$package"
+        fi
+    else
+        # An interrupted fresh installation resumes without changing its version.
+        if [[ -n $installed_version && -n $version && $installed_version != "$version" ]]; then
+            die "TweetNook $installed_version is already installed here. Rerun without --version, or stop it and update it with this installer."
+        fi
+        if [[ -n $installed_version && ( -n $extras || $mode == service ) ]]; then check_stopped; fi
+        if [[ -z $installed_version || -n $extras ]]; then
+            say "Installing $package ... Stop any manually started TweetNook processes before adding extras."
+            pip_install "$package"
+        fi
     fi
     "$python" -I -m tweetnook --version
     "$python" -I -m tweetnook --help >/dev/null
+    new_version=$(read_version)
 }
-start_step 'Install TweetNook'
+if [[ $existing == service ]]; then
+    start_step 'Stop background service'
+    service_stopped=true
+    systemctl stop tweetnook.service >> "$log_file" 2>&1
+    finish_step
+fi
+case "$action" in
+    update) start_step 'Update TweetNook' ;;
+    reinstall) start_step 'Reinstall TweetNook' ;;
+    *) start_step 'Install TweetNook' ;;
+esac
 install_package >> "$log_file" 2>&1
 finish_step
 
@@ -441,6 +583,7 @@ if [[ $mode == service ]]; then
     publish_launcher >> "$log_file" 2>&1
     service_attempted=true
     "$python" -I -m tweetnook service install --user tweetnook --data-home /var/lib --config-home /etc --cache-home /var/cache >> "$log_file" 2>&1
+    service_stopped=false
     finish_step
 else
     start_step 'Make the tweetnook command available'
@@ -554,6 +697,17 @@ if __name__ == "__main__":
 WEB_STATUS
 }
 
+version_summary() {
+    case "$action" in
+        update)
+            if [[ $new_version == "$existing_version" ]]; then say "Already up to date ($new_version)."
+            else say "Updated $existing_version"$' \342\206\222 '"$new_version"; fi
+            printf '\n' ;;
+        reinstall) say "Reinstalled $new_version."; printf '\n' ;;
+    esac
+}
+finish_setup=' to finish setup'
+if [[ -n $existing ]]; then finish_setup=; fi
 if [[ $mode == service ]]; then
     start_step 'Check web server'
     systemctl is-active --quiet tweetnook.service >> "$log_file" 2>&1 || die 'The service did not remain active.'
@@ -565,13 +719,14 @@ if [[ $mode == service ]]; then
     esac
     finish_step
     heading 'TweetNook is running'
+    version_summary
     case "$web_scope" in
         network)
-            say 'Open in your browser to finish setup:'
+            say "Open in your browser$finish_setup:"
             printf '\n'
             styled '1;36' "  $web_url" ;;
         local)
-            say 'Open in a browser on this server to finish setup:'
+            say "Open in a browser on this server$finish_setup:"
             printf '\n'
             styled '1;36' "  $web_url"
             printf '\n'
@@ -586,11 +741,16 @@ if [[ $mode == service ]]; then
     printf '\n'
     say 'Starts automatically when the server boots.'
 else
-    heading 'TweetNook is installed'
+    case "$action" in
+        update) heading 'TweetNook is updated' ;;
+        reinstall) heading 'TweetNook is reinstalled' ;;
+        *) heading 'TweetNook is installed' ;;
+    esac
+    version_summary
     say 'Start it when you are ready:'
     quote_command "$command_name" serve
     printf '\n'
-    say 'Then open the address it shows to finish setup.'
+    say "Then open the address it shows$finish_setup."
     say 'Keep that terminal open while using TweetNook.'
 fi
 
@@ -615,10 +775,7 @@ if $details; then
         say 'Restart:'; quote_command "$command_name" service restart
         say 'Update:'; quote_command "$command_name" update
     else
-        say 'To update, stop TweetNook and run:'
-        quote_command "$python" -I -m pip --isolated install --upgrade "$package"
-        say 'Then start it again with:'
-        quote_command "$command_name" serve
+        say 'To update or add add-ons, stop TweetNook and run this installer again.'
     fi
 fi
 printf '\n'

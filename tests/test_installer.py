@@ -30,7 +30,11 @@ if args[:1] == ['-I']:
     args = args[1:]
 root = Path(sys.argv[0]).parent.parent
 if args[:1] == ['-c']:
-    if 'importlib.metadata' in args[1]:
+    if 'find_spec' in args[1]:
+        extra = 'automated-tagging' if 'google.genai' in args[2:] else 'legacy-migration'
+        extras = (root / 'extras').read_text().split(',') if (root / 'extras').exists() else []
+        sys.exit(0 if extra in extras else 1)
+    elif 'importlib.metadata' in args[1]:
         state = root / 'installed-version'
         if not state.exists():
             sys.exit(1)
@@ -46,8 +50,12 @@ elif args[:2] == ['-m', 'pip']:
         print('Simulated package download failed.', file=sys.stderr)
         sys.exit(9)
     print('Downloading dependency metadata ...')
-    version = args[-1].split('==')[-1] if '==' in args[-1] else '9.8.7'
+    requirement = args[-1]
+    latest = os.environ.get('TEST_LATEST', '9.8.7')
+    version = requirement.split('==')[-1] if '==' in requirement else latest
     (root / 'installed-version').write_text(version)
+    if '[' in requirement:
+        (root / 'extras').write_text(requirement.split('[', 1)[1].split(']', 1)[0])
 elif args[:1] == ['-m'] and args[1] in ('tweetnook', 'tweetnook.system_install'):
     if args[2:] == ['--version']:
         print('tweetnook ' + (root / 'installed-version').read_text())
@@ -133,6 +141,7 @@ elif [[ $* == *Version* ]]; then
     [[ ${TEST_SYSTEMD:-no} == yes ]] || exit 1
     echo 256
 elif [[ $1 == is-active ]]; then exit "${TEST_SERVICE_EXIT:-0}"
+elif [[ $1 == stop || $1 == start ]]; then printf "systemctl %s\\n" "$*" >> "$TEST_ADMIN_EVENTS"
 else exit 99
 fi
 """,
@@ -362,7 +371,7 @@ def test_fresh_manual_install_rerun_and_launcher_preserve_data(installation):
     assert "TweetNook is installed" in result.stdout
     assert "TweetNook is running" not in result.stdout
     assert "export PATH=" in result.stdout
-    assert "--upgrade" in result.stdout
+    assert "run this installer again" in result.stdout
     creation = next(e for e in installation.events() if e[0] == "uv")
     assert "--seed" in creation
     assert "--no-project" in creation
@@ -370,10 +379,15 @@ def test_fresh_manual_install_rerun_and_launcher_preserve_data(installation):
     assert installation.pip_installs()[0][-1] == "tweetnook"
     assert "--upgrade" not in installation.pip_installs()[0]
     assert archive.read_bytes() == b"existing archive"
+    # Without a terminal, a rerun updates the existing environment in place.
     result = installation.run("--no-service")
     assert result.returncode == 0, result.stderr
-    assert len(installation.pip_installs()) == 1
+    assert "TweetNook is updated" in result.stdout
+    assert "Already up to date (9.8.7)." in result.stdout
+    assert len(installation.pip_installs()) == 2
+    assert "--upgrade" in installation.pip_installs()[-1]
     assert len([e for e in installation.events() if e[0] == "uv"]) == 1
+    assert archive.read_bytes() == b"existing archive"
     # Run the generated launcher, including literal quotes, dollars, and spaces in its path.
     result = subprocess.run(
         [str(installation.launcher), "serve"],
@@ -385,15 +399,17 @@ def test_fresh_manual_install_rerun_and_launcher_preserve_data(installation):
     assert not (installation.runtime / ".install-lock").exists()
 
 
-@pytest.mark.parametrize("choice", ["\n\n", "1\n\n", "2\n\n"])
+@pytest.mark.parametrize("choice", ["\n\n\n", "1\n\n\n", "2\n\n\n"])
 def test_interactive_linux_startup_choice(installation, choice):
     code, output = installation.interactive(choice, TEST_OS="Linux", TEST_SYSTEMD="yes")
     assert code == 0, output
     assert "How should TweetNook run?" in output
     assert "Choose [1]" in output
     assert "1. Background service (recommended)" in output
-    assert ("TweetNook is running" in output) == (choice != "2\n\n")
-    assert ("TweetNook is installed" in output) == (choice == "2\n\n")
+    assert "Add automated tagging?" in output
+    assert installation.pip_installs()[0][-1] == "tweetnook"
+    assert ("TweetNook is running" in output) == (choice != "2\n\n\n")
+    assert ("TweetNook is installed" in output) == (choice == "2\n\n\n")
     assert output.count("Ready to install") == 1
 
 
@@ -420,7 +436,7 @@ def test_no_service_overrides_linux_service_default(installation):
 
 
 def test_interactive_invalid_choice_on_macos_reprompts(installation):
-    code, output = installation.interactive("2\n1\n\n")
+    code, output = installation.interactive("2\n1\n\n\n")
     assert code == 0, output
     assert "Choose 1, or q to cancel" in output
     assert "TweetNook is installed" in output
@@ -515,12 +531,101 @@ def test_existing_environment_can_restore_missing_pip(installation):
     assert "pip" in next(e for e in installation.events() if e[:3] == ["uv", "--no-config", "pip"])
 
 
-def test_version_change_requires_deliberate_upgrade(installation):
+def test_rerun_updates_to_the_requested_version(installation):
     assert installation.run("--no-service").returncode == 0
     result = installation.run("--no-service", "--version", "1.0.0")
+    assert result.returncode == 0, result.stderr
+    assert "Updated 9.8.7 \u2192 1.0.0" in result.stdout
+    assert installation.pip_installs()[-1][-2:] == ["--upgrade", "tweetnook==1.0.0"]
+
+
+def test_interrupted_install_does_not_switch_versions(installation):
+    # Without a unit, a previous service run is resumed rather than updated.
+    result = installation.run(TEST_OS="Linux", TEST_SYSTEMD="yes", TEST_UID="0")
+    assert result.returncode == 0, result.stderr
+    result = installation.run(
+        "--version", "1.0.0", TEST_OS="Linux", TEST_SYSTEMD="yes", TEST_UID="0"
+    )
     assert result.returncode != 0
-    assert "Stop it and upgrade explicitly" in result.stderr
+    assert "Rerun without --version" in result.stderr
     assert len(installation.pip_installs()) == 1
+
+
+def test_rerun_update_keeps_installed_addons(installation):
+    assert installation.run("--no-service", "--automated-tagging").returncode == 0
+    result = installation.run("--no-service", TEST_LATEST="9.9.0")
+    assert result.returncode == 0, result.stderr
+    assert "Ready to update" in result.stdout
+    assert "Add-on: Gemini automated tagging (installed)" in result.stdout
+    assert "Updated 9.8.7 \u2192 9.9.0" in result.stdout
+    assert "\u2713 Update TweetNook" in result.stdout
+    assert installation.pip_installs()[-1][-2:] == ["--upgrade", "tweetnook[automated-tagging]"]
+
+
+def test_reinstall_keeps_version_and_can_add_an_addon(installation):
+    assert installation.run("--no-service").returncode == 0
+    result = installation.run(
+        "--no-service", "--reinstall", "--automated-tagging", TEST_LATEST="9.9.0"
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Ready to reinstall" in result.stdout
+    assert "TweetNook is reinstalled" in result.stdout
+    assert "Reinstalled 9.8.7." in result.stdout
+    repair, addon = installation.pip_installs()[-2:]
+    assert repair[-3:] == ["--force-reinstall", "--no-deps", "tweetnook==9.8.7"]
+    assert addon[-1] == "tweetnook[automated-tagging]==9.8.7"
+    assert "--upgrade" not in addon
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (("--reinstall",), "nothing to reinstall"),
+        (("--reinstall", "--version", "1.0.0"), "nothing to reinstall"),
+    ],
+)
+def test_reinstall_requires_an_existing_installation(installation, args, message):
+    result = installation.run("--no-service", *args)
+    assert result.returncode != 0
+    assert message in result.stderr
+    assert not installation.runtime.exists()
+
+
+def test_reinstall_cannot_change_versions(installation):
+    assert installation.run("--no-service").returncode == 0
+    result = installation.run("--no-service", "--reinstall", "--version", "1.0.0")
+    assert result.returncode != 0
+    assert "--reinstall keeps the installed version (9.8.7)" in result.stderr
+    assert len(installation.pip_installs()) == 1
+
+
+@pytest.mark.parametrize(
+    ("answers", "reinstalled", "tagging"),
+    [("\n\n\n", False, False), ("2\n2\n\n", True, True)],
+)
+def test_interactive_rerun_offers_update_reinstall_and_addons(
+    installation, answers, reinstalled, tagging
+):
+    assert installation.run("--no-service").returncode == 0
+    code, output = installation.interactive(answers)
+    assert code == 0, output
+    assert "TweetNook 9.8.7 is already installed" in output
+    assert "1. Update to the latest version (recommended)" in output
+    assert "2. Reinstall 9.8.7" in output
+    assert "How should TweetNook run?" not in output
+    assert "Add automated tagging?" in output
+    assert ("Ready to reinstall" in output) == reinstalled
+    assert ("Ready to update" in output) != reinstalled
+    assert ("[automated-tagging]" in installation.pip_installs()[-1][-1]) == tagging
+
+
+def test_interactive_rerun_skips_installed_addon_page(installation):
+    assert installation.run("--no-service", "--automated-tagging").returncode == 0
+    code, output = installation.interactive("\n\n")
+    assert code == 0, output
+    assert "Add automated tagging?" not in output
+    assert "Add-on: Gemini automated tagging (installed)" in output
+    assert "TweetNook is updated" in output
 
 
 @pytest.mark.parametrize("running", [True, False])
@@ -647,6 +752,52 @@ def test_service_install_refuses_existing_personal_environment(installation):
     assert not any("service" in event for event in installation.events())
 
 
+@pytest.mark.parametrize("uid", ["0", "1000"])
+def test_existing_service_is_stopped_updated_and_restarted(installation, uid):
+    linux = {"TEST_OS": "Linux", "TEST_SYSTEMD": "yes"}
+    assert installation.run(TEST_UID="0", **linux).returncode == 0
+    result = installation.run(TEST_UID=uid, TEST_UNIT_STATE="loaded", TEST_LATEST="9.9.0", **linux)
+    assert result.returncode == 0, result.stderr
+    assert "Ready to update" in result.stdout
+    assert "The service stops briefly and restarts." in result.stdout
+    assert "\u2713 Stop background service" in result.stdout
+    assert "Updated 9.8.7 \u2192 9.9.0" in result.stdout
+    assert "Open in your browser:" in result.stdout
+    assert ("sudo" in installation.admin_events()) == (uid != "0")
+    assert "systemctl stop tweetnook.service" in installation.admin_events()
+    assert installation.pip_installs()[-1][-2:] == ["--upgrade", "tweetnook"]
+    assert sum("service" in e and "install" in e for e in installation.events()) == 2
+    assert sum(event.startswith("useradd ") for event in installation.admin_events()) == 1
+
+
+def test_failed_service_update_starts_the_service_again(installation):
+    linux = {"TEST_OS": "Linux", "TEST_SYSTEMD": "yes", "TEST_UID": "0"}
+    assert installation.run(**linux).returncode == 0
+    result = installation.run(TEST_UNIT_STATE="loaded", TEST_FAIL_INSTALL="1", **linux)
+    assert result.returncode == 9
+    assert "! Update TweetNook" in result.stdout
+    assert "The background service was started again." in result.stderr
+    assert installation.admin_events()[-2:] == [
+        "systemctl stop tweetnook.service",
+        "systemctl start tweetnook.service",
+    ]
+
+
+def test_existing_service_cannot_switch_to_manual_startup(installation):
+    linux = {"TEST_OS": "Linux", "TEST_SYSTEMD": "yes", "TEST_UID": "0"}
+    assert installation.run(**linux).returncode == 0
+    result = installation.run(
+        "--no-service",
+        "--install-dir",
+        str(installation.system_runtime),
+        TEST_UNIT_STATE="loaded",
+        **linux,
+    )
+    assert result.returncode != 0
+    assert "already installed as a background service" in result.stderr
+    assert len(installation.pip_installs()) == 1
+
+
 def test_root_service_install_does_not_require_sudo_or_home(installation, tmp_path):
     (tmp_path / "commands/sudo").unlink()
     result = installation.run(TEST_OS="Linux", TEST_SYSTEMD="yes", TEST_UID="0", HOME="")
@@ -753,7 +904,7 @@ def test_uv_bootstrap_is_private_and_does_not_edit_profiles(installation, tmp_pa
     assert not (installation.launcher.parent.parent.parent / ".profile").exists()
 
 
-@pytest.mark.parametrize("answers", ["q\n", "\nn\n", "\nq\n", "\x04"])
+@pytest.mark.parametrize("answers", ["q\n", "\nq\n", "\n\nn\n", "\n\nq\n", "\x04"])
 def test_interactive_cancellation_makes_no_changes(installation, tmp_path, answers):
     code, output = installation.interactive(answers, TEST_OS="Linux", TEST_SYSTEMD="yes")
     assert code == 0, output
@@ -765,7 +916,9 @@ def test_interactive_cancellation_makes_no_changes(installation, tmp_path, answe
 
 
 def test_interactive_invalid_choices_retry_and_review_once(installation):
-    code, output = installation.interactive("7\n1\nmaybe\ny\n", TEST_OS="Linux", TEST_SYSTEMD="yes")
+    code, output = installation.interactive(
+        "7\n1\n3\n\nmaybe\ny\n", TEST_OS="Linux", TEST_SYSTEMD="yes"
+    )
     assert code == 0, output
     assert "Choose 1 or 2, or q to cancel" in output
     assert "Enter y to continue or n to cancel" in output
@@ -848,7 +1001,7 @@ def test_malformed_address_check_result_cannot_claim_success(installation):
 
 def test_ctrl_c_during_installation_preserves_log_and_releases_lock(installation, tmp_path):
     code, output = installation.interactive(
-        "\n\n",
+        "\n\n\n",
         interrupt_at="· Prepare Python environment",
         TEST_PAUSE_UV="1",
         TERM="xterm-256color",
