@@ -310,7 +310,7 @@ def test_real_store_pushes_normalized_filters_into_sql(tmp_path) -> None:
                 row_key="tweet_object:2",
                 record_type="tweet_object",
                 tweet_id="2",
-                enrichment_state="done",
+                enrichment_state="terminal_unavailable",
             ),
         ]
     )
@@ -326,6 +326,8 @@ def test_real_store_pushes_normalized_filters_into_sql(tmp_path) -> None:
     assert [row["tweet_id"] for row in search_posts(store, "filter:articles").rows] == ["1"]
     assert [row["tweet_id"] for row in search_posts(store, "has:article").rows] == ["1"]
     assert [row["tweet_id"] for row in search_posts(store, "is:resurrected").rows] == ["1"]
+    assert [row["tweet_id"] for row in search_posts(store, "is:missing").rows] == ["2"]
+    assert {row["tweet_id"] for row in search_posts(store, "-is:missing").rows} == {"1", "3"}
     assert {row["tweet_id"] for row in search_posts(store, "is:resurrected OR has:video").rows} == {
         "1",
         "2",

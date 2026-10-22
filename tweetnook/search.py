@@ -44,7 +44,9 @@ _FILTER_KEYS = frozenset(
 )
 _FILTER_VALUES = {
     "has": frozenset({"article", "media", "image", "video", "links"}),
-    "is": frozenset({"hidden", "quote", "reply", "resurrected", "retweet", "thread", "verified"}),
+    "is": frozenset(
+        {"hidden", "missing", "quote", "reply", "resurrected", "retweet", "thread", "verified"}
+    ),
     "filter": frozenset(
         {
             "articles",
@@ -359,6 +361,12 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
     elif (key, value) == ("is", "resurrected"):
         condition = (
             "related.record_type = 'tweet_object' AND related.enrichment_state = 'resurrected'"
+        )
+    elif (key, value) == ("is", "missing"):
+        # Archived tweets that are no longer on X, as the nightly check or a lookup found.
+        condition = (
+            "related.record_type = 'tweet_object' "
+            "AND related.enrichment_state = 'terminal_unavailable'"
         )
     if condition is not None:
         if key in {"has", "filter"} and value in {"media", "image", "images"}:
