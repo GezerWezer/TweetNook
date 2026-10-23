@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -68,10 +69,12 @@ elif args[:1] == ['-m'] and args[1] in ('tweetnook', 'tweetnook.system_install')
         ['serve'], ['update'], ['service', 'restart'], ['service', 'status']
     ):
         raise AssertionError(args)
-elif args == ['-']:
+elif args[:1] == ['-']:
     sys.prefix = str(root)
     source = sys.stdin.read()
-    if 'def wait_for_web(' in source:
+    if 'update_config_values' in source:
+        pass  # The access script is exercised against real config in its own test.
+    elif 'def wait_for_web(' in source:
         if os.environ.get('TEST_WEB_FAIL'):
             print('The web app did not respond on port 8000.', file=sys.stderr)
             sys.exit(4)
@@ -302,6 +305,13 @@ fi
                 else []
             )
 
+        def access_writes(self):
+            return [
+                e[4:]
+                for e in self.events()
+                if e[0] == "python" and e[2:4] == ["-I", "-"] and len(e) == 7
+            ]
+
         def pip_installs(self):
             return [e for e in self.events() if e[0] == "python" and "install" in e and "pip" in e]
 
@@ -325,8 +335,10 @@ def test_help_is_available_without_python_or_root_permissions(installation):
         "--install-dir",
         "--bin-dir",
         "--details",
+        "--access",
     ):
         assert flag in result.stdout
+    assert "--access local|network Who can open the Web app" in result.stdout
     assert "Linux with running systemd defaults to a system-wide service" in result.stdout
     for path in ("/opt/tweetnook", "/usr/local/bin", "/var/lib/tweetnook", "/etc/tweetnook"):
         assert path in result.stdout
@@ -345,6 +357,7 @@ def test_help_is_available_without_python_or_root_permissions(installation):
         (["--version", "package @ https://example.org"], {}, "version number"),
         (["--install-dir", "relative"], {}, "absolute directories"),
         (["--service", "--no-service"], {}, "Choose only one"),
+        (["--access", "everyone"], {}, "local or network"),
         ([], {"TEST_UID": "0"}, "without sudo"),
         (["--no-service"], {"TEST_OS": "Linux", "TEST_UID": "0"}, "without sudo"),
         ([], {"TEST_OS": "MINGW64_NT"}, "macOS and Linux"),
@@ -399,7 +412,7 @@ def test_fresh_manual_install_rerun_and_launcher_preserve_data(installation):
     assert not (installation.runtime / ".install-lock").exists()
 
 
-@pytest.mark.parametrize("choice", ["\n\n\n", "1\n\n\n", "2\n\n\n"])
+@pytest.mark.parametrize("choice", ["\n\n\n\n", "1\n\n\n\n", "2\n\n\n\n"])
 def test_interactive_linux_startup_choice(installation, choice):
     code, output = installation.interactive(choice, TEST_OS="Linux", TEST_SYSTEMD="yes")
     assert code == 0, output
@@ -408,8 +421,8 @@ def test_interactive_linux_startup_choice(installation, choice):
     assert "1. Background service (recommended)" in output
     assert "Add automated tagging?" in output
     assert installation.pip_installs()[0][-1] == "tweetnook"
-    assert ("TweetNook is running" in output) == (choice != "2\n\n\n")
-    assert ("TweetNook is installed" in output) == (choice == "2\n\n\n")
+    assert ("TweetNook is running" in output) == (choice != "2\n\n\n\n")
+    assert ("TweetNook is installed" in output) == (choice == "2\n\n\n\n")
     assert output.count("Ready to install") == 1
 
 
@@ -435,8 +448,83 @@ def test_no_service_overrides_linux_service_default(installation):
     assert not any("service" in event for event in installation.events())
 
 
+@pytest.mark.parametrize(
+    ("platform", "expected"),
+    [
+        ({}, ["manual", "127.0.0.1", "false"]),
+        ({"TEST_OS": "Linux"}, ["manual", "127.0.0.1", "false"]),
+        ({"TEST_OS": "Linux", "TEST_SYSTEMD": "yes"}, ["service", "0.0.0.0", "false"]),
+    ],
+)
+def test_unattended_access_default_keeps_a_saved_host(installation, platform, expected):
+    result = installation.run(**platform)
+    assert result.returncode == 0, result.stderr
+    assert installation.access_writes() == [expected]
+
+
+@pytest.mark.parametrize(
+    ("platform", "first", "answer", "expected"),
+    [
+        ({}, "1. This computer only (recommended)", "2", ["manual", "0.0.0.0", "true"]),
+        ({}, "1. This computer only (recommended)", "", ["manual", "127.0.0.1", "true"]),
+        (
+            {"TEST_OS": "Linux", "TEST_SYSTEMD": "yes"},
+            "1. Other devices on your network (recommended)",
+            "2",
+            ["service", "127.0.0.1", "true"],
+        ),
+    ],
+)
+def test_interactive_access_page(installation, platform, first, answer, expected):
+    code, output = installation.interactive(f"\n{answer}\n\n\n", **platform)
+    assert code == 0, output
+    assert "Who can access TweetNook?" in output
+    assert first in output
+    assert "subject to your firewall" in output
+    label = "this computer only" if expected[1] == "127.0.0.1" else "other devices on your network"
+    assert f"Access: {label}" in output
+    # The sudo re-run receives the choice instead of applying the service default.
+    assert installation.access_writes() == [expected]
+
+
+def test_updates_keep_saved_access_unless_given(installation):
+    assert installation.run("--no-service").returncode == 0
+    code, output = installation.interactive("\n\n\n")
+    assert code == 0, output
+    assert "Who can access TweetNook?" not in output
+    assert "Access:" not in output
+    assert len(installation.access_writes()) == 1
+    result = installation.run("--access", "network")
+    assert result.returncode == 0, result.stderr
+    assert "Access: other devices on your network" in result.stdout
+    assert installation.access_writes()[-1] == ["manual", "0.0.0.0", "true"]
+
+
+def test_access_script_writes_host_and_keeps_a_saved_one(tmp_path):
+    source = INSTALLER.read_text()
+    script = source.split("<<'ACCESS'\n", 1)[1].split("\nACCESS\n", 1)[0]
+    env = {**os.environ, "XDG_CONFIG_HOME": str(tmp_path), "HOME": str(tmp_path)}
+    config = tmp_path / "tweetnook/config.toml"
+
+    def apply(host, explicit):
+        subprocess.run(
+            [sys.executable, "-", "manual", host, explicit],
+            input=script,
+            env=env,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+        return tomllib.loads(config.read_text()).get("web", {})
+
+    assert apply("127.0.0.1", "false") == {"host": "127.0.0.1"}
+    assert apply("0.0.0.0", "false") == {"host": "127.0.0.1"}
+    # 0.0.0.0 is the configuration default, so a deliberate choice clears the key.
+    assert apply("0.0.0.0", "true") == {}
+
+
 def test_interactive_invalid_choice_on_macos_reprompts(installation):
-    code, output = installation.interactive("2\n1\n\n\n")
+    code, output = installation.interactive("2\n1\n\n\n\n")
     assert code == 0, output
     assert "Choose 1, or q to cancel" in output
     assert "TweetNook is installed" in output
@@ -686,7 +774,7 @@ def test_linux_system_service_uses_dedicated_account_and_paths(installation, tmp
         **homes,
     )
     assert result.returncode == 0, result.stderr
-    service = next(e for e in installation.events() if "service" in e)
+    service = next(e for e in installation.events() if "install" in e and "service" in e)
     assert service[1] == str(installation.system_runtime / "venv/bin/python")
     assert service[2:7] == ["-I", "-m", "tweetnook", "service", "install"]
     for kind, option in (
@@ -904,7 +992,7 @@ def test_uv_bootstrap_is_private_and_does_not_edit_profiles(installation, tmp_pa
     assert not (installation.launcher.parent.parent.parent / ".profile").exists()
 
 
-@pytest.mark.parametrize("answers", ["q\n", "\nq\n", "\n\nn\n", "\n\nq\n", "\x04"])
+@pytest.mark.parametrize("answers", ["q\n", "\nq\n", "\n\nq\n", "\n\n\nn\n", "\n\n\nq\n", "\x04"])
 def test_interactive_cancellation_makes_no_changes(installation, tmp_path, answers):
     code, output = installation.interactive(answers, TEST_OS="Linux", TEST_SYSTEMD="yes")
     assert code == 0, output
@@ -917,7 +1005,7 @@ def test_interactive_cancellation_makes_no_changes(installation, tmp_path, answe
 
 def test_interactive_invalid_choices_retry_and_review_once(installation):
     code, output = installation.interactive(
-        "7\n1\n3\n\nmaybe\ny\n", TEST_OS="Linux", TEST_SYSTEMD="yes"
+        "7\n1\n3\n\n\nmaybe\ny\n", TEST_OS="Linux", TEST_SYSTEMD="yes"
     )
     assert code == 0, output
     assert "Choose 1 or 2, or q to cancel" in output
@@ -1001,7 +1089,7 @@ def test_malformed_address_check_result_cannot_claim_success(installation):
 
 def test_ctrl_c_during_installation_preserves_log_and_releases_lock(installation, tmp_path):
     code, output = installation.interactive(
-        "\n\n\n",
+        "\n\n\n\n",
         interrupt_at="· Prepare Python environment",
         TEST_PAUSE_UV="1",
         TERM="xterm-256color",
