@@ -237,6 +237,10 @@ See [Importing](importing.md) for supported data and import options.
 | Schedule | When bookmark-and-like sync runs |
 | Automated Tagging | Gemini setup, tag generation, and usage history; requires the optional extra |
 
+Supporting mobile browsers also receive the selected theme's background color
+and light/dark scheme for their surrounding bars and native controls. The exact
+bar appearance depends on the browser and operating system.
+
 Appearance choices are saved in the browser, so another browser can have a
 different layout. Restart the server after changing general configuration. The
 advanced `web set-password` command also requires a restart. Schedule changes
