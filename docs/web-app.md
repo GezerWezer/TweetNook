@@ -166,6 +166,11 @@ Use the floating activity drawer to start a sync of bookmarks and likes. It
 shows the current step, progress, elapsed time, and any problems that need
 attention. Use **Stop Task** to request cancellation.
 
+On phones, Jobs opens as a bottom sheet and holds the feed in place. Scroll
+inside the sheet to browse jobs and options. Pull down anywhere in the sheet
+when its content is at the top, swipe down on the handle, or tap the shaded
+area outside to close it.
+
 Saved tweets remain available even if a later download or lookup fails. For older
 runs, open **Settings → Logs** and select the relevant entry. By default, history
 keeps up to 100 completed runs for up to 90 days.
@@ -238,8 +243,12 @@ See [Importing](importing.md) for supported data and import options.
 | Automated Tagging | Gemini setup, tag generation, and usage history; requires the optional extra |
 
 Supporting mobile browsers also receive the selected theme's background color
-and light/dark scheme for their surrounding bars and native controls. The exact
-bar appearance depends on the browser and operating system.
+and light/dark scheme for their surrounding bars and native controls. While the
+Jobs sheet is open, its shaded background color is also supplied to the browser
+and follows the same fade as the page backdrop. In Safari, the sheet's background
+extends behind the bottom browser controls and moves with the sheet; its contents
+stay above the toolbar.
+The exact bar appearance depends on the browser and operating system.
 
 Appearance choices are saved in the browser, so another browser can have a
 different layout. Restart the server after changing general configuration. The

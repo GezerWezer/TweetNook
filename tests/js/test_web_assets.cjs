@@ -99,8 +99,14 @@ function browserContext(pathname = '/') {
                     setProperty(key, value) {
                         cssProperties.set(key, value);
                     },
+                    removeProperty(key) {
+                        cssProperties.delete(key);
+                    },
                 },
                 classList: {
+                    contains(value) {
+                        return rootClasses.has(value);
+                    },
                     add(value) {
                         rootClasses.add(value);
                     },
@@ -8531,6 +8537,271 @@ test('what to sync is the server sync.collections setting, shared by the sync pa
     await nookToggleSyncCollection(app, 'likes');
     assert.equal(requests.length, before);
     assert.deepEqual([...app.nookSyncCollections], ['likes']);
+});
+
+function jobsSheetFixture() {
+    const context = browserContext();
+    context.window.innerWidth = 390;
+    context.window.innerHeight = 844;
+    const timers = new Map();
+    let timerId = 0;
+    context.setTimeout = callback => { timers.set(++timerId, callback); return timerId; };
+    context.clearTimeout = id => timers.delete(id);
+    context.document.documentElement.classList = new FakeElement('html').classList;
+    const panel = new FakeElement('section').cloneNode();
+    panel.offsetHeight = 600;
+    panel.scrollTop = 0;
+    const body = new FakeElement('button');
+    const handle = new FakeElement('div', [['class', 'cs-grab']]);
+    const input = new FakeElement('input');
+    panel.append([body, handle, input]);
+    const app = {activityDrawerOpen: true};
+    const sheet = loadScripts(context, ['header.js'], 'nookJobsSheet')(panel, app);
+    const touch = (type, x, y, at, target = body, count = 1) => {
+        const event = {type, target, timeStamp: at, cancelable: true, defaultPrevented: false,
+            touches: Array.from({length: count}, () => ({clientX: x, clientY: y})),
+            preventDefault() { this.defaultPrevented = true; }};
+        if (type === 'touchmove') context.__state.events.get('document:touchmove')(event);
+        else panel.listeners.find(listener => listener.type === type).listener(event);
+        return event;
+    };
+    return {context, panel, body, handle, input, app, sheet, touch, timers};
+}
+
+test('phone jobs sheet locks the feed, follows a drag across content and dismisses on distance or a flick', () => {
+    const fixture = jobsSheetFixture();
+    const {context, panel, app, sheet, touch, timers} = fixture;
+    assert.ok(context.document.documentElement.classList.contains('nook-jobs-open'));
+    assert.equal(touch('touchmove', 10, 200, 0, new FakeElement('div')).defaultPrevented, true);
+
+    touch('touchstart', 100, 100, 0);
+    assert.equal(touch('touchmove', 102, 150, 100).defaultPrevented, true);
+    assert.equal(panel.style.getPropertyValue('--cs-sheet-y'), '50px');
+    touch('touchend', 102, 150, 250);
+    assert.equal(app.activityDrawerOpen, true); // Short, slow drag returns to rest.
+    assert.equal(panel.style.getPropertyValue('--cs-sheet-y'), '');
+    for (const callback of [...timers.values()]) callback();
+    assert.equal(panel.style.animation, 'none'); // Settling must not replay the opening slide.
+
+    touch('touchstart', 100, 100, 300);
+    touch('touchmove', 102, 130, 340);
+    touch('touchend', 102, 130, 350);
+    assert.equal(app.activityDrawerOpen, false); // A short deliberate flick closes it.
+    sheet.sync();
+    assert.equal(context.document.documentElement.classList.contains('nook-jobs-open'), false);
+    assert.equal(panel.style.getPropertyValue('--cs-sheet-y'), '30px'); // Leave animation starts at the finger.
+
+    app.activityDrawerOpen = true;
+    sheet.sync();
+    assert.equal(timers.size, 0); // Reopening cancels stale close cleanup.
+    assert.equal(panel.style.getPropertyValue('--cs-sheet-y'), '');
+    touch('touchstart', 100, 100, 400);
+    touch('touchmove', 100, 240, 1000);
+    touch('touchend', 100, 240, 1200);
+    assert.equal(app.activityDrawerOpen, false); // Slow long drag also closes.
+    sheet.destroy();
+    assert.equal(context.__state.events.has('document:touchmove'), false);
+});
+
+test('phone jobs gestures preserve content scrolling, tabs and editors and recover from cancellation and resize', () => {
+    const {context, panel, handle, input, app, sheet, touch} = jobsSheetFixture();
+    panel.scrollTop = 80;
+    touch('touchstart', 100, 100, 0);
+    assert.equal(touch('touchmove', 100, 200, 100).defaultPrevented, false);
+    assert.equal(panel.style.getPropertyValue('--cs-sheet-y'), '');
+    panel.scrollTop = 0;
+    touch('touchstart', 100, 100, 200);
+    assert.equal(touch('touchmove', 100, 50, 300).defaultPrevented, false); // Scroll down into the sheet.
+    touch('touchstart', 100, 100, 400);
+    assert.equal(touch('touchmove', 160, 104, 450).defaultPrevented, false); // Horizontal tabs.
+    assert.equal(touch('touchmove', 170, 200, 500).defaultPrevented, false);
+    touch('touchstart', 100, 100, 600, input);
+    assert.equal(touch('touchmove', 100, 200, 700, input).defaultPrevented, false);
+
+    panel.scrollTop = 80;
+    touch('touchstart', 100, 100, 800, handle);
+    assert.equal(touch('touchmove', 100, 250, 900, handle).defaultPrevented, true);
+    touch('touchcancel', 100, 250, 910, handle);
+    assert.equal(app.activityDrawerOpen, true); // OS interruptions never dismiss.
+    assert.equal(panel.style.getPropertyValue('--cs-sheet-y'), '');
+    const click = dispatchFeed(panel, 'click', handle, {stopImmediatePropagation() { this.propagationStopped = true; }});
+    assert.equal(click.defaultPrevented, true); // A drag must not activate a job button.
+    touch('touchstart', 100, 100, 1000);
+    const freshClick = dispatchFeed(panel, 'click', handle);
+    assert.equal(freshClick.defaultPrevented, false);
+    panel.scrollTop = 0;
+    touch('touchstart', 100, 100, 1010);
+    touch('touchmove', 100, 250, 1020);
+    touch('touchstart', 100, 250, 1030, handle, 2);
+    assert.equal(panel.style.getPropertyValue('--cs-sheet-y'), '');
+    assert.equal(app.activityDrawerOpen, true); // A second finger cancels instead of stranding a dragged sheet.
+
+    context.window.innerWidth = 1280;
+    context.__state.events.get('resize')();
+    assert.equal(context.document.documentElement.classList.contains('nook-jobs-open'), false);
+    touch('touchstart', 100, 100, 1100);
+    assert.equal(touch('touchmove', 100, 300, 1200).defaultPrevented, false);
+    context.window.innerWidth = 390;
+    context.__state.events.get('resize')();
+    assert.ok(context.document.documentElement.classList.contains('nook-jobs-open'));
+    sheet.destroy();
+    assert.equal(context.document.documentElement.classList.contains('nook-jobs-open'), false);
+});
+
+test('phone Jobs anchor follows the locked viewport and releases its scroll listener on teardown', () => {
+    const {context, app, sheet} = jobsSheetFixture();
+    const offset = () => context.__state.cssProperties.get('--nook-jobs-page-top');
+    const bleed = () => context.__state.cssProperties.get('--nook-jobs-bottom-bleed');
+    context.window.innerHeight = 714;
+    context.window.outerHeight = 874;
+    context.window.scrollY = 500;
+    sheet.sync();
+    assert.equal(offset(), '500px');
+    assert.equal(bleed(), '160px');
+    context.window.scrollY = 520;
+    context.__state.events.get('scroll')();
+    assert.equal(offset(), '520px'); // Browser adjustments keep the sheet at the visible page edge.
+    app.activityDrawerOpen = false;
+    sheet.sync();
+    context.window.scrollY = 900;
+    context.window.outerHeight = 714;
+    context.__state.events.get('scroll')();
+    assert.equal(offset(), '520px'); // Keep the closing sheet in place through its leave animation.
+    assert.equal(bleed(), '160px');
+    app.activityDrawerOpen = true;
+    context.window.innerWidth = 1280;
+    sheet.sync();
+    assert.equal(offset(), '520px');
+    context.window.innerWidth = 390;
+    context.__state.events.get('resize')();
+    assert.equal(offset(), '900px');
+    assert.equal(bleed(), '0px');
+    context.window.outerHeight = 650;
+    sheet.sync();
+    assert.equal(bleed(), '0px'); // Never shrink the sheet if the browser reports a smaller outer window.
+    context.window.outerHeight = undefined;
+    context.window.screen = {height: 874};
+    sheet.sync();
+    assert.equal(bleed(), '160px');
+    sheet.destroy();
+    assert.equal(offset(), undefined);
+    assert.equal(bleed(), undefined);
+    assert.equal(context.__state.events.has('scroll'), false);
+});
+
+test('closing jobs restores focus without moving the feed', () => {
+    const context = browserContext(), options = [];
+    context.document.querySelector = selector => selector === '.nook-activity-button' ? {focus: value => options.push(value)} : null;
+    const close = loadScripts(context, ['header.js'], 'nookCloseActivity');
+    const app = {activityDrawerOpen: true};
+    close(app);
+    assert.equal(app.activityDrawerOpen, false);
+    assert.equal(options[0].preventScroll, true);
+});
+
+test('Jobs browser tint follows the shaded theme and restores on close, resize and teardown', () => {
+    const {context, panel, sheet} = jobsSheetFixture();
+    sheet.destroy();
+    const app = loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')();
+    app.activityDrawerOpen = true;
+    const mobileSheet = vm.runInContext('nookJobsSheet', context)(panel, app);
+    app.applyTheme('classic-dark');
+    assert.equal(context.__state.themeColor.content, '#242d34');
+    assert.equal(context.__state.cssProperties.get('--nook-jobs-edge-color'), '#242d34');
+    app.applyTheme('classic-light');
+    assert.equal(context.__state.themeColor.content, '#bdc6cd');
+    app.activityDrawerOpen = false;
+    mobileSheet.sync();
+    assert.equal(context.__state.themeColor.content, '#ffffff');
+    app.activityDrawerOpen = true;
+    mobileSheet.sync();
+    assert.equal(context.__state.themeColor.content, '#bdc6cd');
+    context.window.innerWidth = 641;
+    mobileSheet.sync();
+    assert.equal(context.__state.themeColor.content, '#ffffff');
+    context.window.innerWidth = 390;
+    mobileSheet.sync();
+    mobileSheet.destroy();
+    assert.equal(context.__state.themeColor.content, '#ffffff');
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/header.css'), 'utf8');
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    assert.match(html, /class="nook-sync-scrim"[^>]*><\/div>\s*<div class="nook-sync-edge" aria-hidden="true"><\/div>/);
+    assert.match(html, /class="nook-sync-scrim" x-cloak x-show="activityDrawerOpen \|\| activityShadeProgress"/);
+    assert.match(css, /opacity: var\(--nook-jobs-shade-progress, 0\)/);
+    assert.doesNotMatch(html, /class="nook-sync-scrim"[^>]*x-transition/);
+    const edgeRule = css.match(/\.nook-sync-edge \{([^}]*position: fixed;[^}]+)\}/)[1];
+    const height = Number(edgeRule.match(/height: (\d+)px/)[1]);
+    const padding = Number(edgeRule.match(/padding-bottom: (\d+)px/)[1]);
+    assert.ok(height > 10, 'Safari ignores background colours on surfaces at or below 10px');
+    assert.equal(height - padding, 1, 'the sampling surface must not cover header text');
+    assert.match(edgeRule, /box-sizing: border-box;/);
+    assert.match(edgeRule, /background-clip: content-box;/);
+    assert.match(edgeRule, /background-color: var\(--nook-jobs-edge-color/);
+    const anchorRule = css.match(/\.nook-sync-anchor \{([^}]*position: absolute;[^}]+)\}/)[1];
+    assert.ok(Number(edgeRule.match(/z-index: (\d+)/)[1]) > Number(anchorRule.match(/z-index: (\d+)/)[1]),
+        'the transparent sheet anchor must not intercept Safari top-edge sampling');
+    assert.match(anchorRule, /overflow: hidden;/); // Clip motion at the end of the sheet's toolbar extension.
+    assert.doesNotMatch(css, /\.nook-sync-scrim::before/);
+});
+
+test('Jobs shade and tint share one animation value through close reversal and theme changes', () => {
+    const {context, panel, sheet} = jobsSheetFixture();
+    sheet.destroy();
+    const query = context.document.querySelector, scrim = {}, frames = new Map();
+    let frameId = 0, clock = 0;
+    context.document.querySelector = selector => selector === '.nook-sync-scrim' ? scrim : query(selector);
+    context.performance = {now: () => clock};
+    context.requestAnimationFrame = callback => { frames.set(++frameId, callback); return frameId; };
+    context.cancelAnimationFrame = id => frames.delete(id);
+    const app = loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')();
+    app.applyTheme('classic-dark');
+    app.activityDrawerOpen = true;
+    const mobileSheet = vm.runInContext('nookJobsSheet', context)(panel, app);
+    const sample = (now, expected) => {
+        clock = now;
+        const [id, callback] = frames.entries().next().value;
+        frames.delete(id);
+        callback(clock);
+        assert.equal(app.activityShadeProgress, expected);
+        assert.equal(Number(context.__state.cssProperties.get('--nook-jobs-shade-progress')), expected);
+    };
+    sample(0, 0);
+    sample(55, .15625);
+    assert.equal(context.__state.themeColor.content, '#060708');
+    sample(110, .5);
+    assert.equal(context.__state.themeColor.content, '#12161a');
+    app.applyTheme('classic-light');
+    assert.equal(context.__state.themeColor.content, '#dee2e6'); // Keep the current fade fraction.
+    app.applyTheme('classic-dark');
+    sample(220, 1);
+    assert.equal(frames.size, 0);
+    app.activityDrawerOpen = false;
+    mobileSheet.sync();
+    assert.equal(app.activityShadeProgress, 1); // No jump at the start of closing.
+    sample(330, .5);
+    assert.ok(context.document.documentElement.classList.contains('nook-jobs-shading'));
+    app.activityDrawerOpen = true;
+    mobileSheet.sync();
+    assert.equal(frames.size, 1);
+    sample(385, .75);
+    sample(440, 1);
+    app.activityDrawerOpen = false;
+    mobileSheet.sync();
+    sample(550, .5);
+    sample(660, 0);
+    assert.equal(frames.size, 0);
+    assert.equal(context.__state.themeColor.content, '#000000');
+    assert.equal(context.document.documentElement.classList.contains('nook-jobs-shading'), false);
+    context.window.matchMedia = () => ({matches: true});
+    app.activityDrawerOpen = true;
+    mobileSheet.sync();
+    assert.equal(app.activityShadeProgress, 1); // Reduced motion changes both surfaces immediately.
+    assert.equal(frames.size, 0);
+    context.window.matchMedia = () => ({matches: false});
+    app.activityDrawerOpen = false;
+    mobileSheet.sync();
+    mobileSheet.destroy();
+    assert.equal(frames.size, 0);
 });
 
 test('sync panel shows paused and skipped reasons, new tweets, and the server schedule label', () => {

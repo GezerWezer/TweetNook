@@ -269,23 +269,34 @@
 .cs-run:disabled { opacity: .5; cursor: default; }
 .nook-sync-panel.cs-leave { transition: opacity 120ms ease-in, transform 120ms ease-in; }
 .nook-sync-panel.cs-leave-end { opacity: 0; transform: translateY(-4px); }
-.cs-grab, .nook-sync-scrim { display: none; }
+.cs-grab, .nook-sync-scrim, .nook-sync-edge { display: none; }
+.nook-sync-anchor { display: contents; }
 @media (max-width: 640px) {
-  .nook-sync-scrim { display: block; position: fixed; inset: 0; z-index: 69; background: rgba(91, 112, 131, .4); }
-  .nook-sync-panel { top: auto; right: 0; bottom: 0; left: 0; width: 100%; max-height: 86dvh; padding-bottom: env(safe-area-inset-bottom); border-radius: 16px 16px 0 0; animation: cs-sheet-up 320ms cubic-bezier(.2, .9, .3, 1); overscroll-behavior: contain; }
+  html.nook-jobs-open, html.nook-jobs-open body { overflow: hidden; }
+  html.nook-jobs-shading, html.nook-jobs-shading body { overflow: hidden; background-color: var(--nook-jobs-edge-color, var(--bg-primary)); transition: none; }
+  .nook-sync-scrim { display: block; position: fixed; inset: 0; z-index: 69; background: rgba(91, 112, 131, .4); opacity: var(--nook-jobs-shade-progress, 0); touch-action: none; }
+  /* Safari needs a real element outside the fading scrim, with a box taller than 10px.
+     Paint only its 1px content box so the tint surface cannot cover header text. */
+  .nook-sync-edge { display: block; position: fixed; top: 0; left: 0; right: 0; z-index: 71; height: 16px; box-sizing: border-box; padding-bottom: 15px; background-clip: content-box; background-color: var(--nook-jobs-edge-color, var(--bg-primary)); pointer-events: none; }
+  /* Paint beneath Safari's controls as part of the moving sheet, without fixed-edge tint sampling.
+     Matching bottom padding keeps the last controls above the browser toolbar. */
+  .nook-sync-anchor { display: none; position: absolute; top: var(--nook-jobs-page-top, 0px); left: 0; right: 0; height: calc(100dvh + var(--nook-jobs-bottom-bleed, 0px)); overflow: hidden; z-index: 70; pointer-events: none; }
+  html:is(.nook-jobs-open, .nook-jobs-shading) .nook-sync-anchor { display: block; }
+  .nook-sync-panel { position: absolute; top: auto; right: 0; bottom: 0; left: 0; width: 100%; max-height: calc(86dvh + var(--nook-jobs-bottom-bleed, 0px)); padding-bottom: calc(env(safe-area-inset-bottom) + var(--nook-jobs-bottom-bleed, 0px)); border-radius: 16px 16px 0 0; animation: cs-sheet-up 320ms cubic-bezier(.2, .9, .3, 1); overscroll-behavior: contain; pointer-events: auto; }
   .nook-sync-panel.cs-leave { transition: transform 220ms ease-in; }
   .nook-sync-panel.cs-leave-end { opacity: 1; transform: translateY(100%); }
-  .cs-grab { position: sticky; top: 0; z-index: 3; display: flex; justify-content: center; padding: 8px 0 6px; background: var(--bg-primary); cursor: grab; touch-action: none; }
+  .nook-sync-panel { transform: translateY(var(--cs-sheet-y, 0px)); }
+  .nook-sync-panel.cs-dragging { transition: none; user-select: none; }
+  .nook-sync-panel.cs-settling { transition: transform 220ms cubic-bezier(.2, .9, .3, 1); }
+  .cs-grab { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; justify-content: center; min-height: 36px; background: var(--bg-primary); cursor: grab; touch-action: none; }
   .cs-grab::before { content: ''; width: 36px; height: 4px; border-radius: 9999px; background: var(--input-border); }
   .cs-view.is-push { animation: cs-push 280ms cubic-bezier(.2, .9, .3, 1); }
   .cs-view.is-pop { animation: cs-pop 280ms cubic-bezier(.2, .9, .3, 1); }
 }
-.cs-fade-enter, .cs-fade-leave { transition: opacity 220ms ease; }
-.cs-fade-from { opacity: 0; }
 @keyframes cs-sheet-up { from { transform: translateY(100%); } }
 @keyframes cs-push { from { transform: translateX(40%); opacity: 0; } }
 @keyframes cs-pop { from { transform: translateX(-30%); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .nook-sync-panel, .cs-view { animation: none !important; } .nook-sync-panel.cs-leave, .cs-fade-enter, .cs-fade-leave, .cs-more-n svg, .cs-switch, .cs-switch::after { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .nook-sync-panel, .cs-view { animation: none !important; } .nook-sync-panel.cs-leave, .nook-sync-panel.cs-settling, .cs-more-n svg, .cs-switch, .cs-switch::after { transition: none; } }
 @media (prefers-reduced-motion: reduce) { .nook-sync-panel { animation: none; } .cs-tabs-frame::before, .cs-tabs-frame::after { transition: none; } }
 
 @media (prefers-reduced-motion: reduce) { .nook-activity-spinner { animation: none; border-color: var(--accent-color); opacity: .6; } }

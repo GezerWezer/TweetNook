@@ -3733,7 +3733,9 @@
         <div x-show="viewMode === 'list' && !setupForced">
             <!-- Sync panel: opens from the top-bar sync button -->
             <!-- Phone: the panel is a bottom sheet over a scrim -->
-            <div class="nook-sync-scrim" x-cloak x-show="activityDrawerOpen" x-transition:enter="cs-fade-enter" x-transition:enter-start="cs-fade-from" x-transition:leave="cs-fade-leave" x-transition:leave-end="cs-fade-from" aria-hidden="true"></div>
+            <div class="nook-sync-scrim" x-cloak x-show="activityDrawerOpen || activityShadeProgress" aria-hidden="true"></div>
+            <div class="nook-sync-edge" aria-hidden="true"></div>
+            <div class="nook-sync-anchor">
             <section id="nook-activity-drawer" class="nook-sync-panel" x-cloak x-show="activityDrawerOpen" x-transition:leave="cs-leave" x-transition:leave-end="cs-leave-end" x-data="nookSyncPanel()" role="dialog" aria-label="Jobs" @keydown.escape="if (view !== 'main') { $event.stopPropagation(); back(); }">
                 <div class="cs-grab" aria-hidden="true" @pointerdown="grab($event)"></div>
                 <div x-show="view === 'main'" class="cs-view" :class="view === 'main' && viewDir">
@@ -3861,6 +3863,7 @@
                     <div class="cs-opt-foot"><span class="cs-sub" x-text="optNote()"></span><button type="button" class="cs-text-button" @click="optReset()">Reset</button><button type="button" class="cs-run" :disabled="optRunDisabled()" @click="runOptions()" x-text="optRunLabel()"></button></div>
                 </div>
             </section>
+            </div>
 
 
         <!-- Back to Top Button -->
