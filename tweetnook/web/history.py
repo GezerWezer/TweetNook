@@ -12,7 +12,7 @@ from tweetnook.web.availability import UNAVAILABLE_MESSAGES
 
 CHECK_SOURCE = "Availability check"
 LOGIN_OPERATIONS = ("TweetDetail", "TweetDetailResurrection", "ThreadExpandDetail")
-# A nightly run records its checks at its start time and writes copies as it goes.
+# A check run records its checks at its start time and writes copies as it goes.
 CHECK_CAPTURE_WINDOW = timedelta(hours=6)
 COLLECTION_LABELS = {"bookmark": "bookmarks", "like": "likes", "tweet": "your tweets"}
 CHECK_LABELS = {
@@ -91,7 +91,7 @@ def _login_event(tweet_id: str, capture: dict[str, Any]) -> dict[str, Any] | Non
 def _fx_copy_events(
     store: ArchiveStore, tweet_id: str, check_events: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """FxTwitter copies made outside a nightly check, such as during import enrichment."""
+    """FxTwitter copies made outside a check, such as during import enrichment."""
 
     check_times = [
         moment
@@ -203,7 +203,7 @@ def tweet_note_history(store: ArchiveStore, tweet_id: str) -> dict[str, Any]:
     ]
     stored_text, stored_at = store.stored_community_note(tweet_id)
     if stored_text and all(version["text"] != stored_text for version in versions):
-        # Saved with the tweet before any nightly check saw a different note.
+        # Saved with the tweet before any check saw a different note.
         versions.append(
             {
                 "text": stored_text,

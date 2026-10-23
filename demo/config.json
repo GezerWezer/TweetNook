@@ -173,7 +173,7 @@
         ]
       },
       {
-        "title": "Nightly check",
+        "title": "Check",
         "note": "Checks saved tweets and retries unavailable tweets. Optionally include a rolling share of quoted and thread tweets.",
         "fields": [
           "check.enabled",
@@ -343,7 +343,7 @@
       "activity.retention_days": "Log retention",
       "database.cache_size_kb": "Page cache",
       "database.mmap_size_bytes": "Memory-mapped I/O",
-      "check": "Nightly check",
+      "check": "Check",
       "fxtwitter": "FxTwitter",
       "check.enabled": "Check automatically",
       "check.cadence": "Check frequency",
@@ -352,7 +352,7 @@
       "check.day_of_month": "Day of the month",
       "check.context_enabled": "Check context tweets",
       "check.context_days": "Context cycle",
-      "check.detail_budget": "Login lookups per night",
+      "check.detail_budget": "Login lookups per run",
       "fxtwitter.enabled": "Use FxTwitter",
       "fxtwitter.base_url": "API address",
       "fxtwitter.concurrency": "Parallel lookups",
@@ -401,8 +401,8 @@
       "check.day_of_month": "Day for monthly checks, clamped to the month's last day.",
       "check.context_enabled": "Include a rolling share of quoted, thread, and other context tweets in each check. Off by default. Quotes returned with saved tweets are still checked.",
       "check.context_days": "Quoted, thread, and other context tweets are each checked once per this many days, spread across runs at the selected check frequency. Saved tweets are checked every run.",
-      "check.detail_budget": "Most tweets the nightly check may look up with your login, for protected accounts and results FxTwitter can't confirm. 0 uses FxTwitter only.",
-      "fxtwitter.enabled": "Look up posts through FxTwitter first when enriching imported tweets and during the nightly check. While off, the nightly check doesn't run.",
+      "check.detail_budget": "Most tweets the check may look up with your login, for protected accounts and results FxTwitter can't confirm. 0 uses FxTwitter only.",
+      "fxtwitter.enabled": "Look up posts through FxTwitter first when enriching imported tweets and during the check. While off, the check doesn't run.",
       "fxtwitter.base_url": "The public service, or the address of your own FxEmbed install.",
       "fxtwitter.concurrency": "Lookups in flight at once. The public service allows about 1,000 a minute.",
       "fxtwitter.timeout": "Give up on a slow FxTwitter request after this long.",

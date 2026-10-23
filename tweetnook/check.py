@@ -1,4 +1,4 @@
-"""Nightly availability check through FxTwitter, with TweetDetail as the fallback.
+"""Availability check through FxTwitter, with TweetDetail as the fallback.
 
 Each run: every saved tweet, optionally a rolling share of context tweets (quoted, thread, and
 linked tweets), and every retryable unavailable tweet are looked up through FxTwitter.
@@ -78,7 +78,7 @@ FX_TOMBSTONE_REASONS = {
 
 
 @dataclass(slots=True)
-class NightlyCheckResult:
+class CheckResult:
     saves_checked: int = 0
     context_checked: int = 0
     unavailable_checked: int = 0
@@ -123,13 +123,13 @@ def fx_unavailable_reason(lookup: FxLookup) -> str:
 class _CheckApplier:
     """Apply FxTwitter outcomes to the archive inside one write buffer."""
 
-    def __init__(self, store: ArchiveStore, result: NightlyCheckResult, now: str) -> None:
+    def __init__(self, store: ArchiveStore, result: CheckResult, now: str) -> None:
         self.store = store
         self.result = result
         self.now = now
         self.buffer = _PageBuffer()
         self.checks: list[tuple[str, str, int | None, str, str | None]] = []
-        # Tweets looked up directly tonight, and every tweet applied tonight: an embedded
+        # Tweets looked up directly this run, and every tweet applied this run: an embedded
         # quote of either is skipped so each tweet gets one result per run.
         self.direct_ids: set[str] = set()
         self.applied: set[str] = set()
@@ -394,7 +394,7 @@ class _CheckApplier:
         return True
 
 
-async def run_nightly_check(
+async def run_check(
     *,
     config: AppConfig,
     paths: XDGPaths,
@@ -406,11 +406,11 @@ async def run_nightly_check(
     fx_transport: httpx.AsyncBaseTransport | None = None,
     console: Console | None = None,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-) -> NightlyCheckResult:
+) -> CheckResult:
     config, paths = resolve_job_context(config=config, paths=paths)
     console = console or Console(stderr=True)
     pipeline = current_pipeline()
-    result = NightlyCheckResult()
+    result = CheckResult()
     context = config.check.context_enabled if context is None else context
     budget = config.check.detail_budget if detail_budget is None else detail_budget
     now = utc_now()
@@ -453,20 +453,20 @@ async def run_nightly_check(
 
             def context_ids() -> list[str]:
                 # Chosen after the saves pass, so posts it already checked through the
-                # saved tweets quoting them count as checked tonight.
+                # saved tweets quoting them count as checked this run.
                 if not context:
                     return []
                 # A weekly/monthly check must cover more of the cycle than a daily one.
                 # Use the longest month so a short month never leaves the cycle undersized.
                 interval_days = {"daily": 1, "weekly": 7, "monthly": 31}[config.check.cadence]
-                per_night = math.ceil(
+                per_run = math.ceil(
                     store.count_context_tweets() * interval_days / config.check.context_days
                 )
                 checked_before = (
                     _as_utc_datetime(now) - timedelta(days=max(config.check.context_days - 1, 0))
                 ).isoformat()
                 return store.list_context_check_tweet_ids(
-                    limit=per_night, checked_before=checked_before
+                    limit=per_run, checked_before=checked_before
                 )
 
             applier = _CheckApplier(store, result, now)
@@ -546,7 +546,7 @@ async def _check_scope(
     if pipeline is not None:
         pipeline.add_step(step, title, total=max(len(ids), 1), unit="tweets", rate_unit="tweets/s")
         if not ids:
-            pipeline.skip_step(step, "nothing due tonight")
+            pipeline.skip_step(step, "nothing due")
             return True
         pipeline.start_step(step, activity="Checking through FxTwitter")
     done = 0
@@ -605,7 +605,7 @@ async def _run_detail_fallback(
     transport: httpx.AsyncBaseTransport | None,
     console: Console,
     sleep: Callable[[float], Awaitable[None]],
-    result: NightlyCheckResult,
+    result: CheckResult,
 ) -> ResurrectionResult | None:
     """Check what FxTwitter couldn't settle (protected accounts, bare 404s) with the login."""
 

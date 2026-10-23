@@ -1911,7 +1911,7 @@ function tweetApp() {
             return this.activitySteps().find(step => step.state === 'active') || null;
         },
 
-        // The nightly availability check shares the sync drawer; its wording follows the run.
+        // The availability check shares the sync drawer; its wording follows the run.
         activityIsCheck(run = this.displayActivity) {
             return !this.activityStartPending && /^tweetnook\s+check$/i.test(String(run?.title || '').trim());
         },

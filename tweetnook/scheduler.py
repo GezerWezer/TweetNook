@@ -302,7 +302,7 @@ class ScheduleManager:
             self._state["last_run_id"] = result["run_id"]
         except JobConflictError:
             if self.supervisor.active_kind == "check":
-                # The check runs at most once a night, so a sync due during it waits
+                # The check runs at most once a day, so a sync due during it waits
                 # for it instead of losing its slot.
                 self._state["last_result"] = "deferred: waiting for the availability check"
                 self._state["next_run_at"] = timestamp + CHECK_CONFLICT_RETRY_SECONDS
@@ -330,7 +330,7 @@ class ScheduleManager:
         self._save_state()
 
     def check_status(self) -> dict[str, Any]:
-        """The nightly check's schedule for the Web jobs list."""
+        """The check's schedule for the Web jobs list."""
 
         with self._lock:
             next_at = self._state.get("check_next_run_at") if self._check_on() else None
@@ -352,7 +352,7 @@ class ScheduleManager:
             )
 
     def skip_deferred_check(self, *, now: float | None = None) -> bool:
-        """Drop tonight's deferred check; the next one runs at its usual time."""
+        """Drop the deferred check; the next one runs at its usual time."""
 
         with self._lock:
             if not self.check_status()["deferred"]:
@@ -431,7 +431,7 @@ class ScheduleManager:
                 title="tweetnook check",
             )
         except JobConflictError:
-            # Unlike a missed sync, tonight's check waits for the running command.
+            # Unlike a missed sync, a due check waits for the running command.
             self._state["check_last_result"] = "deferred: another command was running"
             self._state["check_next_run_at"] = timestamp + CHECK_CONFLICT_RETRY_SECONDS
         else:

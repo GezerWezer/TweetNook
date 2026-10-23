@@ -8934,10 +8934,10 @@ test('Configuration page groups and formats fields from the server schema', () =
         },
     };
     const basic = nookConfigSections(app, 'basic');
-    assert.deepEqual([...basic.map(group => group.title)], ['Web server', 'Avatars', 'Quoted and linked posts', 'Nightly check']);
+    assert.deepEqual([...basic.map(group => group.title)], ['Web server', 'Avatars', 'Quoted and linked posts', 'Check']);
     assert.ok(basic.flatMap(group => group.fields).some(field => field.path === 'sync.reply_linked_depth'));
     // Frequency and the independent context toggle are basic settings.
-    assert.deepEqual(basic.find(group => group.title === 'Nightly check').fields.map(field => field.path), [
+    assert.deepEqual(basic.find(group => group.title === 'Check').fields.map(field => field.path), [
         'check.enabled', 'check.cadence', 'check.time', 'check.weekday', 'check.context_enabled',
     ]);
     assert.equal(defaults.check.cadence, 'weekly');
@@ -8954,7 +8954,7 @@ test('Configuration page groups and formats fields from the server schema', () =
     // With the switch on, advanced fields join their own sections in schema order, flagged.
     const merged = nookConfigSections(app);
     assert.deepEqual(merged.slice(0, 3).map(group => group.title), ['Web server', 'Avatars', 'Analytics']);
-    const check = merged.find(group => group.title === 'Nightly check');
+    const check = merged.find(group => group.title === 'Check');
     assert.equal(check.advanced, false);
     assert.deepEqual(check.fields.map(item => [item.path, item.advanced]), [
         ['check.enabled', false], ['check.cadence', false], ['check.time', false],

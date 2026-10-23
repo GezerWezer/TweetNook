@@ -88,7 +88,7 @@ def unqueue_job(
     key: str,
     _auth: Annotated[bool, Depends(verify_credentials)],
 ) -> dict[str, Any]:
-    """Take a waiting job out of the queue; a deferred check skips tonight's run."""
+    """Take a waiting job out of the queue; a deferred check skips the due run."""
 
     if key not in JOBS_BY_KEY:
         raise HTTPException(status_code=404, detail="Unknown job.")
