@@ -968,6 +968,197 @@ def test_hidden_tweets_are_left_out_unless_the_query_names_is_hidden(tmp_path):
     store.close()
 
 
+def test_note_filter_includes_saved_notes_history_and_direct_quote_targets(tmp_path):
+    rows = [_row(str(index), f"needle {index}") for index in range(1, 10)]
+    rows[0]["raw_json"]["birdwatch_pivot"] = {"subtitle": {"text": "Captured note"}}
+    rows[8]["raw_json"]["birdwatch_pivot"] = {"shorttitle": "No actual note"}
+    store = _real_store(tmp_path, rows)
+    first_member = store._query(expr="row_key = 'tweet:bookmark::1'")[0]
+    store._merge_records(
+        [
+            {**first_member, "row_key": "tweet:like::1", "collection_type": "like"},
+            {
+                **first_member,
+                "row_key": "tweet_object:1",
+                "record_type": "tweet_object",
+                "collection_type": None,
+            },
+            store._record(
+                row_key="tweet_object:original",
+                record_type="tweet_object",
+                tweet_id="original",
+                text="Quoted context outside every collection",
+                raw_json=json.dumps({"birdwatch_pivot": {"subtitle": {"text": "Quote note"}}}),
+            ),
+            *[
+                store._record(
+                    row_key=f"tweet_relation:{source}:{kind}:{target}",
+                    record_type="tweet_relation",
+                    tweet_id=source,
+                    relation_type=kind,
+                    target_tweet_id=target,
+                )
+                for source, kind, target in (
+                    ("4", "quote_of", "original"),
+                    ("5", "quote_of", "past-original"),
+                    ("7", "quote_of", "4"),
+                    ("8", "retweet_of", "original"),
+                )
+            ],
+        ]
+    )
+    store.record_community_note("2", {"text": "Current note"})
+    store.record_community_note("3", {"text": "Removed note"})
+    store.record_community_note("3", None)
+    store.record_community_note("past-original", {"text": "Removed quote note"})
+    store.record_community_note("past-original", None)
+
+    def ids(query, **options):
+        return {row["tweet_id"] for row in search_posts(store, query, **options).rows}
+
+    expected = {"1", "2", "3", "4", "5"}
+    assert ids("has:note") == expected
+    assert ids("HAS:NOTE", collections={"bookmarks"}) == expected
+    assert ids("needle has:note") == expected
+    assert ids("has:note OR from:nobody") == expected
+    assert ids("from:alice has:note") == expected
+    assert ids("-has:note") == {"6", "7", "8", "9"}
+    assert count_posts(store, "has:note") == 5
+    pages = [search_posts(store, "has:note", page=page, limit=2) for page in (1, 2, 3)]
+    assert [row["tweet_id"] for page in pages for row in page.rows] == ["5", "4", "3", "2", "1"]
+    assert [page.has_more for page in pages] == [True, True, False]
+    # A captured membership and its canonical object still occupy one result slot.
+    assert pages[0].total == 5
+    store.record_community_note("6", {"text": "New note"})
+    assert count_posts(store, "has:note") == 6
+    store.close()
+
+
+@pytest.mark.parametrize(
+    "sort", ["newest", "oldest", "random", "most_likes", "liked_latest", "liked_earliest"]
+)
+def test_uncaptured_entries_are_hidden_by_default_in_every_search_order(tmp_path, sort):
+    rows = [_row(str(index), f"needle {index}") for index in range(1, 10)]
+    for index in (1, 4, 7):
+        rows[index].update(text="", raw_json=None if index != 7 else {"rest_id": "8", "legacy": {}})
+    rows[2].update(
+        text="This Post is from a suspended account. {learnmore}",
+        raw_json={"__typename": "TweetTombstone"},
+    )
+    rows[3]["raw_json"] = {"legacy": {"full_text": "needle 4"}}
+    rows[5].update(text="", raw_json=None)
+    rows[8]["raw_json"] = None  # Text-only official archive content is still captured.
+    store = _real_store(tmp_path, rows)
+    records = []
+    for row in store._query(expr="record_type = 'tweet'"):
+        records.append(
+            {**row, "row_key": f"tweet:like::{row['tweet_id']}", "collection_type": "like"}
+        )
+    records.extend(
+        [
+            store._record(
+                row_key="tweet_object:4",
+                record_type="tweet_object",
+                tweet_id="4",
+                enrichment_state="terminal_unavailable",
+                enrichment_reason="deleted_by_author",
+            ),
+            store._record(
+                row_key="tweet_object:6",
+                record_type="tweet_object",
+                tweet_id="6",
+                text="Recovered content",
+                raw_json=json.dumps({"legacy": {"full_text": "Recovered content"}}),
+                enrichment_state="done",
+            ),
+        ]
+    )
+    store._merge_records(records)
+    store.set_tweet_hidden("2", True)  # Both exclusions must count this only once.
+    options = {"sort": sort, "collections": {"like"}, "random_seed": 3}
+
+    def ids(query):
+        return {row["tweet_id"] for row in search_posts(store, query, **options).rows}
+
+    assert ids(None) == {"1", "4", "6", "7", "9"}
+    assert search_posts(store, None, **options).total == 5
+    assert count_posts(store, None, collections={"like"}) == 5
+    assert ids("from:alice") == {"1", "4", "6", "7", "9"}
+    assert ids("needle") == {"1", "4", "7", "9"}
+    assert ids("is:uncaptured") == {"3", "5", "8"}
+    assert ids("-is:uncaptured") == {"1", "4", "6", "7", "9"}
+    assert ids("NOT is:uncaptured") == {"1", "4", "6", "7", "9"}
+    assert ids("is:uncaptured OR needle") == {"1", "3", "4", "5", "7", "8", "9"}
+    assert ids("is:uncaptured is:hidden") == {"2"}
+    assert count_posts(store, "is:uncaptured") == 3
+    assert count_posts(store, "is:uncaptured is:hidden") == 1
+    store.close()
+
+
+# Placeholder texts as X returned them and they were saved, without post JSON.
+LIVE_PLACEHOLDER_TEXTS = (
+    "You\u2019re unable to view this Post because this account owner limits who can view "
+    "their Posts. {learnmore}",
+    "This Post from @CSlowqmemes has been withheld in all countries (copyright reasons) "
+    "in response to a legal demand. {learnmore}",
+    "This Post is from a suspended account. {learnmore}",
+)
+
+
+def test_live_placeholder_texts_are_uncaptured_and_saved_text_is_not(tmp_path):
+    texts = (*LIVE_PLACEHOLDER_TEXTS, "This took me 4 months to find https://t.co/4r60bChBtm")
+    rows = [_row(str(index), text) for index, text in enumerate(texts, start=1)]
+    for row in rows:
+        row["raw_json"] = None
+    suspended = "This account is suspended. {learnmore}"
+    rows.append(_row("5", suspended))
+    rows[-1]["raw_json"] = {"legacy": {"full_text": suspended}}
+    store = _real_store(tmp_path, rows)
+    store._merge_records(
+        [
+            store._record(
+                row_key="tweet_object:4",
+                record_type="tweet_object",
+                tweet_id="4",
+                enrichment_state="terminal_unavailable",
+                enrichment_reason="suspended_account",
+            )
+        ]
+    )
+
+    assert [row["tweet_id"] for row in search_posts(store, None).rows] == ["4"]
+    assert count_posts(store, None) == 1
+    assert {row["tweet_id"] for row in search_posts(store, "is:uncaptured").rows} == {
+        "1",
+        "2",
+        "3",
+        "5",
+    }
+    store.close()
+
+
+def test_uncaptured_default_preserves_feed_cursor_paging_and_updates(tmp_path):
+    store = _real_store(tmp_path, [_row(str(index), f"post {index}") for index in range(1, 7)])
+    with store.conn:
+        store.conn.execute(
+            "UPDATE archive SET text = '', raw_json = NULL WHERE tweet_id IN ('2', '4')"
+        )
+    seen = []
+    cursor = ""
+    while cursor is not None:
+        page = search_posts(store, None, limit=1, cursor=cursor)
+        assert page.total == 4
+        seen.extend(row["tweet_id"] for row in page.rows)
+        cursor = page.next_cursor
+    assert seen == ["6", "5", "3", "1"]
+    assert count_posts(store, None) == 4
+    with store.conn:
+        store.conn.execute("UPDATE archive SET text = 'newly captured' WHERE tweet_id = '4'")
+    assert count_posts(store, None) == 5
+    assert [row["tweet_id"] for row in search_posts(store, "is:uncaptured").rows] == ["2"]
+    store.close()
+
+
 def test_description_filter_matches_media_tag_descriptions_only(tmp_path) -> None:
     store = _real_store(
         tmp_path,

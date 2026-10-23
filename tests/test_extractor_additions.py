@@ -10,6 +10,7 @@ from tweetnook.extractor import (
     extract_secondary_objects,
     extract_secondary_objects_from_tweets,
     extract_thread_objects,
+    is_placeholder_text,
     unwrap_tweet_result,
 )
 
@@ -60,6 +61,33 @@ def test_unwrap_tweet_result_preserves_terminal_shapes(typename: str) -> None:
 )
 def test_classify_tweet_unavailability(message: str | None, expected: str) -> None:
     assert classify_tweet_unavailability("TweetUnavailable", message) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "You\u2019re unable to view this Post because this account owner limits who can "
+            "view their Posts. {learnmore}",
+            True,
+        ),
+        (
+            "This Post from @CSlowqmemes has been withheld in all countries (copyright "
+            "reasons) in response to a legal demand. {learnmore}",
+            True,
+        ),
+        ("This Post is from a suspended account. {learnmore}", True),
+        ("This Post has been withheld in your country.", True),
+        ("This Post is unavailable.", True),
+        ("This took me 4 months to find https://t.co/4r60bChBtm", False),
+        ("WHY IS MY TEAMMATE INSPECTING FUCKING ARCHITECTURE https://t.co/pD5PS2ibMs", False),
+        ("I heard the account is protected, but this post is still here.", False),
+        ("", False),
+        (None, False),
+    ],
+)
+def test_is_placeholder_text(text: str | None, expected: bool) -> None:
+    assert is_placeholder_text(text) is expected
 
 
 def test_visibility_wrapper_preserves_birdwatch_pivot_and_canonical_note_text() -> None:

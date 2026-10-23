@@ -18,6 +18,8 @@ const BOX_END = '\uE002';
 // Suggestion glyphs: X design system icons (iconXDS.md), plus the app's own
 // verified seal, which XDS lacks. Values are [viewBox, inner SVG markup].
 const SUGGESTION_GLYPHS = {
+    "community-notes-outline": ["0 0 24 24", "<path d=\"M19 16h2.6c-.23-1.2-.66-2.12-1.2-2.77-.67-.8-1.55-1.23-2.65-1.23-.51 0-.96.09-1.36.26l-.78-1.84c.67-.28 1.38-.42 2.14-.42 1.7 0 3.14.7 4.19 1.95 1.03 1.24 1.63 2.95 1.81 4.96l.09 1.09H19v-2zM5 16H2.4c.23-1.2.66-2.12 1.2-2.77.67-.8 1.55-1.23 2.65-1.23.51 0 .96.09 1.36.26l.78-1.84c-.67-.28-1.38-.42-2.14-.42-1.7 0-3.14.7-4.19 1.95C1.032 13.19.433 14.9.254 16.91L.157 18H5v-2zM15.5 6c0-1.66 1.34-3 3-3s3 1.34 3 3-1.34 3-3 3-3-1.34-3-3zm2 0c0 .55.45 1 1 1s1-.45 1-1-.45-1-1-1-1 .45-1 1zm-12-3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 2c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm6.5 6.5c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm0-2c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1zm0 3c1.78 0 3.29.75 4.37 2.1 1.07 1.32 1.69 3.15 1.88 5.31l.09 1.09H5.66l.09-1.09c.19-2.16.81-3.99 1.88-5.31 1.08-1.35 2.59-2.1 4.37-2.1zm-2.82 3.35c-.59.74-1.05 1.79-1.29 3.15h8.22c-.24-1.36-.7-2.41-1.29-3.15-.72-.88-1.66-1.35-2.82-1.35s-2.1.47-2.82 1.35z\" />"],
+    "square-dashed": ["0 0 24 24", "<path d=\"M14.42 21.5H9.58v-2h4.84zm-9.84-4.58c.05.44.13.72.25.94a3 3 0 0 0 1.3 1.31c.23.12.5.2.95.25v2.01a5 5 0 0 1-1.85-.47 5 5 0 0 1-2.19-2.19 5 5 0 0 1-.47-1.85zm16.85 0a5 5 0 0 1-.47 1.85 5 5 0 0 1-2.19 2.19c-.56.28-1.17.4-1.85.47v-2.01c.44-.05.72-.13.94-.25a3 3 0 0 0 1.31-1.3c.12-.23.2-.5.25-.95zM4.5 9.9v4.52h-2V9.58h2zm17 0v4.52h-2V9.58h2zM7.08 4.58a3 3 0 0 0-.94.25 3 3 0 0 0-1.31 1.3c-.12.23-.2.5-.25.95H2.57q.07-1.01.47-1.85a5 5 0 0 1 2.19-2.19 5 5 0 0 1 1.85-.47zm9.84-2.01q1.02.07 1.85.47a5 5 0 0 1 2.19 2.19c.28.56.4 1.17.47 1.85h-2.01a3 3 0 0 0-.25-.94 3 3 0 0 0-1.3-1.31c-.23-.12-.5-.2-.95-.25zm-2.5-.07v2H9.58v-2z\"/>"],
     "person": ["0 0 24 24", "<path d=\"M12 12.25a8 8 0 0 1 8 8V22H4v-1.75a8 8 0 0 1 8-8m0 2A6 6 0 0 0 6 20h12a6 6 0 0 0-6-5.75M12 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9m0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5\"/>"],
     "reply": ["0 0 24 24", "<path d=\"M1.75 10a8 8 0 0 1 8-8h4.37a8.13 8.13 0 0 1 3.93 15.24L10 21.7V18h-.07a8 8 0 0 1-8.18-8m2 0a6 6 0 0 0 6.14 6H12v2.3l5.09-2.8A6.13 6.13 0 0 0 14.12 4H9.75a6 6 0 0 0-6 6\"/>"],
     "attachment": ["0 0 24 24", "<path d=\"M5 15V8h2v7a5 5 0 0 0 10 0V7a3 3 0 1 0-6 0v8a1 1 0 1 0 2 0V8h2v7a3 3 0 1 1-6 0V7a5 5 0 0 1 10 0v8a7 7 0 1 1-14 0\"/>"],
@@ -92,7 +94,8 @@ function searchAutocomplete() {
             { prefix: 'has:', value: 'image', glyph: 'photo', desc: 'Only images', excludeDesc: 'Hide tweets with images' },
             { prefix: 'has:', value: 'video', glyph: 'play-circle', desc: 'Videos or GIFs', excludeDesc: 'Hide tweets with videos or GIFs' },
             { prefix: 'has:', value: 'links', glyph: 'link', desc: 'External links', excludeDesc: 'Hide tweets with external links' },
-            { prefix: 'has:', value: 'article', glyph: 'news', desc: 'Attached archived article', excludeDesc: 'Hide tweets with an archived article' }
+            { prefix: 'has:', value: 'article', glyph: 'news', desc: 'Attached archived article', excludeDesc: 'Hide tweets with an archived article' },
+            { prefix: 'has:', value: 'note', glyph: 'community-notes-outline', desc: 'Current or past Community Notes, including quoted posts', excludeDesc: 'Hide tweets with current or past Community Notes, including quoted posts' }
         ],
         
         isOptions: [
@@ -103,6 +106,7 @@ function searchAutocomplete() {
             { prefix: 'is:', value: 'verified', glyph: 'verified', desc: 'From verified users', excludeDesc: 'Hide tweets from verified users' },
             { prefix: 'is:', value: 'resurrected', glyph: 'history', desc: 'Previously unavailable and recovered', excludeDesc: 'Hide recovered tweets' },
             { prefix: 'is:', value: 'missing', glyph: 'warning', desc: 'Archived but no longer on X', excludeDesc: 'Hide tweets no longer on X' },
+            { prefix: 'is:', value: 'uncaptured', glyph: 'square-dashed', desc: 'Posts whose content was never captured', excludeDesc: 'Hide posts whose content was never captured' },
             { prefix: 'is:', value: 'hidden', glyph: 'eye-off', desc: 'Tweets you hid from lists', excludeDesc: 'Hide tweets you hid from lists' }
         ],
 
@@ -716,7 +720,7 @@ function searchAutocomplete() {
                         }
 
                         if (prefix.toLowerCase().endsWith('has:')) {
-                            isValid = ['media', 'image', 'video', 'links', 'article'].includes(cleanValue.toLowerCase());
+                            isValid = this.hasOptions.some(option => option.value === cleanValue.toLowerCase());
                         } else if (prefix.toLowerCase().endsWith('is:')) {
                             isValid = this.isOptions.some(option => option.value === cleanValue.toLowerCase());
                         } else if (prefix.toLowerCase().endsWith('filter:')) {

@@ -177,9 +177,16 @@ Type words and filters together in the web app's search box:
 | Words in a tag description | `description:"red car"` |
 | Links, excluding reposts | `has:links -is:retweet` |
 | Tweets you hid | `is:hidden` |
+| Current or past Community Notes, including quoted posts | `has:note` |
+| Posts whose content was never captured | `is:uncaptured` |
 
 **Hide** in a tweet's menu keeps it out of lists and searches until you choose
 **Unhide**; it stays in your archive.
+
+Posts without captured content are hidden from feeds and searches by default.
+Use `is:uncaptured` to find them. Saved copies remain visible after a post
+becomes unavailable on X. `has:note` includes removed notes in saved history
+and notes on directly quoted posts, including quotes outside your collections.
 
 In the web search box, edit `tag:` and `description:` values inside their
 capsules, including spaces. Press **Escape** to continue typing after a capsule;

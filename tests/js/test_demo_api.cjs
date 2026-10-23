@@ -263,6 +263,26 @@ async function main() {
     assert.deepEqual(await resultIds(store, '#anything'), []);
     assert.deepEqual(await resultIds(store, 'has:links'), []);
 
+    assert.ok((await resultIds(store, 'has:note')).includes(ids.quotedStandalone));
+    const filterFixture = JSON.parse(JSON.stringify(fixture));
+    const filterPost = id => filterFixture.tweets.find(tweet => tweet.tweet_id === id);
+    filterPost(ids.quotedStandalone).community_note = null;
+    filterPost(ids.quotedStandalone).note_history = true;
+    filterPost(ids.ownerRoot).uncaptured = true;
+    const filterStore = api.createStore(filterFixture);
+    const pastNotes = await resultIds(filterStore, 'has:note');
+    assert.ok(pastNotes.includes(ids.quotedStandalone));
+    const quotingPost = filterFixture.tweets.find(tweet => tweet.quoted_tweet_id === ids.quotedStandalone && tweet.collections.length);
+    assert.ok(quotingPost);
+    assert.ok(pastNotes.includes(quotingPost.tweet_id));
+    assert.ok(!(await resultIds(filterStore, '-has:note')).includes(quotingPost.tweet_id));
+    assert.ok(!(await resultIds(filterStore, '')).includes(ids.ownerRoot));
+    assert.deepEqual(await resultIds(filterStore, 'is:uncaptured'), [ids.ownerRoot]);
+    assert.ok((await resultIds(filterStore, 'is:uncaptured OR has:note')).includes(ids.ownerRoot));
+    assert.ok(!(await resultIds(filterStore, '-is:uncaptured')).includes(ids.ownerRoot));
+    const uncapturedCount = await request(filterStore, 'https://example.test/api/tweets/count?q=is:uncaptured');
+    assert.equal(uncapturedCount.body.total, 1);
+
     const userOneTweets = await resultIds(store, 'from:demo_user1');
     assert.equal(userOneTweets.length, 4);
     assert.ok(userOneTweets.includes(ids.welcomeGuide));

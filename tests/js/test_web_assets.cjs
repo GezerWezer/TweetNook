@@ -789,7 +789,16 @@ test('autocomplete separates attached content from post types and states', () =>
     );
     const component = searchAutocomplete();
     assert.ok(component.hasOptions.some(option => option.value === 'article'));
+    assert.ok(component.hasOptions.some(option => option.value === 'note'));
+    assert.ok(!component.hasOptions.some(option => option.value === 'cn'));
     assert.ok(component.isOptions.some(option => option.value === 'resurrected'));
+    assert.ok(component.isOptions.some(option => option.value === 'uncaptured'));
+    const options = [...component.allFilters, ...component.hasOptions, ...component.isOptions];
+    for (const [value, glyph] of [['note', 'community-notes-outline'], ['uncaptured', 'square-dashed']]) {
+        assert.equal(options.find(option => option.value === value).glyph, glyph);
+        assert.equal(options.filter(option => option.glyph === glyph).length, 1);
+    }
+    assert.ok(!component.plainSearchHtml('has:note is:uncaptured', 0, new Set()).includes('invalid'));
     assert.ok(component.allFilters.some(option => option.prefix === 'is:'));
     assert.ok(!component.allFilters.some(option => option.prefix === 'filter:'));
 });

@@ -138,6 +138,7 @@ class ListingStore:
         random_seed=None,
         include_total=False,
         exclude_hidden=False,
+        exclude_uncaptured=False,
     ):
         self.calls.append(
             (
@@ -151,6 +152,7 @@ class ListingStore:
                     "random_seed": random_seed,
                     "include_total": include_total,
                     "exclude_hidden": exclude_hidden,
+                    "exclude_uncaptured": exclude_uncaptured,
                 },
             )
         )
@@ -414,7 +416,11 @@ def test_api_tweets_includes_unavailable_tombstones_as_placeholders():
 
 
 def test_api_tweets_uses_canonical_state_instead_of_membership_text():
-    terminal = _row(tweet_id="terminal", text="ordinary archived text")
+    terminal = _row(
+        tweet_id="terminal",
+        text="You\u2019re unable to view this Post because this account owner limits who "
+        "can view their Posts. {learnmore}",
+    )
     available = _row(
         tweet_id="available",
         text="This Post is from a suspended account. {learnmore}",
@@ -493,10 +499,13 @@ def test_api_tweets_real_store_deduplicates_memberships_and_filters_before_pagin
     second = _list_tweets(store, page=2, limit=1)
     filtered = _list_tweets(store, q="needle -from:nobody since:2026-01-01")
 
-    assert first["total"] == first["pages"] == 3
-    assert [tweet["tweet_id"] for tweet in first["tweets"]] == ["3"]
-    assert first["tweets"][0]["availability"]["reason"] == "suspended_account"
-    assert [tweet["tweet_id"] for tweet in second["tweets"]] == ["2"]
+    assert first["total"] == first["pages"] == 2
+    assert [tweet["tweet_id"] for tweet in first["tweets"]] == ["2"]
+    assert [tweet["tweet_id"] for tweet in second["tweets"]] == ["1"]
+    uncaptured = _list_tweets(store, q="is:uncaptured")
+    assert uncaptured["total"] == 1
+    assert [tweet["tweet_id"] for tweet in uncaptured["tweets"]] == ["3"]
+    assert uncaptured["tweets"][0]["availability"]["reason"] == "suspended_account"
     assert {tweet["tweet_id"] for tweet in filtered["tweets"]} == {"1", "2"}
     store.close()
 
