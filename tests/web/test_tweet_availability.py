@@ -17,6 +17,11 @@ from tweetnook.web.availability import (
 from tweetnook.web.deps import get_store
 from tweetnook.web.routes.tweets import router as tweets_router
 
+PROTECTED_PLACEHOLDER = (
+    "You\u2019re unable to view this Post because this account owner limits who can view "
+    "their Posts. {learnmore}"
+)
+
 
 def _web_tweet(tweet_id: str, raw_json: dict | None = None) -> dict:
     return {
@@ -40,8 +45,11 @@ def test_availability_reason_catalog_and_incomplete_states() -> None:
         "not_found": "This tweet could not be found.",
         "unavailable_unknown": "This tweet is unavailable.",
     }.items():
+        placeholder = _web_tweet("1")
+        placeholder["text"] = PROTECTED_PLACEHOLDER
+        placeholder["media"] = []
         availability = availability_for_tweet(
-            _web_tweet("1"),
+            placeholder,
             {
                 "enrichment_state": "terminal_unavailable",
                 "enrichment_reason": reason,
@@ -49,6 +57,29 @@ def test_availability_reason_catalog_and_incomplete_states() -> None:
         )
         assert availability["message"] == message
         assert availability["placeholder"] is True
+
+    # Text saved without post JSON is still an archived copy, as the capture flags count it.
+    text_only = {
+        "tweet_id": "6",
+        "text": "WHY IS MY TEAMMATE INSPECTING FUCKING ARCHITECTURE https://t.co/pD5PS2ibMs",
+        "raw_json": None,
+    }
+    for reason, placeholder in (("suspended_account", False), ("deleted_by_author", True)):
+        availability = availability_for_tweet(
+            text_only, {"enrichment_state": "terminal_unavailable", "enrichment_reason": reason}
+        )
+        assert availability["state"] == "unavailable"
+        assert availability["placeholder"] is placeholder
+    system_message = {
+        "tweet_id": "7",
+        "text": "This account is suspended. {learnmore}",
+        "raw_json": {"legacy": {"full_text": "This account is suspended. {learnmore}"}},
+    }
+    availability = availability_for_tweet(
+        system_message,
+        {"enrichment_state": "terminal_unavailable", "enrichment_reason": "suspended_account"},
+    )
+    assert availability["placeholder"] is True
 
     partial = availability_for_tweet(_web_tweet("2"), {"enrichment_state": "transient_failure"})
     empty = availability_for_tweet(

@@ -21,6 +21,8 @@ from tweetnook.client.timelines import TimelineTweet, parse_tweet_detail_tweets
 from tweetnook.config import DatabaseConfig, XDGPaths
 from tweetnook.exceptions import ArchiveOwnerMismatchError
 from tweetnook.extractor import (
+    PLACEHOLDER_TEXT_MARKER,
+    PLACEHOLDER_TEXT_PREFIXES,
     ExtractedTweetGraph,
     extract_author_fields,
     extract_canonical_text,
@@ -302,7 +304,7 @@ ARCHIVE_COLUMNS = [
     "value",
 ]
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 12
 COLUMN_TYPES = {
     field: (
         "TEXT PRIMARY KEY"
@@ -404,6 +406,38 @@ def _tweet_fact_values(raw: str) -> str:
     )
 
 
+def _saved_post_text(value: str) -> str:
+    """SQL for non-empty text that is not X's placeholder, as is_placeholder_text decides."""
+    # Curly apostrophes fold to straight ones; LIKE already ignores ASCII case.
+    text = f"TRIM(REPLACE(COALESCE({value}, ''), '\u2019', ''''))"
+    patterns = (f"%{PLACEHOLDER_TEXT_MARKER}%", *(f"{p}%" for p in PLACEHOLDER_TEXT_PREFIXES))
+    placeholder = " OR ".join(
+        f"{text} LIKE '{pattern.replace(chr(39), chr(39) * 2)}'" for pattern in patterns
+    )
+    return f"({text} != '' AND NOT ({placeholder}))"
+
+
+def _tweet_content_values(row: str) -> str:
+    """Content and note presence, evaluated on writes rather than while browsing."""
+    raw = f"(CASE WHEN json_valid({row}.raw_json) THEN {row}.raw_json ELSE '{{}}' END)"
+    tombstone = (
+        f"COALESCE(json_extract({raw}, '$.__typename'), "
+        f"json_extract({raw}, '$.__typename__'), '') IN ('TweetTombstone', 'TweetUnavailable') "
+        f"OR COALESCE(json_extract({raw}, '$.__tombstone__'), 0) = 1"
+    )
+    full_text = f"json_extract({raw}, '$.legacy.full_text')"
+    captured = (
+        f"NOT ({tombstone}) AND ("
+        f"{_saved_post_text(full_text)} OR "
+        f"COALESCE(json_extract({raw}, '$.note_tweet.note_tweet_results.result.text'), '') "
+        "!= '' OR "
+        f"COALESCE(json_array_length({raw}, '$.legacy.extended_entities.media'), 0) > 0 OR "
+        f"{_saved_post_text(f'{row}.text')})"
+    )
+    note = f"COALESCE(json_extract({raw}, '$.birdwatch_pivot.subtitle.text'), '') != ''"
+    return f"{row}.tweet_id, ({captured}), ({note})"
+
+
 SECONDARY_RECORD_TYPES = ("tweet_object", "tweet_relation", "media", "url", "url_ref", "article")
 LIVE_SOURCE = "live_graphql"
 ARCHIVE_SOURCE = "x_archive"
@@ -421,6 +455,16 @@ SEARCH_TEXT_FIELD = "text"
 HIDDEN_TWEET_IDS_SQL = (
     "SELECT hidden.tweet_id FROM archive AS hidden "
     "WHERE hidden.record_type = 'tweet_hidden' AND hidden.tweet_id IS NOT NULL"
+)
+UNCAPTURED_TWEET_IDS_SQL = (
+    "SELECT DISTINCT content.tweet_id FROM archive_tweet_content AS content "
+    "WHERE content.has_content = 0 AND content.tweet_id IS NOT NULL "
+    "AND NOT EXISTS (SELECT 1 FROM archive_tweet_content AS captured "
+    "WHERE captured.tweet_id = content.tweet_id AND captured.has_content = 1)"
+)
+COMMUNITY_NOTE_TWEET_IDS_SQL = (
+    "SELECT tweet_id FROM archive_tweet_content WHERE has_note = 1 "
+    "UNION SELECT tweet_id FROM community_notes"
 )
 _UNSET = object()
 
@@ -490,8 +534,8 @@ class ArchiveStore:
             return
 
         # Releases shipped schema 5 (0.0.9 and 0.1.0), schema 8 (0.1.1 to 0.1.6),
-        # and schema 9 (0.1.7 and 0.1.8).
-        if current_version in {8, 9}:
+        # schema 9 (0.1.7 and 0.1.8), and schema 11 (1.1.0).
+        if current_version in {8, 9, 10, 11}:
             self._migrate_search_facts(current_version)
             return
         if current_version != 5:
@@ -532,9 +576,11 @@ class ArchiveStore:
         )
 
     def _migrate_search_facts(self, current_version: int) -> None:
-        """Add missing derived search tables to a v8/v9 archive; canonical rows are unchanged.
+        """Add missing derived search tables; canonical rows are unchanged.
 
         v8 lacks the search-filter facts; v8 and v9 lack the description index.
+        v10 lacks the content/note flags used to filter uncaptured tweets and notes;
+        v11 computed those flags from an incomplete list of placeholder texts.
         """
         with self.conn:
             self.conn.execute("BEGIN IMMEDIATE")
@@ -704,8 +750,58 @@ class ArchiveStore:
             WHERE author_id IS NOT NULL AND author_id != ''
         """)
         self._create_tweet_facts()
+        self._create_tweet_content()
         self._create_description_fts()
         self._create_cache_revisions()
+
+    def _create_tweet_content(self) -> None:
+        """Index captured content and notes in memberships and context objects."""
+        self._create_community_notes_table()
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS archive_tweet_content "
+            "(row_key TEXT PRIMARY KEY, tweet_id TEXT, has_content INTEGER NOT NULL, "
+            "has_note INTEGER NOT NULL) WITHOUT ROWID"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tweet_content_captured "
+            "ON archive_tweet_content (has_content, tweet_id)"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tweet_content_note "
+            "ON archive_tweet_content (has_note, tweet_id)"
+        )
+        # Rebuilt on upgrade so older trigger bodies pick up the current capture rules.
+        for suffix in ("ai", "au", "ad"):
+            self.conn.execute(f"DROP TRIGGER IF EXISTS archive_content_{suffix}")
+        columns = "row_key, tweet_id, has_content, has_note"
+        types = "('tweet', 'tweet_object')"
+        upsert = (
+            f"INSERT OR REPLACE INTO archive_tweet_content ({columns}) "
+            f"SELECT new.row_key, {_tweet_content_values('new')} "
+            f"WHERE new.record_type IN {types} AND new.row_key IS NOT NULL;"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_content_ai AFTER INSERT ON archive "
+            f"WHEN new.record_type IN {types} AND new.row_key IS NOT NULL "
+            f"BEGIN {upsert} END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_content_au "
+            "AFTER UPDATE OF row_key, record_type, tweet_id, text, raw_json ON archive "
+            f"WHEN old.record_type IN {types} OR new.record_type IN {types} BEGIN "
+            "DELETE FROM archive_tweet_content WHERE row_key = old.row_key; "
+            f"{upsert} END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_content_ad AFTER DELETE ON archive "
+            f"WHEN old.record_type IN {types} BEGIN "
+            "DELETE FROM archive_tweet_content WHERE row_key = old.row_key; END"
+        )
+        self.conn.execute(
+            f"INSERT OR REPLACE INTO archive_tweet_content ({columns}) "
+            f"SELECT content.row_key, {_tweet_content_values('content')} FROM archive AS content "
+            f"WHERE content.record_type IN {types} AND content.row_key IS NOT NULL"
+        )
 
     def _create_tweet_facts(self) -> None:
         """Create, backfill, and maintain the derived search-filter values.
@@ -3149,16 +3245,16 @@ class ArchiveStore:
             )
         self.conn.commit()
 
-    def _hidden_member_count(self, collection: str) -> int:
-        """Count hidden tweets that are members of a collection ("all" for any)."""
-        membership = "member.record_type = 'tweet' AND member.tweet_id = hidden_ids.tweet_id"
+    def _excluded_member_count(self, collection: str, excluded_ids: str) -> int:
+        """Count excluded IDs that belong to this collection, deduplicating overlap."""
+        membership = "member.record_type = 'tweet' AND member.tweet_id = excluded.tweet_id"
         params: tuple[str, ...] = ()
         if collection != "all":
             membership += " AND member.collection_type = ?"
             params = (collection,)
         return int(
             self.conn.execute(
-                f"SELECT COUNT(*) FROM ({HIDDEN_TWEET_IDS_SQL}) AS hidden_ids "
+                f"SELECT COUNT(*) FROM ({excluded_ids}) AS excluded "
                 "WHERE EXISTS (SELECT 1 FROM archive AS member "
                 f"INDEXED BY idx_archive_membership WHERE {membership})",
                 params,
@@ -3600,12 +3696,15 @@ class ArchiveStore:
                 "http_status INTEGER, scope TEXT, reason TEXT, "
                 "PRIMARY KEY (tweet_id, checked_at))"
             )
-            self.conn.execute(
-                "CREATE TABLE IF NOT EXISTS community_notes ("
-                "tweet_id TEXT NOT NULL, text_hash TEXT NOT NULL, text TEXT NOT NULL, "
-                "raw_json TEXT, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, "
-                "removed_at TEXT, PRIMARY KEY (tweet_id, text_hash))"
-            )
+            self._create_community_notes_table()
+
+    def _create_community_notes_table(self) -> None:
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS community_notes ("
+            "tweet_id TEXT NOT NULL, text_hash TEXT NOT NULL, text TEXT NOT NULL, "
+            "raw_json TEXT, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, "
+            "removed_at TEXT, PRIMARY KEY (tweet_id, text_hash))"
+        )
 
     def _table_exists(self, name: str) -> bool:
         return (
@@ -4255,6 +4354,7 @@ class ArchiveStore:
         *,
         after: dict[str, Any] | None = None,
         exclude_hidden: bool = False,
+        exclude_uncaptured: bool = False,
     ) -> list[dict[str, Any]]:
         if sort not in {"newest", "oldest", "random"}:
             raise ValueError(f"Unsupported sort order: {sort}")
@@ -4275,6 +4375,8 @@ class ArchiveStore:
             params.extend([collection, collection])
         if exclude_hidden:
             where.append(f"candidate.tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})")
+        if exclude_uncaptured:
+            where.append(f"candidate.tweet_id NOT IN ({UNCAPTURED_TWEET_IDS_SQL})")
 
         order_by = (
             "candidate.created_at_ts DESC, "
@@ -5622,17 +5724,25 @@ class ArchiveStore:
         count_only: bool = False,
         after: dict[str, Any] | None = None,
         exclude_hidden: bool = False,
+        exclude_uncaptured: bool = False,
     ) -> tuple[list[dict[str, Any]], int | None]:
         """Evaluate the Web tweet query in SQLite and return one lightweight page.
 
         Text clauses are independent FTS relations. The supplied filter expressions
         are produced by the canonical query compiler, never by HTTP input directly.
         exclude_hidden leaves out tweets hidden with set_tweet_hidden().
+        exclude_uncaptured leaves out tweets with no saved content in any copy.
         """
         if count_only:
             include_total = True
             sort = "newest"  # Counts need neither BM25 nor like-order rebuilding.
-        hidden_expr = f"archive.tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})" if exclude_hidden else ""
+        excluded_ids = []
+        if exclude_hidden:
+            excluded_ids.append(HIDDEN_TWEET_IDS_SQL)
+        if exclude_uncaptured:
+            excluded_ids.append(UNCAPTURED_TWEET_IDS_SQL)
+        excluded_sql = " UNION ".join(excluded_ids)
+        excluded_expr = f"archive.tweet_id NOT IN ({excluded_sql})" if excluded_sql else ""
 
         self.ensure_fts_index()
         if limit < 1:
@@ -5653,13 +5763,13 @@ class ArchiveStore:
             if collection != "all":
                 filter_expr += f" AND collection_type = {_expr_quote(collection)}"
             total = self.count_export_rows(collection) if include_total else None
-            if total is not None and exclude_hidden:
-                total -= self._hidden_member_count(collection)
+            if total is not None and excluded_sql:
+                total -= self._excluded_member_count(collection, excluded_sql)
             if count_only:
                 return [], total
             if sort in {"liked_latest", "liked_earliest"}:
                 rows = self.query_like_order_ids(
-                    f"{filter_expr} AND {hidden_expr}" if hidden_expr else filter_expr,
+                    f"{filter_expr} AND {excluded_expr}" if excluded_expr else filter_expr,
                     sort=sort,
                     limit=limit + 1,
                     offset=offset,
@@ -5673,6 +5783,7 @@ class ArchiveStore:
                 sort=sort,
                 after=after,
                 exclude_hidden=exclude_hidden,
+                exclude_uncaptured=exclude_uncaptured,
             )
             return rows, total
 
@@ -5825,8 +5936,8 @@ class ArchiveStore:
         where = ["archive.record_type = 'tweet'"]
         if collection_expr:
             where.append(collection_expr)
-        if hidden_expr:
-            where.append(hidden_expr)
+        if excluded_expr:
+            where.append(excluded_expr)
         where.extend(group_conditions)
         score_expr = " + ".join(group_scores) if group_scores else "0.0"
         likes_column = ", favorite_count" if sort == "most_likes" else ""

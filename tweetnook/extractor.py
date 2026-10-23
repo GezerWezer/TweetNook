@@ -102,6 +102,35 @@ def extract_tweet_unavailability_detail(result: dict[str, Any]) -> str | None:
     return None
 
 
+# X's system text for posts it will not show. Prefixes are casefolded with straight
+# apostrophes; the storage capture flags compile the same list to SQL.
+PLACEHOLDER_TEXT_MARKER = "{learnmore}"
+PLACEHOLDER_TEXT_PREFIXES = (
+    "this post is from ",
+    "this tweet is from ",
+    "this post from ",
+    "this tweet from ",
+    "this post was deleted ",
+    "this tweet was deleted ",
+    "this post is unavailable",
+    "this tweet is unavailable",
+    "this post is not available ",
+    "this tweet is not available ",
+    "this post has been withheld",
+    "this tweet has been withheld",
+    "you're unable to view this post",
+    "you're unable to view this tweet",
+)
+
+
+def is_placeholder_text(text: str | None) -> bool:
+    """Whether saved text is X's system placeholder rather than the post itself."""
+    if not text:
+        return False
+    normalized = " ".join(text.casefold().replace("\u2019", "'").split())
+    return PLACEHOLDER_TEXT_MARKER in normalized or normalized.startswith(PLACEHOLDER_TEXT_PREFIXES)
+
+
 def classify_tweet_unavailability(typename: str, text: str | None) -> str:
     normalized = (text or "").casefold().replace("\u2019", "'").replace("\u2018", "'")
     normalized = re.sub(r"\{[^{}]*\}", " ", normalized)

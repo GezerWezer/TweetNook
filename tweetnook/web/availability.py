@@ -10,7 +10,9 @@ from tweetnook.extractor import (
     classify_tweet_unavailability,
     extract_author_fields,
     extract_canonical_text,
+    extract_note_tweet_text,
     extract_tweet_unavailability_detail,
+    is_placeholder_text,
     unwrap_tweet_result,
 )
 from tweetnook.media_metadata import aspect_ratio_for_media
@@ -76,20 +78,9 @@ def _fallback_unavailable_reason(tweet: dict[str, Any]) -> str | None:
     text = tweet.get("text")
     if not isinstance(text, str) or not text:
         return None
-    normalized = " ".join(text.casefold().split())
-    looks_like_system_placeholder = (
-        "{learnmore}" in normalized
-        or normalized.startswith("this post is from ")
-        or normalized.startswith("this tweet is from ")
-        or normalized.startswith("this post was deleted ")
-        or normalized.startswith("this tweet was deleted ")
-        or normalized.startswith("this post is unavailable")
-        or normalized.startswith("this tweet is unavailable")
-        or normalized.startswith("this post is not available ")
-        or normalized.startswith("this tweet is not available ")
-    )
-    if not looks_like_system_placeholder:
+    if not is_placeholder_text(text):
         return None
+    normalized = " ".join(text.casefold().split())
     reason = classify_tweet_unavailability("", text)
     if reason != "unavailable_unknown":
         return reason
@@ -99,11 +90,22 @@ def _fallback_unavailable_reason(tweet: dict[str, Any]) -> str | None:
 
 
 def _has_archived_copy(tweet: dict[str, Any]) -> bool:
-    raw = _json_dict(tweet.get("raw_json"))
-    if raw is None or _direct_tombstone(raw) is not None:
+    """Saved post content, by the same rule as the storage capture flags."""
+    raw = _json_dict(tweet.get("raw_json")) or {}
+    if _direct_tombstone(raw) is not None:
         return False
-    legacy = raw.get("legacy")
-    return isinstance(legacy, dict) and bool(legacy.get("full_text") or raw.get("note_tweet"))
+    legacy = raw.get("legacy") if isinstance(raw.get("legacy"), dict) else {}
+    media = (legacy.get("extended_entities") or {}).get("media")
+    return bool(
+        _is_saved_post_text(legacy.get("full_text"))
+        or extract_note_tweet_text(raw)
+        or (isinstance(media, list) and media)
+        or _is_saved_post_text(tweet.get("text"))
+    )
+
+
+def _is_saved_post_text(text: Any) -> bool:
+    return isinstance(text, str) and bool(text.strip()) and not is_placeholder_text(text)
 
 
 def availability_for_tweet(

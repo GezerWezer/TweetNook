@@ -89,6 +89,7 @@ since:2026-08-19 until:2026-08-20
 | `has:video` | Tweets with video |
 | `has:links` | Tweets with links |
 | `has:article` | Tweets with a Twitter/X article |
+| `has:note` | Current or past Community Notes, on the tweet or its directly quoted original |
 | `is:reply` | Replies |
 | `is:quote` | Quote tweets |
 | `is:retweet` | Reposts |
@@ -96,6 +97,7 @@ since:2026-08-19 until:2026-08-20
 | `is:verified` | Tweets whose captured author data indicates verification |
 | `is:resurrected` | Tweets recovered after previously being unavailable |
 | `is:hidden` | Tweets you hid with **Hide** in the tweet menu |
+| `is:uncaptured` | Posts whose content was never captured in the archive |
 
 To exclude a type, put `-` before the filter: `has:media -is:retweet`.
 
@@ -103,6 +105,18 @@ Hidden tweets are left out of every list and search, in the web app and the
 terminal, unless the query includes `is:hidden`. Combine it like any other filter:
 `is:hidden from:alice` finds Alice's hidden tweets, and `recipe OR is:hidden`
 includes hidden tweets alongside matches for `recipe`.
+
+Posts without captured content are also left out by default. `is:uncaptured`
+finds those entries, including unavailable placeholders and entries still awaiting
+capture. It combines with other filters; `recipe OR is:uncaptured` includes
+uncaptured entries alongside recipe matches. `-is:uncaptured` excludes them
+explicitly. A saved copy stays visible even if the post later disappears from X.
+Detail pages and quoted placeholders remain accessible.
+
+`has:note` includes a note saved with the post or any recorded note history,
+including notes that were removed. Like tag searches, it also matches notes on
+directly quoted originals outside your collections. It does not follow further
+levels of quotes. `-has:note` excludes the same set.
 
 ## Tags and links
 

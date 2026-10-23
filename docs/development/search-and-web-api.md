@@ -47,8 +47,8 @@ url source card_name tag description hashtag
 
 Enums:
 
-- `has`: article, media, image, video, links;
-- `is`: hidden, quote, reply, resurrected, retweet, thread, verified;
+- `has`: article, media, image, video, links, note;
+- `is`: hidden, missing, quote, reply, resurrected, retweet, thread, uncaptured, verified;
 - `filter`: articles, images, links, media, native_video,
   nativeretweets, quote, replies, self_threads, threads, verified, videos.
 
@@ -98,6 +98,19 @@ the ordinary feed, and the like-order filter, and subtracts hidden members from
 the cached feed total. `is:hidden` compiles to the matching `IN` predicate, so it
 combines with `OR`/`-` like other filters. Detail, quote, and raw routes still
 return hidden tweets.
+
+The same list/count paths exclude uncaptured IDs unless any clause names
+`is:uncaptured`. `archive_tweet_content` holds write-maintained content/note flags
+for memberships and context objects. An ID is uncaptured only when none of its
+stored copies has content; tombstone/system text and metadata-only rows do not
+count as captured content. Ordinary feeds retain chronological cursor seeking,
+and their totals subtract the union of hidden and uncaptured members once.
+Raw/detail/quote routes keep their existing access and availability behavior.
+
+`has:note` selects IDs with a captured `birdwatch_pivot.subtitle.text` or any
+`community_notes` version, including removed versions, then includes direct
+`quote_of` sources using the same indexed relation lookup as tags. Non-member
+quote targets participate without becoming standalone collection results.
 
 FTS values and cursor bounds are parameterized; structured SQL expressions come
 from the canonical compiler. Tests cover injection-shaped filters, malformed

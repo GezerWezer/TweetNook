@@ -142,6 +142,8 @@
             }
         }
         if (key === 'has') {
+            if (value === 'note') return [tweet, tweet.quoted_tweet].some(post =>
+                post?.note_history || Boolean(post?.raw_json?.birdwatch_pivot?.subtitle?.text));
             if (value === 'article') return Boolean(tweet.article);
             if (value === 'media') return Boolean(tweet.media?.length);
             if (value === 'image') return tweet.media?.some(item => item.type === 'photo') || false;
@@ -169,6 +171,7 @@
             if (normalized === 'verified') return Boolean(tweet._demo?.verified);
             if (normalized === 'resurrected') return tweet.enrichment_state === 'resurrected';
             if (normalized === 'hidden') return Boolean(tweet.hidden);
+            if (normalized === 'uncaptured') return Boolean(tweet.uncaptured);
         }
         if (key === 'min_retweets') return Number(engagement.retweets || 0) >= Number(rawValue);
         if (key === 'min_faves') return Number(engagement.likes || 0) >= Number(rawValue);
@@ -379,6 +382,8 @@
                     : null,
                 qt_media_tags: null,
                 hidden: Boolean(source.hidden),
+                uncaptured: Boolean(source.uncaptured),
+                note_history: Boolean(source.note_history),
                 raw_json: raw,
                 _demo: {
                     liked_order: source.liked_order,
@@ -984,7 +989,11 @@
                 const namesHidden = groups.some(group => group.some(token => (
                     token.kind === 'filter' && token.key === 'is' && token.value.toLowerCase() === 'hidden'
                 )));
-                tweets = tweets.filter(tweet => (namesHidden || !tweet.hidden) && matchesQuery(tweet, groups));
+                const namesUncaptured = groups.some(group => group.some(token => (
+                    token.kind === 'filter' && token.key === 'is' && token.value.toLowerCase() === 'uncaptured'
+                )));
+                tweets = tweets.filter(tweet => (namesHidden || !tweet.hidden)
+                    && (namesUncaptured || !tweet.uncaptured) && matchesQuery(tweet, groups));
                 if (path.endsWith('/count')) return jsonResponse({total: tweets.length});
                 tweets = sortedTweets(
                     tweets,

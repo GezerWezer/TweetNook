@@ -13,7 +13,11 @@ from typing import Any, Literal
 
 from tweetnook.export.common import normalize_collection_name
 from tweetnook.like_order import LIKE_SORTS
-from tweetnook.storage.backend import HIDDEN_TWEET_IDS_SQL
+from tweetnook.storage.backend import (
+    COMMUNITY_NOTE_TWEET_IDS_SQL,
+    HIDDEN_TWEET_IDS_SQL,
+    UNCAPTURED_TWEET_IDS_SQL,
+)
 
 _FILTER_KEYS = frozenset(
     {
@@ -43,9 +47,19 @@ _FILTER_KEYS = frozenset(
     }
 )
 _FILTER_VALUES = {
-    "has": frozenset({"article", "media", "image", "video", "links"}),
+    "has": frozenset({"article", "media", "image", "video", "links", "note"}),
     "is": frozenset(
-        {"hidden", "missing", "quote", "reply", "resurrected", "retweet", "thread", "verified"}
+        {
+            "hidden",
+            "missing",
+            "quote",
+            "reply",
+            "resurrected",
+            "retweet",
+            "thread",
+            "uncaptured",
+            "verified",
+        }
     ),
     "filter": frozenset(
         {
@@ -324,7 +338,7 @@ def _description_match(value: str) -> str:
 
 
 def _media_tag_match(matching_tweet_ids: str) -> str:
-    """Match tweets selected from media_tag rows, and tweets that quote them."""
+    """Match selected tweets and their direct quoting posts, like tag searches."""
     return (
         "archive.tweet_id IN ("
         f"WITH matching_tags(tweet_id) AS MATERIALIZED ({matching_tweet_ids}) "
@@ -426,6 +440,10 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
         expression = _fact("is_verified")
     elif (key, value) == ("is", "hidden"):
         expression = f"archive.tweet_id IN ({HIDDEN_TWEET_IDS_SQL})"
+    elif (key, value) == ("is", "uncaptured"):
+        expression = f"archive.tweet_id IN ({UNCAPTURED_TWEET_IDS_SQL})"
+    elif (key, value) == ("has", "note"):
+        expression = _media_tag_match(COMMUNITY_NOTE_TWEET_IDS_SQL)
     elif key in {"min_retweets", "min_faves", "min_replies"}:
         count_field = {
             "min_retweets": "retweet_count",
@@ -501,10 +519,15 @@ def _hydrate_metadata(
     return rows
 
 
-def _compile_tweet_query(parsed: ParsedSearchQuery) -> tuple[tuple, bool]:
+def _compile_tweet_query(parsed: ParsedSearchQuery) -> tuple[tuple, bool, bool]:
     # Hidden tweets stay out of results unless the query mentions is:hidden.
     exclude_hidden = not any(
         clause.key == "is" and clause.value == "hidden"
+        for group in parsed.groups
+        for clause in group
+    )
+    exclude_uncaptured = not any(
+        clause.key == "is" and clause.value == "uncaptured"
         for group in parsed.groups
         for clause in group
     )
@@ -531,14 +554,16 @@ def _compile_tweet_query(parsed: ParsedSearchQuery) -> tuple[tuple, bool]:
             )
         query_groups.append(tuple(compiled_group))
 
-    return tuple(query_groups), exclude_hidden
+    return tuple(query_groups), exclude_hidden, exclude_uncaptured
 
 
 def count_posts(store, query: str | None, *, collections: set[str] | None = None) -> int:
     """Count the same logical matches as search_posts, without sorting or hydration."""
     if collections:
         collections = {normalize_collection_name(value) for value in collections} - {"all"}
-    query_groups, exclude_hidden = _compile_tweet_query(parse_search_query(query))
+    query_groups, exclude_hidden, exclude_uncaptured = _compile_tweet_query(
+        parse_search_query(query)
+    )
     _, total = store.search_tweet_ids(
         query_groups,
         collections=collections or None,
@@ -547,6 +572,7 @@ def count_posts(store, query: str | None, *, collections: set[str] | None = None
         offset=0,
         count_only=True,
         exclude_hidden=exclude_hidden,
+        exclude_uncaptured=exclude_uncaptured,
     )
     return total
 
@@ -575,7 +601,7 @@ def search_posts(
         raise SearchQueryError("Like order is available only for the Likes collection.")
 
     parsed = parse_search_query(query)
-    query_groups, exclude_hidden = _compile_tweet_query(parsed)
+    query_groups, exclude_hidden, exclude_uncaptured = _compile_tweet_query(parsed)
 
     effective_sort = _effective_sort(sort, has_positive_text=parsed.has_positive_text)
     mode = "offset"
@@ -616,6 +642,7 @@ def search_posts(
         random_seed=random_seed,
         include_total=not parsed.has_text,
         exclude_hidden=exclude_hidden,
+        exclude_uncaptured=exclude_uncaptured,
         **cursor_options,
     )
     if revision is not None and revision != store.cache_revision("like_order"):
