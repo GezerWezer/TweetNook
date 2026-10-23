@@ -27,6 +27,11 @@
     --font-size-base: 15px;
 }
 
+html {
+    background-color: var(--bg-primary);
+    color-scheme: dark;
+}
+
 body {
     background-color: var(--bg-primary);
     color: var(--text-primary);

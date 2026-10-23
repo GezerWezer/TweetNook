@@ -18,6 +18,10 @@ function browserContext(pathname = '/') {
     const scrollCalls = [];
     const appendedLinks = [];
     const videos = [];
+    const themeColor = {
+        content: '#000000',
+        setAttribute(name, value) { this[name] = value; },
+    };
     const location = { origin: 'http://localhost', pathname };
     let historyState = null;
 
@@ -117,6 +121,7 @@ function browserContext(pathname = '/') {
                 },
             },
             querySelector(selector) {
+                if (selector === 'meta[name="theme-color"]') return themeColor;
                 if (selector.startsWith('link[data-font=')) {
                     return appendedLinks.find(link => selector.includes(link.dataset.font)) || null;
                 }
@@ -202,6 +207,7 @@ function browserContext(pathname = '/') {
         scrollCalls,
         appendedLinks,
         videos,
+        themeColor,
     };
     vm.createContext(context);
     return context;
@@ -598,6 +604,8 @@ test('demo follows system appearance until an explicit theme is chosen', () => {
         const app = start();
         assert.equal(app.currentTheme, dark ? 'classic-dark' : 'classic-light');
         assert.equal(app.darkMode, dark);
+        assert.equal(context.__state.cssProperties.get('color-scheme'), dark ? 'dark' : 'light');
+        assert.equal(context.__state.themeColor.content, dark ? '#000000' : '#ffffff');
         assert.equal(context.__state.rootClasses.has('light'), !dark);
         assert.equal(context.localStorage.getItem('tvx-theme'), null);
         assert.equal(app.splitPanel, true);
@@ -608,6 +616,8 @@ test('demo follows system appearance until an explicit theme is chosen', () => {
         scheme.matches = !dark;
         onChange();
         assert.equal(app.currentTheme, dark ? 'classic-light' : 'classic-dark');
+        assert.equal(context.__state.cssProperties.get('color-scheme'), dark ? 'light' : 'dark');
+        assert.equal(context.__state.themeColor.content, dark ? '#ffffff' : '#000000');
         assert.equal(context.localStorage.getItem('tvx-theme'), null);
         assert.equal(start().currentTheme, app.currentTheme);
 
@@ -638,6 +648,8 @@ test('desktop split-panel defaults respect saved layout and theme choices in dem
             app.fetchAutomatedTagging = async () => {};
             app.initApp();
             assert.equal(app.currentTheme, 'classic-dark');
+            assert.equal(context.__state.cssProperties.get('color-scheme'), 'dark');
+            assert.equal(context.__state.themeColor.content, '#000000');
             assert.equal(app.splitPanel, savedSplit === null ? true : savedSplit === 'true');
         }
     }
@@ -2363,11 +2375,16 @@ test('themes, accents, fonts, sizes, and split panel persist preferences', () =>
     );
     const app = immediateComponent(tweetApp());
 
+    app.applyTheme('dracula');
+    assert.equal(context.__state.themeColor.content, '#282a36');
+    assert.equal(context.__state.cssProperties.get('color-scheme'), 'dark');
     app.applyTheme('classic-light');
     assert.equal(app.currentTheme, 'classic-light');
     assert.equal(context.__state.cssProperties.get('--bg-primary'), '#ffffff');
     assert.ok(context.__state.rootClasses.has('light'));
     assert.equal(context.localStorage.getItem('tvx-theme'), 'classic-light');
+    assert.equal(context.__state.themeColor.content, '#ffffff');
+    assert.equal(context.__state.cssProperties.get('color-scheme'), 'light');
 
     const accent = app.THEMES['classic-light']._accents[1];
     app.setAccent(accent);

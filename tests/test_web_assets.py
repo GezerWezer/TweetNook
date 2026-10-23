@@ -40,6 +40,7 @@ def test_index_loads_local_assets_in_dependency_order():
     assert '<link rel="stylesheet" href="/static/css/styles.css">' in html
     assert 'x-data="tweetApp()"' in html
     assert 'x-data="searchAutocomplete()"' in html
+    assert '<meta name="theme-color" content="#000000">' in html
 
 
 @pytest.mark.parametrize(

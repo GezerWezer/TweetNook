@@ -4452,6 +4452,8 @@ function tweetApp() {
             const r = parseInt(bgHex.slice(1,3),16), g = parseInt(bgHex.slice(3,5),16), b = parseInt(bgHex.slice(5,7),16);
             this.darkMode = (r*0.299 + g*0.587 + b*0.114) < 128;
             if (this.darkMode) { root.classList.remove('light'); } else { root.classList.add('light'); }
+            root.style.setProperty('color-scheme', this.darkMode ? 'dark' : 'light');
+            document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bgHex);
 
             // Restore saved accent for this theme (if it has selectable accents)
             if (theme._accents) {
