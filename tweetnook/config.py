@@ -85,7 +85,7 @@ class SyncConfig(BaseModel):
     timeout: float = Field(default=30.0, ge=1.0)
     max_linked_depth: int = Field(default=50, ge=0)
     reply_linked_depth: int = Field(default=0, ge=0, le=1)
-    reply_linked_limit: int = Field(default=50, ge=1)
+    reply_linked_limit: int = Field(default=1, ge=1)
 
     @field_validator("collections")
     @classmethod

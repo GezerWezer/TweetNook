@@ -20,7 +20,7 @@ from tweetnook.threads import expand_threads, walk_linked_statuses
 
 
 def test_reply_limit_defaults_validation_persistence_and_schema(paths):
-    assert SyncConfig().reply_linked_limit == 50
+    assert SyncConfig().reply_linked_limit == 1
     with pytest.raises(ValidationError):
         SyncConfig(reply_linked_limit=0)
     update_config_values(paths, {"sync.reply_linked_depth": 1, "sync.reply_linked_limit": 3})
