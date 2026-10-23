@@ -203,7 +203,7 @@ async def download_media(
         paths = job.paths
         store = job.store
         emit_status(status, "checking saved link-card images")
-        queued = store.backfill_link_card_media()
+        queued = store.restore_link_card_images() + store.backfill_link_card_media()
         if queued:
             job.mark_dirty(rows=queued, batches=1)
             emit_status(status, f"queued {queued} saved link-card images")

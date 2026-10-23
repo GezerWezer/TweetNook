@@ -719,17 +719,26 @@ def _article_media_dimensions(item: dict[str, Any]) -> tuple[int | None, int | N
     )
 
 
-def extract_link_card_media(tweet: dict[str, Any]) -> list[MediaData]:
-    """Extract a summary card's image separately from the tweet's own photos."""
-    tweet_id = tweet.get("rest_id")
-    card = tweet.get("card")
-    if not tweet_id or not isinstance(card, dict):
-        return []
+LINK_CARD_IMAGE_KEYS = (
+    "thumbnail_image_original",
+    "summary_photo_image_original",
+    "thumbnail_image_x_large",
+    "thumbnail_image_large",
+    "thumbnail_image",
+    "photo_image_full_size",
+    "summary_photo_image",
+)
+
+
+def _link_card_values(card: Any) -> dict[str, Any] | None:
+    """Binding values of a summary card, keyed by name; None for other cards."""
+    if not isinstance(card, dict):
+        return None
     legacy = card.get("legacy")
     legacy = legacy if isinstance(legacy, dict) else {}
     name = card.get("name") or legacy.get("name")
     if not isinstance(name, str) or name not in {"summary", "summary_large_image"}:
-        return []
+        return None
     values = card.get("binding_values") or legacy.get("binding_values") or {}
     if isinstance(values, list):
         values = {
@@ -737,17 +746,11 @@ def extract_link_card_media(tweet: dict[str, Any]) -> list[MediaData]:
             for item in values
             if isinstance(item, dict) and isinstance(item.get("key"), str)
         }
-    if not isinstance(values, dict):
-        return []
-    for key in (
-        "thumbnail_image_original",
-        "summary_photo_image_original",
-        "thumbnail_image_x_large",
-        "thumbnail_image_large",
-        "thumbnail_image",
-        "photo_image_full_size",
-        "summary_photo_image",
-    ):
+    return values if isinstance(values, dict) else None
+
+
+def _link_card_image(values: dict[str, Any]) -> dict[str, Any] | None:
+    for key in LINK_CARD_IMAGE_KEYS:
         value = values.get(key)
         image = value.get("image_value") if isinstance(value, dict) else None
         if not isinstance(image, dict):
@@ -761,23 +764,85 @@ def extract_link_card_media(tweet: dict[str, Any]) -> list[MediaData]:
                 continue
         except ValueError:
             continue
-        return [
-            MediaData(
-                tweet_id=str(tweet_id),
-                position=0,
-                media_key="link-card:" + sha256(url.encode("utf-8")).hexdigest(),
-                media_type="photo",
-                media_url=url,
-                thumbnail_url=url,
-                width=_as_int(image.get("width")),
-                height=_as_int(image.get("height")),
-                duration_millis=None,
-                variants=[],
-                raw_json=image,
-                source="link_card",
-            )
-        ]
-    return []
+        return image
+    return None
+
+
+def _link_card_identity(card: dict[str, Any], values: dict[str, Any]) -> str | None:
+    legacy = card.get("legacy")
+    url = card.get("url") or (legacy.get("url") if isinstance(legacy, dict) else None)
+    if not isinstance(url, str) or not url:
+        card_url = values.get("card_url")
+        url = card_url.get("string_value") if isinstance(card_url, dict) else None
+    return url if isinstance(url, str) and url else None
+
+
+def link_card_lacks_image(tweet: Any) -> bool:
+    """Whether a tweet's summary card arrived without its image bindings.
+
+    X's Likes timeline sometimes sends cards with only title, description and
+    links; detail responses for the same tweet include the images.
+    """
+    if not isinstance(tweet, dict):
+        return False
+    values = _link_card_values(tweet.get("card"))
+    return values is not None and _link_card_image(values) is None
+
+
+def link_card_has_image(tweet: Any) -> bool:
+    """Whether a tweet has a summary card with a usable image."""
+    if not isinstance(tweet, dict):
+        return False
+    values = _link_card_values(tweet.get("card"))
+    return values is not None and _link_card_image(values) is not None
+
+
+def restore_link_card_image(tweet: dict[str, Any], donor: Any) -> bool:
+    """Copy ``donor``'s card into ``tweet`` when it is the same card with an image.
+
+    Returns whether ``tweet`` changed. Cards are matched by their card URL, so
+    a tweet whose card was replaced keeps its own.
+    """
+    if not link_card_lacks_image(tweet) or not isinstance(donor, dict):
+        return False
+    card = tweet["card"]
+    donor_card = donor.get("card")
+    donor_values = _link_card_values(donor_card)
+    if donor_values is None or _link_card_image(donor_values) is None:
+        return False
+    identity = _link_card_identity(card, _link_card_values(card) or {})
+    if identity is None or identity != _link_card_identity(donor_card, donor_values):
+        return False
+    tweet["card"] = donor_card
+    return True
+
+
+def extract_link_card_media(tweet: dict[str, Any]) -> list[MediaData]:
+    """Extract a summary card's image separately from the tweet's own photos."""
+    tweet_id = tweet.get("rest_id")
+    if not tweet_id:
+        return []
+    values = _link_card_values(tweet.get("card"))
+    image = _link_card_image(values) if values is not None else None
+    if image is None:
+        return []
+    url = image["url"]
+    return [
+        MediaData(
+            tweet_id=str(tweet_id),
+            position=0,
+            media_key="link-card:" + sha256(url.encode("utf-8")).hexdigest(),
+            media_type="photo",
+            media_url=url,
+            thumbnail_url=url,
+            width=_as_int(image.get("width")),
+            height=_as_int(image.get("height")),
+            duration_millis=None,
+            variants=[],
+            raw_json=image,
+            source="link_card",
+        )
+    ]
 
 
 def _article_media_entries(

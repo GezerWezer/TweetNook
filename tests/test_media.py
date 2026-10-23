@@ -383,3 +383,100 @@ async def test_full_disk_aborts_download_without_marking_remaining_rows_failed(
         assert all(row["download_state"] == "pending" for row in rows)
     finally:
         store.close()
+
+
+def _card_tweet(tweet_id: str, card: dict[str, object]) -> TimelineTweet:
+    raw = make_tweet_result(tweet_id, "a linked story")
+    raw["card"] = card
+    return TimelineTweet(
+        tweet_id=tweet_id,
+        text="a linked story",
+        author_id="1",
+        author_username="user1",
+        author_display_name="User 1",
+        created_at="Sat Mar 14 00:00:00 +0000 2026",
+        sort_index="10",
+        raw_json=raw,
+    )
+
+
+def _stripped_card(card_url: str = "https://example.com/story") -> dict[str, object]:
+    # X's Likes timeline sometimes sends a summary card without any image bindings.
+    return {
+        "legacy": {
+            "name": "summary_large_image",
+            "binding_values": [
+                {"key": "title", "value": {"string_value": "A saved story"}},
+                {"key": "card_url", "value": {"string_value": card_url}},
+            ],
+        }
+    }
+
+
+def _card_image(store: ArchiveStore, row_key: str) -> str | None:
+    import json
+
+    raw = json.loads(store._get_row(row_key)["raw_json"])
+    for item in raw["card"]["legacy"]["binding_values"]:
+        if item["key"] == "thumbnail_image_original":
+            return item["value"]["image_value"]["url"]
+    return None
+
+
+def _persist_likes(store: ArchiveStore, tweet: TimelineTweet) -> None:
+    store.persist_page(
+        operation="Likes",
+        collection_type="like",
+        cursor_in=None,
+        cursor_out="cursor-1",
+        http_status=200,
+        raw_json={"page": tweet.tweet_id},
+        tweets=[tweet],
+        last_head_tweet_id=tweet.tweet_id,
+        backfill_cursor="cursor-1",
+        backfill_incomplete=False,
+    )
+
+
+def test_later_timeline_copy_keeps_the_card_image_of_the_same_card(paths):
+    store = open_archive_store(paths, create=True)
+    card_image = "https://pbs.twimg.com/card_img/story.jpg"
+    try:
+        detail = _card_tweet("400", make_link_card(card_image))
+        store.persist_tweet_detail(tweet=detail, raw_json={"detail": "400"})
+        _persist_likes(store, _card_tweet("400", _stripped_card()))
+        assert _card_image(store, "tweet_object:400") == card_image
+        assert _card_image(store, "tweet:like::400") == card_image
+
+        # A different card (another link) replaces the old one as before.
+        _persist_likes(store, _card_tweet("400", _stripped_card("https://example.com/other")))
+        assert _card_image(store, "tweet_object:400") is None
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("operation", ["TweetDetail", "Likes"])
+def test_stripped_link_cards_are_restored_once_from_saved_captures(paths, operation):
+    store = open_archive_store(paths, create=True)
+    card_image = "https://pbs.twimg.com/card_img/story.jpg"
+    try:
+        _persist_likes(store, _card_tweet("500", _stripped_card()))
+        _persist_likes(store, _card_tweet("501", _stripped_card()))  # no capture has its image
+        full = make_tweet_result("500", "a linked story")
+        full["card"] = make_link_card(card_image)
+        older = make_tweet_result("500", "a linked story")
+        older["card"] = make_link_card("https://pbs.twimg.com/card_img/older.jpg")
+        cursor_in = "500" if operation == "TweetDetail" else "page-cursor"
+        store.append_raw_capture(operation, cursor_in, None, 200, {"data": {"tweet": older}})
+        store.append_raw_capture(operation, cursor_in, None, 200, {"data": {"tweet": full}})
+        assert _card_image(store, "tweet_object:500") is None
+
+        assert store.restore_link_card_images() == 1
+        assert _card_image(store, "tweet_object:500") == card_image
+        assert _card_image(store, "tweet:like::500") == card_image
+        assert _card_image(store, "tweet_object:501") is None
+        media = [row for row in store.list_media_rows() if row["source"] == "link_card"]
+        assert [(row["tweet_id"], row["media_url"]) for row in media] == [("500", card_image)]
+        assert store.restore_link_card_images() == 0
+    finally:
+        store.close()

@@ -28,6 +28,9 @@ from tweetnook.extractor import (
     extract_secondary_objects,
     extract_status_id_from_url,
     extract_thread_objects,
+    link_card_has_image,
+    link_card_lacks_image,
+    restore_link_card_image,
 )
 from tweetnook.media_metadata import aspect_ratio_for_media
 from tweetnook.utils import utc_now
@@ -66,6 +69,31 @@ def _state_filter_expr(field: str, states: set[str]) -> str:
 
 def _and_expr(*clauses: str) -> str:
     return " AND ".join(clause for clause in clauses if clause)
+
+
+_DETAIL_OPERATIONS = ("ThreadExpandDetail", "TweetDetail", "TweetDetailResurrection")
+
+
+def _captured_link_card_tweets(raw_json: Any, wanted: set[str]) -> dict[str, dict[str, Any]]:
+    """Tweets in one raw capture, among ``wanted``, whose summary card has an image."""
+    if not isinstance(raw_json, str) or '"image_value"' not in raw_json:
+        return {}
+    try:
+        payload = fastjson.loads(raw_json)
+    except (TypeError, ValueError):
+        return {}
+    found: dict[str, dict[str, Any]] = {}
+    stack = [payload]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            rest_id = node.get("rest_id")
+            if rest_id in wanted and link_card_has_image(node):
+                found[rest_id] = node
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
+    return found
 
 
 def _parse_created_at(raw: str | None) -> datetime | None:
@@ -1257,6 +1285,46 @@ class ArchiveStore:
             return self._coalesce_value(incoming, existing)
         return self._coalesce_value(existing, incoming)
 
+    def _merged_tweet_raw_json(
+        self,
+        context: _RecordContext,
+        raw: Any,
+        *,
+        prefer_incoming: bool,
+        fallback_key: str | None = None,
+        cursor: _PageBuffer | None = None,
+    ) -> Any:
+        incoming = self._json_value(raw)
+        merged = self._merge_by_source_precedence(
+            context, "raw_json", incoming, prefer_incoming=prefer_incoming
+        )
+        if not isinstance(merged, str) or '"card"' not in merged:
+            return merged
+        # Timelines sometimes send a summary card without its images. Whichever
+        # copy wins, keep the image bindings another copy has for that card:
+        # the losing copy, then (for collection rows) the shared tweet object.
+        donors = [self._existing_value(context, "raw_json") if merged is incoming else incoming]
+        if fallback_key is not None:
+            fallback = self._lookup_row(fallback_key, cursor=cursor)
+            donors.append(fallback.get("raw_json") if fallback else None)
+        donors = [value for value in donors if isinstance(value, str) and '"image_value"' in value]
+        if not donors:
+            return merged
+        try:
+            winner = fastjson.loads(merged)
+        except (TypeError, ValueError):
+            return merged
+        if not isinstance(winner, dict) or not link_card_lacks_image(winner):
+            return merged
+        for value in donors:
+            try:
+                donor = fastjson.loads(value)
+            except (TypeError, ValueError):
+                continue
+            if restore_link_card_image(winner, donor):
+                return self._json_value(winner)
+        return merged
+
     def _merged_source_value(
         self,
         context: _RecordContext,
@@ -1428,11 +1496,12 @@ class ArchiveStore:
                 extract_note_tweet_text(tweet.raw_json),
                 prefer_incoming=prefer_incoming,
             ),
-            raw_json=self._merge_by_source_precedence(
+            raw_json=self._merged_tweet_raw_json(
                 context,
-                "raw_json",
-                self._json_value(tweet.raw_json),
+                tweet.raw_json,
                 prefer_incoming=prefer_incoming,
+                fallback_key=self._row_key_for_tweet_object(tweet.tweet_id),
+                cursor=cursor,
             ),
         )
 
@@ -1771,11 +1840,8 @@ class ArchiveStore:
                 "enrichment_retry_eligible",
                 int(enrichment_retry_eligible) if enrichment_retry_eligible is not None else None,
             ),
-            raw_json=self._merge_by_source_precedence(
-                context,
-                "raw_json",
-                self._json_value(tweet.raw_json),
-                prefer_incoming=prefer_incoming,
+            raw_json=self._merged_tweet_raw_json(
+                context, tweet.raw_json, prefer_incoming=prefer_incoming
             ),
         )
 
@@ -2270,6 +2336,102 @@ class ArchiveStore:
             )
         )
         return added
+
+    def restore_link_card_images(self) -> int:
+        """Put back card images a later timeline copy dropped, once per archive.
+
+        Detail and timeline captures keep each response as X sent it, so a card
+        stored without its image bindings is restored from the newest capture
+        of the same tweet that has them. Returns the card images queued.
+        """
+        key = "link_card_restore_v1"
+        marker = self._row_key_for_metadata(key)
+        if self._get_row(marker) is not None:
+            return 0
+        stripped: set[str] = set()
+        after = 0
+        while True:
+            rows = self.conn.execute(
+                "SELECT rowid, tweet_id, raw_json FROM archive "
+                "WHERE record_type IN ('tweet_object', 'tweet') AND rowid > ? "
+                "AND raw_json LIKE '%\"card\"%' ORDER BY rowid LIMIT 500",
+                (after,),
+            ).fetchall()
+            if not rows:
+                break
+            for row in rows:
+                after = row["rowid"]
+                try:
+                    raw = fastjson.loads(row["raw_json"])
+                except (TypeError, ValueError):
+                    continue
+                if row["tweet_id"] and link_card_lacks_image(raw):
+                    stripped.add(str(row["tweet_id"]))
+        donors: dict[str, dict[str, Any]] = {}
+        for tweet_id in stripped:
+            # Newest first: a tweet's own detail captures are indexed by its id.
+            for capture in reversed(self.list_target_captures(tweet_id, _DETAIL_OPERATIONS)):
+                found = _captured_link_card_tweets(capture["raw_json"], {tweet_id})
+                if tweet_id in found:
+                    donors[tweet_id] = found[tweet_id]
+                    break
+        missing = stripped - donors.keys()
+        if missing:
+            # Timeline pages hold many tweets; read them once, newest last.
+            rows = self.conn.execute(
+                "SELECT raw_json FROM archive WHERE record_type = 'raw_capture' "
+                "AND operation IN ('Likes', 'Bookmarks', 'UserTweets') "
+                "AND raw_json LIKE '%image_value%' ORDER BY captured_at"
+            ).fetchall()
+            for row in rows:
+                donors.update(_captured_link_card_tweets(row["raw_json"], missing))
+        queued = 0
+        stamp = utc_now()
+        buffer = _PageBuffer()
+        with self.conn:
+            for tweet_id, donor in donors.items():
+                rows = self.conn.execute(
+                    "SELECT row_key, raw_json, source FROM archive "
+                    "WHERE tweet_id = ? AND record_type IN ('tweet_object', 'tweet')",
+                    (tweet_id,),
+                ).fetchall()
+                for row in rows:
+                    try:
+                        raw = fastjson.loads(row["raw_json"])
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(raw, dict) or not restore_link_card_image(raw, donor):
+                        continue
+                    self.conn.execute(
+                        "UPDATE archive SET raw_json = ?, updated_at = ? WHERE row_key = ?",
+                        (self._json_value(raw), stamp, row["row_key"]),
+                    )
+                    for media in extract_secondary_objects(raw).media.values():
+                        if media.source != "link_card":
+                            continue
+                        row_key = self._row_key_for_media(media.tweet_id, media.media_key)
+                        if row_key in buffer.records or self._get_row(row_key) is not None:
+                            continue
+                        self._queue_record(
+                            self._media_record(
+                                media,
+                                provenance_source=self._normalized_source(row["source"]),
+                                cursor=buffer,
+                            ),
+                            cursor=buffer,
+                        )
+                        queued += 1
+        self._merge_records(list(buffer.records.values()))
+        self._queue_record(
+            self._record(
+                row_key=marker,
+                record_type="metadata",
+                key=key,
+                value="done",
+                updated_at=utc_now(),
+            )
+        )
+        return queued
 
     def list_media_rows(
         self,
