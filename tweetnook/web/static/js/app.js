@@ -1309,6 +1309,7 @@ function tweetApp() {
         feedUpdateAvailable: false,
         feedContentRevision: 0,
         activityDrawerOpen: false,
+        activityShadeProgress: 0,
         activityPageKey: null,
         activityPageDirection: 'forward',
         activityNowSeconds: Math.floor(Date.now() / 1000),
@@ -4453,7 +4454,7 @@ function tweetApp() {
             this.darkMode = (r*0.299 + g*0.587 + b*0.114) < 128;
             if (this.darkMode) { root.classList.remove('light'); } else { root.classList.add('light'); }
             root.style.setProperty('color-scheme', this.darkMode ? 'dark' : 'light');
-            document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bgHex);
+            this.updateBrowserTheme();
 
             // Restore saved accent for this theme (if it has selectable accents)
             if (theme._accents) {
@@ -4473,6 +4474,22 @@ function tweetApp() {
 
             if (persist) localStorage.setItem('tvx-theme', key);
             this.updateFavicon();
+        },
+
+        updateBrowserTheme(progress = this.activityShadeProgress) {
+            progress = Math.max(0, Math.min(1, Number(progress) || 0));
+            this.activityShadeProgress = progress;
+            const background = THEMES[this.currentTheme]?.['--bg-primary'] || '#000000';
+            // Match the Jobs scrim composited over the selected theme's background.
+            const tint = [91, 112, 131];
+            const alpha = .4 * progress;
+            const color = progress ? '#' + tint.map((channel, index) => {
+                const base = parseInt(background.slice(1 + index * 2, 3 + index * 2), 16);
+                return Math.round(channel * alpha + base * (1 - alpha)).toString(16).padStart(2, '0');
+            }).join('') : background;
+            document.documentElement.style.setProperty('--nook-jobs-shade-progress', String(progress));
+            document.documentElement.style.setProperty('--nook-jobs-edge-color', color);
+            document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
         },
 
         setAccent(accent) {

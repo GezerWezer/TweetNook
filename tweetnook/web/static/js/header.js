@@ -39,7 +39,7 @@ document.addEventListener('keydown', event => {
 function nookCloseActivity(app) {
   if (!app.activityDrawerOpen) return;
   app.activityDrawerOpen = false;
-  document.querySelector('.nook-activity-button')?.focus();
+  document.querySelector('.nook-activity-button')?.focus({ preventScroll: true });
 }
 document.addEventListener('DOMContentLoaded', nookAnchorActivity);
 window.addEventListener('resize', nookAnchorActivity, { passive: true });
@@ -243,6 +243,138 @@ function nookDuration(seconds) {
   if (whole < 60) return `${whole}s`;
   const minutes = Math.round(whole / 60);
   return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+function nookJobsSheet(panel, app) {
+  let gesture = null, resetTimer = null, shadeFrame = null, blockClickUntil = 0;
+  const scrim = document.querySelector('.nook-sync-scrim');
+  const mobile = () => window.innerWidth <= 640;
+  const anchor = () => {
+    if (app.activityDrawerOpen && mobile()) {
+      document.documentElement.style.setProperty('--nook-jobs-page-top', `${window.scrollY}px`);
+      const height = window.innerHeight;
+      const outerHeight = window.outerHeight || window.screen?.height || height;
+      document.documentElement.style.setProperty('--nook-jobs-bottom-bleed', `${Math.max(0, outerHeight - height)}px`);
+    }
+  };
+  const animateShade = locked => {
+    if (shadeFrame !== null) cancelAnimationFrame(shadeFrame);
+    shadeFrame = null;
+    if (!mobile() || !scrim) {
+      document.documentElement.classList.remove('nook-jobs-shading');
+      app.updateBrowserTheme?.(locked ? 1 : 0);
+      return;
+    }
+    const from = app.activityShadeProgress || 0, target = locked ? 1 : 0;
+    const start = performance.now(), duration = 220 * Math.abs(target - from);
+    const paint = progress => {
+      document.documentElement.classList.toggle('nook-jobs-shading', progress > 0);
+      app.updateBrowserTheme?.(progress);
+    };
+    if (!duration || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { paint(target); return; }
+    const tick = now => {
+      const time = Math.min(1, Math.max(0, (now - start) / duration));
+      const eased = time * time * (3 - 2 * time);
+      paint(from + (target - from) * eased);
+      shadeFrame = time < 1 ? requestAnimationFrame(tick) : null;
+    };
+    shadeFrame = requestAnimationFrame(tick);
+  };
+  const reset = () => {
+    gesture = null;
+    panel.classList.remove('cs-dragging', 'cs-settling');
+    panel.style.removeProperty('--cs-sheet-y');
+  };
+  const sync = () => {
+    clearTimeout(resetTimer);
+    const locked = app.activityDrawerOpen && mobile();
+    anchor();
+    document.documentElement.classList.toggle('nook-jobs-open', locked);
+    animateShade(locked);
+    if (locked || !mobile()) { reset(); panel.style.animation = ''; }
+    else resetTimer = setTimeout(() => { reset(); panel.style.animation = ''; }, 240);
+  };
+  const start = event => {
+    blockClickUntil = 0;
+    if (!mobile() || !app.activityDrawerOpen) return;
+    if (event.touches.length !== 1) { end({ type: 'touchcancel', timeStamp: event.timeStamp }); return; }
+    clearTimeout(resetTimer);
+    reset();
+    const touch = event.touches[0];
+    // Native editors and range sliders keep their own gestures.
+    if (event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    gesture = { x: touch.clientX, y: touch.clientY, lastY: touch.clientY, at: event.timeStamp,
+      velocity: 0, dy: 0, dragging: false, horizontal: false,
+      handle: Boolean(event.target.closest('.cs-grab')), atTop: panel.scrollTop <= 0 };
+  };
+  const move = event => {
+    if (!mobile() || !app.activityDrawerOpen) return;
+    // The scrim and underlying feed must never pan, including on iOS.
+    if (!panel.contains(event.target)) { if (event.cancelable) event.preventDefault(); return; }
+    if (!gesture) return;
+    if (event.touches.length !== 1) { end({ type: 'touchcancel', timeStamp: event.timeStamp }); return; }
+    const touch = event.touches[0], dx = touch.clientX - gesture.x, dy = touch.clientY - gesture.y;
+    if (!gesture.dragging) {
+      if (gesture.horizontal || Math.max(Math.abs(dx), Math.abs(dy)) < 8) return;
+      if (Math.abs(dx) >= Math.abs(dy)) { gesture.horizontal = true; return; }
+      if (dy <= 0 || (!gesture.handle && (!gesture.atTop || panel.scrollTop > 0))) { gesture = null; return; }
+      gesture.dragging = true;
+      panel.style.animation = 'none';
+      panel.classList.add('cs-dragging');
+    }
+    if (event.cancelable) event.preventDefault();
+    const elapsed = event.timeStamp - gesture.at;
+    if (elapsed > 0) gesture.velocity = (touch.clientY - gesture.lastY) / elapsed;
+    gesture.lastY = touch.clientY;
+    gesture.at = event.timeStamp;
+    gesture.dy = Math.max(0, dy);
+    panel.style.setProperty('--cs-sheet-y', `${gesture.dy}px`);
+  };
+  const end = event => {
+    if (!gesture) return;
+    const current = gesture;
+    gesture = null;
+    if (!current.dragging) return;
+    blockClickUntil = Date.now() + 450;
+    panel.classList.remove('cs-dragging');
+    const velocity = event.timeStamp - current.at < 100 ? current.velocity : 0;
+    if (event.type !== 'touchcancel' && (current.dy > Math.min(100, panel.offsetHeight * .22) || (current.dy >= 24 && velocity > .5))) {
+      nookCloseActivity(app);
+    } else {
+      panel.classList.add('cs-settling');
+      panel.style.removeProperty('--cs-sheet-y');
+      resetTimer = setTimeout(reset, 240);
+    }
+  };
+  const click = event => {
+    if (Date.now() < blockClickUntil) { event.preventDefault(); event.stopImmediatePropagation(); }
+  };
+  panel.addEventListener('touchstart', start, { passive: true });
+  document.addEventListener('touchmove', move, { passive: false });
+  panel.addEventListener('touchend', end);
+  panel.addEventListener('touchcancel', end);
+  panel.addEventListener('click', click, true);
+  window.addEventListener('resize', sync);
+  window.addEventListener('scroll', anchor, { passive: true });
+  sync();
+  return { sync, destroy() {
+    clearTimeout(resetTimer);
+    if (shadeFrame !== null) cancelAnimationFrame(shadeFrame);
+    reset();
+    panel.style.animation = '';
+    document.documentElement.classList.remove('nook-jobs-open');
+    document.documentElement.classList.remove('nook-jobs-shading');
+    document.documentElement.style.removeProperty('--nook-jobs-page-top');
+    document.documentElement.style.removeProperty('--nook-jobs-bottom-bleed');
+    app.updateBrowserTheme?.(false);
+    panel.removeEventListener('touchstart', start);
+    document.removeEventListener('touchmove', move);
+    panel.removeEventListener('touchend', end);
+    panel.removeEventListener('touchcancel', end);
+    panel.removeEventListener('click', click, true);
+    window.removeEventListener('resize', sync);
+    window.removeEventListener('scroll', anchor);
+  } };
 }
 function nookSyncPanel() {
   return {
@@ -669,8 +801,9 @@ function nookSyncPanel() {
     },
     runTone(run) { return ['running', 'starting'].includes(run.status) ? '' : run.success === false && run.status !== 'stopped' ? 'is-danger' : ''; },
     runDuration(run) { return run.completed_at && run.started_at ? nookDuration(run.completed_at - run.started_at) : ''; },
-    // --- phone sheet: drag the grabber down to dismiss ---
+    // Mouse dragging on the grabber; touch dragging covers the whole sheet.
     grab(event) {
+      if (event.pointerType !== 'mouse' || window.innerWidth > 640) return;
       const panel = this.$root, start = event.clientY;
       let dy = 0;
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -678,8 +811,10 @@ function nookSyncPanel() {
       const move = moveEvent => { dy = Math.max(0, moveEvent.clientY - start); panel.style.transform = `translateY(${dy}px)`; };
       const up = upEvent => {
         upEvent.currentTarget.removeEventListener('pointermove', move);
+        upEvent.currentTarget.removeEventListener('pointerup', up);
+        upEvent.currentTarget.removeEventListener('pointercancel', up);
         panel.style.transition = 'transform .22s ease-out';
-        if (dy > Math.min(120, panel.offsetHeight / 4)) {
+        if (upEvent.type !== 'pointercancel' && dy > Math.min(100, panel.offsetHeight / 4)) {
           panel.style.transform = 'translateY(100%)';
           setTimeout(() => { this.activityDrawerOpen = false; panel.style.transform = ''; panel.style.transition = ''; }, 220);
         } else {
@@ -695,9 +830,11 @@ function nookSyncPanel() {
     scrollTabs(direction) { const nav = this.$refs.stepTabs; nav?.scrollBy({ left: direction * nav.clientWidth * 0.7, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); },
     openScheduleSettings() { this.activityDrawerOpen = false; this.openSettings(); this.$nextTick(() => nookSettingsNavigate(this, 'schedule')); },
     init() {
+      this.mobileSheet = nookJobsSheet(this.$root, this);
       this.lastActiveStep = this.activity?.steps?.find(step => step.state === 'active')?.key || null;
       // Follow each newly active step, while allowing inspection of other steps between transitions.
       this.$watch('activityDrawerOpen', open => {
+        this.mobileSheet.sync();
         clearInterval(this.jobsTimer);
         if (!open) return;
         this.view = 'main'; this.viewDir = ''; this.selected = null; this.focusKey = null; this.moreOpen = false; this.jobError = '';
@@ -724,6 +861,6 @@ function nookSyncPanel() {
         this.revealStepTab();
       });
     },
-    destroy() { this.tabsResizeObserver?.disconnect(); clearInterval(this.jobsTimer); },
+    destroy() { this.mobileSheet?.destroy(); this.tabsResizeObserver?.disconnect(); clearInterval(this.jobsTimer); },
   };
 }
