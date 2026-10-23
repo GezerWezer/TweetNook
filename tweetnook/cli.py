@@ -132,7 +132,7 @@ HEAD_ONLY_HELP = (
 SYNC_LIMIT_HELP = "Maximum number of pages to fetch for this run."
 SYNC_SKIP_RESURRECTION_HELP = (
     "Skip bounded unavailable-tweet resurrection checks after sync. Sync only runs them "
-    "while the nightly check is off or FxTwitter is disabled; otherwise 'tweetnook check' does."
+    "while the check is off or FxTwitter is disabled; otherwise 'tweetnook check' does."
 )
 SYNC_SKIP_ARTICLES_HELP = "Skip automatic article-body refresh after sync."
 SYNC_SKIP_MEDIA_HELP = "Skip automatic media downloads after sync."
@@ -1145,14 +1145,14 @@ def check_command(
         ),
     ] = None,
 ) -> None:
-    from tweetnook.nightly import run_nightly_check
+    from tweetnook.check import run_check
 
     console = _configure_logging()
     try:
         config, paths = load_config()
         with _web_pipeline(console, "tweetnook check", paths) as pipeline:
             result = asyncio.run(
-                run_nightly_check(
+                run_check(
                     config=config,
                     paths=paths,
                     saves=not skip_saves,

@@ -3580,7 +3580,7 @@ class ArchiveStore:
         if owns_buffer:
             self._merge_records(list(buffer.records.values()))
 
-    # --- nightly availability checks and community-note history ------------------
+    # --- availability checks and community-note history ------------------
 
     def ensure_check_tables(self) -> None:
         with self.conn:

@@ -363,7 +363,7 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
             "related.record_type = 'tweet_object' AND related.enrichment_state = 'resurrected'"
         )
     elif (key, value) == ("is", "missing"):
-        # Archived tweets that are no longer on X, as the nightly check or a lookup found.
+        # Archived tweets that are no longer on X, as the check or a lookup found.
         condition = (
             "related.record_type = 'tweet_object' "
             "AND related.enrichment_state = 'terminal_unavailable'"

@@ -78,6 +78,7 @@ links to the code, its design guide, and relevant tests.
 | [tweetnook/media.py](../../tweetnook/media.py) | Photo/video/GIF/poster downloads, temp/hash/type/path/state handling | [Enrichment](enrichment.md); `test_media.py` |
 | [tweetnook/unfurl.py](../../tweetnook/unfurl.py) | Saved URL fetch/redirect/canonical/HTML metadata and state | [Enrichment](enrichment.md); `test_unfurl.py` |
 | [tweetnook/resurrection.py](../../tweetnook/resurrection.py) | Weighted due unavailable selection, detail probing, confidence/retry/recovery | [Enrichment](enrichment.md); `test_resurrection.py` |
+| [tweetnook/check.py](../../tweetnook/check.py) | Availability checks through FxTwitter, login fallback, and community note history | `test_check.py`, `test_fxtwitter.py` |
 
 ## Search, export, and statistics
 

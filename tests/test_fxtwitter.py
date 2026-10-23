@@ -467,7 +467,7 @@ def _paths(tmp_path) -> XDGPaths:
     return XDGPaths(config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "c")
 
 
-def test_scheduler_runs_the_nightly_check_without_a_sync_schedule(tmp_path) -> None:
+def test_scheduler_runs_the_check_without_a_sync_schedule(tmp_path) -> None:
     config = AppConfig(
         schedule=ScheduleConfig(enabled=False, timezone="UTC"),
         check=CheckConfig(enabled=True, cadence="daily", time="04:30"),
@@ -485,7 +485,7 @@ def test_scheduler_runs_the_nightly_check_without_a_sync_schedule(tmp_path) -> N
     assert manager._state["check_next_run_at"] == 4 * 3600 + 30 * 60
 
 
-def test_scheduler_defers_the_nightly_check_while_another_command_runs(tmp_path) -> None:
+def test_scheduler_defers_the_check_while_another_command_runs(tmp_path) -> None:
     config = AppConfig(schedule=ScheduleConfig(timezone="UTC"), check=CheckConfig(enabled=True))
     manager = ScheduleManager(_paths(tmp_path), config, _Supervisor(config, busy=True))
     manager._state["check_next_run_at"] = 1_000.0
@@ -521,7 +521,7 @@ def test_check_reschedules_at_its_configured_frequency(
     assert manager._state["check_next_run_at"] == datetime.fromisoformat(expected).timestamp()
 
 
-def test_nightly_check_is_off_by_default_and_never_scheduled(tmp_path) -> None:
+def test_check_is_off_by_default_and_never_scheduled(tmp_path) -> None:
     config = AppConfig()
     assert config.check.enabled is False
     supervisor = _Supervisor(config)
@@ -586,7 +586,7 @@ def test_scheduled_sync_waits_for_a_running_check_instead_of_skipping(tmp_path) 
     assert len(conflicts) == 1
 
 
-def test_nightly_check_is_not_scheduled_while_fxtwitter_is_off(tmp_path) -> None:
+def test_check_is_not_scheduled_while_fxtwitter_is_off(tmp_path) -> None:
     config = AppConfig(schedule=ScheduleConfig(timezone="UTC"), check=CheckConfig(enabled=True))
     config.fxtwitter.enabled = False
     supervisor = _Supervisor(config)

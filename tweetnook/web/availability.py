@@ -394,7 +394,7 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
 
 
 def _overlay_community_notes(store: Any, tweets: list[dict[str, Any]]) -> None:
-    """Show the note the nightly check last saw in place of the captured one, and flag
+    """Show the note the check last saw in place of the captured one, and flag
     tweets with recorded note versions (``note_history``) for the Web menu.
 
     A tweet whose recorded notes were all removed shows none. The stored X payload is

@@ -148,7 +148,7 @@ function nookSyncStepCopy(step, state) {
     resurrection: ['Retry unavailable posts', 'retry posts that were unavailable', 'Retrying posts that were unavailable.', 'Retried unavailable posts.'],
     'check:saves': ['Check saved posts', 'check that saved posts are still on X', 'Checking that saved posts are still on X.', 'Checked saved posts.'],
     'check:unavailable': ['Recheck unavailable posts', 'see whether unavailable posts are back', 'Checking whether unavailable posts are back.', 'Rechecked unavailable posts.'],
-    'check:context': ['Check context posts', 'check tonight’s share of quoted and thread posts', 'Checking tonight’s share of quoted and thread posts.', 'Checked tonight’s share of context posts.'],
+    'check:context': ['Check context posts', 'check this run’s share of quoted and thread posts', 'Checking this run’s share of quoted and thread posts.', 'Checked this run’s share of context posts.'],
     articles: ['Refresh article details', 'update article details in saved posts', 'Updating article details in saved posts.', 'Updated article details in saved posts.'],
     media: ['Download media', 'download photos, GIFs, and videos', 'Downloading photos, GIFs, and videos.', 'Downloaded media attached to saved posts.'],
     urls: ['Refresh link previews', 'refresh previews for saved links', 'Refreshing previews for saved links.', 'Refreshed previews for saved links.'],

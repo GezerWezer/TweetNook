@@ -151,6 +151,15 @@ in Activity while a completed collection sync remains successful. See
 
 For a full list of CLI sync commands, see [syncing](docs/syncing.md).
 
+Run `tweetnook check` to check saved tweets for availability, retry unavailable
+tweets, and keep community note versions. Enable **Check automatically** in
+**Settings → Config → Check** and choose Daily, Weekly (the default), or Monthly,
+plus a time and weekday or day of the month. **Check context tweets** is a separate
+basic toggle, off by default. When enabled, its **Context cycle** defaults to 60 days;
+checks spread the context tweets across that cycle. Saved tweets are checked every
+run, including quotes returned with them. Checks require FxTwitter and the running
+Web service. Saved check settings take effect immediately.
+
 Use **Stop Task** in the web app or **Ctrl+C** in the terminal to interrupt a job.
 Wait for it to finish stopping before starting another. Stopping TweetNook also asks its active Web or scheduled job to stop gracefully,
 preserving already committed work.

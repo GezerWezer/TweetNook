@@ -145,7 +145,7 @@ class ScheduleConfig(BaseModel):
 
 
 class CheckConfig(BaseModel):
-    """Nightly availability check of saved tweets, their context, and unavailable tweets."""
+    """Availability check of saved tweets, their context, and unavailable tweets."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -734,7 +734,7 @@ def get_config_ui_schema() -> dict[str, Any]:
                 ],
             },
             {
-                "title": "Nightly check",
+                "title": "Check",
                 "note": (
                     "Checks saved tweets and retries unavailable tweets. Optionally include a "
                     "rolling share of quoted and thread tweets."
@@ -855,7 +855,7 @@ def get_config_ui_schema() -> dict[str, Any]:
             "activity.retention_days": "Log retention",
             "database.cache_size_kb": "Page cache",
             "database.mmap_size_bytes": "Memory-mapped I/O",
-            "check": "Nightly check",
+            "check": "Check",
             "fxtwitter": "FxTwitter",
             "check.enabled": "Check automatically",
             "check.cadence": "Check frequency",
@@ -864,7 +864,7 @@ def get_config_ui_schema() -> dict[str, Any]:
             "check.day_of_month": "Day of the month",
             "check.context_enabled": "Check context tweets",
             "check.context_days": "Context cycle",
-            "check.detail_budget": "Login lookups per night",
+            "check.detail_budget": "Login lookups per run",
             "fxtwitter.enabled": "Use FxTwitter",
             "fxtwitter.base_url": "API address",
             "fxtwitter.concurrency": "Parallel lookups",
@@ -955,12 +955,12 @@ def get_config_ui_schema() -> dict[str, Any]:
                 "checked every run."
             ),
             "check.detail_budget": (
-                "Most tweets the nightly check may look up with your login, for protected "
+                "Most tweets the check may look up with your login, for protected "
                 "accounts and results FxTwitter can't confirm. 0 uses FxTwitter only."
             ),
             "fxtwitter.enabled": (
                 "Look up posts through FxTwitter first when enriching imported tweets and "
-                "during the nightly check. While off, the nightly check doesn't run."
+                "during the check. While off, the check doesn't run."
             ),
             "fxtwitter.base_url": (
                 "The public service, or the address of your own FxEmbed install."

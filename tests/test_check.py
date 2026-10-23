@@ -14,8 +14,8 @@ from typer.testing import CliRunner
 from tests.conftest import make_tweet_result
 from tests.test_fxtwitter import fx_status, fx_transport, ok
 from tweetnook import cli
+from tweetnook.check import FX_NOT_FOUND_DETAIL, MAX_CONSECUTIVE_ERRORS, run_check
 from tweetnook.client.timelines import TimelineTweet
-from tweetnook.nightly import FX_NOT_FOUND_DETAIL, MAX_CONSECUTIVE_ERRORS, run_nightly_check
 from tweetnook.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import FX_SOURCE, LIVE_SOURCE
@@ -76,7 +76,7 @@ async def _no_sleep(_seconds: float) -> None:
 
 def _run(config, paths, transport):
     return asyncio.run(
-        run_nightly_check(
+        run_check(
             config=config,
             paths=paths,
             detail_budget=0,
@@ -96,7 +96,7 @@ def _history(store, tweet_id: str) -> list[str]:
 def test_check_publishes_all_enabled_steps_before_work(
     config, paths, monkeypatch, saves, context, unavailable, detail_budget
 ) -> None:
-    import tweetnook.nightly as nightly
+    import tweetnook.check as check
 
     store = open_archive_store(paths, create=True, config=config)
     assert store is not None
@@ -114,7 +114,7 @@ def test_check_publishes_all_enabled_steps_before_work(
         if enabled
     ]
     state_path = paths.data_dir / "activity-status.json"
-    locked_job = nightly.locked_archive_job
+    locked_job = check.locked_archive_job
 
     @asynccontextmanager
     async def observe_job(**kwargs):
@@ -124,7 +124,7 @@ def test_check_publishes_all_enabled_steps_before_work(
         async with locked_job(**kwargs) as job:
             yield job
 
-    monkeypatch.setattr(nightly, "locked_archive_job", observe_job)
+    monkeypatch.setattr(check, "locked_archive_job", observe_job)
     requests = []
 
     def handler(request):
@@ -144,7 +144,7 @@ def test_check_publishes_all_enabled_steps_before_work(
         console, "tweetnook check", interactive=False, state_path=state_path
     ) as pipeline:
         asyncio.run(
-            run_nightly_check(
+            run_check(
                 config=config,
                 paths=paths,
                 saves=saves,
@@ -163,7 +163,7 @@ def test_check_publishes_all_enabled_steps_before_work(
         for step in pipeline.steps
     )
     assert all(
-        step.reason == "nothing due tonight"
+        step.reason == "nothing due"
         for step in pipeline.steps
         if step.key.startswith("check:") and step.key != "check:saves"
     )
@@ -191,7 +191,7 @@ def test_check_skips_planned_login_step_when_login_is_unavailable(
     console = Console(file=StringIO())
     with PipelineReporter(console, "tweetnook check", interactive=False) as pipeline:
         result = asyncio.run(
-            run_nightly_check(
+            run_check(
                 config=config,
                 paths=paths,
                 saves=False,
@@ -210,7 +210,7 @@ def test_check_skips_planned_login_step_when_login_is_unavailable(
     assert len(result.warnings) == 1
 
 
-def test_nightly_check_restores_marks_and_versions_from_fxtwitter(config, paths) -> None:
+def test_check_restores_marks_and_versions_from_fxtwitter(config, paths) -> None:
     store = open_archive_store(paths, create=True, config=config)
     assert store is not None
     _save(store, "1", "quotes two", quoted=make_tweet_result("2", "quoted live", user_id="200"))
@@ -313,7 +313,7 @@ def test_nightly_check_restores_marks_and_versions_from_fxtwitter(config, paths)
     store.close()
 
 
-def test_nightly_check_rolls_through_context_tweets(config, paths) -> None:
+def test_check_rolls_through_context_tweets(config, paths) -> None:
     config.check.context_enabled = True
     config.check.cadence = "daily"
     config.check.context_days = 2
@@ -371,8 +371,8 @@ def test_check_context_is_opt_in_and_scales_with_frequency(
     assert len(requests) == expected
 
 
-def test_nightly_check_does_not_run_while_fxtwitter_is_off(config, paths, monkeypatch) -> None:
-    import tweetnook.nightly as nightly
+def test_check_does_not_run_while_fxtwitter_is_off(config, paths, monkeypatch) -> None:
+    import tweetnook.check as check
 
     config.fxtwitter.enabled = False
     store = open_archive_store(paths, create=True, config=config)
@@ -382,11 +382,11 @@ def test_nightly_check_does_not_run_while_fxtwitter_is_off(config, paths, monkey
     async def no_login_lookups(**_kwargs):
         raise AssertionError("sync owns login retries while FxTwitter is off")
 
-    monkeypatch.setattr(nightly, "_run_detail_fallback", no_login_lookups)
+    monkeypatch.setattr(check, "_run_detail_fallback", no_login_lookups)
     console = Console(file=StringIO())
     with PipelineReporter(console, "tweetnook check", interactive=False) as pipeline:
         result = asyncio.run(
-            run_nightly_check(
+            run_check(
                 config=config,
                 paths=paths,
                 detail_budget=50,
@@ -424,9 +424,9 @@ def test_mass_404s_mark_nothing_missing(config, paths) -> None:
 
 
 def test_mass_404s_undo_nothing_marked_in_earlier_chunks(config, paths, monkeypatch) -> None:
-    import tweetnook.nightly as nightly
+    import tweetnook.check as check
 
-    monkeypatch.setattr(nightly, "CHECK_CHUNK_SIZE", 10)
+    monkeypatch.setattr(check, "CHECK_CHUNK_SIZE", 10)
     store = open_archive_store(paths, create=True, config=config)
     assert store is not None
     ids = [str(100 + index) for index in range(60)]
@@ -449,9 +449,9 @@ def test_mass_404s_undo_nothing_marked_in_earlier_chunks(config, paths, monkeypa
 
 
 def test_check_stops_when_fxtwitter_keeps_failing(config, paths, monkeypatch) -> None:
-    import tweetnook.nightly as nightly
+    import tweetnook.check as check
 
-    monkeypatch.setattr(nightly, "CHECK_CHUNK_SIZE", 10)
+    monkeypatch.setattr(check, "CHECK_CHUNK_SIZE", 10)
     config.check.context_enabled = True
     store = open_archive_store(paths, create=True, config=config)
     assert store is not None
@@ -646,16 +646,16 @@ def test_check_help_lists_its_flags() -> None:
 
 @pytest.mark.parametrize(("args", "expected"), [([], None), (["--skip-context"], False)])
 def test_check_cli_uses_context_setting_unless_skipped(config, paths, monkeypatch, args, expected):
-    import tweetnook.nightly as nightly
+    import tweetnook.check as check
 
     seen = []
 
     async def run(**kwargs):
         seen.append(kwargs["context"])
-        return nightly.NightlyCheckResult()
+        return check.CheckResult()
 
     monkeypatch.setattr(cli, "load_config", lambda: (config, paths))
-    monkeypatch.setattr(nightly, "run_nightly_check", run)
+    monkeypatch.setattr(check, "run_check", run)
     result = CliRunner().invoke(cli.app, ["check", *args])
     assert result.exit_code == 0, result.output
     assert seen == [expected]

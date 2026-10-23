@@ -114,7 +114,7 @@ class SyncFollowupPlan:
 
 
 def check_owns_resurrection(config: AppConfig) -> bool:
-    """The nightly check retries unavailable tweets when it runs with FxTwitter; otherwise
+    """The check retries unavailable tweets when it runs with FxTwitter; otherwise
     sync keeps doing it, as before the check existed."""
     from tweetnook.client.fxtwitter import fx_enabled
 
