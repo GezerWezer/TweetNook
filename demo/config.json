@@ -432,7 +432,7 @@
       "timeout": 30.0,
       "max_linked_depth": 50,
       "reply_linked_depth": 0,
-      "reply_linked_limit": 50
+      "reply_linked_limit": 1
     },
     "web": {
       "password_hash": null,
