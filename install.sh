@@ -30,6 +30,10 @@ Options:
   --no-service           Install for manual startup; do not prompt or start a server.
   --automated-tagging    Include the optional Gemini tagging dependencies.
   --legacy-migration     Include support for migrating older LanceDB archives.
+  --access local|network Who can open the Web app: local (this computer only, 127.0.0.1)
+                         or network (other devices on your network, 0.0.0.0).
+                         Default: network for the Linux service, local otherwise.
+                         Updates keep the saved setting unless this is given.
   --reinstall            Reinstall the installed version of an existing installation
                          instead of updating it.
   --version VERSION      Install an exact published version (default: latest stable).
@@ -99,6 +103,9 @@ bin_dir_option=false
 original_args=("$@")
 tagging=false
 migration=false
+access=
+access_option=false
+access_chosen=false
 reinstall=false
 details=false
 version=
@@ -116,13 +123,14 @@ while [[ $# -gt 0 ]]; do
         --legacy-migration) migration=true; shift ;;
         --reinstall) reinstall=true; shift ;;
         --details) details=true; shift ;;
-        --version|--python|--install-dir|--bin-dir)
+        --version|--python|--install-dir|--bin-dir|--access)
             [[ $# -ge 2 && -n $2 && $2 != --* ]] || die "$1 requires a value."
             case "$1" in
                 --version) version=$2 ;;
                 --python) python_request=$2 ;;
                 --install-dir) install_dir=$2; install_dir_option=true ;;
                 --bin-dir) bin_dir=$2; bin_dir_option=true ;;
+                --access) access=$2; access_option=true ;;
             esac
             shift 2 ;;
         -h|--help) usage; exit 0 ;;
@@ -137,6 +145,7 @@ validate_path() {
 }
 $install_dir_option && validate_path "$install_dir"
 $bin_dir_option && validate_path "$bin_dir"
+case "$access" in ''|local|network) ;; *) die '--access must be local or network.' ;; esac
 if [[ -n $version && ! $version =~ ^[0-9][a-zA-Z0-9.!+_-]*$ ]]; then
     die '--version must be a version number, not a package name, URL, or path.'
 fi
@@ -247,6 +256,37 @@ if [[ $mode == ask ]]; then
         if [[ $choice == 2 ]]; then mode=manual; fi
     fi
 fi
+if [[ -z $existing ]] && ! $access_option; then
+    # New installations default to this computer only, except the Linux service,
+    # which is usually set up from another device. Updates keep the saved host.
+    default_access=local
+    if [[ $mode == service ]]; then default_access=network; fi
+    access=$default_access
+    if $prompt; then
+        heading 'Who can access TweetNook?'
+        local_choice=1
+        if [[ $default_access == network ]]; then
+            local_choice=2
+            styled 1 '1. Other devices on your network (recommended)'
+            say '   Phones and other computers can connect, subject to your firewall.'
+            printf '\n'
+            say '2. This computer only'
+            say '   Only a browser on this server can connect.'
+        else
+            styled 1 '1. This computer only (recommended)'
+            say '   Only a browser on this computer can connect.'
+            printf '\n'
+            say '2. Other devices on your network'
+            say '   Phones and other computers can connect, subject to your firewall.'
+        fi
+        printf '\n'
+        ask 'Choose [1] (q to cancel):' 1 'Choose 1 or 2, or q to cancel.' 1 2
+        if [[ $choice == "$local_choice" ]]; then access=local; else access=network; fi
+        # A deliberate choice replaces a host already saved by an earlier archive.
+        access_option=true
+        access_chosen=true
+    fi
+fi
 if $prompt && ! $tagging && ! $existing_tagging; then
     heading 'Add automated tagging?'
     styled 1 '1. No'
@@ -307,6 +347,10 @@ if [[ ${TWEETNOOK_INSTALL_REVIEWED:-} != 1 ]]; then
     else
         say 'Uses your regular account. No administrator access needed.'
     fi
+    case "$access" in
+        local) say 'Access: this computer only' ;;
+        network) say 'Access: other devices on your network' ;;
+    esac
     if $existing_tagging; then say 'Add-on: Gemini automated tagging (installed)'
     elif $tagging; then say 'Add-on: Gemini automated tagging'; fi
     if $existing_migration; then say 'Add-on: legacy archive migration (installed)'
@@ -320,6 +364,7 @@ fi
 if $needs_sudo; then
     $mode_option || original_args+=(--service)
     if $tagging; then original_args+=(--automated-tagging); fi
+    if $access_chosen; then original_args+=(--access "$access"); fi
     if [[ $action == reinstall ]]; then original_args+=(--reinstall); fi
     say 'Requesting administrator access...'
     # This marker only avoids repeating the reviewed UI; explicit flags already
@@ -568,6 +613,46 @@ setup_service_account() {
     done
 }
 
+apply_access() {
+    [[ -n $access ]] || return 0
+    host=0.0.0.0
+    if [[ $access == local ]]; then host=127.0.0.1; fi
+    # Write as the account that owns the archive. Without an explicit choice,
+    # keep a host already saved by an existing archive's configuration.
+    "$python" -I - "$mode" "$host" "$access_option" <<'ACCESS'
+import os
+import sys
+import tomllib
+
+from tweetnook.config import resolve_paths, update_config_values
+
+mode, host, explicit = sys.argv[1], sys.argv[2], sys.argv[3] == "true"
+if mode == "service":
+    import pwd
+
+    from tweetnook.system_install import SERVICE_ENVIRONMENT, SERVICE_HOME, SERVICE_USER
+
+    account = pwd.getpwnam(SERVICE_USER)
+    if account.pw_uid == 0 or account.pw_dir != SERVICE_HOME:
+        raise SystemExit("The TweetNook service account has an invalid UID or home.")
+    os.environ.clear()
+    os.environ.update(SERVICE_ENVIRONMENT)
+    os.initgroups(account.pw_name, account.pw_gid)
+    os.setgid(account.pw_gid)
+    os.setuid(account.pw_uid)
+paths = resolve_paths()
+if not explicit:
+    try:
+        with paths.config_file.open("rb") as handle:
+            web = tomllib.load(handle).get("web", {})
+    except FileNotFoundError:
+        web = {}
+    if isinstance(web, dict) and "host" in web:
+        raise SystemExit(0)
+update_config_values(paths, {"web.host": host})
+ACCESS
+}
+
 publish_launcher() {
     if [[ ! -e $launcher ]]; then
         launcher_temp=$(mktemp "$bin_dir/.tweetnook.XXXXXX")
@@ -580,6 +665,7 @@ publish_launcher() {
 if [[ $mode == service ]]; then
     start_step 'Set up background service'
     setup_service_account >> "$log_file" 2>&1
+    apply_access >> "$log_file" 2>&1
     publish_launcher >> "$log_file" 2>&1
     service_attempted=true
     "$python" -I -m tweetnook service install --user tweetnook --data-home /var/lib --config-home /etc --cache-home /var/cache >> "$log_file" 2>&1
@@ -587,6 +673,7 @@ if [[ $mode == service ]]; then
     finish_step
 else
     start_step 'Make the tweetnook command available'
+    apply_access >> "$log_file" 2>&1
     publish_launcher >> "$log_file" 2>&1
     finish_step
 fi
