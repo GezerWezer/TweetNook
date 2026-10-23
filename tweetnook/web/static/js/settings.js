@@ -551,7 +551,17 @@ function nookLogsPage() {
     },
     rawText() { return (this.nookLogLines || []).map(line => line.raw).join('\n') + '\n'; },
     async copy() {
-      try { await navigator.clipboard.writeText(this.rawText()); this.copied = true; setTimeout(() => { this.copied = false; }, 2000); }
+      try {
+        const text = this.rawText();
+        let copied = false;
+        if (globalThis.navigator?.clipboard?.writeText) {
+          try { await globalThis.navigator.clipboard.writeText(text); copied = true; }
+          catch (error) { console.warn('Clipboard API copy failed; trying fallback', error); }
+        }
+        if (!copied) this.copyTextWithLegacyFallback(text);
+        this.copied = true;
+        setTimeout(() => { this.copied = false; }, 2000);
+      }
       catch (_) { this.copied = false; }
     },
     download() {

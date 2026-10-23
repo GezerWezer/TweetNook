@@ -8714,6 +8714,68 @@ test('timestamped worker logs show local times and retain UTC timestamps in expo
     assert.equal(page.copied, true);
 });
 
+test('log copying falls back on HTTP and clipboard rejection, and only confirms success', async () => {
+    for (const mode of ['http', 'rejected', 'failed']) {
+        const context = browserContext();
+        const { tweetApp, nookLogsPage, nookLogParse } = loadScripts(
+            context, ['themes.js', 'app.js', 'settings.js'], '({tweetApp, nookLogsPage, nookLogParse})',
+        );
+        const page = nookMergeScope(tweetApp(), nookLogsPage());
+        const raw = '2026-10-22T21:01:16.123456Z Media: progress · 47 files\nERROR: Storage is full.\n';
+        page.nookLogLines = nookLogParse(raw);
+        page.copied = true;
+        let apiCalls = 0;
+        context.navigator = mode === 'http' ? {} : {
+            clipboard: { async writeText(text) {
+                apiCalls++;
+                assert.equal(text, raw);
+                throw new Error('Clipboard access denied');
+            } },
+        };
+        const calls = [];
+        const textarea = {
+            style: {},
+            setAttribute() {},
+            focus() { calls.push('focus'); },
+            select() { calls.push('select'); },
+        };
+        context.document.createElement = tag => {
+            assert.equal(tag, 'textarea');
+            return textarea;
+        };
+        context.document.body.appendChild = node => {
+            assert.equal(node, textarea);
+            assert.equal(node.value, raw);
+            calls.push('append');
+        };
+        context.document.body.removeChild = node => {
+            assert.equal(node, textarea);
+            calls.push('remove');
+        };
+        context.document.execCommand = command => {
+            assert.equal(command, 'copy');
+            calls.push('copy');
+            return mode !== 'failed';
+        };
+        let reset = null;
+        context.setTimeout = (callback, delay) => {
+            assert.equal(delay, 2000);
+            reset = callback;
+        };
+
+        await page.copy();
+
+        assert.equal(apiCalls, mode === 'http' ? 0 : 1);
+        assert.deepEqual(calls, ['append', 'focus', 'select', 'copy', 'remove']);
+        assert.equal(page.copied, mode !== 'failed');
+        if (mode === 'failed') assert.equal(reset, null);
+        else {
+            reset();
+            assert.equal(page.copied, false);
+        }
+    }
+});
+
 test('combined archive preparation keeps its name through enrichment, sync, media and history', () => {
     const context = browserContext();
     const { tweetApp, nookRunTitle } = loadScripts(context, ['themes.js', 'app.js', 'settings.js'], '({tweetApp, nookRunTitle})');
