@@ -29,6 +29,7 @@ def list_jobs(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, 
     paths = server_state.get("paths")
     supervisor = server_state.get("job_supervisor")
     manager = server_state.get("schedule_manager")
+    coordinator = server_state.get("setup_coordinator")
     payload = jobs_payload(
         config=_config(),
         data_dir=getattr(paths, "data_dir", None),
@@ -37,6 +38,7 @@ def list_jobs(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, 
         schedule=manager.status() if manager is not None else {},
         check=manager.check_status() if manager is not None else {},
         sync_deferred=bool(manager and manager.sync_deferred()),
+        setup_queue=coordinator.pending_jobs() if coordinator is not None else [],
     )
     # The archive Setup staged for import (uploaded through /api/setup/archive).
     staged = getattr(paths, "staged_archive_file", None)

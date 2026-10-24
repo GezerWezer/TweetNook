@@ -12,10 +12,16 @@ If you need to request an archive first, follow
 
 Open Setup on first visit, or **Settings → Setup → Run setup again**. Upload your
 ZIP, select **Start local import**, and continue to Connect Twitter/X immediately. The
-background import is always offline at first; it can take hours or days and does
-not require the page to remain open. Enrichment starts automatically once both local import and a successful
-Twitter/X connection test finish. You may finish Setup and browse after local import
-while enrichment continues. 
+background job saves local data, enriches available post details, then downloads
+media within the same import job. It can take hours or days, works without an
+account, and does not require the page to remain open. After the import finishes,
+the first sync starts once Setup is complete and Twitter/X is connected.
+
+If enrichment or media fails or is stopped after the local data was saved, your
+posts remain browsable. Setup keeps the failed result and waits for you to resume;
+it does not start a separate media retry or the first sync automatically. Resolve
+the error (free or add disk space for a full disk), then run **Sync now** or
+**Enrich archive** from Activity. Already saved data is retained.
 
 ## Import your ZIP file from the CLI
 
@@ -65,8 +71,8 @@ Unmatched media files remain in the original archive.
 
 ## Fill in missing information
 
-Web Setup starts enrichment automatically after both the local import and a
-successful Twitter/X connection test are complete. Run the command below manually if
+Web Setup enriches available details during the import. Its first authenticated
+sync finishes details that require your account. Run the command below manually if
 you imported through the CLI, skipped Twitter/X during Setup, or need to retry pending
 enrichment later:
 

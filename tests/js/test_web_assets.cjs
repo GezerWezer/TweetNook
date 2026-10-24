@@ -3281,6 +3281,49 @@ test('config and stats requests update their matching UI state', async () => {
     assert.equal(app.lastSyncFormatted, '2026-07-30T00:00:00Z');
 });
 
+test('replay setup saves an empty cookie as a disconnected account and can reconnect', async () => {
+    const context = browserContext();
+    context.setTimeout = callback => { callback(); return 0; };
+    let auth = { configured: true, verified: true, values: { auth_token: '********', ct0: '********', user_id: '' } };
+    const requests = [];
+    const dev = { tools: true, replay: { connected: true } };
+    context.fetch = async (url, options = {}) => {
+        if (url === '/api/setup/auth') {
+            const values = JSON.parse(options.body);
+            requests.push(values);
+            const connected = !!(values.auth_token?.trim() && values.ct0?.trim());
+            auth = { configured: connected, verified: connected, values };
+            return { ok: true, async json() { return auth; } };
+        }
+        assert.equal(url, '/api/setup');
+        return { ok: true, async json() { return { auth, dev, archive: { ready: false } }; } };
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    await app.fetchSetup();
+    app.setupFlowStep = 2;
+    app.setupAuth.ct0 = '  ';
+    app.editSetupAuth();
+    assert.equal(await app.saveSetupAuth(), true);
+    assert.equal(requests.length, 1);
+    assert.equal(app.setupData.auth.verified, false);
+    assert.equal(app.setupSkipAuth, true);
+    assert.equal(app.setupAuthResult.success, true);
+    assert.equal(app.setupAuthResult.message, 'No Twitter/X account connected.');
+    assert.equal(app.setupFlowStep, 3);
+
+    app.setupFlowStep = 2;
+    app.setupAuth.auth_token = 'offline';
+    app.setupAuth.ct0 = 'anything';
+    app.editSetupAuth();
+    assert.equal(await app.saveSetupAuth(), true);
+    assert.equal(requests.length, 2);
+    assert.equal(app.setupData.auth.verified, true);
+    assert.equal(app.setupSkipAuth, false);
+    assert.equal(app.setupAuthResult.success, true);
+    assert.equal(app.setupFlowStep, 3);
+});
+
 test('setup validates before saving auth then uploads, imports, and confirms archive clearing', async () => {
     const context = browserContext();
     const requests = [];
@@ -3418,6 +3461,8 @@ test('setup archive choices stay reversible until Setup finishes', async () => {
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.setupData = { archive, auth: { verified: false }, web: { password_configured: true } };
+    app.fetchSetup = async () => {};
+    app.fetchActivityStatus = async () => {};
 
     assert.equal(app.setupArchiveStatus, 'none');
     assert.equal(app.setupArchiveAction.disabled, true);
@@ -6258,6 +6303,12 @@ test('enrichment completion refreshes pending work before showing a reminder', a
     assert.equal(app.showArchiveEnrichmentReminder, true);
     app.activityStartPending = true;
     assert.equal(app.showArchiveEnrichmentReminder, false);
+    app.activityStartPending = false;
+    // The first sync finishes leftovers once connected, so Setup's wait doesn't nag.
+    for (const state of ['waiting_for_setup', 'waiting_for_auth']) {
+        app.setupData = {archive: {enrichment_state: state}};
+        assert.equal(app.showArchiveEnrichmentReminder, false);
+    }
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     assert.match(html, /x-show="showArchiveEnrichmentReminder"/);
     assert.doesNotMatch(html, /role="status">Archive enrichment is running in the background/);
@@ -7353,7 +7404,7 @@ test('Settings tabs use the requested order and Appearance is the default', () =
     assert.match(js, /rerunSetup\(\)[\s\S]*?this\.settingsTab = 'setup'/);
 });
 
-test('setup password finalization reloads with a one-time completion marker after success', async () => {
+test('legacy setup reload queues completion without flashing it before navigation', async () => {
     const context = browserContext();
     let reloaded = false;
     context.window.location = {reload() { reloaded = true; }};
@@ -7373,8 +7424,47 @@ test('setup password finalization reloads with a one-time completion marker afte
     assert.equal(app.setupForced, false);
     assert.equal(app.setupPassword, '');
     assert.equal(context.sessionStorage.getItem('tweetnook.setup-completion'), 'pending');
-    assert.equal(app.setupCompletionVisible, true);
+    assert.equal(app.setupCompletionVisible, false);
     assert.equal(app.setupFlowStep, 1, 'the explanation is separate from the counted steps');
+});
+
+test('setup finishes in place and refreshes archive resources and progress without reloading', async () => {
+    const context = browserContext();
+    const requests = [];
+    const data = { completed: true, required: false, auth: { verified: true, values: {} },
+        web: { password_configured: true }, archive: { ready: true, initialization_mode: 'empty' } };
+    context.sessionStorage.setItem = () => { throw new Error('Storage disabled'); };
+    context.window.location.reload = () => assert.fail('Setup must not reload');
+    context.fetch = async (url) => {
+        requests.push(url);
+        if (url === '/api/setup/complete') return { ok: true, json: async () => ({ completed: true, reload: false }) };
+        assert.equal(url, '/api/setup');
+        return { ok: true, json: async () => data };
+    };
+    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.setupForced = true;
+    app.setupPassword = app.setupPasswordConfirm = 'test-secret';
+    app.setupData = { web: { password_configured: false } };
+    let resources = 0, progress = 0;
+    app.loadArchiveResources = async () => { resources++; };
+    app.fetchActivityStatus = async () => { progress++; };
+    await app.finishSetup();
+    assert.deepEqual(requests, ['/api/setup/complete', '/api/setup']);
+    assert.equal(resources, 1);
+    assert.equal(progress, 1);
+    assert.equal(app.setupFinishing, false);
+    assert.equal(app.setupCompletionVisible, true);
+    assert.equal(app.showSetupModal, true);
+    assert.equal(app.setupForced, false);
+    assert.equal(app.archiveReady, true);
+    assert.equal(app.setupData.web.password_configured, true);
+    assert.equal(app.setupPassword, '');
+    assert.equal(app.setupPasswordConfirm, '');
+    app.closeSetup();
+    assert.equal(app.showSetupModal, false);
+    await app.fetchSetup();
+    assert.equal(app.setupCompletionVisible, false, 'polling must not reopen completion');
 });
 
 test('setup completion survives the password reload once and supports both real handoffs', async () => {
@@ -7438,39 +7528,54 @@ test('setup still shows completion before reloading when browser storage is disa
     assert.equal(reloads, 1);
 });
 
-test('setup completion explains actual import, enrichment, sync and skipped steps', () => {
+test('setup completion explains import with enrichment, media, sync and skipped steps', () => {
     const context = browserContext();
     const { nookSetupCompletion } = loadScripts(context, ['setup-completion.js'], '({nookSetupCompletion})');
     const describe = (archive, extra = {}) => nookSetupCompletion({ setupData: {
         archive, auth: { verified: true }, schedule: { enabled: false, collections: ['bookmarks', 'likes'] },
     }, ...extra });
-    const pending = { initialization_mode: 'import', initialization_state: 'complete', imported: true, enrichment_state: 'running' };
-    const running = describe(pending);
-    assert.equal(running.stages.map(stage => stage.state).join(','), 'done,active,queued');
-    assert.match(running.note, /sync follows automatically/);
-    assert.match(running.time, /hours or potentially days.*limits/);
-    assert.match(running.usability, /until the first sync finishes/);
-    assert.match(running.stages[1].icon, /data-icon="search"/);
-    const syncing = describe(pending, { activity: { kind: 'enrich', steps: [{ key: 'archive-enrich', state: 'complete' }] } });
+    const imported = { initialization_mode: 'import', initialization_state: 'complete', imported: true };
+    const importing = describe({ ...imported, initialization_state: 'running', media_state: 'waiting_for_import' });
+    assert.equal(importing.stages.map(stage => stage.key).join(','), 'import,media,sync');
+    assert.equal(importing.stages.map(stage => stage.state).join(','), 'active,queued,queued');
+    assert.match(importing.stages[0].description, /fill in missing text/);
+    assert.match(importing.stages[1].icon, /data-icon="photo"/);
+    const mediaInImport = describe({ ...imported, initialization_state: 'running', media_state: 'running' });
+    assert.equal(mediaInImport.stages.map(stage => stage.state).join(','), 'done,active,queued');
+    const media = describe({ ...imported, media_state: 'running', followup_state: 'waiting_for_worker' },
+        { activity: { kind: 'media' } });
+    assert.equal(media.stages.map(stage => stage.state).join(','), 'done,active,queued');
+    assert.match(media.note, /Media is downloading; the first sync follows automatically/);
+    assert.match(media.time, /hours or potentially days.*limits/);
+    assert.match(media.usability, /until the first sync finishes/);
+    const queued = describe({ ...imported, media_state: 'queued' }, { lastActivity: { kind: 'enrich', success: true } });
+    assert.equal(queued.stages[2].state, 'queued', 'an older first sync must not complete a new import');
+    const syncing = describe({ ...imported, media_state: 'complete', followup_state: 'running' },
+        { activity: { kind: 'enrich' } });
     assert.equal(syncing.stages.map(stage => stage.state).join(','), 'done,done,active');
-    const failed = describe(pending, { lastActivity: { kind: 'enrich', success: false, steps: [{ key: 'archive-enrich', state: 'complete' }] } });
+    const failed = describe({ ...imported, media_state: 'complete', followup_state: 'failed',
+        warnings: ['Storage is full. Free disk space, then resume.'] },
+    { lastActivity: { title: 'tweetnook import enrich', success: false } });
     assert.equal(failed.stages.at(-1).state, 'attention');
-    assert.doesNotMatch(failed.note, /is complete/);
-    const done = describe({ ...pending, enrichment_state: 'complete', enriched: true }, { lastActivity: { kind: 'enrich', success: true } });
-    assert.equal(done.stages.at(-1).state, 'done');
-    const detailsOnly = describe({ ...pending, enriched: false, details_complete: true,
-        followup_state: 'failed', enrichment_state: 'failed', warnings: ['Storage is full. Free disk space, then resume.'],
-    }, { lastActivity: {title: 'tweetnook import enrich', success: false} });
-    assert.equal(detailsOnly.stages[1].state, 'done');
-    assert.equal(detailsOnly.stages[2].state, 'attention');
-    assert.match(detailsOnly.note, /Storage is full/);
-    const importing = describe({ ...pending, initialization_state: 'running', enrichment_state: 'waiting_for_import' }, { lastActivity: { kind: 'enrich', success: true, steps: [{ key: 'archive-enrich', state: 'complete' }] } });
-    assert.equal(importing.stages.map(stage => stage.state).join(','), 'active,queued,queued', 'an older success must not complete a new import');
-    const importFailed = describe({ ...pending, initialization_state: 'failed' });
+    assert.match(failed.note, /Storage is full/);
+    const done = describe({ ...imported, media_state: 'complete', followup_state: 'complete' },
+        { lastActivity: { kind: 'enrich', success: true } });
+    assert.equal(done.stages.map(stage => stage.state).join(','), 'done,done,done');
+    const mediaFailed = describe({ ...imported, media_state: 'failed' });
+    assert.equal(mediaFailed.stages[1].state, 'attention');
+    assert.match(mediaFailed.note, /Download media again/);
+    const stoppedMediaImport = describe({ ...imported, media_state: 'failed', followup_state: 'failed',
+        warnings: ['Storage is full. Free disk space, then run Sync now to resume.'] },
+    { lastActivity: { kind: 'import', success: false } });
+    assert.equal(stoppedMediaImport.stages.map(stage => stage.state).join(','), 'done,attention,attention');
+    assert.match(stoppedMediaImport.note, /Storage is full.*Sync now/);
+    const importFailed = describe({ ...imported, initialization_state: 'failed' });
     assert.equal(importFailed.stages[0].state, 'attention');
-    const offline = describe({}, { setupData: { auth: { verified: false }, archive: pending } });
+    // Import, enrichment and media need no account; only the first sync waits for one.
+    const offline = describe({}, { setupData: { auth: { verified: false }, archive: { ...imported, media_state: 'running' } } });
     assert.equal(offline.needsConnection, true);
-    assert.equal(offline.stages[1].state, 'connection');
+    assert.equal(offline.stages.map(stage => stage.state).join(','), 'done,active,connection');
+    assert.match(offline.note, /first sync starts once you connect X/);
     const manual = describe({ initialization_mode: 'empty' });
     assert.equal(manual.stages.length, 1);
     assert.equal(manual.stages[0].label, 'Not started');

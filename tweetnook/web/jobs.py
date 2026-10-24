@@ -258,7 +258,7 @@ JOBS: tuple[JobSpec, ...] = (
     ),
     JobSpec(
         "enrich",
-        "Refresh archive details",
+        "Enrich archive",
         "Fill in details for imported posts",
         "tweetnook import enrich",
         ("import", "enrich"),
@@ -388,8 +388,12 @@ def jobs_payload(
     schedule: dict[str, Any],
     check: dict[str, Any],
     sync_deferred: bool,
+    setup_queue: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Every job with its state, last run and next run, for the Web jobs list."""
+    """Every job with its state, last run and next run, for the Web jobs list.
+
+    ``setup_queue`` holds jobs Setup starts on its own after the current one.
+    """
 
     last: dict[str, dict[str, Any]] = {}
     runs = list_runs(data_dir, limit=200) if data_dir is not None else []
@@ -420,6 +424,9 @@ def jobs_payload(
         if job.key in queued:
             state = "queued"
             queue_info = {"position": queued[job.key] + 1, "retry_at": None, "removable": True}
+        elif job.key in (setup_queue or []):
+            state = "queued"
+            queue_info = {"position": None, "retry_at": None, "removable": False}
         if job.key == "check" and check.get("deferred"):
             state = "queued"
             queue_info = {"position": None, "retry_at": check.get("next_run_at"), "removable": True}

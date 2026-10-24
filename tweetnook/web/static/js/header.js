@@ -143,7 +143,7 @@ function nookSyncStepCopy(step, state) {
   const key = step.key || '', collection = { bookmarks: 'Bookmarks', likes: 'Likes', tweets: 'your posts' }[key.split(':')[1]];
   const copies = {
     'archive-auth': ['Connect to X', 'connect your Twitter/X account', 'Connecting your Twitter/X account.', 'Connected your Twitter/X account.'],
-    'archive-enrich': ['Refresh saved post details', 'refresh details for posts in your archive', 'Refreshing details for posts in your archive.', 'Refreshed details for posts in your archive.'],
+    'archive-enrich': ['Enrich saved posts', 'fill in missing details for posts in your archive', 'Filling in missing details for posts in your archive.', 'Filled in missing details for posts in your archive.'],
     threads: ['Expand conversations', 'find replies and quotes for saved posts', 'Finding replies and quotes for saved posts.', 'Found replies and quotes for saved posts.'],
     resurrection: ['Retry unavailable posts', 'retry posts that were unavailable', 'Retrying posts that were unavailable.', 'Retried unavailable posts.'],
     'check:saves': ['Check saved posts', 'check that saved posts are still on X', 'Checking that saved posts are still on X.', 'Checked saved posts.'],
@@ -218,7 +218,7 @@ const NOOK_JOB_ICONS = {
   remove: 'M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z',
   history: 'M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5 m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z',
 };
-const NOOK_JOB_VERBS = { sync: 'Syncing', check: 'Checking', threads: 'Expanding conversations', articles: 'Refreshing articles', media: 'Downloading media', urls: 'Refreshing link previews', tagging: 'Tagging posts', import: 'Importing archive', enrich: 'Refreshing archive details' };
+const NOOK_JOB_VERBS = { sync: 'Syncing', check: 'Checking', threads: 'Expanding conversations', articles: 'Refreshing articles', media: 'Downloading media', urls: 'Refreshing link previews', tagging: 'Tagging posts', import: 'Importing archive', enrich: 'Enriching archive' };
 // A run's headline is computed by the panel's own caption logic against that run.
 let nookRunOverride;
 function nookClock(ts) { return new Date(ts * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
@@ -452,7 +452,7 @@ function nookSyncPanel() {
       return this.tabLabelFor(this.steps()[index]);
     },
     tabLabelFor(step) {
-      const labels = { 'archive-auth': 'Connect', 'archive-enrich': 'Refresh', threads: 'Conversations', resurrection: 'Retry', articles: 'Articles', media: 'Media', urls: 'Links', 'check:saves': 'Saved', 'check:unavailable': 'Unavailable', 'check:context': 'Context' };
+      const labels = { 'archive-auth': 'Connect', 'archive-enrich': 'Enrichment', threads: 'Conversations', resurrection: 'Retry', articles: 'Articles', media: 'Media', urls: 'Links', 'check:saves': 'Saved', 'check:unavailable': 'Unavailable', 'check:context': 'Context' };
       if (step.key?.startsWith('preflight:')) return 'Access';
       return labels[step.key] || step.title;
     },

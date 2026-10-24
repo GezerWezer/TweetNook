@@ -1,4 +1,4 @@
-"""Coordinate the narrowly scoped local import → verified-auth enrichment flow."""
+"""Coordinate Setup's import (including enrichment/media) → verified-auth first sync."""
 
 from __future__ import annotations
 
@@ -21,10 +21,36 @@ class SetupState(BaseModel):
     archive_init_run_id: str | None = None
     initialization_result: Literal["complete", "failed", "interrupted"] | None = None
     archive_previously_ready: bool = False
+    # Import's Media result, or a standalone media run persisted by an older version.
+    media_run_id: str | None = None
+    # The first sync runs as ``import enrich``, which also finishes rows FxTwitter couldn't.
     auto_enrich_requested: bool = False
     auto_enrich_run_id: str | None = None
     auth_verified: bool = False
     auth_skipped: bool = False
+
+
+# Steps after the local import; stopping in one of them still leaves a usable archive.
+_FOLLOWUP_STEPS = {"archive-auth", "archive-enrich", "media"}
+
+
+def _saved_before_enrichment(run) -> bool:
+    """Whether an import that didn't exit cleanly still saved everything before enrichment.
+
+    Stopped follow-up work leaves the saved archive browsable and waits for manual resume.
+    """
+
+    steps = ((run or {}).get("snapshot") or {}).get("steps") or []
+    if not any(
+        step.get("key") in _FOLLOWUP_STEPS and step.get("state") in {"active", "complete", "failed"}
+        for step in steps
+    ):
+        return False
+    return all(
+        step.get("state") in {"complete", "skipped"}
+        for step in steps
+        if step.get("key") not in _FOLLOWUP_STEPS
+    )
 
 
 class SetupCoordinator:
@@ -97,6 +123,7 @@ class SetupCoordinator:
             self.state.archive_previously_ready = self.server.get("store") is not None
             self.state.archive_init_run_id = run_id
             self.state.initialization_result = None
+            self.state.media_run_id = None
             self.state.auto_enrich_requested = mode == "import"
             self.state.auto_enrich_run_id = None
             self.save()
@@ -131,6 +158,7 @@ class SetupCoordinator:
                 self.state.initialization_mode = "empty"
                 self.state.initialization_result = "complete"
                 self.state.archive_init_run_id = None
+                self.state.media_run_id = None
                 self.state.auto_enrich_requested = False
                 self.save()
             finally:
@@ -147,14 +175,42 @@ class SetupCoordinator:
     def job_completed(self, run_id, exit_code):
         with self.lock:
             if run_id == self.state.archive_init_run_id:
-                self.state.initialization_result = "complete" if exit_code == 0 else "failed"
-                self.save()
+                self._record_initialization(exit_code == 0, self._run(run_id))
             self.reconcile()
+
+    def _record_initialization(self, clean, run, *, failure="failed"):
+        saved = clean or (
+            self.state.initialization_mode == "import" and _saved_before_enrichment(run)
+        )
+        self.state.initialization_result = "complete" if saved else failure
+        if self.state.initialization_mode == "import":
+            # Media belongs to this run even when it failed or never got to start.
+            self.state.media_run_id = self.state.archive_init_run_id
+        if not clean:
+            self.state.auto_enrich_requested = False
+        self.save()
+
+    def _initial_followup_failed(self, run):
+        return bool(
+            self.state.initialization_mode == "import"
+            and self.state.initialization_result == "complete"
+            and run
+            and run.get("status") in {"failed", "interrupted", "stopped"}
+        )
 
     def reconcile(self):
         with self.lock:
             if self.server.get("shutting_down"):
                 return
+            config = self.server["config"]
+            if config.replay.url:
+                connected = all(
+                    (value or "").strip() for value in (config.auth.auth_token, config.auth.ct0)
+                )
+                if self.state.auth_verified != connected:
+                    self.state.auth_verified = connected
+                    self.state.auth_skipped = not connected
+                    self.save()
             supervisor = self.server["job_supervisor"]
             run = self._run(self.state.archive_init_run_id)
             init_running = bool(
@@ -169,9 +225,8 @@ class SetupCoordinator:
                 # A separately surviving worker/command lock wins over stale metadata.
                 if supervisor._external_activity_is_running():
                     return
-                successful = run and (run.get("exit_code") == 0 or run.get("success") is True)
-                self.state.initialization_result = "complete" if successful else "interrupted"
-                self.save()
+                clean = bool(run and (run.get("exit_code") == 0 or run.get("success") is True))
+                self._record_initialization(clean, run, failure="interrupted")
             if self.state.archive_previously_ready or (
                 not init_running
                 and self.state.initialization_result not in {"failed", "interrupted"}
@@ -227,12 +282,41 @@ class SetupCoordinator:
                         action="setup",
                         run_id=self.state.archive_init_run_id,
                     )
-            if (
+            import_ready = (
                 store is not None
                 and self.state.initialization_mode == "import"
                 and self.state.initialization_result == "complete"
-                and self.state.auto_enrich_requested
+            )
+            if not init_running and self._initial_followup_failed(run):
+                # Also cancel first-sync intent persisted by older versions after failure.
+                if self.state.auto_enrich_requested:
+                    self.state.auto_enrich_requested = False
+                    self.save()
+                if run.get("status") != "stopped":
+                    self.notices.add(
+                        f"import-followup-{self.state.archive_init_run_id}",
+                        "Archive preparation needs attention",
+                        (run.get("snapshot") or {}).get("summary")
+                        or "Imported posts are saved. Open Activity to review the error, "
+                        "then run Sync now or Enrich archive to resume.",
+                        run_id=self.state.archive_init_run_id,
+                    )
+            media_run = self._run(self.state.media_run_id)
+            if (
+                self.state.media_run_id
+                and self.state.media_run_id != self.state.archive_init_run_id
+                and supervisor.active_run_id != self.state.media_run_id
+                and media_run
+                and media_run.get("status") in {"failed", "interrupted"}
             ):
+                self.notices.add(
+                    f"media-{self.state.media_run_id}",
+                    "Media download needs attention",
+                    "Media download did not finish. Downloaded files are kept; "
+                    "open Activity to run Download media again.",
+                    run_id=self.state.media_run_id,
+                )
+            if import_ready and self.state.auto_enrich_requested:
                 config = self.server["config"]
                 if (
                     self.state.completed
@@ -285,6 +369,8 @@ class SetupCoordinator:
             elif enrich_run and enrich_run.get("status") in {"completed", "stopped"}:
                 self.notices.dismiss(f"enrich-{self.state.auto_enrich_run_id}")
                 # Keep the successful identity so readiness survives browser reloads.
+            if enrich_run and enrich_run.get("success") is True:
+                self.notices.dismiss(f"import-followup-{self.state.archive_init_run_id}")
             self.start_scheduler()
 
     def complete_walkthrough(self, *, skip_auth=False):
@@ -297,6 +383,23 @@ class SetupCoordinator:
             self.state.auth_skipped = skip_auth and not self.state.auth_verified
             self.state.completed = True
             self.save()
+
+    def pending_jobs(self):
+        """Job keys Setup will start on its own, in order, for the Web jobs list."""
+
+        with self.lock:
+            if self.state.initialization_mode != "import" or self.state.initialization_result in {
+                "failed",
+                "interrupted",
+            }:
+                return []
+            if (
+                self.state.auto_enrich_requested
+                and self.state.completed
+                and self.state.auth_verified
+            ):
+                return ["enrich"]
+            return []
 
     def status(self):
         with self.lock:
@@ -316,6 +419,7 @@ class SetupCoordinator:
                 else self.state.initialization_result or ("ready" if store else "missing")
             )
             enrichment = "not_applicable"
+            initialization = self._run(self.state.archive_init_run_id)
             followup_run = self._followup_result()
             followup_state = "not_started"
             if supervisor.active_kind in {"enrich", "sync"}:
@@ -330,6 +434,8 @@ class SetupCoordinator:
                 )
             elif followup_run:
                 followup_state = "complete" if followup_run.get("success") is True else "failed"
+            elif not running and self._initial_followup_failed(initialization):
+                followup_state = "failed"
             followup_failed = followup_state == "failed"
             if self.state.initialization_mode == "import" or imported:
                 if running or not imported:
@@ -338,11 +444,8 @@ class SetupCoordinator:
                     enrichment = "running"
                 elif followup_failed:
                     enrichment = "failed"
-                elif not pending and followup_state not in {
-                    "waiting_for_setup",
-                    "waiting_for_auth",
-                    "waiting_for_worker",
-                }:
+                elif not pending:
+                    # Import already enriched everything; the first sync is tracked separately.
                     enrichment = "complete"
                 elif self.state.auto_enrich_requested:
                     enrichment = followup_state
@@ -354,6 +457,50 @@ class SetupCoordinator:
                         and (not run or run.get("status") != "completed")
                         else "pending"
                     )
+            media = "not_applicable"
+            if self.state.initialization_mode == "import":
+                media_run = self._run(self.state.media_run_id) or initialization
+                media_steps = ((media_run or {}).get("snapshot") or {}).get("steps") or []
+                media_step = next((step for step in media_steps if step.get("key") == "media"), {})
+                # An explicit sync/enrichment can finish the media left by a failed import.
+                resumed_media = next(
+                    (
+                        step
+                        for step in ((followup_run or {}).get("snapshot") or {}).get("steps", [])
+                        if step.get("key") == "media"
+                        and (
+                            step.get("state") in {"complete", "failed"}
+                            or (
+                                step.get("state") == "skipped"
+                                and followup_run.get("success") is True
+                            )
+                        )
+                    ),
+                    None,
+                )
+                if resumed_media:
+                    media_run, media_step = followup_run, resumed_media
+                if running:
+                    media = (
+                        "running" if media_step.get("state") == "active" else "waiting_for_import"
+                    )
+                elif media_run:
+                    state = media_step.get("state")
+                    if state == "complete" or (
+                        state in {None, "skipped"} and media_run.get("success") is True
+                    ):
+                        media = "complete"
+                    elif state == "failed":
+                        media = "stopped" if media_run.get("status") == "stopped" else "failed"
+                    elif (
+                        self.state.media_run_id
+                        and supervisor.active_run_id == self.state.media_run_id
+                    ):
+                        media = "running"
+                    else:
+                        media = "not_started"
+                else:
+                    media = "not_started"
             return {
                 "required": not self.state.completed,
                 "completed": self.state.completed,
@@ -373,13 +520,14 @@ class SetupCoordinator:
                     "all_followups_complete": followup_state == "complete",
                     "pending_enrichment": pending,
                     "enrichment_state": enrichment,
+                    "media_state": media,
                     "initialization_state": init_state,
                     "initialization_mode": self.state.initialization_mode,
                     "legacy_migration_available": (
                         self.paths.data_dir / "archive.lancedb"
                     ).exists(),
                     "warnings": [
-                        (followup_run or {}).get("snapshot", {}).get("summary")
+                        (followup_run or initialization or {}).get("snapshot", {}).get("summary")
                         or "Archive preparation did not finish. Open Activity to review and resume."
                     ]
                     if followup_failed

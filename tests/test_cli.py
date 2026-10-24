@@ -224,7 +224,10 @@ def test_import_x_archive_help_describes_offline_mode() -> None:
     assert "--offline" in result.output
     assert "Twitter/X requests" in result.output
     assert "--defer-followup" in result.output
-    assert "Setup launches live" in result.output
+    assert "without live" in result.output
+    normalized = " ".join(result.output.replace("│", "").split())
+    assert "Import, enrich, and download media now" in normalized
+    assert "the first sync separately" in normalized
 
 
 def test_import_x_archive_help_describes_sample_limit() -> None:
@@ -998,7 +1001,7 @@ def test_import_x_archive_reports_runner_result(paths, monkeypatch, tmp_path: Pa
     assert "archive import: 2 authored, 1 deleted authored, 3 likes, 4 media files copied" in output
     assert "live reconciliation: tweets, likes" in output
     assert (
-        "detail enrichment: 5 refreshed, 1 terminal, 2 transient failures, "
+        "detail enrichment: 5 enriched, 1 terminal, 2 transient failures, "
         "9 pending untouched, 0 transient due, 0 transient delayed"
     ) in output
     assert "archive does not contain a bookmark dataset" in output
@@ -1114,7 +1117,7 @@ def test_import_x_archive_enrich_reuses_existing_import(paths, monkeypatch, tmp_
     assert "already present; keeping existing imported data and running" in output
     assert "follow-up enrichment" in output
     assert "live reconciliation: likes" in output
-    assert "detail enrichment: 7 refreshed, 0 terminal, 1 transient failures" in output
+    assert "detail enrichment: 7 enriched, 0 terminal, 1 transient failures" in output
     assert "5 pending untouched" in output
 
 
@@ -1183,7 +1186,7 @@ def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch, co
     output = " ".join(buffer.getvalue().split())
     assert "archive enrich: existing imported archive data" in output
     assert "live reconciliation: tweets, likes" in output
-    assert "detail enrichment: 9 refreshed, 2 terminal, 1 transient failures" in output
+    assert "detail enrichment: 9 enriched, 2 terminal, 1 transient failures" in output
     assert "4 pending untouched" in output
     assert "detail enrichment failed: upstream 429" in output
 

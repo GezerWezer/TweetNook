@@ -174,11 +174,13 @@ async def fetch_fx_statuses(
     *,
     concurrency: int,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    on_lookup: Callable[[FxLookup], None] | None = None,
 ) -> tuple[dict[str, FxLookup], bool]:
     """Look up several posts with at most ``concurrency`` requests in flight.
 
     Returns the lookups and whether FxTwitter looked down: after ``FX_OUTAGE_ERRORS``
-    failures in a row the rest are dropped rather than waited out.
+    failures in a row the rest are dropped rather than waited out. ``on_lookup`` sees
+    each lookup as it finishes, so callers can show progress during the batch.
     """
 
     results: dict[str, FxLookup] = {}
@@ -187,6 +189,8 @@ async def fetch_fx_statuses(
     async with aclosing(lookups):
         async for lookup in lookups:
             results[lookup.tweet_id] = lookup
+            if on_lookup is not None:
+                on_lookup(lookup)
             errors = errors + 1 if lookup.kind == "error" else 0
             if errors >= FX_OUTAGE_ERRORS:
                 return results, True

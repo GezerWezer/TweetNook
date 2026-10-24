@@ -113,6 +113,11 @@ def verify_credentials(
     return True
 
 
+def remember_web_session(request: Request) -> None:
+    """Issue a login cookie after an authenticated password change or initial setup."""
+    setattr(request.state, _ISSUE_SESSION, True)
+
+
 def _session_cookie(password_hash: str, scheme: str | None) -> bytes:
     cookie = (
         f"{SESSION_COOKIE}={create_session_token(password_hash)}; Max-Age={SESSION_MAX_AGE}; "

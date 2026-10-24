@@ -329,7 +329,12 @@ def test_community_note_versions_are_added_changed_removed_and_restored(paths) -
 
 
 def _run_enrichment(
-    paths, monkeypatch: pytest.MonkeyPatch, transport: httpx.MockTransport, tweet_ids
+    paths,
+    monkeypatch: pytest.MonkeyPatch,
+    transport: httpx.MockTransport,
+    tweet_ids,
+    *,
+    signed_in: bool = True,
 ) -> tuple[archive_import.ArchiveEnrichResult, list[str]]:
     store = open_archive_store(paths, create=True)
     assert store is not None
@@ -398,7 +403,9 @@ def _run_enrichment(
                 auth_token_source="test",
                 ct0_source="test",
                 user_id_source="test",
-            ),
+            )
+            if signed_in
+            else None,
             transport=None,
             console=Console(file=StringIO()),
         )
@@ -446,6 +453,80 @@ def test_enrichment_stops_asking_fxtwitter_once_it_is_down(
     # The batch stops after a few failures in a row instead of waiting out all 40.
     assert len(fx_requests) < 20
     assert sorted(detail_requests, key=int) == ids
+
+
+def test_enrichment_progress_moves_with_each_fxtwitter_answer(
+    paths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ids = [str(index) for index in range(1, 7)]
+    answered: list[str] = []
+    seen_during_batch: list[int] = []
+
+    class Pipeline:
+        def __getattr__(self, _name):
+            return lambda *args, **kwargs: None
+
+        def update_step(self, _key, *, completed=None, **_kwargs):
+            if completed is not None:
+                seen_during_batch.append((completed, len(answered)))
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        tweet_id = request.url.path.rsplit("/", 1)[-1]
+        await asyncio.sleep(0.01 * int(tweet_id))
+        answered.append(tweet_id)
+        code, body = ok(fx_status(tweet_id, "fx"))
+        return httpx.Response(code, json=body)
+
+    monkeypatch.setattr(archive_import, "current_pipeline", lambda: Pipeline())
+    _run_enrichment(paths, monkeypatch, httpx.MockTransport(handler), ids, signed_in=False)
+
+    completed = [value for value, _ in seen_during_batch]
+    assert completed == sorted(completed)
+    # Every post counts as soon as FxTwitter answers it, not after the whole batch.
+    assert [value for value, answers in seen_during_batch if 0 < answers < len(ids)] == [
+        1,
+        2,
+        3,
+        4,
+        5,
+    ]
+    assert completed[-1] == len(ids)
+
+
+def test_enrichment_without_an_account_leaves_the_rest_for_tweetdetail(
+    paths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    transport = fx_transport({"1": ok(fx_status("1", "from fxtwitter")), "2": (401, {})})
+
+    result, detail_requests = _run_enrichment(
+        paths, monkeypatch, transport, ("1", "2"), signed_in=False
+    )
+
+    assert (result.completed, result.transient_failures, result.pending_untouched) == (1, 0, 1)
+    assert detail_requests == []
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    assert store._get_row("tweet_object:1")["enrichment_state"] == "done"
+    # Untouched, so the first authenticated run looks it up with TweetDetail.
+    assert store._get_row("tweet_object:2")["enrichment_state"] == "pending"
+    store.close()
+
+
+def test_enrichment_without_an_account_stops_once_fxtwitter_is_down(
+    paths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ids = [str(index) for index in range(1, 41)]
+    result, detail_requests = _run_enrichment(
+        paths,
+        monkeypatch,
+        httpx.MockTransport(lambda _request: httpx.Response(418, json={})),
+        ids,
+        signed_in=False,
+    )
+
+    assert result.completed == 0
+    assert result.pending_untouched == len(ids)
+    assert detail_requests == []
 
 
 class _Supervisor:

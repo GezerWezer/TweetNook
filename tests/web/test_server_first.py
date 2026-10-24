@@ -9,9 +9,10 @@ from fastapi.testclient import TestClient
 
 from tweetnook.activity_history import mark_run_process_result, new_run_id, reserve_run
 from tweetnook.config import AppConfig, ensure_paths, resolve_paths
+from tweetnook.job_supervisor import JobConflictError
 from tweetnook.storage import open_archive_store
 from tweetnook.web import server
-from tweetnook.web.deps import server_state
+from tweetnook.web.deps import SESSION_COOKIE, server_state
 from tweetnook.web.notices import NoticeStore
 from tweetnook.web.setup_coordinator import SetupCoordinator
 
@@ -45,7 +46,7 @@ class Supervisor:
     def _external_activity_is_running(self):
         return self.active
 
-    def finish(self, code=0, *, stopped=False):
+    def finish(self, code=0, *, stopped=False, steps=None):
         run_id = self.active_run_id
         self.active = False
         self.active_run_id = None
@@ -62,7 +63,7 @@ class Supervisor:
                         "running": False,
                         "success": True,
                         "completed_at": time.time(),
-                        "steps": [],
+                        "steps": steps or [],
                     }
                 )
             )
@@ -116,7 +117,12 @@ def test_fresh_server_empty_choice_password_and_live_attachment(first_run):
             json={"skip_auth": True, "password": "test-secret", "confirm_password": "test-secret"},
         )
         assert response.status_code == 200
+        assert response.json() == {"completed": True, "reload": False}
+        assert "HttpOnly" in response.headers["set-cookie"]
         assert server_state["schedule_manager"] is not None
+        assert client.get("/api/setup").status_code == 200
+        assert client.get("/api/tweets").status_code == 200
+        client.cookies.clear()
         assert client.get("/api/setup").status_code == 401
         assert client.get("/api/tweets", auth=("any", "test-secret")).status_code == 200
         before = first_run.setup_state_file.read_bytes()
@@ -134,20 +140,52 @@ def test_setup_can_finish_without_a_password_and_later_remove_one(first_run):
         response = client.post("/api/setup/complete", json={"skip_auth": True, "no_password": True})
 
         assert response.status_code == 200
-        assert response.json() == {"completed": True, "reload": True}
+        assert response.json() == {"completed": True, "reload": False}
+        assert "set-cookie" not in response.headers
         assert client.get("/api/tweets").status_code == 200
         assert client.get("/api/setup").json()["web"]["password_configured"] is False
 
         # Rerunning Setup can add a password, then remove it again.
         added = {"password": "test-secret", "confirm_password": "test-secret"}
-        assert client.post("/api/setup/complete", json=added).json()["reload"] is True
+        assert client.post("/api/setup/complete", json=added).json()["reload"] is False
+        assert client.get("/api/tweets").status_code == 200
+        client.cookies.clear()
         assert client.get("/api/tweets").status_code == 401
         removed = client.post(
             "/api/setup/complete", json={"no_password": True}, auth=("any", "test-secret")
         )
-        assert removed.json() == {"completed": True, "reload": True}
+        assert removed.json() == {"completed": True, "reload": False}
         assert client.get("/api/tweets").status_code == 200
         assert "password_hash" not in first_run.config_file.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("endpoint", ["/api/setup/complete", "/api/setup/password"])
+def test_setup_password_change_keeps_only_the_current_browser_authenticated(first_run, endpoint):
+    with TestClient(server.app, base_url="https://testserver") as client:
+        submit = client.put if endpoint.endswith("/password") else client.post
+        assert client.post("/api/setup/archive/empty").status_code == 200
+        body = {"skip_auth": True, "password": "first", "confirm_password": "first"}
+        assert submit(endpoint, json=body).status_code == 200
+        previous_session = client.cookies[SESSION_COOKIE]
+
+        body.update(password="second", confirm_password="second")
+        changed = submit(endpoint, json=body)
+        assert changed.json() == {"completed": True, "reload": False}
+        assert "; Secure" in changed.headers["set-cookie"]
+        assert client.cookies[SESSION_COOKIE] != previous_session
+        assert client.get("/api/setup").status_code == 200
+        assert client.get("/api/tweets").status_code == 200
+
+        # A failed change must not replace the session or weaken authentication.
+        body.update(password="third", confirm_password="mismatch")
+        failed = submit(endpoint, json=body)
+        assert failed.status_code == 422
+        assert "set-cookie" not in failed.headers
+        assert client.get("/api/tweets").status_code == 200
+        client.cookies.clear()
+        client.cookies.set(SESSION_COOKIE, previous_session)
+        assert client.get("/api/setup").status_code == 401
+        assert submit(endpoint, json=body).status_code == 401
 
 
 def test_upgrade_recognizes_existing_sqlite(first_run):
@@ -249,6 +287,8 @@ def test_import_auth_order_enriches_exactly_once(coordinator, auth_first):
         assert len(jobs.calls) == 1
     coord.paths.database_path.touch()
     jobs.finish()
+    # The import downloaded media as its last step, so no separate media job follows.
+    assert coord.status()["archive"]["media_state"] == "complete"
     if not auth_first:
         assert len(jobs.calls) == 1
         coord.auth_was_verified()
@@ -263,6 +303,36 @@ def test_import_auth_order_enriches_exactly_once(coordinator, auth_first):
     coord.reconcile()
     assert len(jobs.calls) == 2
     assert coord.notices.list()
+
+
+@pytest.mark.parametrize("empty_field", ["auth_token", "ct0"])
+def test_replay_import_waits_for_both_cookies_then_starts_first_sync(coordinator, empty_field):
+    coord, jobs, _ = coordinator
+    config = server_state["config"]
+    config.replay.url = "http://source.test"
+    config.auth.auth_token = "anything"
+    config.auth.ct0 = "anything"
+    coord.begin("import")
+    coord.paths.database_path.touch()
+    jobs.finish()
+    assert coord.state.auth_verified is True
+    assert len(jobs.calls) == 1
+
+    setattr(config.auth, empty_field, "")
+    coord.reconcile()
+    assert coord.state.auth_verified is False
+    coord.complete_walkthrough(skip_auth=True)
+    assert coord.status()["archive"]["followup_state"] == "waiting_for_auth"
+    assert coord.pending_jobs() == []
+    assert len(jobs.calls) == 1
+
+    setattr(config.auth, empty_field, "anything")
+    coord.reconcile()
+    assert coord.state.auth_verified is True
+    assert coord.state.auth_skipped is False
+    assert jobs.calls[-1]["cli_args"] == ["import", "enrich"]
+    coord.reconcile()
+    assert len(jobs.calls) == 2
 
 
 def test_restart_completed_import_waits_for_verified_auth(coordinator):
@@ -355,6 +425,7 @@ def test_zero_pending_details_still_waits_for_confirmed_first_sync(coordinator):
     coord.paths.database_path.touch()
     jobs.finish()
     assert coord.state.auto_enrich_requested
+    assert coord.status()["archive"]["enrichment_state"] == "complete"
     server_state["config"].auth.auth_token = "candidate"
     server_state["config"].auth.ct0 = "candidate-csrf"
     coord.auth_was_verified()
@@ -371,6 +442,8 @@ def test_migration_never_arms_enrichment(coordinator):
     jobs.finish()
     assert server_state["store"] is not None
     assert not coord.state.auto_enrich_requested
+    assert "media_requested" not in coord.state.model_dump()
+    assert coord.status()["archive"]["media_state"] == "not_applicable"
     assert len(jobs.calls) == 1
 
 
@@ -468,20 +541,31 @@ def test_real_offline_import_worker_attaches_archive(first_run, tmp_path, monkey
     source = _write_archive_dir(tmp_path / "source")
     archive = _write_archive_zip(source, tmp_path / "fixture.zip")
     monkeypatch.setattr(server, "JobSupervisor", JobSupervisor)
+    # The worker is a separate process, so keep its enrichment off the real FxTwitter API.
+    first_run.config_file.write_text('[fxtwitter]\nbase_url = "http://127.0.0.1:9"\n')
     with TestClient(server.app) as client:
         assert client.put("/api/setup/archive", content=archive.read_bytes()).status_code == 200
         result = client.post("/api/setup/archive/import")
         assert result.status_code == 202
-        deadline = time.monotonic() + 20
+        deadline = time.monotonic() + 40
         while time.monotonic() < deadline:
             status = client.get("/api/setup").json()
-            if status["archive"]["ready"]:
+            if status["archive"]["ready"] and status["archive"]["media_state"] == "complete":
                 break
             time.sleep(0.05)
         assert status["archive"]["ready"], status
         assert status["archive"]["imported"]
+        # FxTwitter couldn't answer, so the tweet waits for the connected first sync.
         assert status["archive"]["enrichment_state"] == "waiting_for_setup"
-        assert len(list(first_run.activity_runs_dir.iterdir())) == 1
+        assert status["archive"]["pending_enrichment"] == 1
+        assert status["archive"]["media_state"] == "complete", status
+        assert status["archive"]["followup_state"] == "waiting_for_setup"
+        # Import, enrichment and media are one run.
+        (run_dir,) = first_run.activity_runs_dir.iterdir()
+        steps = json.loads((run_dir / "final.json").read_text())["steps"]
+        keys = [step["key"] for step in steps]
+        assert keys[-3:] == ["archive-auth", "archive-enrich", "media"]
+        assert steps[-1]["state"] in {"complete", "skipped"}  # Skipped: files came in the ZIP.
         assert first_run.media_dir.exists()
 
 
@@ -503,3 +587,240 @@ def test_first_sync_uses_final_collection_choice(coordinator):
     assert server_state["config"].sync.collections == ["bookmarks"]
     assert jobs.calls[-1]["kind"] == "enrich"
     assert not server_state["config"].schedule.enabled
+
+
+def test_real_import_media_disk_full_keeps_archive_ready_without_retry(
+    first_run, tmp_path, monkeypatch
+):
+    import errno
+
+    from typer.testing import CliRunner
+
+    import tweetnook.cli as cli
+    from tests.test_archive_import import _write_archive_dir, _write_archive_zip
+    from tweetnook.activity_history import read_run
+    from tweetnook.resource_failure import STORAGE_RECOVERY
+
+    source = _write_archive_dir(tmp_path / "source", media_kind="video")
+    archive = _write_archive_zip(source, tmp_path / "fixture.zip")
+    downloads = []
+
+    async def full(_client, *, url, destination):
+        downloads.append(url)
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr("tweetnook.media._download_file", full)
+    with TestClient(server.app) as client:
+        coord = server_state["setup_coordinator"]
+        jobs = server_state["job_supervisor"]
+        config = server_state["config"]
+        config.fxtwitter.enabled = False
+        monkeypatch.setattr(cli, "load_config", lambda: (config, first_run))
+        assert client.put("/api/setup/archive", content=archive.read_bytes()).status_code == 200
+        assert client.post("/api/setup/archive/import").status_code == 202
+        run_id = jobs.active_run_id
+        with monkeypatch.context() as worker:
+            worker.setenv("TWEETNOOK_ACTIVITY_RUN_ID", run_id)
+            worker.setenv("TWEETNOOK_ACTIVITY_ORIGIN", "web")
+            result = CliRunner().invoke(cli.app, jobs.calls[0]["cli_args"])
+        assert result.exit_code == 2, result.output
+        jobs.finish(result.exit_code)
+        status = client.get("/api/setup").json()["archive"]
+        assert status["browsable"] and status["imported"]
+        assert status["initialization_state"] == "complete"
+        assert status["media_state"] == "failed"
+        assert status["followup_state"] == "failed"
+        assert status["warnings"] == [STORAGE_RECOVERY]
+        saved = read_run(first_run.data_dir, run_id)
+        assert saved["status"] == "failed"
+        media = next(step for step in saved["snapshot"]["steps"] if step["key"] == "media")
+        assert media["state"] == "failed"
+        assert STORAGE_RECOVERY in media["reason"]
+        assert server_state["store"].list_media_rows(states={"pending"})
+        assert len(downloads) == 1
+        for _ in range(3):
+            coord.reconcile()
+        assert len(jobs.calls) == 1
+        assert coord.pending_jobs() == []
+
+
+def _stop_import_during(
+    jobs,
+    paths,
+    step_key,
+    *,
+    code=130,
+    stopped=True,
+    summary="Stopped by user",
+    enrich_skipped=False,
+):
+    """Finish the active import as a worker stopped in ``step_key`` would leave it."""
+
+    order = ["archive-inspect", "archive-source", "archive-media", "archive-enrich", "media"]
+    stopped_at = order.index(step_key)
+    steps = [
+        {
+            "key": key,
+            "state": "complete" if i < stopped_at else "failed" if i == stopped_at else "skipped",
+        }
+        for i, key in enumerate(order)
+    ]
+    if enrich_skipped:
+        next(step for step in steps if step["key"] == "archive-enrich")["state"] = "skipped"
+    filename = "snapshot.json" if stopped else "final.json"
+    (paths.activity_runs_dir / jobs.active_run_id / filename).write_text(
+        json.dumps({"running": False, "success": False, "summary": summary, "steps": steps})
+    )
+    jobs.finish(code, stopped=stopped)
+
+
+@pytest.mark.parametrize("step_key", ["archive-enrich", "media"])
+def test_stopping_after_the_local_import_waits_for_manual_resume(coordinator, step_key):
+    coord, jobs, _ = coordinator
+    coord.begin("import")
+    coord.paths.database_path.touch()
+    _stop_import_during(jobs, coord.paths, step_key)
+    assert coord.state.initialization_result == "complete"
+    assert server_state["store"] is not None
+    assert len(jobs.calls) == 1
+    assert not coord.state.auto_enrich_requested
+    status = coord.status()["archive"]
+    assert status["media_state"] == ("stopped" if step_key == "media" else "not_started")
+    assert status["followup_state"] == "failed"
+    assert status["warnings"][0].startswith("Stopped by user")
+
+
+def test_stopping_the_local_import_needs_setup_attention(coordinator):
+    coord, jobs, _ = coordinator
+    coord.begin("import")
+    coord.paths.database_path.touch()
+    _stop_import_during(jobs, coord.paths, "archive-source")
+    assert coord.state.initialization_result == "failed"
+    assert len(jobs.calls) == 1
+    assert coord.pending_jobs() == []
+
+
+@pytest.mark.parametrize("connected", [False, True])
+@pytest.mark.parametrize("enrich_skipped", [False, True])
+def test_disk_full_import_does_not_start_media_or_first_sync(
+    coordinator, connected, enrich_skipped
+):
+    from tweetnook.resource_failure import STORAGE_RECOVERY
+
+    coord, jobs, _ = coordinator
+    coord.begin("import")
+    coord.paths.database_path.touch()
+    if connected:
+        server_state["config"].auth.auth_token = "synthetic"
+        server_state["config"].auth.ct0 = "synthetic"
+        coord.auth_was_verified()
+        coord.complete_walkthrough()
+    import_id = jobs.active_run_id
+    _stop_import_during(
+        jobs,
+        coord.paths,
+        "media",
+        code=2,
+        stopped=False,
+        summary=STORAGE_RECOVERY,
+        enrich_skipped=enrich_skipped,
+    )
+    assert len(jobs.calls) == 1
+    assert not jobs.active
+    assert coord.state.initialization_result == "complete"
+    assert not coord.state.auto_enrich_requested
+    status = coord.status()["archive"]
+    assert status["browsable"]
+    assert status["media_state"] == "failed"
+    assert status["followup_state"] == "failed"
+    assert status["warnings"] == [STORAGE_RECOVERY]
+    assert [notice["run_id"] for notice in coord.notices.list()] == [import_id]
+    # Neither reconnecting, finishing Setup nor restarting should retry the failed work.
+    server_state["config"].auth.auth_token = "synthetic"
+    server_state["config"].auth.ct0 = "synthetic"
+    coord.auth_was_verified()
+    coord.complete_walkthrough()
+    restarted = SetupCoordinator(
+        coord.paths, server_state, coord.attach, lambda: None, coord.notices
+    )
+    for _ in range(3):
+        restarted.reconcile()
+    assert len(jobs.calls) == 1
+    assert restarted.status()["archive"]["media_state"] == "failed"
+    assert restarted.pending_jobs() == []
+
+
+@pytest.mark.parametrize("recorded", [False, True])
+def test_old_saved_media_intent_is_ignored_after_failed_import(coordinator, recorded):
+    coord, jobs, _ = coordinator
+    coord.begin("import")
+    coord.paths.database_path.touch()
+    if not recorded:
+        jobs.callbacks.clear()  # Server exited before its completion callback recorded the result.
+    _stop_import_during(jobs, coord.paths, "media", code=2, stopped=False)
+    saved = coord.state.model_dump()
+    saved.update(media_requested=True, media_run_id=None, auto_enrich_requested=True)
+    coord.paths.setup_state_file.write_text(json.dumps(saved))
+    restarted = SetupCoordinator(
+        coord.paths, server_state, coord.attach, lambda: None, coord.notices
+    )
+    server_state["config"].auth.auth_token = "synthetic"
+    server_state["config"].auth.ct0 = "synthetic"
+    restarted.auth_was_verified()
+    restarted.complete_walkthrough()
+    restarted.reconcile()
+    assert len(jobs.calls) == 1
+    assert not restarted.state.auto_enrich_requested
+    assert restarted.status()["archive"]["media_state"] == "failed"
+    assert restarted.pending_jobs() == []
+
+
+def test_manual_sync_recovers_after_failed_import_media(coordinator):
+    coord, jobs, _ = coordinator
+    coord.begin("import")
+    coord.paths.database_path.touch()
+    _stop_import_during(jobs, coord.paths, "media", code=2, stopped=False)
+    jobs.start(kind="sync", cli_args=["sync"], origin="web", title="tweetnook sync")
+    assert coord.status()["archive"]["followup_state"] == "running"
+    jobs.finish(steps=[{"key": "media", "state": "complete"}])
+    status = coord.status()["archive"]
+    assert status["followup_state"] == "complete"
+    assert status["media_state"] == "complete"
+    assert status["warnings"] == []
+    assert all(notice["dismissed"] for notice in coord.notices.list())
+    assert len(jobs.calls) == 2
+
+
+def test_jobs_list_shows_what_setup_starts_next(coordinator, monkeypatch):
+    from tweetnook.web.jobs import jobs_payload
+
+    coord, jobs, _ = coordinator
+    coord.begin("import")
+    assert coord.pending_jobs() == []
+    coord.paths.database_path.touch()
+    server_state["config"].auth.auth_token = "synthetic"
+    server_state["config"].auth.ct0 = "synthetic"
+    coord.auth_was_verified()
+    coord.complete_walkthrough()
+
+    def busy(**kwargs):
+        raise JobConflictError("Another command is running.")
+
+    monkeypatch.setattr(jobs, "start", busy)
+    jobs.finish()
+    assert coord.status()["archive"]["media_state"] == "complete"
+    assert coord.pending_jobs() == ["enrich"]
+    payload = jobs_payload(
+        config=AppConfig(),
+        data_dir=None,
+        active=None,
+        queue=[],
+        schedule={},
+        check={},
+        sync_deferred=False,
+        setup_queue=coord.pending_jobs(),
+    )
+    by_key = {job["key"]: job for job in payload["jobs"]}
+    assert by_key["enrich"]["state"] == "queued"
+    assert by_key["enrich"]["queue"]["removable"] is False
+    assert by_key["media"]["state"] != "queued"
