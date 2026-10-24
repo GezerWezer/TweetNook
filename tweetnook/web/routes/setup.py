@@ -38,7 +38,7 @@ from tweetnook.dev_replay import (
 )
 from tweetnook.exceptions import ProcessLockError
 from tweetnook.job_supervisor import JobConflictError
-from tweetnook.web.deps import server_state, verify_credentials
+from tweetnook.web.deps import remember_web_session, server_state, verify_credentials
 from tweetnook.web.routes.activity import _read_active_snapshot
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
@@ -59,7 +59,7 @@ def _auth_payload(config: AuthConfig, *, verified: bool = False) -> dict[str, ob
     for field in ("auth_token", "ct0"):
         if values.get(field):
             values[field] = MASKED_SECRET
-    configured = bool(config.auth_token and config.ct0)
+    configured = all((value or "").strip() for value in (config.auth_token, config.ct0))
     return {"configured": configured, "verified": verified, "values": values}
 
 
@@ -166,12 +166,15 @@ def get_setup(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, 
     config, _ = load_config()
     coordinator = server_state.get("setup_coordinator")
     payload = coordinator.status() if coordinator else {"archive": _archive_payload()}
+    auth = _auth_payload(
+        _archive_auth(config.auth),
+        verified=bool(coordinator and coordinator.state.auth_verified),
+    )
+    if config.replay.url:
+        auth["verified"] = auth["configured"]
     return {
         **payload,
-        "auth": _auth_payload(
-            _archive_auth(config.auth),
-            verified=bool(coordinator and coordinator.state.auth_verified),
-        ),
+        "auth": auth,
         "dev": _dev_payload(config),
         "schedule": {"enabled": config.schedule.enabled, "collections": config.sync.collections},
     }
@@ -430,25 +433,29 @@ def put_auth(
     candidate = _archive_auth(_candidate_auth(request, current.auth))
     if candidate.user_id and not candidate.user_id.isdecimal():
         raise HTTPException(status_code=422, detail="X user ID must contain only digits.")
-    if not candidate.auth_token or not candidate.ct0:
+    connected = bool(candidate.auth_token and candidate.ct0)
+    if not connected and not current.replay.url:
         raise HTTPException(
             status_code=422,
             detail="Authentication failed: auth_token and ct0 are required.",
         )
-    try:
-        result = _test_auth_candidate(candidate)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise HTTPException(status_code=503, detail=f"Authentication test failed: {exc}") from exc
-    output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
-    if result.returncode != 0:
-        detail = output[-8000:] or "The Twitter/X authentication probe did not succeed."
-        raise HTTPException(status_code=422, detail=detail)
+    if not current.replay.url:
+        try:
+            result = _test_auth_candidate(candidate)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise HTTPException(
+                status_code=503, detail=f"Authentication test failed: {exc}"
+            ) from exc
+        output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+        if result.returncode != 0:
+            detail = output[-8000:] or "The Twitter/X authentication probe did not succeed."
+            raise HTTPException(status_code=422, detail=detail)
 
     changes: dict[str, object] = {}
     for field, value in request.model_dump(exclude_unset=True).items():
         if field in {"auth_token", "ct0"} and value == MASKED_SECRET:
             continue
-        changes[f"auth.{field}"] = value.strip() if isinstance(value, str) else value
+        changes[f"auth.{field}"] = (value.strip() or None) if isinstance(value, str) else value
     if candidate.user_id:
         changes["auth.user_id"] = candidate.user_id
     try:
@@ -461,10 +468,15 @@ def put_auth(
         supervisor.config = config
     coordinator = server_state.get("setup_coordinator")
     if coordinator:
-        coordinator.auth_was_verified()
+        if current.replay.url:
+            coordinator.reconcile()
+        else:
+            coordinator.auth_was_verified()
     return _auth_payload(
         config.auth,
-        verified=bool(coordinator and coordinator.state.auth_verified),
+        verified=connected
+        if current.replay.url
+        else bool(coordinator and coordinator.state.auth_verified),
     )
 
 
@@ -633,7 +645,7 @@ class CompleteRequest(BaseModel):
     no_password: bool = False
 
 
-def _finish_setup(request):
+def _finish_setup(request: CompleteRequest, http_request: Request):
     coordinator = _coordinator()
     with coordinator.lock:
         initial = not coordinator.state.completed
@@ -671,15 +683,25 @@ def _finish_setup(request):
         coordinator.complete_walkthrough(skip_auth=request.skip_auth)
         server_state["password_hash"] = password_hash
         coordinator.reconcile()
-    return {"completed": True, "reload": initial or bool(password_changed)}
+        if request.password is not None:
+            remember_web_session(http_request)
+    return {"completed": True, "reload": False}
 
 
 @router.put("/password")
-def setup_password(request: CompleteRequest, _auth: Annotated[bool, Depends(verify_credentials)]):
+def setup_password(
+    request: CompleteRequest,
+    http_request: Request,
+    _auth: Annotated[bool, Depends(verify_credentials)],
+):
     """Set a password as the final first-run action, or change it after authentication."""
-    return _finish_setup(request)
+    return _finish_setup(request, http_request)
 
 
 @router.post("/complete")
-def complete_setup(request: CompleteRequest, _auth: Annotated[bool, Depends(verify_credentials)]):
-    return _finish_setup(request)
+def complete_setup(
+    request: CompleteRequest,
+    http_request: Request,
+    _auth: Annotated[bool, Depends(verify_credentials)],
+):
+    return _finish_setup(request, http_request)

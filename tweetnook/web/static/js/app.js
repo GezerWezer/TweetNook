@@ -5632,7 +5632,8 @@ function tweetApp() {
                 && !this.archiveEnrichmentRefreshing
                 && !this.activity && !this.activityStartPending
                 && !this.setupForced
-                && !['running', 'waiting_for_import', 'waiting_for_worker'].includes(
+                // Setup's first sync finishes these posts once X is connected.
+                && !['running', 'waiting_for_import', 'waiting_for_worker', 'waiting_for_setup', 'waiting_for_auth'].includes(
                     this.setupData?.archive?.enrichment_state);
         },
 
@@ -7635,9 +7636,10 @@ function tweetApp() {
             if (['failed', 'interrupted'].includes(archive.initialization_state)) return 'Archive setup needs attention. Retry the import or migration.';
             if (archive.followup_state === 'failed' || archive.enrichment_state === 'failed') return 'Saved posts are available to browse. Preparation did not finish; open Activity to review the error and resume.';
             if (archive.followup_state === 'running' && archive.details_complete) return 'Imported details are complete. Sync and follow-up work are still running.';
-            if (archive.enrichment_state === 'running') return 'Archive enrichment is running in the background.';
-            if (archive.enrichment_state === 'waiting_for_auth') return 'Local import complete. Connect Twitter/X to start enrichment.';
-            if (archive.enrichment_state === 'waiting_for_worker') return 'Enrichment will start when the active task finishes.';
+            if (archive.media_state === 'running') return 'Your archive is imported. Media is downloading in the background.';
+            if (archive.followup_state === 'running') return 'Your first sync is running in the background.';
+            if (archive.followup_state === 'waiting_for_auth') return 'Import complete. Connect Twitter/X to start your first sync.';
+            if (archive.followup_state === 'waiting_for_worker') return 'Your first sync will start when the active task finishes.';
             if (archive.ready) return 'Your archive is ready to browse.';
             return 'Start by importing your official Twitter/X archive.';
         },
@@ -7761,14 +7763,21 @@ function tweetApp() {
                 this.setupForced = false;
                 this.setupRerun = false;
                 this.setupData = { ...this.setupData, completed: true, required: false };
-                this.showSetupCompletion();
                 if (data.reload) {
                     try { sessionStorage.setItem('tweetnook.setup-completion', 'pending'); }
                     catch (_) { this.setupCompletionNeedsReload = true; }
-                    if (!this.setupCompletionNeedsReload) window.location.reload();
+                    if (!this.setupCompletionNeedsReload) {
+                        window.location.reload();
+                        return;
+                    }
                 }
+                this.showSetupCompletion();
             } catch (error) { this.setupError = error.message; }
             finally { this.setupFinishing = false; }
+            if (this.setupCompletionVisible && !this.setupCompletionNeedsReload) {
+                await this.fetchSetup();
+                await this.fetchActivityStatus();
+            }
         },
 
         get noticeCount() {
@@ -7825,7 +7834,7 @@ function tweetApp() {
                 this.goToSetupStep(3);
                 return true;
             }
-            if (this.setupAuthMissing) {
+            if (this.setupAuthMissing && !this.setupReplayConnected) {
                 this.setupAuthResult = { success: false, message: 'Paste both auth_token and ct0 to connect.' };
                 return false;
             }
@@ -7855,12 +7864,18 @@ function tweetApp() {
                 this.setupAuthEdited = false;
                 this.setupSkipAuth = false;
                 await this.fetchSetup();
+                if (this.setupReplayConnected && !auth.configured) {
+                    this.setupSkipAuth = true;
+                    this.setupAuthResult = { success: true, message: 'No Twitter/X account connected.' };
+                    this.goToSetupStep(3);
+                    return true;
+                }
                 if (this.setupData.auth.verified) {
                     this.setupAuthResult = {
                         success: true,
-                        message: this.setupData.archive.enrichment_state === 'running'
-                            ? 'Connected successfully. Archive enrichment has started.'
-                            : 'Connected successfully. Enrichment and first sync start after you finish setup with your chosen collections.',
+                        message: this.setupData.archive.followup_state === 'running'
+                            ? 'Connected successfully. Your first sync has started.'
+                            : 'Connected successfully. Your first sync starts after you finish setup with your chosen collections.',
                     };
                     this.setupSavingAuth = false;
                     this.setupAuthSuccessPending = true;

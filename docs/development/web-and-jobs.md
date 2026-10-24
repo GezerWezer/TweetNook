@@ -78,10 +78,15 @@ finishes, because jobs change like-order inputs and evict cached pages. Requests
 during a pass coalesce into one follow-up pass. Shutdown interrupts the page reads
 (a SQLite progress handler) and waits for the pass before closing the store.
 
-`SetupCoordinator` persists worker intent/run IDs before launch, waits for local
-import plus successfully tested auth, and starts enrichment once. Failed or
-interrupted enrichment remains visible without automatic retries. Import/migration
-can finish after the walkthrough; attachment makes browsing available without restart.
+`SetupCoordinator` persists worker intent/run IDs before launch. Setup's import
+includes enrichment and media; there is no separate queued Setup media job.
+After a successful import, completed Setup and verified auth start `import enrich`
+once as the first sync (including its normal media follow-up). A failed or stopped
+import follow-up leaves committed local data browsable, preserves the failed result,
+and cancels automatic first-sync intent until an explicit sync/enrichment resumes it.
+Older saved `media_requested` intent is ignored; old media run IDs remain readable
+for status. Import/migration can finish after the walkthrough; attachment makes
+browsing available without restart.
 
 Current `ensure_scalar_indexes()`/`ensure_fts_index()` are no-ops. A missing
 derived index is not repaired by these startup calls.
@@ -124,13 +129,19 @@ prevents routine Web restarts from postponing the weekly interval.
 `verify_credentials`:
 
 - permits requests when `password_hash` is absent;
+- accepts a valid signed login cookie for the current password hash;
 - otherwise parses HTTP Basic;
 - ignores username;
 - SHA-256-hashes the candidate password;
 - compares with `secrets.compare_digest`;
 - returns 401 plus `WWW-Authenticate: Basic` on failure.
 
-Fresh Setup writes the password hash as its final action, completes Setup, updates the live hash, and reloads the browser. No default password is generated.
+Fresh Setup writes the password hash as its final action, completes Setup, updates
+the live hash, and issues the browser's signed login cookie in the same response.
+The completion panel appears without navigation; Setup and activity status refresh
+in place and load archive resources when ready. Password changes renew the current
+browser's session and invalidate sessions signed for the previous hash. Finishing
+without a password also needs no reload. No default password is generated.
 `set-password` stores an unsalted SHA-256 and requires restart.
 
 Root, archive application APIs, and `/media` are authenticated in normal
@@ -139,7 +150,7 @@ runtime. `/static` assets are not. FastAPI's default `/docs`, `/redoc`, and
 archive rows by themselves. Media serving resolves base/target and rejects
 traversal, symlink escape, and non-files.
 
-There is no TLS, session/cookie auth, CSRF/origin validation, CORS middleware,
+There is no TLS, CSRF/origin validation, CORS middleware,
 login throttling, CSP/security-header middleware, or authorization roles.
 
 ## Frontend loading
@@ -242,6 +253,14 @@ Credential update accepts only auth token, ct0, optional user ID. Masked values
 preserve saved secrets. Candidate credentials are written to an isolated
 temporary XDG config; current credential env variables are removed; an
 `auth check` subprocess must succeed before real persistence.
+
+With a replay source connected through `serve --dev-tools`, Setup skips that
+probe: any nonempty `auth_token` and `ct0` values count as a connected account.
+Saving either cookie empty (including whitespace) disconnects the account and
+pauses Setup's first sync until both are filled again. The optional user ID
+does not determine connection. Failure tokens (`fail`, `ratelimit`, `offline`)
+still simulate errors when jobs use the replay transport. Enabling developer
+tools alone, without a replay source, keeps the normal authentication probe.
 
 Archive upload:
 

@@ -33,10 +33,12 @@ from tweetnook.media import download_media
 from tweetnook.storage import open_archive_store
 from tweetnook.sync import sync_collection
 from tweetnook.web.deps import server_state
+from tweetnook.web.notices import NoticeStore
 from tweetnook.web.replay_placeholders import placeholder_bytes
 from tweetnook.web.routes import dev_replay as dev_replay_routes
 from tweetnook.web.routes import setup
 from tweetnook.web.server import _compressible_path
+from tweetnook.web.setup_coordinator import SetupCoordinator
 
 PASSWORD = "source-pass"
 AUTH = ("tester", PASSWORD)
@@ -450,6 +452,94 @@ def test_replay_setup_requires_dev_tools(monkeypatch, tmp_path, make_web_client)
     dev = client.get("/api/setup").json()["dev"]
     assert dev["tools"] is False
     assert dev["replay"]["connected"] is False
+
+
+@pytest.mark.parametrize(
+    ("auth_token", "ct0", "connected"),
+    [
+        ("anything", "anything", True),
+        ("********", "********", True),
+        ("fail", "anything", True),
+        ("ratelimit", "anything", True),
+        ("offline", "anything", True),
+        ("", "anything", False),
+        ("anything", "", False),
+        ("", "", False),
+        (" \t", "anything", False),
+        ("anything", None, False),
+    ],
+)
+def test_replay_cookie_presence_controls_account_connection(
+    monkeypatch, tmp_path, make_web_client, auth_token, ct0, connected
+) -> None:
+    monkeypatch.setenv("TWEETNOOK_DEV_TOOLS", "1")
+    paths = _setup_env(monkeypatch, tmp_path)
+    config_module.update_config_values(
+        paths,
+        {
+            "replay.url": "http://source.test",
+            "auth.auth_token": "previous-token",
+            "auth.ct0": "previous-csrf",
+        },
+    )
+    config, _ = config_module.load_config()
+
+    class Supervisor:
+        active = False
+        active_run_id = None
+        active_kind = None
+
+    server_state.update(config=config, job_supervisor=Supervisor())
+
+    def coordinator():
+        return SetupCoordinator(
+            paths, server_state, lambda: None, lambda: None, NoticeStore(paths.notices_file)
+        )
+
+    server_state["setup_coordinator"] = coordinator()
+    monkeypatch.setattr(
+        setup, "_test_auth_candidate", lambda *_: pytest.fail("Replay must not probe cookies")
+    )
+    client = make_web_client(setup.router)
+    # Saved cookies count as connected immediately, without a previous verification.
+    assert client.get("/api/setup").json()["auth"]["verified"] is True
+    response = client.put("/api/setup/auth", json={"auth_token": auth_token, "ct0": ct0})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["configured"] is connected
+    assert response.json()["verified"] is connected
+    assert server_state["setup_coordinator"].state.auth_verified is connected
+    saved, _ = config_module.load_config()
+    assert saved.auth.auth_token == (
+        "previous-token" if auth_token == "********" else auth_token.strip() or None
+    )
+    assert saved.auth.ct0 == ("previous-csrf" if ct0 == "********" else (ct0 or "").strip() or None)
+    assert saved.auth.user_id is None  # Only the two cookie fields determine connection.
+    # The same account state survives a coordinator/server restart.
+    server_state["setup_coordinator"] = coordinator()
+    status = client.get("/api/setup").json()
+    assert status["auth"]["configured"] is connected
+    assert status["auth"]["verified"] is connected
+    assert server_state["setup_coordinator"].state.auth_verified is connected
+    if connected:
+        assert status["auth"]["values"]["auth_token"] == "********"
+        assert status["auth"]["values"]["ct0"] == "********"
+
+
+def test_dev_tools_without_replay_still_probes_cookies(monkeypatch, tmp_path, make_web_client):
+    monkeypatch.setenv("TWEETNOOK_DEV_TOOLS", "1")
+    _setup_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        setup,
+        "_test_auth_candidate",
+        lambda *_: subprocess.CompletedProcess([], 1, "", "invalid cookies"),
+    )
+    client = make_web_client(setup.router)
+    rejected = client.put("/api/setup/auth", json={"auth_token": "anything", "ct0": "anything"})
+    assert rejected.status_code == 422
+    assert "invalid cookies" in rejected.json()["detail"]
+    assert client.put("/api/setup/auth", json={"auth_token": "", "ct0": ""}).status_code == 422
+    assert config_module.load_config()[0].auth.auth_token is None
 
 
 def test_replay_setup_tests_saves_toggles_and_disconnects(

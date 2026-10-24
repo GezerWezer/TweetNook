@@ -2765,7 +2765,7 @@
                                                     Paste two session cookies from a browser where you're signed in to Twitter/X.
                                                     <button type="button" id="setup-help-trigger" class="setup-link" aria-haspopup="dialog" @click="openSetupHelp()">Where do I find these?</button>
                                                 </p>
-                                                <p class="setup-help" x-show="setupReplayConnected">Replay mode: any cookie values work. Enter <code>fail</code>, <code>ratelimit</code> or <code>offline</code> as auth_token to test those errors.</p>
+                                                <p class="setup-help" x-show="setupReplayConnected">Replay mode: fill both cookies to connect; leave either empty to continue without an account. Enter <code>fail</code>, <code>ratelimit</code> or <code>offline</code> as auth_token to test job errors.</p>
                                             </div>
                                         </div>
 
@@ -2819,7 +2819,7 @@
                                         <section class="setup-options" x-show="!setupData.auth.verified" aria-labelledby="setup-options-title-2">
                                             <h3 id="setup-options-title-2">Not ready to connect?</h3>
                                             <button type="button" class="setup-option-row" :disabled="setupSavingAuth || setupAuthSuccessPending" @click="skipSetupAuth()">
-                                                <span class="setup-option-copy"><strong>Continue without connecting</strong><span>Browse your imported archive now and connect later in Settings. Syncing and enrichment need a connection.</span></span>
+                                                <span class="setup-option-copy"><strong>Continue without connecting</strong><span>Browse your imported archive now and connect later in Settings. Import, enrichment and media downloads keep running; syncing needs a connection.</span></span>
                                                 <svg class="setup-option-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.586 12L7.543 4.96l1.414-1.42L17.414 12l-8.457 8.46-1.414-1.42L14.586 12z"/></svg>
                                             </button>
                                         </section>
@@ -3014,7 +3014,7 @@
                                 @click="if (!setupAuthSuccessPending) saveSetupAuth()" :disabled="setupSavingAuth"
                                 :aria-disabled="setupAuthSuccessPending">
                             <span class="setup-btn-spinner" x-show="setupSavingAuth" aria-hidden="true"></span>
-                            <span x-text="setupSavingAuth ? 'Testing connection…' : (setupAuthSuccessPending ? 'Connected' : (setupAuthNeedsTest ? 'Test and continue' : 'Continue'))"></span>
+                            <span x-text="setupSavingAuth ? (setupReplayConnected ? 'Saving…' : 'Testing connection…') : (setupAuthSuccessPending ? 'Connected' : (setupAuthNeedsTest &amp;&amp; !setupReplayConnected ? 'Test and continue' : 'Continue'))"></span>
                         </button>
                         <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 3"
                                 :disabled="!scheduleForm || scheduleSaving || !scheduleRandomWindowValid()" @click="saveSetupSchedule()">

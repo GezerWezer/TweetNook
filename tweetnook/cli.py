@@ -310,6 +310,7 @@ def _plan_archive_import_pipeline(
     detail_lookups: int,
     sample_limit: int | None,
     offline: bool = False,
+    defer_followup: bool = False,
 ) -> None:
     pipeline.add_step(
         "archive-inspect",
@@ -338,16 +339,22 @@ def _plan_archive_import_pipeline(
     ):
         pipeline.add_step(key, title, total=1, unit=unit, detail=detail)
 
-    if sample_limit is None and not offline:
-        pipeline.add_step(
-            "archive-auth",
-            "Authentication",
-            total=1,
-            unit="session",
-            detail="configured Twitter/X session for live archive follow-up",
-            show_rate=False,
-            show_eta=False,
-        )
+    if sample_limit is not None or offline:
+        return
+    pipeline.add_step(
+        "archive-auth",
+        "Authentication",
+        total=1,
+        unit="session",
+        detail=(
+            "optional Twitter/X session; enrichment uses FxTwitter without one"
+            if defer_followup
+            else "configured Twitter/X session for live archive follow-up"
+        ),
+        show_rate=False,
+        show_eta=False,
+    )
+    if not defer_followup:
         for collection in ("tweets", "likes"):
             pipeline.add_step(
                 f"preflight:{collection}",
@@ -367,15 +374,24 @@ def _plan_archive_import_pipeline(
                 show_eta=False,
                 show_progress=False,
             )
-        if enrich or detail_lookups > 0:
-            pipeline.add_step(
-                "archive-enrich",
-                "Enrich",
-                total=1,
-                unit="tweets",
-                detail="stable snapshot of eligible sparse archive tweets",
-                rate_unit="tweets/s",
-            )
+    if enrich or detail_lookups > 0:
+        pipeline.add_step(
+            "archive-enrich",
+            "Enrich",
+            total=1,
+            unit="tweets",
+            detail="stable snapshot of eligible sparse archive tweets",
+            rate_unit="tweets/s",
+        )
+    if defer_followup:
+        pipeline.add_step(
+            "media",
+            "Media",
+            total=1,
+            unit="files",
+            detail="pending archived media selected for local download",
+            rate_unit="files/s",
+        )
 
 
 def _normalize_collection_or_exit(collection: str, console: Console) -> str:
@@ -466,7 +482,7 @@ def _archive_followup_summary(result: Any) -> str:
     transient_delayed = getattr(result, "transient_delayed", 0)
     return (
         f"live reconciliation: {reconciled}. detail enrichment: "
-        f"{result.detail_lookups:,} refreshed, "
+        f"{result.detail_lookups:,} enriched, "
         f"{result.detail_terminal_unavailable:,} terminal, "
         f"{result.detail_transient_failures:,} transient failures, "
         f"{pending_untouched:,} pending untouched, "
@@ -1259,8 +1275,8 @@ def import_x_archive_command(
         typer.Option(
             "--defer-followup",
             help=(
-                "Import locally now; Setup launches live enrichment and first sync separately "
-                "after collection choices are confirmed."
+                "Import, enrich, and download media now without live sync; Setup launches "
+                "the first sync separately."
             ),
         ),
     ] = False,
@@ -1328,7 +1344,8 @@ def import_x_archive_command(
                 enrich=enrich,
                 detail_lookups=detail_lookups,
                 sample_limit=sample_limit,
-                offline=offline or defer_followup,
+                offline=offline,
+                defer_followup=defer_followup,
             )
             result = asyncio.run(
                 import_x_archive(
@@ -1353,6 +1370,9 @@ def import_x_archive_command(
                         warning,
                         dedupe_key=f"archive-import:{warning.split(':', 1)[0]}",
                     )
+            if defer_followup and not offline and sample_limit is None:
+                # Media URLs are public, so Setup downloads them before any account is needed.
+                asyncio.run(download_media(config=config, paths=paths, console=console))
     except ArchiveEnrichmentInterrupted as exc:
         console.print("Archive import is complete.", highlight=False)
         console.print("\nArchive enrichment was interrupted.", highlight=False)

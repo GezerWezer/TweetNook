@@ -244,6 +244,11 @@ These commands fill in eligible missing details, expand saved conversations, and
 retry media downloads. Run only the jobs you need. See
 [Enrichment](docs/enrichment.md) for articles and link previews too.
 
+Setup downloads media inside the archive import, after enrichment. If enrichment
+or media stops, saved posts remain available and automatic preparation waits for
+you to resume. For a full disk, free or add space, then run **Sync now** or
+**Enrich archive** from Activity. Setup does not queue a separate media retry.
+
 ## Your files
 
 | System | Default data folder |

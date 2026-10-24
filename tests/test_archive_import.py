@@ -399,8 +399,14 @@ def test_offline_import_copies_full_archive_without_live_followup(
 
 
 @pytest.mark.parametrize("deferred", [False, True])
-def test_local_import_summary_distinguishes_setup_deferred_followup(paths, tmp_path, deferred):
+def test_setup_deferred_import_enriches_without_live_sync(paths, tmp_path, monkeypatch, deferred):
     archive_dir = _write_archive_dir(tmp_path)
+    _disable_live_reconciliation(monkeypatch)
+
+    async def unexpected_reconciliation(**_kwargs):
+        pytest.fail("Setup's import must leave live sync to the first-sync task")
+
+    monkeypatch.setattr(archive_import, "_run_live_reconciliation", unexpected_reconciliation)
     console = _console()
     reporter = PipelineReporter(console, "archive import", interactive=False)
     with reporter:
@@ -410,13 +416,53 @@ def test_local_import_summary_distinguishes_setup_deferred_followup(paths, tmp_p
                 config=AppConfig(),
                 paths=paths,
                 console=console,
-                offline=True,
+                offline=not deferred,
                 defer_followup=deferred,
             )
         )
     summary = reporter._state_snapshot()["summary"]
-    assert ("deferred to the separate Setup" in summary) is deferred
+    assert ("Live sync deferred to the separate Setup" in summary) is deferred
     assert ("skipped (offline)" in summary) is not deferred
+    # Without an account, enrichment still ran through FxTwitter (offline in tests).
+    assert reporter.has_step("archive-enrich") is deferred
+    assert reporter.step_state("archive-auth") == ("skipped" if deferred else None)
+
+
+@pytest.mark.parametrize("deferred", [False, True])
+def test_import_without_account_under_replay_enriches_through_replay_source(
+    paths, tmp_path, monkeypatch, deferred
+):
+    archive_dir = _write_archive_dir(tmp_path)
+    _disable_live_reconciliation(monkeypatch)
+    for name in ("TWEETNOOK_AUTH_TOKEN", "TWEETNOOK_CT0"):
+        monkeypatch.delenv(name, raising=False)
+    bundles: list[ResolvedAuthBundle | None] = []
+
+    async def capture_enrichment(*, auth_bundle, **_kwargs):
+        bundles.append(auth_bundle)
+        return archive_import.ArchiveEnrichResult()
+
+    monkeypatch.setattr(archive_import, "_enrich_pending_rows", capture_enrichment)
+    # Replay switches FxTwitter off; its source answers TweetDetail without cookies.
+    config = AppConfig.model_validate({"replay": {"url": "http://127.0.0.1:9"}})
+    console = _console()
+    reporter = PipelineReporter(console, "archive import", interactive=False)
+    with reporter:
+        result = asyncio.run(
+            import_x_archive(
+                archive_dir,
+                config=config,
+                paths=paths,
+                console=console,
+                enrich=True,
+                defer_followup=deferred,
+            )
+        )
+    assert len(bundles) == 1 and bundles[0] is not None
+    assert bundles[0].auth_token_source == "replay"
+    assert not any("enrichment skipped" in warning for warning in result.warnings)
+    if deferred:
+        assert reporter.step_state("archive-auth") == "skipped"
 
 
 def test_existing_archive_auth_completes_declared_step(monkeypatch):
@@ -2255,7 +2301,8 @@ def test_import_x_archive_preserves_attempt_start_time(
     asyncio.run(
         import_x_archive(
             archive_dir,
-            config=AppConfig(),
+            # Without FxTwitter or an account, enrichment is skipped and takes no timestamps.
+            config=AppConfig(fxtwitter={"enabled": False}),
             paths=paths,
             console=_console(),
         )
