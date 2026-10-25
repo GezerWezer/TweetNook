@@ -3,6 +3,56 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning.
 
+## [1.2.0] - 2026-10-25
+
+### Added
+
+- Replaced the sync panel with Jobs. Run syncs, availability checks, archive imports and enrichment, conversation expansion, Article refreshes, media downloads, link previews, and automated tagging from the browser. Jobs includes run options, command previews, schedules, and past results.
+- Added a job queue. Supported jobs wait for active work to finish, and queued jobs can be removed before they start. Manual queue entries are cleared when the server restarts.
+- Added `tweetnook check` and optional automatic availability checks. Choose daily, weekly, or monthly checks, optionally include a rolling share of conversation context, and limit authenticated lookups. Automatic checks are off by default; their default frequency is weekly.
+- Added public-post lookups through FxTwitter for imports and availability checks. FxTwitter is enabled by default and receives the requested post IDs without your X cookies. You can disable it, configure your own endpoint, or use `--offline` for local-only imports.
+- Added post History and Community Notes dialogs showing saved captures, availability observations, restorations, and note versions, including notes later changed or removed.
+- Added search filters:
+  - `is:missing` finds posts recorded as unavailable.
+  - `is:uncaptured` finds entries without saved post content.
+  - `has:note` finds current or historical Community Notes, including notes on directly quoted posts.
+- Added X’s new carousel media style alongside the existing grid. The default chooses by post date: a grid before July 10, 2026, and a carousel from that date onward. Quotes and reposts use their original publication dates.
+
+### Changed
+
+- Reworked phone browsing with post views that slide over the feed and support swipe-back navigation while preserving the feed’s position. Updated post spacing, reply positioning, typography, avatars, and media sizing.
+- Updated the phone photo viewer with spring motion, swipe and flick navigation, a back button, page indicators, and engagement counts. Tapping shows or hides the controls. Page zoom is disabled on touch screens; fullscreen media retains pinch zoom.
+- Updated desktop carousels, quoted-text truncation, gallery spacing, “Show more” placement, and large image link cards.
+- Setup now fills in public post details and downloads media during import without requiring an X connection. The first live sync waits until import succeeds and Setup is complete with an account connected.
+- Interrupted import follow-ups preserve saved posts and downloaded files. Automatic preparation waits for an explicit resume after failure or cancellation.
+- Setup finishes without reloading the page, and archive-preparation progress appears within the feed below the header.
+- Saved settings now update running schedules, avatar fetching and cache cleanup, Analytics refresh timing, and database tuning. Active jobs keep their starting settings. Changing the listening host or port still requires a restart.
+- Advanced settings appear within their relevant configuration sections, with the advanced-settings switch at the top.
+- Entries without captured content are excluded from default feeds, searches, and counts. Saved media or Articles still qualify as captured content when post text is absent.
+- Reduced the default limit for following links in other people’s replies from 50 to one per sync. This optional discovery remains off by default.
+- Increased default activity-log retention from 100 runs and 90 days to 200 runs and 180 days.
+- The installer asks whether access should be limited to this computer or allowed from other devices. New personal installations default to local access; Linux services default to network access. `--access local|network` sets the choice explicitly.
+- Rerunning the installer can update, reinstall, or add optional dependencies while preserving startup mode, paths, settings, archives, and installed add-ons. Added `--reinstall`; `--version` can change an existing installation’s version. Managed services stop and restart automatically.
+- Rewrote and consolidated the user and developer guides, refreshed Setup’s cookie instructions, and removed the obsolete implementation plan.
+
+### Fixed
+
+- Saved text, photos, videos, Articles, link previews, quotes, and reposted content remain readable when the original post becomes unavailable, including after deletion. Unavailable posts with saved content show a warning.
+- Richer saved copies take precedence over stale embedded tombstones. Posts containing only saved media or Articles remain visible in default feeds and searches.
+- Link-card images survive later timeline responses that omit them. Media downloads also run a one-time repair that restores missing card images from saved captures where available.
+- Link cards and links beyond the legacy text cutoff in long posts open their expanded destinations.
+- Article searches use the shared query parser, respect hidden posts and collection filters before selecting results, and apply chronological sorting before limits.
+- Opened phone posts show their full text. Short replies scroll into the correct position, and taps in carousel gaps or padding open the surrounding post.
+- Reduced delays when opening and leaving posts deep in long feeds. Fixed split-view width changes, desktop sticky-header bounce, and feed jumps during audible-video handoffs.
+- Improved phone media transitions, including reopening media immediately after dismissal and keeping video positioning consistent during animations.
+- The phone Jobs sheet supports broader dismissal gestures, preserves content scrolling, locks the feed behind it, and keeps actions reachable around Safari’s controls.
+- Mobile browser colors follow the selected theme and the Jobs backdrop.
+- Copying logs falls back when the Clipboard API is unavailable or rejects the request.
+- Media limits and progress consistently count items. A video or GIF and its poster count as one item.
+- Completed standalone jobs retain their results and no longer appear as interrupted syncs.
+- Changing the web password through Setup keeps the current browser signed in.
+- Availability checks guard against repeated lookup failures and widespread FxTwitter 404 responses. Scheduled syncs wait when an availability check occupies their slot. Unavailable-post retries remain part of sync when automatic checks or FxTwitter are disabled.
+
 ## [1.1.0] - 2026-10-20
 
 ### Added
@@ -655,6 +705,7 @@ semantic-style versioning.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[1.2.0]: https://github.com/gezerwezer/tweetnook/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/gezerwezer/tweetnook/compare/v1.0.3...v1.1.0
 [1.0.3]: https://github.com/gezerwezer/tweetnook/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/gezerwezer/tweetnook/compare/v1.0.1...v1.0.2
