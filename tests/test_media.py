@@ -154,6 +154,61 @@ def _seed_archive(paths) -> None:
 
 
 @pytest.mark.asyncio
+async def test_media_limit_and_progress_count_video_with_poster_as_one_item(paths, config):
+    store = open_archive_store(paths, create=True)
+    tweet = _complex_tweet()
+    tweet.raw_json = make_tweet_result(
+        "100",
+        "video",
+        media=[
+            make_video_media(
+                "7_video",
+                "https://pbs.twimg.com/poster.jpg",
+                bitrate_url="https://video.twimg.com/video.mp4",
+            )
+        ],
+    )
+    store.persist_page(
+        operation="Bookmarks",
+        collection_type="bookmark",
+        cursor_in=None,
+        cursor_out=None,
+        http_status=200,
+        raw_json={},
+        tweets=[tweet],
+        last_head_tweet_id="100",
+        backfill_cursor=None,
+        backfill_incomplete=False,
+    )
+    store.close()
+    requests = []
+
+    def handler(request):
+        requests.append(str(request.url))
+        return httpx.Response(
+            200,
+            content=b"media",
+            headers={
+                "content-type": "video/mp4" if request.url.path.endswith(".mp4") else "image/jpeg"
+            },
+        )
+
+    reporter = PipelineReporter(Console(file=StringIO()), "media", interactive=False)
+    with reporter:
+        result = await download_media(
+            limit=1, config=config, paths=paths, transport=httpx.MockTransport(handler)
+        )
+
+    assert result.processed == result.downloaded == 1
+    assert len(requests) == 2
+    assert len([p for p in paths.media_dir.rglob("*") if p.is_file()]) == 2
+    step = reporter._step_by_key["media"]
+    assert step.unit == "items"
+    assert step.total == step.completed == 1
+    assert step.rate_unit == "items/s"
+
+
+@pytest.mark.asyncio
 async def test_download_media_updates_rows_and_files(paths, config) -> None:
     _seed_archive(paths)
 
@@ -204,7 +259,7 @@ async def test_download_media_updates_rows_and_files(paths, config) -> None:
     assert repeat.downloaded == 0
     assert repeat.skipped == 0
     assert reporter._step_by_key["media"].state == "skipped"
-    assert "no media files" in reporter._step_by_key["media"].summary
+    assert "no media items" in reporter._step_by_key["media"].summary
 
 
 @pytest.mark.asyncio
@@ -349,12 +404,12 @@ async def test_download_media_interactive_reports_status(paths, config, monkeypa
         console,
         label="media download",
         total=3,
-        unit="rows",
+        unit="items",
     )
     assert on_progress.call_args_list == [((1, 3),), ((2, 3),), ((3, 3),)]
     output = buffer.getvalue()
     assert "media download: loading pending media rows" in output
-    assert "media download: downloading 3 media rows" in output
+    assert "media download: downloading 3 media items" in output
 
 
 @pytest.mark.asyncio

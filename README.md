@@ -244,6 +244,9 @@ These commands fill in eligible missing details, expand saved conversations, and
 retry media downloads. Run only the jobs you need. See
 [Enrichment](docs/enrichment.md) for articles and link previews too.
 
+Media limits and progress count media items. A video or GIF can download both
+the main file and a poster image while counting as one item.
+
 Setup downloads media inside the archive import, after enrichment. If enrichment
 or media stops, saved posts remain available and automatic preparation waits for
 you to resume. For a full disk, free or add space, then run **Sync now** or

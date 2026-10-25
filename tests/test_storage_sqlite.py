@@ -914,6 +914,61 @@ def test_article_search_filters_hidden_before_limiting_and_can_unhide(paths) -> 
         store.close()
 
 
+@pytest.mark.parametrize("collections", [{"bookmark"}, {"bookmark", "like"}])
+def test_article_collection_search_does_not_stop_at_irrelevant_candidates(paths, collections):
+    store = open_archive_store(paths, create=True)
+    rows = [
+        store._record(
+            row_key=f"article:{i}",
+            record_type="article",
+            tweet_id=str(i),
+            content_text="coffee " * 3,
+        )
+        for i in range(80)
+    ]
+    # Half the higher-ranked Articles are context-only; half belong to another collection.
+    rows.extend(
+        _membership(
+            store,
+            str(i),
+            collection="tweet",
+            text="unrelated post",
+            created_at=CREATED_2026,
+            created_at_ts=3,
+            sort_index=str(i),
+        )
+        for i in range(40)
+    )
+    for tweet_id in ("100", "101"):
+        rows.extend(
+            [
+                _membership(
+                    store,
+                    tweet_id,
+                    collection="bookmark",
+                    text="saved post",
+                    created_at=CREATED_2024,
+                    created_at_ts=2,
+                    sort_index=tweet_id,
+                ),
+                store._record(
+                    row_key=f"article:{tweet_id}",
+                    record_type="article",
+                    tweet_id=tweet_id,
+                    content_text="coffee",
+                ),
+            ]
+        )
+    store.merge_rows(rows)
+    store.set_tweet_hidden("100", True)
+    try:
+        results = store.search_fts("coffee", limit=1, types={"article"}, collections=collections)
+        assert [row["tweet_id"] for row in results] == ["101"]
+        assert results[0]["collections"] == ["bookmark"]
+    finally:
+        store.close()
+
+
 def test_fts_overfetches_past_duplicate_memberships(paths) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None

@@ -142,9 +142,12 @@ JOBS: tuple[JobSpec, ...] = (
                 "flag",
                 "--retry-failed",
                 "Retry failed downloads",
-                "Include files that failed before, not only new ones.",
+                "Include media items that failed before.",
             ),
-            _limit("files"),
+            _limit(
+                "items",
+                "Leave empty for all media items. Videos and GIFs can include poster files.",
+            ),
         ),
     ),
     JobSpec(
