@@ -1,206 +1,87 @@
 # Search
 
-[User guide](README.md) · [Web app](web-app.md) · [Tags](tags.md)
-
-Search for words you remember, then add filters to narrow the results. The web
-app and terminal use the same search syntax. Searches look through your saved
-archive, including tweets that may no longer be available on Twitter/X.
-
-## The basics
-
-| Find… | Search |
-|---|---|
-| Tweets containing a word | `word` |
-| An exact phrase | `"exact phrase"` |
-| Photos by an author | `from:handle has:image` |
-| Tweets from January 2026 | `since:2026-01-01 until:2026-02-01` |
-| A tag containing spaces | `tag:"street photography"` |
-| Links, excluding reposts | `has:links -is:retweet` |
-| Either of two words | `foo OR bar` |
-
-To search in the terminal, wrap the whole query in single quotes:
-
-```bash
-tweetnook search 'from:alice has:image "night sky"'
-```
-
-Search matches words and phrases, not concepts with unrelated wording. 
-
-In the web app, matching words and phrases are **bold** in result cards and their
-quoted tweets, including after **Show more**. Matching ignores case and accents;
-prefix queries bold the matching word. Positive hashtags are highlighted too.
-Filters and excluded terms don't cause text highlighting.
-
-## Combine words and filters
-
-Words next to each other must all match. Use `OR` for alternatives and `-` to
-exclude a word or filter.
-
-| Syntax | Example | Meaning |
-|---|---|---|
-| Space or `AND` | `sqlite archive` | Both words |
-| `OR` | `photo OR video` | Either word |
-| `NOT` or `-` | `cats -dogs` | Cats, excluding dogs |
-| Double quotes | `"local archive"` | An exact phrase |
-| Trailing `*` | `archiv*` | Words starting with `archiv` |
-| Hashtag | `#sqlite` | The hashtag as a search term |
-
-Write `AND`, `OR`, and `NOT` in uppercase. Put multiword filter values in double
-quotes, such as `tag:"machine learning"`. Parentheses are not supported for
-controlling groups.
-
-In the web app, `tag:` and `description:` values are editable capsules. Type
-spaces inside them without adding quotes, then press **Escape** to continue
-after the capsule. Copied queries include the quotes needed by the terminal.
-Tag suggestions match each space-separated fragment anywhere in the tag,
-ignoring case: typing `tag:rem D` suggests **REM** (**D**eadlock).
-
-## People
-
-| Filter | Finds |
-|---|---|
-| `from:alice` | Tweets by Alice |
-| `to:alice` | Replies to Alice |
-| `mentions:alice` | Tweets mentioning Alice |
-
-Usernames work with or without `@`. The web app suggests authors already in
-your archive as you type.
-
-## Dates
-
-| Filter | Finds |
-|---|---|
-| `since:2026-01-01` | Tweets on or after January 1 |
-| `until:2026-02-01` | Tweets before February 1 |
-
-Dates use UTC. `since` includes the day you enter; `until` excludes it. To
-search one day, use that date and the next day's date:
+Start with a word you remember. Add an author, date, or type of media when the results need narrowing down. The same search language works in the browser and from `tweetnook search`.
 
 ```text
-since:2026-08-19 until:2026-08-20
+coffee from:alice
+"train station" has:image
+tag:recipes since:2025-01-01
 ```
 
-## Media and tweet types
+## Search basics
 
-| Filter | Finds |
-|---|---|
-| `has:media` | Tweets with media |
-| `has:image` | Tweets with images |
-| `has:video` | Tweets with video |
-| `has:links` | Tweets with links |
-| `has:article` | Tweets with a Twitter/X article |
-| `has:note` | Current or past Community Notes, on the tweet or its directly quoted original |
-| `is:reply` | Replies |
-| `is:quote` | Quote tweets |
-| `is:retweet` | Reposts |
-| `is:thread` | Tweets matching the archive's thread information |
-| `is:verified` | Tweets whose captured author data indicates verification |
-| `is:resurrected` | Tweets recovered after previously being unavailable |
-| `is:hidden` | Tweets you hid with **Hide** in the tweet menu |
-| `is:uncaptured` | Posts whose content was never captured in the archive |
+Separate words mean that each word must match. Put a phrase in double quotes to keep its words together. A trailing `*` matches the beginning of a word, as in `garden*`. Use a leading minus or `NOT` to exclude a clause.
 
-To exclude a type, put `-` before the filter: `has:media -is:retweet`.
-
-Hidden tweets are left out of every list and search, in the web app and the
-terminal, unless the query includes `is:hidden`. Combine it like any other filter:
-`is:hidden from:alice` finds Alice's hidden tweets, and `recipe OR is:hidden`
-includes hidden tweets alongside matches for `recipe`.
-
-Posts without captured content are also left out by default. `is:uncaptured`
-finds those entries, including unavailable placeholders and entries still awaiting
-capture. It combines with other filters; `recipe OR is:uncaptured` includes
-uncaptured entries alongside recipe matches. `-is:uncaptured` excludes them
-explicitly. A saved copy stays visible even if the post later disappears from X.
-Detail pages and quoted placeholders remain accessible.
-
-`has:note` includes a note saved with the post or any recorded note history,
-including notes that were removed. Like tag searches, it also matches notes on
-directly quoted originals outside your collections. It does not follow further
-levels of quotes. `-has:note` excludes the same set.
-
-## Tags and links
-
-| Filter | Finds |
-|---|---|
-| `tag:recipe` | Tweets with the local tag `recipe` |
-| `tag:"street photography"` | Tweets with a multiword local tag |
-| `description:sailboat` | Tweets whose tag description contains `sailboat` |
-| `description:"red car"` | Tweets whose tag description contains every word |
-| `url:example.com` | Matching text in saved expanded or display URLs |
-
-Tag and description searches also include a tweet's directly quoted original.
-Plain words don't search descriptions; use `description:`. Its words can appear
-in any order, and a trailing `*` matches words that start with what you typed.
-[Tags](tags.md) explains how to add and edit them.
-
-## Choose a collection and order
-
-In the web app, choose **Bookmarks**, **Likes**, **Your Tweets**, or **All Tweets**.
-In the terminal:
-
-```bash
-tweetnook search 'recipe' --collection bookmark
-tweetnook search 'recipe' --collection bookmark,like --sort newest --limit 50
+```text
+"home office" -has:video
+cats OR dogs from:alice
+coffee NOT decaf
 ```
 
-Collection values are `bookmark`, `like`, and `tweet`. A tweet saved in more than
-one collection appears once in search results.
+`OR` joins the two clauses beside it. In `cats OR dogs from:alice`, the result needs either cats or dogs and must be from Alice. `AND` is optional between the other clauses. Use uppercase for `OR`, `AND`, and `NOT`; parentheses aren't a grouping feature.
 
-Text searches normally put the most relevant matches first. Searches containing
-only filters put the newest tweets first. The terminal also accepts `--sort newest`
-and `--sort oldest`; the web app offers those orders plus **Random**.
+## People, dates, and links
 
-## Search article content
+| Search | Finds |
+| --- | --- |
+| `from:alice` | Posts by that account; an `@` before the name is optional. |
+| `to:alice` | Replies addressed to that account. |
+| `mentions:alice` | Posts mentioning the account. |
+| `since:2025-01-01 until:2026-01-01` | Posts in 2025. The start is included; the end is excluded. Dates use UTC. |
+| `#gardening` or `hashtag:gardening` | That hashtag. |
+| `url:example.com` | Saved links matching that text. |
+| `conversation_id:123456789` | A particular conversation. |
+| `quoted_tweet_id:123456789` | Posts quoting a particular post. |
 
-To search stored article text from the terminal:
+Dates refer to when the post was published, not when you saved it.
 
-```bash
-tweetnook search 'local databases' --type article
+## Post types
+
+| Search | Finds |
+| --- | --- |
+| `has:image` | Posts with photos. |
+| `has:video` | Posts with videos or animated GIFs. |
+| `has:media` | Posts with attached photos, videos, or GIFs. |
+| `has:links` | Posts with saved links. |
+| `has:article` | Posts with an Article. |
+| `has:note` | Current or past Community Notes on the post or a directly quoted post. |
+| `is:reply`, `is:quote`, `is:retweet` | Replies, quote posts, or reposts. |
+| `is:thread` | Replies to the same author, such as continuations of their thread. |
+| `is:verified` | Posts with saved verified-account information. |
+| `is:hidden` | Posts you've hidden from normal browsing. |
+| `is:uncaptured` | Entries whose post content has not been saved. |
+| `is:missing` | Posts recorded as unavailable on X, but preserved by your archive. |
+| `is:resurrected` | Posts that became available again after being unavailable. |
+
+
+Entries without captured content are hidden from feeds and searches by default. Use `is:uncaptured` to find them, or `recipe OR is:uncaptured` to include them alongside another search. `-is:uncaptured` excludes them explicitly.
+
+`has:note` includes saved note history, even removed notes, and notes on directly quoted posts outside your collections. It does not follow further levels of quotes. Use `-has:note` to exclude the same posts.
+
+## Tags and descriptions
+
+```text
+tag:travel
+tag:"home cooking"
+description:"red bicycle"
 ```
 
-Article searches do not support the tweet filters listed above. Use a normal
-tweet search with `has:article` when you need author, date, or other tweet filters:
-
-```bash
-tweetnook search 'from:alice has:article'
-```
-
-## Large searches
-
-Broad searches cover the complete archive and can be browsed past 1,000 matches.
-TweetNook applies text, collection, and structured filters before choosing and
-hydrating each page. The selected relevance, date, like, or random order is also
-applied before pagination, and a tweet saved in several collections still
-occupies one result slot.
-
-The web app shows an exact result count. For text searches, results appear first
-and the header briefly says **Counting… Results** while a separate request counts
-the matches. A complete first page supplies its count immediately. Filter-only
-and ordinary collection feeds continue to show an exact total. If counting fails,
-the header says **Count unavailable · Results**; searching again retries it.
-Ordinary newest/oldest feeds and Likes use cursor scrolling to avoid
-skipping all earlier rows. Complex searches and explicit numbered pages can still
-take longer at large depths. If loading fails, use **Retry loading more**; the
-failed page is retried without advancing past it.
+`tag:` matches an assigned tag, including tags on a quoted post. `description:` searches your saved local descriptions, whether written manually or generated; all its words must match, and each word can end in `*`. Descriptions and tags have their own filters, so use those when the words don't appear in the original post.
 
 ## Advanced filters
 
-| Filter | Meaning |
-|---|---|
-| `since_time:1704067200` | Created at or after a Unix timestamp in seconds |
-| `until_time:1704153600` | Created before a Unix timestamp in seconds |
-| `since_id:123` | Tweet ID greater than the given ID |
-| `max_id:456` | Tweet ID less than or equal to the given ID |
-| `min_retweets:10` | At least 10 captured reposts |
-| `min_faves:100` | At least 100 captured likes |
-| `min_replies:5` | At least 5 captured replies |
-| `conversation_id:123` | A specific conversation |
-| `quoted_tweet_id:123` | Tweets quoting a specific tweet |
-| `source:"Twitter for iPhone"` | A captured posting-client label |
-| `card_name:summary` | A captured link-card type |
+`min_faves:100`, `min_retweets:20`, and `min_replies:5` use the engagement counts saved with the post. `since_time:` and `until_time:` accept Unix timestamps. `since_id:` and `max_id:` filter post IDs. `source:` searches saved posting-client information, and `card_name:` matches a saved card type.
 
-Engagement counts are those saved in the archive, not live counts from Twitter/X.
+The older `filter:` forms also work: `articles`, `images`, `links`, `media`, `native_video`, `nativeretweets`, `quote`, `replies`, `self_threads`, `threads`, `verified`, and `videos`.
 
-See the [CLI reference](cli-reference.md#search) for command options or
-[Troubleshooting](troubleshooting.md#search-results-are-missing-or-a-query-is-rejected)
-if a query does not behave as expected.
+## Command-line search
+
+```bash
+tweetnook search 'coffee from:alice' --limit 50 --sort newest
+tweetnook search 'tag:travel' --collection bookmark,like
+tweetnook search 'gardening' --type post,article
+```
+
+Terminal search defaults to posts, twenty results, and relevance order. Choose `--type article` to search saved Article text, or `--type post,article` for both. Article searches accept text rather than post filters; use a normal search with `has:article` for author, date, and other post filters. Available terminal sorts are `relevance`, `newest`, and `oldest`.
+
+If you don't find a post, try All collections, remove a filter, or look for `is:hidden`. A post that hasn't been imported or synced yet won't appear. See [syncing](syncing.md) if you're still bringing in older history.

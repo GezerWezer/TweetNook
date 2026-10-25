@@ -1,286 +1,78 @@
 # Storage
 
-[Development guide](README.md) · [Architecture](architecture.md) ·
-[Archive Import](archive-import.md) · [Search and Web API](search-and-web-api.md)
-
-`ArchiveStore` owns database access, schema upgrades, and record merging. It uses
-SQLite schema version 11 with FTS5 search. Collection memberships, shared tweet
-content, and raw captures have distinct roles within the same archive table.
-The optional `legacy-migration` extra provides LanceDB for the legacy importer;
-PyArrow is installed transitively with it.
-
-## Connection and schema lifecycle
-
-Opening the store:
-
-- creates the parent directory only when `create=True`;
-- opens SQLite with `check_same_thread=False` and `sqlite3.Row` rows;
-- enables WAL mode;
-- requests negative `cache_size` in KiB and configured `mmap_size`;
-- checks `PRAGMA user_version` and migrates when required.
-
-A current v11 database takes the cheap version path; it does not run integrity
-checks or derived-index repair on every open.
-
-The single wide table is:
-
-```text
-archive(row_key TEXT PRIMARY KEY, record_type TEXT, ...typed nullable fields...)
-```
-
-Most columns are `TEXT` to support heterogeneous records. Indexed numeric fields
-include `created_at_ts`, retry count, and retry eligibility. Every record builder
-initializes the complete schema shape before an UPSERT that preserves the rowid.
-Known enrichment status updates write only their changed fields.
-
-## Record types and keys
-
-| Record type | Stable key shape | Responsibility |
-|---|---|---|
-| `tweet` | `tweet:<collection>:<folder>:<tweet-id>` | Collection membership and searchable captured tweet fields |
-| `raw_capture` | UUID or deterministic capture hash | Source payload, operation/cursors/status/time |
-| `sync_state` | `sync_state:<collection>:<folder>` | Head/backfill checkpoint |
-| `metadata` | `metadata:<key>` | Owner and application metadata |
-| `import_manifest` | `import_manifest:<archive-digest>` | Archive-import identity/status/counts |
-| `tweet_object` | `tweet_object:<tweet-id>` | Canonical global tweet/detail/availability |
-| `tweet_relation` | `tweet_relation:<source>:<type>:<target>` | Reply/quote/retweet/thread/linked graph |
-| `media` | `media:<tweet-id>:<media-key>` | Media URL/type/local download state |
-| `url` | `url:<canonical-hash>` | Canonical URL/unfurl state |
-| `url_ref` | `url_ref:<tweet-id>:<position>` | Tweet-to-URL attachment |
-| `article` | `article:<tweet-id>` | Article preview/body/media metadata |
-| `media_tag` | `media_tag:<tweet-id>` | Manual/AI tags and optional description for text or media |
-
-`SECONDARY_RECORD_TYPES` is narrower than the full table discriminator list and
-is used for graph merge/hydration paths.
-
-## Membership versus canonical object
-
-A `tweet` row represents why/how a tweet is in the archive and can exist once per
-collection/folder. `tweet_object` represents the best known account-global
-content and lifecycle. This supports:
-
-- membership deduplication in view/export/search;
-- one canonical quote/thread object shared by wrappers;
-- sparse likes from official archive import;
-- independent unavailable/retry state;
-- source-aware merge without destroying collection provenance.
-
-## Contentless FTS5
-
-`archive_fts` is created with `content=''` and columns:
-
-- `author_username`
-- `author_display_name`
-- `text`
-- `note_tweet_text`
-
-Insert/update/delete triggers index only `record_type='tweet'`. Secondary objects
-never become standalone FTS rows. An update removes/reinserts indexed text only
-when the record type or searchable fields change. Connections enable recursive
-triggers so an explicit replacement also removes the old FTS document. Normal
-merge UPSERTs preserve rowids and avoid replacement deletes entirely.
-
-FTS is a derived index. The v3 schema-migration rebuild validates its count
-against tweet membership rows; the public `rebuild_search_index()` path rebuilds
-without that explicit count assertion. `ensure_fts_index()` and
-`ensure_scalar_indexes()` are currently no-ops, despite Web startup calling
-them; creation/migration is expected to have built the structures.
-
-Scalar/partial indexes cover membership deduplication/counts, normalized author
-equality, profile aggregation, tweet IDs, relation targets, collection/date/sort
-pagination, attachment presence, tags, enrichment eligibility/due dates, and raw
-capture targets.
-
-`archive_tweet_facts` (a `WITHOUT ROWID` table keyed by membership `row_key`) holds
-the values structured search filters read from a membership's `raw_json`: reply
-target and reply/quote/retweet/verified flags, retweet/like/reply counts, quoted
-ID, lowercased source, card name, and `char(31)`-wrapped lowercased mention and
-hashtag lists. `TWEET_FACT_EXPRESSIONS` defines each value as the JSON expression
-the filter used to evaluate, so results are unchanged. Insert, delete, and
-`UPDATE OF row_key, record_type, raw_json` triggers keep it in step for every
-write path, including direct SQL. NULL JSON evaluates like absent keys; malformed
-JSON stores NULL facts instead of failing the write.
-
-`archive_tweet_content` stores `tweet_id`, `has_content` and `has_note` per
-membership or tweet-object `row_key`. Insert/update/delete triggers maintain it,
-including changes to text, tweet IDs and row types. Indexed flags support default
-uncaptured exclusions and Community Note searches without parsing JSON on reads.
-When no membership/object has captured content, the uncaptured filter also checks
-separate media and Article records by indexed tweet ID and scalar fields. Saved
-images, videos, and Article bodies therefore remain in default results even
-without post text or raw media metadata.
-Schema 11 backfills these flags and creates the note-history table if absent,
-preserving canonical rows and existing note history.
-
-`archive_description_fts` is an ordinary (content-storing) FTS5 table with one
-`description` column, holding the non-empty string `$.description` of each
-`media_tag` row under that row's rowid. Storing the text lets the insert,
-`UPDATE OF record_type, raw_json`, and delete triggers remove an entry by rowid
-without the old value; malformed or non-string descriptions are not indexed.
-Only the `description:` search filter reads it.
-
-## Atomic page persistence
+The active backend is SQLite, opened through `open_archive_store`. It stores multiple record types in the `archive` table and maintains derived search structures alongside it. A database is `archive.db` under the resolved data directory; files such as media live beside it.
 
-Direct `upsert_tweet()`/`upsert_membership()` require an active page buffer.
-`persist_page()` combines:
+## Opening the archive
 
-- raw capture;
-- membership rows;
-- extracted canonical/secondary graph;
-- sync state.
+`open_archive_store` in `storage/backend.py` opens SQLite archives. With `create=False`, a missing archive stays missing, which lets the web server offer Setup without creating an empty database as a side effect. Legacy LanceDB content requires an explicit migration.
 
-One merge transaction applies the buffer. Failure injection tests assert that
-neither partial rows nor cursor survive. This is the strongest atomicity
-guarantee; a full run/import is intentionally checkpointed across transactions.
+Writable connections use WAL and recursive triggers. Database configuration sets the page-cache and memory-mapping allowances. Shared web connections disable CPython's prepared-statement cache; private read-only connections serve work that needs a reader confined to one thread. Close connections through the store lifecycle.
 
-## Merge and source precedence
-
-Rows are merged as complete shapes. General rules:
+The schema maintains content and Community Note flags used by search, including uncaptured placeholders and note history. Migrations backfill derived data transactionally while preserving saved content.
 
-- nonempty incoming values win within equivalent provenance;
-- live GraphQL data wins over archive-import data;
-- archive values fill nulls but do not downgrade richer live fields;
-- minimum media positions and coalesced URL/article fields preserve stable
-  attachment identity;
-- live content clears obsolete archive-unavailable scheduler state and can mark
-  a `resurrected` object.
-
-Source labels currently include `live_graphql` and `x_archive`. New ingestion
-paths must define precedence explicitly and add regression tests rather than
-depending on row order.
-
-## Raw captures
-
-Raw response JSON is stored with operation, cursor input/output, HTTP status,
-capture time, source, and target context. Live keys use UUIDs; archive-import
-keys use deterministic SHA-256 inputs so a failed/rerun import does not duplicate
-captures.
-
-`ThreadExpandDetail` captures also act as expansion-completion markers. For a
-canonical object in `resurrected` state, a marker older than its latest enrichment
-check is stale and does not suppress a fresh thread pass. Successful thread
-persistence writes its marker after the recovered canonical rows so subsequent
-passes remain idempotent.
-
-Raw captures are internal evidence, not included as independent records in JSON
-export. Membership `raw_json` is included in exported hydrated tweets by default.
+Schema migrations run when a writable store opens. `SCHEMA_VERSION` in `storage/backend.py` is the authoritative version. New databases receive the latest schema; migrations must preserve existing archive content and update derived structures as needed.
 
-`rehydrate_from_raw_json()` reads membership rows plus TweetDetail/
-ThreadExpandDetail captures to rebuild normalized/secondary state. It assumes
-parseable JSON objects, preserves values absent from raw input, and does not
-explicitly delete all stale secondary rows.
-
-## Enrichment queues
-
-Canonical object states include pending, done, resurrected, transient failure,
-and terminal unavailable. Indexed fields track reason, checked/first-unavailable/
-next-retry times, count, eligibility, and detail.
-
-Eligible initial enrichment selects pending plus due transient failures. Normal
-resurrection selection further categorizes permanent versus retryable reasons.
-Available states clear retry scheduling.
-
-## Search/hydration/export
-
-Storage exposes candidate ID queries, membership paging, secondary joins, and
-`fetch_tweets_by_ids()` hydration. Hydrated rows can include collection metadata,
-canonical author/text, media, URLs, articles, tags, quote-target tags, and raw
-JSON.
-
-`export_rows()` deduplicates IDs across memberships, sorts by parsed timestamp
-and sort index, and fetches secondary state only for the selected IDs when a
-limit exists. Full JSON export materializes all rows in memory.
-
-## Tags
-
-Tag writes normalize whitespace, case-insensitively deduplicate while preserving
-first spelling, and delete empty records. Global delete/merge is case-insensitive
-and avoids destroying malformed legacy JSON. Candidate selection treats only a
-valid nonempty successful tag record as complete.
-
-The name `media_tag` is historical; text-only generated/manual tags use it too.
-
-## Schema migration
-
-Open behavior by source version:
-
-| Source | Migration |
-|---|---|
-| no archive table | create latest table, FTS, indexes, search facts, description index, content flags, note-history table, set v11 |
-| v5 (0.0.9, 0.1.0) | transactionally rebuild derived FTS/triggers/indexes, search facts, and the description index, removing old replacement orphans; validate membership count |
-| v8 (0.1.1–0.1.6) | transactionally create and backfill search facts, the description index, and their triggers; validate membership and described media-tag counts; FTS and canonical rows unchanged |
-| v9 (0.1.7–0.1.8) | transactionally create and backfill the description index and its triggers; validate described media-tag count; FTS, facts, and canonical rows unchanged |
-| v10 | transactionally backfill content/note flags for memberships and context objects; preserve canonical content and recorded note versions |
-| other versions below v11 | reject as a pre-release schema, unchanged |
-| > v11 | reject as newer than supported |
-
-Every supported upgrade also creates and backfills the content/note flags and
-ensures the note-history table exists.
-
-Migrations run inside one `BEGIN IMMEDIATE` transaction; a failure leaves the
-source version and its data untouched. No backup copy is written.
-
-Opening a mismatched database through `open_archive_store()` acquires
-`sync.lock`. A current-version read open does not.
-
-## Legacy LanceDB migration
-
-`storage/migrate.py` looks for `<data>/archive.lancedb`, creates/opens the latest SQLite schema,
-and reads source ranges in isolated subprocess workers. Source failures split
-ranges recursively so a bad row can be isolated; destination/worker-launch
-failures abort. Destination inserts use `INSERT OR IGNORE`, enabling reruns that
-preserve newer SQLite rows. FTS is rebuilt afterward.
-
-The compatibility column list omits newer fields including several enrichment
-scheduler/detail fields. `created_at_ts` is backfilled; omitted lifecycle fields
-remain defaults. Partial migration keeps the source and can skip isolated bad
-rows. The CLI does not reliably encode every result status in its exit code.
-
-## Integrity and maintenance
-
-- `check_integrity(full=False)` uses `quick_check`; full uses
-  `integrity_check`.
-- `optimize()` compacts with `VACUUM`, runs `PRAGMA optimize=0x10002`, and merges
-  FTS segments. Writer connection close runs lightweight `PRAGMA optimize`;
-  read-only/current-schema sessions skip that maintenance.
-- `version_count()` is a compatibility method hard-coded to 1.
-- `counts()['collections']` is membership-row count, not distinct collection
-  names or unique tweet count.
-
-Do not infer active storage architecture from old Lance-specific method names or
-dependencies.
-
-## Concurrency
-
-The connection is shared across Web request threads with
-`check_same_thread=False`. Stats report assembly has an in-process `RLock`, but
-ordinary tweet/tag routes do not use that stats lock. Cross-process writer safety
-comes from job/archive locks plus SQLite transactions.
-
-WAL sidecars matter for live backup. Stop active Web/workers before copying the
-data directory.
-
-## Regression targets
-
-- `tests/test_storage.py`
-- `tests/test_storage_sqlite.py`
-- `tests/test_migrate.py`
-- `tests/test_search.py`
-- `tests/test_export.py`
-- `tests/test_stats.py`
-- import/media/tag/Web route tests that depend on merge/hydration
-
-## Derived query caches
-
-The schema tracks membership and like-order input revisions with transactional SQL
-triggers. Unfiltered collection counts reuse the membership revision. Like-order
-reconstruction ignores content-only membership changes, tagging, and media writes;
-new/changed observations and memberships invalidate it across connections. Reads
-inside a write transaction bypass the caches to keep rollback safe. Each connection
-indexes the reconstructed sequence in a temporary table with latest/earliest
-positions. The table is disposable and excluded from archive backups.
-
-Exports rank narrow membership keys in SQLite, deduplicate, and apply offset/limit
-before loading tweet text, raw payloads, or secondary objects. Unknown dates remain
-last and raw payloads come from the selected membership. Unlimited exports still
-return the complete hydrated list.
+## Record types
+
+| Record | Purpose and identity |
+| --- | --- |
+| `tweet` | Collection membership, including collection/folder and timeline ordering. |
+| `tweet_object` | Canonical saved content for one tweet ID. |
+| `tweet_relation` | Directed reply, quote, repost, and other extracted relationships. |
+| `raw_capture` | A source observation with operation, cursors, timestamp, HTTP status and raw JSON. |
+| `sync_state` | Per-collection head and backfill progress. |
+| `media` | Media identity, remote variants, local paths, hashes and download state. |
+| `url`, `url_ref` | Shared URL metadata and each post's link references. |
+| `article` | Article metadata, text, content payload and status. |
+| `import_manifest` | Archive digest, owner/import counts, warnings and follow-up state. |
+| `media_tag` | Tags, description and tagging status attached to a tweet. |
+| `tweet_hidden` | A local visibility choice. |
+| `metadata` | Durable application metadata and accounting values. |
+
+Use the row-key helpers in `ArchiveStore`; don't invent identifiers in callers. A canonical tweet object and its memberships are different facts. Deleting or enriching context must not manufacture a bookmark, like, or authored membership.
+
+## Merge rules
+
+`_PageBuffer` collects related writes and tracks pending rows so a later item in a batch sees earlier writes. Source ranks prefer `live_graphql` over `fxtwitter` over `x_archive`. Merge code preserves better content, timestamps, downloaded files, and provenance when a weaker payload arrives.
+
+Raw captures remain evidence of the source response. Normalized tweet text, author fields, media and relation rows can be rebuilt through `rehydrate`, but rebuilding isn't a new remote observation. Test quoted and nested content as well as the focal post when changing extraction.
+
+## Availability and history
+
+Enrichment states include `pending`, `done`, `transient_failure`, `terminal_unavailable`, and `resurrected`. The unavailable reason, checked time, retry count, retry eligibility, and next retry time are separate fields. A transient transport failure must not turn into proof of deletion.
+
+Checks and Community Note changes have dedicated history storage. A post can have saved content and a current unavailable state at the same time. See [availability checks](availability-checks.md) for the transition rules.
+
+## Search and ordering
+
+Scalar indexes cover membership, ID, relation, media and queue reads. FTS5 indexes support saved post text and local descriptions. Article text is matched in Python using the shared query parser. Trigger-maintained tweet facts extract common raw-payload filters once when data changes. Cache revisions invalidate derived totals and search pages after relevant writes.
+
+Like order derives from immutable live/archive observations rather than invented timestamps. `like_order.py` uses anchors shared between captures, preserves preferred observations, and places disconnected history deterministically. Its archive block repair is empirical and chooses the candidate with fewer ordering disagreements against live anchors. Rebuilding is possible without changing the captured evidence.
+
+## Maintenance
+
+`db check` uses SQLite's quick check; `db check --full` uses its integrity check. `optimize` handles SQLite space/query/index maintenance. Old fragment-compaction hooks remain compatibility no-ops for this backend and shouldn't be described as active maintenance work.
+
+Prune computes a reachable context graph from saved memberships and current depth settings. It can remove manually expanded context outside that graph. Planning is read-only by default; applying takes the write lock, removes scoped rows/files, and vacuums. Test the graph and file boundaries before changing it.
+
+Stop writers before copying a whole installation. A live database copy needs SQLite's backup protocol or the relevant WAL state; copying only the main file during writes is not a reliable backup. Keep data, media, configuration and session material private.
+
+## Transactions and indexes
+
+`persist_page` buffers raw capture, memberships, the canonical/secondary graph and sync state before one merge transaction. Direct membership helpers require an active page buffer. UPSERT preserves rowids, which matters for the derived full-text documents.
+
+`archive_fts` is contentless FTS5 with author username, display name, text and Note Tweet text. Triggers index membership rows, not every context object. `archive_tweet_facts` is keyed by membership row key and holds structured fields extracted from raw JSON; triggers keep it aligned even for direct SQL writes. Malformed JSON yields absent facts rather than a failed write.
+
+`archive_tweet_content` holds `has_content` and `has_note` for membership and context-object row keys. Insert/update/delete triggers maintain these indexed flags. When no membership or context object has captured content, the uncaptured filter also checks separate media and Article records by indexed tweet ID and scalar fields. Feeds and Community Note searches do not need to parse JSON on each read.
+
+`archive_description_fts` stores nonempty string descriptions from `media_tag` rows. Its update/delete path removes old entries by rowid. Keep description matching separate from ordinary post-text clauses.
+
+`ensure_scalar_indexes` and `ensure_fts_index` are currently no-ops. Startup invokes them, but creation/migration is what establishes those structures. `rebuild_search_index` is the explicit rebuild path. Opening a current-schema archive does not repair missing indexes or run an integrity check.
+
+Bounded caches use persisted revisions and bypass ordinary reuse inside an uncommitted transaction, so a rolled-back write doesn't poison later results. Like-order input revisions are narrower than general content changes. Export ranks/deduplicates membership keys before hydrating full payloads, but an unlimited export still materializes the complete result.
+
+## Legacy migration
+
+The optional LanceDB reader runs in subprocesses and writes the current SQLite shape. Destination inserts ignore existing row keys so a rerun cannot replace newer rows. A failed source range is retried in smaller batches; unreadable rows can be skipped and reported. Inspect the final migration report, not just the exit code, and retain the source until collection/search/media checks are satisfactory.
+
+`archive.lancedb/` remains a separate source. A current schema open is different from that explicit one-way migration. Test skipped-row/partial reporting, reruns, empty input, destination failures and full-text rebuild after import.

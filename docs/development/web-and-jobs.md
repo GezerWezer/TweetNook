@@ -1,412 +1,88 @@
-# Web and Jobs
+# Web and jobs
 
-[Development guide](README.md) · [Search and Web API](search-and-web-api.md) ·
-[Scheduler](scheduler.md) · [Configuration and Paths](configuration-and-paths.md)
+`web/server.py` owns FastAPI startup and teardown. The browser can load before an archive exists, which keeps installation and Setup in the same application as ordinary browsing.
 
-The web server provides archive APIs and the browser interface. It handles
-short reads and settings or tag updates directly; long-running jobs use CLI
-subprocesses managed by `JobSupervisor`. The scheduler runs in the server process.
+## Startup
 
-## CLI lifecycle
+The lifespan creates the job supervisor, notices, Setup coordinator, and other shared services. An existing archive can attach immediately. A fresh installation exposes Setup while archive-dependent routes use `require_store` to return a clear not-ready response.
 
-`cli_web.py` implements:
+Database creation and schema migration establish the indexes. After attaching a store, the server warms existing archive data in the background and schedules cached-stat refreshes. Warmup does not repair missing indexes. The scheduler starts only after storage is ready and Setup is complete. Counters and Setup polling run separately from the first feed request.
 
-- dependency preflight; no existing archive required;
-- stale PID detection;
-- port detection through `lsof`/`fuser`;
-- password creation through Web Setup; no default password;
-- detached `python -m tweetnook serve` launch;
-- `.web.pid` persistence;
-- SIGTERM then SIGKILL stop policy;
-- restart/status/password management.
+## Setup state
 
-`start` does not perform an HTTP readiness wait. `status` accepts either a live
-PID or a configured-port listener, so it can report an unrelated process.
+`SetupCoordinator` persists `setup/state.json` with initialization mode, run identities, completion state, verified/skipped auth, and deferred-enrichment intent. A file's mere existence doesn't prove initialization or Setup finished successfully.
 
-Public `serve` and the hidden compatibility alias load configuration and call `run_server()`; storage belongs to the lifespan. Direct ASGI
-app import without that initialization leaves process-global state empty,
-authentication disabled, and no store; it is a test/internal path, not the
-supported runtime.
+Initialization can import a staged ZIP, migrate a legacy archive, or create an empty archive. Import/migration work runs as a supervised worker. A Setup import saves local data, enriches through FxTwitter (with optional account fallback), then downloads media within the same job. It does not reconcile live collections yet.
 
-## Managed systemd lifecycle
+After a successful import, completed Setup, verified auth and confirmed collections allow `import enrich` to run once as the first sync, including normal media follow-up. Failed/stopped import follow-up retains committed local data and the failed result, and cancels automatic first-sync intent until the user resumes sync or enrichment.
 
-Fresh system installs use the dedicated `tweetnook` account. Their global launcher
-enters `system_install.py`, which runs archive commands as that account and
-delegates service management to the CLI. Personal installs enter the CLI directly;
-existing service updates retain their unit and paths.
-
-`cli_service.py` writes a managed unit for the invoking Python environment.
-`service install` atomically replaces the unit, calls `daemon-reload`, enables it,
-and explicitly restarts it. `enable --now` alone leaves an active process running:
-its imported Python routes can stay old while static files already come from an
-updated package, breaking pagination or refreshed detail URLs. Restart uses the
-unit's existing cooperative shutdown policy and also starts an inactive service.
-
-`tweetnook update` already stops the managed service before upgrading its exact
-Python environment, then starts it again. Update rejects a live manual background
-server recorded in the same data directory and verifies the systemd process after
-a short startup settling period, so it cannot report success when that process
-immediately exits (for example, because the manual server still owns the port).
-A manual pip upgrade alone does not restart an existing server; follow it with
-`service restart` (or restart the foreground process). Pip installation itself
-never modifies host services.
-
-Update and restart validate the Linux/systemd service before requesting sudo for
-non-root callers. The handoff invokes the absolute `sys.executable` with
-`-I -m tweetnook`, inherits terminal input/output, and returns the child's exit
-status without repeating the operation in the parent. Root callers run directly.
-
-## FastAPI lifespan
-
-`web/server.py` lifespan:
-
-1. initialize configuration, activity retention, notices, and `JobSupervisor`;
-2. read durable Setup state outside SQLite (missing state plus existing DB means completed);
-3. reconcile initialization and attach an existing ready archive with `create=False`;
-4. set up indexes/FTS, clear stats, and request an archive warm-up only when a store
-   attaches;
-5. start one scheduler only when both storage and completed Setup are available;
-6. on shutdown, stop scheduling, gracefully stop the managed worker, stop the warm-up,
-   wait for FTS/stats, and close storage.
-
-`web/warmup.py`'s `ArchiveWarmer` runs off the request path in one daemon thread.
-Each pass rebuilds the derived like order and its paging table, then reads the FTS
-index, membership rows, and their canonical objects through a separate read-only
-connection so the OS page cache holds what browsing and search read first. The
-lifespan requests a pass when a store attaches and after every managed job
-finishes, because jobs change like-order inputs and evict cached pages. Requests
-during a pass coalesce into one follow-up pass. Shutdown interrupts the page reads
-(a SQLite progress handler) and waits for the pass before closing the store.
-
-`SetupCoordinator` persists worker intent/run IDs before launch. Setup's import
-includes enrichment and media; there is no separate queued Setup media job.
-After a successful import, completed Setup and verified auth start `import enrich`
-once as the first sync (including its normal media follow-up). A failed or stopped
-import follow-up leaves committed local data browsable, preserves the failed result,
-and cancels automatic first-sync intent until an explicit sync/enrichment resumes it.
-Older saved `media_requested` intent is ignored; old media run IDs remain readable
-for status. Import/migration can finish after the walkthrough; attachment makes
-browsing available without restart.
-
-Current `ensure_scalar_indexes()`/`ensure_fts_index()` are no-ops. A missing
-derived index is not repaired by these startup calls.
-
-The shared SQLite connection uses `check_same_thread=False` and disables Python's
-prepared-statement cache to avoid inconsistent concurrent cursor results
-([CPython issue 118172](https://github.com/python/cpython/issues/118172)). SQLite's
-configured data page cache and mmap remain enabled. General route use relies on
-SQLite and route behavior.
-
-SQLite holds a connection's mutex while each statement steps, so one long
-aggregate on the shared connection stalls every other request. Stats report and
-section collection therefore run on a private read-only connection from
-`ArchiveStore.open_reader()`, closed when collection ends, and take no
-process-wide lock: header and banner polls keep answering while Analytics
-collects. A caller with uncommitted writes on its own connection collects there
-instead, since a separate reader would not see those writes. The archive warmer's
-page reads use their own read-only connection for the same reason.
-
-The async avatar route runs its cache check, source lookup, and remote fetch on a
-dedicated eight-thread executor, so slow avatar downloads never occupy the shared
-request thread pool that feed, search, and thread routes use.
-
-Uncached avatar lookups explicitly include the partial author index's nonempty
-predicate so candidate selection searches one author instead of scanning all
-tweet records. Disabling avatar fetching returns before database lookup when
-there is no cached JPEG. Successful cached avatars are still served, and failed
-fetches remain nonpersistent so newer archive metadata can recover them.
-
-Cached avatar mtime is the last-use signal. Cache hits refresh it no more than
-once per day, while downloads naturally begin with a current mtime. An
-`AvatarCacheManager` daemon owned by the Web lifespan checks persisted state
-hourly and performs due cleanup once per week, independently of sync scheduling
-and `JobSupervisor`. It totals recognized image files and unlinks oldest mtimes
-until the configured MiB limit is met. Its atomic `avatar-cache-state.json`
-prevents routine Web restarts from postponing the weekly interval.
+Completion requires an initialization choice, a verified or explicitly skipped connection, and either an existing/new password or an explicit no-password choice. Reopening Setup should keep prior archive work and credentials unless the user asks to change them.
 
 ## Authentication
 
-`verify_credentials`:
+`web/deps.py` checks the password through HTTP Basic, ignores the username, and issues a signed session cookie for subsequent browser requests. The signing key lives beside the archive; sessions bind to the current password hash, so changing the password invalidates old sessions. HTTPS responses add the Secure cookie attribute. Completing Setup issues the signed session in the completion response and refreshes status/resources in place, so the completion panel does not require navigation. Password changes renew the current browser session and invalidate previous sessions.
 
-- permits requests when `password_hash` is absent;
-- accepts a valid signed login cookie for the current password hash;
-- otherwise parses HTTP Basic;
-- ignores username;
-- SHA-256-hashes the candidate password;
-- compares with `secrets.compare_digest`;
-- returns 401 plus `WWW-Authenticate: Basic` on failure.
+An unset password permits access. This is a deliberate local-use option, so the UI must require an explicit choice instead of treating an empty password field as consent. Apply authentication consistently to reads, writes, logs, media and developer replay endpoints.
 
-Fresh Setup writes the password hash as its final action, completes Setup, updates
-the live hash, and issues the browser's signed login cookie in the same response.
-The completion panel appears without navigation; Setup and activity status refresh
-in place and load archive resources when ready. Password changes renew the current
-browser's session and invalidate sessions signed for the previous hash. Finishing
-without a password also needs no reload. No default password is generated.
-`set-password` stores an unsalted SHA-256 and requires restart.
+## Applying settings
 
-Root, archive application APIs, and `/media` are authenticated in normal
-runtime. `/static` assets are not. FastAPI's default `/docs`, `/redoc`, and
-`/openapi.json` endpoints are also public; they expose the API schema, not
-archive rows by themselves. Media serving resolves base/target and rejects
-traversal, symlink escape, and non-files.
+All web-save routes use `reload_server_config` to update the running services from one validated snapshot. The shared lifecycle lock prevents a reload from overlapping archive attachment or teardown. Avatar-limit changes wake cleanup, and Analytics time changes reschedule the existing refresher thread. The active worker and listener stay in place.
 
-There is no TLS, CSRF/origin validation, CORS middleware,
-login throttling, CSP/security-header middleware, or authorization roles.
+## Workers
 
-## Frontend loading
+`JobSupervisor` launches commands with the installed Python, explicit run identity/origin, and durable logs. It owns one active worker, records exit status, and can queue supported jobs. A separate process lock prevents a CLI writer from racing a web worker.
 
-The browser avoids waiting on the network where it already has, or can predict,
-the data:
+`web/jobs.py` defines job names, CLI arguments and option types. Validate values before building arguments, reject unsupported options, and keep flags consistent with the CLI. Queue entries can be removed before launch. Manual queues live in memory and are cleared at shutdown; run history and Setup's first-sync intent are persisted separately. Avoid a second implementation of an operation in a route handler.
 
-- **Startup:** the first feed page (and a linked conversation) is requested alongside
-  `/api/setup` instead of after it. If that speculative request loses a race with
-  Setup, `fetchTweets()` asks again.
-- **Lists:** first pages are kept by URL for five minutes (12 entries). Switching to
-  a recently shown list, or to a collection's default list prefetched once while
-  idle, renders without a request. Reloading the list already on screen (retry,
-  repeated search) always asks again, an expired like-order cursor clears the cache,
-  and the cache empties when an activity job finishes. While a new list loads, the
-  previous one stays visible, dimmed.
-- **Paging:** the feed sentinel loads the next page 1,200 px before the end of the
-  list (quote lists at 600 px), and keeps loading while an appended page leaves the
-  sentinel within that margin.
-- **Feed cards:** list cards are not an Alpine template. `renderFeedCard()` builds
-  each card as one HTML string from the helpers the thread views use (escaping every
-  value they do not), and `fetchTweets()` writes a page with a single `innerHTML`
-  (new list) or `insertAdjacentHTML` (appended page) inside `Alpine.mutateDom()`,
-  so Alpine never walks the cards. `this.tweets` stays the data source for thread
-  seeds, tags, and Copy raw. Listeners on the list handle every card by `data-action`
-  (`thread`, `quote`, `profile`, `reply-profile`, `menu`, `text`, `stop`; links
-  navigate on their own); everything but `thread` stops propagation, as the old
-  per-element `@click.stop` handlers did. Capture listeners cover events that do not
-  bubble: avatar `load`/`error` and the overflow button's `pointerleave` (long press
-  opens Tags). One Alpine menu (`listMenu`) serves every card and is placed over the
-  button that opened it, following it on scroll and resize. **Show more** rewrites only
-  the affected text elements, leaving media playing. Cards do not display tags, so tag
-  edits only update `this.tweets`, which the menu and long press read when used.
-  Theme, accent, and font changes need no re-render because cards use CSS variables.
-  Media grids carry their lightbox list in an HTML-escaped `data-lightbox-media`
-  attribute read by `tweetNookOpenLightbox()`, and community-note links pass
-  `safeURL()`, so stored values never become script. Measured on a local archive (desktop,
-  including layout, same machine state): 20 cards take about 6.5–11 ms versus
-  17–21 ms with the former per-card Alpine template (8–17 ms versus 25–40 ms on a
-  cold page), and appending no longer re-diffs the whole list.
-- **Threads:** pressing a tweet, or hovering it for 150 ms, starts loading its
-  conversation (`data-thread-id`, delegated listeners, the existing 60-second thread
-  cache). Opening a thread shows the tweet the page already has as the main tweet,
-  with **Loading conversation...**, and keeps it at the same screen position when
-  parents load above it. Partial threads are never saved into the panel stack.
-- **Replies:** thread and split-panel views render direct replies in batches of
-  about 30 tweets, counting each reply's flattened descendants (`visibleReplies()`);
-  an intersection sentinel and **Show more replies** extend the batch.
-- **Media and layout:** feed images load lazily with async decoding; videos with a
-  poster use `preload="none"`. Off-screen feed cards use `content-visibility: auto`;
-  the shared list menu sits outside the cards, so the containment cannot clip it.
-- **Background work:** search suggestions are requested after a 100 ms pause and
-  late responses are discarded; status polling pauses in hidden tabs and refreshes
-  on return. The full tag list loads when Settings → Tags opens.
+## Logs
 
-## Response encoding and caching
+`PipelineReporter` publishes stages and final outcomes. `activity_history.py` keeps per-run records and logs under `activity/runs/`; retention is configurable. Worker logs receive timestamps. Notifications identify events that require attention and can link to a run.
 
-`TextGZipMiddleware` applies Starlette's gzip (level 5, responses of at least
-1 KiB) to API JSON, document routes, and static JS/CSS/HTML/JSON/SVG/text. It
-passes `/media/` and `/api/avatar/` through untouched: images and video are
-already compressed, and gzipping ranged file responses would break byte ranges.
-Tweet list/detail/quote/raw routes return pre-serialized responses, skipping
-FastAPI's per-value `jsonable_encoder` pass over large raw-JSON trees. Those routes,
-storage hydration, availability overlays, and like-order rebuilds parse and write
-JSON through `tweetnook/fastjson.py` (orjson: about 1.8x faster parsing and 9x
-faster serialization on archive data). It falls back to the standard library for
-NaN/Infinity literals, integers beyond 64 bits, and non-string keys, so stored
-documents keep their meaning; non-finite numbers serialize as `null`. Write paths
-keep `json.dumps` so stored raw JSON keeps its exact formatting.
+The browser receives live activity over an event stream, with polling as a fallback. `/api/jobs` returns each job's latest saved result, including import and enrichment. Jobs follows active work, then shows an unsuccessful run or the most recent result. Saved results remain available after reconnecting or restarting the server.
 
-The document routes (`/`, `/post/{id}`, `/post/{id}/quotes`) serve `index.html`
-with each `/static/...` reference rewritten to `?v=<content hash>`. The rendered
-document is cached in memory until the document or a referenced asset changes on
-disk, is sent with `Cache-Control: no-cache` and an ETag, and answers a matching
-`If-None-Match` with 304. `VersionedStaticFiles` marks a request whose `v` equals
-the current hash `public, max-age=31536000, immutable`; any other static request
-(unversioned, stale hash, fonts referenced from CSS) gets `no-cache` so it
-revalidates. Downloaded `/media` files are `private, max-age=2592000`. Cached
-avatars are `private, max-age=86400, stale-while-revalidate=604800`; the
-transparent fallback stays `no-store`.
+## Shutdown
 
-## Route map
+Stop requests cooperatively interrupt the owned worker. Shutdown stops scheduling new work, asks the worker to finish, waits within the supervisor's grace period, then tears down background readers and closes the store. The personal-web and system-service timeouts allow that sequence to complete.
 
-| Area | Prefix/routes | Responsibility |
-|---|---|---|
-| Tweets | `/api/tweets`, `/api/authors` | Search/list/detail/quotes/author autocomplete |
-| Tags | `/api/tags` | Per-tweet CRUD, global delete/merge, autocomplete/stats |
-| Setup | `/api/setup` | Credential probe/save, staged archive upload/import |
-| Config | `/api/config` | Effective/default/schema values and sparse changes |
-| Activity | `/api/activity` | Status/start/stop/history/log/schedule |
-| Stats | `/api/stats` | Fresh report, cached snapshot, compatibility sections |
-| Storage stats | `/api/storage/breakdown` | Legacy detailed storage shape |
-| Avatars | `/api/avatar/{user_id}` | Cached/fetched avatar or transparent fallback |
-| AI | `/api/automated-tagging` | Settings, model catalog, picker, test, accounting |
-| Media | `/media/{path}` | Authenticated contained local file serving |
+Keep process identities scoped to TweetNook. Service updates need to stop/restart the right unit and any owned workers; personal web commands must not mistake a client connection for the listening server.
 
-## Setup security boundary
+## Developer replay
 
-Credential update accepts only auth token, ct0, optional user ID. Masked values
-preserve saved secrets. Candidate credentials are written to an isolated
-temporary XDG config; current credential env variables are removed; an
-`auth check` subprocess must succeed before real persistence.
+1. On the source server, set a web password and enable `web.dev_replay_source`. The source needs an existing archive and refuses replay requests without a password.
+2. Give the test install its own XDG directories, as in the [development setup](README.md#setup). Start it with `tweetnook serve --dev-tools` or `TWEETNOOK_DEV_TOOLS=1`.
+3. In the test install's Setup, enter the source URL and web password, then connect.
+4. To simulate a connected X account, enter nonblank `auth_token` and `ct0` values. A user ID is optional for this connection check.
 
-With a replay source connected through `serve --dev-tools`, Setup skips that
-probe: any nonempty `auth_token` and `ct0` values count as a connected account.
-Saving either cookie empty (including whitespace) disconnects the account and
-pauses Setup's first sync until both are filled again. The optional user ID
-does not determine connection. Failure tokens (`fail`, `ratelimit`, `offline`)
-still simulate errors when jobs use the replay transport. Enabling developer
-tools alone, without a replay source, keeps the normal authentication probe.
+X requests use the replay source. Other requests using the replay transport are blocked; Gemini and OpenRouter requests can still reach their live services. The test install can use placeholder media and skip linked quote expansion or link previews to focus a test.
 
-Archive upload:
+With a connected replay source, Setup skips the live credential probe. Clearing either cookie or entering only whitespace disconnects the simulated account. Developer tools without a replay source keep the normal probe.
 
-- accepts raw request bytes (not multipart);
-- streams to a unique temporary path;
-- caps raw bytes at 50 GiB;
-- validates nonempty ZIP;
-- atomically replaces fixed staged `setup/archive.zip`;
-- rejects mutation during active jobs.
+To simulate job failures, put `fail`, `ratelimit`, or `offline` in `auth_token` for a request failure, rate limit, or network error. Keep `ct0` nonblank when testing a connected account.
 
-Deletion removes only the stage. Setup import starts `import x-archive <stage> --offline`.
-Auth testing is a separate subprocess, so it can run during the import. Normal
-APIs are gated until Setup completes; archive-dependent routes use `require_store`.
-Persistent notices and Setup/activity status remain available without SQLite.
+The source and test archives remain separate. This is different from the static public demo, which uses a packaged fixture and no server database.
 
-The general activity-import endpoint accepts an authenticated server-readable
-directory or `.zip` path, making an authenticated browser a local-admin
-filesystem principal.
+Use distinct XDG roots for the test install and keep replay tests away from production write paths. The [testing guide](testing.md) lists the lifecycle and replay checks.
 
-## Config API
+## Caching
 
-Responses mask Twitter/X cookies, password hash, and tagging key. The general UI schema
-whitelists Web host/port, avatar fetching, and avatar cache-limit fields while
-blacklisting dedicated-pane sections. The POST endpoint validates any known model
-field rather than enforcing that whitelist.
+The archive warmer prepares like order and reads common archive pages through a private read-only connection. Requests during warmup coalesce into one follow-up pass. Shutdown interrupts its reads, and managed job completion requests another warmup.
 
-Config POST persists TOML but does not refresh process-global config,
-supervisor, or scheduler. Dedicated Setup and schedule/tagging routes perform
-their own relevant refreshes. Restart is the safe general consistency boundary.
+Statistics use private readers so a long query doesn't stall the shared connection. The previous snapshot remains available during refresh and after a failed refresh. `web.analytics_refresh_time` controls daily refreshes; cached results also revalidate when stale. A caller with uncommitted writes collects on its own connection.
 
-## JobSupervisor
+Avatar fetching uses a separate executor so remote image waits don't occupy feed-request threads. Cached pictures remain available when downloading is disabled; failed or transparent responses aren't saved. Periodic size cleanup uses last-use timestamps and persisted run state, independently of sync scheduling.
 
-The supervisor prevents one local/external activity at a time using:
+Browser caches and prefetch reuse feed and conversation results during navigation. Search suggestions discard stale responses. Media loads lazily, and activity updates preserve the visible feed and playback.
 
-- its worker process state;
-- durable activity status/PID checks;
-- the command lifecycle lock used by the child.
+## HTTP caching and files
 
-Launch details:
+Text/API responses use gzip when appropriate, while media/avatar paths bypass it to preserve compressed bytes and range behavior. Document routes add static content hashes, ETags and no-cache revalidation. Matching versioned static assets can be immutable; unversioned/stale-hash assets revalidate. Saved media is private-cacheable. Failed-fetch fallbacks use `no-store`; fallbacks when downloading is disabled use `private, max-age=300`.
 
-- executable: current Python with `-m tweetnook`;
-- new process session/group;
-- origin and run ID environment;
-- stdout/stderr to `console.log`;
-- durable activity metadata/finalization.
+`/media` resolves the base and target and rejects traversal, symlink escape and non-files. Other filesystem boundaries and public endpoints are covered under [trust and security](architecture.md#trust-and-security).
 
-Stop sends SIGINT to the process group for Web/scheduled jobs. CLI-origin
-activity discovered through status is signaled by PID. Successful stop request
-returns before child finalization.
+## Run files and timeouts
 
-`shutdown()` sends SIGINT, waits 45 seconds, then allows 10 seconds after SIGTERM
-and 5 seconds after SIGKILL if needed. It joins the monitor without holding its
-lock. Web stop allows 70 seconds; the systemd unit allows 90 seconds. Completion
-callbacks cannot launch new jobs while shutting down.
+A run directory can contain `metadata.json`, `events.jsonl`, `output.log`, worker `console.log`, and `final.json`. The current `activity-status.json` snapshot uses atomic replacement. Log retrieval prefers worker console output and bounds it to the last 2,000,000 bytes. Retention skips active runs.
 
-## Activity history
+Stop sends SIGINT to owned process groups, or the PID of discovered CLI activity. Shutdown waits for cooperative interruption, then escalates to SIGTERM and SIGKILL if needed. Timeout constants in `job_supervisor.py` leave the personal server and systemd enough time to finish worker shutdown.
 
-Each run directory contains:
-
-```text
-metadata.json
-events.jsonl
-output.log
-console.log       # Web/scheduled child
-final.json        # after completion
-```
-
-`activity-status.json` is the atomically replaced current snapshot. Run IDs are
-UTC timestamp plus random hex and are validated before filesystem access.
-
-Log retrieval prefers `console.log`, falls back to `output.log`, and returns at
-most the last 2,000,000 bytes (about 1.91 MiB). Cleanup skips active runs and
-applies max-count/age limits.
-
-`sanitized_argv()` knows only selected secret option names. There is no universal
-redaction for arbitrary strings, output, exception details, paths, URLs, or raw
-tweet data.
-
-Activity status considers a run active only when snapshot state is running and
-the PID exists. A supervisor worker before its first snapshot receives a
-synthetic “Starting worker process” status. Last activity in the main drawer is
-selected from all Jobs commands. `/api/jobs` includes the last saved snapshot for
-each job, including Setup's import and enrichment. The panel follows live work,
-then prefers an unsuccessful run or the most recent result. Used and queued
-on-demand jobs remain visible when the list is collapsed; selecting a row opens
-its steps, while its options button opens run settings. Activity's terminal
-snapshot bridges the interval before the Jobs response refreshes.
-
-## Frontend
-
-`index.html` is a large Alpine template; feed list cards are the exception and
-render as plain markup from `app.js` (see [Frontend loading](#frontend-loading)).
-Local script order is:
-
-1. `themes.js`;
-2. `autocomplete.js`;
-3. `app.js`.
-
-Tailwind CSS and pinned Alpine/plugins are bundled under `static/`; fonts use
-only local families. Rebuild assets with the [asset tooling](../../dev/web/README.md)
-when HTML/JavaScript utility classes change. No CDN or provider-model request is
-needed on page load. The local archive server must still be running and reachable.
-
-Major frontend states:
-
-- paged feed/search/collection/sort;
-- single/split thread and quote navigation;
-- availability placeholders and downloaded-media lightbox;
-- manual/global tag UI;
-- Setup, Config, Schedule, Logs, Appearance, Automated Tagging panes;
-- stats and spend-history modals;
-- activity drawer.
-
-Preferences persist in browser `localStorage`. Split mode requires ≥1024px.
-
-Known frontend defects/limitations include duplicate closing `head`, a no-op
-lightbox button, placeholder help links, hidden narrow-screen Settings/Stats
-controls, unsurfaced search truncation, no reduced-motion policy, uneven focus
-styles, and an activity title that always says Archive Sync.
-
-## Avatars and outbound requests
-
-Avatar route order is cached JPG, author lookup, optional fetch. It considers
-recent `tweet` and `tweet_object` rows that contain either supported profile-image
-field, rewrites `_normal` to `_400x400`, and tries up to eight candidates with a
-10-second synchronous HTTPX call. Successful responses are cached as JPGs;
-transparent failures are returned with `no-store` and are never persisted, so a
-later sync or recovered network connection can succeed. The browser adds a
-versioned query parameter to invalidate older cached transparent responses.
-
-Media download, URL unfurl, and avatar fetching follow stored external URLs.
-There is no comprehensive egress/SSRF policy or general response-size cap.
-
-## Stats cache
-
-`web_stats_cache` provides one five-minute stale-while-revalidate entry per data
-context. Initial concurrent callers share collection through a condition.
-Stale callers receive old data while one daemon refreshes. Failure preserves
-old data and sets a flag. Tag mutations currently do not invalidate it.
-
-## Regression targets
-
-- `tests/test_cli_web.py`
-- `tests/test_job_supervisor.py`
-- `tests/test_activity_history.py`
-- `tests/web/*`
-- `tests/test_web_tweets_api.py`
-- `tests/test_web_assets.py`
-- `tests/js/test_web_assets.cjs`
+Candidate X credentials are tested through an isolated temporary config with inherited credential overrides removed before real persistence. Upload staging streams to a unique temporary path, enforces raw bytes/nonempty ZIP, then replaces the fixed stage. Setup uses `--defer-followup` to enrich and download media without reconciling live collections; the first sync waits for the Setup gates described above.

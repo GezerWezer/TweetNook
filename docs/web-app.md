@@ -1,294 +1,117 @@
-# Web app
+# Browsing
 
-[User guide](README.md) · [Connect Twitter/X](getting-started.md) · [Search](search.md)
+## Collections and sorting
 
-Use the web app to browse saved tweets, read archived threads, edit tags, and
-keep your archive up to date.
+Use the search box for words or an author, or open the filters to narrow things down. You can sort by post date, popularity, or random order. The Likes view also has newest-liked and oldest-liked order; those follow your likes rather than the date the author posted.
 
-## Start and stop the app
+The [search guide](search.md) has examples you can paste into the search box.
 
-Run `tweetnook serve` in the foreground, or explicitly install the
-[Linux systemd service](cli-reference.md#service) for continuous operation and boot startup.
-The server starts without a database and does not create one just by starting.
-Open `http://<server-address>:8000` from your LAN, or
-[http://127.0.0.1:8000](http://127.0.0.1:8000) on the server itself.
+## Reading posts
 
-First visit opens Setup in Settings: import an official Twitter/X archive (recommended),
-connect Twitter/X or explicitly skip it, then create a Web password. There is no default
-password. Any username works when the browser asks for HTTP Basic authentication.
-An existing SQLite archive is recognized on upgrade without forcing first-run Setup.
+Open a card to read the post with its saved conversation and quotes. On a desktop you can keep it beside the feed in a split panel or read it in the main column. On a phone, use the back button or the swipe-back gesture to return to where you were browsing.
 
-The optional manual background commands remain available:
+Photos, videos, GIFs, link cards, quoted posts, and Articles appear with the saved post. Open media to see it at a larger size. Articles can be read in TweetNook when their full text has been saved; otherwise you'll see the information currently available.
 
-| Command | Use it to… |
-|---|---|
-| `tweetnook web start` | Start the background server |
-| `tweetnook web status` | Check whether the background server is running |
-| `tweetnook web stop` | Stop the background server and its managed job |
-| `tweetnook web restart` | Restart after a general configuration change |
-| `tweetnook web set-password` | Advanced password recovery; restart afterward |
+Saved content stays readable with a warning if the original post or quote is deleted or becomes unavailable on X. If nothing was saved, an unavailable placeholder explains the gap. Text and media can be saved separately: saved media can appear without post text, and saved text can appear beside a **Media not downloaded** frame. That frame appears only when TweetNook has captured the media details.
 
-Stopping TweetNook asks active Web/scheduled work to stop gracefully so already
-committed work is preserved. Use `tweetnook service stop` for a systemd installation.
+Posts can include saved translation and Community Note information. Availability and note history help you see what changed after a post was collected. These are records of what TweetNook has observed, rather than a complete history of every change on X.
 
-## Browse saved tweets
+## Tags
 
-Choose **All Tweets**, **Likes**, **Bookmarks**, or **Your Tweets**. Scroll to
-load more tweets, or choose **Latest**, **Oldest**, or **Random** to change the
-order. Random order stays stable while you scroll and is reshuffled when you
-start a new search. With a text search, **Relevance** becomes available.
+### Editing tags
 
-With **Likes** selected, **Recently liked** and **Earliest liked** follow observed
-like order instead of tweet publication date. These orders also apply to searches
-and filters. Saved GraphQL Likes pages take priority; archive-only gaps use an
-approximate reconstruction of 25-item blocks and shared-tweet anchors. Order
-within those blocks and between disconnected observations remains uncertain.
-Entries without ordering evidence stay last in either direction. Existing raw
-captures are used automatically, without repeating an import or making Twitter/X requests.
+Open the post's `…` menu and choose the tag editor, enter a name, and save it. Long-pressing the menu button also opens the editor. Existing tags are suggested as you type. Use a tag such as `weekend projects` if that's how you'll remember the post later; tags can contain spaces.
 
-Tweet cards show the content, media, and counts captured in your archive. Like
-and bookmark icons show where you saved a tweet; they do not change anything on
-Twitter/X. Counts are saved values and may differ from Twitter/X today.
+You can also write a local description, edit an existing one, or clear all tags and the description. Both text-only and media posts support manual tags. Empty tags are ignored, and names that differ only in capitalization count as duplicates.
 
-Select an author's name, avatar, or an @mention to open their profile card. Each
-saved tweet carries the profile as it was when TweetNook fetched that tweet, so the
-card shows the most recently fetched profile among all of the author's saved tweets,
-which is not necessarily the newest tweet's. When the bio, name, or counts changed
-between fetches, use the arrows to step through older captures; the card shows when
-each one was fetched. An @mention shows a profile only if you saved a tweet by that
-account.
+Remove a tag from the same dialog when it no longer fits. Removing a tag changes the organization of that post and leaves the post itself in your archive.
 
-Choose **Show more** to expand long text. Open a photo or video to view downloaded
-media at a larger size. In the fullscreen viewer, swipe left or right to move through
-a tweet's media, or swipe down to close it. **Media not downloaded** means the tweet
-was saved but the local media file is missing; see
-[Download media](enrichment.md#download-media).
+### Searching tags
 
-Tall quoted photos use cropped previews; open the photo to see the full image.
-Videos in the default grid preserve the complete picture, with bars when their proportions
-differ from the tile. On narrow screens, direct portrait photos and videos fill
-the available width.
-
-In **Settings → Appearance → Media layout**, choose how tweets with multiple
-photos, videos, or GIFs appear:
-
-- **Grid** (the default) shows all attachments together.
-- **Carousel** uses X's horizontally scrolling tiles for every multi-media tweet.
-- **By post date** keeps the grid for tweets before July 10, 2026 (UTC), and uses
-  the carousel from that date onward. Quotes and reposts use the original tweet's
-  posting date, independently of the parent tweet. Unknown dates keep the grid;
-  liking or archiving an old tweet recently does not change its layout.
-
-The cutoff follows the first public iOS carousel launch announcement, documented
-in [contemporary reporting](https://news.denfaminicogamer.jp/news/260711d).
-X rolled the change out gradually across clients, so this is a historical
-approximation rather than an exact record of every author's experience.
-
-The carousel shows separate rounded tiles: scroll horizontally or swipe through
-them, or use the arrows on desktop. Focus the strip to use Left/Right and
-Home/End. Select a photo to open the existing fullscreen viewer. Wide pictures
-and videos may be cropped in carousel tiles. Quoted galleries use the same
-choice. The choices include small layout previews and support arrow-key selection.
-This preference is saved in the current browser; single attachments
-keep their existing layout.
-
-Volume and mute changes apply to the other videos on the page, including the
-split panel, fullscreen viewer, and videos loaded as you scroll. This shared
-setting lasts until the page reloads. GIFs remain silent.
-
-## Read X Articles
-
-X Articles are native long-form publications attached to posts. Feed cards show
-an article's cover, title, and excerpt. Select the preview to read the saved body
-in the conversation view or desktop split panel. **Focus mode** opens a centered
-reader; select the close button or press Escape to return to the same place.
-
-The reader preserves captured headings, emphasis, links, lists, quotations, and
-inline images. Older captures with only plain text retain their paragraph breaks.
-Quoted articles keep their full preview, including when the quoting post has its
-own media. Nested quotes, replies, and reposts use the same saved article content.
-
-Only captured content is shown. A preview-only article says that its body has not
-been archived; missing image files show a download placeholder. Embedded content
-without a saved representation links to X when a reference is available.
-Use `has:article` to find article-bearing posts, and
-[refresh articles](enrichment.md#refresh-articles) to fill in saved previews.
-
-## Read threads and quotes
-
-Select a tweet to open its archived conversation. Parent tweets appear in order,
-followed by its saved reply tree regardless of author. Deeper replies are indented
-under each direct reply. To keep unusually large conversations responsive, one view
-shows up to 250 descendant replies and displays a notice when more are saved; select
-a later reply to continue from that point. Long reply trees appear about 30 replies at
-a time; more load as you reach the end, or select **Show more replies**. Direct
-replies that only @mention someone other than the original poster, with nothing else
-and fewer than 5 likes, wait behind **Show other replies** at the end of the list,
-like X's **Show probable spam**. Selecting it adds them under an **Other replies**
-heading. Replies you saved stay in the main list. A conversation
-opens at once on the tweet you selected and fills in its replies as they load. You can also browse saved tweets that quote
-the selected tweet, including quotes you have not liked or bookmarked.
-Tweet and quote views have copyable URLs (`/post/<tweet-id>` and
-`/post/<tweet-id>/quotes`), so they can be bookmarked, refreshed, or shared with
-someone who can access the same TweetNook server and archive.
-
-The conversation contains what tweetnook has captured. Saved text, media, and
-Articles remain readable with a warning if the original becomes unavailable or
-is deleted on Twitter/X. This also applies to saved quotes and reposts. A
-placeholder means there is no saved content to show and explains the reason
-when known. Quote counts refer to your archive's saved
-quotes, not the total on Twitter/X.
-
-A wide window can show the feed and conversation side by side. Smaller screens
-use a single column.
-
-## Search and organize
-
-The search box accepts words and filters together:
+Select a tag to see its posts, or search explicitly:
 
 ```text
-"night sky" has:image
-tag:recipe -is:retweet
-from:alice since:2026-01-01
+tag:gardening
+tag:"weekend projects" has:video
 ```
 
-Author and tag suggestions help you find values already in your archive.
-[Search](search.md) lists all supported filters.
+Tag searches also find saved posts that quote a post with that tag. A search for ordinary words looks in the post text; use `tag:` when you're searching your labels.
 
-Open a tweet's menu to edit its tags and description. Use **Settings → Tags** to
-merge or delete a tag across the archive. See [Tags](tags.md) for examples.
+### Managing tags
 
-Choose **Hide** in a tweet's menu to keep it out of your lists and search
-results. It stays in your archive: search `is:hidden` to see hidden tweets, and
-choose **Unhide** in the menu to show one again.
+To change the wording of a tag on one post, replace it in that post's tag editor. Settings > Tags lists the tags in your archive. You can sort by name or by how often a tag is used and open the posts carrying it.
 
-## Run a sync and view progress
+- Merge tags when several names mean the same thing. Choose the name to keep; the others are replaced on every affected post.
+- Delete a tag to remove it everywhere. To remove it from just one post, use that post's tag dialog.
 
-Use the floating activity drawer to start a sync of bookmarks and likes. It
-shows the current step, progress, elapsed time, and any problems that need
-attention. Use **Stop Task** to request cancellation.
+If a merge combines the same tag on a post, it stays a single tag. Review the selected names before confirming a merge or global deletion.
 
-On phones, Jobs opens as a bottom sheet and holds the feed in place. Scroll
-inside the sheet to browse jobs and options. Pull down anywhere in the sheet
-when its content is at the top, swipe down on the handle, or tap the shaded
-area outside to close it.
+Global merges and deletions have no undo. Make a backup if you may need the old organization later.
 
-Saved tweets remain available even if a later download or lookup fails. For older
-runs, open **Settings → Logs** and select the relevant entry. By default, history
-keeps up to 100 completed runs for up to 90 days.
+### Suggested tags
 
-Run one archive job at a time. Wait for jobs to finish before making bulk tag or
-configuration changes.
+[Automated tagging](automated-tagging.md) can add AI-generated tags and descriptions. It's optional, and manual tags work without it. You can review and edit suggested tags in the same places as your own.
 
-## Scheduling
+Manual and generated values share the same editor; normal automated runs skip completed, nonempty tags, while explicitly tagging a post can replace its values.
 
-1. Open **Settings → Schedule** and enable scheduled syncing.
-2. Choose an interval, or a daily, weekly, or monthly time.
-3. Check the time zone.
-4. Choose whether to add a random delay, then **Save**.
-5. Check the next run shown in the activity drawer.
+### Hidden posts
 
-For daily, weekly, and monthly schedules, the default random delay is between
-zero and two hours after your chosen time. Turn it off for a fixed time. Hourly
-schedules ignore this setting. A monthly date past the end of a shorter month
-uses that month's last day.
+Use a post's menu to open it on X or hide it. Hiding removes the post from ordinary feed and search results. It remains accessible through direct links, conversations, quotes, terminal views and JSON exports; hiding does not restrict access to its contents. Search for `is:hidden` to find hidden posts and show them again.
 
-The TweetNook server/service must remain running; the browser can be closed.
-If another job is active when a sync is due,
-that occurrence is skipped. If the app restarts with a saved overdue run, it
-tries once and then resumes the schedule; it does not replay every missed run.
+## Appearance
 
-Scheduled sync saves **bookmarks and likes**. Save your own tweets separately with
-`tweetnook sync tweets`.
+Settings > Appearance has themes, accent colors, text sizes, and fonts. Desktop layout controls the single-column and split-panel views. Media layout can use a grid, a carousel, or choose by post date: a grid before July 10, 2026, and a carousel from that date onward.
 
-## Configure availability checks
+You can turn muted video autoplay on or off. Appearance choices are kept by the browser, so your phone can have different preferences from your desktop.
 
-In **Settings → Config → Check**, enable **Check automatically** and select Daily,
-Weekly (default), or Monthly. Set its time and the weekday or monthly date.
-**Check context tweets** is a separate basic toggle, off by default. Turn it on to
-show **Context cycle**, which defaults to 60 days. The rolling batch size follows
-the check frequency; saved tweets and quotes returned with them are checked every
-run. Checks require FxTwitter and the running Web service. Saved changes take
-effect immediately; the login lookup budget remains under Advanced.
+## Jobs and logs
 
-## Update your Twitter/X connection or import an archive
+Open Jobs to start a sync, check availability, or run an individual task such as downloading media or refreshing Articles. Each job shows the available run options, and scheduled jobs show their next run. You can queue supported jobs while another job is running and remove a queued job before it starts.
 
-**Settings → Setup** lets you replace your Twitter/X session values. New
-values are checked before they are saved.
+Queued manual jobs are held in memory. After restarting the server, queue them again if they are still needed. Setup keeps its first-sync intent separately.
 
-You can also upload an official Twitter/X archive ZIP and start an import. **Import** adds it to the
-archive. Clearing the staged ZIP removes that uploaded copy only, not imported
-tweets or media. Finish active jobs before uploading or importing.
+Completed and unsuccessful jobs stay in Jobs. Select a job to review its saved steps and errors; use its options button to change run settings.
 
-**Run setup again** reopens the same flow without resetting data or settings.
-Setup imports always run offline first. You can continue to test/save Twitter/X cookies
-while import runs, finish Setup, and close the page. Once both the local import
-and successful Twitter/X test finish, enrichment starts automatically in the background.
-Skipping Twitter/X keeps local browsing available with enrichment pending. Initialization
-can also migrate a detected upstream archive or explicitly create an empty one.
-Migration does not trigger automatic enrichment.
+On a phone, Jobs opens as a bottom sheet. Scroll inside it to browse jobs. To close it, pull down when its content is at the top, swipe down on the handle, or tap outside.
 
-Settings → Notifications retains failures and issues needing attention, with
-links to Setup, Schedule, or Activity and a dismiss control. Unread notifications
-also appear as a badge on the Settings button. Imports and enrichment use the
-same Activity progress as other jobs. If enrichment remains incomplete, use
-**Continue enrichment** in the Web app; it does not retry forever automatically.
-See [Importing](importing.md) for supported data and import options.
+Use the stop action if you need to interrupt active work. Give it time to finish stopping before starting another task. Work already saved remains available.
 
-## Settings and appearance
+Settings > Activity logs keeps past runs and their logs, which you can download. Settings > Notifications collects events that need attention and links them to the relevant run. Dismissing a notification or clearing dismissed history doesn't delete archived posts.
 
-| Panel | What you can change |
-|---|---|
-| Appearance | Theme, accent, font, text size, and panel layout |
-| Configuration | Avatar fetching, server address and port; additional settings in Advanced mode |
-| Schedule | When bookmark-and-like sync runs |
-| Automated Tagging | Gemini setup, tag generation, and usage history; requires the optional extra |
+Analytics shows collection totals, storage usage, and the state of outstanding work. Some figures refresh periodically; use the refresh action when you need a new snapshot.
 
-Supporting mobile browsers also receive the selected theme's background color
-and light/dark scheme for their surrounding bars and native controls. While the
-Jobs sheet is open, its shaded background color is also supplied to the browser
-and follows the same fade as the page backdrop. In Safari, the sheet's background
-extends behind the bottom browser controls and moves with the sheet; its contents
-stay above the toolbar.
-The exact bar appearance depends on the browser and operating system.
+## Network access
 
-Appearance choices are saved in the browser, so another browser can have a
-different layout. Restart the server after changing general configuration. The
-advanced `web set-password` command also requires a restart. Schedule changes
-take effect when saved.
+Open the server's network address from another device, and use your web password if one is set. TweetNook continues doing scheduled work when every browser tab is closed, as long as its server stays running.
 
-**Restore Defaults** preserves Twitter/X credentials, the Gemini key, and your web
-password. Use a desktop-sized window for administration; Settings and Stats
-controls are currently hidden on narrow screens.
+[Maintenance](maintenance.md) covers settings, server access, updates, and backups.
 
-## Check archive statistics
+## Profiles and counts
 
-Open **Stats** for collection counts, recent sync information, missing details,
-media, tags, and storage use. Choose **Refresh** after a job or tag edit to get
-updated figures. Automatic snapshots are rebuilt once a day.
+Select an author's name or avatar to open their saved profile. An @mention can open a profile when your archive has a saved post by that account. The card starts with the most recently fetched profile, and its arrows let you step through older saved versions of the name, bio, or counts. The fetch date tells you when TweetNook observed each version.
 
-Some storage categories are estimates; the total file sizes are measured. For
-an immediate terminal report, run `tweetnook stats`.
+Post counts and profile figures reflect saved observations. The like and bookmark icons show where you saved a post; selecting them isn't a way to like or bookmark it on X. Quote counts refer to quotes in your own archive.
 
-## Network and security boundary
+Random order stays steady as you scroll and reshuffles for a new search. In liked-order views, posts without enough ordering evidence stay at the end in either direction.
 
-The default listener is `0.0.0.0`, supporting browsers on your homelab/LAN.
-Set `web.host` to `127.0.0.1` for access only from the server itself. Fresh Setup
-creates the password as its final action. The app has no built-in HTTPS or
-separate user accounts. HTTP Basic credentials are not protected by transport
-encryption without HTTPS, so use the built-in HTTP server only on a network you
-trust or put TweetNook behind appropriate HTTPS/network controls.
+## Conversations and Articles
 
-The page ships its scripts and styles and uses local fonts. It works without
-internet access while the archive server remains reachable. Downloaded media and
-video posters stay local; link-card images without a matching archived copy are
-omitted. The Web server limits cached avatars to 512 MiB by default using a separate
-weekly least-recently-used cleanup job; both the limit and cleanup can be changed in
-Config. Disable avatar fetching and scheduled syncs to avoid their network attempts.
-Sync, enrichment, authentication checks, Gemini actions, and external links still
-need internet. This is not a standalone HTML export or a replicated browser database.
+Conversation views show saved parents and replies. Large reply trees load in sections; use Show more replies to continue. Show other replies reveals replies kept in a separate group. A view can show up to 250 descendant replies; if a notice says more are saved, open a later reply to continue there. Saved posts stay in the main reply list.
 
-In **Appearance**, use **Load local fonts** to request the browser's permission
-to list fonts on the device displaying the page (not the server). This requires a
-supporting browser and HTTPS or localhost. If unavailable or denied, use the fallback
-choices. The custom dropdown previews each font in its own typeface.
+Post and quote views have copyable URLs, `/post/ID` and `/post/ID/quotes`. You can bookmark those addresses or share them with someone who has access to the same TweetNook server.
+
+Open an Article preview to read its saved body, then use Focus mode for a centered reader. Close it or press Escape to return. Saved headings, links, lists, quotations and inline images remain part of the Article. A preview-only Article or undownloaded image tells you what's still missing; use Refresh articles or Download media to complete it.
+
+## Media controls
+
+In the fullscreen viewer, swipe horizontally to move through a post's media and swipe down to close. On a focused carousel strip, Left/Right and Home/End move through the tiles. Wide images can be cropped in tiles; open them to see the complete picture.
+
+By post date uses each original post's publication date, including quoted and reposted content, with a UTC boundary on July 10, 2026. Unknown dates use a grid. Saving an old post today doesn't give it a newer layout, and single attachments keep their existing layout.
+
+Changing volume or mute affects other videos on the same page, including fullscreen and split-panel players, until the page reloads. GIFs stay silent.
+
+Load local fonts asks the browser for permission to list fonts on the device you're using. It needs a supporting browser and HTTPS or localhost. If permission or support isn't available, choose a fallback font.
+
+## Passwords
+
+There is no default web password. When the browser asks for a username and password, any username works; enter the password you chose in Setup. A saved browser session can remember it. Use `tweetnook web set-password` and restart the appropriate server if you need to replace it from the terminal.

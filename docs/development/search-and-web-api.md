@@ -1,404 +1,139 @@
-# Search and Web API
-
-[Development guide](README.md) · [Storage](storage.md) ·
-[Web and Jobs](web-and-jobs.md) · [User search guide](../search.md)
-
-CLI and web tweet searches share the parser and executor in `search.py`. Web
-routes paginate results, attach shared availability information, and assemble
-thread and quote responses. This page describes query execution and the read API.
-
-## Query model
-
-`search.py` parses into clauses/groups rather than passing user text directly to
-FTS/SQL. Supported syntax includes:
-
-- implicit AND;
-- `AND`, `OR`, and `NOT` (normally written uppercase);
-- leading `-` negation;
-- quoted phrases;
-- FTS prefix terms;
-- hashtag terms;
-- structured key/value filters.
-
-The parser recognizes Boolean operators only in uppercase. Its downstream FTS
-normalization can nevertheless promote lowercase `and`, `or`, and `not`
-between terms, where SQLite FTS precedence can differ from the parser's
-canonical clause/OR grouping. Callers should use uppercase operators for
-deterministic grouping. OR alternatives form a group; separate groups are all
-required. Recognized structured clauses with invalid enum/date/numeric
-values can raise `SearchQueryError`, but several incomplete filter-looking
-tokens (for example `from:` or `min_faves:`) fall back to ordinary text.
-Unbalanced quoted filter values can also pass through, and numeric time parsing
-currently accepts non-finite `nan`/`inf` float spellings. Do not describe the
-parser as rejecting all malformed filter-shaped input.
-
-## Filter registry
-
-Parser keys are:
-
-```text
-from to mentions
-since until since_time until_time since_id max_id
-has is filter
-min_retweets min_faves min_replies
-conversation_id quoted_tweet_id
-url source card_name tag description hashtag
-```
-
-Enums:
-
-- `has`: article, media, image, video, links, note;
-- `is`: hidden, missing, quote, reply, resurrected, retweet, thread, uncaptured, verified;
-- `filter`: articles, images, links, media, native_video,
-  nativeretweets, quote, replies, self_threads, threads, verified, videos.
-
-Dates use UTC-midnight bounds: `since` inclusive, `until` exclusive. The shared
-date parser also accepts `YYYY-MM-DD_HH:MM:SS` as UTC despite the public error
-copy advertising date-only input. `since_time`/`until_time` accept numeric Unix
-seconds. `since_id` is strict greater-than; `max_id` is inclusive.
-
-Tag matching covers direct tags and direct quote-target tags, with result
-metadata indicating quoted provenance.
-
-`description:` matches the same tweet set (direct and quote target) from
-`archive_description_fts`. Each whitespace-separated word of the value becomes a
-quoted FTS5 string, ANDed, so FTS operators in the value are literal and a
-trailing `*` stays a prefix query. A value with no word is a `SearchQueryError`.
-Unfiltered text clauses do not search descriptions.
-
-## Execution plan
-
-The executor applies every Boolean, structured, and collection predicate in SQL,
-deduplicates logical tweet IDs, orders the matches, and fetches `limit + 1` IDs.
-Only the displayed page is hydrated. Text searches have no 1,000-result cap;
-`has_more` comes from the extra ID, and exact text totals/pages are omitted.
-The browser requests exact text totals separately from `/api/tweets/count`.
-Filter-only/feed totals remain exact and use bounded caches with write invalidation.
-
-Text clauses remain independent FTS relations so different membership documents
-can satisfy different clauses without changing relevance semantics. A single
-positive-text driver reuses its relation directly. The final grouped matches use
-a co-routine when possible, and explicit non-relevance sorts omit BM25 scoring.
-A positive `from:` AND group probes at most 201 IDs through the author index: up
-to 200 candidate tweets use rowid-constrained FTS for non-relevance sorts and an
-early intersection in a single FTS scan for relevance. Larger author sets fall
-back to full FTS-led execution. This threshold selects a plan, never a result cap.
-Other Boolean/OR predicates are still evaluated before pagination.
-
-Filters on tweet JSON (`to:`, `mentions:`, hashtags, `is:reply/quote/retweet/
-thread/verified`, `min_*`, `quoted_tweet_id:`, `source:`, `card_name:`) read the
-trigger-maintained `archive_tweet_facts` row of each membership by primary key
-instead of parsing `raw_json` during the search (see [Storage](storage.md)).
-
-Hidden tweets have one `tweet_hidden` archive row each (`row_key`
-`tweet_hidden:{tweet_id}`, no other content). `search_posts()` passes
-`exclude_hidden=True` unless any clause is `is:hidden`, positive or negated; the
-store then adds `tweet_id NOT IN (HIDDEN_TWEET_IDS_SQL)` to the search `WHERE`,
-the ordinary feed, and the like-order filter, and subtracts hidden members from
-the cached feed total. `is:hidden` compiles to the matching `IN` predicate, so it
-combines with `OR`/`-` like other filters. Detail, quote, and raw routes still
-return hidden tweets.
-
-The same list/count paths exclude uncaptured IDs unless any clause names
-`is:uncaptured`. `archive_tweet_content` holds write-maintained content/note flags
-for memberships and context objects. An ID is uncaptured only when none of its
-stored copies has content; tombstone/system text and metadata-only rows do not
-count as captured content. Ordinary feeds retain chronological cursor seeking,
-and their totals subtract the union of hidden and uncaptured members once.
-Raw/detail/quote routes keep their existing access and availability behavior.
-
-`has:note` selects IDs with a captured `birdwatch_pivot.subtitle.text` or any
-`community_notes` version, including removed versions, then includes direct
-`quote_of` sources using the same indexed relation lookup as tags. Non-member
-quote targets participate without becoming standalone collection results.
-
-FTS values and cursor bounds are parameterized; structured SQL expressions come
-from the canonical compiler. Tests cover injection-shaped filters, malformed
-cursors, complete large result sets, and preserved relevance scores.
-
-Positive text defaults to relevance; filter-only/no-positive-text defaults to
-newest. Random results use a stable per-search seed. Explicit newest/oldest order
-on stored timestamp, numeric sort index, and tweet ID.
-
-For Likes, `liked_latest` and `liked_earliest` use the derived like sequence.
-`like_order.py` merges cursor-linked GraphQL observations and complete multipart
-archive datasets; live observations win conflicts and unknown-order rows stay
-last. No timestamp is inferred from a sort index. Transactional input revisions
-invalidate the immutable cache across connections, while media/tag/content-only
-updates leave it reusable. Rebuilds parse only captures that an earlier rebuild on
-the same store has not seen: live Likes captures are append-only observations, so
-each page's extracted observations are kept per capture key and timestamp, and the
-capture list itself is read without `raw_json`. Extraction walks each page once and
-skips tweet bodies, which never contain timeline entries. The Web server rebuilds
-the order in the background at startup and after jobs (see [Web and Jobs](web-and-jobs.md)). A temporary table indexes both order directions for
-paging, without serializing the entire sequence on each request.
-
-Article search is a separate stored-article scan rather than membership FTS.
-Structured tweet filters are rejected with article type; the recommended path is
-tweet search plus `has:article`.
-
-## Tweet list API
-
-```http
-GET /api/tweets?q=...&collection=all&sort=default&page=1&limit=20
-```
-
-Constraints/behavior:
-
-- page ≥ 1;
-- limit 1–100;
-- collection aliases normalize to bookmark/like/tweet/all;
-- an invalid collection currently falls back silently to all;
-- default sort is relevance with positive text, newest otherwise;
-- `liked_latest` / `liked_earliest` require `collection=likes` (or `like`), otherwise 400;
-- malformed/mismatched cursors and search errors return 400; changed like-order cursors return 409; generic errors return 500.
-
-Response shape:
-
-```json
-{
-  "tweets": [],
-  "total": 0,
-  "page": 1,
-  "pages": 1,
-  "has_more": false,
-  "next_cursor": null,
-  "highlight_terms": [],
-  "truncated": false
-}
-```
-
-Start cursor scrolling with `cursor=` and send each returned `next_cursor` unchanged
-on the next request, retaining the same query, collection, sort, seed, and limit.
-The response `page` advances from the token. Omitting `cursor` preserves explicit
-page/offset clients. Text totals/pages are `null`; `has_more` is authoritative.
-
-```http
-GET /api/tweets/count?q=...&collection=all
-```
-
-Returns `{"total": N}` using the same query compiler, hidden-tweet rules and
-logical-ID deduplication as the list endpoint. It uses a private read-only
-connection and skips sorting, ranking, like-order generation and hydration.
-The browser renders the list before requesting the count, retains it across
-appended pages and ignores counts from superseded searches. Complete first pages
-need no separate request; filter-only lists already include a total.
-
-List responses also supply `highlight_terms` from the parsed positive text and
-hashtag clauses. Phrase quotes and prefix `*` are retained; negated terms and other
-filters are excluded. Result cards use these terms, rather than unsubmitted input,
-to bold Unicode word/phrase matches in decoded source text before HTML escaping.
-Links, mentions and hashtags retain their attributes and click behavior. Bolding
-also applies to quoted text and in-place expansion, but not standalone detail
-pages or availability placeholders. The static demo supplies the same metadata.
-
-Unfiltered newest/oldest feeds seek through composite chronological indexes,
-including explicit NULL/tie ranges. Likes seek by indexed sequence position even
-with a search query (matching complex queries can still require grouping). Other
-search/relevance/random cursors carry an offset and retain their existing complete
-result semantics; they do not promise constant-time deep searches.
-
-Chronological cursors retain their boundary if its row is deleted and exclude new
-head rows already above it. This is a live view, not a database snapshot: editing
-sort keys can change membership/order during scrolling. Like-order revision changes
-return 409; the browser restarts that list. The browser commits page/cursor state
-only after success, ignores stale responses, deduplicates appended IDs, and exposes
-a Load more/Retry control alongside automatic scrolling. Legacy APIs without
-`has_more` use page counts as a compatibility fallback.
-
-Hydrated rows can include author, collection membership, media, URLs, article,
-direct/quote tags, raw JSON, availability, quote/retweet attachments, and match
-score/type metadata.
-
-List, detail, and quote responses abbreviate `raw_json` (and attached quote/retweet
-`raw_json`) with `slim_raw_tweet()`: it keeps the same nested shape but only the
-fields the Web UI renders (text and entity URLs, counts, views, card, community
-note, author name/handle/profile counts, reply target, and nested quoted/retweeted
-results), dropping full user profiles, media variants, and duplicated embeds.
-Responses are about a third of their former size. `tests/fixtures/web_raw_tweets.json`
-pairs full and abbreviated tweets; the JS asset suite requires both to render
-identically, and a Python test keeps the fixture in step with the pruning.
-
-```http
-PUT /api/tweets/{tweet_id}/hidden
-DELETE /api/tweets/{tweet_id}/hidden
-```
-
-Hide or show a tweet (`set_tweet_hidden()`); both are idempotent and return
-`{"hidden": bool}`. Annotated tweets in list, detail, quote, and raw responses
-carry a top-level `hidden` flag that the tweet menus read to offer Hide or Unhide.
-Hiding from a list removes its card, unless the query contains `is:hidden`;
-unhiding removes the card from such a list.
-
-```http
-GET /api/tweets/{tweet_id}/raw
-```
-
-Returns `{"tweet_id", "raw_json"}` with the complete stored document: for a
-collection tweet, the same canonical document the list shows; otherwise the
-stored tweet object. 404 when neither exists. The browser's **Copy raw** action
-prefetches it when a tweet menu opens and falls back to the abbreviated copy.
-
-## Detail assembly
-
-```http
-GET /api/tweets/{tweet_id}
-```
-
-The route:
-
-- resolves the main tweet and canonical object;
-- walks at most 50 parent iterations with cycle protection;
-- fetches up to 250 descendant replies through bounded, indexed breadth-first
-  frontier lookups that globally deduplicate tweets and alternate relation paths;
-- loads relations, memberships, media, and tags through indexed queries;
-- sorts parents oldest-first;
-- flattens each direct child's descendants depth-first under the compatibility field
-  `op_replies`, with `thread_depth` and `parent_tweet_id` metadata;
-- sorts primary children by nested-reply presence then captured like count;
-- moves direct replies whose visible text is only @mentions of accounts other than
-  the conversation author into `other_children` (same shape as `children`). Replies
-  with media, links, hashtags, cashtags, quotes, cards, long-form text, at least
-  `OTHER_REPLY_LIKE_THRESHOLD` (5) likes, or a saved tweet anywhere in the branch
-  stay in `children`;
-- returns `reply_tree_truncated` when the descendant cap is reached;
-- adds `local_quote_count`.
-
-Response:
-
-```json
-{
-  "main": {},
-  "parents": [],
-  "children": [],
-  "other_children": [],
-  "reply_tree_truncated": false
-}
-```
-
-Missing relation targets become `not_archived` placeholders. Unknown main IDs
-return 404. Local quote count is archive-relative.
-
-## Quote API
-
-```http
-GET /api/tweets/{tweet_id}/quotes?page=1&limit=20
-```
-
-It counts distinct quote-source IDs, pages newest-first, hydrates/annotates them,
-and returns `tweets`, `total`, `page`, and `limit` (not `pages`/`truncated`).
-Hydration uses `fetch_tweets_by_ids(..., include_objects=True)`: a quote by
-someone else is usually stored only as a tweet object, outside every
-collection, so it is built from that object with `collection: null` and a
-top-level `synced_at`. A source with no stored tweet keeps its place as a
-`not_archived` placeholder, so every page holds as many tweets as `total`
-implies.
-
-## Availability overlay
-
-`web/availability.py` is the presentation authority. It batch-loads canonical
-objects in chunks, replaces stale embedded content when a done/resurrected
-object exists, attaches quote/retweet objects/media/tags, and limits attached
-media to 10.
-
-Canonical cases:
-
-- available: done/resurrected and confirmed;
-- unavailable: explicit terminal reason; show saved content with a warning for
-  every reason, including author/archive deletion. Use a placeholder only when
-  no saved text, media, or Article content exists;
-- incomplete: pending/transient/missing detail, preserving useful embedded
-  content;
-- not archived: relation-only target with no local object.
-
-A rare existing object with an unknown/NULL lifecycle state falls back to
-`available` with `confirmed: false`.
-
-Raw JSON/media is cleared for placeholders. Embedded content alone does not
-prove current availability. A saved canonical copy takes precedence over stale
-embedded tombstones even when its lifecycle state is terminal-unavailable.
-Load separate media and Article records before deciding whether a saved copy
-exists. Default feed/search filtering also recognizes these records when post
-text and raw media metadata are absent.
-
-## Author and tag support APIs
-
-```http
-GET /api/authors/search?q=...
-GET /api/authors/profile?author_id=...|username=...&limit=50
-GET /api/tags/autocomplete?q=...
-GET /api/tags/stats
-```
-
-Author search returns at most 10 local matches; blank input is empty. Author
-profile returns `{author_id, snapshots}`: distinct profile states (name, handle,
-bio, follower/following counts) from the author's `tweet` and `tweet_object` rows,
-ordered by fetch time (`last_seen_at`, newest first) rather than tweet age, at most
-`limit` (1–100). Rows without bio or follower data, such as archive imports, are
-skipped. `author_id` wins over `username`; a username resolves through saved
-(`tweet`) rows only, so unknown handles return `{author_id: null, snapshots: []}`.
-Both lookups use existing indexes, so no schema change is needed. The profile card
-shows snapshot 0 and lets the user cycle through the rest. Tag
-autocomplete returns tag/count entries and also supports blank input for popular
-tags. Every whitespace-separated query fragment must appear in the same tag,
-case-insensitively and literally (including `%` and `_`). Counts and limits are
-unchanged; the dropdown highlights the matching fragments. For example, `rem D`
-matches `REM (Deadlock)`. The static demo follows the same matching rules.
-
-Tag mutation routes:
-
-```http
-PUT    /api/tags/{tweet_id}
-DELETE /api/tags/{tweet_id}
-DELETE /api/tags/global/{tag}
-POST   /api/tags/merge
-```
-
-Mutations use storage normalization/merge rules. They do not invalidate the
-daily Web stats cache.
-
-## Stats routes
-
-Canonical report sections are overview, collections, archive status, storage,
-and tagging. `/api/stats/report` is fresh; `/api/stats/snapshot` is the cached
-legacy/UI shape. Snapshot behavior:
-
-- initial collection is synchronous and deduplicated;
-- collection runs in the background on attach and daily at `web.analytics_refresh_time`;
-- the previous report is returned while a refresh runs;
-- failed refresh retains stale data and sets `refresh_failed`;
-- explicit refresh starts one worker or collects synchronously when absent.
-
-Compatibility endpoints expose individual legacy sections. Storage component
-breakdowns include exact filesystem totals plus sampled logical estimates.
-
-## Authentication and errors
-
-Routers normally depend on `verify_credentials`; root and media are also
-protected. Static assets are mounted without the dependency.
-
-Many route-specific validation errors return 400/404/409/422/503 appropriately.
-Several generic handlers return raw exception text and print tracebacks. Avoid
-putting secrets into exception messages and do not treat this as a safe public
-multi-tenant API.
-
-## Frontend integration
-
-`autocomplete.js` suggests only a subset: from, to, has, is, since, until, URL,
-and tag. It formats `filter:` if typed but does not suggest it. Advanced parser
-keys must remain documented/tested independently of UI discoverability.
-
-List API defaults to 20 because the frontend does not send `limit`. Thread
-responses are cached client-side for 60 seconds with a maximum of 25 entries.
-
-## Regression targets
-
-- `tests/test_search.py`
-- `tests/test_web_tweets_api.py`
-- `tests/web/test_tweet_availability.py`
-- `tests/web/test_tag_routes.py`
-- `tests/web/test_stats_routes.py`
-- `tests/web/test_stats_cache.py`
-- `tests/web/test_storage_stats_routes.py`
-- `tests/test_web_assets.py`
-- `tests/js/test_web_assets.cjs`
+# Search and API
+
+`search.py` is shared by CLI search and web feeds. Routes handle HTTP validation/authentication and presentation; query parsing and result semantics belong in the shared search layer.
+
+## Query syntax
+
+The parser tokenizes words, quoted phrases, negated clauses and recognized filters. Clauses are implicitly ANDed. Uppercase `OR` groups adjacent alternatives; uppercase `NOT` negates the next clause. Parentheses don't create groups. For example, `cats OR dogs from:alice` means an animal alternative combined with the author filter.
+
+Validate filter keys, enum values, numeric inputs and date forms before querying. Quote user text in generated predicates and full-text expressions; a user's filter value isn't SQL or an invitation to inject FTS operators. Description searches match every supplied word with optional suffix-prefix markers.
+
+The [user search guide](../search.md) lists supported operators. Hidden posts are excluded by default and `is:hidden` explicitly selects them. `is:missing` and `is:resurrected` use canonical object state. Tag/description filters can find a saved post through its quoted target's tags.
+
+Posts without captured content are excluded from list/count results unless any clause names `is:uncaptured`. The write-maintained `archive_tweet_content` flags cover memberships and context objects. Separate saved media and Article records also count, even when post text and raw media metadata are absent. An ID is uncaptured only when none of these records has content. Tombstones, system text and metadata-only post rows do not count on their own. Feed totals subtract the union of hidden and uncaptured members once; detail/raw/quote routes retain access to placeholders.
+
+`has:note` matches captured Community Note text or any `community_notes` version, including removed notes. It also includes direct `quote_of` sources using indexed relations, including quoted targets outside collections. It does not follow deeper quotes.
+
+## Results and pagination
+
+Search can return posts and Articles, with collection filtering and relevance/newest/oldest CLI sorts. Web feeds also support random, most-liked and liked-order modes. Post results deduplicate membership observations at the post boundary; collection filters still refer to actual memberships.
+
+Indexes and derived facts support normal reads without reparsing each raw payload. Count work can be requested independently from the first result page. Keep exact totals distinct from absent/deferred totals; `has_more` and `next_cursor` let a client continue without inventing a page count.
+
+Cursors bind query context, ordering mode and position. Like-order cursors also carry a derived revision so a changed order can return an explicit expired-cursor error instead of silently skipping posts. Invalid search/cursor inputs return 400; an order revision conflict returns 409.
+
+## Feed and post routes
+
+`GET /api/tweets` accepts `q`, `collection`, `sort`, `page`, `limit`, `random_seed`, and `cursor`. Limit is 1 through 100. It returns `tweets`, optional total/pages, current page, `has_more`, `next_cursor`, `truncated`, and highlight terms. `GET /api/tweets/count` provides the matching count separately.
+
+Detail routes collect saved parents, focal content, author-thread rows and other replies through indexed relationships. Quote pages, raw capture views, availability/history and Community Notes have separate resources. Use the shared availability/card/Article formatters so a quote and a focal tweet follow the same contract.
+
+Normal list payloads are slimmed after presentation annotation; raw JSON is available through its own route. Direct browser document paths serve the app shell, including `/post/ID` and quote views, so refresh/back/forward remains usable.
+
+## Route groups
+
+- Tweet, thread, quote, author and search routes are in `routes/tweets.py`.
+- Local/manual tags are in `routes/tags.py`.
+- Setup, credentials, import staging and replay connection are in `routes/setup.py`.
+- Worker/job options, run/start/queue controls and activity streams are in `routes/jobs.py` and `routes/activity.py`.
+- Runtime configuration, schedule and Gemini controls have dedicated route modules.
+- Analytics, storage totals, notices and avatars are separate read/control resources.
+
+Most application routes require `verify_credentials`; archive-dependent reads also require `require_store`. Setup/status/configuration remain usable before a store exists. Keep masked secrets out of serialized responses and validate run IDs and managed paths before returning logs/files.
+
+## Endpoints
+
+Routes and request/response models are defined in `web/routes/`. The [documentation checks](testing.md#documentation-checks) compare this index with registered methods and paths, including router prefixes and replay methods.
+
+| Method | Path | Module |
+| --- | --- | --- |
+| GET | `/api/activity/status` | `activity.py` |
+| GET | `/api/activity/events` | `activity.py` |
+| POST | `/api/activity/stop` | `activity.py` |
+| POST | `/api/activity/sync` | `activity.py` |
+| POST | `/api/activity/enrich` | `activity.py` |
+| POST | `/api/activity/import` | `activity.py` |
+| GET | `/api/activity/runs` | `activity.py` |
+| GET | `/api/activity/runs/{run_id}` | `activity.py` |
+| GET | `/api/activity/runs/{run_id}/log` | `activity.py` |
+| GET | `/api/activity/schedule` | `activity.py` |
+| PUT | `/api/activity/schedule` | `activity.py` |
+| GET | `/api/automated-tagging` | `automated_tagging.py` |
+| PUT | `/api/automated-tagging` | `automated_tagging.py` |
+| GET | `/api/automated-tagging/tweets` | `automated_tagging.py` |
+| POST | `/api/automated-tagging/test` | `automated_tagging.py` |
+| POST | `/api/automated-tagging/models` | `automated_tagging.py` |
+| GET | `/api/avatar/{user_id}` | `avatars.py` |
+| GET | `/api/config` | `config.py` |
+| GET | `/api/config/defaults` | `config.py` |
+| GET | `/api/config/schema` | `config.py` |
+| POST | `/api/config` | `config.py` |
+| GET | `/api/dev/replay/status` | `dev_replay.py` |
+| GET | `/api/dev/replay/x/{host}/{path:path}` | `dev_replay.py` |
+| HEAD | `/api/dev/replay/x/{host}/{path:path}` | `dev_replay.py` |
+| POST | `/api/dev/replay/x/{host}/{path:path}` | `dev_replay.py` |
+| GET | `/api/jobs` | `jobs.py` |
+| POST | `/api/jobs/{key}/run` | `jobs.py` |
+| DELETE | `/api/jobs/{key}/queue` | `jobs.py` |
+| GET | `/api/notices` | `notices.py` |
+| POST | `/api/notices/dismiss-all` | `notices.py` |
+| DELETE | `/api/notices/dismissed` | `notices.py` |
+| POST | `/api/notices/{notice_id}/dismiss` | `notices.py` |
+| GET | `/api/setup` | `setup.py` |
+| PUT | `/api/setup/replay` | `setup.py` |
+| PUT | `/api/setup/replay/placeholder-media` | `setup.py` |
+| PUT | `/api/setup/replay/skip-quote-expansion` | `setup.py` |
+| PUT | `/api/setup/replay/skip-link-previews` | `setup.py` |
+| DELETE | `/api/setup/replay` | `setup.py` |
+| PUT | `/api/setup/auth` | `setup.py` |
+| PUT | `/api/setup/archive` | `setup.py` |
+| DELETE | `/api/setup/archive` | `setup.py` |
+| POST | `/api/setup/archive/import` | `setup.py` |
+| POST | `/api/setup/archive/empty` | `setup.py` |
+| POST | `/api/setup/migrate` | `setup.py` |
+| GET | `/api/setup/schedule` | `setup.py` |
+| PUT | `/api/setup/schedule` | `setup.py` |
+| PUT | `/api/setup/password` | `setup.py` |
+| POST | `/api/setup/complete` | `setup.py` |
+| GET | `/api/stats/report` | `stats.py` |
+| GET | `/api/stats/snapshot` | `stats.py` |
+| GET | `/api/stats/status` | `stats.py` |
+| POST | `/api/stats/refresh` | `stats.py` |
+| GET | `/api/stats/enrichment-incomplete` | `stats.py` |
+| GET | `/api/stats/latest-sync` | `stats.py` |
+| GET | `/api/stats/summary` | `stats.py` |
+| GET | `/api/stats/collections` | `stats.py` |
+| GET | `/api/stats/health` | `stats.py` |
+| GET | `/api/stats/tags` | `stats.py` |
+| GET | `/api/storage/breakdown` | `storage_stats.py` |
+| DELETE | `/api/tags/{tweet_id}` | `tags.py` |
+| PUT | `/api/tags/{tweet_id}` | `tags.py` |
+| DELETE | `/api/tags/global/{tag}` | `tags.py` |
+| POST | `/api/tags/merge` | `tags.py` |
+| GET | `/api/tags/autocomplete` | `tags.py` |
+| GET | `/api/tags/stats` | `tags.py` |
+| GET | `/api/tweets` | `tweets.py` |
+| GET | `/api/tweets/count` | `tweets.py` |
+| GET | `/api/tweets/{tweet_id}` | `tweets.py` |
+| GET | `/api/tweets/{tweet_id}/quotes` | `tweets.py` |
+| GET | `/api/tweets/{tweet_id}/raw` | `tweets.py` |
+| GET | `/api/tweets/{tweet_id}/history` | `tweets.py` |
+| GET | `/api/tweets/{tweet_id}/notes` | `tweets.py` |
+| PUT | `/api/tweets/{tweet_id}/hidden` | `tweets.py` |
+| DELETE | `/api/tweets/{tweet_id}/hidden` | `tweets.py` |
+| GET | `/api/authors/search` | `tweets.py` |
+| GET | `/api/authors/profile` | `tweets.py` |
+
+## Response details
+
+Chronological feed cursors seek through indexed date/sort/ID boundaries; liked-order cursors seek sequence positions and carry an input revision. Other complex search cursors can retain offsets, so deep paging isn't universally constant-time. Treat cursor data as opaque and retain query, collection, sort, seed and limit between requests. An empty `cursor=` starts cursor paging.
+
+Text results can omit totals/pages while `/api/tweets/count` computes exact deduplicated matches on a private reader. Filter-only/feed totals can be returned immediately. Positive text drives relevance by default; filter-only queries default to newest. Hidden exclusion is relaxed when any `is:hidden` clause is present, then the compiler evaluates its positive/negative/OR predicate normally.
+
+Article search uses the shared query parser and matches saved Article text in Python. It rejects structured post filters, selects collection memberships and excludes hidden posts before limiting results. Article dates and relevance are sorted across matching candidates before the result limit is applied.
+
+Detail assembly walks up to fifty parents with cycle protection and up to 250 descendant replies with indexed breadth-first frontier reads. Replies expose flattened descendant metadata under `op_replies`, plus `thread_depth` and `parent_tweet_id`. Mention-only direct replies below five likes can be placed in `other_children`; media, links, quotes, substantive text, and saved branches retain primary visibility.
+
+Quote results include canonical context objects outside collections and retain placeholder slots for uncaptured sources. They return tweets/total/page/limit rather than the list endpoint's full paging shape. Author search is local and capped at ten matches; profile history returns distinct captured states by fetch time, not post time, with a limit from 1 through 100. Tag autocomplete matches every query fragment literally and case-insensitively.
+
+List/detail/quote payloads abbreviate raw data to fields the UI renders. The complete stored document remains available at `/api/tweets/{tweet_id}/raw`; fixtures test that abbreviated/full forms render equivalently. Highlight terms come from submitted positive text/hashtag clauses and are applied before safe HTML escaping, including quote text and Show more.

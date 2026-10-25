@@ -1,128 +1,60 @@
-# Publishing Checklist
+# Publishing
 
-This is the release punch list for cutting a new `tweetnook` version.
+Use this for a new TweetNook version. A release is finished when the intended package, GitHub release and demo are verified, not when the tag has merely been created.
 
-Scope:
+## Prepare
 
-- Use this checklist whenever preparing a new Git tag or publishing to PyPI.
-- `CHANGELOG.md` is release-oriented, not an in-progress ledger. Add a new
-  topmost version section when cutting a release; do not keep an `Unreleased`
-  section.
-- The initial TweetNook tag `v0.0.9` is backfilled in `CHANGELOG.md`.
+- [ ] Confirm the intended base branch and release scope. Run `git status -sb` and inspect recent commits; leave unrelated work alone.
+- [ ] Update the version in `pyproject.toml` and `tweetnook/__init__.py`. Check any version-bearing build/demo inputs affected by the release.
+- [ ] Add the matching dated section to `CHANGELOG.md`, using Added, Changed and Fixed where relevant. Describe the resulting behavior for users.
+- [ ] Update the README, user/developer guides and optional-feature instructions for the release.
+- [ ] Rebuild browser dependencies/CSS when their sources changed, and retain the bundled licenses.
+- [ ] Regenerate `tweetnook/web/static/setup-help.json` if the cookie guide changed.
 
-The repository publishes through `.github/workflows/release.yml` using PyPI
-Trusted Publishing. The workflow builds and checks distributions on `v*` tag
-pushes, publishes them through the protected `pypi` GitHub environment, and then
-creates a GitHub Release with the tagged changelog `Added` (when applicable),
-`Changed`, and `Fixed` sections, a full comparison link, and the exact
-wheel/source artifacts plus the standalone `install.sh`. Do not generate or add a
-`Highlights` section. No PyPI API token belongs in GitHub Secrets.
+## Validate
 
-For the first setup, register a pending GitHub publisher at
-<https://pypi.org/manage/account/publishing/> with:
+- [ ] Run the Python suite, lint and format checks in the intended dependency environment.
+- [ ] Run the relevant JavaScript harnesses and browser smoke checks, including phone/desktop behavior for UI changes.
+- [ ] Check command help, local links, fenced examples, config defaults and optional extras.
+- [ ] Validate the installer and managed-service paths affected by this release.
+- [ ] Build distributions and run Twine validation.
+- [ ] Inspect distribution contents for required web assets, docs and licenses; check for excluded data and secrets.
+- [ ] Install the wheel in a fresh environment with temporary XDG roots. Check version/help and browser-first Setup, then test any affected extras.
+- [ ] Build the static demo with the repository base path and version; verify its routes, local media and disabled server actions.
 
-- PyPI project name: `tweetnook`
-- Owner: `gezerwezer`
-- Repository: `tweetnook`
-- Workflow name: `release.yml`
-- Environment name: `pypi`
+```bash
+uv sync --group dev
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+uv build
+uvx twine check dist/*
+```
 
-Configure the `pypi` GitHub environment with a required reviewer before using
-it for a real release. A pending publisher can create the new PyPI project when
-the first tagged workflow succeeds.
+## Commit and tag
 
-## Versioning
+- [ ] Review `git status -sb`, the release diff and validation evidence.
+- [ ] Stage only the release files by explicit path; inspect staged names and the full staged diff.
+- [ ] Commit the release unit and confirm version/changelog agreement at that commit.
+- [ ] Create the intended `vVERSION` tag at the reviewed release commit. Confirm the tag target before pushing it.
+- [ ] Push the authorized branch/tag to the intended remote. A `v*` tag starts the release workflow.
 
-Use semver-style version bumps:
+## After publishing
 
-- Patch (`0.2.1`): bug fixes, performance fixes, packaging/docs-only releases,
-  and low-risk UX cleanups.
-- Minor (`0.3.0`): new user-facing commands, flags, archive capabilities, or
-  substantial search/storage features.
-- Major (`1.0.0`): intentionally breaking CLI/storage/workflow changes that need
-  explicit upgrade guidance.
+- [ ] Verify build and trusted PyPI publication completed for the intended version.
+- [ ] Verify the GitHub Release notes, version/title, distributions and attached installer.
+- [ ] Verify the published PyPI metadata and install the published package in a clean environment.
+- [ ] Verify GitHub Pages deployment and the public demo's base-path navigation, media and version.
+- [ ] Record the release/tag URLs, published version and validation results in the worklog.
 
-## Release Punch List
+If a step fails after publication begins, inspect completed uploads before retrying. Follow the [release guide](development/release.md) and workflow rather than replacing already published artifacts blindly.
 
-- [ ] Start from a clean tree: `git status -sb`
-- [ ] Sync with the remote release base before cutting the version:
-      `git fetch --tags origin` and `git pull --ff-only`
-- [ ] Pick the next version number and decide whether the release is
-      patch/minor/major
-- [ ] Update version metadata in:
-      `pyproject.toml`
-- [ ] Update version metadata in:
-      `tweetnook/__init__.py`
-- [ ] Update `CHANGELOG.md`:
-      add a new topmost `## [X.Y.Z] - YYYY-MM-DD` section with concise
-      user-facing `### Changed` and `### Fixed` bullets, add `### Added` when
-      applicable, keep the validation bullets, do not add a `### Highlights`
-      section, and update the version links at the bottom
-- [ ] Update README/docs/help text if install steps, CLI behavior, or supported
-      workflows changed
-- [ ] Update `docs/README.md` if documentation files were added or removed
-- [ ] Add a concise release entry to `WORKLOG.md` with the exact validation and
-      publish commands run
-- [ ] Run release validation:
-      `UV_CACHE_DIR=/tmp/uv-cache uv run ruff format --check`
-- [ ] Run release validation:
-      `uv run ruff check`
-- [ ] Run release validation:
-      `UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q`
-- [ ] Build fresh artifacts:
-      `uv build`
-- [ ] Verify package metadata/rendering:
-      `uvx --from twine twine check dist/*`
-- [ ] Smoke-test the built wheel before upload:
-      `uv run --isolated --with dist/tweetnook-X.Y.Z-py3-none-any.whl tweetnook --help`
-- [ ] Validate the standalone installer: `bash -n install.sh` and
-      `.venv/bin/pytest tests/test_installer.py tests/test_system_install.py tests/test_cli_service.py -q`;
-      verify `install.sh` is included
-      in the source distribution and attached to the tagged GitHub Release
-- [ ] Smoke-test root/sudo Linux service installs, personal macOS installs, and
-      updates of existing services. Check that `tweetnook.system_install` is packaged.
-- [ ] Stage only release files explicitly and review them:
-      `git add ...`, `git diff --staged --name-only`, `git diff --staged`
-- [ ] Commit release metadata:
-      `git commit -m "chore: prepare vX.Y.Z release metadata"`
-- [ ] Create an annotated tag:
-      `git tag -a vX.Y.Z -m "vX.Y.Z"`
-- [ ] Push the release commit and tag:
-      `git push origin main`, `git push origin vX.Y.Z`; the tagged push starts
-      `.github/workflows/release.yml`, publishes through Trusted Publishing
-      after the `pypi` environment approval, and creates the GitHub Release.
-- [ ] Confirm the tagged GitHub Actions workflow publishes the distributions to
-      PyPI and creates the GitHub Release with the changelog `Added` section when
-      applicable, plus `Changed` and `Fixed`, a full comparison link, and both
-      distribution artifacts. Use manual `uv publish` /Twine upload only as an
-      intentional fallback when the workflow is unavailable.
-- [ ] Verify the published install path from PyPI:
-      `uvx --refresh --from "tweetnook==X.Y.Z" tweetnook --help`
-- [ ] Review the GitHub Release created by the tagged workflow. It includes the
-      changelog `Added` section when applicable, plus `Changed` and `Fixed`, a
-      full-changelog comparison link, and the exact wheel and source archive
-      built for the tag.
-- [ ] Verify the GitHub tag/release page and PyPI project page both show the new
-      version correctly
-- [ ] Confirm the tree is clean again with `git status -sb`
+## Publisher setup
 
-## Notes
+Use patch versions for fixes, performance/docs releases and small UX changes; minor versions for new commands or substantial archive/search features; major versions for intentional breaking changes with upgrade guidance. Keep `uv.lock`'s local package version metadata in agreement when applicable.
 
-- Do not publish from a dirty tree.
-- Do not reuse an older `dist/` blindly; rebuild artifacts for each release.
-- `uv publish` defaults to `dist/*`; either clear old artifacts first or pass the
-  exact wheel + sdist paths for the version you are cutting.
-- Immediate post-publish install checks may need `uvx --refresh` (or a short
-  retry window) because resolver/index caches can lag behind the successful
-  upload for a minute or two.
-- If a historical TweetNook tag is missing from `CHANGELOG.md`, backfill that
-  entry before publishing the next version.
-- Do not add speculative or partial release notes ahead of an actual cut; write
-  the release entry when the version is being prepared.
-- If a release includes breaking behavior or archive upgrade steps, add the
-  upgrade note to both `README.md` and `CHANGELOG.md`.
-- GitHub Releases are a separate overlay on top of pushed git tags. The tagged
-  workflow creates that release after the PyPI upload, using the matching
-  changelog `Added` section when applicable, plus `Changed` and `Fixed` and a
-  full-changelog comparison link, and attaches the built wheel and source
-  archive.
+The changelog uses topmost dated release sections and version links, with validation where relevant. Don't keep an in-progress Unreleased section or add Highlights to the published notes. Create an annotated release tag after checking the intended remote base and existing tags.
+
+PyPI Trusted Publishing is configured for project `tweetnook`, owner `gezerwezer`, repository `tweetnook`, workflow `release.yml`, environment `pypi`. Use a required reviewer for the protected environment and verify that setup before the first publication. A pending publisher is managed through [PyPI publishing settings](https://pypi.org/manage/account/publishing/); no PyPI token belongs in GitHub Secrets for this workflow.
+
+Include `bash -n install.sh` and the installer/system-install/service suites in release checks. Smoke-test Linux root/sudo service installation, personal macOS installation and updates of an existing service when affected. Verify the exact built distributions rather than picking up stale files from a prior build.

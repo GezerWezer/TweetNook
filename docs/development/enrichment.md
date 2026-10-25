@@ -1,210 +1,47 @@
 # Enrichment
 
-[Development guide](README.md) · [Client and Sync](client-and-sync.md) ·
-[Storage](storage.md) · [Archive Import](archive-import.md)
-
-Enrichment connects saved tweets to their threads, quoted tweets, media, links,
-and articles. The extractor converts responses into shared records; individual
-jobs fetch missing content and update availability. A missing tweet in a response
-is treated separately from an explicit unavailable result.
-
-## Extractor responsibilities
-
-`extractor.py` is the normalization boundary for GraphQL-shaped data. It:
-
-- unwraps tweet results and visibility wrappers;
-- prefers Note Tweet text over legacy `full_text` when valid;
-- recognizes tombstone/system/unavailable messages;
-- emits canonical objects, relations, media, URLs/references, and articles;
-- follows one level of embedded quoted/retweeted objects during extraction;
-- preserves useful payloads such as Birdwatch/community-note pivots;
-- merges graph duplicates without discarding richer values.
-
-Terminal/tombstone results do not become fake normal tweet objects. Higher layers
-can retain membership/relationship placeholders with classified availability.
-
-## URL canonicalization
-
-Canonical URLs accept HTTP(S), lowercase scheme/host, drop fragments/default
-ports, and remove `utm_*` plus known tracking parameters while preserving other
-path/query data. URL records are keyed by canonical hash; positional `url_ref`
-rows attach them to tweets.
-
-Changes to normalization affect identity/deduplication and require migration or
-compatibility analysis, not only parser tests.
-
-## Relationship graph
-
-Recognized edges include:
-
-- quote;
-- retweet/repost;
-- reply;
-- thread parent/child;
-- linked Twitter/X status URL.
-
-Media/article/URL objects are separate records attached by tweet ID/key. Merge
-rules coalesce fields and preserve the lowest stable media position.
-
-## Availability classification
-
-Unavailable text/payloads are classified into protected, suspended,
-missing-account, deleted-by-author, withheld, not-found, archive-deleted, or
-unknown-like states.
-
-The key distinction is:
-
-- **explicit unavailable result** — evidence that can update reason/confidence
-  and retry schedule;
-- **focal tweet absent from a response** — ambiguous transport/schema/visibility
-  condition that remains transient and participates in a consecutive-absence
-  circuit breaker.
-
-Presentation should use canonical `tweet_object` state over stale embedded
-wrapper content. The Web layer centralizes this in `availability.py`.
-
-## Initial detail enrichment
-
-Archive import queues pending/sparse canonical objects. `import enrich` freezes
-eligible pending/due-transient rows at command start, calls TweetDetail, writes
-checkpoints every 100 attempts, and separates row-level retry from systemic
-abort.
-
-Successful detail yields `done`; explicit unavailable yields terminal/retry
-metadata; focal absence yields transient state. Auth/query/feature/rate-limit
-systemic failure aborts so a broken contract does not stamp thousands of rows.
+Enrichment takes content already selected for the archive and fills out its graph or local assets. Standalone jobs and sync follow-ups share configuration, the archive lock, and pipeline reporting.
 
 ## Thread expansion
 
-`threads.py` discovers work from:
+`threads.py` selects due or explicit targets, fetches TweetDetail responses, and persists extracted graph records. Explicit IDs and status URLs are normalized before deduplication. `--refresh` permits revisiting explicitly named targets that have already been expanded.
 
-- collection memberships;
-- canonical objects;
-- reply/quote relations;
-- URL references to Twitter/X status IDs;
-- linked-depth configuration.
+Saved posts and the author's own thread can lead to quote or linked-status discovery up to `max_linked_depth` (default 50). Other authors' replies use `reply_linked_depth`, limited to zero or one, and `reply_linked_limit`, default 1 per sync. These are graph traversal bounds, not a promise that the remote response contains every reply.
 
-Processing phases are thread targets, quotes, then linked statuses. One global
-limit applies. Successful TweetDetail extraction persists raw captures and the
-full discovered secondary graph.
+Repeated responses that omit the requested focal post stop expansion. Related posts in a response are insufficient evidence that the target was captured or deleted.
 
-Traversal is bounded by `max_linked_depth`. Depth 1 handles a wrapper/direct
-quote; higher values follow additional linked/quoted layers. A per-run seen set
-deduplicates targets.
+## Articles
 
-Already expanded implicit work is skipped. `--refresh` is legal only with
-explicit targets so a user cannot accidentally refetch the full graph.
+`articles.py` extracts and refreshes archived Article bodies using TweetDetail. The normal refresh selects incomplete/preview-only Articles; `--all` also revisits complete ones. `--limit` limits automatic selection and is ignored when explicit targets are supplied. Preserve structured body content as well as searchable text, covers, inline media and links.
 
-Three consecutive missing focal results raise `RepeatedFocalAbsenceError`.
-Explicit auth errors abort immediately; configured detail rate-limit retry/
-cooldown applies.
+`web/articles.py` formats saved bodies for the browser, and `static/js/articles.js` renders them. Presentation reads the saved Article state without starting remote fetches.
 
-## Article refresh
+## Media
 
-`articles.py` accepts numeric/status-URL targets. Default queue selection is
-preview-only; `--all` selects every article record.
+`media.py` selects pending files, resolves image/video variants, downloads into managed paths, and records hashes, sizes, content types, local paths and failures. Photos-only mode excludes videos and animated GIFs. Retry-failed mode includes previous failures rather than just untouched work.
 
-Each target uses TweetDetail and must match the focal tweet. Article body/media
-are extracted when present; nonempty article content is not itself required for
-success. Target parsing accepts digits or any string containing `/status/<id>`.
-Pacing/retry behavior comes from detail config.
-The timeline `--article-backfill` path is separate: it re-extracts article
-fields while walking old collection pages.
+`media_metadata.py` reconciles dimensions/aspect ratios used by the browser. A downloaded file, thumbnail, poster, and remote URL are different candidates; preserve their identities and provenance. Support quoted media and Article assets as well as the focal tweet.
 
-## Media downloader
+Storage exhaustion is a job-level failure. Don't report a failed write as a successful download or leave a row claiming a partial file is complete. The [testing guide](testing.md) covers fixtures and file-boundary checks.
 
-`media.py` converts a media row into one or more download tasks:
+## URL unfurling
 
-- photos normalize to `name=orig` and remove fragments;
-- video/GIF can require a main asset and poster;
-- output lives under `<data>/media/<tweet-id>/`;
-- bytes stream to a temporary file;
-- SHA-256, size, content type, and final extension are recorded;
-- final installation is atomic.
+`unfurl.py` resolves expanded/canonical URLs and saves metadata and preview images. URL rows can be shared by multiple tweet references. Keep fetched metadata separate from original tweet text/entities, and don't replace a real destination with the shortened display label.
 
-Pending rows are default candidates; failed rows need `retry_failed=True`.
-Completed rows are skipped. `photos_only` filters video/GIF.
+A link-card image is presentation metadata, not an attached-photo fact for `has:image`. Browser cards, searches and detail views should use that distinction consistently.
 
-The downloader follows stored external URLs and has no comprehensive host/
-private-network allowlist or general response-size cap. Maintain trust-boundary
-documentation/tests when broadening accepted inputs.
+## Unavailable posts
 
-## URL unfurl
+Authenticated restoration is in `resurrection.py`; FxTwitter/public checks are in `check.py`. Retry policy is reason-aware, bounded, and independent from the last usable saved body. See [availability checks](availability-checks.md).
 
-`unfurl.py` follows redirects with a descriptive user agent, prefers final/
-expanded/canonical URL, and extracts:
+## Extraction and rebuilds
 
-- title;
-- one description, using standard, OpenGraph, or Twitter/X metadata as fallbacks;
-- site name;
-- content type.
+The extractor unwraps visibility wrappers, prefers valid Note Tweet text, follows embedded quoted/reposted objects for graph extraction, and retains Community Note pivots. Linked traversal across requests is separate from that bounded embedded extraction. Tombstones remain classified results rather than fake normal tweet bodies.
 
-Only the first 500,000 HTML characters are parsed, but the full response body is
-loaded before slicing; this is a parser-work cap, not a download or memory-size
-limit. Non-HTML content can complete without page metadata. Updates merge in
-batches of 100. There is no application retry loop inside one run; prior failure
-inclusion is explicit.
+Canonical HTTP(S) URLs lowercase scheme/host, remove fragments/default ports and known tracking parameters, and preserve other path/query data. The canonical hash is a storage identity, so normalization changes need compatibility analysis. Reply, quote, repost, thread-parent/child and linked-status edges have different meanings.
 
-This is the strongest SSRF boundary because arbitrary stored HTTP(S) URLs can be
-requested. Any future public/multi-user deployment needs network egress and
-private-address controls.
+URL unfurling parses at most the first 500,000 HTML characters after loading the body. This limits parser work, not response bytes or memory use. Updates are batched, and previous failures need explicit retry selection. See [trust and security](architecture.md#trust-and-security) for remote-host and response-size limits.
 
-## Resurrection
+Rehydration reparses membership rows in batches of 500 plus relevant saved detail captures. Malformed raw responses can fail the pass, and stale secondary rows aren't comprehensively removed. It isn't corruption repair or a live refresh.
 
-`resurrection.py` selects due terminal-unavailable canonical objects with a
-default global budget of 200. Approximate category weights are:
-
-- 60% protected;
-- 25% suspended/missing;
-- 15% ambiguous.
-
-Unused category capacity spills into other due categories. Permanent
-archive-deleted/deleted-by-author rows are excluded. Retryable reasons use
-intervals from days to months.
-
-Reason-confidence rules prevent weaker evidence overwriting stronger prior
-classification; unknown can upgrade. Successful detail becomes `resurrected`,
-clears scheduler fields, and persists every thread tweet and relationship already
-returned by that TweetDetail response. This also writes the current thread
-expansion marker without making a redundant request.
-
-If a tweet is recovered independently after an older thread-expansion attempt,
-the recovery timestamp makes that marker stale. The next thread pass fetches the
-current context once and then records a newer marker, including for archives made
-by versions that previously left resurrected tweets permanently skipped.
-
-Same-author probing can use up to five probes; after three successes, up to 15
-same-author rows can be boosted within the global budget. Transport failures do
-not increment explicit availability retry count; explicit unavailable responses
-do. Three focal absences trip the same defensive breaker.
-
-## Rehydration
-
-`ArchiveStore.rehydrate_from_raw_json()` reparses every membership row in batches
-of 500 and relevant TweetDetail/ThreadExpandDetail captures. It is local-only.
-
-Known limitations:
-
-- raw JSON parse/type errors are not handled per row;
-- stale secondary rows are not comprehensively deleted;
-- it is not a substitute for live detail enrichment.
-
-## Pipeline integration
-
-Normal sync follow-ups run threads → resurrection → article refresh → media →
-unfurl → optional tagging. Each step reports progress/issues through
-PipelineReporter and is recoverable relative to core page capture.
-
-Standalone commands use `locked_archive_job` or explicit `ProcessLock` patterns.
-
-## Regression targets
-
-- `tests/test_extractor.py`
-- `tests/test_extractor_additions.py`
-- `tests/test_threads.py`
-- `tests/test_articles.py`
-- `tests/test_media.py`
-- `tests/test_unfurl.py`
-- `tests/test_resurrection.py`
-- archive-import detail tests
-- Web availability tests
+Restoration saves recovered context and makes stale expansion state eligible for refresh. Evidence that an account has returned can prioritize its other unavailable posts within the restoration budget.

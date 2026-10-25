@@ -1,347 +1,98 @@
 # Troubleshooting
 
-[User guide](README.md) · [Connect Twitter/X](getting-started.md) · [CLI reference](cli-reference.md)
+Start with Jobs and Settings > Activity logs. The current run and its log usually tell you which part needs attention. Keep any report free of X cookies, API keys, passwords, and private post content.
 
-Find the symptom below and start with its suggested check. If a command partly
-succeeded, read its final summary before rerunning it: tweets already saved usually
-remain in the archive.
+## Opening TweetNook
 
-| Problem | Start here |
-|---|---|
-| Installer fails when pasted | [Terminal paste](#installer-fails-when-pasted) |
-| Cannot connect to Twitter/X | [Authentication](#authentication-problems) |
-| Sync waits or fails | [Sync and request errors](#sync-waits-or-fails) |
-| Another command is running | [Active jobs](#another-command-is-running) |
-| Cannot open the app | [Web app](#the-web-app-does-not-open) |
-| Scheduled sync is missing | [Scheduling](#a-scheduled-sync-did-not-run) |
-| Import is incomplete | [Importing](#import-problems) |
-| Tweets or downloads are missing | [Missing details](#missing-details-media-or-link-previews) |
-| Search misses results | [Search](#search-results-are-missing-or-a-query-is-rejected) |
-| Tagging is unavailable or stops | [Automated tagging](#automated-tagging-problems) |
-| Database checks fail | [Database](#database-problems) |
+On the server, try its printed address or `http://localhost:8000`. Check the appropriate startup mode with `tweetnook web status` or `tweetnook service status`. For a foreground copy, the terminal running `tweetnook serve` must stay open.
 
-## Installer fails when pasted
+If the local address works but another device can't connect, use the server's network IP on that device. Check that both devices can reach the same network, the firewall allows the port, and the configured host permits network access. After changing the host or port, restart TweetNook.
 
-Older installer copies can trigger Bash's `event not found` history expansion,
-garble pasted symbols in a non-UTF-8 locale, or close the shell on an error.
-Use the current installer, or save it as `install.sh` and run:
+If a port is already in use, stop the old TweetNook process or choose another port. Starting a second copy on the same port won't replace the first.
+
+### The server exits before the page opens
+
+Startup errors can happen before Jobs or Activity logs are available. A personal background server discards its terminal output, so run it in the foreground to see the error. Use the same Python environment and file locations as usual:
 
 ```bash
-bash install.sh
+tweetnook web stop
+tweetnook serve
 ```
 
-Service installation that requests sudo must run from a saved file so it can
-restart as root. Pasting the current script directly as root is also supported.
-
-## Authentication problems
-
-### Missing `auth_token` or `ct0`
-
-Copy both values from the same currently signed-in Twitter/X session. Follow
-[Connect Twitter/X](getting-started.md), then run:
+For the installer's Linux service, inspect its recent output first. If access is denied, run the command as root or with sudo:
 
 ```bash
-tweetnook auth check
+journalctl -u tweetnook.service -n 100 --no-pager
 ```
 
-Check the [configuration file location](configuration.md#resolved-directories),
-especially on macOS. If you set environment variables earlier, they override
-the file independently; an old variable can override a newly saved value.
-
-### Missing `user_id`
-
-Use your numeric Twitter/X account ID, not your username. Bookmarks can work without
-it, but likes, your own tweets, and a complete connection check need it.
-
-### Twitter/X returns 401 or 403
-
-Your saved session may have expired or been rejected. Replace both cookies from
-a current signed-in browser session. Check for old environment overrides, then
-rerun `auth check`.
-
-### “Archive belongs to another user”
-
-Check that the configured account ID, browser session, and imported archive all
-belong to the same account. Use separate data and configuration folders for a
-different account. Do not change the database's owner to bypass this check.
-
-## Sync waits or fails
-
-### Rate limiting or long waits
-
-Twitter/X limits requests, and tweetnook waits before trying again. Let the printed
-wait finish, or stop the task and resume later. Reduce sync frequency if the
-problem repeats. Avoid running several detail-heavy jobs close together.
-
-[Configuration](configuration.md#sync) explains the delay settings. Repeatedly
-restarting a waiting command does not solve the limit.
-
-### A query-ID error or 404
-
-Twitter/X sometimes changes the identifiers used for requests. Refresh them and check
-your connection:
+If you need to run that installation in the foreground, stop the service first to free its port:
 
 ```bash
-tweetnook auth refresh-ids
-tweetnook auth check
+tweetnook service stop
+tweetnook serve
 ```
 
-If refresh itself fails, check network access to `x.com` and `abs.twimg.com`,
-then try later. Persistent failures can need an application update.
+The installer's global command uses the service archive. For a service you created yourself, use its Python environment, account and file locations. After diagnosing the error, press `Ctrl+C` and return to your usual mode with `tweetnook web start` or `tweetnook service start`.
 
-### A 400 or repeated missing-tweet response
+### Forgotten web password
 
-Twitter/X may have changed its request or response format. Refresh request IDs, check
-authentication, and retry later. If the problem persists, update to a current
-TweetNook release or [report the error](#report-a-problem).
-
-A detail lookup that omits the requested tweet is not proof it was deleted.
-tweetnook can stop after repeated omissions to avoid marking many tweets
-incorrectly. Saved progress remains available.
-
-## Another command is running
-
-Check the activity drawer, open terminals, and any scheduled work. Wait for the
-active job or use **Stop Task** and wait for it to finish stopping.
-
-Restarting the web app gracefully stops its managed worker first. Do not delete
-`sync.lock` or `command.lock`: the files can remain after a job ends, and their
-presence alone does not mean the archive is locked.
-
-## The web app does not open
-
-### Archive setup is incomplete or still running
-
-The server starts without `archive.db`. Open Setup and import your official
-Twitter/X archive (recommended), migrate a detected upstream source, or explicitly
-create an empty archive. Import can take hours or days; check Activity rather
-than starting a second job. You may finish Setup while it runs.
-
-Enrichment waits for both a completed local import and a successful saved Twitter/X
-connection test. If Twitter/X was skipped, connect it later from Settings → Setup.
-Interrupted initialization is shown as needing attention; retry the same import
-without deleting existing data. Failed enrichment can be retried from Setup.
-**Settings → Notifications** links to relevant failures and lets you dismiss
-resolved notices; unread items are reflected by the Settings notification badge.
-
-For systemd installations run `tweetnook service status` and inspect
-`journalctl -u tweetnook`. Confirm that the service's XDG homes point to your
-intended archive/configuration folders.
-
-### Startup succeeds but the page does not load
-
-An older installer may report a missing `/etc/tweetnook/config.toml` just after
-starting the service. Its startup check read the file before the app created it.
-The package and service may already be installed; check the service and browser
-before reinstalling. Current installers wait first and use normal defaults when
-the file is not yet present, while still checking the responding Web app.
-
-The installer checks the service and the local Web app before reporting success.
-If either check fails, use the displayed diagnostic log and
-`journalctl -u tweetnook -n 50 --no-pager`. A local check cannot confirm that
-another computer can reach the server: containers need the configured Web port
-published, and the network/firewall must allow it. Use the container host's
-published address when connecting from outside its network.
-
-Run `tweetnook service status` (systemd) or `tweetnook web status` (manual
-background server), allow a moment for startup, and open the server
-address on port 8000. On the server itself use
-[http://127.0.0.1:8000](http://127.0.0.1:8000). Use your configured port if you
-changed it. Check the latest web log if it still fails.
-
-An unrelated process using the configured port can be mistaken for tweetnook
-by status or stop commands. Inspect the reported process before stopping an
-unknown one. You can choose a different port in [Configuration](configuration.md#web).
-
-Do not run the manual `tweetnook web` background server alongside the managed
-systemd service. `tweetnook update` refuses a live manual process recorded
-in the service data directory. Stop it as the service user with `tweetnook web stop`,
-then rerun the update. If update says the managed service did not stay running,
-inspect `systemctl status tweetnook.service --no-pager`; another process may own
-the configured port.
-
-### The password is rejected
-
-Enter any nonempty username and the password you set. To replace the password
-from the CLI:
+Set a replacement from the terminal using the same installation:
 
 ```bash
 tweetnook web set-password
 ```
 
-Then restart TweetNook using the mode you normally run: `tweetnook web restart`
-for the manual background server, the systemd service restart command
-for a service installation, or stop and restart a foreground `tweetnook serve`
-process. Fresh installations create a password at the end of Setup; no default
-password is assigned.
+Restart the foreground server, personal background process, or Linux service afterward. The [startup commands](maintenance.md#starting-and-stopping) cover each mode.
 
-### The page is unstyled or controls do not work
+## X connection
 
-Scripts and styles are served by the archive server, not public CDNs. Check that
-the server is running and reachable, reload the page, and inspect failed `/static/`
-requests in browser developer tools. For a source checkout, rebuild the
-[web assets](../dev/web/README.md) after changing utility classes. Installed-font
-discovery requires a supporting browser and HTTPS or localhost; otherwise use a
-fallback font from the dropdown.
-
-If Settings or Stats is missing, widen the browser window. Those controls are
-currently hidden on narrow screens.
-
-## A scheduled sync did not run
-
-Open **Settings → Schedule** and check that it is enabled, saved, and using the
-intended time zone. Also check the next run in the activity drawer.
-
-- Keep the TweetNook server/service running; the browser can be closed.
-- A random delay may move a daily, weekly, or monthly run later than the selected
-  time. Turn it off if you want a fixed time.
-- A due run is skipped when another tracked job is active.
-- On restart, a saved overdue run is attempted once. Every missed interval is
-  not replayed.
-- The schedule saves bookmarks and likes. Run `sync tweets` separately for your
-  own tweets.
-
-See [Scheduling](web-app.md#scheduling) for setup details.
-
-## Import problems
-
-### Import finishes with authentication or enrichment warnings
-
-The local data can import successfully even when live lookups are skipped. If
-you imported through Web Setup, save and test your Twitter/X connection there; pending
-enrichment starts automatically once the local import is complete. For a CLI
-import or a manual retry, run:
+Sign in to x.com in your browser, copy fresh `auth_token` and `ct0` values, and update Settings > Setup. Check the numeric user ID too if likes or your own tweets aren't working. Cookie values need to be copied in full.
 
 ```bash
-tweetnook import enrich
+tweetnook auth check
 ```
 
-`--no-enrich` skips detail lookups but still permits live timeline checks.
-`--sample-limit` skips all live follow-up and imports only a sample.
+For direct Python/pip processes, credential environment variables take priority over saved settings. The installer's global Linux command uses the service credentials; see [credentials](maintenance.md#credentials). Keep the archive and the live connection on the same X account.
 
-### The archive is already imported
+## Slow syncs
 
-An identical completed archive is recognized to avoid duplicate work. If only
-missing details need attention, use `import enrich`.
+The first run can have a lot to collect, and conversation or media work may continue after the new posts have arrived. Look at the active stage in Jobs. Give rate-limit waits time to finish, and let the run stop before starting another archive-changing job.
 
-A sample can appear imported in Setup even though it is incomplete. Rerun the
-original import without `--sample-limit` for a full import. Only use
-[`--regen`](importing.md#rebuild-imported-data) if you intend to replace previous
-imported data, and back up first.
+You can stop and resume without losing posts already saved. For a short terminal run, use a page limit or skip an individual follow-up task; see [syncing](syncing.md). If the machine runs out of space, free enough room for both the archive and media before continuing.
 
-### Bookmarks are missing after import
+## Missing posts and details
 
-The importer supports your tweets, deleted tweets, likes, and matching media, but
-not bookmarks. Save them with:
+An [official archive](importing.md) can bring in older history that live sync doesn't reach. After importing, connect the owning account and use `tweetnook import enrich` to continue completion and fill collection gaps.
 
-```bash
-tweetnook sync bookmarks
-```
+Use the individual Jobs tasks for missing conversations, Articles, media, or link previews.
 
-## Missing details, media, or link previews
+| State | Next step |
+| --- | --- |
+| Media or link previews still pending after a stop | Rerun that task to continue. |
+| Media or link previews marked failed | Resolve the error, then enable retry failures or use `media download --retry-failed` / `unfurl --retry-failed`. Normal syncs skip these failures. |
+| Media incomplete after importing without X | Use Download media; it can fetch saved public URLs without X credentials. |
+| Imported posts need account-only details | Connect X, then run Enrich archive. That command and Sync now require credentials. |
 
-Use these commands to fill or retry missing work:
+Saved text, media, and Articles remain visible with a warning when a post is deleted or becomes unavailable on X. This also applies to saved quotes and reposts. A post placeholder means there is no saved content to show. An availability check can revisit posts whose recorded reason allows retries.
 
-```bash
-tweetnook import enrich
-tweetnook media download --retry-failed
-tweetnook unfurl --retry-failed
-```
+## Scheduling
 
-Run only the jobs you need. Detail lookups need Twitter/X credentials; downloads and
-link previews contact saved URLs. Some hosts or tweets may no longer be available.
+The host must be awake and TweetNook must stay running. Check that Sync automatically is enabled, your collection choices were saved, and the next run and timezone are what you expect. Random delay can move a run later than its nominal time.
 
-For videos and GIFs, remove `--photos-only` if you used it previously. Both the
-main file and its preview image may be needed for completion. Media imported
-from a Twitter/X ZIP must have filenames that can be matched to tweets.
+Another active job can prevent a scheduled sync from starting. Notifications and Activity logs record those events. A scheduled run isn't a reason to start another copy of the server.
 
-For article or thread work, see [Enrichment](enrichment.md). An unavailable-tweet
-placeholder does not mean the surrounding archive is corrupt.
+## Tags and search
 
-## Search results are missing or a query is rejected
+Try All collections, reduce the query, and check `is:hidden`. Use `tag:` for tag names and `description:` for generated descriptions. Search only covers posts already in the archive.
 
-Use uppercase `AND`, `OR`, and `NOT`, double-quote multiword filter values, and
-check that filter names and values are supported. Remember that `until` excludes
-the date entered. Article-content searches do not accept tweet filters.
+For automated tagging, check that the add-on is installed and enabled, the API key works, and the model supports the options you chose. A test run helps you review one archived post. Reaching quota or a spending limit leaves the remaining work for a later run.
 
-Broad text searches cover the complete archive. The web app intentionally labels
-them **Results** without an exact count so it can return the first page without a
-second full-match scan. If a broad query is slow, try more distinctive words or
-an exact phrase; this narrows the work without changing query correctness.
+## Archive location
 
-See [Search](search.md) for examples and the full filter list.
+The installer's global Linux command targets the service archive automatically. Direct Python/pip processes use their own account and `XDG_*` overrides, so they can open a different archive. Check [file locations](maintenance.md#file-locations) when counts or posts differ between launches.
 
-## Statistics look outdated
+## Getting help
 
-Choose **Refresh** in Stats and wait for it to finish, or run
-`tweetnook stats` for a fresh terminal report. Web statistics are rebuilt
-once a day, so they can miss later syncs and tag edits.
+Include your TweetNook version (`tweetnook --version`), operating system, installation/startup mode, what you tried, and the relevant part of the run log. If a command failed, include the command with private values removed. Report it in the project's [issue tracker](https://github.com/gezerwezer/tweetnook/issues).
 
-Some storage categories are estimates. Differences between them and exact file
-sizes do not by themselves indicate corruption.
-
-## Automated tagging problems
-
-### The settings panel is missing
-
-Install the optional dependencies into the Python environment used by the server:
-
-```bash
-python -m pip install "tweetnook[automated-tagging]"
-```
-
-Then restart TweetNook. For a systemd installation use
-`tweetnook service restart`; for a foreground `tweetnook serve` process, stop
-and start it again. Developers using a uv checkout can install once with
-`uv sync --extra automated-tagging`; an exact later `uv sync` without the extra
-can remove it. Normal runtime commands do not need `--extra`.
-
-### A selected tweet cannot be tagged
-
-Check that tagging is enabled, an API key is configured, and the tweet has usable
-archived details. Media must be downloaded locally. Try one preview using the
-[Automated tagging guide](automated-tagging.md#preview-one-tweet).
-
-A model listed in Settings may not support your combination of media, thinking,
-Search, and processing tier. Check its provider documentation or test another
-compatible configuration.
-
-### Tagging stops on quota, spend, pricing, or unknown usage
-
-Read the stop reason and review usage history before raising a limit. Free
-requests are counted before they are sent, including retries; failures may still
-count. Paid runs with a finite budget pause when prices or usage are unknown.
-
-The spend display is an estimate and excludes Search fees and other applications.
-A preview still uses real provider requests. See
-[Usage and spend](automated-tagging.md#view-usage-and-spend) for how to interpret
-those figures.
-
-## Database problems
-
-If `db check` reports corruption, stop the app and every worker. Preserve the
-complete data folder and run `db check --full` against a copy. Restore a verified
-backup where possible.
-
-Do not delete database companion files or use `rehydrate` as a general corruption
-repair. If `rehydrate` itself fails on malformed saved JSON, keep a backup and
-report the error so the affected records can be investigated.
-
-For a partial LanceDB migration, keep the original `archive.lancedb` folder.
-Read the printed result, then verify the SQLite archive with checks, counts, and
-known searches. An exit code of zero alone does not establish a complete migration.
-
-See [Backups and maintenance](maintenance.md).
-
-## Report a problem
-
-Include:
-
-- Your operating system and the output of `tweetnook --version`.
-- The command you ran, with private values removed.
-- The final error and a short relevant log excerpt.
-- Whether another job was running and whether you use custom data folders.
-
-Keep Twitter/X cookies, API keys, private tweet content, and identifying local paths out
-of the report. Do not attach a full configuration, database, export, or Twitter/X ZIP.
-Activity logs are not guaranteed to remove every secret automatically.
+For archive checks, backups, and updates, see [maintenance](maintenance.md).

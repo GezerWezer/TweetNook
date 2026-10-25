@@ -1,89 +1,52 @@
-# Development guide
+# Development
 
-[User guide](../README.md) · [Module reference](module-reference.md) · [Testing](testing.md)
+TweetNook is a Python application with a bundled web app. You can run the server directly from a checkout. Node is needed for the browser test harnesses and for rebuilding bundled browser dependencies and CSS. The server runs without Node.
 
-tweetnook is a Python application with a SQLite archive, a command-line
-interface, and a local web app. This guide explains how its components fit
-together and where to make changes.
-
-For installation and everyday use, start with the [user guide](../README.md).
-
-## Set up a development environment
-
-Use Python 3.12 or newer on macOS or Linux. Install the locked dependencies:
+## Setup
 
 ```bash
-uv sync --locked
+git clone https://github.com/gezerwezer/tweetnook.git
+cd tweetnook
+uv sync --group dev
+uv run tweetnook --help
 ```
 
-Run the standard checks:
+Use Python 3.12 or newer. Add `--extra automated-tagging` or `--extra legacy-migration` to `uv sync` when testing those optional features. Keep test credentials and archives outside Git.
+
+Run a separate development archive by giving the process its own XDG directories:
 
 ```bash
-uv run ruff format --check
-uv run ruff check
-uv run pytest -q
-node tests/js/test_web_assets.cjs
+XDG_CONFIG_HOME=/tmp/tweetnook-dev/config \
+XDG_DATA_HOME=/tmp/tweetnook-dev/data \
+XDG_CACHE_HOME=/tmp/tweetnook-dev/cache \
+uv run tweetnook serve
 ```
 
-Node.js is needed for the JavaScript asset harness. For optional tagging work,
-install with `uv sync --extra automated-tagging`, then run normal `uv run tweetnook` commands.
-For legacy LanceDB migration tests, add `--extra legacy-migration` to that command.
-Use temporary archives and mocked provider calls in tests; see [Testing](testing.md).
+The web app starts before an archive exists. Complete Setup in the browser, or use the replay tools described in [web and jobs](web-and-jobs.md) to exercise another archive without contacting X.
 
-## Understand the application
-
-Start with [Architecture](architecture.md), then choose the area you are changing:
+## Guides
 
 | Area | Guide |
-|---|---|
-| Twitter/X authentication, requests, and timeline sync | [Client and sync](client-and-sync.md) |
-| Database schema, transactions, and merge rules | [Storage](storage.md) |
-| Official Twitter/X archives | [Archive import](archive-import.md) |
-| Tweet extraction, threads, media, and availability | [Enrichment](enrichment.md) |
-| Query parsing and archive read APIs | [Search and web API](search-and-web-api.md) |
-| Server lifecycle, routes, and worker processes | [Web and jobs](web-and-jobs.md) |
-| Optional inline media carousel and live X comparison results | [Gallery parity](gallery-parity.md) |
-| Recurrence and persisted schedule state | [Scheduler](scheduler.md) |
-| Gemini requests, prompts, and usage accounting | [Automated tagging](automated-tagging.md) |
-| Settings, environment variables, and paths | [Configuration and paths](configuration-and-paths.md) |
+| --- | --- |
+| Components and request flow | [Architecture](architecture.md) |
+| Files, defaults, overrides, secrets | [Configuration and paths](configuration-and-paths.md) |
+| Tables, record identities, migrations | [Storage](storage.md) |
+| X requests and resumable timelines | [Client and sync](client-and-sync.md) |
+| Official export ingest | [Archive import](archive-import.md) |
+| Threads, media, links, Articles | [Enrichment](enrichment.md) |
+| FxTwitter, checks, history, restoration | [Availability checks](availability-checks.md) |
+| Query language and HTTP routes | [Search and web API](search-and-web-api.md) |
+| Server lifecycle, Setup, jobs, replay | [Web and jobs](web-and-jobs.md) |
+| Automatic sync and availability checks | [Scheduler](scheduler.md) |
+| Gemini requests and usage accounting | [Automated tagging](automated-tagging.md) |
+| Module ownership | [Module reference](module-reference.md) |
+| Tests and validation | [Testing](testing.md) |
+| Builds and publication | [Release process](release.md) and [publishing checklist](../PUBLISH.md) |
 
-The [module reference](module-reference.md) links source files to their
-responsibilities and relevant tests.
+## Contributing
 
-## Preserve these contracts
+Read the repository's agent/contributor instructions and current work tracking first. Keep a change small enough to test in one useful unit. Run targeted tests, review the diff, and commit only the files belonging to that change.
 
-- Each database belongs to one Twitter/X account.
-- A tweet's collection memberships are separate from its shared content record.
-- A timeline page saves its raw response, extracted records, and next position
-  in one transaction. Later failures leave completed pages intact.
-- Long-running web jobs use the same CLI pipelines as terminal commands.
-- The scheduler runs only during the web server's lifetime.
-- Core startup works without Gemini's optional dependencies.
-- The active store is SQLite with FTS5; the optional `legacy-migration` extra supports legacy imports.
+Update the user guides when behavior changes. New CLI options need explicit help text and representative help tests. The cookie instructions in the getting-started guide also feed the in-app Setup help; regenerate that asset after editing them.
 
-Lock coverage, merge precedence, and failure handling are detailed in
-[Architecture](architecture.md) and [Storage](storage.md).
-
-## Repository workflow
-
-Follow [AGENTS.md](../../AGENTS.md). Read [WORKLOG.md](../../WORKLOG.md) and the
-[implementation checklist](../../docs/IMPLEMENTATION.md) before starting work,
-and inspect the working tree so unrelated edits remain intact. Keep reference
-snapshots and frozen planning documents unchanged.
-
-When behavior changes, update its user guide and relevant reference page.
-New CLI options need explicit help and help-test coverage. Run the checks
-appropriate to the change before committing a completed unit of work.
-
-## Documentation and releases
-
-These guides describe the implementation in this checkout. Older design
-material also describes retired backends and features; check the code and tests
-when a behavior differs, and follow the repository's process instructions for
-resolving plan changes.
-
-The revised documentation currently lives in `README.md` and `docs/`.
-Package metadata still selects the original README. [Release](release.md)
-explains how to promote and package the new documentation; the
-[documentation review record](documentation-audit.md) records this set's scope
-and validation.
+Keep architectural choices specific to TweetNook. Preserve third-party licenses and release history.

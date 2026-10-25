@@ -1,212 +1,167 @@
 # Syncing
 
-[User guide](README.md) · [Connect Twitter/X](getting-started.md) · [Troubleshooting](troubleshooting.md)
+Choose your collections and schedule in Settings > Schedule. Jobs lets you start a sync or run an individual follow-up task.
 
-Syncing saves tweets from your Twitter/X account to your local archive. Run the same
-command regularly to pick up new items. Tweets you have already saved are kept.
-## Syncing steps
+## Collections
 
-A normal sync has two parts: first tweetnook saves tweets from Twitter/X, then it runs
-follow-up jobs to fill in additional information. Each stage saves its work as
-it goes, so a later failure does not undo tweets or enrichment that have already
-been written to the archive.
+A sync brings in new posts from your chosen collections and continues older history where there's more to fetch.
 
-1. **Check your Twitter/X connection.**  
-   tweetnook verifies the saved Twitter/X credentials before making timeline requests.
-   If authentication is no longer valid, the sync stops before collecting new
-   data.
+In Settings > Schedule, select Bookmarks, Likes, Your tweets, or a combination. Bookmarks and likes are the default. Your numeric user ID is needed for likes and your own tweets; [Setup](getting-started.md#connect-x) shows where to find it.
 
-2. **Fetch bookmarks and likes.**  
-   A normal `tweetnook sync` checks your bookmarks and likes for new tweets.
-   Collection-specific commands can limit the run to one collection, and your
-   own tweets are fetched separately with `tweetnook sync tweets`.
-
-3. **Save new tweets and sync progress.**  
-   Tweets are written to the local archive as pages are received. tweetnook
-   also saves its position through the timeline so interrupted or partial runs
-   can continue later without starting over.
-
-4. **Expand threads and related Twitter/X tweets.**  
-   tweetnook fills in conversation context where possible, including thread
-   tweets, quoted tweets, and linked Twitter/X tweets that are needed to understand items
-   already in the archive.
-
-5. **Recheck unavailable tweets.**  
-   Tweets that could not previously be retrieved may be checked again in case
-   they have become available.
-
-6. **Refresh Twitter/X Articles.**  
-   For tweets that reference Twitter/X Articles, tweetnook attempts to retrieve fuller
-   article content and metadata.
-
-7. **Download media.**  
-   Pending photos, videos, and GIFs are downloaded to local storage when they
-   are still available from Twitter/X.
-
-8. **Fetch information for external links.**  
-   tweetnook visits saved external links to collect useful metadata such as
-   page titles and descriptions.
-
-9. **Run automated tagging, if enabled.**  
-   If the optional automated-tagging feature is installed and enabled,
-   eligible tweets are processed after the other follow-up jobs.
-
-## Choose what to save
-
-Connect Twitter/X first through Web Setup; use [Connect Twitter/X](getting-started.md) for the detailed cookie instructions.
-
-| Command | Saves |
-|---|---|
-| `tweetnook sync` | Bookmarks and likes |
-| `tweetnook sync bookmarks` | Bookmarks only |
-| `tweetnook sync likes` | Likes only |
-| `tweetnook sync tweets` | Your own tweets |
-
-`sync all` is another name for the default bookmark-and-like sync. Your own
-Tweets always use the separate `sync tweets` command.
-
-All live syncs need `auth_token` and `ct0`. Likes and your own tweets also need
-your numeric account ID. Configure all three so tweetnook can check that the
-archive belongs to the account you are using.
-
-## Run a regular sync
+Choose Sync in Jobs to run now. The same choice is available from a terminal:
 
 ```bash
 tweetnook sync
 ```
 
-The command checks your connection, saves new tweets, then works on missing
-context and downloads. It stops collecting recent tweets when it reaches ones
-already saved. If an earlier run left older history unfinished, it can continue
-that work too.
-
-Progress is saved after each page. If likes fail after bookmarks have been
-saved, the bookmarks remain in your archive. A failed media download or other
-follow-up also leaves saved tweets intact; read the final summary for outstanding
-work.
-
-## Collect older history
-
-Use `--backfill` when you want to continue through older tweets even after
-reaching ones already in the archive:
+To run just one collection for this invocation:
 
 ```bash
-tweetnook sync --backfill
+tweetnook sync bookmarks
+tweetnook sync likes
+tweetnook sync tweets
 ```
 
-Twitter/X may limit how much history it returns. Completing a run means tweetnook has
-finished the history available through that request, rather than proving every
-item ever saved on Twitter/X has been recovered.
+## Scheduling
 
-## Limit a run
+Turn on Sync automatically in Settings > Schedule. Choose an hourly interval, a daily time, a weekday, or a day of the month, then save. Monthly schedules use the month's last day when your chosen day doesn't exist.
+
+For daily, weekly, and monthly syncs, you can add a random delay after the chosen time. For example, a 03:00 start with a zero-to-two-hour delay runs sometime between 03:00 and 05:00. The next run shown in Jobs reflects the scheduled time. Hourly schedules count from when you save, then from each scheduled launch attempt. Manual syncs don't reset the interval.
+
+Schedules run while TweetNook is running and the host is awake. Closing your browser is fine. Closing a foreground server or turning the machine off stops scheduled work. Use a background service if you want syncs to keep running unattended.
+
+## First sync
+
+A large collection can take several runs to catch up. X can limit how much history your account can retrieve, and some saved posts may already be unavailable. An [official archive import](importing.md) helps bring in older history.
+
+If you stop a sync, posts already saved remain in the archive. Run it again to continue. Limits and waiting periods can pause progress; check Jobs and the run log before starting a new run. TweetNook runs archive-changing jobs one at a time.
+
+## Sync options
+
+For a shorter run, use a page limit. It counts timeline pages for each collection; follow-up work can continue afterward.
 
 ```bash
-tweetnook sync --limit 5
+tweetnook sync --limit 10
 ```
 
-This saves up to five pages **per collection**, not five tweets. Pages normally
-contain up to 20 tweets. A default sync can therefore fetch five bookmark pages
-and five like pages. Follow-up work has its own scope and can continue after
-this page limit is reached.
+Recent-only mode fetches new posts and clears the saved place in older history. Backfill revisits known posts to look for gaps; starting over resets sync progress while keeping archived posts. Article backfill revisits timeline history for Article information. The [sync command options](cli-reference.md#sync-options) cover the flags, combinations, and ways to skip individual follow-up tasks.
 
-## Control downloads and follow-up work
+Optional automated tagging runs when it's installed and enabled. To leave it out, disable it in Settings > Automated tagging; there is no `--skip-tagging` flag.
 
-After saving tweets, a normal sync tries to:
+## Sync status
 
-1. Fill in threads, quoted tweets, and linked Twitter/X tweets.
-2. Recheck some previously unavailable tweets.
-3. Retrieve fuller article content.
-4. Download pending photos, videos, and GIFs.
-5. Fetch titles and descriptions for saved links.
-6. Generate tags, if you have enabled automated tagging.
+A completed collection sync can still have a media, Article, conversation, link-preview, or tagging issue listed in Activity logs. Those tasks can be continued separately.
 
-You can skip individual steps. For example, save tweets without downloading media
-or visiting their external links:
+Sync failed means a connection, collection, archive-write, storage, or worker failure prevented completion. Sync stopped records a requested stop, while Sync interrupted means the run has no confirmed final result. Check the log before deciding what to rerun.
+
+A saved older-history position means there is more work to resume. Finishing available history doesn't prove X returned every item you've ever saved. After a server restart, a saved overdue schedule can try once and then resume its normal cadence.
+
+## Post details
+
+Sometimes a save has the main post but only part of the conversation, an Article preview, or media waiting to download. TweetNook normally works through these during a sync. You can run the individual tasks from Jobs when you need them sooner.
+
+Jobs and Analytics show work that's still waiting.
+
+These jobs contact X, media hosts, or the external links in the archive. Use trusted archive content.
+
+### Conversations and quotes
+
+Expand conversations collects the saved post's replies, its author's thread, and quoted or linked posts within your chosen follow depth. The default allows up to 50 hops through quoted and linked posts, starting from saved posts and their authors' own threads. Each hop can lead to several posts. Set the depth to zero to turn off linked discovery.
+
+Links in other people's replies are off by default. You can allow one hop and set how many reply links a sync may follow in Settings > Configuration.
 
 ```bash
-tweetnook sync --skip-media --skip-unfurl
+tweetnook threads expand --limit 50
+tweetnook threads expand https://x.com/example/status/123456789 --refresh
+tweetnook threads expand --max-linked-depth 10 --reply-linked-depth 1
 ```
 
-| Option | Skips |
-|---|---|
-| `--skip-threads` | Threads, quoted tweets, and linked Twitter/X tweets |
-| `--skip-resurrection` | Rechecks of unavailable tweets |
-| `--skip-articles` | Article refreshes |
-| `--skip-media` | Media downloads |
-| `--skip-unfurl` | Link titles and descriptions |
+Explicit targets can be IDs or X post URLs. `--refresh` requires explicit targets and revisits them even if they've been expanded before. The thread limit is shared across its expansion stages. X may only make part of a conversation available to your account.
 
-To skip automated tagging, turn it off in **Settings → Automated Tagging** or
-set `enabled = false` under `[tagging]`. There is no `--skip-tagging` option.
-When tagging is enabled, it runs after the usual sync follow-up jobs.
+The `--max-linked-depth` and `--reply-linked-depth` options also work on `tweetnook sync` and `tweetnook sync all`. See [Commands](cli-reference.md#sync-options) for the supported command forms.
 
-Failed downloads and link lookups need an explicit retry. See
-[Enrichment](enrichment.md) for the commands to run those jobs separately.
+### Articles
 
-## Pause and resume
+Refresh articles looks for full Article text and media where only a preview has been saved. Use the normal job for incomplete Articles or choose to refresh every Article.
 
-Use **Stop Task** in the web app or interrupt a foreground command with
-**Ctrl+C**. Wait for it to finish stopping, then rerun the command when ready.
-Pages already saved remain available; unfinished work can resume from the saved
-position.
+```bash
+tweetnook articles refresh --limit 20
+tweetnook articles refresh --all
+tweetnook articles refresh 123456789
+```
 
-Run one sync, import, or enrichment job at a time. If tweetnook reports another
-command is running, check the activity drawer and any open terminals. Stopping or
-restarting TweetNook asks its managed Web/scheduled job to stop gracefully;
-wait for it to finish stopping before starting another.
+For Articles, `--all` and explicit targets can't be combined. `--limit` bounds automatic Article selection; an explicit target list is processed as supplied. If the Article wasn't identified in an older capture at all, `sync --article-backfill` can revisit the timeline first.
 
-## Understand waits and status
+### Media
 
-Twitter/X can limit requests. tweetnook reports waits and retries automatically; allow
-these to finish or stop the task and try later. Repeatedly restarting a waiting
-sync will not fix a rate limit.
+Download media saves files on your TweetNook machine so you can read and watch them later without relying on the original media URL. The job can be limited to photos, and it can retry previous failed downloads.
 
-Use `tweetnook stats` to check collection coverage and sync progress.
-A saved older-history position means there is unfinished work to resume. A
-completed run can still list follow-up issues, such as media that Twitter/X no longer serves.
+```bash
+tweetnook media download
+tweetnook media download --photos-only --limit 100
+tweetnook media download --retry-failed
+```
 
-**Sync failed** means a critical error prevented the run from completing:
+You'll need disk space for the files, especially videos. Downloaded media is part of your archive backup.
 
-- Missing or rejected Twitter/X credentials, an archive/account mismatch, or a
-  collection access check that fails.
-- A selected collection cannot finish fetching pages after retries (including
-  network errors, exhausted rate limits, or incompatible Twitter/X responses).
-- A collection archive write or checkpoint fails, storage fills up or exceeds its quota,
-  or a fatal error stops the worker.
+Limits and progress count media items. A video or GIF can need both its main file and a poster image while counting as one item. Normal syncs and downloads select pending items; use `--retry-failed` or Retry failed downloads in Jobs to include failures after fixing their cause. Files no longer served by their host can remain unavailable after a retry.
 
-Thread, unavailable-post, article, media, link-preview, and automated-tagging
-follow-up errors remain visible in Activity without marking a successful
-collection sync as failed. Tagging budget/quota pauses also leave sync successful.
-Storage exhaustion remains critical during follow-ups. User stops are shown as
-**Sync stopped**; a run without a confirmed final result is **Sync interrupted**.
+### Link previews
 
-For authentication errors, failed requests, or lock conflicts, use
-[Troubleshooting](troubleshooting.md).
+Link previews adds titles, descriptions, and saved preview images for links shared in posts.
 
-## Schedule regular syncs
+```bash
+tweetnook unfurl --limit 100
+tweetnook unfurl --retry-failed
+```
 
-Use **Settings → Schedule** in the [web app](web-app.md#scheduling). The
-TweetNook server/service must remain running for its schedule to work; the
-browser can be closed. Scheduled runs save bookmarks and
-likes, including enabled follow-up jobs. They do not save your own tweets.
+This contacts the linked websites. Opening the link later still takes you to the website; a saved preview isn't a full copy of the page.
 
-## Advanced sync modes
+Link-preview jobs can save a file type without a page title when the destination isn't an ordinary web page. Normal syncs and link-preview jobs select pending links. Use `--retry-failed` to include previously failed lookups after fixing their cause.
 
-Most users can stay with regular sync and `--backfill`.
+### Imported posts
 
-| Option | When to use it | Effect on saved work |
-|---|---|---|
-| `--full` | Start the timeline walk again from the newest tweets | Resets sync progress for the selected collections; keeps archived tweets |
-| `--article-backfill` | Revisit saved timeline pages for article fields | Keeps existing progress and tweets |
-| `--head-only` | Check recent tweets and abandon unfinished older-history work | Clears the saved older-history position; keeps archived tweets |
+Use `tweetnook import enrich` to continue completing posts from an official archive. It also syncs your chosen collections afterward. [Importing](importing.md) explains how to limit the completion portion or import entirely offline.
 
-`--head-only` cannot be combined with the other three modes (`--full`,
-`--backfill`, or `--article-backfill`). Article backfill revisits timelines;
-[`articles refresh`](enrichment.md#refresh-articles) fetches fuller content for
-articles already identified in the archive.
+## Availability checks
 
-`--max-linked-depth N` controls how far follow-up work follows quoted and linked
-Twitter/X tweets. It is available on `sync` and `sync all`, and on the standalone
-`threads expand` command. The default depth is 1.
+An availability check records whether your saved posts are still accessible. Unavailable posts may show a red warning symbol or an unavailable placeholder. You can search for these posts with `is:missing`. If an unavailable post returns, a later check can fill it in again when its recorded reason allows retries.
 
-See the [CLI reference](cli-reference.md#sync) for the complete option list and
-[Client and sync](development/client-and-sync.md) for checkpoint internals.
+### Manual checks
+
+Open Jobs and choose Availability check, or run:
+
+```bash
+tweetnook check
+```
+
+The check is off by default. In Settings > Configuration > Check, turn on Check automatically and choose Daily, Weekly (the default), or Monthly, then set the time and day. Saved changes take effect immediately while TweetNook is running.
+
+The check looks at saved posts and their quotes, revisits unavailable posts, and can optionally work through conversation context over several runs. It also records changes to Community Notes that it observes.
+
+### Results
+
+| Result | What it means |
+| --- | --- |
+| Still on X | The post was accessible during this check. |
+| Restored | A previously unavailable post was found again. |
+| Unavailable | TweetNook recorded that the post couldn't be accessed. Saved content stays in your archive. |
+| To recheck | The result needs another look before treating the post as unavailable. |
+| Protected | Access depends on the account and your login. |
+| Failed | The check couldn't get a usable answer this time. |
+
+### Privacy
+
+TweetNook uses FxTwitter for public post lookups. Those requests include the post IDs being checked and use the configured FxTwitter service. Your X cookies are used separately when a post needs your account's access. You can change the FxTwitter address to a service you host yourself.
+
+Disabling FxTwitter also disables the availability-check job. Normal syncs can still revisit unavailable posts with your X connection. When checks and FxTwitter are both enabled, those rechecks belong to the check job instead.
+
+### Run limits
+
+```bash
+tweetnook check --skip-context
+tweetnook check --skip-saves --skip-unavailable
+tweetnook check --detail-budget 0
+```
+
+`--skip-saves`, `--skip-context`, and `--skip-unavailable` omit those public FxTwitter passes. Authenticated rechecks run separately and can revisit posts already due before this check. `--detail-budget` limits that work to 200 posts by default; use `--detail-budget 0` to skip it, even when all public passes are disabled.

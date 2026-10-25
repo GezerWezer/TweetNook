@@ -1,175 +1,42 @@
 # Scheduler
 
-[Development guide](README.md) · [Web and Jobs](web-and-jobs.md) ·
-[Client and Sync](client-and-sync.md) · [User Web guide](../web-app.md)
+`ScheduleManager` belongs to the running web service. It submits work through `JobSupervisor`, so scheduled commands use the same lock, activity history, logs and progress as manually started jobs.
 
-`ScheduleManager` calculates the next sync time and asks `JobSupervisor` to
-launch it when due. It runs inside the web server and persists the next time
-across restarts. Its lifetime is tied to the FastAPI application.
+## Readiness
 
-## Configuration model
+The manager starts after an archive attaches and Setup is complete. It runs while the server process is alive; it isn't an operating-system timer and doesn't wake a sleeping machine. Enabling a schedule in a config file alone won't create a separate daemon.
 
-`ScheduleConfig` validates:
+## Sync cadence
 
-- cadence: `hours`, `daily`, `weekly`, `monthly`;
-- every-hours: 1–720;
-- `HH:MM` wall-clock time;
-- weekday: Monday 0 through Sunday 6;
-- day: 1–31;
-- `local` or installed IANA timezone;
-- random added delay bounds: 0–24 hours, min ≤ max for enabled non-hourly
-  randomization.
+| Cadence | Calculation |
+| --- | --- |
+| `hours` | Add `every_hours` to the scheduling reference time. |
+| `daily` | Find the next configured local time. |
+| `weekly` | Find the next configured weekday/time; Monday is 0. |
+| `monthly` | Use the configured day/time, clamping to the month's last day. |
 
-Default schedule is disabled, daily 03:00 local, random delay 0–2 hours.
+Times resolve through `schedule.timezone`, either `local` or an IANA zone. The manager uses timezone-aware UTC instants for stored execution times. A non-hourly schedule can add a random delay between its configured minimum and maximum. The persisted next run keeps the same chosen occurrence across normal reloads.
 
-## Availability checks
+When saving or restoring a randomized schedule, consider whether the current occurrence is already consumed and whether part of its random window is still ahead. Don't reroll an already chosen occurrence on every poll. Hourly cadence ignores the random-delay settings.
 
-The same manager owns a separate `check_next_run_at` and check fingerprint.
-`CheckConfig` defaults to disabled, weekly Monday at 04:00, using
-`schedule.timezone` without random delay. Daily and monthly frequencies are
-also supported, with monthly dates clamped at month end. Checks run independently
-of scheduled syncs, require FxTwitter, and defer 15 minutes on job conflicts.
+## Conflicts
 
-Context checks are separately opt-in (`check.context_enabled=false`), with a
-60-day target cycle. The runner scales the rolling batch by frequency (1/7/31
-days per run), while saved and retryable unavailable tweets are checked every
-run. Quotes embedded in saved-tweet responses remain processed.
+A scheduled sync that encounters another archive-changing task is normally recorded as skipped and tries at its next scheduled time, with a notice linking to the event. If an availability check is running, the sync waits and retries after fifteen minutes. It doesn't start a second writer or change the running job's arguments.
 
-Saving `check.*` or `fxtwitter.*` through `/api/config` reloads the manager with
-`reset=False`: changed fingerprints recalculate the check, while an unchanged
-sync schedule retains its persisted next time. Other generic config edits do
-not reload the manager.
+Availability checks have their own `check_next_run_at` and fingerprint. They default to disabled, weekly on Monday at 04:00 in the schedule timezone, without random delay. Daily and monthly frequencies are also supported; monthly dates clamp at month end. Checks require FxTwitter. A conflict delays a check retry by fifteen minutes. Keep the check's due state separate from the normal sync occurrence so one cannot consume the other.
 
-## Timezone resolution
+Context checks are separately opt-in, with a default 60-day target cycle. The runner scales each batch by frequency (1, 7 or 31 days); saved and retryable unavailable posts are checked every run. Quotes returned with saved posts are processed even when context checks are off.
 
-Named zones use `zoneinfo.ZoneInfo`. `local` first resolves `/etc/localtime` to a
-zoneinfo name; if unavailable it falls back to the process's current local
-`tzinfo`, then UTC.
+## Configuration changes
 
-Daily/weekly calculations use `replace()` on a zone-aware local datetime;
-monthly constructs a zone-aware datetime directly. Offsets therefore follow
-Python ZoneInfo, but there is no explicit project policy for nonexistent or
-ambiguous DST wall times (`fold`/gap normalization). Add focused tests before
-claiming stronger DST semantics.
+Schedule updates validate cadence, time, timezone and random-window order before persisting. The manager reloads the relevant settings and updates the next run. Collection choices travel with the scheduled sync and should match the choices displayed in Setup and Settings.
 
-## Nominal recurrence
+`schedule-state.json` stores scheduler state under the data directory. It isn't a replacement for the config or activity history. A restart should preserve valid pending work without replaying a completed occurrence solely because the process changed.
 
-### Hours
+## Restarts and timezones
 
-```text
-next = after + every_hours
-```
+A valid future `next_run_at` survives an ordinary restart. If that persisted timestamp is overdue, one launch is attempted and the schedule advances; there is no queue containing every missed occurrence. Missing/corrupt state is recalculated after now. State uses temporary-file replacement and a compact fingerprint of schedule inputs.
 
-This is an interval anchored to the current scheduling calculation, not a
-wall-clock hour grid. Randomization is ignored.
+`local` first tries to resolve `/etc/localtime` to a ZoneInfo name, then falls back to current local tzinfo or UTC. Python's timezone behavior determines ambiguous/nonexistent wall times; the project does not define a stronger DST fold/gap policy. Add tests before promising one.
 
-### Daily
-
-Use today's configured local wall time when strictly after `after`; otherwise
-advance one local day.
-
-### Weekly
-
-Compute days to configured weekday, set wall time, and advance seven days if the
-candidate is not strictly future.
-
-### Monthly
-
-Clamp configured day to the target month's last day and advance months until
-strictly future.
-
-## Random added delay
-
-Daily/weekly/monthly schedules can add a uniform random delay in the configured
-window. The algorithm considers whether the previous nominal event's jitter
-window still contains a future time, so configuring/restarting during that
-window need not skip directly to the next nominal occurrence.
-
-The random offset is not persisted separately; its effect is captured in the
-persisted `next_run_at`. That timestamp remains stable across ordinary restart
-as long as the schedule fingerprint is unchanged. State also carries the
-fingerprint and last-run metadata. After a due occurrence or explicit schedule
-edit/reset, a new offset is drawn.
-
-The delay is additive and never schedules before nominal time.
-
-## Persistent state
-
-`schedule-state.json` stores:
-
-- `next_run_at` epoch timestamp;
-- serialized configuration fingerprint;
-- last run time/result/run ID where available.
-
-Writes go to a PID-specific temporary file then atomically replace the state.
-Missing/corrupt/non-object JSON becomes empty state and is recalculated.
-
-The fingerprint is compact sorted JSON for the entire schedule model. Any
-schedule field change resets the next occurrence.
-
-## Loop and due handling
-
-A daemon thread waits five seconds between ticks. A tick:
-
-1. returns when disabled;
-2. initializes a missing next time;
-3. returns before due time;
-4. asks JobSupervisor to launch `tweetnook sync` with origin `schedule`;
-5. records started/run ID or `skipped: another command was running`;
-6. records last time;
-7. calculates the next occurrence from the current tick time;
-8. persists state.
-
-The launched command is bare sync: bookmarks + likes + follow-ups. Authored-tweet
-sync is not included.
-
-Job conflicts are consumed and advance the schedule. Other exceptions escape
-`tick()` into the loop's broad suppression; the Web service remains alive and a
-due timestamp may be retried on a later tick if state was not advanced.
-
-## Downtime and catch-up
-
-The scheduler exists only while Web is running. On startup, an existing future
-timestamp is retained. If state is absent/reset, the next time is calculated
-strictly after now. There is no missed-occurrence queue or catch-up loop.
-
-If a persisted timestamp is already due, the first tick tries one launch and
-then advances. It does not replay every elapsed interval.
-
-## Reload behavior
-
-The dedicated schedule PUT route:
-
-1. persists every `schedule.*` field;
-2. calls `manager.reload(reset=True)`;
-3. reloads global config and updates supervisor config;
-4. recomputes next state.
-
-Use the dedicated route for sync schedule edits. Generic `/api/config` reloads
-the manager only for check/FxTwitter changes, preserving an unchanged sync time.
-
-## Status contract
-
-Disabled state reports `configured=false`, no next timestamp, and Setup copy.
-Enabled state reports local formatted date, relative duration, description,
-last result, effective config, and epoch next time.
-
-“Configured” in this response means an enabled next occurrence exists, not only
-that fields are present in TOML.
-
-## Concurrency
-
-Manager state is guarded by an in-process `RLock`. JobSupervisor plus durable
-activity/command lock provides cross-process conflict control. There is no
-distributed leader election; multiple Web processes pointed at one data
-directory are unsupported and could each run a scheduler thread.
-
-## Regression targets
-
-- `tests/test_scheduler.py`
-- schedule portions of `tests/web/test_activity_routes.py`
-- config validation tests
-- Web asset schedule control tests
-
-Tests should inject `now` and explicit random offsets instead of depending on
-wall clock or randomness.
+The manager's lock is in-process. There is no distributed leader election, so running several server processes against one archive can create competing scheduler threads. Dedicated schedule APIs reload/reset the manager. Every successful generic config save calls the shared runtime reload with `reset=False`. Changed schedule inputs recalculate the next occurrence; an unchanged sync schedule retains its chosen time. See [applying changes](configuration-and-paths.md#applying-changes).

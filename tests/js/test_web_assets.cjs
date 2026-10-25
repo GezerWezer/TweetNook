@@ -3730,7 +3730,7 @@ test('setup cookie help loads the generated guide and opens on the current brows
     assert.equal(app.setupHelpDefaultBrowser('Mozilla/5.0 Firefox/131.0'), help.browsers.findIndex(b => b.name === 'Firefox'));
     assert.equal(app.setupHelpDefaultBrowser('Mozilla/5.0 Chrome/129.0 Safari/537.36'), 0);
     assert.equal(app.setupHelpTabLabel(help.browsers[0]), 'Chrome');
-    assert.match(app.setupHelpAlsoFor(help.browsers[0]), /^Also for Chromium, Brave/);
+    assert.equal(app.setupHelpAlsoFor(help.browsers[0]), 'Also for Chromium, Helium, Microsoft Edge, Opera, Brave.');
     assert.equal(app.setupHelpAlsoFor({ name: 'Safari' }), '');
 
     // Escape closes the help sheet before it would close Setup.

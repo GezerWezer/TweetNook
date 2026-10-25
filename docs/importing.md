@@ -1,143 +1,76 @@
-# Importing a Twitter/X archive
+# Imports
 
-[User guide](README.md) · [Connect Twitter/X](getting-started.md) · [Enrichment](enrichment.md)
+An official archive is a useful starting point if you've used X for years. It can bring over older tweets, likes, and media that a live sync may not reach.
 
-Import an archive downloaded from Twitter/X to add your tweets, likes, and matching media
-to tweetnook. The local import works without a live Twitter/X connection.
+## Download your archive
 
-If you need to request an archive first, follow
-[Twitter/X download instructions](https://help.x.com/en/managing-your-account/how-to-download-your-x-archive).
+In X, open Settings and privacy, then Your account, and request a download of your data archive. X prepares it for you and provides a ZIP when it's ready. The [X archive-download guide](https://help.x.com/en/managing-your-account/how-to-download-your-x-archive) has the account-side steps.
 
-## Import from Web Setup
+## Browser import
 
-Open Setup on first visit, or **Settings → Setup → Run setup again**. Upload your
-ZIP, select **Start local import**, and continue to Connect Twitter/X immediately. The
-background job saves local data, enriches available post details, then downloads
-media within the same import job. It can take hours or days, works without an
-account, and does not require the page to remain open. After the import finishes,
-the first sync starts once Setup is complete and Twitter/X is connected.
+Open Settings > Setup and choose the archive import option. Upload the original ZIP and start the import. You can continue connecting your X account and choosing collections while it runs. It saves local data, fills in available post details, then downloads media. You can close the page while it works.
 
-If enrichment or media fails or is stopped after the local data was saved, your
-posts remain browsable. Setup keeps the failed result and waits for you to resume;
-it does not start a separate media retry or the first sync automatically. Resolve
-the error (free or add disk space for a full disk), then run **Sync now** or
-**Enrich archive** from Activity. Already saved data is retained.
+Once the import succeeds and Setup is complete with X connected, TweetNook starts the first sync of your chosen collections. Watch Jobs for progress; Settings > Activity logs keeps the run's details. If enrichment or media stops, saved posts remain browsable and automatic preparation waits for you to [resume the failed task](#resume-an-import).
 
-## Import your ZIP file from the CLI
+After import, Settings > Setup can clear the uploaded ZIP. This removes the staged copy and keeps imported posts and media.
 
-If you prefer to import from the terminal instead of Web Setup, run:
+## Command-line import
 
 ```bash
-tweetnook import x-archive /path/to/twitter-x-archive.zip
-```
-
-Replace the path with your downloaded ZIP. You can also use an extracted folder
-containing `data/manifest.js` or a root-level `manifest.js`:
-
-```bash
+tweetnook import x-archive /path/to/twitter-archive.zip
 tweetnook import x-archive /path/to/extracted-archive
 ```
 
-Use the archive for the same Twitter/X account as your existing tweetnook database.
-Each database is for one account. Import only archives you trust.
+A normal CLI import copies local data, reconciles authored/liked collections represented in the export when credentials are available, and fills in missing post details. Run Download media separately to fetch files absent from the export, or use `--defer-followup` for the browser import's sequence.
 
-The command saves supported data and copies matching media. If Twitter/X credentials
-are configured, it also checks your tweets and likes against Twitter/X and looks up
-missing details. If credentials are unavailable, it skips that live work with
-a warning; the local import can still complete.
-
-Afterward, check the result:
+To load only the files you already have:
 
 ```bash
-tweetnook stats
-tweetnook view tweets --limit 10
+tweetnook import x-archive /path/to/twitter-archive.zip --offline
 ```
 
-You can now [start the web app](web-app.md#start-and-stop-the-app).
+This imports local data and media without network follow-up. You can browse it straight away and connect an account later.
 
-## What gets imported
+## Network access and import modes
 
-| Data | What to expect |
-|---|---|
-| Your tweets | Added to **Your Tweets** |
-| Deleted tweets included in the export | Retained with their archive-deleted status |
-| Likes | Added to **Likes**; some need a later lookup for full details |
-| Media attached to your tweets | Copied when it can be matched to a tweet |
-| Account information | Used to identify the archive's owner |
+With FxTwitter enabled (the default), both browser and normal CLI imports send post IDs to that service to fill in public details. This can happen without X cookies, even when the log says authenticated collection reconciliation was skipped. Use `--offline` for a local-only import.
 
-The importer does not add bookmarks, Direct Messages, followers, following,
-or lists. Use `tweetnook sync bookmarks` to save bookmarks from Twitter/X.
-Unmatched media files remain in the original archive.
+## Import options
 
-## Fill in missing information
+| Option | When it's useful |
+| --- | --- |
+| `--offline` | You want to import entirely from local files. |
+| `--no-enrich` | You want the import's live collection pass but want to postpone individual post completion. Use `--offline` to avoid network follow-up. |
+| `--detail-lookups 100` | You want to limit the number of imported posts completed during this import. A positive value requests those lookups even with `--no-enrich`; `0` adds no separate limit. |
+| `--defer-followup` | Import, fill in details and download media now, leaving live collection sync for Setup to start separately. |
+| `--regen` | You deliberately want to replace data and media owned by all previous archive imports. Back up first. Data collected by live sync is kept. |
+| `--sample-limit 100` | You want a trial import. This limits each supported category, rather than the combined total, and still reads the full input. Rerun without it for a full import. |
+| `--debug` | You need a more detailed import log for a support report. |
 
-Web Setup enriches available details during the import. Its first authenticated
-sync finishes details that require your account. Run the command below manually if
-you imported through the CLI, skipped Twitter/X during Setup, or need to retry pending
-enrichment later:
+## Resume an import
+
+If local ingest is interrupted, rerun the same command. Equivalent ZIP and extracted-folder contents are recognized as the same import. Reimporting a completed archive avoids duplicating its posts; a newer export can add material.
+
+For media still pending, choose Download media in Jobs. If items are marked failed, fix the reported problem and enable Retry failed downloads, or run:
+
+```bash
+tweetnook media download --retry-failed
+```
+
+This downloads saved public media URLs without an X connection. Normal syncs and downloads leave previously failed items alone unless retrying is enabled.
+
+To continue post completion and fill collection gaps, connect X and choose Enrich archive or run:
 
 ```bash
 tweetnook import enrich
 ```
 
-To limit this work:
+Both Enrich archive and Sync now require X credentials. `import enrich --limit 100` completes at most 100 eligible imported posts before syncing your configured collections; the limit doesn't cap that sync. Without credentials, you can continue browsing and downloading media. A deferred import can also fill public details through FxTwitter, but posts needing account access must wait until you connect.
 
-```bash
-tweetnook import enrich --limit 100
-```
+## After importing
 
-This checks up to 100 eligible tweets. Twitter/X may no longer provide some tweets, so
-missing details do not necessarily indicate an import problem.
+Some posts may remain incomplete, protected or unavailable. TweetNook keeps what it has; an unavailable post doesn't mean the whole import failed. Later runs can add details when they're accessible.
 
-## Rerun an interrupted import
+Likes can be browsed in liked order as well as by post date. Older archive history may have uncertain ordering, so that view isn't an exact record of when each like happened.
 
-Run the same import command again. Completed work is retained, and repeated
-imports merge with existing data. An identical completed archive is recognized
-even if you switch between an equivalent ZIP and extracted folder.
-
-If the local import finished and only detail lookups were interrupted, use
-`import enrich` to continue them.
-
-## Control live lookups
-
-| Option | Effect |
-|---|---|
-| `--offline` | Imports local data/media and skips all live follow-up |
-| `--no-enrich` | Skips individual detail lookups, but still allows live timeline checks |
-| `--detail-lookups 100` | Limits individual detail lookups to 100 |
-| `--sample-limit 10` | Imports a small sample from each supported dataset and skips all live follow-up |
-
-For example:
-
-```bash
-tweetnook import x-archive /path/to/archive.zip --detail-lookups 100
-```
-
-With normal enrichment enabled, `--detail-lookups 0` means all eligible tweets.
-With `--no-enrich`, zero means no detail lookups; a positive number enables that
-many lookups despite `--no-enrich`.
-
-> [!NOTE]
-> `--no-enrich` is not an offline mode. Use `--offline` for a full local import
-> without Twitter/X requests, even with valid credentials. It overrides enrichment and
-> detail-lookup options. 
-
-A sample still reads and hashes the full input, so it may take time on a large
-archive. Rerun without `--sample-limit` to import the full archive, even if Setup
-already labels the sample as imported.
-
-## Rebuild imported data
-
-Use `--regen` only when you intend to replace previously imported data:
-
-```bash
-tweetnook import x-archive /path/to/archive.zip --regen
-```
-
-> [!WARNING]
-> Back up first. This removes data and managed media belonging to **all previous
-> archive imports**, then rebuilds from the supplied archive. It is broader than
-> replacing just this ZIP. Data captured directly from Twitter/X and unrelated files are
-> retained.
-> 
-> A normal rerun does not need `--regen`. 
+See [completing saved posts](syncing.md#post-details) for conversations, Articles, and media, and [maintenance](maintenance.md) for backups and moving an archive.

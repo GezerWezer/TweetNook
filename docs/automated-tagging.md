@@ -1,251 +1,86 @@
 # Automated tagging
 
-[User guide](README.md) · [Tags](tags.md) · [Configuration](configuration.md#tagging)
+Automated tagging adds suggested tags and short descriptions to saved posts. It can help you find an image or video by what it shows, even when the original post has little text.
 
-Automated tagging uses Gemini to suggest tags for saved tweets and describe their
-media. It is optional and off by default. You can still archive, search, and add
-manual tags without it.
+This is an optional add-on. It sends selected text, surrounding context, tagging hints, and media being tagged to Google's Gemini service, so decide whether you're comfortable with that before turning it on. Manual tags and the rest of TweetNook work without it.
 
-## Why does it use Google models?
+## Setup
 
-TweetNook uses Gemini for two main reasons:
+Choose Automated tagging when running the installer, or rerun the installer to add it to an existing installation. For an environment you manage yourself:
 
-1. Google offers a free API tier, which makes it possible to try automated
-   tagging without paying. Batching (explained below) can stretch those limits
-   further.
-2. In project testing, Gemini Flash models consistently produced useful tags for
-   tweets whose meaning depended on ambiguous or limited context. Similar models failed with this.
+```bash
+python -m pip install 'tweetnook[automated-tagging]'
+```
 
-## If I choose Paid mode, how much will it cost?
+Restart TweetNook after adding the package. Open Settings > Automated tagging, enter your Gemini API key, and choose Free or Paid usage. Refresh models to see the choices available to that key, then select a model and thinking level. A model appearing in the list doesn't promise that every media type or processing option will work with it; check Google's model documentation for the combination you want.
 
-On my instance, using `gemini-3.6-flash`, Flex processing, and High thinking. The average cost to tag tweets was as follows: (note that YMMV)
+Save the settings and enable tagging. Normal syncs then tag eligible posts. You can also start Automated tags from Jobs or run `tweetnook tag`.
 
-| Tweet type | Successful requests measured | Average cost per tweet | Estimated cost per 1,000 tweets |
-|---|---:|---:|---:|
-| Text only | 35 | $0.00157 | $1.57 |
+## Usage modes
+
+| Mode | What to expect |
+| --- | --- |
+| Free | Groups similar kinds of posts into requests of up to twenty posts. Set the batch size and request limits to suit your account. Google Search is unavailable in this mode. |
+| Paid | Tags one post per request. Choose Standard or Flex processing, and set a spending limit or explicitly allow unlimited spending. Google Search is optional. |
+
+The default Free limits are ten requests per minute and twenty per day. These are TweetNook's settings, not a guarantee of the quota Google gives your account. The Free daily allowance resets at midnight in the Pacific timezone and is counted separately for each model. Retries and split batches also use allowance, and failures can remain counted.
+
+Paid spending controls are local estimates and depend on the usage information available. Other applications using the same Google project aren't included. A budget in TweetNook isn't a billing cap at Google; check your provider's billing controls too.
+
+## Usage limits
+
+For Paid requests with missing billing information, choose whether TweetNook should stop immediately or reserve an estimated amount and continue within your daily budget. You can set a minimum reserve per uncertain request and a maximum number of uncertain requests per UTC day.
+
+Google Search has separate uncertainty controls. You can reserve estimated usage or disable Search for the run. The local Search counter only includes requests made by TweetNook. A safety reserve stops Search before the configured free allowance is used, and the counter rolls over monthly.
+
+## Test a post
+
+In the Test run section, enter the ID of a post already in your archive. The preview uses the settings currently displayed, including unsaved changes. Review its tags, description, and run details before saving your settings.
+
+A preview doesn't change the post's saved tags or description. It still makes Gemini requests and uses any applicable quota, paid spend, or Search allowance. Retries can add requests.
+
+From a terminal:
+
+```bash
+tweetnook tag 123456789 --test
+tweetnook tag --limit 5
+tweetnook tag --batch 10
+```
+
+`--limit` bounds the main request loop, rather than the number of posts or every provider call. Retries and split batches can add calls. `--batch` changes the Free batch size for that invocation. `--model` lets you override the saved model for one run.
+
+## Tagging context
+
+Tagging context can list subjects you often save. These are hints, so a post still needs evidence for the suggested tag. Additional instructions let you express preferences about wording and subjects; TweetNook's built-in rules still apply.
+
+Use `tag:` to search generated labels and `description:` to search descriptions. Suggested tags can be edited manually. If a run reaches its quota or budget, leave the saved work in place and continue later.
+
+## What gets tagged
+
+Normal runs work through newer eligible posts and their directly quoted originals. A post needs usable archived details, and media must already be downloaded. Run Download media first when needed; the default maximum is 100 MiB per media item.
+
+The model is asked for two to five specific tags. Media posts can also get a description and a transcription of prominent text; text-only posts get tags without a generated description. Normal runs skip completed, nonempty tags. Explicitly targeting a post can replace its existing values, so preview first if you've edited them yourself.
+
+Free batching can make the allowance go further, but context from one post may influence another in the same batch. Lower the batch size, down to one, if that affects your results. Common tags from your archive can also help the model reuse names consistently.
+
+## Usage history
+
+The Paid settings panel's Day, Week, Month and Year choices convert your entered amount into a daily allowance. They don't create separate rolling budgets. Paid daily accounting and chart dates use UTC.
+
+View spend history shows estimates, requests, models, media types and observed Search usage. Choose 7 days, 30 days, 3 months, 1 year or Lifetime. Missing usage or prices can leave gaps. These estimates exclude Search/tool fees, account charges and requests from other applications; Google's billing records are the source for actual charges.
+
+TweetNook gets pricing metadata from OpenRouter. Tagging requests go to Google. Uploaded media is cleaned up after requests on a best-effort basis and can remain subject to Google's file-retention rules if cleanup doesn't finish. Check Google's [models](https://ai.google.dev/gemini-api/docs/models), [pricing](https://ai.google.dev/gemini-api/docs/pricing), [Search](https://ai.google.dev/gemini-api/docs/google-search), and [Files](https://ai.google.dev/gemini-api/docs/files) documentation for provider-side terms and capabilities.
+
+## Cost example
+
+Use these figures as a ballpark estimate. They come from successful requests in one project instance using `gemini-3.6-flash`, Flex processing and High thinking. Your collection and current provider rates can produce different costs.
+
+| Post type | Requests measured | Average per post | Estimate for 1,000 similar posts |
+| --- | ---: | ---: | ---: |
+| Text | 35 | $0.00157 | $1.57 |
 | Images | 213 | $0.00312 | $3.12 |
 | Videos | 105 | $0.00411 | $4.11 |
 | GIFs | 18 | $0.00276 | $2.76 |
 | Mixed media | 11 | $0.00355 | $3.55 |
 
-
-
-## Set it up
-
-For a new installation, include `--automated-tagging` when running `install.sh`.
-To add support later, stop TweetNook and any archive jobs, then install the extra
-in the Python environment used by the server. For a new system-wide Linux
-installation (run from root, or prefix these commands with sudo):
-
-```bash
-tweetnook service stop
-/opt/tweetnook/venv/bin/python -I -m pip --isolated install "tweetnook[automated-tagging]"
-```
-
-For a personal installation or older user-based service:
-
-```bash
-"$HOME/.local/share/tweetnook-runtime/venv/bin/python" -I -m pip --isolated install "tweetnook[automated-tagging]"
-```
-
-If you chose a custom runtime location or manage your own virtual environment,
-use that environment's Python instead. Developers using a uv checkout can
-install the extra once with `uv sync --extra automated-tagging`.
-
-1. Restart TweetNook after installing the dependencies. For a systemd
-   installation use `tweetnook service restart`; for a foreground
-   `tweetnook serve` process, stop it and start it again.
-2. Open **Settings → Automated Tagging** and turn on the enable switch to edit
-   its controls.
-3. Enter your Gemini API key, choose **Free** or **Paid**, and select a model.
-   Use **Refresh models** if needed. For Paid mode, set a spend limit.
-4. Choose **Save** when you want to enable these settings for future runs.
-
-If the panel is missing, check that the optional dependencies are installed in
-the same Python environment used by the running TweetNook server.
->[!WARNING]
-> A model appearing in the list does not guarantee it supports every media or
-processing option. Check Google's [model documentation](https://ai.google.dev/gemini-api/docs/models)
-and test your chosen settings.
-
-You can also configure tagging in [`config.toml`](configuration.md#tagging)
-
-
-## Choose Free or Paid mode
-
-| Setting | Free | Paid |
-|---|---|---|
-| Tweets per normal request | Up to 20 | One |
-| Local usage controls | Requests per minute and per day | Estimated daily spend limit |
-| Google Search | Off | Optional |
-| Processing tier | Default Free request path | Standard or Flex |
-
-These are tweetnook's operating modes and local limits. Your Google account,
-chosen model, and provider terms determine actual availability and charges.
-Check [Google's pricing information](https://ai.google.dev/gemini-api/docs/pricing)
-before choosing a mode.
-
-### Free limits
-
-To stretch the free limits, batching is enabled by default. Batching includes
-multiple tweets in the same request. In project testing, batch sizes of 20 still
-generated useful tags and descriptions. The tradeoff is that context from one
-tweet can influence another tweet in the same batch. If this is an issue, reduce
-the batch size or disable batching entirely.
-
-Daily usage is counted per model using the Pacific time zone. Retries and split
-batches also consume the local allowance. Failed requests can remain counted,
-so the local counter may be more conservative than Google's.
-
-### Paid spend limits
-
-Set an amount in the web panel before enabling Paid mode. Its Day, Week, Month,
-and Year choices convert the entered amount into a **daily** allowance. They
-do not create separate rolling weekly or monthly budgets.
-
-The limit is based on local cost estimates. It may be exceeded by a request
-already underway, and it does not cover other applications using your Google
-account. Unknown prices or usage can pause a run so it does not continue with
-an unreliable estimate.
-
-Standard and Flex select different provider processing tiers. Google may restrict
-Search access for Flex on some models. Check
-[Google's pricing information](https://ai.google.dev/gemini-api/docs/pricing)
-for availability and tradeoffs on your chosen model. 
-
-Unlimited spend is available in configuration. Use a finite limit unless you
-intend to remove that guard.
-
-## Preview one tweet
-
-> [!IMPORTANT]
-> A test run makes a real request and can use quota or incur charges, even though it does not save tags.
-
-In the web panel, enter an archived tweet's numeric ID under **Test run** and
-check the preview before running the test. The test uses the current form values
-without saving them.
-
-From the terminal:
-
-```bash
-tweetnook tag --test 1234567890123456789
-```
-
-The terminal test uses your configured settings. Without an ID, it selects one
-eligible tweet. Neither test saves generated tags or descriptions.
-
-Wait for other archive or tagging jobs to finish before running a test.
-
-## Guide the suggestions
-
-**Tagging Context** lets you provide preferred tag hints. Add these hints if you
-are not getting good tag results. For example, if you commonly save tweets about
-Overwatch, providing that as a hint may improve the results.
-
-**Additional User Instructions** lets you add rules for your collection.
-For example:
-
-- Prefer original Japanese titles over localized names.
-- Tag photography posts by genre, such as street photography, astrophotography, or wildlife photography.
-- Tag car posts with the exact manufacturer and model when the vehicle is identifiable
-
-The model can also receive commonly used tags from your archive to encourage
-consistent names. These hints guide suggestions but do not guarantee a
-particular result or override the tweet's content.
-
-## What gets tagged
-
-Normal runs start with newer eligible tweets and skip completed, nonempty tags.
-Failed or empty results can be tried again. A saved tweet or its directly quoted
-original needs usable archived details before it can be tagged.
-
-Media must already be downloaded locally; tagging does not download it from Twitter/X.
-Run [`media download`](enrichment.md#download-media) first if needed. The default
-maximum is 100 MiB per media item.
-
-The model is asked for two to five specific tags. Media can also receive a
-visual description and transcription of prominent text. Text-only tweets receive
-tags without a generated description. Review and edit results in the normal
-[tag editor](tags.md).
-
-## Google Search
-
-In Paid mode, optional Google Search can give the model outside context. One
-tweet can trigger several searches. tweetnook tracks locally observed Search
-usage against a free monthly safety allowance and disables Search for the rest
-of a run if it cannot determine usage reliably.
-
-The allowance only covers this archive's recorded requests. Search charges are
-**not included** in the token-cost estimates shown by tweetnook. See
-[Google's Search grounding documentation](https://ai.google.dev/gemini-api/docs/google-search)
-for provider billing details.
-
-> [!WARNING]
-> If you use the same billing account for other projects, be careful with Google
-> Search: TweetNook cannot see whether those projects have already used part of
-> your free monthly Search allowance.
-
-## View usage and spend
-
-Choose **View spend history** in the Paid spend-limit panel to see estimated
-costs, request counts, models, media types, and observed Search usage. Available
-ranges include 7 days, 30 days, 3 months, 1 year, and Lifetime. Chart dates use UTC.
-
-The figures come from this archive's local usage history. They exclude other
-applications, Search/tool fees, and account charges. Unknown usage or missing
-pricing appears as a gap. Use Google's billing records for actual charges.
-
-Pricing metadata is fetched from OpenRouter; tagging requests go to Google.
-Keep the local usage history with your [backup](maintenance.md) so
-usage controls and spend history remain available after a restore.
-
-## Run tagging
-
-Once enabled, tagging runs after the usual sync follow-up jobs:
-
-```bash
-tweetnook sync
-```
-
-To tag existing eligible tweets without syncing:
-
-```bash
-tweetnook tag
-```
-
-For a bounded run:
-
-```bash
-tweetnook tag --limit 5
-```
-
-`--limit` bounds the main request loop, not the number of tweets or a strict cap
-on all provider calls. Free batches can contain several tweets, and retries or
-split batches can add calls. Paid work runs one tweet at a time.
-
-To target a particular archived tweet:
-
-```bash
-tweetnook tag 1234567890123456789
-```
-
-A Twitter/X status URL also works. Explicit targeting can replace existing tags, so
-use a preview first if you want to inspect the result.
-## Privacy
-
-Depending on the tweet, Google can receive its text, author information, quoted
-context, media, existing tag suggestions, and your additional instructions.
-Some media is uploaded as a file; tweetnook attempts to delete those uploads
-after use, but cleanup can fail.
-
-Data-use and retention terms depend on the provider, service tier, region, and
-features. Review the [Gemini API terms](https://ai.google.dev/gemini-api/terms)
-and [Files documentation](https://ai.google.dev/gemini-api/docs/files) before
-sending private content.
-
-Keep your API key private. Turning tagging off stops future automated tagging;
-it does not erase requests already sent or tags already saved.
-
-For every setting, see [Configuration](configuration.md#tagging). For request
-handling and accounting internals, see the developer
-[Automated tagging guide](development/automated-tagging.md).
+Media length, model, processing options and retries affect your own results. Check the provider's rates before choosing Paid mode.
