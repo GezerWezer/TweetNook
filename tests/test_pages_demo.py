@@ -249,6 +249,9 @@ def test_static_builder_creates_subpath_safe_public_artifact(tmp_path: Path) -> 
     )
 
     assert (output / ".nojekyll").is_file()
+    rendered = (output / "index.html").read_text(encoding="utf-8")
+    assert "Demo replay · adjusted timing · no network requests" not in rendered
+    assert rendered.index('src="demo/jobs-replay.js?') < rendered.index('src="demo/demo-api.js?')
     assert (output / "404.html").read_text(encoding="utf-8") == (output / "index.html").read_text(
         encoding="utf-8"
     )
@@ -258,6 +261,7 @@ def test_static_builder_creates_subpath_safe_public_artifact(tmp_path: Path) -> 
         "static/js/autocomplete.js",
         "static/js/app.js",
         "demo/demo-api.js",
+        "demo/jobs-replay.js",
         "demo/data.json",
         "demo/media/avatars/1.jpg",
         "demo/media/avatars/default.svg",

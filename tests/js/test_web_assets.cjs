@@ -3113,6 +3113,7 @@ test('demo reply metadata keeps body mentions out of the automatic recipient lab
     const context = browserContext();
     const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
     context.window.TWEETNOOK_DEMO = false;
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'jobs-replay.js'), 'utf8'), context);
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'demo-api.js'), 'utf8'), context);
     const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo', 'data.json'), 'utf8'));
     const store = context.window.TweetNookDemo.createStore(fixture);
@@ -4217,6 +4218,7 @@ test('result highlights follow the returned query rather than edits to the searc
 test('demo hides captured media and quote links while preserving ordinary links', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'jobs-replay.js'), 'utf8'), context);
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'demo-api.js'), 'utf8'), context);
     const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo', 'data.json'), 'utf8'));
     const store = context.window.TweetNookDemo.createStore(fixture);
@@ -8934,6 +8936,85 @@ test('Jobs shade and tint share one animation value through close reversal and t
     assert.equal(frames.size, 0);
 });
 
+test('Jobs keeps stage details and tab selection together through live stage gaps', () => {
+    const context = browserContext();
+    context.ResizeObserver = class { observe() {} disconnect() {} };
+    const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
+    vm.runInContext('nookJobsSheet = () => ({sync() {}, destroy() {}})', context);
+    const app = immediateComponent(tweetApp());
+    app.fetchArchiveEnrichmentStatus = () => {};
+    const panel = nookMergeScope(app, nookSyncPanel()), watchers = new Map();
+    panel.$root = {};
+    panel.$watch = (key, callback) => watchers.set(key, callback);
+    panel.init();
+    const keys = ['sync:bookmarks:head', 'threads', 'articles', 'media'];
+    const snapshot = (index, state, runId = 'sync-one') => ({
+        run_id: runId, title: 'tweetnook sync', running: true, success: null, issues: [],
+        steps: keys.map((key, i) => ({
+            key, title: key, state: i < index ? 'complete' : i === index ? state : 'pending',
+            summary: 'Finished.', activity: 'Working',
+        })),
+    });
+    const apply = data => {
+        const before = app.activity && JSON.parse(JSON.stringify(app.activity));
+        app.applyActivityStatus(data);
+        watchers.get('activity')(app.activity, before);
+    };
+    const show = (index, state, runId) => apply({active: true, snapshot: snapshot(index, state, runId)});
+    const assertStep = (index, state) => {
+        assert.equal(panel.focusIndex(), index);
+        assert.equal(panel.selectedStep().key, keys[index]);
+        assert.equal(panel.detail().state, state);
+        assert.notEqual(panel.caption().detailLabel, 'Run result');
+    };
+
+    // A starting run has no active stage yet; its selected tab still owns the details.
+    show(-1, 'pending');
+    assertStep(0, 'pending');
+    for (let index = 0; index < keys.length; index++) {
+        show(index, 'active');
+        assertStep(index, 'active');
+        show(index, 'complete');
+        assertStep(index, 'complete');
+        // Other stages can be skipped while the next worker is preparing.
+        if (index === 1) {
+            const gap = snapshot(index, 'complete');
+            gap.steps[2].state = 'skipped';
+            apply({active: true, snapshot: gap});
+            assertStep(index, 'complete');
+        }
+    }
+    // Inspecting another stage persists across the gap, then follows newly active work.
+    panel.pick(0);
+    show(3, 'complete');
+    assertStep(0, 'complete');
+    show(2, 'active');
+    assertStep(2, 'active');
+    for (const state of ['failed', 'cancelled', 'skipped']) {
+        show(2, state);
+        assertStep(2, state);
+    }
+    // A queued run using the same stage key must clear the previous manual selection.
+    panel.pick(0);
+    show(2, 'active', 'sync-two');
+    assertStep(2, 'active');
+    show(2, 'complete', 'sync-two');
+    assertStep(2, 'complete');
+    for (const success of [true, false]) {
+        apply({active: false, last_snapshot: {...snapshot(4, 'complete', 'sync-two'), running: false, success}});
+        assert.equal(panel.focusIndex(), null);
+        assert.equal(panel.selectedStep(), null);
+        assert.equal(panel.caption().detailLabel, 'Run result');
+        panel.pick(2);
+        assertStep(2, 'complete');
+        panel.pick(null);
+    }
+    // A later run with no active stage cannot inherit a prior run's remembered stage.
+    show(-1, 'pending', 'sync-three');
+    assertStep(0, 'pending');
+    panel.destroy();
+});
+
 test('sync panel shows paused and skipped reasons, new tweets, and the server schedule label', () => {
     const context = browserContext();
     const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
@@ -9006,7 +9087,7 @@ test('jobs panel retains import and enrichment results and keeps them selectable
             assert.equal(panel.headTitle(), `${key === 'import' ? 'Import' : 'Enrichment'} ${success ? 'finished' : success === false ? 'failed' : 'interrupted'}`);
             assert.equal(panel.overview().status, success ? 'All steps finished.' : snapshot.summary);
             assert.ok(!/Sync|Nothing new/.test(panel.overview().left));
-            assert.equal(panel.onDemandShown()[0].key, key);
+            assert.equal(panel.onDemandShown().length, success ? 0 : 1);
             assert.equal(panel.isFocused(panel.jobs[1]), true);
             // A following Setup job must not erase the import's retained details.
             const media = {run_id: 'media-run', title: 'tweetnook media download', started_at: 300, completed_at: 400, success: true, steps: []};
@@ -9027,11 +9108,40 @@ test('jobs panel retains import and enrichment results and keeps them selectable
             panel.jobs[1] = {...panel.jobs[1], last: null, last_snapshot: null, state: 'never'};
             panel.focus(key);
             assert.match(panel.overview().left, /hasn’t run yet/);
-            assert.equal(panel.onDemandShown().length, 1);
+            assert.equal(panel.onDemandShown().length, 0);
             panel.moreOpen = true;
             assert.equal(panel.onDemandShown().length, 2);
         }
     }
+});
+
+test('collapsed On demand shows only failed jobs and expands to all run options', () => {
+    const context = browserContext();
+    const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
+    const panel = nookMergeScope(immediateComponent(tweetApp()), nookSyncPanel());
+    panel.jobs = [
+        {key: 'sync', scheduled: true, state: 'failed'},
+        {key: 'threads', state: 'ok', last: {success: true}, last_snapshot: {success: true, issues: [{message: 'One post unavailable'}]}},
+        {key: 'media', state: 'failed', last: {success: false}},
+        {key: 'urls', state: 'never'},
+        {key: 'articles', state: 'running', last: {success: false}},
+        {key: 'enrich', state: 'queued', last: {success: false}},
+        {key: 'resurrection', state: 'in_sync'},
+        {key: 'import', state: 'ok', last: {success: false, status: 'stopped'}},
+        {key: 'rehydrate', state: 'ok', last: {success: null, status: 'interrupted'}},
+    ];
+    assert.deepEqual(Array.from(panel.onDemandShown(), job => job.key), ['media']);
+    assert.equal(panel.moreLabel(), '7 more');
+    panel.moreOpen = true;
+    assert.deepEqual(Array.from(panel.onDemandShown(), job => job.key), panel.jobs.slice(1).map(job => job.key));
+    assert.equal(panel.moreLabel(), 'Show less');
+    panel.moreOpen = false;
+    // Retrying a failed run removes its exception; its saved failure stays accessible on expansion.
+    panel.jobs[2].state = 'running';
+    assert.equal(panel.onDemandShown().length, 0);
+    assert.equal(panel.moreLabel(), '8 more');
+    panel.jobs[2].state = 'ok';
+    assert.equal(panel.onDemandShown().length, 0);
 });
 
 test('sync panel labels unknown progress without fabricated fractions and animates active work', () => {

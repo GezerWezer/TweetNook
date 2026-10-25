@@ -30,6 +30,7 @@ const context = vm.createContext({
     TextEncoder,
     TextDecoder,
 });
+vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'jobs-replay.js'), 'utf8'), context, {filename: 'jobs-replay.js'});
 vm.runInContext(source, context, {filename: 'demo-api.js'});
 
 const api = window.TweetNookDemo;
@@ -117,23 +118,23 @@ async function main() {
     assert.equal(publicStats.tags.unique_tags, directTags.size);
     assert.deepEqual(publicStats.tags.top_tags, [...directTags].map(([tag, count]) => ({tag, count}))
         .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)).slice(0, 20));
-    // Public history/progress counts come from this actual fixture, not the old synthetic archive.
+    // Jobs playback uses representative recorded runs, separate from the browsing fixture.
     let publicReplayClock = 1000;
     const publicReplayStore = api.createStore(publicFixture, {now: () => publicReplayClock});
     await request(publicReplayStore, 'https://example.test/api/activity/sync', {method: 'POST'});
-    publicReplayClock += 180;
+    publicReplayClock += 152;
     const publicReplay = (await request(publicReplayStore, 'https://example.test/api/activity/status')).body.last_snapshot;
     const publicStep = key => publicReplay.steps.find(step => step.key === key);
-    assert.equal(publicStep('sync:bookmarks:head').total, publicFixture.tweets.filter(tweet => tweet.collections.includes('bookmark')).length);
-    assert.equal(publicStep('sync:likes:head').total, publicFixture.tweets.filter(tweet => tweet.collections.includes('like')).length);
-    assert.equal(publicStep('threads').total, publicFixture.tweets.filter(tweet => !tweet.collections.length).length);
-    assert.equal(publicStep('articles').total, publicFixture.tweets.filter(tweet => tweet.article).length);
-    assert.equal(publicStep('tagging').total, publicFixture.tweets.filter(tweet => tweet.collections.includes('like') && tweet.tags.length).length);
-    assert.equal(publicStep('media').metrics.downloaded, 0);
-    assert.equal(publicStep('tagging').metrics.requests, 0);
+    assert.equal(publicStep('sync:bookmarks:head').total, 20);
+    assert.equal(publicStep('sync:likes:head').total, 20);
+    assert.equal(publicStep('threads').total, 7);
+    assert.equal(publicStep('articles').state, 'skipped');
+    assert.equal(publicStep('tagging'), undefined);
+    assert.equal(publicStep('media').metrics.downloaded, 21);
     const publicReplayLog = await (await publicReplayStore.handle('https://example.test/api/activity/runs/demo-archive-replay/log')).text();
     assert.match(publicReplayLog, /^DEMO REPLAY:/);
-    assert.ok(publicReplayLog.includes(`${publicStep('threads').total} saved context tweets`));
+    assert.match(publicReplayLog, /7 expanded · 150 already known/);
+    assert.match(publicReplayLog, /representative sample runs; timings adjusted/);
     const publicFeed = await request(publicStore, 'https://example.test/api/tweets?collection=all&limit=100');
     assert.equal(publicFeed.body.total, publicFixture.tweets.filter(tweet => tweet.collections.length).length);
     assert.ok(publicFeed.body.tweets.some(tweet => tweet.tweet_id === '2108702633980575995'));
@@ -520,159 +521,156 @@ async function main() {
 
     const startedAt = 1_000_000;
     let clock = startedAt;
-    const seededActivityStore = api.createStore(fixture, {
-        now: () => clock,
-        seedLastActivity: true,
-    });
-    const seededStatus = await request(
-        seededActivityStore,
-        'https://example.test/api/activity/status',
-    );
-    assert.equal(seededStatus.body.active, false);
-    assert.equal(seededStatus.body.last_snapshot.success, true);
-    assert.equal(seededStatus.body.last_snapshot.steps.find(step => step.key === 'media').metrics.downloaded, 0);
-
-    const activityStore = api.createStore(fixture, {now: () => clock});
-    assert.equal((await request(activityStore, 'https://example.test/api/activity/status')).body.active, false);
-    assert.equal((await request(activityStore, 'https://example.test/api/activity/sync', {method: 'POST'})).response.status, 202);
-
-    const replayCounts = {
-        bookmarks: fixture.tweets.filter(tweet => tweet.collections.includes('bookmark')).length,
-        likes: fixture.tweets.filter(tweet => tweet.collections.includes('like')).length,
-        context: fixture.tweets.filter(tweet => !tweet.collections.length).length,
-        articles: fixture.tweets.filter(tweet => tweet.article).length,
-        taggedLikes: fixture.tweets.filter(tweet => tweet.collections.includes('like') && tweet.tags.length).length,
-        media: new Set(fixture.tweets.flatMap(tweet => [...(tweet.media || []), ...(tweet.article?.media || [])])
-            .flatMap(media => [media.url, media.thumbnail_url, media.poster_url]).filter(Boolean)).size,
-    };
-    const expectedPhases = [
-        [0, 'preflight:bookmarks,likes', 'Prepare'],
-        [4, 'sync:bookmarks:head', 'Bookmarks'],
-        [10, 'sync:likes:head', 'Likes'],
-        [20, 'threads', 'Threads'],
-        [80, 'articles', 'Articles'],
-        [100, 'media', 'Media'],
-        [175, 'tagging', 'Automated tags'],
-    ];
-    const expectedStepKeys = [
-        'preflight:bookmarks,likes', 'sync:bookmarks:head', 'sync:likes:head',
-        'threads', 'resurrection', 'articles', 'media', 'urls', 'tagging',
-    ];
-    for (const [offset, key, title] of expectedPhases) {
-        clock = startedAt + offset;
-        const status = await request(activityStore, 'https://example.test/api/activity/status');
-        assert.equal(status.body.active, true);
-        assert.equal(status.body.snapshot.active_step, key);
-        assert.equal(status.body.snapshot.steps.find(step => step.state === 'active').title, title);
-        assert.deepEqual(status.body.snapshot.steps.map(step => step.key), expectedStepKeys);
-        assert.equal(status.body.snapshot.origin, 'demo');
+    const activityStore = api.createStore(fixture, {now: () => clock, config: demoConfig, seedLastActivity: true});
+    const status = () => request(activityStore, 'https://example.test/api/activity/status');
+    const jobs = () => request(activityStore, 'https://example.test/api/jobs');
+    const startJob = key => request(activityStore, `https://example.test/api/jobs/${key}/run`, {method: 'POST', body: JSON.stringify({options: {}})});
+    const seeded = (await status()).body;
+    assert.equal(seeded.active, false);
+    assert.equal(seeded.last_snapshot.success, true);
+    assert.equal(seeded.last_snapshot.elapsed_seconds, 152);
+    const initialJobs = (await jobs()).body;
+    assert.equal(initialJobs.jobs.length, demoConfig.jobs.length);
+    assert.ok(!initialJobs.jobs.some(job => job.key === 'tagging'));
+    for (const job of initialJobs.jobs) {
+        const spec = demoConfig.jobs.find(item => item.key === job.key);
+        assert.deepEqual(job.options, spec.options);
+        assert.deepEqual(job.defaults, spec.defaults);
+        assert.equal(job.command, spec.command);
     }
+    assert.equal(initialJobs.jobs.find(job => job.key === 'threads').available, false);
+    assert.match(initialJobs.jobs.find(job => job.key === 'threads').unavailable_reason, /Demo replay/);
+    assert.equal((await startJob('threads')).response.status, 409);
+    assert.equal((await startJob('missing')).response.status, 404);
+    assert.equal((await startJob('tagging')).response.status, 404);
+    assert.equal((await request(activityStore, 'https://example.test/api/jobs/sync/run', {method: 'POST', body: JSON.stringify({options: {limit: 1}})})).response.status, 422);
+    assert.equal((await startJob('sync')).response.status, 202);
+    assert.equal((await startJob('sync')).response.status, 409);
+    const expectedKeys = ['preflight:bookmarks,likes', 'sync:bookmarks:head', 'sync:likes:head', 'threads', 'resurrection', 'articles', 'media', 'urls'];
+    for (const [offset, key] of [[0, expectedKeys[0]], [1.5, expectedKeys[1]], [2, 'threads'], [151, 'media']]) {
+        clock = startedAt + offset;
+        const current = (await status()).body.snapshot;
+        assert.equal(current.active_step, key);
+        assert.deepEqual(current.steps.map(step => step.key), expectedKeys);
+        assert.equal(current.elapsed_seconds, offset);
+        assert.equal((await jobs()).body.running.key, 'sync');
+        const step = current.steps.find(step => step.state === 'active');
+        assert.equal(step.elapsed_seconds, offset - ({threads: 2, media: 150}[key] || (key === expectedKeys[1] ? 1 : 0)));
+        if (offset === 2) assert.match(step.activity, /Loading archived/);
+        if (offset === 151) {
+            assert.ok(step.rate > 0 && step.eta_seconds > 0);
+            assert.equal((await jobs()).body.jobs.find(job => job.key === 'media').state, 'in_sync');
+        }
+    }
+    clock = startedAt + 152;
+    const completed = (await status()).body.last_snapshot;
+    assert.equal(completed.elapsed_seconds, 152);
+    assert.deepEqual(completed.steps.map(step => step.elapsed_seconds), [1, 1, 0, 148, 0, 0, 2, 0]);
+    assert.equal(completed.steps.find(step => step.key === 'threads').metrics.expanded, 7);
+    assert.equal(completed.steps.find(step => step.key === 'threads').metrics.already_known, 150);
+    assert.equal(completed.steps.find(step => step.key === 'media').metrics.downloaded, 21);
+    assert.equal(completed.steps.filter(step => step.state === 'skipped').length, 3);
+    assert.ok(!completed.steps.some(step => step.key === 'tagging'));
+    assert.equal((await jobs()).body.jobs.find(job => job.key === 'sync').last_snapshot.run_id, completed.run_id);
 
-    clock = startedAt + 4;
-    const bookmarks = await request(activityStore, 'https://example.test/api/activity/status');
-    const bookmarkStep = bookmarks.body.snapshot.steps.find(step => step.key === 'sync:bookmarks:head');
-    assert.equal(bookmarkStep.activity, 'Reading saved bookmarks');
-    assert.equal(bookmarkStep.total, replayCounts.bookmarks);
-    assert.match(bookmarkStep.detail, /Demo replay.*no network requests/);
+    // Check uses both FxTwitter scopes and the separate login recovery phase.
+    const checkStart = clock;
+    assert.equal((await startJob('check')).response.status, 202);
+    for (const offset of [0, 0.1, 1, 3, 5, 10, 15, 17.9, 18.1, 19, 19.9, 20.1, 25, 29.9]) {
+        clock = checkStart + offset;
+        const current = (await status()).body.snapshot;
+        assert.equal(current.title, 'tweetnook check');
+        assert.equal(current.active_step, offset < 18 ? 'check:saves' : offset < 20 ? 'check:unavailable' : 'resurrection');
+        const step = current.steps.find(step => step.state === 'active');
+        assert.ok(step.completed <= step.total && step.completed >= 0);
+        if (step.key.startsWith('check:')) assert.equal(Object.values(step.metrics).reduce((sum, n) => sum + n, 0), step.completed);
+        if (step.rate) assert.ok(Math.abs(step.eta_seconds - (step.total - step.completed) / step.rate) < 1e-8);
+    }
+    clock = checkStart + 30;
+    const checked = (await status()).body.last_snapshot;
+    assert.equal(checked.elapsed_seconds, 30);
+    assert.deepEqual(checked.steps.map(step => step.key), ['check:saves', 'check:unavailable', 'resurrection']);
+    assert.deepEqual(checked.steps.map(step => step.elapsed_seconds), [18, 2, 10]);
+    assert.deepEqual(checked.steps.map(step => step.total), [113, 3, 2]);
+    assert.equal(checked.steps[0].metrics.still_available, 98);
+    assert.equal(checked.steps[0].metrics.failed, 1);
+    assert.equal(checked.steps[1].metrics.restored, 1);
+    assert.equal(checked.steps[2].metrics.still_unavailable, 2);
+    assert.equal(checked.steps[2].metrics.remaining_due, 1);
+    assert.match(checked.summary, /2 restored.*4 protected.*1 failed/);
 
-    clock = startedAt + 100;
-    const media = await request(activityStore, 'https://example.test/api/activity/status');
-    assert.equal(media.body.snapshot.steps.find(step => step.key === 'threads').summary,
-        `${replayCounts.context} saved context tweets`);
-    const recoveryStep = media.body.snapshot.steps.find(step => step.key === 'resurrection');
-    assert.equal(recoveryStep.state, 'skipped');
-    assert.equal(recoveryStep.reason, 'no unavailable tweets in the demo');
-    assert.equal(media.body.snapshot.steps.find(step => step.key === 'articles').metrics.already_saved,
-        replayCounts.articles);
-
-    clock = startedAt + 180;
-    const completed = await request(activityStore, 'https://example.test/api/activity/status');
-    assert.equal(completed.body.active, false);
-    assert.equal(completed.body.last_snapshot.elapsed_seconds, 180);
-    assert.equal(completed.body.last_snapshot.success, true);
-    assert.equal(completed.body.last_snapshot.steps.filter(step => step.state === 'complete').length, 7);
-    assert.equal(completed.body.last_snapshot.summary,
-        `Demo replay · ${replayCounts.bookmarks} bookmarks · ${replayCounts.likes} likes · ${replayCounts.context} context tweets`);
-    assert.equal(completed.body.last_snapshot.steps.find(step => step.key === 'sync:bookmarks:head').metrics.new_tweets, 0);
-    assert.equal(completed.body.last_snapshot.steps.find(step => step.key === 'sync:likes:head').metrics.tweets_seen, replayCounts.likes);
-    const completedMedia = completed.body.last_snapshot.steps.find(step => step.key === 'media');
-    assert.equal(completedMedia.metrics.downloaded, 0);
-    assert.equal(completedMedia.metrics.downloaded_bytes, 0);
-    assert.equal(completedMedia.metrics.already_saved, replayCounts.media);
-    const completedTags = completed.body.last_snapshot.steps.find(step => step.key === 'tagging');
-    assert.equal(completedTags.metrics.already_tagged, replayCounts.taggedLikes);
-    assert.equal(completedTags.metrics.requests, 0);
-    assert.equal(completed.body.last_snapshot.steps.every(step => step.paused === false), true);
-
-    clock += 10;
-    assert.equal((await request(activityStore, 'https://example.test/api/activity/sync', {method: 'POST'})).response.status, 202);
+    // Queue contracts, duplicate protection, natural and stopped handoffs.
+    assert.equal((await startJob('sync')).body.started, true);
+    assert.equal((await startJob('check')).body.queued, true);
+    assert.equal((await startJob('check')).response.status, 409);
+    assert.equal((await jobs()).body.jobs.find(job => job.key === 'check').queue.position, 1);
+    assert.equal((await request(activityStore, 'https://example.test/api/jobs/check/queue', {method: 'DELETE'})).body.removed, true);
+    assert.equal((await request(activityStore, 'https://example.test/api/jobs/check/queue', {method: 'DELETE'})).response.status, 409);
+    await startJob('check');
+    const queuedAt = clock;
+    clock += 162;
+    let current = (await status()).body.snapshot;
+    assert.equal(current.title, 'tweetnook check');
+    assert.equal(current.started_at, queuedAt + 152);
+    assert.equal(current.elapsed_seconds, 10);
+    await startJob('sync');
+    const stoppedRun = current.run_id;
+    const stopResult = await request(activityStore, 'https://example.test/api/activity/stop', {method: 'POST'});
+    assert.equal(stopResult.body.run_id, stoppedRun);
+    assert.equal((await status()).body.snapshot.title, 'tweetnook sync');
+    const stoppedCheck = (await jobs()).body.jobs.find(job => job.key === 'check').last_snapshot;
+    assert.equal(stoppedCheck.stopped, true);
+    assert.equal(stoppedCheck.elapsed_seconds, 10);
+    assert.equal(stoppedCheck.steps[0].state, 'failed');
+    assert.equal(stoppedCheck.steps[1].elapsed_seconds, 0);
     clock += 50;
-    assert.equal((await request(activityStore, 'https://example.test/api/activity/stop', {method: 'POST'})).response.status, 202);
-    const stopped = await request(activityStore, 'https://example.test/api/activity/status');
-    assert.equal(stopped.body.active, false);
-    assert.equal(stopped.body.last_snapshot.stopped, true);
-    assert.equal(stopped.body.last_snapshot.elapsed_seconds, 50);
-    assert.equal(stopped.body.last_snapshot.steps.find(step => step.state === 'failed').key, 'threads');
-    assert.equal(stopped.body.last_snapshot.steps.find(step => step.state === 'failed').completed,
-        Math.floor(replayCounts.context * 37 / 62));
-    assert.equal(stopped.body.last_snapshot.steps.filter(step => step.state === 'skipped').length, 5);
-    assert.equal(stopped.body.last_snapshot.issues[0].message, 'Stopped by user');
-    assert.equal(stopped.body.last_snapshot.issues[0].step, 'threads');
+    assert.equal((await jobs()).body.jobs.find(job => job.key === 'check').last_snapshot.elapsed_seconds, 10);
+    await request(activityStore, 'https://example.test/api/activity/stop', {method: 'POST'});
+    assert.equal((await status()).body.active, false);
+    assert.equal((await request(activityStore, 'https://example.test/api/activity/stop', {method: 'POST'})).response.status, 409);
 
-    // Replay logs grow monotonically, preserving byte offsets between polls.
-    clock += 10;
-    const logStore = api.createStore(fixture, {now: () => clock});
+    // Logs preserve incremental offsets and every completed run remains inspectable.
+    const logStore = api.createStore(fixture, {now: () => clock, config: demoConfig});
     const logRun = (await request(logStore, 'https://example.test/api/activity/sync', {method: 'POST'})).body.run_id;
     const readLive = async offset => {
         const response = await logStore.handle(`https://example.test/api/activity/runs/${logRun}/log?offset=${offset}`);
         return {text: await response.text(), next: Number(response.headers.get('X-Log-Offset'))};
     };
-    clock += 20;
+    clock += 75;
     const early = await readLive(0);
     clock += 40;
     const later = await readLive(early.next);
     const whole = await (await logStore.handle(`https://example.test/api/activity/runs/${logRun}/log`)).text();
     assert.equal(early.text + later.text, whole);
-    assert.match(early.text, /^DEMO REPLAY:.*no Twitter\/X or model requests/m);
-    assert.match(early.text, new RegExp(`^Threads: progress · \\d+/${replayCounts.context} context tweets`, 'm'));
-    assert.match(later.text, new RegExp(`^Threads: progress · \\d+/${replayCounts.context} context tweets`, 'm'));
-
-    // History contains honest fixture replays, with no fabricated failed/import runs.
-    const runs = await request(activityStore, 'https://example.test/api/activity/runs?limit=100');
-    assert.equal(runs.body.runs[0].run_id, stopped.body.last_snapshot.run_id);
-    assert.equal(runs.body.runs[0].status, 'stopped');
-    assert.equal(runs.body.runs.length, 3);
-    assert.ok(runs.body.runs.every(run => run.run_id && run.title.startsWith('tweetnook ') && run.started_at));
-    assert.ok(runs.body.runs.every(run => run.origin === 'demo'));
-    const sample = runs.body.runs.find(run => run.run_id === 'demo-archive-replay');
-    const detail = await request(activityStore, `https://example.test/api/activity/runs/${sample.run_id}`);
-    assert.equal(detail.body.status, sample.status);
-    const fullLog = await (await activityStore.handle(`https://example.test/api/activity/runs/${sample.run_id}/log`)).text();
-    assert.match(fullLog, /^DEMO REPLAY:/);
-    assert.match(fullLog, /^tweetnook sync: started$/m);
-    assert.ok(!/4815|4,815|Connection timed out|Rate limited/.test(fullLog));
-    const first = await activityStore.handle(`https://example.test/api/activity/runs/${sample.run_id}/log?offset=0`);
-    const next = Number(first.headers.get('X-Log-Offset'));
-    assert.equal(await first.text(), fullLog);
-    assert.equal(next, new TextEncoder().encode(fullLog).length);
-    const rest = await activityStore.handle(`https://example.test/api/activity/runs/${sample.run_id}/log?offset=${next}`);
-    assert.equal(await rest.text(), '');
-    assert.equal(rest.headers.get('X-Log-Offset'), String(next));
-    const restarted = await activityStore.handle(`https://example.test/api/activity/runs/${sample.run_id}/log?offset=${next + 100}`);
-    assert.equal(await restarted.text(), fullLog);
-    const liveLog = await (await activityStore.handle(`https://example.test/api/activity/runs/${runs.body.runs[0].run_id}/log`)).text();
-    assert.match(liveLog, /^Threads: failed · Stopped by user$/m);
-    assert.match(liveLog, /^tweetnook sync: stopped · Stopped by user$/m);
+    assert.match(early.text, /^DEMO REPLAY:.*timings adjusted.*No Twitter\/X or model requests/m);
+    assert.match(early.text, /^Threads: progress · \d+\/7 candidates/m);
+    assert.match(later.text, /^Threads: progress · \d+\/7 candidates/m);
+    assert.ok(!/Automated tags|tweetnook tag|api_key/.test(whole));
+    const runs = (await request(activityStore, 'https://example.test/api/activity/runs?limit=100')).body.runs;
+    assert.equal(new Set(runs.map(run => run.run_id)).size, runs.length);
+    assert.ok(runs.length >= 6);
+    assert.ok(runs.every(run => ['tweetnook sync', 'tweetnook check'].includes(run.title) && run.origin === 'demo'));
+    for (const run of runs) {
+        const detail = (await request(activityStore, `https://example.test/api/activity/runs/${run.run_id}`)).body;
+        assert.equal(detail.snapshot.run_id, run.run_id);
+        const response = await activityStore.handle(`https://example.test/api/activity/runs/${run.run_id}/log?offset=0`);
+        const text = await response.text(), next = Number(response.headers.get('X-Log-Offset'));
+        assert.match(text, /^DEMO REPLAY:/);
+        assert.equal(next, new TextEncoder().encode(text).length);
+        assert.equal(await (await activityStore.handle(`https://example.test/api/activity/runs/${run.run_id}/log?offset=${next}`)).text(), '');
+        assert.equal(await (await activityStore.handle(`https://example.test/api/activity/runs/${run.run_id}/log?offset=${next + 100}`)).text(), text);
+    }
     assert.equal((await activityStore.handle('https://example.test/api/activity/runs/missing')).status, 404);
 
-    // New runs pick up session tag edits instead of retaining stale cached counts.
-    const mutableReplay = api.createStore(fixture, {now: () => clock});
-    const taggedLike = fixture.tweets.find(tweet => tweet.collections.includes('like') && tweet.tags.length);
-    await request(mutableReplay, `https://example.test/api/tags/${taggedLike.tweet_id}`, {method: 'DELETE'});
-    await request(mutableReplay, 'https://example.test/api/activity/sync', {method: 'POST'});
-    clock += 180;
-    const changedReplay = (await request(mutableReplay, 'https://example.test/api/activity/status')).body.last_snapshot;
-    assert.equal(changedReplay.steps.find(step => step.key === 'tagging').total, replayCounts.taggedLikes - 1);
+    // Selected collections change the plan, while cached browsing tags stay intact.
+    const collectionStore = api.createStore(fixture, {now: () => clock, config: demoConfig});
+    await request(collectionStore, 'https://example.test/api/config', {method: 'POST', body: JSON.stringify({changes: {'sync.collections': ['tweets']}})});
+    await request(collectionStore, 'https://example.test/api/activity/sync', {method: 'POST'});
+    const collectionSteps = (await request(collectionStore, 'https://example.test/api/activity/status')).body.snapshot.steps;
+    assert.equal(collectionSteps[0].key, 'preflight:tweets');
+    assert.equal(collectionSteps[0].total, 4);
+    assert.deepEqual(collectionSteps.filter(step => step.key.startsWith('sync:')).map(step => step.key), ['sync:tweets:head']);
+    assert.deepEqual(collectionStore.snapshot().tweets.map(tweet => tweet.tags), fixture.tweets.map(tweet => tweet.tags));
 
     // Notices: a sample that can be dismissed.
     const notices = await request(activityStore, 'https://example.test/api/notices');
@@ -684,7 +682,7 @@ async function main() {
     assert.deepEqual((await request(activityStore, 'https://example.test/api/notices')).body.notices, []);
 
     // Configuration: served only when the schema is provided; saves stay in this session.
-    assert.equal((await activityStore.handle('https://example.test/api/config')).status, 404);
+    assert.equal((await api.createStore(fixture).handle('https://example.test/api/config')).status, 404);
     const configStore = api.createStore(fixture, {config: demoConfig});
     assert.deepEqual((await request(configStore, 'https://example.test/api/config/schema')).body, demoConfig.schema);
     assert.deepEqual((await request(configStore, 'https://example.test/api/config/defaults')).body, demoConfig.defaults);

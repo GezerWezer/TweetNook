@@ -22,9 +22,13 @@ async function main() {
     }
 
     const window = {document: {baseURI: 'https://fixture.test/'}, location: {href: 'https://fixture.test/'}};
-    vm.runInNewContext(fs.readFileSync(path.join(root, 'demo/demo-api.js'), 'utf8'), {
+    // demo-api.js builds its Jobs playback from jobs-replay.js, which the demo page loads first.
+    const demoContext = vm.createContext({
         window, URL, Request, Response, JSON, Math, Date, Promise, setTimeout, clearTimeout,
     });
+    for (const file of ['demo/jobs-replay.js', 'demo/demo-api.js']) {
+        vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), demoContext, {filename: file});
+    }
     const fixture = JSON.parse(fs.readFileSync(path.join(root, 'tests/fixtures/demo-synthetic.json'), 'utf8'));
     const store = window.TweetNookDemo.createStore(fixture);
     const response = await store.handle('https://fixture.test/api/tweets?sort=most_likes&limit=100');

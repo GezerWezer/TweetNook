@@ -460,7 +460,10 @@ function nookSyncPanel() {
       if (this.selected !== null && this.steps()[this.selected]) return this.selected;
       if (!this.running()) return null;
       const active = this.steps().findIndex(step => step.state === 'active');
-      return active >= 0 ? active : 0;
+      // Stage completion and the next stage's start arrive as separate updates.
+      // Keep the finished stage visible through that gap while the run continues.
+      const previous = this.steps().findIndex(step => step.key === this.lastActiveStep);
+      return active >= 0 ? active : previous >= 0 ? previous : 0;
     },
     updateTabFades() {
       const nav = this.$refs.stepTabs, frame = this.$refs.stepTabsFrame;
@@ -492,8 +495,8 @@ function nookSyncPanel() {
       this.$nextTick(() => this.$refs.stepTabs.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true }));
     },
     selectedStep() {
-      const steps = this.steps();
-      return this.selected !== null && steps[this.selected] ? steps[this.selected] : steps.find(step => step.state === 'active') || null;
+      const index = this.focusIndex();
+      return index === null ? null : this.steps()[index] || null;
     },
     eta() {
       const step = this.selectedStep(), seconds = Number(step?.eta_seconds);
@@ -610,8 +613,8 @@ function nookSyncPanel() {
     },
     scheduledJobs() { return this.jobs.filter(job => job.scheduled); },
     onDemandJobs() { return this.jobs.filter(job => !job.scheduled); },
-    // Keep used and waiting jobs visible, including Setup's initial import and enrichment.
-    onDemandShown() { return this.moreOpen ? this.onDemandJobs() : this.onDemandJobs().filter(job => this.jobSnapshot(job) || job.last || ['running', 'queued'].includes(job.state)); },
+    // Only job-level failures need attention while On demand is collapsed.
+    onDemandShown() { return this.moreOpen ? this.onDemandJobs() : this.onDemandJobs().filter(job => job.state === 'failed'); },
     moreLabel() { return this.moreOpen ? 'Show less' : `${this.onDemandJobs().length - this.onDemandShown().length} more`; },
     isFocused(job) { return job.key === this.shownKey(); },
     focus(key) { this.focusKey = key === this.defaultFocus() && !this.activity ? null : key; this.selected = null; this.$nextTick(() => this.revealStepTab()); },
@@ -847,11 +850,12 @@ function nookSyncPanel() {
       this.$watch('activity?.run_id', () => { if (this.activityDrawerOpen) this.loadJobs(); });
       this.$watch('activity', (now, before) => {
         const active = now?.steps?.find(step => step.state === 'active')?.key || null;
-        if (Boolean(now) !== Boolean(before) || (active && active !== this.lastActiveStep)) {
+        const newRun = now?.run_id !== before?.run_id;
+        if (newRun || Boolean(now) !== Boolean(before) || (active && active !== this.lastActiveStep)) {
           this.selected = null;
           this.$nextTick(() => this.revealStepTab());
         }
-        this.lastActiveStep = active;
+        if (newRun || !now || active) this.lastActiveStep = active;
         this.$nextTick(() => this.updateTabFades());
       });
       this.$watch('view', view => { if (view === 'main') this.$nextTick(() => this.revealStepTab()); });

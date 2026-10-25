@@ -1986,7 +1986,7 @@ function tweetApp() {
             if (last?.stopped) return `${noun} stopped — open Activity`;
             if (last?.success === false) return `${noun} failed — open Activity`;
             if (last && last.success !== true) return `${noun} interrupted — open Activity`;
-            return this.lastSyncFormatted ? 'Synced ' + this.lastSyncFormatted : 'Your saved tweets, in one place';
+            return this.lastSyncFormatted ? 'Synced ' + this.lastSyncFormatted : 'Open the Jobs panel to start a sync.';
         },
 
         activityRunCounts() {

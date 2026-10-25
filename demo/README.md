@@ -27,7 +27,11 @@ All images, posters, videos, GIFs and avatars must resolve to approved `demo/med
 
 `demo-api.js` handles supported read requests against the fixture. Search, sorts, collection views and detail/Article presentation should be exercised against the same contracts as the server where supported. Appearance preferences can remain local to the visiting browser.
 
-Real server actions such as importing, syncing, scheduling and Gemini requests are disabled in the static demo. A clearly labeled local Demo replay can simulate progress and logs; manual fixture changes remain session-local. The demo shouldn't send a visitor's request to a live personal TweetNook server or imply that a simulated action saved account data.
+The Jobs panel offers local Sync and Availability check replays based on representative runs. Sync follows the sample log's step timings: one second each for Prepare and Bookmarks, an immediate Likes pass, 148 seconds for conversations and two seconds for media. It shows seven expanded and 150 already-known conversations. Check runs in 30 seconds, covering 113 saved posts, three unavailable posts and two login lookups.
+
+Steps, counters, elapsed time, rates, estimates, saved results and logs share the same playback clock. Visitors can stop a replay or queue the other job. Sync follows the selected collections; schedule settings preview the next time without launching background work. Other job names and options come from the production definitions, with their run actions disabled. Automated tagging is omitted from Jobs and replay history; saved tags remain available while browsing.
+
+No real import, sync, check or Gemini requests run in the static demo. Playback and manual fixture changes remain session-local, and the demo never connects to a personal archive or provider account.
 
 ## Tests
 

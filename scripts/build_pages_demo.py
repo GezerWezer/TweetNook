@@ -203,9 +203,30 @@ def demo_config_payload() -> dict[str, Any]:
     The Pages build runs without project dependencies, so this is generated ahead of time into
     demo/config.json (``--refresh-config``); a test keeps the file in step with tweetnook/config.py.
     """
-    from tweetnook.config import AppConfig, get_config_ui_schema
+    from dataclasses import asdict
 
-    return {"schema": get_config_ui_schema(), "defaults": AppConfig().model_dump(mode="json")}
+    from tweetnook.config import AppConfig, get_config_ui_schema
+    from tweetnook.web.jobs import JOBS, option_defaults
+
+    config = AppConfig()
+    return {
+        "schema": get_config_ui_schema(),
+        "defaults": config.model_dump(mode="json"),
+        "jobs": [
+            {
+                "key": job.key,
+                "name": job.name,
+                "description": job.description,
+                "command": " ".join(("tweetnook", *job.cli)),
+                "scheduled": job.scheduled,
+                "sync_step": job.sync_step,
+                "options": [asdict(option) for option in job.options],
+                "defaults": option_defaults(job, config),
+            }
+            for job in JOBS
+            if job.key != "tagging"
+        ],
+    }
 
 
 def write_demo_config(path: Path = DEMO_CONFIG) -> Path:
@@ -231,6 +252,7 @@ def render_index(source: str, *, base_path: str, version: str) -> str:
         f"{json.dumps(f'demo/data.json?v={asset_version}')}; "
         f"window.TWEETNOOK_DEMO_CONFIG_URL = "
         f"{json.dumps(f'demo/config.json?v={asset_version}')};</script>\n"
+        '    <script src="demo/jobs-replay.js"></script>\n'
         '    <script src="demo/demo-api.js"></script>\n'
     )
     _require("<head>" in source, "production index is missing <head>")
@@ -290,6 +312,7 @@ def build_pages_demo(output: Path, *, version: str, base_path: str) -> Path:
     )
     shutil.copy2(DEMO_CONFIG, output / "demo" / "config.json")
     shutil.copy2(DEMO_ROOT / "demo-api.js", output / "demo" / "demo-api.js")
+    shutil.copy2(DEMO_ROOT / "jobs-replay.js", output / "demo" / "jobs-replay.js")
     media_paths = fixture_media_paths(fixture)
     for relative in sorted(media_paths):
         target = output / "demo" / "media" / relative
@@ -311,6 +334,7 @@ def build_pages_demo(output: Path, *, version: str, base_path: str) -> Path:
         output / "demo" / "data.json",
         output / "demo" / "config.json",
         output / "demo" / "demo-api.js",
+        output / "demo" / "jobs-replay.js",
     ]
     expected.extend(output / "demo" / "media" / relative for relative in media_paths)
     missing = [path.relative_to(output) for path in expected if not path.exists()]

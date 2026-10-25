@@ -510,5 +510,351 @@
       "skip_quote_expansion": false,
       "skip_link_previews": false
     }
-  }
+  },
+  "jobs": [
+    {
+      "key": "sync",
+      "name": "Sync",
+      "description": "Bookmarks, likes and your posts",
+      "command": "tweetnook sync",
+      "scheduled": true,
+      "sync_step": null,
+      "options": [],
+      "defaults": {}
+    },
+    {
+      "key": "check",
+      "name": "Availability check",
+      "description": "Are saved posts still on X?",
+      "command": "tweetnook check",
+      "scheduled": true,
+      "sync_step": null,
+      "options": [],
+      "defaults": {}
+    },
+    {
+      "key": "threads",
+      "name": "Expand conversations",
+      "description": "Replies and quotes for saved posts",
+      "command": "tweetnook threads expand",
+      "scheduled": false,
+      "sync_step": "threads",
+      "options": [
+        {
+          "key": "refresh",
+          "kind": "flag",
+          "flag": "--refresh",
+          "label": "Re-fetch expanded threads",
+          "help": "Fetch threads again even if they were already expanded.",
+          "unit": "",
+          "minimum": null,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        },
+        {
+          "key": "reply_linked_depth",
+          "kind": "level",
+          "flag": "--reply-linked-depth",
+          "label": "Include links in replies",
+          "help": "Also follow quotes and links in other people's replies, one hop.",
+          "unit": "",
+          "minimum": null,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        },
+        {
+          "key": "max_linked_depth",
+          "kind": "int",
+          "flag": "--max-linked-depth",
+          "label": "Follow depth",
+          "help": "How far to follow quoted and linked posts. 0 turns this off.",
+          "unit": "hops",
+          "minimum": 0,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        },
+        {
+          "key": "limit",
+          "kind": "int",
+          "flag": "--limit",
+          "label": "Limit",
+          "help": "Leave empty to expand every due thread.",
+          "unit": "threads",
+          "minimum": 1,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        }
+      ],
+      "defaults": {
+        "refresh": false,
+        "reply_linked_depth": false,
+        "max_linked_depth": 50,
+        "limit": null
+      }
+    },
+    {
+      "key": "articles",
+      "name": "Refresh articles",
+      "description": "Article text and covers",
+      "command": "tweetnook articles refresh",
+      "scheduled": false,
+      "sync_step": "articles",
+      "options": [
+        {
+          "key": "all",
+          "kind": "flag",
+          "flag": "--all",
+          "label": "Refresh every article",
+          "help": "Not just articles saved as previews.",
+          "unit": "",
+          "minimum": null,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        },
+        {
+          "key": "limit",
+          "kind": "int",
+          "flag": "--limit",
+          "label": "Limit",
+          "help": "Leave empty for all.",
+          "unit": "articles",
+          "minimum": 1,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        }
+      ],
+      "defaults": {
+        "all": false,
+        "limit": null
+      }
+    },
+    {
+      "key": "media",
+      "name": "Download media",
+      "description": "Photos, GIFs and videos",
+      "command": "tweetnook media download",
+      "scheduled": false,
+      "sync_step": "media",
+      "options": [
+        {
+          "key": "photos_only",
+          "kind": "flag",
+          "flag": "--photos-only",
+          "label": "Photos only",
+          "help": "Skip videos and GIFs.",
+          "unit": "",
+          "minimum": null,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        },
+        {
+          "key": "retry_failed",
+          "kind": "flag",
+          "flag": "--retry-failed",
+          "label": "Retry failed downloads",
+          "help": "Include media items that failed before.",
+          "unit": "",
+          "minimum": null,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        },
+        {
+          "key": "limit",
+          "kind": "int",
+          "flag": "--limit",
+          "label": "Limit",
+          "help": "Leave empty for all media items. Videos and GIFs can include poster files.",
+          "unit": "items",
+          "minimum": 1,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        }
+      ],
+      "defaults": {
+        "photos_only": false,
+        "retry_failed": false,
+        "limit": null
+      }
+    },
+    {
+      "key": "urls",
+      "name": "Link previews",
+      "description": "Titles and cards for saved links",
+      "command": "tweetnook unfurl",
+      "scheduled": false,
+      "sync_step": "urls",
+      "options": [
+        {
+          "key": "retry_failed",
+          "kind": "flag",
+          "flag": "--retry-failed",
+          "label": "Retry failed links",
+          "help": "Include links that failed before, not only new ones.",
+          "unit": "",
+          "minimum": null,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        },
+        {
+          "key": "limit",
+          "kind": "int",
+          "flag": "--limit",
+          "label": "Limit",
+          "help": "Leave empty for all.",
+          "unit": "links",
+          "minimum": 1,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        }
+      ],
+      "defaults": {
+        "retry_failed": false,
+        "limit": null
+      }
+    },
+    {
+      "key": "import",
+      "name": "Import X archive",
+      "description": "Load posts from a downloaded archive",
+      "command": "tweetnook import x-archive",
+      "scheduled": false,
+      "sync_step": null,
+      "options": [
+        {
+          "key": "archive",
+          "kind": "archive",
+          "flag": null,
+          "label": "Archive",
+          "help": "The .zip you downloaded from X.",
+          "unit": "",
+          "minimum": null,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        },
+        {
+          "key": "enrich",
+          "kind": "negflag",
+          "flag": "--no-enrich",
+          "label": "Fill in details after import",
+          "help": "Look up posts the archive only has partly.",
+          "unit": "",
+          "minimum": null,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": [
+            [
+              "offline",
+              true
+            ]
+          ]
+        },
+        {
+          "key": "detail_lookups",
+          "kind": "int",
+          "flag": "--detail-lookups",
+          "label": "Detail lookups",
+          "help": "Most posts to fill in now. Leave empty for all.",
+          "unit": "posts",
+          "minimum": 1,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": [
+            [
+              "offline",
+              true
+            ],
+            [
+              "enrich",
+              false
+            ]
+          ]
+        },
+        {
+          "key": "offline",
+          "kind": "flag",
+          "flag": "--offline",
+          "label": "Offline import",
+          "help": "Load the archive and its media without contacting X.",
+          "unit": "",
+          "minimum": null,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        },
+        {
+          "key": "regen",
+          "kind": "flag",
+          "flag": "--regen",
+          "label": "Replace the earlier import",
+          "help": "Removes rows and media from earlier archive imports first. Synced posts are kept.",
+          "unit": "",
+          "minimum": null,
+          "maximum": null,
+          "placeholder": "",
+          "danger": true,
+          "disabled_when": []
+        }
+      ],
+      "defaults": {
+        "archive": null,
+        "enrich": true,
+        "detail_lookups": null,
+        "offline": false,
+        "regen": false
+      }
+    },
+    {
+      "key": "enrich",
+      "name": "Enrich archive",
+      "description": "Fill in details for imported posts",
+      "command": "tweetnook import enrich",
+      "scheduled": false,
+      "sync_step": null,
+      "options": [
+        {
+          "key": "limit",
+          "kind": "int",
+          "flag": "--limit",
+          "label": "Limit",
+          "help": "Leave empty to fill in every post due now.",
+          "unit": "posts",
+          "minimum": 1,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        }
+      ],
+      "defaults": {
+        "limit": null
+      }
+    }
+  ]
 }

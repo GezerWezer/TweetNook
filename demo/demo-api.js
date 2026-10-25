@@ -255,8 +255,7 @@
             ? options.now
             : () => Date.now() / 1000;
         const runtime = {
-            activity: null,
-            lastActivity: null,
+            jobSpecs: clone(options.config?.jobs || []),
             schedule: {
                 enabled: true,
                 cadence: 'daily',
@@ -270,7 +269,7 @@
                 timezone: 'local',
             },
             automatedTagging: {
-                enabled: true,
+                enabled: false,
                 api_key: 'demo-only',
                 api_mode: 'paid',
                 model: fixture.demo_metadata?.tagging?.model || 'gemini-3.6-flash',
@@ -459,185 +458,19 @@
                 .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag));
         }
 
-        // A compressed, local replay of the published archive, using the production
-        // pipeline's phase/log shapes. These are playback times, not captured run timings.
-        const syncDurationSeconds = 180;
-        const replayNotice = 'DEMO REPLAY: local archive only; no Twitter/X or model requests. Timings are playback timings.';
-
-        function replayInventory() {
-            const rows = state.tweets;
-            const liked = rows.filter(tweet => tweet.collections.includes('like'));
-            const assets = new Set();
-            const links = new Set();
-            for (const tweet of rows) {
-                for (const media of [...(tweet.media || []), ...(tweet.article?.media || [])]) {
-                    for (const url of [media.url, media.thumbnail_url, media.poster_url]) {
-                        if (url) assets.add(url);
-                    }
-                }
-                for (const url of tweet.urls || []) links.add(url.expanded_url || url.url);
-            }
-            return {
-                bookmarks: rows.filter(tweet => tweet.collections.includes('bookmark')).length,
-                likes: liked.length,
-                context: rows.filter(tweet => !tweet.collections.length).length,
-                articles: rows.filter(tweet => tweet.article).length,
-                media: assets.size,
-                urls: links.size,
-                taggedLikes: liked.filter(tweet => tweet.tags?.length).length,
-            };
-        }
-
-        function replayPhases(counts) {
-            const phase = (key, title, start, end, total, unit, activity, summary, metrics = {}, extra = {}) => ({
-                key, title, start, end, total, unit,
-                summary: total === 0 ? `skipped due to no saved ${unit} to replay` : summary,
-                metrics,
-                detail: 'Demo replay · saved local data · no network requests',
-                showRate: false,
-                showEta: false,
-                skip: total === 0,
-                reason: total === 0 ? `no saved ${unit} to replay` : '',
-                resolveScene(stepElapsed) {
-                    const ratio = Math.max(0, Math.min(1, stepElapsed / (end - start || 1)));
-                    const completed = Math.min(total, Math.floor(total * ratio));
-                    return {completed, activity, counters: `${completed}/${total} ${unit} reviewed`};
-                },
-                ...extra,
-            });
-            return [
-                phase('preflight:bookmarks,likes', 'Prepare', 0, 3, 1, 'archive',
-                    'Opening the local demo archive', 'Demo archive ready'),
-                phase('sync:bookmarks:head', 'Bookmarks', 3, 8, counts.bookmarks, 'bookmarks',
-                    'Reading saved bookmarks', `${counts.bookmarks} saved bookmarks`,
-                    {new_tweets: 0, tweets_seen: counts.bookmarks, pages: 0}),
-                phase('sync:likes:head', 'Likes', 8, 13, counts.likes, 'likes',
-                    'Reading saved Likes', `${counts.likes} saved Likes`,
-                    {new_tweets: 0, tweets_seen: counts.likes, pages: 0}),
-                phase('threads', 'Threads', 13, 75, counts.context, 'context tweets',
-                    'Reviewing saved conversation context', `${counts.context} saved context tweets`,
-                    {expanded: 0, already_known: counts.context, failed: 0}),
-                phase('resurrection', 'Unavailable tweets', 75, 75, 0, 'unavailable tweets', '',
-                    'skipped due to no unavailable tweets in the demo', {},
-                    {reason: 'no unavailable tweets in the demo'}),
-                phase('articles', 'Articles', 75, 95, counts.articles, 'articles',
-                    'Reading saved article content', `${counts.articles} saved articles`,
-                    {updated: 0, already_saved: counts.articles}),
-                phase('media', 'Media', 95, 160, counts.media, 'items',
-                    'Reviewing cached attachments and posters', `${counts.media} cached items · 0 downloads`,
-                    {downloaded: 0, downloaded_bytes: 0, already_saved: counts.media, failed: 0}),
-                phase('urls', 'Link previews', 160, 170, counts.urls, 'URLs',
-                    'Reading saved URL records', `${counts.urls} saved URLs · 0 requests`,
-                    {updated: 0, already_saved: counts.urls, failed: 0}),
-                phase('tagging', 'Automated tags', 170, 180, counts.taggedLikes, 'tagged Likes',
-                    'Reading cached tags for liked tweets', `${counts.taggedLikes} liked tweets have tags · 0 requests`,
-                    {tagged: 0, already_tagged: counts.taggedLikes, requests: 0}),
-            ];
-        }
-
-        function replaySummary(counts) {
-            return `Demo replay · ${counts.bookmarks} bookmarks · ${counts.likes} likes · ${counts.context} context tweets`;
-        }
-
-        function progressScene(phase, ratio, stepElapsed) {
-            if (phase.resolveScene) return phase.resolveScene(stepElapsed);
-            return phase.scenes.reduce(
-                (selected, scene) => ratio >= scene.at ? scene : selected,
-                phase.scenes[0],
-            );
-        }
-
-        function activitySnapshot() {
-            if (!runtime.activity) return null;
-            const now = nowSeconds();
-            const elapsed = Math.max(0, now - runtime.activity.startedAt);
-            const stopped = runtime.activity.stopped;
-            const complete = elapsed >= syncDurationSeconds || stopped;
-            const displayElapsed = Math.min(elapsed, syncDurationSeconds);
-            const steps = runtime.activity.phases.map(phase => {
-                const scheduledSkip = Boolean(phase.skip) && elapsed >= phase.start;
-                let stateName = phase.skip
-                    ? scheduledSkip ? 'skipped' : 'pending'
-                    : elapsed >= phase.end ? 'complete' : elapsed >= phase.start ? 'active' : 'pending';
-                if (stopped && stateName === 'active') stateName = 'failed';
-                if (stopped && stateName === 'pending') stateName = 'skipped';
-                const phaseDuration = phase.end - phase.start;
-                const ratio = phaseDuration <= 0
-                    ? 1
-                    : Math.max(0, Math.min(1, (elapsed - phase.start) / phaseDuration));
-                const stepElapsed = Math.max(0, Math.min(phaseDuration, elapsed - phase.start));
-                const scene = progressScene(phase, ratio, stepElapsed);
-                const completed = stateName === 'complete' ? phase.total : stateName === 'skipped' ? 0 : scene.completed;
-                const rate = phase.showRate === false || completed <= 0 || stepElapsed <= 0
-                    ? null
-                    : completed / stepElapsed;
-                const eta = phase.showEta === false || rate === null || completed >= phase.total
-                    ? null
-                    : (phase.total - completed) / rate;
-                return {
-                    key: phase.key,
-                    title: phase.title,
-                    state: stateName,
-                    activity: stateName === 'active' ? scene.activity : '',
-                    summary: stateName === 'complete'
-                        ? phase.summary
-                        : stateName === 'failed'
-                            ? 'Stopped by user'
-                            : stateName === 'skipped'
-                                ? scheduledSkip
-                                    ? phase.summary
-                                    : 'skipped due to an earlier failure stopped the command'
-                                : '',
-                    metrics: stateName === 'complete' ? clone(phase.metrics || {}) : {},
-                    reason: stateName === 'skipped'
-                        ? scheduledSkip ? phase.reason || '' : 'an earlier failure stopped the command'
-                        : null,
-                    paused: false,
-                    completed,
-                    total: phase.total,
-                    unit: phase.unit,
-                    counters: stateName === 'active' ? scene.counters : '',
-                    detail: phase.detail,
-                    elapsed_seconds: stepElapsed,
-                    rate,
-                    rate_unit: phase.rateUnit || `${phase.unit}/s`,
-                    eta_seconds: stateName === 'active' ? eta : null,
-                    show_progress: phase.showProgress !== false,
-                };
-            });
-            const activeStep = steps.find(step => step.state === 'active');
-            const snapshot = {
-                version: 1,
-                run_id: runtime.activity.runId,
-                origin: 'demo',
-                pid: 1,
-                title: 'tweetnook sync',
-                running: !complete,
-                success: complete ? !stopped : null,
-                stopped,
-                summary: stopped
-                    ? 'Stopped by user'
-                    : complete
-                        ? replaySummary(runtime.activity.counts)
-                        : '',
-                started_at: runtime.activity.startedAt,
-                updated_at: now,
-                completed_at: complete
-                    ? (runtime.activity.stoppedAt || runtime.activity.startedAt + syncDurationSeconds)
-                    : null,
-                elapsed_seconds: displayElapsed,
-                active_step: activeStep?.key || null,
-                steps,
-                issues: stopped
-                    ? [{level: 'error', message: 'Stopped by user', count: 1, latest: null, step: steps.find(step => step.state === 'failed')?.key || null}]
-                    : [],
-            };
-            if (complete) {
-                runtime.lastActivity = snapshot;
-                runtime.activity = null;
-            }
-            return snapshot;
-        }
+        const jobsReplay = global.TweetNookDemoJobs.createReplay({
+            now: nowSeconds,
+            specs: runtime.jobSpecs.length ? runtime.jobSpecs : [
+                {key: 'sync', command: 'tweetnook sync', scheduled: true},
+                {key: 'check', command: 'tweetnook check', scheduled: true},
+            ],
+            schedule: scheduleStatus,
+            collections: () => runtime.config?.values.sync.collections || ['bookmarks', 'likes'],
+            seedLastActivity: options.seedLastActivity,
+        });
+        const replayResponse = (result, successStatus = 200) => result.error
+            ? errorResponse(result.error, result.status)
+            : jsonResponse(result, successStatus);
 
         const WEEKDAY_PLURALS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
         function ordinal(n) {
@@ -701,106 +534,8 @@
             };
         }
 
-        // These histories replay the current fixture, not a private server/account.
-        // The log grammar follows production activity_history; origin and the first
-        // line make the local replay and its artificial playback duration explicit.
-        function sampleRun(runId, title, seconds, summary, lines) {
-            const startedAt = fixtureDate(state.generated_at) || Math.floor(nowSeconds());
-            return {
-                run: {
-                    run_id: runId,
-                    title,
-                    origin: 'demo',
-                    status: 'completed',
-                    started_at: startedAt,
-                    completed_at: startedAt + seconds,
-                    exit_code: 0,
-                    summary,
-                },
-                log: [replayNotice, ...lines].join('\n') + '\n',
-            };
-        }
-        const initialReplayCounts = replayInventory();
-        const sampleRuns = [
-            sampleRun('demo-archive-replay', 'tweetnook sync', syncDurationSeconds,
-                replaySummary(initialReplayCounts), [
-                    'tweetnook sync: started',
-                    ...replayPhases(initialReplayCounts).flatMap(phase => phase.skip
-                        ? [`${phase.title}: ${phase.summary.startsWith('skipped') ? phase.summary : `skipped due to ${phase.reason}`}`]
-                        : [
-                            `${phase.title}: starting · total=${phase.total} ${phase.unit} · ${phase.detail}`,
-                            `${phase.title}: complete · ${phase.summary}`,
-                        ]),
-                    `tweetnook sync: complete · ${replaySummary(initialReplayCounts)}`,
-                ]),
-            sampleRun('demo-tags-replay', 'tweetnook tag', 0,
-                `Demo replay · ${initialReplayCounts.taggedLikes}/${initialReplayCounts.likes} liked tweets have cached tags`, [
-                    'tweetnook tag: started',
-                    `Automated tags: complete · ${initialReplayCounts.taggedLikes}/${initialReplayCounts.likes} liked tweets have cached tags · 0 model requests`,
-                    'tweetnook tag: complete · Demo replay · cached results only',
-                ]),
-        ];
-
-        // The simulated sync (running or last finished) as an Activity logs run.
-        function liveRun() {
-            const snapshot = activitySnapshot() || runtime.lastActivity;
-            if (!snapshot?.run_id) return null;
-            const status = snapshot.running ? 'running' : snapshot.stopped ? 'stopped' : snapshot.success === false ? 'failed' : 'completed';
-            return {
-                snapshot,
-                run: {
-                    run_id: snapshot.run_id,
-                    title: 'tweetnook sync',
-                    origin: snapshot.origin || 'web',
-                    status,
-                    started_at: snapshot.started_at,
-                    completed_at: snapshot.running ? null : snapshot.completed_at,
-                    exit_code: snapshot.running ? null : status === 'completed' ? 0 : 1,
-                    summary: snapshot.summary || '',
-                },
-            };
-        }
-        // The console.log lines the pipeline would have written so far, from the run's steps. Like a real
-        // log it only grows: each read appends the lines that are new since the last one.
-        const liveLogs = new Map();
-        function liveLog(snapshot) {
-            const log = liveLogs.get(snapshot.run_id) || {lines: [], seen: new Set()};
-            liveLogs.set(snapshot.run_id, log);
-            for (const line of liveLogLines(snapshot)) {
-                if (log.seen.has(line)) continue;
-                log.seen.add(line);
-                log.lines.push(line);
-            }
-            return log.lines.join('\n') + '\n';
-        }
-        function liveLogLines(snapshot) {
-            const lines = [replayNotice, 'tweetnook sync: started'];
-            for (const step of snapshot.steps || []) {
-                if (step.state === 'pending') continue;
-                if (step.state === 'skipped') {
-                    lines.push(`${step.title}: ${step.summary || 'skipped'}`);
-                    continue;
-                }
-                lines.push(`${step.title}: starting${step.total ? ` · total=${step.total} ${step.unit}` : ''}${step.detail ? ` · ${step.detail}` : ''}`);
-                if (step.total && step.state === 'active') {
-                    lines.push(`${step.title}: progress · ${step.completed}/${step.total} ${step.unit}${step.activity ? ` · ${step.activity}` : ''}${step.counters ? ` · ${step.counters}` : ''}`);
-                }
-                if (step.state === 'complete') lines.push(`${step.title}: complete · ${step.summary || 'done'}`);
-                if (step.state === 'failed') lines.push(`${step.title}: failed · ${step.summary || 'stopped'}`);
-            }
-            for (const issue of snapshot.issues || []) {
-                lines.push(`${issue.level === 'error' ? 'ERROR' : 'WARNING'}: ${issue.message}${issue.count > 1 ? ` · occurrences=${issue.count}` : ''}`);
-            }
-            if (!snapshot.running) {
-                const outcome = snapshot.stopped ? 'stopped' : snapshot.success === false ? 'failed' : 'complete';
-                lines.push(`tweetnook sync: ${outcome}${snapshot.summary ? ` · ${snapshot.summary}` : ''}`);
-            }
-            return lines;
-        }
         function findRun(runId) {
-            const live = liveRun();
-            if (live?.run.run_id === runId) return {run: live.run, log: liveLog(live.snapshot)};
-            return sampleRuns.find(item => item.run.run_id === runId) || null;
+            return jobsReplay.findRun(runId);
         }
         // Complete lines after a byte offset, like activity_history.read_run_log_since().
         function logSince(text, offset) {
@@ -1141,32 +876,21 @@
             }
             if (path.endsWith('/api/stats/refresh') && method === 'POST') return jsonResponse(statsSnapshot());
 
+            if (path.endsWith('/api/jobs') && method === 'GET') return jsonResponse(jobsReplay.jobs());
+            const jobMatch = path.match(/\/api\/jobs\/([^/]+)\/(run|queue)$/);
+            if (jobMatch && jobMatch[2] === 'run' && method === 'POST') {
+                return replayResponse(jobsReplay.start(jobMatch[1], body.options ?? {}), 202);
+            }
+            if (jobMatch && jobMatch[2] === 'queue' && method === 'DELETE') {
+                return replayResponse(jobsReplay.unqueue(jobMatch[1]));
+            }
             if (path.endsWith('/api/activity/status') && method === 'GET') {
-                const snapshot = activitySnapshot();
-                return jsonResponse({active: Boolean(snapshot?.running), snapshot: snapshot?.running ? snapshot : null, last_snapshot: snapshot?.running ? null : (snapshot || runtime.lastActivity), schedule: scheduleStatus()});
+                return jsonResponse({...jobsReplay.status(), schedule: scheduleStatus()});
             }
             if (path.endsWith('/api/activity/sync') && method === 'POST') {
-                if (runtime.activity) return errorResponse('A demo sync is already running', 409);
-                const startedAt = nowSeconds();
-                const counts = replayInventory();
-                runtime.activity = {
-                    counts,
-                    phases: replayPhases(counts),
-                    runId: `demo-${Math.floor(startedAt * 1000)}`,
-                    startedAt,
-                    stopped: false,
-                    stoppedAt: null,
-                };
-                runtime.lastActivity = null;
-                return jsonResponse({started: true, kind: 'sync', run_id: runtime.activity.runId}, 202);
+                return replayResponse(jobsReplay.start('sync'), 202);
             }
-            if (path.endsWith('/api/activity/stop') && method === 'POST') {
-                if (!runtime.activity) return errorResponse('No task is running', 409);
-                runtime.activity.stopped = true;
-                runtime.activity.stoppedAt = nowSeconds();
-                activitySnapshot();
-                return jsonResponse({stopping: true, run_id: runtime.lastActivity?.run_id}, 202);
-            }
+            if (path.endsWith('/api/activity/stop') && method === 'POST') return replayResponse(jobsReplay.stop(), 202);
             if (path.endsWith('/api/activity/schedule') && method === 'GET') return jsonResponse(scheduleStatus());
             if (path.endsWith('/api/activity/schedule') && method === 'PUT') {
                 runtime.schedule = {...runtime.schedule, ...body};
@@ -1174,8 +898,8 @@
             }
 
             if (path.endsWith('/api/activity/runs') && method === 'GET') {
-                const live = liveRun();
-                return jsonResponse({runs: [...(live ? [live.run] : []), ...sampleRuns.map(item => clone(item.run))]});
+                const limit = Math.max(1, Number(url.searchParams.get('limit')) || 100);
+                return jsonResponse({runs: jobsReplay.runs().slice(0, limit)});
             }
             const runMatch = path.match(/\/api\/activity\/runs\/([^/]+)(\/log)?$/);
             if (runMatch && method === 'GET') {
@@ -1257,19 +981,6 @@
             }
 
             return errorResponse(`The static demo does not implement ${method} ${path}`, 404);
-        }
-
-        if (options.seedLastActivity) {
-            const finishedAt = nowSeconds() - 600;
-            runtime.activity = {
-                runId: 'demo-last-sync',
-                counts: initialReplayCounts,
-                phases: replayPhases(initialReplayCounts),
-                startedAt: finishedAt - syncDurationSeconds,
-                stopped: false,
-                stoppedAt: null,
-            };
-            activitySnapshot();
         }
 
         return {
