@@ -184,8 +184,9 @@ Type words and filters together in the web app's search box:
 **Unhide**; it stays in your archive.
 
 Posts without captured content are hidden from feeds and searches by default.
-Use `is:uncaptured` to find them. Saved copies remain visible after a post
-becomes unavailable on X. `has:note` includes removed notes in saved history
+Use `is:uncaptured` to find them. Saved text, media, and Articles remain visible
+with a warning after a post becomes unavailable or is deleted on X.
+`has:note` includes removed notes in saved history
 and notes on directly quoted posts, including quotes outside your collections.
 
 In the web search box, edit `tag:` and `description:` values inside their

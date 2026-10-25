@@ -8151,7 +8151,9 @@ function tweetApp() {
 
         isTextPlaceholderTweet(tweet) {
             if (!tweet || this.isPlaceholderTweet(tweet)) return false;
+            if (tweet.media?.length || tweet.card_media?.length || this.articleForTweet(tweet)) return false;
             const raw = tweet.raw_json?.raw_json || tweet.raw_json || tweet;
+            if (raw?.legacy?.extended_entities?.media?.length || raw?.legacy?.entities?.media?.length) return false;
             const text = tweet.text || raw?.legacy?.full_text || raw?.full_text || '';
             return Boolean(this.getTweetId(tweet)) && !String(text).trim();
         },

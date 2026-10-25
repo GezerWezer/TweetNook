@@ -132,9 +132,11 @@ Tweet and quote views have copyable URLs (`/post/<tweet-id>` and
 `/post/<tweet-id>/quotes`), so they can be bookmarked, refreshed, or shared with
 someone who can access the same TweetNook server and archive.
 
-The conversation contains what tweetnook has captured. Gaps can mean a tweet
-has not been downloaded yet or Twitter/X no longer makes it available. A placeholder
-explains the reason when known. Quote counts refer to your archive's saved
+The conversation contains what tweetnook has captured. Saved text, media, and
+Articles remain readable with a warning if the original becomes unavailable or
+is deleted on Twitter/X. This also applies to saved quotes and reposts. A
+placeholder means there is no saved content to show and explains the reason
+when known. Quote counts refer to your archive's saved
 quotes, not the total on Twitter/X.
 
 A wide window can show the feed and conversation side by side. Smaller screens

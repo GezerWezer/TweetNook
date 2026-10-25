@@ -397,7 +397,7 @@ def test_api_tweets_has_media_uses_sql_pagination_without_export():
 
 
 def test_api_tweets_includes_unavailable_tombstones_as_placeholders():
-    unavailable = _row(text="This Post is from a suspended account. {learnmore}")
+    unavailable = _row(text="This Post is from a suspended account. {learnmore}", media=[])
     store = ListingStore([unavailable, _row(tweet_id="201")])
     result = _list_tweets(store, sort="oldest", limit=1)
     assert [tweet["tweet_id"] for tweet in result["tweets"]] == ["200"]
@@ -418,6 +418,7 @@ def test_api_tweets_includes_unavailable_tombstones_as_placeholders():
 def test_api_tweets_uses_canonical_state_instead_of_membership_text():
     terminal = _row(
         tweet_id="terminal",
+        media=[],
         text="You\u2019re unable to view this Post because this account owner limits who "
         "can view their Posts. {learnmore}",
     )

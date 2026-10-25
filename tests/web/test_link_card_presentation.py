@@ -60,7 +60,7 @@ def test_link_card_media_survives_feed_thread_quote_and_retweet_presentation(
         assert main["card_media"][0]["download"]["local_path"] == "media/1/card.jpg"
 
 
-def test_link_card_images_do_not_match_tweet_media_filters_or_leak_into_placeholders(tmp_path):
+def test_link_card_images_do_not_match_tweet_media_filters_and_survive_deletion(tmp_path):
     with closing(ArchiveStore(tmp_path / "archive.db", create=True)) as store:
         raw = make_tweet_result("1", "link only")
         raw["card"] = make_link_card()
@@ -97,6 +97,6 @@ def test_link_card_images_do_not_match_tweet_media_filters_or_leak_into_placehol
         )
         tweet = store.fetch_tweets_by_ids(["1"], include_objects=True)[0]
         annotate_web_tweets(store, [tweet])
-        assert tweet["availability"]["placeholder"]
+        assert tweet["availability"]["placeholder"] is False
         assert tweet["media"] == []
-        assert not tweet.get("card_media")
+        assert tweet["card_media"]
