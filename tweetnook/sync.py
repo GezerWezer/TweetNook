@@ -172,7 +172,7 @@ def plan_sync_pipeline(
                 "tweets",
             ),
             (followups.articles, "articles", "Articles", "tweets"),
-            (followups.media, "media", "Media", "files"),
+            (followups.media, "media", "Media", "items"),
             (followups.unfurl, "urls", "Link previews", "URLs"),
         )
         for enabled, key, title, unit in followup_steps:

@@ -307,7 +307,8 @@ def test_media_download_help_describes_flags() -> None:
 
     assert result.exit_code == 0
     assert "Download archived tweet media files." in result.stdout
-    assert "Maximum number of pending media rows" in result.stdout
+    assert "Maximum number of media items" in result.stdout
+    assert "poster file" in result.stdout
     assert "Only download photo rows and skip video or" in result.stdout
     assert "Retry rows that previously failed" in result.stdout
 
@@ -456,6 +457,49 @@ def test_article_cli_uses_shared_query_and_hides_saved_posts(paths, monkeypatch,
     assert "900002" not in result.output
     assert "900003" not in result.output
     assert "article" in result.output
+
+
+@pytest.mark.parametrize("types", ["article", "post,article"])
+@pytest.mark.parametrize(("sort", "expected"), [("oldest", "910001"), ("newest", "910003")])
+def test_article_cli_sorts_all_matches_before_limiting(paths, monkeypatch, types, sort, expected):
+    store = open_archive_store(paths, create=True)
+    rows = []
+    for tweet_id, year, text in [
+        ("910001", 2024, "coffee"),
+        ("910002", 2025, "coffee " * 10),
+        ("910003", 2026, "coffee"),
+        ("910004", None, "coffee " * 20),
+    ]:
+        rows.extend(
+            [
+                store._record(
+                    row_key=f"tweet:bookmark::{tweet_id}",
+                    record_type="tweet",
+                    tweet_id=tweet_id,
+                    collection_type="bookmark",
+                    text="saved post",
+                    created_at=f"Sat Mar 14 00:00:00 +0000 {year}" if year else None,
+                ),
+                store._record(
+                    row_key=f"article:{tweet_id}",
+                    record_type="article",
+                    tweet_id=tweet_id,
+                    title=text,
+                ),
+            ]
+        )
+    store.merge_rows(rows)
+    monkeypatch.setattr(cli, "_open_store_for_read", lambda console: (store, paths))
+    monkeypatch.setattr(cli, "_with_auto_optimize", lambda store, paths, console, fn: fn(store))
+
+    result = runner.invoke(
+        cli.app, ["search", "coffee", "--type", types, "--sort", sort, "--limit", "1"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert expected in result.output
+    for tweet_id in {"910001", "910002", "910003", "910004"} - {expected}:
+        assert tweet_id not in result.output
 
 
 def test_sort_search_results_reorders_newest_then_oldest() -> None:

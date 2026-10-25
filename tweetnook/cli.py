@@ -42,6 +42,7 @@ from tweetnook.media import download_media
 from tweetnook.pipeline import PipelineReporter, current_pipeline
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids
 from tweetnook.search import SearchQueryError, parse_search_query, search_posts
+from tweetnook.search import sort_search_results as _sort_search_results
 from tweetnook.stats import build_stats_report
 from tweetnook.stats.render_cli import render_stats_report
 from tweetnook.storage import open_archive_store
@@ -196,7 +197,9 @@ VIEW_LIMIT_HELP = "Maximum number of rows to display."
 VIEW_SORT_HELP = "Display order: newest or oldest."
 EXPORT_COLLECTION_HELP = "Collection to export: bookmarks, likes, tweets, or all."
 EXPORT_OUT_HELP = "Destination file path. Defaults to the exports/ directory."
-MEDIA_LIMIT_HELP = "Maximum number of pending media rows to process."
+MEDIA_LIMIT_HELP = (
+    "Maximum number of media items to process. A video or GIF can include a poster file."
+)
 MEDIA_PHOTOS_ONLY_HELP = "Only download photo rows and skip video or animated GIF media."
 RETRY_FAILED_HELP = "Retry rows that previously failed instead of only untouched pending rows."
 UNFURL_LIMIT_HELP = "Maximum number of saved URL rows to fetch metadata for."
@@ -388,9 +391,9 @@ def _plan_archive_import_pipeline(
             "media",
             "Media",
             total=1,
-            unit="files",
+            unit="items",
             detail="pending archived media selected for local download",
-            rate_unit="files/s",
+            rate_unit="items/s",
         )
 
 
@@ -755,41 +758,6 @@ def _format_created_at(raw: str | None) -> str:
         return f"{date_part}\n{time_part}"
     except (ValueError, TypeError):
         return raw
-
-
-def _parse_created_at(raw: str | None) -> datetime | None:
-    if not raw:
-        return None
-    try:
-        return datetime.strptime(raw, "%a %b %d %H:%M:%S %z %Y")
-    except (ValueError, TypeError):
-        return None
-
-
-def _search_result_score(row: dict[str, Any]) -> float:
-    score = row.get("match_score")
-    try:
-        return float(score)
-    except (TypeError, ValueError):
-        return float("-inf")
-
-
-def _sort_search_results(rows: list[dict[str, Any]], *, sort: str) -> list[dict[str, Any]]:
-    if sort == "relevance":
-        return rows
-
-    def sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
-        created_at = _parse_created_at(row.get("created_at"))
-        score_key = -_search_result_score(row)
-        tweet_id = str(row.get("tweet_id") or "")
-        if created_at is None:
-            return (1, 0.0, score_key, tweet_id)
-        timestamp = created_at.timestamp()
-        if sort == "oldest":
-            return (0, timestamp, score_key, tweet_id)
-        return (0, -timestamp, score_key, tweet_id)
-
-    return sorted(rows, key=sort_key)
 
 
 @dataclass(slots=True)
@@ -1523,9 +1491,9 @@ def media_download(
                 "media",
                 "Media",
                 total=1,
-                unit="files",
+                unit="items",
                 detail="pending archived media selected for local download",
-                rate_unit="files/s",
+                rate_unit="items/s",
             )
             result = asyncio.run(
                 download_media(
@@ -1538,7 +1506,7 @@ def media_download(
                 )
             )
             if pipeline.step_state("media") == "pending":
-                prefix = "No media files require download. " if result.processed == 0 else ""
+                prefix = "No media items require download. " if result.processed == 0 else ""
                 pipeline.final_note(
                     prefix + "media: "
                     f"{result.processed} processed, "
@@ -1983,6 +1951,7 @@ def search_archive(
                         limit=limit,
                         types={"article"},
                         collections=search_collections,
+                        sort=sort,
                     )
                 )
             return combined, post_page

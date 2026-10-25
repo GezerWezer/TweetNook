@@ -167,6 +167,9 @@ def test_jobs_endpoint_lists_state_last_and_next_runs(tmp_path, make_web_client)
         "limit",
     }
     assert data["runs_this_week"] == 1
+    media_limit = next(option for option in by_key["media"]["options"] if option["key"] == "limit")
+    assert media_limit["unit"] == "items"
+    assert "poster files" in media_limit["help"]
     assert data["archive"] == {"uploaded": False, "filename": None, "size": None}
 
 

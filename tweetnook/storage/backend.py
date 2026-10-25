@@ -5457,7 +5457,7 @@ class ArchiveStore:
         return float("-inf")
 
     def _search_article_rows(
-        self, parsed: ParsedSearchQuery, *, limit: int
+        self, parsed: ParsedSearchQuery, *, collections: set[str] | None = None
     ) -> list[dict[str, Any]]:
         import re
 
@@ -5477,9 +5477,14 @@ class ArchiveStore:
                 return any(words[index : index + width] == pieces for index in range(len(words)))
             return pieces[0] in words
 
-        rows = self._query(
-            expr=f"record_type = 'article' AND tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})"
-        )
+        expr = f"record_type = 'article' AND tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})"
+        if collections:
+            membership = self._search_collection_expr(collections)
+            expr += (
+                " AND tweet_id IN (SELECT tweet_id FROM archive "
+                f"WHERE record_type = 'tweet' AND ({membership}))"
+            )
+        rows = self._query(expr=expr)
         matches: list[dict[str, Any]] = []
         for row in rows:
             haystack = " ".join(
@@ -5516,7 +5521,7 @@ class ArchiveStore:
             ),
             reverse=True,
         )
-        return matches[:limit]
+        return matches
 
     def _project_post_search_results(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         tweet_ids = [
@@ -5645,10 +5650,18 @@ class ArchiveStore:
         limit: int = 20,
         types: set[str] | None = None,
         collections: set[str] | None = None,
+        sort: str = "relevance",
     ) -> list[dict[str, Any]]:
-        """Full-text search over exposed search result types."""
-        from tweetnook.search import SearchQueryError, parse_search_query, search_posts
+        """Full-text search over exposed types, filtering and sorting before the limit."""
+        from tweetnook.search import (
+            SearchQueryError,
+            parse_search_query,
+            search_posts,
+            sort_search_results,
+        )
 
+        if sort not in {"relevance", "newest", "oldest"}:
+            raise ValueError(f"Unsupported sort order: {sort}")
         self.ensure_fts_index()
         parsed = parse_search_query(query)
         if not parsed.groups:
@@ -5660,44 +5673,19 @@ class ArchiveStore:
                     "with attached articles."
                 )
 
-        fetch_limit = max(limit, 1)
-        max_fetch_limit = max(limit * 8, 50)
         results: list[dict[str, Any]] = []
-        while True:
-            post_raw_rows: list[dict[str, Any]] = []
-            article_raw_rows: list[dict[str, Any]] = []
-            post_rows: list[dict[str, Any]] = []
-            article_rows: list[dict[str, Any]] = []
-            if types is None or SEARCH_KIND_POST in types:
-                post_raw_rows = search_posts(
-                    self,
-                    query,
-                    limit=fetch_limit,
-                    collections=collections,
-                    sort="relevance",
-                ).rows
-                post_rows = self._dedupe_search_rows(post_raw_rows)
-            if types is None or SEARCH_KIND_ARTICLE in types:
-                article_raw_rows = self._search_article_rows(parsed, limit=fetch_limit)
-                article_rows = self._dedupe_search_rows(article_raw_rows)
-            results = self._project_post_search_results(post_rows)
-            results.extend(
-                self._project_article_search_results(article_rows, collections=collections)
+        if types is None or SEARCH_KIND_POST in types:
+            posts = search_posts(
+                self, query, limit=max(limit, 1), collections=collections, sort=sort
+            ).rows
+            results.extend(self._project_post_search_results(posts))
+        if types is None or SEARCH_KIND_ARTICLE in types:
+            articles = self._dedupe_search_rows(
+                self._search_article_rows(parsed, collections=collections)
             )
-            results.sort(
-                key=lambda row: (
-                    row["match_score"] if row.get("match_score") is not None else float("-inf")
-                ),
-                reverse=True,
-            )
-            exhausted = True
-            if types is None or SEARCH_KIND_POST in types:
-                exhausted = exhausted and len(post_raw_rows) < fetch_limit
-            if types is None or SEARCH_KIND_ARTICLE in types:
-                exhausted = exhausted and len(article_raw_rows) < fetch_limit
-            if len(results) >= limit or fetch_limit >= max_fetch_limit or exhausted:
-                return results[:limit]
-            fetch_limit = min(fetch_limit * 2, max_fetch_limit)
+            results.extend(self._project_article_search_results(articles, collections=collections))
+        results.sort(key=self._search_score, reverse=True)
+        return sort_search_results(results, sort=sort)[:limit]
 
     def search_tweet_ids(
         self,
