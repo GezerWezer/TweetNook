@@ -3415,6 +3415,15 @@ html { touch-action: manipulation; }
 }
 /* X's desktop web, measured in October 2026. Phones keep their own app rules. */
 @media (min-width: 641px) {
+    /* Light desktop card/media outlines use the stronger control color;
+       feed separators keep their pale border color. */
+    .light .quote-card,
+    .light .quote-thumbnail,
+    .light .media-frame,
+    .light .media-carousel-tile,
+    .light [data-lightbox-media].grid {
+        border-color: var(--input-border);
+    }
     /* Posts without text show 4px dashes under the name, 12px wide (22px for
        the current photo), in the secondary text color at 35% → 100%. */
     .feed-card [data-action="media"] > .media-carousel:has(> .media-carousel-dots) {

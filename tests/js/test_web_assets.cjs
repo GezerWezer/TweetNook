@@ -8839,7 +8839,8 @@ test('Jobs browser tint follows the shaded theme and restores on close, resize a
     const mobileSheet = vm.runInContext('nookJobsSheet', context)(panel, app);
     app.applyTheme('classic-dark');
     assert.equal(context.__state.themeColor.content, '#242d34');
-    assert.equal(context.__state.cssProperties.get('--nook-jobs-edge-color'), '#242d34');
+    assert.equal(context.document.documentElement.style.backgroundColor, '#242d34');
+    assert.equal(context.document.body.style.backgroundColor, '#242d34');
     app.applyTheme('classic-light');
     assert.equal(context.__state.themeColor.content, '#bdc6cd');
     app.activityDrawerOpen = false;
@@ -8859,7 +8860,7 @@ test('Jobs browser tint follows the shaded theme and restores on close, resize a
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     assert.match(html, /class="nook-sync-scrim"[^>]*><\/div>\s*<div class="nook-sync-edge" aria-hidden="true"><\/div>/);
     assert.match(html, /class="nook-sync-scrim" x-cloak x-show="activityDrawerOpen \|\| activityShadeProgress"/);
-    assert.match(css, /opacity: var\(--nook-jobs-shade-progress, 0\)/);
+    assert.match(css, /\.nook-sync-scrim \{[^}]*opacity: 0;/);
     assert.doesNotMatch(html, /class="nook-sync-scrim"[^>]*x-transition/);
     const edgeRule = css.match(/\.nook-sync-edge \{([^}]*position: fixed;[^}]+)\}/)[1];
     const height = Number(edgeRule.match(/height: (\d+)px/)[1]);
@@ -8868,7 +8869,7 @@ test('Jobs browser tint follows the shaded theme and restores on close, resize a
     assert.equal(height - padding, 1, 'the sampling surface must not cover header text');
     assert.match(edgeRule, /box-sizing: border-box;/);
     assert.match(edgeRule, /background-clip: content-box;/);
-    assert.match(edgeRule, /background-color: var\(--nook-jobs-edge-color/);
+    assert.match(edgeRule, /background-color: var\(--bg-primary/);
     const anchorRule = css.match(/\.nook-sync-anchor \{([^}]*position: absolute;[^}]+)\}/)[1];
     assert.ok(Number(edgeRule.match(/z-index: (\d+)/)[1]) > Number(anchorRule.match(/z-index: (\d+)/)[1]),
         'the transparent sheet anchor must not intercept Safari top-edge sampling');
@@ -8879,9 +8880,9 @@ test('Jobs browser tint follows the shaded theme and restores on close, resize a
 test('Jobs shade and tint share one animation value through close reversal and theme changes', () => {
     const {context, panel, sheet} = jobsSheetFixture();
     sheet.destroy();
-    const query = context.document.querySelector, scrim = {}, frames = new Map();
+    const query = context.document.querySelector, scrim = {style: {}}, edge = {style: {}}, frames = new Map();
     let frameId = 0, clock = 0;
-    context.document.querySelector = selector => selector === '.nook-sync-scrim' ? scrim : query(selector);
+    context.document.querySelector = selector => selector === '.nook-sync-scrim' ? scrim : selector === '.nook-sync-edge' ? edge : query(selector);
     context.performance = {now: () => clock};
     context.requestAnimationFrame = callback => { frames.set(++frameId, callback); return frameId; };
     context.cancelAnimationFrame = id => frames.delete(id);
@@ -8895,7 +8896,12 @@ test('Jobs shade and tint share one animation value through close reversal and t
         frames.delete(id);
         callback(clock);
         assert.equal(app.activityShadeProgress, expected);
-        assert.equal(Number(context.__state.cssProperties.get('--nook-jobs-shade-progress')), expected);
+        assert.equal(Number(scrim.style.opacity), expected);
+        assert.equal(edge.style.backgroundColor, context.__state.themeColor.content);
+        assert.equal(context.document.body.style.backgroundColor, expected ? edge.style.backgroundColor : '');
+        assert.equal(context.document.documentElement.style.backgroundColor, expected ? edge.style.backgroundColor : '');
+        assert.equal(context.__state.cssProperties.has('--nook-jobs-shade-progress'), false);
+        assert.equal(context.__state.cssProperties.has('--nook-jobs-edge-color'), false);
     };
     sample(0, 0);
     sample(55, .15625);

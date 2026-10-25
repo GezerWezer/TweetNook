@@ -272,12 +272,14 @@
 .cs-grab, .nook-sync-scrim, .nook-sync-edge { display: none; }
 .nook-sync-anchor { display: contents; }
 @media (max-width: 640px) {
-  html.nook-jobs-open, html.nook-jobs-open body { overflow: hidden; }
-  html.nook-jobs-shading, html.nook-jobs-shading body { overflow: hidden; background-color: var(--nook-jobs-edge-color, var(--bg-primary)); transition: none; }
-  .nook-sync-scrim { display: block; position: fixed; inset: 0; z-index: 69; background: rgba(91, 112, 131, .4); opacity: var(--nook-jobs-shade-progress, 0); touch-action: none; }
+  /* Changing root/body overflow makes Safari unstick the archive header.
+     Block background gestures in nookJobsSheet while keeping its scroll container. */
+  html:is(.nook-jobs-open, .nook-jobs-shading) { overscroll-behavior-y: none; }
+  html.nook-jobs-shading, html.nook-jobs-shading body { transition: none; }
+  .nook-sync-scrim { display: block; position: fixed; inset: 0; z-index: 69; background: rgba(91, 112, 131, .4); opacity: 0; touch-action: none; }
   /* Safari needs a real element outside the fading scrim, with a box taller than 10px.
      Paint only its 1px content box so the tint surface cannot cover header text. */
-  .nook-sync-edge { display: block; position: fixed; top: 0; left: 0; right: 0; z-index: 71; height: 16px; box-sizing: border-box; padding-bottom: 15px; background-clip: content-box; background-color: var(--nook-jobs-edge-color, var(--bg-primary)); pointer-events: none; }
+  .nook-sync-edge { display: block; position: fixed; top: 0; left: 0; right: 0; z-index: 71; height: 16px; box-sizing: border-box; padding-bottom: 15px; background-clip: content-box; background-color: var(--bg-primary); pointer-events: none; }
   /* Paint beneath Safari's controls as part of the moving sheet, without fixed-edge tint sampling.
      Matching bottom padding keeps the last controls above the browser toolbar. */
   .nook-sync-anchor { display: none; position: absolute; top: var(--nook-jobs-page-top, 0px); left: 0; right: 0; height: calc(100dvh + var(--nook-jobs-bottom-bleed, 0px)); overflow: hidden; z-index: 70; pointer-events: none; }

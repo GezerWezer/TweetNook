@@ -249,6 +249,14 @@ function nookJobsSheet(panel, app) {
   let gesture = null, resetTimer = null, shadeFrame = null, blockClickUntil = 0;
   const scrim = document.querySelector('.nook-sync-scrim');
   const mobile = () => window.innerWidth <= 640;
+  const blocksBackground = () => mobile() && (app.activityDrawerOpen || app.activityShadeProgress > 0);
+  const wheel = event => {
+    if (blocksBackground() && !panel.contains(event.target) && event.cancelable) event.preventDefault();
+  };
+  const keydown = event => {
+    if (!blocksBackground() || panel.contains(event.target) || event.target.closest('input, textarea, select, [contenteditable="true"], button, a')) return;
+    if ([' ', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) event.preventDefault();
+  };
   const anchor = () => {
     if (app.activityDrawerOpen && mobile()) {
       document.documentElement.style.setProperty('--nook-jobs-page-top', `${window.scrollY}px`);
@@ -308,7 +316,7 @@ function nookJobsSheet(panel, app) {
       handle: Boolean(event.target.closest('.cs-grab')), atTop: panel.scrollTop <= 0 };
   };
   const move = event => {
-    if (!mobile() || !app.activityDrawerOpen) return;
+    if (!blocksBackground()) return;
     // The scrim and underlying feed must never pan, including on iOS.
     if (!panel.contains(event.target)) { if (event.cancelable) event.preventDefault(); return; }
     if (!gesture) return;
@@ -351,6 +359,8 @@ function nookJobsSheet(panel, app) {
   };
   panel.addEventListener('touchstart', start, { passive: true });
   document.addEventListener('touchmove', move, { passive: false });
+  document.addEventListener('wheel', wheel, { passive: false });
+  document.addEventListener('keydown', keydown);
   panel.addEventListener('touchend', end);
   panel.addEventListener('touchcancel', end);
   panel.addEventListener('click', click, true);
@@ -368,6 +378,8 @@ function nookJobsSheet(panel, app) {
     document.documentElement.style.removeProperty('--nook-jobs-bottom-bleed');
     app.updateBrowserTheme?.(false);
     panel.removeEventListener('touchstart', start);
+    document.removeEventListener('wheel', wheel);
+    document.removeEventListener('keydown', keydown);
     document.removeEventListener('touchmove', move);
     panel.removeEventListener('touchend', end);
     panel.removeEventListener('touchcancel', end);

@@ -4487,8 +4487,14 @@ function tweetApp() {
                 const base = parseInt(background.slice(1 + index * 2, 3 + index * 2), 16);
                 return Math.round(channel * alpha + base * (1 - alpha)).toString(16).padStart(2, '0');
             }).join('') : background;
-            document.documentElement.style.setProperty('--nook-jobs-shade-progress', String(progress));
-            document.documentElement.style.setProperty('--nook-jobs-edge-color', color);
+            // Keep frame-by-frame paint values on their surfaces. Inherited root
+            // variables force Safari to restyle the entire archive on every tick.
+            const scrim = document.querySelector('.nook-sync-scrim');
+            const edge = document.querySelector('.nook-sync-edge');
+            if (scrim) scrim.style.opacity = String(progress);
+            if (edge) edge.style.backgroundColor = color;
+            document.documentElement.style.backgroundColor = progress ? color : '';
+            document.body.style.backgroundColor = progress ? color : '';
             document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
         },
 
