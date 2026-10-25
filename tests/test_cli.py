@@ -420,6 +420,44 @@ def test_search_uses_shared_tweet_list_rendering(monkeypatch) -> None:
     assert "bookmark tweet" in output
 
 
+@pytest.mark.parametrize("types", ["article", "post,article"])
+@pytest.mark.parametrize("query", ["cats -coffee", "cats OR dogs -coffee"])
+def test_article_cli_uses_shared_query_and_hides_saved_posts(paths, monkeypatch, types, query):
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    rows = []
+    for tweet_id, text in [("900001", "cats"), ("900002", "cats coffee"), ("900003", "cats")]:
+        rows.extend(
+            [
+                store._record(
+                    row_key=f"tweet:bookmark::{tweet_id}",
+                    record_type="tweet",
+                    tweet_id=tweet_id,
+                    collection_type="bookmark",
+                    text=text,
+                ),
+                store._record(
+                    row_key=f"article:{tweet_id}",
+                    record_type="article",
+                    tweet_id=tweet_id,
+                    title=text,
+                ),
+            ]
+        )
+    store.merge_rows(rows)
+    store.set_tweet_hidden("900003", True)
+    monkeypatch.setattr(cli, "_open_store_for_read", lambda console: (store, paths))
+    monkeypatch.setattr(cli, "_with_auto_optimize", lambda store, paths, console, fn: fn(store))
+
+    result = runner.invoke(cli.app, ["search", query, "--type", types])
+
+    assert result.exit_code == 0, result.output
+    assert "900001" in result.output
+    assert "900002" not in result.output
+    assert "900003" not in result.output
+    assert "article" in result.output
+
+
 def test_sort_search_results_reorders_newest_then_oldest() -> None:
     rows = [
         {

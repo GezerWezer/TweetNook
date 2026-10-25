@@ -39,6 +39,7 @@ from tweetnook.utils import utc_now
 
 if TYPE_CHECKING:
     from tweetnook.config import AppConfig
+    from tweetnook.search import ParsedSearchQuery
 
 
 def _folder_key(folder_id: str | None) -> str:
@@ -5448,59 +5449,30 @@ class ArchiveStore:
             return float(score)
         return float("-inf")
 
-    def _search_post_rows_fts(
-        self,
-        query: str,
-        *,
-        limit: int,
-        collections: set[str] | None = None,
+    def _search_article_rows(
+        self, parsed: ParsedSearchQuery, *, limit: int
     ) -> list[dict[str, Any]]:
-        where_expr = _and_expr("record_type = 'tweet'", self._search_collection_expr(collections))
-        return self._query(
-            expr=where_expr,
-            limit=limit,
-            is_fts=True,
-            query=query,
-        )
-
-    def _search_article_rows_fts(self, query: str, *, limit: int) -> list[dict[str, Any]]:
         import re
-
-        parts = re.findall(r'"[^"]*"|\S+', query)
-        groups: list[tuple[list[str], list[str]]] = [([], [])]
-        negate_next = False
-        for part in parts:
-            operator = part.upper()
-            if operator == "OR":
-                groups.append(([], []))
-                negate_next = False
-            elif operator == "AND":
-                negate_next = False
-            elif operator == "NOT":
-                negate_next = True
-            else:
-                target = groups[-1][1] if negate_next else groups[-1][0]
-                target.append(part)
-                negate_next = False
-        if not any(positive or negative for positive, negative in groups):
-            return []
 
         def term_parts(term: str) -> list[str]:
             if term.startswith('"') and term.endswith('"'):
                 term = term[1:-1]
             return re.findall(r"\w+", term.casefold())
 
-        def matches_term(term: str, words: list[str], normalized: str) -> bool:
+        def matches_term(term: str, words: list[str]) -> bool:
             pieces = term_parts(term)
             if not pieces:
                 return False
             if term.endswith("*") and len(pieces) == 1:
                 return any(word.startswith(pieces[0]) for word in words)
             if len(pieces) > 1 or (term.startswith('"') and term.endswith('"')):
-                return " ".join(pieces) in normalized
+                width = len(pieces)
+                return any(words[index : index + width] == pieces for index in range(len(words)))
             return pieces[0] in words
 
-        rows = self._query(expr="record_type = 'article'")
+        rows = self._query(
+            expr=f"record_type = 'article' AND tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})"
+        )
         matches: list[dict[str, Any]] = []
         for row in rows:
             haystack = " ".join(
@@ -5515,19 +5487,18 @@ class ArchiveStore:
             folded = haystack.casefold()
             words = re.findall(r"\w+", folded)
             normalized = " ".join(words)
-            matching_groups = [
-                positive
-                for positive, negative in groups
-                if all(matches_term(term, words, normalized) for term in positive)
-                and not any(matches_term(term, words, normalized) for term in negative)
-            ]
-            if not matching_groups:
+            if not all(
+                any(matches_term(clause.value, words) != clause.negated for clause in group)
+                for group in parsed.groups
+            ):
                 continue
             matched = dict(row)
             matched["match_score"] = float(
-                max(
-                    sum(normalized.count(" ".join(term_parts(term))) for term in positive)
-                    for positive in matching_groups
+                sum(
+                    normalized.count(" ".join(term_parts(clause.value)))
+                    for group in parsed.groups
+                    for clause in group
+                    if not clause.negated and matches_term(clause.value, words)
                 )
             )
             matches.append(matched)
@@ -5669,10 +5640,18 @@ class ArchiveStore:
         collections: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Full-text search over exposed search result types."""
+        from tweetnook.search import SearchQueryError, parse_search_query, search_posts
+
         self.ensure_fts_index()
-        query = self._prepare_fts_query(query)
-        if not query:
+        parsed = parse_search_query(query)
+        if not parsed.groups:
             return []
+        if types is None or SEARCH_KIND_ARTICLE in types:
+            if any(clause.kind == "filter" for group in parsed.groups for clause in group):
+                raise SearchQueryError(
+                    "Structured filters apply to tweets; use filter:articles to find tweets "
+                    "with attached articles."
+                )
 
         fetch_limit = max(limit, 1)
         max_fetch_limit = max(limit * 8, 50)
@@ -5683,14 +5662,16 @@ class ArchiveStore:
             post_rows: list[dict[str, Any]] = []
             article_rows: list[dict[str, Any]] = []
             if types is None or SEARCH_KIND_POST in types:
-                post_raw_rows = self._search_post_rows_fts(
+                post_raw_rows = search_posts(
+                    self,
                     query,
                     limit=fetch_limit,
                     collections=collections,
-                )
+                    sort="relevance",
+                ).rows
                 post_rows = self._dedupe_search_rows(post_raw_rows)
             if types is None or SEARCH_KIND_ARTICLE in types:
-                article_raw_rows = self._search_article_rows_fts(query, limit=fetch_limit)
+                article_raw_rows = self._search_article_rows(parsed, limit=fetch_limit)
                 article_rows = self._dedupe_search_rows(article_raw_rows)
             results = self._project_post_search_results(post_rows)
             results.extend(
