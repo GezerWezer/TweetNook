@@ -3,12 +3,28 @@
  "caution": [
   {
    "t": "text",
-   "v": "These cookies provide access to your logged-in Twitter/X session. Treat them like a password."
+   "v": "Your X session cookies act like a password. "
+  },
+  {
+   "t": "code",
+   "v": "auth_token"
+  },
+  {
+   "t": "text",
+   "v": " and "
+  },
+  {
+   "t": "code",
+   "v": "ct0"
+  },
+  {
+   "t": "text",
+   "v": " give access to your X session. Keep them private, and never include them in screenshots, issue reports, or shared configuration files."
   }
  ],
  "browsers": [
   {
-   "name": "Chrome / Chromium / Brave / Microsoft Edge / Opera / Helium",
+   "name": "Chrome / Chromium / Helium / Microsoft Edge / Opera / Brave",
    "intro": [],
    "steps": [
     {
@@ -47,7 +63,7 @@
      "title": [
       {
        "t": "text",
-       "v": "Open Developer Tools"
+       "v": "Open developer tools"
       }
      ],
      "blocks": [
@@ -56,7 +72,7 @@
        "inline": [
         {
          "t": "text",
-         "v": "Use one of the following:"
+         "v": "Press the shortcut for your computer:"
         }
        ]
       },
@@ -131,7 +147,7 @@
        "inline": [
         {
          "t": "text",
-         "v": "If you do not see it, click the "
+         "v": "If it is hidden, open the "
         },
         {
          "t": "code",
@@ -348,16 +364,23 @@
         },
         {
          "t": "text",
-         "v": " field."
-        }
-       ]
-      },
-      {
-       "type": "p",
-       "inline": [
+         "v": " field. Use only the digits, leaving off "
+        },
+        {
+         "t": "code",
+         "v": "u%3D"
+        },
         {
          "t": "text",
-         "v": "For example:"
+         "v": " or "
+        },
+        {
+         "t": "code",
+         "v": "u="
+        },
+        {
+         "t": "text",
+         "v": ". For example:"
         }
        ]
       },
@@ -377,21 +400,47 @@
       {
        "type": "code",
        "text": "123456789"
-      },
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Save the connection"
+      }
+     ],
+     "blocks": [
       {
        "type": "p",
        "inline": [
         {
          "t": "text",
-         "v": "Use the digits only, not your "
+         "v": "Paste "
         },
         {
          "t": "code",
-         "v": "@username"
+         "v": "auth_token"
         },
         {
          "t": "text",
-         "v": "."
+         "v": " and "
+        },
+        {
+         "t": "code",
+         "v": "ct0"
+        },
+        {
+         "t": "text",
+         "v": " into TweetNook's Twitter/X connection step. Paste the digits from "
+        },
+        {
+         "t": "code",
+         "v": "twid"
+        },
+        {
+         "t": "text",
+         "v": " into User ID, or keep the correct ID if your imported archive has filled it in. Likes and Your tweets need this ID. Test the connection before continuing."
         }
        ]
       }
@@ -439,7 +488,7 @@
      "title": [
       {
        "t": "text",
-       "v": "Open Developer Tools"
+       "v": "Open developer tools"
       }
      ],
      "blocks": [
@@ -699,16 +748,23 @@
         },
         {
          "t": "text",
-         "v": "."
-        }
-       ]
-      },
-      {
-       "type": "p",
-       "inline": [
+         "v": ". Use only the digits, leaving off "
+        },
+        {
+         "t": "code",
+         "v": "u%3D"
+        },
         {
          "t": "text",
-         "v": "For example:"
+         "v": " or "
+        },
+        {
+         "t": "code",
+         "v": "u="
+        },
+        {
+         "t": "text",
+         "v": ". For example:"
         }
        ]
       },
@@ -728,21 +784,47 @@
       {
        "type": "code",
        "text": "123456789"
-      },
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Save the connection"
+      }
+     ],
+     "blocks": [
       {
        "type": "p",
        "inline": [
         {
          "t": "text",
-         "v": "Use the digits only, not your "
+         "v": "Paste "
         },
         {
          "t": "code",
-         "v": "@username"
+         "v": "auth_token"
         },
         {
          "t": "text",
-         "v": "."
+         "v": " and "
+        },
+        {
+         "t": "code",
+         "v": "ct0"
+        },
+        {
+         "t": "text",
+         "v": " into TweetNook's Twitter/X connection step. Paste the digits from "
+        },
+        {
+         "t": "code",
+         "v": "twid"
+        },
+        {
+         "t": "text",
+         "v": " into User ID, or keep the correct ID if your imported archive has filled it in. Likes and Your tweets need this ID. Test the connection before continuing."
         }
        ]
       }
@@ -1060,16 +1142,23 @@
         },
         {
          "t": "text",
-         "v": "."
-        }
-       ]
-      },
-      {
-       "type": "p",
-       "inline": [
+         "v": ". Use only the digits, leaving off "
+        },
+        {
+         "t": "code",
+         "v": "u%3D"
+        },
         {
          "t": "text",
-         "v": "For example:"
+         "v": " or "
+        },
+        {
+         "t": "code",
+         "v": "u="
+        },
+        {
+         "t": "text",
+         "v": ". For example:"
         }
        ]
       },
@@ -1089,21 +1178,47 @@
       {
        "type": "code",
        "text": "123456789"
-      },
+      }
+     ]
+    },
+    {
+     "title": [
+      {
+       "t": "text",
+       "v": "Save the connection"
+      }
+     ],
+     "blocks": [
       {
        "type": "p",
        "inline": [
         {
          "t": "text",
-         "v": "Use the digits only, not your "
+         "v": "Paste "
         },
         {
          "t": "code",
-         "v": "@username"
+         "v": "auth_token"
         },
         {
          "t": "text",
-         "v": "."
+         "v": " and "
+        },
+        {
+         "t": "code",
+         "v": "ct0"
+        },
+        {
+         "t": "text",
+         "v": " into TweetNook's Twitter/X connection step. Paste the digits from "
+        },
+        {
+         "t": "code",
+         "v": "twid"
+        },
+        {
+         "t": "text",
+         "v": " into User ID, or keep the correct ID if your imported archive has filled it in. Likes and Your tweets need this ID. Test the connection before continuing."
         }
        ]
       }

@@ -1,305 +1,151 @@
 # TweetNook
 
-TweetNook is a self-hosted archive for your Twitter/X bookmarks, likes, and tweets.
-Run it on your own computer or  server, import an archive downloaded from
-Twitter/X, keep it updated with automated syncs, and browse everything in a Web UI from
-your network. Search by words, author, date, or tag to find something you saved
-without scrolling through your account.
+TweetNook is a self-hosted archive for your Twitter/X bookmarks, likes, and tweets that shows them almost exactly as they look on Twitter, including threads, quoted tweets, photos, videos, and Articles. Import your official Twitter archive, pull in new bookmarks and likes automatically, and search by words, author, date, or tag from any device on your network. It runs on your own computer or server and stays fast even with years of posts. TweetNook is a fork of [TweetXVault](https://github.com/lhl/tweetxvault).
 
-Want to see TweetNook before installing it? [View the live demo](https://gezerwezer.github.io/TweetNook/).
+**[Try the demo](https://gezerwezer.github.io/TweetNook/)** and browse a sample archive of real tweets.
 
 ## Features
 
-- **Archive your tweets:** save bookmarks, likes, and your own tweets, along with replies and quoted tweets
-- **Import existing data:** bring in an official Twitter/X archive.
-- **Inspect job results:** import, enrichment, and other used jobs stay in the Jobs
-  panel after completion or failure. Select a job to review its saved steps and errors.
-- **Browse in your browser:** read saved threads, view photos and videos, and
-  explore quoted tweets, or read saved X Articles with rich text and focus mode.
-- **Search and organize:** combine search filters, add your own tags, edit
-  local descriptions, and hide tweets you no longer want to see.
-- **Automated tagging:** with an optional add-on, you can use Gemini to suggest tags and describe media.
-- **Keep it up to date:** run a sync from the web app or terminal, or schedule
-  regular syncs.
-- **Unavailable-tweet recovery:** periodically recheck
-  for unavailable tweets that might return.
-- **Export your collection:** save tweet data as JSON for use in other tools.
+- Import your official X archive to bring in your full history of tweets and likes, then let TweetNook fill in the details and download media the archive leaves out.
+- Collect new bookmarks, likes, and your own tweets automatically on a schedule you choose, or start a sync from the browser and watch its progress.
+- Everything you save stays on your own disk, photos and videos included. TweetNook can flag posts that later disappear from X, so you can browse the ones you preserved.
+- Read saved threads, quoted posts, and Articles the way they appeared on X, with photos, videos, GIFs, link previews, and Community Notes. TweetNook fills in the rest of a thread even if you only saved one post from it.
+- Find anything in seconds by searching words, authors, dates, post type, or media type. Sort likes by the order you liked them, or shuffle to rediscover old saves.
+- Organize posts with your own tags and descriptions, or use optional automated tagging to find images and videos by what they show.
+- Browse from your phone or desktop behind an optional password, customize themes, fonts, and layouts.
+- Don't need the web app? Use TweetNook entirely from the command line.
 
-## Project background
+## One-Step Install
 
-This project began as a fork of [TweetXVault](https://github.com/lhl/tweetxvault),
-which provides the foundation for this work. This version is developed independently.
-
-Thanks to [rrika](https://github.com/rrika) for sharing their
-[archive like-order research](https://github.com/lhl/tweetxvault/issues/2).
-
-> [!NOTE]
-> If you are updating from TweetXVault, see the [migration instructions](docs/maintenance.md#upgrade-or-migrate-an-older-archive).
-
-
-## Getting started
-
-You need macOS or Linux. The installer finds or downloads Python 3.12 and
-creates a private environment for TweetNook. Live syncing also needs
-a browser signed in to your Twitter/X account. You can import a downloaded archive
-without connecting to Twitter/X first.
-
-### 1. Install
-
-Download the installer from the latest GitHub release:
+Run this command to install TweetNook. It sets up Python for you and asks how you want TweetNook to start and who can access it.
 
 ```bash
-curl -fL https://github.com/gezerwezer/tweetnook/releases/latest/download/install.sh -o install.sh
-bash install.sh
+bash -c "$(curl -fsSL https://github.com/gezerwezer/tweetnook/releases/latest/download/install.sh)"
 ```
 
-On Linux with systemd, the installer starts a background service under a dedicated
-`tweetnook` account. Run as root or allow sudo. On macOS, Linux without systemd,
-or with `--no-service`, run as your regular user for manual startup.
-
-The installer uses the published PyPI package. For development, see the
-[development guide](docs/development/README.md).
-
-To skip the prompt or include optional features:
-
-```bash
-bash install.sh --no-service
-bash install.sh --service                          # Linux/systemd; starts the service
-bash install.sh --no-service --automated-tagging    # Gemini tagging support
-bash install.sh --no-service --legacy-migration     # Older TweetXVault LanceDB archives
-```
-
-Flags can be combined. Use `bash install.sh --help` for all options, including
-`--version VERSION`, `--python PYTHON`, `--install-dir PATH`, and `--bin-dir PATH`.
-For an existing service, use `tweetnook update` instead of rerunning the installer.
-See [Configuration](docs/configuration.md#resolved-directories) for file locations.
-
-If you already manage a Python 3.12+ virtual environment, pip remains supported:
-
-```bash
-python -m pip install tweetnook
-```
-
-### 2. Start TweetNook
-
-For manual startup on macOS or Linux:
+On Linux with systemd, choose the background option to have TweetNook start at boot. Otherwise, start it yourself with:
 
 ```bash
 tweetnook serve
 ```
 
-Leave the terminal running while using TweetNook. Press Ctrl+C to stop it.
+Then open the address shown in the terminal, and complete the quick web setup. Import your archive or start fresh, connect your X account, choose what to sync, and set a web password. If you only want to browse an imported archive, with all media downloaded locally, you can skip connecting X.
 
-If you chose service installation, it is already running and starts automatically
-at boot. Check its status with `tweetnook service status`. To restart it:
+### Install with pip
+
+For a macOS or Linux server with Python 3.12 or newer:
 
 ```bash
-tweetnook service restart
+python -m pip install tweetnook
+tweetnook serve
 ```
 
-Restart requests sudo when needed. Other service administration commands are
-listed in the [CLI reference](docs/cli-reference.md#service).
+You can use the web app from a browser on other operating systems, including Windows. Native Windows server installations are not supported. See the [getting started guide](docs/getting-started.md) for installation and connection steps, including [command-line setup](docs/getting-started.md#command-line-setup).
 
-### Update TweetNook
+## Imports
 
-Back up your archive before upgrading. For an installer-created systemd service,
-run:
+An official X archive is a good starting point for older history. Request your data archive from X, then upload the ZIP during Setup.
+
+The import brings in your tweets, likes, and some exported media. Some likes contain only a link or a little text; connecting your account lets TweetNook fill in what X still makes available.
+
+To import entirely from local files without contacting X:
+
+```bash
+tweetnook import x-archive /path/to/twitter-archive.zip --offline
+```
+
+See [imports](docs/importing.md) for the download steps, supported archive contents, and ways to continue an interrupted import.
+
+## Updates
+
+For a managed Linux background service, run:
 
 ```bash
 tweetnook update
 ```
 
-This stops active work, upgrades TweetNook, and restarts the service, requesting
-sudo when needed. Existing installations keep their service user and file paths.
+TweetNook updates and restarts the service, keeping your archive, settings, and installed add-ons. For macOS or manual installations, follow the [update steps](docs/maintenance.md#updates-and-add-ons).
 
-For a manual installation, stop the server and all archive jobs, then upgrade
-its private environment and start it again:
+## Syncing
 
-```bash
-"$HOME/.local/share/tweetnook-runtime/venv/bin/python" -I -m pip --isolated install --upgrade tweetnook
-tweetnook serve
-```
+A sync uses your X account to copy your newest bookmarks, likes, or tweets into your archive.
 
-Include previously selected extras in the upgrade target, for example
-`"tweetnook[automated-tagging]"`, so their dependencies are updated too.
+Run a sync on demand, or schedule it to run automatically. Syncs run on the computer where TweetNook is installed, not in your browser. You can close the page, and scheduled syncs keep running as long as that computer is awake.
 
+Your first sync may take a while if you have a lot of saved posts. You can stop a sync at any time without losing anything. Posts already saved stay in your archive, and the next sync picks up where it left off. You can also run individual steps on their own: download media, fill in the rest of saved conversations, or refresh X Articles.
 
-### 3. Open TweetNook
+Live sync needs an X account and its session cookies. It can only collect what X makes available to that account, so combining sync with an official archive is useful for older history. The [syncing guide](docs/syncing.md) covers schedules and catching up.
 
-After TweetNook starts, open the Web UI using the address it shows, for example:
+## Browsing
 
-```text
-http://[Machine IP]:8000
-```
+Switch between Bookmarks, Likes, Your tweets, and All. Sort by post date or popularity, browse likes in liked order, or choose random order when you don't have anything particular in mind.
 
-On first launch, the Web UI will guide you through setup.
+Open a post to read its saved conversation and quotes. On desktop, a split view keeps your feed and the open post side by side. On a phone, it looks and feels like the X app.
 
+You can change the theme, accent color, font, and text size, and choose a grid or carousel for posts with several photos or videos. Each browser keeps its own appearance choices, so your phone and desktop can look different.
 
-## Everyday use
+Author cards let you look through saved versions of a profile. Posts can also show Community Note changes and availability history as TweetNook observes them. Availability checks help you see whether a saved post is still on X, while keeping the material you've already archived.
 
-### Keep your archive up to date
+See [browsing](docs/web-app.md) for media controls, profiles, Jobs, and the rest of the web app.
 
-Run a sync from the sync menu or `tweetnook sync` whenever you want to save new bookmarks and likes.
-To automate it, open **Settings → Schedule**, choose when to run, and save.
-The TweetNook server/service must stay running for scheduled syncs to work;
-the browser can be closed.
+## Search
 
-**Sync failed** is reserved for critical connection, collection capture, archive
-write, storage, or worker errors. Follow-up issues and tagging budget pauses stay
-in Activity while a completed collection sync remains successful. See
-[sync status](docs/syncing.md#understand-waits-and-status) for the failure boundaries.
+Start with a word you remember, then narrow it down. The same queries work in the browser's search box and the command line:
 
-For a full list of CLI sync commands, see [syncing](docs/syncing.md).
+| Search | Finds |
+| --- | --- |
+| `"train station"` | That exact phrase. |
+| `coffee from:alice` | Posts by Alice containing coffee. |
+| `since:2025-01-01 until:2026-01-01` | Posts published in 2025. |
+| `has:video -is:reply` | Posts with videos, excluding replies. |
+| `has:note` | Posts with current or past Community Notes, including on directly quoted posts. |
+| `is:uncaptured` | Entries whose post content has not been saved. |
+| `tag:"home cooking"` | Posts with that tag. |
+| `description:"red bicycle"` | Those words in your saved descriptions. |
+| `url:example.com` | Posts with matching saved links. |
 
-Run `tweetnook check` to check saved tweets for availability, retry unavailable
-tweets, and keep community note versions. Enable **Check automatically** in
-**Settings → Config → Check** and choose Daily, Weekly (the default), or Monthly,
-plus a time and weekday or day of the month. **Check context tweets** is a separate
-basic toggle, off by default. When enabled, its **Context cycle** defaults to 60 days;
-checks spread the context tweets across that cycle. Saved tweets are checked every
-run, including quotes returned with them. Checks require FxTwitter and the running
-Web service. Saved check settings take effect immediately.
-
-Use **Stop Task** in the web app or **Ctrl+C** in the terminal to interrupt a job.
-Wait for it to finish stopping before starting another. Stopping TweetNook also asks its active Web or scheduled job to stop gracefully,
-preserving already committed work.
-
-### Search saved tweets
-
-Type words and filters together in the web app's search box:
-
-| Find… | Query |
-|---|---|
-| An exact phrase | `"night sky"` |
-| Images from an author | `from:alice has:image` |
-| Tweets from January 2026 | `since:2026-01-01 until:2026-02-01` |
-| A local tag | `tag:"read later"` |
-| Words in a tag description | `description:"red car"` |
-| Links, excluding reposts | `has:links -is:retweet` |
-| Tweets you hid | `is:hidden` |
-| Current or past Community Notes, including quoted posts | `has:note` |
-| Posts whose content was never captured | `is:uncaptured` |
-
-**Hide** in a tweet's menu keeps it out of lists and searches until you choose
-**Unhide**; it stays in your archive.
-
-Posts without captured content are hidden from feeds and searches by default.
-Use `is:uncaptured` to find them. Saved text, media, and Articles remain visible
-with a warning after a post becomes unavailable or is deleted on X.
-`has:note` includes removed notes in saved history
-and notes on directly quoted posts, including quotes outside your collections.
-
-In the web search box, edit `tag:` and `description:` values inside their
-capsules, including spaces. Press **Escape** to continue typing after a capsule;
-multiword values are quoted automatically.
-
-Search results show an exact count; text-search counts load after the first results.
-Matching text is bold in result cards, including quoted tweets.
-
-The same queries work in the terminal:
+You can combine filters, exclude words with a minus, or use uppercase `OR` for alternatives. Search looks through your saved archive. Entries without captured content are hidden by default; use `is:uncaptured` to find them.
 
 ```bash
-tweetnook search '"night sky" has:image' --sort newest --limit 20
+tweetnook search 'coffee from:alice' --limit 50 --sort newest
 ```
 
-See [Search](docs/search.md) for all filters and search behavior.
+See [search](docs/search.md) for the full list of filters and more examples.
 
-### Add tags
+## Tags
 
-Open a tweet's menu in the web app to add tags or a description. Click a tag to
-find related tweets. **Settings → Tags** lets you merge or delete tags across
-your archive.
+Add tags from a post's menu, and write a description when there's something you'd like to remember or search for later. Settings > Tags lets you browse your tags, merge duplicates, and remove ones you no longer use.
 
-## Optional Gemini tagging
+Hiding a post removes it from ordinary feed and search results. Its saved copy remains available in direct links, conversations, quotes, terminal views and JSON exports. Search for `is:hidden` to find it and show it in your feed again.
 
-Gemini can suggest tags for text and media tweets and add media descriptions.
-Include `--automated-tagging` during installation. To add support later, follow
-the [Automated Tagging setup instructions](docs/automated-tagging.md#set-it-up).
+Optional automated tagging suggests tags and can add descriptions of downloaded images and videos, including text visible in them. That lets you search for something in a picture even if the original post never mentioned it. You can review and edit the results. Manual tags and ordinary browsing, imports, and sync work without it.
 
->[!IMPORTANT]
-> Please read [Automated tagging](docs/automated-tagging.md) before enabling.
+See [tags](docs/web-app.md#tags) for organizing posts and [automated tagging](docs/automated-tagging.md) for setup, previews, and usage controls.
 
-Open **Settings → Automated Tagging**, enable the controls, enter your Gemini API
-key, choose a model and Free or Paid mode, and set the usage limits. Try one
-archived tweet with **Test run**, then save when you want tagging enabled.
+## Security
 
-Once saved and enabled, tagging runs after sync. To tag existing eligible tweets
-without syncing:
+TweetNook runs entirely on your own machine, and your archive is stored there. If you only use TweetNook on the computer it's installed on, set the host to 127.0.0.1 in Settings. If you plan to open it from other devices:
 
-```bash
-tweetnook tag
-```
+- Use it on a trusted network. Anyone on your network can reach the web app, so set a web password.
+- Don't expose it to the internet. The web app serves plain HTTP. To reach it from outside your network, use a VPN such as Tailscale or a reverse proxy with HTTPS.
 
-### Fill in missing details
+## Documentation
 
-Normal sync handles follow-up work automatically. You can also run individual
-jobs when you need them:
+Start with the [user guides](docs/README.md), or jump to what you need:
 
-```bash
-tweetnook import enrich
-tweetnook threads expand
-tweetnook media download --retry-failed
-```
+- [Import an X archive](docs/importing.md)
+- [Keep new posts coming in](docs/syncing.md)
+- [Browse and read your archive](docs/web-app.md)
+- [Search](docs/search.md) and [organize with tags](docs/web-app.md#tags)
+- [Set up automated tagging](docs/automated-tagging.md)
+- [Download media and complete saved posts](docs/syncing.md#post-details)
+- [Back up, update, or move TweetNook](docs/maintenance.md)
+- [Use the command line](docs/cli-reference.md)
 
-These commands fill in eligible missing details, expand saved conversations, and
-retry media downloads. Run only the jobs you need. See
-[Enrichment](docs/enrichment.md) for articles and link previews too.
+For contributions, see the [developer docs](docs/development/README.md). Release history is in [CHANGELOG.md](CHANGELOG.md), and the project uses the [Apache 2.0 license](LICENSE).
 
-Media limits and progress count media items. A video or GIF can download both
-the main file and a poster image while counting as one item.
+## Credits
 
-Setup downloads media inside the archive import, after enrichment. If enrichment
-or media stops, saved posts remain available and automatic preparation waits for
-you to resume. For a full disk, free or add space, then run **Sync now** or
-**Enrich archive** from Activity. Setup does not queue a separate media retry.
+TweetNook began as a fork of [TweetXVault](https://github.com/lhl/tweetxvault) and is developed independently. Thanks to [rrika](https://github.com/rrika) for sharing [research on archive like order](https://github.com/lhl/tweetxvault/issues/2).
 
-## Your files
-
-| System | Default data folder |
-|---|---|
-| macOS | `~/Library/Application Support/tweetnook` |
-| Linux | `~/.local/share/tweetnook` |
-
-The folder contains the archive database, downloaded media, tags, and activity
-history. [Configuration](docs/configuration.md#resolved-directories)
-explains custom locations.
-
-To back up, stop the app and all archive jobs, then copy the **complete data
-folder** and your configuration.
-
-
-To export tweet data for analysis or another tool:
-
-```bash
-tweetnook export json --out my-tweets.json
-```
-
-JSON exports do not include media files or everything needed to restore an
-archive. Use a full folder backup.
-
-After large imports or deletions, `tweetnook optimize` reclaims database space,
-refreshes SQLite query-planner statistics, and merges full-text index segments.
-Run it while other archive jobs are stopped. Normal writer jobs also perform
-lightweight planner maintenance when they close the database.
-
-
-## Documentation and help
-
-Use `tweetnook --help` to list commands or add `--help` to a command, such as
-`tweetnook sync --help`.
-
-| Guide | Covers |
-|---|---|
-| [User guide](docs/README.md) | All feature guides and references |
-| [Syncing](docs/syncing.md) | Older history, resuming work, and sync options |
-| [Web app](docs/web-app.md) | Browsing, settings, schedules, and activity |
-| [Importing](docs/importing.md) | Official Twitter/X archives |
-| [Configuration](docs/configuration.md) | Settings, defaults, and file locations |
-| [CLI reference](docs/cli-reference.md) | Commands and options |
-| [Troubleshooting](docs/troubleshooting.md) | Common errors and next steps |
-| [Development guide](docs/development/README.md) | Architecture, tests, and contribution workflow |
-
-## License
-
-[Apache License 2.0](LICENSE). See [TweetXVault](https://github.com/lhl/tweetxvault)
-for the original project.
+If you would like to migrate from a TweetXVault archive, follow the [migration steps](docs/maintenance.md#migration).

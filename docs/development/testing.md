@@ -1,238 +1,71 @@
 # Testing
 
-[Development guide](README.md) · [Module reference](module-reference.md) ·
-[Release](release.md) · [Documentation audit](documentation-audit.md)
+Use offline fixtures and temporary archives for normal development. Live X or Gemini requests need explicit intent and private credentials; they aren't part of the ordinary test suite.
 
-Tests use temporary archives, synthetic account data, and mocked network calls.
-Run focused tests while developing, then the broader checks required for the
-change. This page maps features to test suites and explains isolation and
-packaging checks.
-
-## Standard validation
-
-Use a writable cache outside restricted home directories when needed:
+## Python checks
 
 ```bash
-UV_CACHE_DIR=/tmp/tweetnook-uv-cache uv run ruff format --check
-UV_CACHE_DIR=/tmp/tweetnook-uv-cache uv run ruff check
-UV_CACHE_DIR=/tmp/tweetnook-uv-cache uv run pytest -q
+uv sync --group dev
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+```
+
+Optional tagging tests need `uv sync --group dev --extra automated-tagging`; migration tests may need `--extra legacy-migration`. Keep a minimal-install test path too, so ordinary imports, browsing and manual tags continue working without optional SDKs.
+
+Existing failures should be recorded with their command and scope. Targeted tests are useful while iterating; broaden validation when the change crosses a boundary or leaves a concern unresolved.
+
+## Test suites
+
+| Change | Starting tests |
+| --- | --- |
+| CLI/help and selected collections | `tests/test_cli.py`, `tests/test_cli_web.py`, `tests/test_cli_service.py` |
+| Config and paths | `tests/test_config.py`, web configuration routes |
+| Client and sync | Client, query-ID, auth, pagination and sync suites |
+| Import and deferred Setup work | Archive-import, Setup routes and server-first suites |
+| Storage and search | SQLite storage, search, pagination, like order and database-performance suites |
+| Availability and note history | FxTwitter, check, resurrection and web availability suites |
+| Enrichment and local assets | `tests/test_threads.py`, `tests/test_articles.py`, `tests/test_media.py`, `tests/test_unfurl.py`, `tests/test_resource_failure.py` |
+| Gemini | Optional tagging, SDK, prompts, media tags, RPD and web tagging suites |
+| Jobs and schedules | Supervisor, pipeline, activity-history, scheduler and jobs-route suites |
+| Browser presentation | Python asset assertions and `tests/js/` harnesses |
+| Replay and server lifecycle | `tests/test_dev_replay.py`, `tests/web/test_dev_replay_routes.py`, `tests/web/test_server_first.py`, `tests/web/test_deps_server.py` |
+| Installer or release | Installer/system-install/service, package and demo tests |
+
+Use the actual filenames under `tests/` when selecting a command. The [module reference](module-reference.md) maps operations to their owners.
+
+For storage changes, cover repeated opens, rollback, source precedence, raw-capture retention, skipped migration rows and derived-index refresh. Availability tests need public-provider failures, ambiguous results, protected fallback, quote scope and observed note changes. Enrichment checks should exercise explicit targets, retry state, quoted content and file boundaries.
+
+For job and server changes, cover startup without storage, Setup completion, manual queues, saved results, event-stream reconnection, shutdown and session authentication. Scheduler tests inject clocks and offsets for save/restart behavior, conflicts, month ends and timezone transitions. Tagging tests mock the provider while exercising reservations, retries, incomplete usage and previews that spend allowance without changing tags.
+
+## Browser assets
+
+```bash
 node tests/js/test_web_assets.cjs
+node tests/js/test_articles.cjs
+node tests/js/test_media_playback.cjs
+node tests/js/test_activity_stream.cjs
+node tests/js/test_most_likes.cjs
+node tests/js/test_demo_api.cjs
 ```
 
-`pytest.ini` settings live in `pyproject.toml`: quiet default, asyncio auto mode,
-function-scoped async fixture loop, and `tests/` discovery.
+These are Node harnesses, not a substitute for opening the UI. For layout, navigation, fullscreen media, keyboard focus and touch gestures, verify the interaction in a browser and capture the relevant viewport/state.
 
-Ruff targets Python 3.12, line length 100, double-quote formatting, and selected
-ASYNC/B/E/F/I/RUF/UP rules.
+After changing bundled dependencies or Tailwind input, run the [asset build](../../dev/web/README.md) and review generated changes. Ordinary JS/CSS source edits don't all require reinstalling Node dependencies.
 
-## Test isolation
-
-Shared fixtures should:
-
-- use `tmp_path` for config/data/cache roots;
-- set XDG environment explicitly;
-- use synthetic cookie values only;
-- mock HTTPX/provider calls and sleep/time/randomness;
-- close SQLite stores;
-- avoid writing to the developer's real application directories;
-- leave the repository worktree unchanged.
-
-New real Twitter/X responses must be aggressively minimized/sanitized before becoming a
-fixture. Remove cookies, headers, private text, IDs where unnecessary, URLs,
-media, and account metadata. The existing
-`tests/fixtures/dimitris_article_tweet_detail.json` is a deliberate public-
-content regression fixture retaining article text, public IDs, and URLs; review
-that exception explicitly rather than treating it as a sanitization example.
-
-## Suite map
-
-### CLI, configuration, auth, client
-
-```text
-tests/test_cli.py
-tests/test_cli_web.py
-tests/test_config.py
-tests/test_auth.py
-tests/test_query_ids.py
-tests/test_client.py
-tests/test_interactive.py
-```
-
-These cover help/command presence, flags, exit behavior, environment precedence,
-legacy config removal, explicit credentials, query discovery/cache, status
-classification, retries, pacing, and Web process lifecycle.
-
-Every new user-facing flag/argument needs explicit Typer help, representative
-`--help` assertions, behavior tests, and user-doc updates.
-
-### Storage, migration, search, reporting, export
-
-```text
-tests/test_storage.py
-tests/test_storage_sqlite.py
-tests/test_migrate.py
-tests/test_search.py
-tests/test_stats.py
-tests/test_export.py
-```
-
-Coverage includes schema creation/upgrades, FTS triggers/counts, indexes,
-page-atomic rollback, source precedence, hydration, enrichment queues, tag rows,
-legacy source splitting, parser/filter semantics, injection resistance, stats
-meaning, and atomic JSON export.
-
-Storage changes should add both success and injected-failure assertions. Any
-schema change requires current-create, upgrade, validation, and newer-version
-rejection coverage.
-
-### Sync and lifecycle
-
-```text
-tests/test_sync.py
-tests/test_pipeline.py
-tests/test_jobs.py
-tests/test_job_supervisor.py
-tests/test_activity_history.py
-tests/test_scheduler.py
-```
-
-These validate preflight-before-write, state/mode/page limits, multi-collection
-partial failure, follow-up isolation/order, process locks, snapshots/issues,
-worker groups/stop/finalization, retention, and deterministic schedule
-calculation/conflicts.
-
-Patch clocks/random offsets rather than sleeping. Never launch a persistent Web
-worker from a unit test without guaranteed cleanup.
-
-### Extraction and enrichment
-
-```text
-tests/test_extractor.py
-tests/test_extractor_additions.py
-tests/test_threads.py
-tests/test_articles.py
-tests/test_media.py
-tests/test_unfurl.py
-tests/test_resurrection.py
-```
-
-Coverage includes wrapper/tombstone/note parsing, graph records, canonical URLs,
-focal absence, depth/refresh/limits, long article bodies/media, atomic downloads,
-retry-failed selection, metadata parsing, reason confidence, due scheduling, and
-circuit breakers.
-
-Network tests should use fake transports and assert exact state transitions,
-not only printed summaries.
-
-### Official archive
-
-```text
-tests/test_archive_import.py
-```
-
-These generate representative ZIP/directory structures and cover identity,
-owner mismatch, digest equivalence, supported datasets, sparse likes, media,
-source-aware merge, sample/regen, interruption, and reconciliation/detail.
-
-Do not commit a real Twitter/X archive fixture.
-
-### Manual/automated tags and accounting
-
-```text
-tests/test_media_tags.py
-tests/test_tag_cli.py
-tests/test_optional_tagging.py
-tests/test_tagging_prompts.py
-tests/test_tagging.py
-tests/test_gemini_foundation.py
-tests/test_rpd.py
-tests/web/test_automated_tagging_routes.py
-```
-
-Provider boundaries are mocked. Tests cover optional import safety, candidate
-selection, prompt policy, structured parsing, Free batches/splits/retries,
-Paid sequential interactions, Search reservations/accounting, finite-budget
-stops, pricing cache, ledger rebuild/concurrency, RPD day/DST/reservations, Web
-masking/catalog/test no-write behavior.
-
-Every dry-run regression should assert provider/accounting side effects and lack
-of tag/config persistence separately.
-
-### Web backend and frontend
-
-```text
-tests/test_web_tweets_api.py
-tests/web/test_activity_routes.py
-tests/web/test_avatar_routes.py
-tests/web/test_config_routes.py
-tests/web/test_deps_server.py
-tests/web/test_setup_routes.py
-tests/web/test_stats_cache.py
-tests/web/test_stats_routes.py
-tests/web/test_storage_stats_routes.py
-tests/web/test_tag_routes.py
-tests/web/test_tweet_availability.py
-tests/test_web_assets.py
-tests/js/test_web_assets.cjs
-```
-
-Coverage includes route auth/status/contracts, SQL/path injection cases,
-relationship cycles, placeholders, media containment/symlink escape, setup
-credential isolation/upload, stats concurrency/cache, tag CRUD, frontend endpoint
-wiring, script order, and critical UI strings/behaviors.
-
-The JavaScript harness is static/source-oriented, not a full browser E2E suite.
-Changes to complex interaction/layout/accessibility can still require manual
-browser testing at desktop and narrow widths.
-
-## Focused commands
-
-Examples:
+## Documentation checks
 
 ```bash
-UV_CACHE_DIR=/tmp/tweetnook-uv-cache uv run pytest -q \
-  tests/test_sync.py tests/test_pipeline.py tests/test_scheduler.py
-
-UV_CACHE_DIR=/tmp/tweetnook-uv-cache uv run pytest -q \
-  tests/test_storage.py tests/test_storage_sqlite.py tests/test_migrate.py
-
-UV_CACHE_DIR=/tmp/tweetnook-uv-cache uv run pytest -q \
-  tests/web tests/test_web_tweets_api.py tests/test_web_assets.py
-
-UV_CACHE_DIR=/tmp/tweetnook-uv-cache uv run pytest -q \
-  tests/test_tagging.py tests/test_gemini_foundation.py tests/test_rpd.py
+uv run python scripts/build_setup_help.py
+uv run pytest tests/test_setup_help.py tests/test_web_assets.py
 ```
 
-Run the full suite before commit/release after cross-cutting config, storage,
-pipeline, CLI, or Web asset changes.
+Validate local links and heading fragments, parse fenced TOML/JSON, and run `bash -n` over shell examples. Walk visible CLI `--help` pages in isolated XDG roots. Compare the configuration reference against `AppConfig` defaults, flags against the command tree, and the API index against route decorators and router prefixes. Update those references when their source definitions change. Help should not create a config just by being viewed.
 
-## Packaging smoke tests
+Preserve the browser section/step structure consumed by the Setup-help builder, including slash-separated browser aliases used for tab labels. Cookie names need to appear as individual code blocks for each supported browser, and the generated caution needs to explain password-level sensitivity.
 
-Repository tests can accidentally depend on un-packaged files. After a build:
+## Performance checks
 
-```bash
-uv build --clear --out-dir dist/release-X.Y.Z
-uvx --from twine twine check \
-  dist/release-X.Y.Z/tweetnook-X.Y.Z.tar.gz \
-  dist/release-X.Y.Z/tweetnook-X.Y.Z-py3-none-any.whl
-uv run --isolated --no-project \
-  --with dist/release-X.Y.Z/tweetnook-X.Y.Z-py3-none-any.whl -- \
-  tweetnook --help
-```
+Use query-plan assertions for indexed ID, relation and filter access. Verify count/index cache invalidation after writes and rollback. Page through data large enough to reveal work proportional to the full archive, and check deep-feed detail navigation separately from the first page.
 
-Also smoke-import CLI/Web without the optional extra and exercise the optional
-tagging import path with it. Verify HTML/CSS/JS package data is present in the
-wheel.
-
-## Test review checklist
-
-- [ ] New behavior has success, failure, and interrupted/partial-state coverage.
-- [ ] No real credential, account archive, or provider call is used.
-- [ ] Filesystem work is isolated under a temporary root.
-- [ ] Time/random/retry tests are deterministic.
-- [ ] CLI options have explicit help and help tests.
-- [ ] Schema changes cover new, old, and too-new databases.
-- [ ] Web mutations test authentication and conflict behavior.
-- [ ] Security-sensitive paths test traversal, masking, and containment.
-- [ ] Optional dependencies remain optional at import time.
-- [ ] User and developer docs match the tested contract.
+Tests should establish user-visible behavior or a meaningful safety/performance property. Avoid tests that only reproduce the implementation's internal shape without testing its result.

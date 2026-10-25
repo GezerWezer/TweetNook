@@ -1,33 +1,17 @@
-# User guide
+# User guides
 
-TweetNook saves your Twitter/X bookmarks, likes, and tweets so you can browse and search
-them on your computer. Start with [Getting started](getting-started.md) to create
-your first archive.
+If this is your first time here, [install TweetNook and complete Setup](getting-started.md). Once it's running, most day-to-day work happens in your browser.
 
-## Save and browse
+| I want to… | Read |
+| --- | --- |
+| Install TweetNook or connect my account | [Getting started](getting-started.md) |
+| Bring in the archive I downloaded from X | [Imports](importing.md) |
+| Sync posts, download media, or check availability | [Syncing](syncing.md) |
+| Read posts, change the layout, manage jobs, or organize tags | [Browsing](web-app.md) |
+| Find an old post | [Search](search.md) |
+| Have Gemini suggest tags and descriptions | [Automated tagging](automated-tagging.md) |
+| Change settings, find files, back up, update, or move my archive | [Maintenance](maintenance.md) |
+| Run something from a terminal | [Commands](cli-reference.md) |
+| Work out why something hasn't finished | [Troubleshooting](troubleshooting.md) |
 
-| Guide | What you will learn |
-|---|---|
-| [Getting started](getting-started.md) | Install tweetnook, connect your account, and open your archive |
-| [Syncing](syncing.md) | Save recent tweets, collect older history, and resume interrupted work |
-| [Web app](web-app.md) | Browse tweets and threads, run a sync, and set a schedule |
-| [Search](search.md) | Find tweets using words, authors, dates, and filters |
-| [Tags](tags.md) | Add, edit, merge, and search your own tags |
-| [Automated tagging](automated-tagging.md) | Use Gemini to suggest tags and describe media |
-
-## Import and care for your archive
-
-| Guide | What you will learn |
-|---|---|
-| [Importing](importing.md) | Bring in an official Twitter/X archive |
-| [Enrichment](enrichment.md) | Add missing details, threads, articles, media, and link previews |
-| [Backups and maintenance](maintenance.md) | Back up, restore, check, and maintain your archive |
-| [Troubleshooting](troubleshooting.md) | Resolve common setup, sync, search, and tagging problems |
-
-## Reference
-
-Use [Configuration](configuration.md) to look up settings, defaults, and file
-locations. The [CLI reference](cli-reference.md) lists commands and options.
-
-For code, APIs, and contributor workflows, see the
-[Development guide](development/README.md).
+The [developer docs](development/README.md) cover the code, tests, and release process.

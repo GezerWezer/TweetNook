@@ -1,204 +1,53 @@
-# Archive Import
+# Archive imports
 
-[Development guide](README.md) · [Storage](storage.md) ·
-[Enrichment](enrichment.md) · [User import guide](../importing.md)
+`archive_import.py` ingests an official X ZIP or extracted directory. Local ingest and live completion are separate phases, which lets Setup load a large archive while the user configures the connection and collection choices.
 
-`archive_import.py` reads official Twitter/X ZIPs or extracted folders, records their
-source identity, and merges tweets and media into the archive. Local import can
-complete without authentication. Live timeline and detail lookups then fill gaps
-when credentials are available.
+## Archive identity
 
-## Input abstraction
+The input adapter locates the export's datasets, reads JavaScript-assigned JSON without executing it, and derives archive/account identity from the available manifest and account records. Validate owner compatibility before mixing imported data with an existing archive.
 
-Accepted inputs are:
+The content digest identifies a completed import. Manifests keep counts, warnings, start/completion timestamps and follow-up status. A sampled import has a sampled manifest, so it doesn't pretend the complete archive was ingested.
 
-- a ZIP;
-- an extracted directory containing `data/manifest.js`;
-- an extracted directory with root-level `manifest.js`.
+## Local import
 
-Archive paths normalize into `data/`, and lexical parent components are
-rejected. ZIP members are opened directly rather than passed to `extractall`,
-which avoids a basic extraction-traversal class. This is not full hostile-input
-containment: extracted-directory reads follow symlinks, and imported tweet IDs
-are not constrained to digits before media destination construction. A crafted
-parent-relative ID can escape `paths.data_dir`. Treat ZIPs and directories as
-trusted, require a symlink-free extracted tree, and do not claim path safety
-until IDs and resolved filesystem targets are contained in code.
+1. Preserve source data as raw captures.
+2. Adapt authored and deleted-tweet records into the common graph model.
+3. Import likes as memberships, using placeholders when the export lacks full content.
+4. Copy exported media into managed data paths and record local provenance.
+5. Save manifest/count information and leave incomplete objects eligible for later detail completion.
 
-The importer does not enforce a comprehensive compressed/uncompressed-size or
-entry-count budget. Web upload limits only the raw ZIP bytes to 50 GiB and does
-not make decompression bombs safe.
+The export doesn't supply the bookmark collection. Missing likes' content is expected input, not a reason to drop those memberships. Preserve existing richer live content when merging archive records.
 
-## JavaScript dataset parsing
+## Files and limits
 
-Official files wrap JSON in `window.YTD.<dataset>.partN = ...`. Adapters strip
-the assignment and normalize known dataset object shapes. The importer currently
-uses account/profile identity, authored tweets, deleted authored tweets, likes,
-headers/manifest, and matched tweet media.
+ZIP members are read directly and parent-path components are rejected. Extracted-directory reads can follow symlinks, and media destinations built from imported tweet IDs do not all check resolved containment. Use trusted exports and a symlink-free extracted tree; see [trust and security](architecture.md#trust-and-security). The importer records ownership of copied media so regeneration can remove its own files.
 
-There is no bookmark adapter, even if a future Twitter/X export adds such a dataset.
-DMs, relationships, lists, and other files are ignored.
+The web upload limit is 50 GiB and uploads are staged under `setup/archive.zip`. CLI inputs can be an on-disk ZIP or directory. Sample limits apply after full dataset load and separately to supported categories; they don't make archive inspection or parsing constant work.
 
-## Identity and owner guard
+## Live follow-up
 
-Official archives require an account ID and username.
+A normal CLI import reconciles live authored/like collections and can complete sparse post details. `--no-enrich` disables automatic individual detail completion but does not suppress live reconciliation. A positive `--detail-lookups` requests a bounded detail pass even when automatic enrichment is disabled. `--offline` suppresses all X follow-up.
 
-Before writes, the importer reconciles:
+Setup uses `--defer-followup` to ingest, enrich and download media now, without live collection reconciliation. Enrichment can use FxTwitter without an account; unresolved rows remain pending for authenticated completion. The deferred CLI import includes media in the same job; ordinary CLI import copies exported files and leaves remote media downloads to a separate task. The coordinator waits for a successful import, completed Setup, verified connection and confirmed collections before launching `import enrich` as the first sync.
 
-- archive account identity;
-- existing archive owner metadata.
+If import enrichment or media fails or stops after local ingest, the saved archive remains browsable and the result stays visible. Automatic first-sync intent is cancelled; the user resumes explicitly after resolving the problem.
 
-Those two identities conflict-abort. The effective configured/authenticated
-`user_id` is checked only by live reconciliation after bulk writes, and that
-phase may be skipped when credentials/live work are unavailable. Verify the
-account manually before importing into a new database.
+## Resuming imports
 
-## Digest and manifest
+`import enrich` takes a stable command-start set of eligible rows. With no limit it processes that set; a limit bounds only detail completion. Afterward it calls a backfill-enabled sync of `config.sync.collections` with no page limit to repair gaps. A bounded detail invocation can therefore still lead to substantial timeline work.
 
-The idempotence digest covers relevant manifest, account/profile, authored,
-deleted, like, header, and listed media files. It is based on content, so an
-equivalent extracted directory and ZIP share identity.
+Interruption preserves completed rows and reports remaining incomplete work. Aborted or inaccessible detail results retain reasons and retry eligibility. Authentication and repeated-focal-absence errors stop the relevant work without turning transport failures into unavailable posts.
 
-`import_manifest:<digest>` records lifecycle, counts, warnings, errors, and
-enrichment follow-up/abort outcome metadata.
-Important outcomes include:
+## Regeneration
 
-- `completed` — bulk import completed;
-- `sampled` — a bounded diagnostic subset completed;
-- `failed` — bulk phase interrupted/failed;
-- completed bulk plus separate enrichment-interrupted/aborted metadata.
+`--regen` removes prior import-owned rows, manifests and managed imported files before reimporting. It preserves live-synced data. Keep the cleanup predicates and filesystem validation together; an import must never delete unrelated files merely because they share a directory.
 
-A completed identical digest short-circuits bulk parsing/writes while allowing
-requested follow-up. Deterministic raw-capture keys make a failed rerun
-idempotent.
+## Input limits
 
-There is a current semantic mismatch: `has_completed_archive_import()` treats
-`sampled` as imported for Web Setup readiness, while duplicate/full-enrichment
-paths require `completed`. Tests/documentation should preserve this distinction
-until the model is unified.
+The raw upload byte limit doesn't impose a complete decompressed-size, entry-count or memory budget. Sample mode still loads full datasets. Identity from the archive is checked against existing owner metadata before writes; a configured live `user_id` can be checked only later during reconciliation, which may be skipped. Those are distinct guards.
 
-## Dataset preparation
+Manifests distinguish completed, sampled and failed local ingest from an interrupted/aborted live follow-up. Setup's imported-readiness predicate accepts sampled state, while duplicate/full-follow-up paths require completed state. Keep that distinction explicit when changing the state model.
 
-### Authored tweets
+Detail completion checkpoints progress and keeps per-post retry state. Authentication expiry, unrecoverable protocol errors, exhausted rate limits or repeated missing focal results stop the pass after prior work is saved. A missing focal result alone does not establish deletion.
 
-Authored entries become:
-
-- `tweet` membership in collection `tweet`;
-- a normalized canonical/secondary graph;
-- archive source/provenance;
-- deterministic raw captures.
-
-Deleted authored entries remain membership rows and seed terminal
-`archive_deleted` lifecycle state.
-
-### Likes
-
-Likes are sparse and often lack full author/object detail. They receive
-negative synthetic sort indexes in archive file order. A sparse canonical
-placeholder is seeded only when no richer live object exists. Later live/detail
-merge must not downgrade existing richer content.
-
-### Media
-
-Media matching expects official-style names prefixed by tweet ID and normalized
-media URLs. Files are copied through temporary destinations into:
-
-```text
-<data>/media/<tweet-id>/<media-key>[-poster].<extension>
-```
-
-Video/GIF completion can require both main asset and poster. Existing
-destinations may be reused without recomputing full hash/size fields, leaving a
-legacy row apparently pending/incomplete despite a file.
-
-Media destination construction uses unvalidated imported tweet IDs. Normal
-official IDs are numeric, but a crafted parent-relative ID can escape the data
-directory; this is a current security gap, not an enforced invariant.
-
-## Bulk write/checkpoint model
-
-The importer first preserves manifest/account/header/dataset raw captures, then
-writes prepared normalized rows in chunks. This is not one transaction for the
-whole archive. On interruption:
-
-- committed captures/chunks remain;
-- the manifest is marked failed;
-- a rerun reuses deterministic records and merge rules.
-
-This trades global rollback for bounded memory and resumability. Any future
-change must preserve archive-versus-existing-owner validation before the first
-archive-row mutation.
-
-## Source-aware merge
-
-Archive source fills missing fields but does not replace richer live GraphQL
-data. Conversely, later live ingestion can upgrade sparse archive placeholders,
-clear stale unavailable scheduler fields, and mark resurrection.
-
-`--regen` invokes archive-owned cleanup before import:
-
-- all archive-source raw captures and normalized rows, including tweet objects,
-  relations, URLs/URL refs, and articles;
-- tracked imported managed media;
-- every import manifest.
-
-Live-source rows remain. Because cleanup is source-wide rather than digest-only,
-multiple prior archive digests are affected. The command is destructive and
-must retain path containment and source-provenance tests.
-
-## Sample mode
-
-`--sample-limit N` still reads/hashes/parses the full input, then slices each
-supported authored/deleted/like/media dataset. It writes a sampled manifest and
-skips reconciliation/detail follow-up entirely.
-
-This is intentionally a smoke-test mode, not a fast metadata-only preflight.
-
-## Live reconciliation
-
-After successful full bulk import, default behavior attempts live authored/like
-timeline reconciliation. This can upgrade sparse objects and establish current
-membership/detail. Missing credentials produce warnings and skip live work
-without failing the local import.
-
-`--no-enrich` disables the subsequent per-object TweetDetail pass but does not
-turn off bulk live reconciliation. With enrichment enabled,
-`--detail-lookups 0` means unbounded/all eligible. With `--no-enrich`, zero
-disables detail lookups while a positive value explicitly enables that many.
-
-## Detail enrichment
-
-Eligible rows are captured into a stable command-start snapshot. Work uses
-TweetDetail, adaptive pacing, detail-specific retries/backoff, and periodic
-checkpoints (100 attempts).
-
-Per-row transient conditions are persisted and the loop continues. Systemic
-conditions abort:
-
-- auth expiration;
-- stale query-ID/feature drift that cannot recover;
-- exhausted rate-limit policy;
-- repeated focal absence.
-
-Focal absence is transient/ambiguous and is not converted into deletion. Three
-consecutive focal absences abort after flushing prior results.
-
-An interrupted/aborted follow-up leaves the bulk manifest completed and records
-the separate outcome, enabling `import enrich` continuation.
-
-## Web boundary
-
-Setup uploads a raw ZIP to fixed staged storage and starts the normal CLI
-import. The general authenticated activity-import route can also accept an
-arbitrary server-readable directory or `.zip` path. This is acceptable only
-under the current local-admin trust model and should not be exposed to untrusted
-Web users.
-
-## Regression targets
-
-- `tests/test_archive_import.py`
-- `tests/web/test_setup_routes.py`
-- import/help/exit coverage in `tests/test_cli.py`
-- storage/source-precedence tests
-
-Use generated, sanitized archives. Never commit a real account export.
+The general authenticated activity-import route accepts server-readable ZIP/directory paths. It has the authority of the local administrator; the fixed Setup upload path doesn't reduce that separate route's trust boundary.

@@ -1,272 +1,55 @@
-# Automated Tagging
+# Automated tagging
 
-[Development guide](README.md) · [Architecture](architecture.md) ·
-[Configuration and Paths](configuration-and-paths.md) ·
-[User automated-tagging guide](../automated-tagging.md)
+The tagger is optional. `automated_tagging.py` checks for the SDK/Pillow dependencies and discovers usable model metadata. `tagging.py` plans requests, loads evidence, calls Gemini and persists descriptions/tags. Prompts live in `tagging_prompts.py`.
 
-Tagging selects eligible archive records, prepares text or media requests for
-Gemini, and saves validated results with local usage accounting. Free and Paid
-modes have separate request paths. Core CLI and web startup must also work when
-the optional Gemini and Pillow dependencies are absent.
+## Evidence and output
 
-## Optional dependency boundary
+Text-only and media-bearing posts use different request shapes. Media evidence can include quoted content and local saved assets. Descriptions and tags must be grounded in the supplied evidence; tagging context is a weak hint, and user instructions remain below the built-in isolation/output rules.
 
-The `automated-tagging` extra provides `google-genai` and Pillow.
-`automated_tagging.py` probes both imports lazily. CLI, sync, Web server, and tag
-route modules are tested under simulated missing dependencies.
+Validate responses before saving them. Tagging state belongs to the post being tagged and must not create collection membership. Manual tag editing is available independently of the optional SDK and shouldn't be blocked by provider failures.
 
-Missing support returns a warning/no-op for the sync follow-up rather than
-failing core capture. Web settings reports installation availability and route
-updates can return 404 when the extra is absent.
+## Free requests
 
-Do not add provider imports to package/module import paths that core startup
-always traverses.
+Free mode batches homogeneous kinds of posts, up to twenty per request. The configured batch size is a post count; `--limit` remains a request count. Free RPM and RPD are local admission controls, with per-model Pacific calendar-day accounting. They don't describe the actual quota of the user's Google project.
 
-## Configuration validation
+Google Search is disabled in Free mode. A request can contain several posts but still produces separately validated output for each target. Don't count a rejected response as successful completion of every batch item.
 
-`TaggingConfig` owns enable state, key, Free/Paid mode, model, thinking, Search,
-Free batch/RPM/RPD, paid tier/spend, Search reserve, context/instructions, and
-media ceiling.
+## Paid requests
 
-Enabled Paid mode requires a positive daily
-limit unless `unlimited_spend` is true.
+Paid mode uses one post per request and supports Standard/Flex processing. A daily spend limit or explicit unlimited-spend choice is required when tagging is enabled in Paid mode. Internal processing waves don't change the user-visible one-post request unit.
 
-Context normalization accepts list or comma/newline string, trims, removes empty
-items, and case-insensitively deduplicates. Additional instructions trim to
-`None` when blank.
+Model discovery filters metadata for Gemini models capable of content generation and excludes image-generation families. It doesn't validate every model's support for thinking, structured output, media, Search or processing tiers. Preserve a useful validation/provider error rather than promising capabilities from the catalog alone.
 
-## Model discovery
+## Usage accounting
 
-The live catalog filters out image-generation/Nano Banana-style families and
-requires advertised `generateContent`. It does not verify:
+`gemini_accounting.py`, `gemini_pricing.py`, and `rpd.py` maintain reservations, observed usage and local allowance state. Reserve before a provider attempt, commit known usage afterward, and mark uncertain usage explicitly. Every retry has its own lifecycle; double-releasing a reservation can permit overspending.
 
-- structured output;
-- Interactions API;
-- thinking configuration;
-- text/media modality details;
-- Google Search;
-- Standard/Flex tier compatibility.
+Paid requests with missing usage follow `unknown_billing_policy`: reserve an estimate and continue within limits, or stop. The minimum reserve and maximum uncertain requests per UTC day bound that policy. Actual charges can differ from estimates, and requests made outside this installation aren't visible here.
 
-The UI/CLI must treat a returned model as a candidate, not a capability
-guarantee. Provider failure remains a normal execution outcome.
+Search accounting has a separate policy and monthly rollover. An uncertain Search request reserves an estimated five queries; five is a local assumption, not a provider limit. The safety reserve and uncertainty ceiling can turn Search off for the rest of a run while allowing tagging to continue.
 
-## Candidate selection
+## Retries
 
-Storage selection:
+Explicit provider overloads and uncertain billing failures need different handling. Keep rate limits, retry delays, consecutive-failure guards and usage reservations together. SDK-internal retries are constrained where necessary so they don't bypass accounting for each attempt.
 
-- includes saved membership tweets and directly quoted originals;
-- requires an available canonical enrichment state for both kinds of work;
-- excludes valid, nonempty successful `media_tag` rows;
-- leaves pending/failed/malformed/empty tag rows eligible;
-- classifies a candidate as media if direct or quote-target media exists;
-- returns one newest-first homogeneous text or media batch.
+Persist retry state for unfinished posts so the next eligible run can continue. Storage-full failures must fail the run accurately. A test preview performs real requests and accounting but doesn't save generated tags/descriptions or unsaved settings.
 
-An explicit numeric/status-URL target bypasses the queue. Target validation
-happens before acquiring the archive lock, but execution still requires enabled
-tagging, an API key, optional dependencies, a stored tweet object, and loadable
-local media for a media request.
+## Web controls
 
-## Prompt policy
+The settings API masks stored secrets, validates Paid controls, and keeps the previous key when the masked placeholder is submitted unchanged. Test runs use the submitted form settings, including unsaved edits. The model-refresh endpoint uses the selected key without saving it simply because it was tested.
 
-`tagging_prompts.py` has separate text/media instructions.
+The [testing guide](testing.md) covers provider mocks, accounting and preview checks.
 
-Media output:
+## Requests and media
 
-- concise visual description;
-- prominent visible-text transcription;
-- identifiable entity/source/parent-work context;
-- 2–5 specific tags.
+Free uses structured `generate_content` requests, homogeneous batches and an in-process rolling RPM queue. Its RPD reservation uses SQLite `BEGIN IMMEDIATE` before dispatch for the per-model America/Los_Angeles day. Reservations are conservative and aren't refunded on failure or interruption. Retries and recursively split invalid-argument batches reserve separately.
 
-Text output contains 2–5 specific tags and no description. Both discourage
-generic platform/meta labels.
+Free photos are sent inline through Pillow; Free videos/GIFs and Paid media use Gemini Files uploads. Enforce the per-item local-file size limit and clean remote uploads best-effort. Paid uses sequential Interactions requests with `store=false`, schema, thinking level, tier and optional Search. Prompts ask for two to five tags; text-only output has no description. At most fifty common existing tags are hints.
 
-At most the 50 most-used existing tags are contextual hints. User
-context/additional instructions are explicitly weak and cannot override
-evidence, schema, isolation instructions, or tag count. Search prompt language
-appears only when Search is truly enabled.
+Paid requests retry overloads with bounded backoff and stop after sustained failures. Structured capacity failures retain uncertainty reserves but are counted separately from generic billing-unknown failures. Strict billing policy and monetary limits still apply. Retry thresholds and classifications are defined in `tagging.py`.
 
-Free batches include per-item isolation language intended to prevent content
-from crossing between items inside one model call; model isolation is not a
-guarantee. Prompt builders omit empty optional sections.
+Search uses a local 5,000-query monthly safety allowance and the configured reserve. Provider grounding counts are preferred, with interaction query steps as fallback. Missing usage follows the configured reserve/disable policy. Search coordination is in-process, unlike Free RPD's transactional reservation.
 
-## Media preparation
+Monthly JSONL and the atomic ledger summary live under `activity/ai-usage` with file locking. Usage history distinguishes unknown prices from unknown billing, including after a summary rebuild. Pricing metadata is cached for 24 hours from OpenRouter, stale data can survive refresh failure, and Flex estimates apply a 0.5 rate multiplier. Estimates exclude Search/tool fees and account charges.
 
-Media input comes only from existing `local_path` files and is bounded by the
-configured per-item byte limit. Free photos are loaded through Pillow and sent
-inline; Free videos/GIFs and every Paid media item are uploaded through Gemini
-Files. Uploaded files are deleted during cleanup on a best-effort basis. Free
-batch text includes archive tweet IDs so returned rows can be mapped. If cleanup
-fails, uploads remain subject to the provider's
-[Files API retention and quota rules](https://ai.google.dev/gemini-api/docs/files).
-
-Never log raw API keys. `_safe_error` masks the configured key in selected
-provider errors, but it is not a universal scrubber for media content, prompts,
-URLs, or other secrets.
-
-## Free execution
-
-Free mode uses `generate_content`:
-
-- one homogeneous request can contain 1–20 candidates;
-- structured JSON response schema;
-- thinking budgets: none 0, low 1024, medium 4096, high 8192;
-- Google Search forcibly disabled;
-- a per-model in-process rolling RPM queue;
-- persistent per-model RPD reservations.
-
-Transient 429/503/resource-exhausted failures retry with 15/30/60/120-second
-delays. An invalid-argument/400 multi-item batch recursively splits. A failing
-single item is marked failed rather than saved as success.
-
-### RPD reservation
-
-`rpd.py` uses the America/Los_Angeles calendar day and archive metadata. A
-reservation uses `BEGIN IMMEDIATE`, checks current per-model/day count, increments,
-and commits before provider dispatch.
-
-Reservations are conservative and never refunded after process interruption or
-failure. Retries and recursive splits reserve separately. This protects against
-overshoot across processes but can underutilize actual provider quota.
-
-## Paid execution
-
-Paid mode uses one Interactions request per tweet. `PAID_CONCURRENCY = 1`, so
-only one tweet is processed at a time.
-
-Requests specify:
-
-- model;
-- thinking level;
-- Standard/Flex service tier;
-- structured JSON schema;
-- `store=false`;
-- optional Google Search tool.
-
-Transient 429/503/resource/timeout/unavailable/deadline failures retry with
-exponential delays. Explicit 503 overload responses add ±20% jitter to the
-15/30/60/120-second waits. Five consecutive provider failures, or 15 minutes of
-sustained failures, stop the run; a successful response resets the streak.
-Attempts share one logical request ID but are separately accounted.
-
-An explicit HTTP 503 with `service_unavailable` in its structured error, or the
-provider's "currently experiencing high demand" message, is classified as
-`failure_kind="capacity"` only when no usage, interaction ID, output or steps
-are present. It remains `billing_unknown`, retains its reserve, and contributes
-to the total unknown count. The summary separately counts these capacity
-attempts so reserve policy can exclude them from the daily unknown-attempt
-stop. Generic 503s and timeouts are not exempt. Strict policy and monetary
-budget checks still apply to all uncertainty. Ledger summary version 4 rebuilds
-from history; unclassified historical failures are not retroactively exempted.
-
-Finite-budget preflight/execution stops when:
-
-- the daily estimate limit is reached;
-- pricing required for a finite decision is unavailable;
-- known minimum input cost exceeds remaining budget;
-- strict policy encounters unknown billing, or reserve policy reaches the daily
-  unknown-attempt cap (excluding explicitly classified capacity responses).
-
-Unlimited mode can continue through unknown/unpriced usage and therefore must
-remain an explicit opt-in.
-
-Budget preflight and after-response ledger append are separate operations. CLI
-and worker jobs normally serialize through process locks, but the inline Web
-Test route, another Web process, or direct library calls can overlap, pass the
-same preflight, and overspend. The configured amount is a best-effort local
-safety guard rather than a hard provider cap.
-
-## Search accounting
-
-Paid Search uses a local 5,000-query monthly allowance and configured safety
-reserve. Each in-flight request reserves five queries as a safety upper bound;
-that is not claimed actual usage.
-
-Final Search count prefers provider `grounding_tool_count`, then ordered
-interaction-step queries. Missing both is unknown. Known attempt usage is
-recorded independently across retry; unknown usage consumes the reservation and
-disables Search for the rest of the run.
-
-This is per local data-directory ledger only, not a provider project-wide quota.
-`_SearchPolicy` uses an `asyncio.Lock`, so reservation coordination is
-in-process only; separate processes can exceed the local allowance. Free RPD
-uses a SQLite `BEGIN IMMEDIATE` reservation and has the stronger cross-process
-property.
-
-## Accounting model
-
-Each usage row can include:
-
-- request/run/attempt identifiers;
-- model, API mode, tier;
-- text/media candidate counts;
-- input/cached/output/thinking tokens;
-- Search count/source/query list;
-- success/failure/billing-unknown status;
-- latency;
-- pricing snapshot and cost estimate;
-- budget/search preflight metadata.
-
-Tweet IDs make the ledger archive-identifying metadata, not merely anonymous
-billing telemetry. Backup and permission guidance must treat it as sensitive.
-
-Free success normally records provider usage metadata with cost zero. If that
-metadata is absent or ledger conversion/writing fails, the caller warns and
-continues parsing the response without appending a usage row for that request.
-Paid success is billing-known only when required token categories are present;
-explicit zeros are valid.
-
-Definite pre-provider failure records zero. Ambiguous after-dispatch failure uses
-unknown tokens/cost. Known usage without known pricing is distinguished from
-unknown billing.
-
-## Ledger durability
-
-`gemini_accounting.py` uses monthly JSONL plus an atomic summary under
-`activity/ai-usage`, guarded by a file lock. It can rebuild a corrupt/missing
-summary from ledger rows.
-
-Pricing comes from a cached OpenRouter metadata snapshot only; inference never
-goes there. Cache freshness is 24 hours. A failed refresh retains stale data and
-throttles refresh attempts. Standard component rates are applied to token
-categories; Flex uses a fixed `0.5` multiplier. Local estimates exclude Search
-or other tool fees and account/subscription charges. They are not Google
-billing.
-
-Paid daily spend and accounting summaries use UTC calendar days. The Free RPD
-reservation boundary is separately based on `America/Los_Angeles`.
-
-## Tag persistence and previews
-
-Normal success writes a `media_tag` row even for text-only candidates. Storage
-normalizes/deduplicates tags and removes a row only when both tags/description
-are empty.
-
-CLI `--test` and Web Test Run set dry-run/no-write behavior for tags and Web
-settings. They still execute provider requests, RPD/RPM, retries, Search, and
-accounting. CLI test uses `locked_archive_job`; the Web Test route calls
-`tag_media_tweets()` directly on the shared store without `ProcessLock` or
-`sync.lock`. It must not overlap another writer/tagger, and accounting/budget
-preflight can race. Tests must assert both no archive tag mutation and real
-mocked provider/accounting behavior.
-
-## Web API
-
-- GET settings/accounting masks the key.
-- PUT validates only known TaggingConfig fields and preserves a mask.
-- tweet picker accepts exact ID/status URL or shared search (up to eight).
-- test validates a 1–30 digit ID and unsaved copied config.
-- models endpoint returns live compatible-looking metadata or 502 on provider
-  catalog failure.
-
-## Regression targets
-
-- `tests/test_optional_tagging.py`
-- `tests/test_tagging_prompts.py`
-- `tests/test_tagging.py`
-- `tests/test_tag_cli.py`
-- `tests/test_media_tags.py`
-- `tests/test_gemini_foundation.py`
-- `tests/test_rpd.py`
-- `tests/web/test_automated_tagging_routes.py`
-
-All provider tests should mock network and use synthetic media/content.
+Budget preflight and ledger append aren't one atomic provider transaction. Inline web previews or direct concurrent callers can overlap a budget decision; local limits aren't a hard spending cap. Test routes bypass the long-job writer lock, so avoid running them alongside archive writers/taggers. Previews leave saved tags unchanged but record real usage.
