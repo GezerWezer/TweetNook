@@ -807,6 +807,8 @@ def test_fts_filters_types_and_collections_and_hydrates_memberships(paths) -> No
         ("alpha OR missing", ["3"]),
         ("alpha NOT missing", ["3"]),
         ("alpha NOT beta", []),
+        ("alpha -beta", []),
+        ("alpha -missing", ["3"]),
         ('"focused beta"', ["3"]),
         ("focused-beta", ["3"]),
     ],
@@ -824,6 +826,92 @@ def test_article_search_honors_boolean_query_semantics(
 
     assert [row["tweet_id"] for row in results] == expected_ids
     store.close()
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_ids"),
+    [
+        ("cats -coffee", {"1", "5"}),
+        ("cats NOT coffee", {"1", "5"}),
+        ("cats OR dogs coffee", {"2", "3"}),
+        ("cats OR dogs -coffee", {"1", "5"}),
+        ("cats OR -coffee", {"1", "3", "4", "5"}),
+        ("-coffee", {"1", "4", "5"}),
+        ("NOT cats", {"2", "4"}),
+        ("cats not", {"5"}),
+        ('"cats coffee"', {"3"}),
+        ('cats -"cold brew"', {"1", "3"}),
+        ("coff*", {"2", "3"}),
+    ],
+)
+def test_article_queries_share_post_clause_semantics(paths, query, expected_ids) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    texts = {
+        "1": "cats",
+        "2": "dogs coffee",
+        "3": "cats coffee",
+        "4": "birds",
+        "5": "cats not cold brew",
+    }
+    store.merge_rows(
+        [
+            row
+            for tweet_id, text in texts.items()
+            for row in (
+                _membership(
+                    store,
+                    tweet_id,
+                    collection="bookmark",
+                    text=text,
+                    created_at=CREATED_2026,
+                    created_at_ts=1,
+                    sort_index=tweet_id,
+                ),
+                store._record(
+                    row_key=f"article:{tweet_id}",
+                    record_type="article",
+                    tweet_id=tweet_id,
+                    content_text=text,
+                ),
+            )
+        ]
+    )
+    try:
+        posts = search_posts(store, query, limit=20).rows
+        articles = store.search_fts(query, limit=20, types={"article"})
+        combined = store.search_fts(query, limit=20, types={"post", "article"})
+        assert {row["tweet_id"] for row in posts} == expected_ids
+        assert {row["tweet_id"] for row in articles} == expected_ids
+        for kind in ("post", "article"):
+            assert {row["tweet_id"] for row in combined if row["type"] == kind} == expected_ids
+    finally:
+        store.close()
+
+
+def test_article_search_filters_hidden_before_limiting_and_can_unhide(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    store.merge_rows(
+        [
+            store._record(
+                row_key=f"article:{i}",
+                record_type="article",
+                tweet_id=str(i),
+                content_text="coffee " * (20 - i),
+            )
+            for i in range(12)
+        ]
+    )
+    for i in range(10):
+        store.set_tweet_hidden(str(i), True)
+    try:
+        visible = store.search_fts("coffee", limit=2, types={"article"})
+        assert [row["tweet_id"] for row in visible] == ["10", "11"]
+        store.set_tweet_hidden("0", False)
+        assert store.search_fts("coffee", limit=1, types={"article"})[0]["tweet_id"] == "0"
+    finally:
+        store.close()
 
 
 def test_fts_overfetches_past_duplicate_memberships(paths) -> None:
