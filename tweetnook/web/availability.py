@@ -28,8 +28,6 @@ UNAVAILABLE_MESSAGES = {
     "unavailable_unknown": "This tweet is unavailable.",
 }
 
-DELETED_REASONS = frozenset({"deleted_by_author", "archive_deleted"})
-
 _OBJECT_COLUMNS = [
     "tweet_id",
     "text",
@@ -90,17 +88,26 @@ def _fallback_unavailable_reason(tweet: dict[str, Any]) -> str | None:
 
 
 def _has_archived_copy(tweet: dict[str, Any]) -> bool:
-    """Saved post content, by the same rule as the storage capture flags."""
+    """Recognize saved content independently of the post's current availability."""
     raw = _json_dict(tweet.get("raw_json")) or {}
     if _direct_tombstone(raw) is not None:
-        return False
+        raw = {}
     legacy = raw.get("legacy") if isinstance(raw.get("legacy"), dict) else {}
-    media = (legacy.get("extended_entities") or {}).get("media")
+    media = (legacy.get("extended_entities") or {}).get("media") or (
+        legacy.get("entities") or {}
+    ).get("media")
+    article = tweet.get("article") or {}
     return bool(
         _is_saved_post_text(legacy.get("full_text"))
         or extract_note_tweet_text(raw)
         or (isinstance(media, list) and media)
         or _is_saved_post_text(tweet.get("text"))
+        or tweet.get("media")
+        or tweet.get("card_media")
+        or article.get("media")
+        or any(
+            article.get(key) for key in ("title", "summary_text", "content_text", "content_state")
+        )
     )
 
 
@@ -125,10 +132,7 @@ def availability_for_tweet(
             "enrichment_state": enrichment_state,
             "reason": reason,
             "message": UNAVAILABLE_MESSAGES[reason],
-            # A tweet captured before it went missing (suspended, protected, gone) keeps
-            # showing its archived copy, marked as missing. Deleted tweets and tweets
-            # never captured stay placeholders.
-            "placeholder": reason in DELETED_REASONS or not _has_archived_copy(tweet),
+            "placeholder": not _has_archived_copy(tweet),
             "confirmed": True,
             "retryable": bool(object_row.get("enrichment_retry_eligible")),
             "checked_at": object_row.get("enrichment_checked_at"),
@@ -153,13 +157,13 @@ def availability_for_tweet(
             "enrichment_state": enrichment_state,
             "reason": inferred_reason,
             "message": UNAVAILABLE_MESSAGES[inferred_reason],
-            "placeholder": True,
+            "placeholder": not _has_archived_copy(tweet),
             "confirmed": False,
             "retryable": None,
             "checked_at": object_row.get("enrichment_checked_at") if object_row else None,
         }
 
-    if relation_only:
+    if relation_only and not _has_archived_copy(tweet):
         return {
             "state": "not_archived",
             "enrichment_state": None,
@@ -172,7 +176,7 @@ def availability_for_tweet(
         }
 
     if enrichment_state in {"pending", "transient_failure"} or object_row is None:
-        has_content = bool(tweet.get("text") or tweet.get("raw_json"))
+        has_content = _has_archived_copy(tweet) or bool(tweet.get("raw_json"))
         return {
             "state": "incomplete",
             "enrichment_state": enrichment_state,
@@ -334,6 +338,8 @@ def _use_canonical_object_content(object_row: dict[str, Any] | None, tweet: dict
         return False
     if object_row.get("enrichment_state") in {"done", "resurrected"}:
         return True
+    if object_row.get("enrichment_state") == "terminal_unavailable":
+        return _has_archived_copy(object_row) or not _has_archived_copy(tweet)
     return not bool(tweet.get("text") or tweet.get("raw_json"))
 
 
@@ -345,6 +351,9 @@ def _overlay_object_content(tweet: dict[str, Any], object_row: dict[str, Any]) -
 
 def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Attach canonical availability and normalized quote/retweet targets in bounded batches."""
+    from tweetnook.web.articles import annotate_web_articles
+    from tweetnook.web.cards import annotate_web_link_cards
+
     tweet_ids = [str(tweet["tweet_id"]) for tweet in tweets if tweet.get("tweet_id")]
     object_rows = store._rows_for_values(
         "tweet_object", "tweet_id", tweet_ids, columns=_OBJECT_COLUMNS
@@ -367,6 +376,8 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
         _overlay_object_content(tweet, object_row)
         tweet["_relation_only"] = False
 
+    # Articles are stored separately and can be the only saved body of a post.
+    annotate_web_articles(store, tweets)
     for tweet in tweets:
         object_row = objects_by_id.get(str(tweet.get("tweet_id") or ""))
         relation_only = bool(tweet.pop("_relation_only", False))
@@ -376,6 +387,7 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
         if tweet["availability"]["placeholder"]:
             tweet["media"] = []
             tweet["raw_json"] = None
+            tweet.pop("article", None)
         elif not tweet.get("media"):
             tweet["media"] = _raw_media_payloads(_json_dict(tweet.get("raw_json")))
 
@@ -386,10 +398,6 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
     _attach_targets(store, originals, ("quote_of",))
     quotes = [tweet["quoted_tweet"] for tweet in (*tweets, *originals) if tweet.get("quoted_tweet")]
     _attach_targets(store, quotes, ("quote_of",))
-    from tweetnook.web.articles import annotate_web_articles
-    from tweetnook.web.cards import annotate_web_link_cards
-
-    annotate_web_articles(store, tweets)
     annotate_web_link_cards(store, tweets)
     _overlay_community_notes(store, [*tweets, *originals, *quotes])
     return tweets
@@ -530,6 +538,7 @@ def _attach_targets(
         if row.get("tweet_id") and payload is not None:
             tags_by_id[str(row["tweet_id"])] = payload
 
+    pending: list[tuple[dict[str, Any], dict[str, Any] | None, bool]] = []
     for tweet in tweets:
         tweet_id = str(tweet.get("tweet_id") or "")
         for relation_type in relation_types:
@@ -558,15 +567,7 @@ def _attach_targets(
             if attached is None:
                 tweet[field_name] = None
                 continue
-            attached["availability"] = availability_for_tweet(
-                attached,
-                target_object,
-                relation_only=target_object is None and embedded is None,
-            )
-            if attached["availability"]["placeholder"]:
-                attached["raw_json"] = None
-                attached["media"] = []
-            elif target_id and media_by_id.get(target_id):
+            if target_id and media_by_id.get(target_id):
                 media_source_raw = _json_dict((target_object or {}).get("raw_json"))
                 if media_source_raw is None:
                     media_source_raw = attached.get("raw_json")
@@ -576,7 +577,23 @@ def _attach_targets(
             if target_id:
                 attached["media_tags"] = tags_by_id.get(target_id)
             tweet[field_name] = attached
+            pending.append((attached, target_object, target_object is None and embedded is None))
 
+    from tweetnook.web.articles import annotate_web_articles
+
+    annotate_web_articles(store, [attached for attached, _, _ in pending])
+    for attached, target_object, relation_only in pending:
+        attached["availability"] = availability_for_tweet(
+            attached,
+            target_object,
+            relation_only=relation_only,
+        )
+        if attached["availability"]["placeholder"]:
+            attached["raw_json"] = None
+            attached["media"] = []
+            attached.pop("article", None)
+
+    for tweet in tweets:
         if "quote_of" in relation_types:
             quote = tweet.get("quoted_tweet")
             tweet["qt_media"] = quote.get("media", []) if isinstance(quote, dict) else []

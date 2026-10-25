@@ -461,7 +461,18 @@ UNCAPTURED_TWEET_IDS_SQL = (
     "SELECT DISTINCT content.tweet_id FROM archive_tweet_content AS content "
     "WHERE content.has_content = 0 AND content.tweet_id IS NOT NULL "
     "AND NOT EXISTS (SELECT 1 FROM archive_tweet_content AS captured "
-    "WHERE captured.tweet_id = content.tweet_id AND captured.has_content = 1)"
+    "WHERE captured.tweet_id = content.tweet_id AND captured.has_content = 1) "
+    # An official archive or partial capture can store useful secondary content
+    # without post text/JSON. Use indexed IDs and scalar columns, not raw JSON.
+    "AND NOT EXISTS (SELECT 1 FROM archive AS saved "
+    "WHERE saved.tweet_id = content.tweet_id AND ("
+    "(saved.record_type = 'media' AND ("
+    "COALESCE(saved.media_url, '') != '' OR COALESCE(saved.local_path, '') != '' OR "
+    "COALESCE(saved.thumbnail_url, '') != '' OR "
+    "COALESCE(saved.thumbnail_local_path, '') != '')) OR "
+    "(saved.record_type = 'article' AND ("
+    "COALESCE(saved.title, '') != '' OR COALESCE(saved.summary_text, '') != '' OR "
+    "COALESCE(saved.content_text, '') != ''))))"
 )
 COMMUNITY_NOTE_TWEET_IDS_SQL = (
     "SELECT tweet_id FROM archive_tweet_content WHERE has_note = 1 "

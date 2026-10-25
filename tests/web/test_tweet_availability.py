@@ -64,12 +64,12 @@ def test_availability_reason_catalog_and_incomplete_states() -> None:
         "text": "WHY IS MY TEAMMATE INSPECTING FUCKING ARCHITECTURE https://t.co/pD5PS2ibMs",
         "raw_json": None,
     }
-    for reason, placeholder in (("suspended_account", False), ("deleted_by_author", True)):
+    for reason in ("suspended_account", "deleted_by_author", "archive_deleted"):
         availability = availability_for_tweet(
             text_only, {"enrichment_state": "terminal_unavailable", "enrichment_reason": reason}
         )
         assert availability["state"] == "unavailable"
-        assert availability["placeholder"] is placeholder
+        assert availability["placeholder"] is False
     system_message = {
         "tweet_id": "7",
         "text": "This account is suspended. {learnmore}",
@@ -99,6 +99,7 @@ def test_availability_reason_catalog_and_incomplete_states() -> None:
 
     legacy_private = _web_tweet("5")
     legacy_private["text"] = "This Post is from a private account. {learnmore}"
+    legacy_private["media"] = []
     protected = availability_for_tweet(legacy_private, None)
     assert protected["reason"] == "protected_account"
     assert protected["placeholder"] is True
@@ -168,7 +169,9 @@ def test_canonical_attached_state_overrides_stale_embedded_payloads(tmp_path) ->
     terminal_quote = terminal_wrapper["quoted_tweet"]
     assert terminal_quote["availability"]["reason"] == "deleted_by_author"
     assert terminal_quote["availability"]["confirmed"] is True
-    assert terminal_quote["raw_json"] is None
+    assert terminal_quote["availability"]["placeholder"] is False
+    assert terminal_quote["text"] == "previous text"
+    assert terminal_quote["raw_json"] == live_quote
     resurrected_quote = resurrected_wrapper["quoted_tweet"]
     assert resurrected_quote["availability"]["state"] == "available"
     assert resurrected_quote["text"] == "available again"

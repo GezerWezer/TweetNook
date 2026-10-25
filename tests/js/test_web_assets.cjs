@@ -7009,6 +7009,31 @@ test('offline fonts use local families, permission-based discovery, and no style
     assert.equal(context.__state.appendedLinks.length, 0);
 });
 
+test('saved media and Articles remain readable with unavailable warnings and no text', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, ['themes.js', 'articles.js', 'app.js'], '({ tweetApp })');
+    const app = immediateComponent(tweetApp());
+    const missing = {
+        tweet_id: 'saved', text: '', raw_json: null, media: [],
+        availability: { state: 'unavailable', placeholder: false, reason: 'deleted_by_author',
+            message: 'This tweet was deleted by its author.' },
+    };
+    for (const content of [
+        { media: [{ type: 'photo', download: { local_path: 'media/saved.jpg' } }] },
+        { article: { title: 'Saved article', content_text: 'Saved article body', status: 'body_present' } },
+        { card_media: [{ download: { local_path: 'media/card.jpg' } }] },
+    ]) {
+        const tweet = { ...missing, ...content };
+        assert.equal(app.isPlaceholderTweet(tweet), false);
+        assert.equal(app.isTextPlaceholderTweet(tweet), false);
+        assert.doesNotMatch(app.formatText(tweet), /tweet-skeleton/);
+        assert.match(app.missingBadge(tweet), /deleted by its author/);
+        assert.notEqual(app.renderActionBar(tweet), '');
+    }
+    assert.equal(app.isTextPlaceholderTweet(missing), true);
+    assert.equal(app.isPlaceholderTweet({ ...missing, availability: { placeholder: true } }), true);
+});
+
 test('card thumbnails only render matching archived images or posters', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({ tweetApp })');

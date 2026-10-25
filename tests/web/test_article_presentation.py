@@ -116,13 +116,14 @@ def test_articles_attach_to_quotes_nested_quotes_retweets_and_context(tmp_path):
         assert tweets[0]["qt_media"] == []
 
 
-def test_unavailable_article_does_not_leak_saved_body_into_placeholder(tmp_path):
+def test_deleted_article_keeps_saved_body_with_unavailable_warning(tmp_path):
     with closing(ArchiveStore(tmp_path / "archive.db", create=True)) as store:
         _seed(store, "1", article=True, unavailable=True)
         tweet = store.fetch_tweets_by_ids(["1"], include_objects=True)[0]
         annotate_web_tweets(store, [tweet])
-        assert tweet["availability"]["placeholder"]
-        assert "article" not in tweet
+        assert tweet["availability"]["placeholder"] is False
+        assert tweet["availability"]["reason"] == "deleted_by_author"
+        assert tweet["article"]["content_text"] == "Saved article body"
 
 
 def test_article_preview_without_media_or_rich_state_remains_a_preview(tmp_path):

@@ -105,6 +105,10 @@ JSON stores NULL facts instead of failing the write.
 membership or tweet-object `row_key`. Insert/update/delete triggers maintain it,
 including changes to text, tweet IDs and row types. Indexed flags support default
 uncaptured exclusions and Community Note searches without parsing JSON on reads.
+When no membership/object has captured content, the uncaptured filter also checks
+separate media and Article records by indexed tweet ID and scalar fields. Saved
+images, videos, and Article bodies therefore remain in default results even
+without post text or raw media metadata.
 Schema 11 backfills these flags and creates the note-history table if absent,
 preserving canonical rows and existing note history.
 

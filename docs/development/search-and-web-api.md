@@ -304,7 +304,9 @@ media to 10.
 Canonical cases:
 
 - available: done/resurrected and confirmed;
-- unavailable: explicit terminal reason, placeholder as appropriate;
+- unavailable: explicit terminal reason; show saved content with a warning for
+  every reason, including author/archive deletion. Use a placeholder only when
+  no saved text, media, or Article content exists;
 - incomplete: pending/transient/missing detail, preserving useful embedded
   content;
 - not archived: relation-only target with no local object.
@@ -313,7 +315,11 @@ A rare existing object with an unknown/NULL lifecycle state falls back to
 `available` with `confirmed: false`.
 
 Raw JSON/media is cleared for placeholders. Embedded content alone does not
-prove current availability.
+prove current availability. A saved canonical copy takes precedence over stale
+embedded tombstones even when its lifecycle state is terminal-unavailable.
+Load separate media and Article records before deciding whether a saved copy
+exists. Default feed/search filtering also recognizes these records when post
+text and raw media metadata are absent.
 
 ## Author and tag support APIs
 
