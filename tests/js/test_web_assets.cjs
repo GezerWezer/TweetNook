@@ -9829,7 +9829,7 @@ test('a phone post slides as a layer over the feed, with its own header', () => 
     assert.match(body, /<!-- THREAD VIEW/);
     assert.match(body, /<!-- QUOTES VIEW/);
     // The feed drifts beneath a post; the page header stays put.
-    assert.equal((html.match(/data-feed-stage/g) || []).length, 2);
+    assert.equal((html.match(/data-feed-stage/g) || []).length, 3);
     assert.match(html, /<header data-video-occluder class="nook-header">/);
     assert.doesNotMatch(html, /data-feed-stage class="nook-tabs-frame"/);
     // Its title and tabs fade through a variable, so tucked-away tabs stay hidden,

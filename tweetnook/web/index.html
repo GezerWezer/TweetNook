@@ -43,12 +43,6 @@
     <!-- LEFT COLUMN (Main Feed) -->
     <div :class="{ 'app-column-split': splitPanel && panelStack.length > 0 }" class="border-x border-[var(--border-color)] app-column w-full max-w-[600px] min-h-screen relative bg-[var(--bg-primary)] flex-shrink-0">
         
-        <section x-cloak x-show="setupData && !setupForced && !archiveReady" class="setup-card m-4" role="status">
-            <h2 class="text-xl font-bold" x-text="['failed', 'interrupted'].includes(setupData?.archive?.initialization_state) ? 'Archive setup needs attention' : 'Your archive is being initialized'"></h2>
-            <p class="text-sm text-[var(--text-secondary)] mt-2" x-text="setupProgressMessage"></p>
-            <p class="text-sm text-[var(--text-secondary)] mt-2">Browsing becomes available when local initialization finishes.</p>
-            <div class="flex gap-3 mt-4"><button class="setup-btn" @click="activityDrawerOpen = true">View activity</button><button class="setup-btn" @click="openSetup()">Open Setup</button></div>
-        </section>
         <!-- HEADER: title, sync / analytics / settings, collection tabs (the tabs tuck away on scroll) -->
         <header data-video-occluder class="nook-header">
             <div class="nook-title-row">
@@ -84,6 +78,13 @@
                 </nav>
             </div>
         </header>
+
+        <section x-cloak x-show="setupData && !setupForced && !archiveReady" data-feed-stage class="setup-card m-4" role="status">
+            <h2 class="text-xl font-bold" x-text="['failed', 'interrupted'].includes(setupData?.archive?.initialization_state) ? 'Archive setup needs attention' : 'Your archive is being initialized'"></h2>
+            <p class="text-sm text-[var(--text-secondary)] mt-2" x-text="setupProgressMessage"></p>
+            <p class="text-sm text-[var(--text-secondary)] mt-2">Browsing becomes available when local initialization finishes.</p>
+            <div class="flex gap-3 mt-4"><button class="setup-btn" @click="activityDrawerOpen = true">View activity</button><button class="setup-btn" @click="openSetup()">Open Setup</button></div>
+        </section>
 
         <div x-show="showArchiveEnrichmentReminder" x-cloak role="alert" data-feed-stage
              class="px-4 py-3 border-b border-[var(--border-color)] bg-[color-mix(in_srgb,var(--accent-color)_12%,var(--bg-primary))] text-sm text-[var(--text-primary)]">
