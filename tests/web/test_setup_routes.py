@@ -29,6 +29,9 @@ class SetupStore:
     def get_archive_owner_id(self):
         return getattr(self, "owner_id", None)
 
+    def apply_config(self, config):
+        self.config = config
+
 
 def _paths(tmp_path: Path) -> XDGPaths:
     return ensure_paths(

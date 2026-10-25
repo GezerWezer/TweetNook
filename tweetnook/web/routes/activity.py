@@ -23,10 +23,11 @@ from tweetnook.activity_history import (
     runs_root,
     terminal_snapshot,
 )
-from tweetnook.config import ScheduleConfig, update_config_values
+from tweetnook.config import AppConfig, ScheduleConfig, update_config_values
 from tweetnook.job_supervisor import JobConflictError
 from tweetnook.web.activity_stream import ActivityStream
 from tweetnook.web.deps import server_state, verify_credentials
+from tweetnook.web.runtime_config import reload_server_config
 
 router = APIRouter(prefix="/api/activity", tags=["activity"])
 # Every job the Web jobs list can run reports through the same pipeline.
@@ -384,7 +385,8 @@ def put_schedule(
             paths,
             {f"schedule.{key}": value for key, value in request.model_dump().items()},
         )
-        manager.reload(reset=True)
+        config = server_state.get("config") or AppConfig()
+        reload_server_config(config.model_copy(update={"schedule": request}), reset_schedule=True)
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return manager.status()

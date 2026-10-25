@@ -198,8 +198,9 @@ def test_schedule_endpoints_persist_validated_settings(tmp_path, make_web_client
                 "date": "today",
             }
 
-        def reload(self, *, reset):
+        def reload(self, *, reset, config=None):
             assert reset is True
+            assert config.schedule.time == "18:45"
             self.reloaded = True
 
     manager = Manager()

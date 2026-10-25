@@ -224,8 +224,9 @@ class ScheduleManager:
             self._thread.join(timeout=2)
         self._thread = None
 
-    def reload(self, *, reset: bool = True) -> None:
-        config, _ = load_config()
+    def reload(self, *, reset: bool = True, config: AppConfig | None = None) -> None:
+        if config is None:
+            config, _ = load_config()
         with self._lock:
             self.config = config
             self.supervisor.config = config

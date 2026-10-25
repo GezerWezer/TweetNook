@@ -18,7 +18,8 @@ from tweetnook.config import TaggingConfig
 from tweetnook.extractor import extract_status_id_from_url
 from tweetnook.gemini_accounting import AIUsageLedger
 from tweetnook.search import SearchQueryError, search_posts
-from tweetnook.web.deps import require_store, server_state, verify_credentials
+from tweetnook.web.deps import require_store, verify_credentials
+from tweetnook.web.runtime_config import reload_server_config
 
 router = APIRouter()
 MASKED_SECRET = "********"
@@ -97,7 +98,7 @@ def put_automated_tagging(
             {f"tagging.{key}": value for key, value in validated.model_dump().items()},
         )
         refreshed, _ = _load()
-        server_state["config"] = refreshed
+        reload_server_config(refreshed)
         return {
             "installed": True,
             "values": _public_values(refreshed.tagging),

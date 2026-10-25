@@ -8,6 +8,8 @@ import pytest
 
 from tweetnook.config import AppConfig, load_config, update_config_values
 from tweetnook.scheduler import ScheduleManager
+from tweetnook.storage import open_archive_store
+from tweetnook.web.avatar_cache import AvatarCacheManager
 from tweetnook.web.deps import server_state
 from tweetnook.web.routes import config as config_routes
 
@@ -161,6 +163,110 @@ def test_post_config_null_resets_field(monkeypatch, make_web_client, tmp_path: P
     assert response.json()["values"]["web"]["port"] == 8000
     assert response.json()["explicit"] == []
     assert "[web]" not in paths.config_file.read_text(encoding="utf-8")
+
+
+def test_save_updates_runtime_services_and_preserves_an_active_job_snapshot(
+    monkeypatch, make_web_client, tmp_path
+):
+    config, paths = _use_temp_config(monkeypatch, tmp_path)
+    active_config = config.model_copy(deep=True)
+    worker = object()
+    supervisor = SimpleNamespace(config=config, active_config=active_config, _process=worker)
+    avatars = AvatarCacheManager(paths, config)
+    manager = ScheduleManager(paths, config, supervisor)
+    store = open_archive_store(paths, create=True, config=config)
+    server_state.update(
+        config=config,
+        paths=paths,
+        job_supervisor=supervisor,
+        avatar_cache_manager=avatars,
+        schedule_manager=manager,
+        store=store,
+    )
+    client = make_web_client(config_routes.router)
+    try:
+        response = client.post(
+            "/api/config",
+            json={"changes": {"web.fetch_avatars": False, "sync.page_delay": 7.0}},
+        )
+        assert response.status_code == 200
+        assert server_state["config"].web.fetch_avatars is False
+        assert avatars.config.web.fetch_avatars is False
+        assert manager.config.sync.page_delay == 7.0
+        assert supervisor.config.sync.page_delay == 7.0
+        assert supervisor._process is worker
+        assert active_config.web.fetch_avatars is True
+        assert active_config.sync.page_delay == config.sync.page_delay
+        assert store.config.web.fetch_avatars is False
+    finally:
+        store.close()
+
+
+def test_restore_defaults_disables_running_schedule_and_preserves_credentials(
+    monkeypatch, make_web_client, tmp_path
+):
+    _, paths = _use_temp_config(monkeypatch, tmp_path)
+    update_config_values(
+        paths,
+        {"schedule.enabled": True, "auth.auth_token": "synthetic", "tagging.api_key": "key"},
+    )
+    config, _ = load_config(_env(tmp_path))
+    supervisor = SimpleNamespace(config=config)
+    manager = ScheduleManager(paths, config, supervisor)
+    server_state.update(config=config, job_supervisor=supervisor, schedule_manager=manager)
+    client = make_web_client(config_routes.router)
+
+    response = client.post("/api/config", json={"changes": {"schedule.enabled": None}})
+
+    assert response.status_code == 200
+    assert manager.status()["enabled"] is False
+    assert manager._state["next_run_at"] is None
+    assert supervisor.config.auth.auth_token == "synthetic"
+    assert server_state["config"].tagging.api_key == "key"
+
+
+def test_invalid_save_leaves_runtime_services_unchanged(monkeypatch, make_web_client, tmp_path):
+    config, paths = _use_temp_config(monkeypatch, tmp_path)
+    avatars = AvatarCacheManager(paths, config)
+    supervisor = SimpleNamespace(config=config)
+    server_state.update(config=config, avatar_cache_manager=avatars, job_supervisor=supervisor)
+    client = make_web_client(config_routes.router)
+
+    response = client.post(
+        "/api/config",
+        json={"changes": {"web.avatar_cache_limit_mb": 0, "web.fetch_avatars": False}},
+    )
+
+    assert response.status_code == 400
+    assert server_state["config"] is config
+    assert avatars.config is config
+    assert supervisor.config is config
+    assert load_config(_env(tmp_path))[0].web.fetch_avatars is True
+
+
+def test_database_tuning_applies_to_open_store_and_new_readers(
+    monkeypatch, make_web_client, tmp_path
+):
+    config, paths = _use_temp_config(monkeypatch, tmp_path)
+    store = open_archive_store(paths, create=True, config=config)
+    server_state.update(config=config, store=store)
+    client = make_web_client(config_routes.router)
+    try:
+        response = client.post(
+            "/api/config",
+            json={"changes": {"database.cache_size_kb": 2048, "database.mmap_size_bytes": 0}},
+        )
+        assert response.status_code == 200
+        assert store.conn.execute("PRAGMA cache_size").fetchone()[0] == -2048
+        assert store.conn.execute("PRAGMA mmap_size").fetchone()[0] == 0
+        reader = store.open_reader()
+        try:
+            assert reader.conn.execute("PRAGMA cache_size").fetchone()[0] == -2048
+            assert reader.conn.execute("PRAGMA mmap_size").fetchone()[0] == 0
+        finally:
+            reader.close()
+    finally:
+        store.close()
 
 
 @pytest.mark.parametrize(

@@ -909,12 +909,12 @@ def get_config_ui_schema() -> dict[str, Any]:
             ),
             "web.avatar_cache_limit_enabled": (
                 "Each week, remove the least recently used avatars once the cache is over its "
-                "limit."
+                "limit. Changes to the limit apply when you save."
             ),
             "web.avatar_cache_limit_mb": "",
             "web.analytics_refresh_time": (
                 "When Analytics statistics are rebuilt, in the server's local time. "
-                "Takes effect after a restart."
+                "Changes apply when you save."
             ),
             "web.dev_replay_source": (
                 "Developer tool. Lets a separate TweetNook test install started with "
@@ -922,8 +922,10 @@ def get_config_ui_schema() -> dict[str, Any]:
                 "of contacting X. Read-only and protected by the Web password; refused when no "
                 "Web password is set."
             ),
-            "web.host": "Use 0.0.0.0 to let other devices on your network connect.",
-            "web.port": "",
+            "web.host": (
+                "Use 0.0.0.0 to let other devices on your network connect. Restart after changing."
+            ),
+            "web.port": "Restart after changing the port.",
             "schedule.enabled": "Run sync automatically from the always-on Web service.",
             "schedule.cadence": "Run every N hours, every day, every week, or every month.",
             "schedule.every_hours": "Hours between runs when the hourly cadence is selected.",

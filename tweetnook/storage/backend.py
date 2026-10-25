@@ -4251,6 +4251,13 @@ class ArchiveStore:
         reader.conn.set_progress_handler(lambda: self._warm_cancelled, 10_000)
         return reader
 
+    def apply_config(self, config: AppConfig) -> None:
+        """Apply connection tuning and use this snapshot for future private readers."""
+        if self.config is None or self.config.database != config.database:
+            self.conn.execute(f"PRAGMA cache_size = -{config.database.cache_size_kb}")
+            self.conn.execute(f"PRAGMA mmap_size = {config.database.mmap_size_bytes}")
+        self.config = config
+
     def get_like_order(self):
         """Return the derived order independently of tweet content/source updates."""
         from tweetnook.like_order import load_like_order
