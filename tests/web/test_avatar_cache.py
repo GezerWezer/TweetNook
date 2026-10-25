@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from threading import Event
 
 from tweetnook.config import AppConfig, WebConfig, XDGPaths
 from tweetnook.web.avatar_cache import (
@@ -149,3 +150,48 @@ def test_manager_preserves_over_limit_cache_when_disabled(tmp_path: Path) -> Non
     assert manager.tick(now=1_000.0) is None
     assert avatar.exists()
     assert not paths.avatar_cache_state_file.exists()
+
+
+def test_manager_wakes_and_applies_a_smaller_limit_during_the_week(tmp_path, monkeypatch):
+    paths = _paths(tmp_path)
+    oldest = _avatar(paths.media_dir / "avatars", "old.jpg", 700_000, 100.0)
+    newest = _avatar(paths.media_dir / "avatars", "new.jpg", 700_000, 200.0)
+    config = AppConfig(web=WebConfig(avatar_cache_limit_mb=2))
+    manager = AvatarCacheManager(paths, config)
+    first = Event()
+    evicted = Event()
+    original_tick = manager.tick
+
+    def tick():
+        result = original_tick()
+        first.set()
+        if result and result.deleted_files:
+            evicted.set()
+        return result
+
+    monkeypatch.setattr(manager, "tick", tick)
+    manager.start()
+    try:
+        assert first.wait(2)
+        assert oldest.exists()
+        smaller = config.model_copy(
+            update={"web": config.web.model_copy(update={"avatar_cache_limit_mb": 1})}
+        )
+        manager.reload(smaller)
+        assert evicted.wait(2)
+        assert not oldest.exists()
+        assert newest.exists()
+        assert config.web.avatar_cache_limit_mb == 2
+    finally:
+        manager.stop()
+
+
+def test_manager_does_not_sleep_after_stop_during_cleanup(tmp_path, monkeypatch):
+    manager = AvatarCacheManager(_paths(tmp_path), AppConfig())
+    monkeypatch.setattr(manager, "tick", manager._stop.set)
+
+    def unexpected_wait(timeout):
+        raise AssertionError("Cleanup must exit when stopped during a tick")
+
+    monkeypatch.setattr(manager._wake, "wait", unexpected_wait)
+    manager._loop()

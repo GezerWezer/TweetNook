@@ -40,6 +40,7 @@ from tweetnook.exceptions import ProcessLockError
 from tweetnook.job_supervisor import JobConflictError
 from tweetnook.web.deps import remember_web_session, server_state, verify_credentials
 from tweetnook.web.routes.activity import _read_active_snapshot
+from tweetnook.web.runtime_config import reload_server_config
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
 MASKED_SECRET = "********"
@@ -320,9 +321,7 @@ def _apply_replay_config(paths: XDGPaths, changes: dict[str, object]) -> AppConf
         config, _ = load_config()
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    server_state["config"] = config
-    if supervisor := server_state.get("job_supervisor"):
-        supervisor.config = config
+    reload_server_config(config)
     return config
 
 
@@ -463,9 +462,7 @@ def put_auth(
         config, _ = load_config()
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    server_state["config"] = config
-    if supervisor := server_state.get("job_supervisor"):
-        supervisor.config = config
+    reload_server_config(config)
     coordinator = server_state.get("setup_coordinator")
     if coordinator:
         if current.replay.url:
@@ -628,11 +625,7 @@ def put_setup_schedule(
         config, _ = load_config()
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    server_state["config"] = config
-    if supervisor := server_state.get("job_supervisor"):
-        supervisor.config = config
-    if manager := server_state.get("schedule_manager"):
-        manager.reload(reset=True)
+    reload_server_config(config, reset_schedule=True)
     return _schedule_payload()
 
 
@@ -678,8 +671,7 @@ def _finish_setup(request: CompleteRequest, http_request: Request):
         if password_changed:
             update_config_values(coordinator.paths, {"web.password_hash": password_hash})
             config, _ = load_config()
-            server_state["config"] = config
-            server_state["job_supervisor"].config = config
+            reload_server_config(config)
         coordinator.complete_walkthrough(skip_auth=request.skip_auth)
         server_state["password_hash"] = password_hash
         coordinator.reconcile()

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from tweetnook.web.deps import verify_credentials
+from tweetnook.web.runtime_config import reload_server_config
 
 router = APIRouter()
 MASKED_SECRET = "********"
@@ -94,12 +95,7 @@ def api_post_config(
 
         update_config_values(paths, req.changes)
         config, refreshed_paths = load_config()
-        if any(path.startswith(("check.", "fxtwitter.")) for path in req.changes):
-            from tweetnook.web.deps import server_state
-
-            manager = server_state.get("schedule_manager")
-            if manager is not None:
-                manager.reload(reset=False)
+        reload_server_config(config)
         return {
             "values": _mask_secrets(config.model_dump()),
             "explicit": get_explicit_config_fields(refreshed_paths),

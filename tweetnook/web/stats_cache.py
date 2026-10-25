@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from threading import Condition, Event, Thread
+from threading import Condition, Event, Lock, Thread
 
 from tweetnook.config import ScheduleConfig
 from tweetnook.scheduler import next_run_after
@@ -200,26 +200,48 @@ class DailyStatsRefresher:
         self._cache = cache
         self._now = now
         self._stop = Event()
+        self._wake = Event()
+        self._lock = Lock()
+        self._revision = 0
         self._thread: Thread | None = None
 
     def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop.clear()
         self._cache.start_refresh(self._store)
         self._thread = Thread(target=self._run, name="tweetnook-stats-daily", daemon=True)
         self._thread.start()
 
+    def reload(self, refresh_time: str) -> None:
+        with self._lock:
+            if refresh_time == self._refresh_time:
+                return
+            self._refresh_time = refresh_time
+            self._revision += 1
+            self._wake.set()
+
     def _run(self) -> None:
-        due = next_daily_refresh(self._refresh_time, self._now())
-        while True:
+        with self._lock:
+            revision = self._revision
+            due = next_daily_refresh(self._refresh_time, self._now())
+        while not self._stop.is_set():
+            with self._lock:
+                if revision != self._revision:
+                    revision = self._revision
+                    due = next_daily_refresh(self._refresh_time, self._now())
+                refresh_time = self._refresh_time
             # Re-check after every wake: waits can end early and the clock can jump.
             remaining = (due - self._now()).total_seconds()
             if remaining > 0:
-                if self._stop.wait(remaining):
-                    return
+                self._wake.wait(remaining)
+                self._wake.clear()
                 continue
             self._cache.start_refresh(self._store)
-            due = next_daily_refresh(self._refresh_time, max(due, self._now()))
+            due = next_daily_refresh(refresh_time, max(due, self._now()))
 
     def stop(self) -> None:
         self._stop.set()
+        self._wake.set()
         if self._thread is not None:
             self._thread.join()

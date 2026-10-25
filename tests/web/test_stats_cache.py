@@ -204,3 +204,48 @@ def test_daily_refresher_collects_on_attach_and_at_each_daily_time() -> None:
     refresher.stop()
 
     assert refreshes == [store, store]
+
+
+def test_daily_refresher_reloads_a_sleeping_schedule(monkeypatch) -> None:
+    from tweetnook.web import stats_cache
+
+    clock = [datetime(2026, 10, 25, 3, 0).astimezone()]
+    initial_plan = Event()
+    changed_plan = Event()
+    refreshed = Event()
+    requests = []
+    original_next = stats_cache.next_daily_refresh
+
+    def next_refresh(refresh_time, after):
+        due = original_next(refresh_time, after)
+        (changed_plan if refresh_time == "04:00" else initial_plan).set()
+        return due
+
+    def collect(store):
+        requests.append(store)
+        if len(requests) == 2:
+            refreshed.set()
+
+    monkeypatch.setattr(stats_cache, "next_daily_refresh", next_refresh)
+    store = object()
+    refresher = DailyStatsRefresher(
+        store, "05:00", now=lambda: clock[0], cache=SimpleNamespace(start_refresh=collect)
+    )
+    refresher.start()
+    try:
+        assert initial_plan.wait(2)
+        refresher.reload("04:00")
+        assert changed_plan.wait(2)
+        clock[0] = clock[0].replace(hour=4)
+        refresher._wake.set()
+        assert refreshed.wait(2)
+        assert requests == [store, store]
+    finally:
+        refresher.stop()
+
+
+def test_daily_refresher_keeps_an_unchanged_schedule() -> None:
+    refresher = DailyStatsRefresher(object(), "05:00")
+    refresher.reload("05:00")
+    assert not refresher._wake.is_set()
+    assert refresher._revision == 0

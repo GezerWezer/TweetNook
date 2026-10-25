@@ -110,6 +110,9 @@ class AvatarCacheManager:
         self.paths = paths
         self.config = config
         self._stop = threading.Event()
+        self._wake = threading.Event()
+        self._lock = threading.RLock()
+        self._force_cleanup = False
         self._thread: Thread | None = None
         self._state = self._load_state()
 
@@ -126,18 +129,34 @@ class AvatarCacheManager:
 
     def stop(self) -> None:
         self._stop.set()
+        self._wake.set()
         if self._thread is not None:
             self._thread.join(timeout=2)
         self._thread = None
 
+    def reload(self, config: AppConfig) -> None:
+        with self._lock:
+            changed = (
+                self.config.web.avatar_cache_limit_enabled != config.web.avatar_cache_limit_enabled
+                or self.config.web.avatar_cache_limit_mb != config.web.avatar_cache_limit_mb
+            )
+            self.config = config
+            if changed:
+                self._force_cleanup = True
+                self._wake.set()
+
     def tick(self, *, now: float | None = None) -> AvatarCleanupResult | None:
         """Run one due cleanup and return its result; return None when not due or disabled."""
+        with self._lock:
+            return self._tick(now=now)
+
+    def _tick(self, *, now: float | None = None) -> AvatarCleanupResult | None:
         if not self.config.web.avatar_cache_limit_enabled:
             return None
 
         timestamp = time.time() if now is None else now
         last_run_at = self._state.get("last_run_at")
-        if last_run_at is not None:
+        if last_run_at is not None and not self._force_cleanup:
             try:
                 if timestamp - float(last_run_at) < AVATAR_CLEANUP_INTERVAL_SECONDS:
                     return None
@@ -146,6 +165,7 @@ class AvatarCacheManager:
 
         limit_bytes = self.config.web.avatar_cache_limit_mb * 1024 * 1024
         result = cleanup_avatar_cache(self.paths.media_dir / "avatars", limit_bytes)
+        self._force_cleanup = False
         self._state = {
             "last_run_at": timestamp,
             "next_run_at": timestamp + AVATAR_CLEANUP_INTERVAL_SECONDS,
@@ -156,12 +176,15 @@ class AvatarCacheManager:
 
     def _loop(self) -> None:
         while not self._stop.is_set():
+            self._wake.clear()
             try:
                 self.tick()
             except Exception:
                 # Cache maintenance must never bring down the Web service.
                 pass
-            self._stop.wait(AVATAR_CLEANUP_POLL_SECONDS)
+            if self._stop.is_set():
+                return
+            self._wake.wait(AVATAR_CLEANUP_POLL_SECONDS)
 
     def _load_state(self) -> dict[str, object]:
         try:

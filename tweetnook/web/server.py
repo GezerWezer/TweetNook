@@ -39,6 +39,7 @@ from tweetnook.web.routes.stats import router as stats_router
 from tweetnook.web.routes.storage_stats import router as storage_stats_router
 from tweetnook.web.routes.tags import router as tags_router
 from tweetnook.web.routes.tweets import router as tweets_router
+from tweetnook.web.runtime_config import lifecycle_lock as _lifecycle_lock
 from tweetnook.web.setup_coordinator import SetupCoordinator
 from tweetnook.web.stats_cache import DailyStatsRefresher, web_stats_cache
 from tweetnook.web.warmup import ArchiveWarmer
@@ -52,7 +53,6 @@ def _build_fts_in_background(store) -> None:
         pass  # FTS is optional; search degrades gracefully without it
 
 
-_lifecycle_lock = threading.RLock()
 _DETAIL_DOCUMENT_PATH = re.compile(r"^/post/\d+(?:/quotes)?$")
 
 
@@ -145,18 +145,19 @@ def request_archive_warmup() -> None:
 
 
 def detach_archive_store() -> None:
-    stop_scheduler()
-    if refresher := server_state.pop("stats_refresher", None):
-        refresher.stop()
-    if warmer := server_state.pop("archive_warmer", None):
-        warmer.stop()
-    if thread := server_state.pop("fts_thread", None):
-        if hasattr(thread, "join"):
-            thread.join()
-    if store := server_state.pop("store", None):
-        web_stats_cache.wait_for_refreshes()
-        web_stats_cache.clear()
-        store.close()
+    with _lifecycle_lock:
+        stop_scheduler()
+        if refresher := server_state.pop("stats_refresher", None):
+            refresher.stop()
+        if warmer := server_state.pop("archive_warmer", None):
+            warmer.stop()
+        if thread := server_state.pop("fts_thread", None):
+            if hasattr(thread, "join"):
+                thread.join()
+        if store := server_state.pop("store", None):
+            web_stats_cache.wait_for_refreshes()
+            web_stats_cache.clear()
+            store.close()
 
 
 @asynccontextmanager
