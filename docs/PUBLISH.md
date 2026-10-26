@@ -7,7 +7,7 @@ Use this for a new TweetNook version. A release is finished when the intended pa
 - [ ] Confirm the intended base branch and release scope. Run `git status -sb` and inspect recent commits; leave unrelated work alone.
 - [ ] Update the version in `pyproject.toml` and `tweetnook/__init__.py`. Check any version-bearing build/demo inputs affected by the release.
 - [ ] Add the matching dated section to `CHANGELOG.md`, using Added, Changed and Fixed where relevant. Describe the resulting behavior for users.
-- [ ] Update the README, user/developer guides and optional-feature instructions for the release.
+- [ ] Check that the README, user/developer guides and optional-feature instructions match the released behavior. Docs are updated with the changes they describe, so this is a review. Propose any gap it finds to the maintainer, and make the change only once they agree.
 - [ ] Rebuild browser dependencies/CSS when their sources changed, and retain the bundled licenses.
 - [ ] Regenerate `tweetnook/web/static/setup-help.json` if the cookie guide changed.
 
@@ -45,7 +45,7 @@ uvx twine check dist/*
 - [ ] Verify the GitHub Release notes, version/title, distributions and attached installer.
 - [ ] Verify the published PyPI metadata and install the published package in a clean environment.
 - [ ] Verify GitHub Pages deployment and the public demo's base-path navigation, media and version.
-- [ ] Record the release/tag URLs, published version and validation results in the worklog.
+- [ ] Report the release/tag URLs, published version and validation results to the maintainer.
 
 If a step fails after publication begins, inspect completed uploads before retrying. Follow the [release guide](development/release.md) and workflow rather than replacing already published artifacts blindly.
 
