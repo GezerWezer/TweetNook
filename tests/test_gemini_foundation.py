@@ -24,6 +24,7 @@ from tweetnook.gemini_pricing import (
     OpenRouterPricing,
     calculate_estimated_cost_usd,
     load_openrouter_pricing,
+    minimum_input_cost_usd,
     pricing_cache_path,
 )
 
@@ -296,18 +297,118 @@ def test_actual_interaction_cost_is_calculated_and_stored_at_request_time() -> N
         pricing_multiplier=Decimal("0.5"),
         now=now,
     )
-    expected = calculate_estimated_cost_usd(
-        pricing,
-        input_tokens=1_000,
-        cached_tokens=200,
-        output_tokens=100,
-        thinking_tokens=50,
-        multiplier=Decimal("0.5"),
-    )
-    assert Decimal(record.estimated_cost_usd or "0") == expected
+    # (800 uncached x 0.000001 + 200 cached x 0.0000001 + 100 output x 0.000002
+    #  + 50 thinking x 0.000003) x 0.5 Flex
+    assert Decimal(record.estimated_cost_usd or "0") == Decimal("0.000585")
+    assert record.actual == {
+        "input_tokens": 1_000,
+        "cached_tokens": 200,
+        "output_tokens": 100,
+        "thinking_tokens": 50,
+        "tool_tokens": 0,
+        "cost_usd": record.estimated_cost_usd,
+    }
+    assert (record.prompt_tokens, record.cached_tokens) == (1_000, 200)
+    assert (record.output_tokens, record.thinking_tokens) == (100, 50)
     assert record.pricing_model == "google/gemini-3.6-flash"
     assert record.pricing_multiplier == "0.5"
     assert record.interaction_id == "interaction-1"
+
+
+PRICING = OpenRouterPricing(
+    pricing_model="google/gemini-3.6-flash",
+    fetched_at="2026-08-15T00:00:00+00:00",
+    stale=False,
+    input_per_token=Decimal("0.000001"),
+    output_per_token=Decimal("0.000002"),
+    thinking_per_token=Decimal("0.000003"),
+    cached_input_per_token=Decimal("0.0000001"),
+)
+
+
+# Expected costs are worked by hand from PRICING's rates, one category at a time, so a
+# dropped or mispriced term changes exactly the cases that use it.
+@pytest.mark.parametrize(
+    ("tokens", "options", "expected"),
+    [
+        ((1_000, 0, 0, 0), {}, "0.001"),
+        ((1_000, 1_000, 0, 0), {}, "0.0001"),
+        ((0, 0, 1_000, 0), {}, "0.002"),
+        ((0, 0, 0, 1_000), {}, "0.003"),
+        ((1_000, 400, 100, 50), {}, "0.00099"),
+        ((100, 500, 0, 0), {}, "0.00001"),
+        ((-5, 10, -1, -1), {}, "0"),
+        ((0, 0, 0, 1_000), {"multiplier": Decimal("0.5")}, "0.0015"),
+        ((0, 0, 0, 1_000), {"service_tier": "flex"}, "0.0015"),
+        ((0, 0, 0, 1_000), {"service_tier": "FLEX"}, "0.0015"),
+        ((0, 0, 0, 1_000), {"service_tier": "standard"}, "0.003"),
+        ((0, 0, 0, 1_000), {"multiplier": Decimal("0.5"), "service_tier": "standard"}, "0.003"),
+    ],
+    ids=[
+        "input",
+        "cached",
+        "output",
+        "thinking",
+        "every-category",
+        "cached-clamped-to-input",
+        "negative-counts-are-zero",
+        "explicit-multiplier",
+        "flex-tier",
+        "flex-tier-any-case",
+        "standard-tier",
+        "tier-overrides-multiplier",
+    ],
+)
+def test_estimated_cost_prices_each_token_category(tokens, options, expected) -> None:
+    input_tokens, cached_tokens, output_tokens, thinking_tokens = tokens
+    assert calculate_estimated_cost_usd(
+        PRICING,
+        input_tokens=input_tokens,
+        cached_tokens=cached_tokens,
+        output_tokens=output_tokens,
+        thinking_tokens=thinking_tokens,
+        **options,
+    ) == Decimal(expected)
+
+
+@pytest.mark.parametrize(
+    ("tokens", "options", "expected"),
+    [
+        (1_000, {}, "0.001"),
+        (1_000, {"service_tier": "flex"}, "0.0005"),
+        (-10, {}, "0"),
+    ],
+    ids=["standard", "flex", "negative"],
+)
+def test_minimum_input_cost_prices_only_uncached_input(tokens, options, expected) -> None:
+    assert minimum_input_cost_usd(PRICING, tokens, **options) == Decimal(expected)
+
+
+def test_interaction_cost_uses_the_tier_the_provider_reports() -> None:
+    record, _search = usage_from_interaction(
+        SimpleNamespace(
+            id="interaction-tier",
+            service_tier="SERVICE_TIER_FLEX",
+            usage=SimpleNamespace(
+                total_input_tokens=0, total_output_tokens=0, total_thought_tokens=1_000
+            ),
+            steps=[],
+        ),
+        run_id="run-1",
+        request_id="request-tier",
+        requested_model="gemini-3.6-flash",
+        service_tier="standard",
+        content_type="text",
+        tweet_ids=["42"],
+        search_enabled=False,
+        latency_ms=10,
+        pricing=PRICING,
+    )
+
+    assert record.service_tier == "flex"
+    assert record.pricing_multiplier == "0.5"
+    assert Decimal(record.estimated_cost_usd or "0") == Decimal("0.0015")
+    assert Decimal(record.actual["cost_usd"]) == Decimal("0.0015")
 
 
 def test_known_interaction_usage_without_pricing_is_not_billing_unknown(tmp_path) -> None:
