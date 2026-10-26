@@ -1418,6 +1418,13 @@ test('all avatar templates expose load and error handling, including reply and p
     for (const avatar of avatars) assert.ok(avatar.parentElement.firstElementChild.matches('span.avatar-initial'));
 });
 
+test('every clickable byline name in the page opens that author\'s profile card', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const names = html.match(/<span\b[^>]*hover:underline tweet-byline-name[^>]*>/g) || [];
+    assert.equal(names.length, 10);
+    for (const name of names) assert.match(name, /@click\.stop="openProfileCard\(\$event, [\w.]+\)"/);
+});
+
 test('lightbox navigation moves through media and clamps at both ends', () => {
     const context = browserContext();
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');

@@ -49,7 +49,10 @@ node tests/js/test_media_playback.cjs
 node tests/js/test_activity_stream.cjs
 node tests/js/test_most_likes.cjs
 node tests/js/test_demo_api.cjs
+node tests/js/test_template_names.cjs
 ```
+
+`test_template_names.cjs` fails when an Alpine expression in `index.html` reads a name that its scope (x-for aliases, x-data objects and components, page-script and browser globals) doesn't define.
 
 The harnesses load the browser scripts in the order `index.html` lists them, through `tests/js/page_scripts.cjs`, so a new script needs only its `<script>` tag. Scripts up to `app.js` are always loaded; later ones are added per test with `appScriptsWith()`.
 

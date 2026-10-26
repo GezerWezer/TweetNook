@@ -673,7 +673,7 @@
                             <div class="flex-1 min-w-0 pb-1">
                                 <div class="flex items-center justify-between">
                                     <div class="tweet-byline flex items-center space-x-1 overflow-hidden">
-                                        <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="threadData.main.author.display_name" @click.stop="searchAuthor(threadData.main.author.username)"></span>
+                                        <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="threadData.main.author.display_name" @click.stop="openProfileCard($event, threadData.main)"></span>
                                         <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + threadData.main.author.username"></span>
                                         <span class="text-[var(--text-secondary)] px-1">·</span>
                                         <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(threadData.main.created_at)"></span>
@@ -694,7 +694,7 @@
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between">
                                 <div class="tweet-byline flex items-center space-x-1 overflow-hidden">
-                                    <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="tweet.author.display_name" @click.stop="searchAuthor(tweet.author.username)"></span>
+                                    <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="tweet.author.display_name" @click.stop="openProfileCard($event, tweet)"></span>
                                     <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + tweet.author.username"></span>
                                     <span class="text-[var(--text-secondary)] px-1">·</span>
                                     <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(tweet.created_at)"></span>
@@ -1106,7 +1106,7 @@
                             <div class="flex-1 min-w-0 pb-1">
                                 <div class="flex items-center justify-between">
                                     <div class="tweet-byline flex items-center space-x-1 overflow-hidden">
-                                        <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="panelThreadData.main.author.display_name" @click.stop="searchAuthor(panelThreadData.main.author.username)"></span>
+                                        <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="panelThreadData.main.author.display_name" @click.stop="openProfileCard($event, panelThreadData.main)"></span>
                                         <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + panelThreadData.main.author.username"></span>
                                         <span class="text-[var(--text-secondary)] px-1">·</span>
                                         <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(panelThreadData.main.created_at)"></span>
@@ -1126,7 +1126,7 @@
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between">
                                 <div class="tweet-byline flex items-center space-x-1 overflow-hidden">
-                                    <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="tweet.author.display_name" @click.stop="searchAuthor(tweet.author.username)"></span>
+                                    <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="tweet.author.display_name" @click.stop="openProfileCard($event, tweet)"></span>
                                     <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + tweet.author.username"></span>
                                     <span class="text-[var(--text-secondary)] px-1">·</span>
                                     <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(tweet.created_at)"></span>
