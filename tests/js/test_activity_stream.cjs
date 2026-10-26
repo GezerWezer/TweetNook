@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const jsDir = path.resolve(__dirname, '../../tweetnook/web/static/js');
+const { appScripts, readScripts } = require('./page_scripts.cjs');
 
 function fixture({ supported = true, demo = false } = {}) {
     const timers = new Map();
@@ -45,8 +45,7 @@ function fixture({ supported = true, demo = false } = {}) {
         },
     };
     vm.createContext(context);
-    vm.runInContext(fs.readFileSync(path.join(jsDir, 'themes.js'), 'utf8') + '\n' +
-        fs.readFileSync(path.join(jsDir, 'app.js'), 'utf8') + '\nwindow.app=tweetApp();', context);
+    vm.runInContext(readScripts(appScripts()) + '\nwindow.app=tweetApp();', context);
     const app = context.window.app;
     app.fetchArchiveEnrichmentStatus = () => {};
     return { app, context, timers, events, sources, requests };

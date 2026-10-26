@@ -49,6 +49,8 @@ node tests/js/test_most_likes.cjs
 node tests/js/test_demo_api.cjs
 ```
 
+The harnesses load the browser scripts in the order `index.html` lists them, through `tests/js/page_scripts.cjs`, so a new script needs only its `<script>` tag. Scripts up to `app.js` are always loaded; later ones are added per test with `appScriptsWith()`.
+
 These are Node harnesses, not a substitute for opening the UI. For layout, navigation, fullscreen media, keyboard focus and touch gestures, verify the interaction in a browser and capture the relevant viewport/state.
 
 After changing bundled dependencies or Tailwind input, run the [asset build](../../dev/web/README.md) and review generated changes. Ordinary JS/CSS source edits don't all require reinstalling Node dependencies.

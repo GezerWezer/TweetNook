@@ -4,8 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const source = ['themes.js', 'app.js'].map(file => fs.readFileSync(
-    path.resolve(__dirname, '../../tweetnook/web/static/js', file), 'utf8')).join('\n');
+const { appScripts, readScripts } = require('./page_scripts.cjs');
+const source = readScripts(appScripts());
 
 function fixture(timers = {}) {
     const videos = [], headers = [];

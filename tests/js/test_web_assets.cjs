@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { appScripts, appScriptsWith } = require('./page_scripts.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const JS_DIR = path.join(ROOT, 'tweetnook', 'web', 'static', 'js');
@@ -439,7 +440,7 @@ function dispatchFeed(list, type, target, init = {}) {
 }
 
 function feedListApp(context = browserContext()) {
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     const list = new FakeElement('div');
     list.connected = true;
     const area = new FakeElement('div');
@@ -460,7 +461,7 @@ function test(name, fn) {
 
 test('tweet counts use compact detail precision and whole feed units', () => {
     const context = browserContext();
-    const app = loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')();
+    const app = loadScripts(context, appScripts(), 'tweetApp')();
     const cases = [
         [0, ''], [null, ''], [undefined, ''], [-1, ''], ['invalid', ''],
         [999, '999'], [1000, '1K'], [1250, '1.2K'], [999949, '999K'],
@@ -594,7 +595,7 @@ test('demo follows system appearance until an explicit theme is chosen', () => {
             assert.equal(query, '(prefers-color-scheme: dark)');
             return scheme;
         };
-        const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
         const start = () => {
             const app = immediateComponent(tweetApp());
             app.fetchSetup = async () => {};
@@ -643,7 +644,7 @@ test('desktop split-panel defaults respect saved layout and theme choices in dem
             context.window.TWEETNOOK_DEMO = isDemo;
             context.localStorage.setItem('tvx-theme', 'classic-dark');
             if (savedSplit !== null) context.localStorage.setItem('tvx-split-panel', savedSplit);
-            const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+            const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
             const app = immediateComponent(tweetApp());
             app.fetchSetup = async () => {};
             app.fetchNotices = async () => {};
@@ -1244,7 +1245,7 @@ test('tweet app starts with coherent list, panel, modal, and theme state', () =>
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -1266,7 +1267,7 @@ test('tweet app starts with coherent list, panel, modal, and theme state', () =>
 test('saving the avatar download setting changes avatar URLs, here and after reloads', async () => {
     const context = browserContext();
     context.fetch = async () => ({ ok: true, json: async () => ({ values: {}, explicit: [] }) });
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     await app.submitConfigChanges({ 'web.avatar_cache_limit_mb': 256 });
     assert.equal(app.avatarUrl('42'), '/api/avatar/42?v=3', 'other settings keep cached avatars');
     await app.submitConfigChanges({ 'web.fetch_avatars': true });
@@ -1275,7 +1276,7 @@ test('saving the avatar download setting changes avatar URLs, here and after rel
     assert.equal(app.avatarUrl('42'), `/api/avatar/42?v=3&r=${revision}`);
     const reload = browserContext();
     reload.localStorage.setItem('tweetnook.avatar-revision', revision);
-    const reloaded = immediateComponent(loadScripts(reload, ['themes.js', 'app.js'], 'tweetApp')());
+    const reloaded = immediateComponent(loadScripts(reload, appScripts(), 'tweetApp')());
     assert.equal(reloaded.avatarUrl('42'), `/api/avatar/42?v=3&r=${revision}`);
 });
 
@@ -1286,7 +1287,7 @@ test('setup polling keeps unchanged status objects and updates only what changed
         archive: { ready: true, pending_enrichment: 3, warnings: ['a'] } });
     let next = status();
     context.fetch = async () => ({ ok: true, json: async () => next });
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     app.archiveResourcesLoaded = true;
     await app.fetchSetup();
     const first = app.setupData;
@@ -1306,7 +1307,7 @@ test('setup polling keeps unchanged status objects and updates only what changed
 
 test('lazy feed images are observed per card and loaded and decoded ahead of scrolling', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const observed = [];
     app.mediaPrefetchObserver = { observe: node => observed.push(node) };
@@ -1337,7 +1338,7 @@ test('lazy feed images are observed per card and loaded and decoded ahead of scr
 
 test('avatar load and error state hides initials only for real images and recovers on reuse', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const classes = () => {
         const values = new Set();
@@ -1371,7 +1372,7 @@ test('avatar load and error state hides initials only for real images and recove
 
 test('avatar initials preserve emoji and combining graphemes across author surfaces', () => {
     const context = browserContext();
-    const { tweetApp, avatarInitial } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, avatarInitial})');
+    const { tweetApp, avatarInitial } = loadScripts(context, appScripts(), '({tweetApp, avatarInitial})');
     const app = immediateComponent(tweetApp());
     app.positionProfileCard = () => {};
     for (const initial of ['😀', '👩🏽‍💻', '🇨🇦', 'e\u0301', 'A']) {
@@ -1391,7 +1392,7 @@ test('avatar initials preserve emoji and combining graphemes across author surfa
     // Older browsers still preserve a complete supplementary-plane code point.
     const fallbackContext = browserContext();
     vm.runInContext('Intl.Segmenter = undefined', fallbackContext);
-    const fallback = loadScripts(fallbackContext, ['themes.js', 'app.js'], 'avatarInitial');
+    const fallback = loadScripts(fallbackContext, appScripts(), 'avatarInitial');
     assert.equal(fallback('😀 Author'), '😀');
     assert.equal(fallback('Alice'), 'A');
 });
@@ -1422,7 +1423,7 @@ test('lightbox navigation moves through media and clamps at both ends', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -1456,7 +1457,7 @@ test('lightbox touch drags track the finger, navigate, and protect the following
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -1518,7 +1519,7 @@ test('lightbox drag-to-dismiss fades and scales before closing, while invalid dr
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -1573,7 +1574,7 @@ test('lightbox gestures use edge resistance and velocity-aware flick navigation'
     context.window.innerWidth = 390;
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -1606,7 +1607,7 @@ test('lightbox gestures use edge resistance and velocity-aware flick navigation'
 
 test('the phone viewer pages and springs back on X\'s measured spring', () => {
     const context = browserContext();
-    loadScripts(context, ['themes.js', 'app.js'], 'tweetApp');
+    loadScripts(context, appScripts(), 'tweetApp');
     const spring = vm.runInContext('lightboxSpring', context);
     // X's spring-back from a 131pt drag at its recorded frame times (iPhone recording).
     [[17, -116], [34, -88], [51, -63], [67, -44], [84, -28], [101, -17]]
@@ -1622,7 +1623,7 @@ test('the phone video viewer sits where X puts it and shows the post\'s counts',
     context.window.matchMedia = query => ({matches: query.includes('(max-width: 640px)')});
     context.window.innerWidth = 430;
     context.window.innerHeight = 873;
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     // Landscape footage keeps its measured lift; portrait footage fills the video area.
     app.lightboxMedia = [{type: 'video', m: {type: 'video', aspect_ratio: [16, 9]}}];
     assert.equal(app.lightboxVideoLift(), 29.5);
@@ -1640,7 +1641,7 @@ test('the phone video viewer sits where X puts it and shows the post\'s counts',
 test('a tap shows or hides the phone photo viewer\'s controls instead of closing it', () => {
     const context = browserContext();
     context.window.matchMedia = query => ({matches: query.includes('(max-width: 640px)')});
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     app.lightboxOpen = true;
     app.lightboxMedia = [{type: 'photo'}, {type: 'photo'}];
     app.closeLightbox = () => { app.closed = true; };
@@ -1660,7 +1661,7 @@ test('lightbox playback follows the active animated slide and pauses on close', 
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -1703,7 +1704,7 @@ test('reply-recipient links open an anchored profile card without searching', ()
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -1739,7 +1740,7 @@ test('profile cards show the newest captured profile and cycle through older one
             async json() { return { author_id: '42', snapshots }; },
         })));
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const anchor = { getBoundingClientRect: () => ({ left: 0, right: 10, top: 0, bottom: 10 }) };
     const settle = async () => { pending.shift()(); await new Promise(resolve => setTimeout(resolve, 0)); };
@@ -1833,7 +1834,7 @@ test('analytics uses one cached snapshot and retains it during manual refresh', 
     };
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -1879,7 +1880,7 @@ test('analytics refresh polling does not replace an unchanged report', async () 
     };
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -1928,7 +1929,7 @@ test('analytics suspends only playing videos and resumes them on close', async (
     });
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -1946,7 +1947,7 @@ test('archive status filters empty reasons and summarizes retry state', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -2069,7 +2070,7 @@ test('tweet fetching encodes search state, hydrates pagination, appends, and rep
     };
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -2122,7 +2123,7 @@ test('text counts arrive independently, survive append, and ignore an older sear
             page: url.includes('page=2') ? 2 : 1, total: null, pages: null, has_more: true,
         })};
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.searchQuery = 'gif is:reply';
     await app.fetchTweets();
@@ -2161,7 +2162,7 @@ test('a complete first text page supplies its own count, including zero', async 
         calls.push(url);
         return {ok: true, status: 200, json: async () => ({tweets, page: 1, total: null, pages: null, has_more: false})};
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.searchQuery = 'gif is:reply';
     await app.fetchTweets();
@@ -2184,7 +2185,7 @@ test('feed cursors survive retries and ignore duplicate membership results', asy
             ? {tweets: [{tweet_id: '1'}], page: 1, pages: null, total: null, has_more: true, next_cursor: 'cursor/+='}
             : {tweets: [{tweet_id: '1'}, {tweet_id: '2'}], page: 2, pages: null, total: null, has_more: false, next_cursor: null});
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     await app.fetchTweets();
     fail = true;
@@ -2205,7 +2206,7 @@ test('feed ignores stale responses and pages without a cursor', async () => {
     const context = browserContext();
     const pending = [];
     context.fetch = url => new Promise(resolve => pending.push({url, resolve}));
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const first = app.fetchTweets();
     app.searchQuery = 'new query';
@@ -2238,7 +2239,7 @@ test('expired like cursor reloads the list once with a fresh cursor', async () =
             ? {detail: 'Like order changed.'}
             : {tweets: [{tweet_id: String(calls.length)}], page: 1, pages: 2, total: 30, has_more: true, next_cursor: 'next'}};
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     await app.fetchTweets();
     await app.loadMore();
@@ -2266,7 +2267,7 @@ test('random feeds keep one seed across pages and rotate it for a new search', a
             },
         };
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.sortOrder = 'random';
     app.randomSeed = 12345;
@@ -2284,7 +2285,7 @@ test('random feeds keep one seed across pages and rotate it for a new search', a
 
 test('like order is exposed for Likes, preserved during search, and reset on collection change', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const requests = [];
     app.fetchTweets = () => requests.push([app.collectionFilter, app.sortOrder, app.page]);
@@ -2315,7 +2316,7 @@ test('like order is exposed for Likes, preserved during search, and reset on col
 
 test('feed menus retain null focus transitions and close when focus moves outside', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     const expression = html.match(/@focusout="([^"]+)"/)[1];
@@ -2339,7 +2340,7 @@ test('list searching, incremental loading, and back-to-top obey state guards', (
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -2385,7 +2386,7 @@ test('themes, accents, fonts, sizes, and split panel persist preferences', () =>
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -2419,7 +2420,7 @@ test('themes, accents, fonts, sizes, and split panel persist preferences', () =>
 
 test('detail routes parse and generate canonical string tweet IDs', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const largeId = '12345678901234567890';
 
@@ -2448,7 +2449,7 @@ test('single-column thread quote count tolerates route teardown', () => {
 test('initialization preserves direct detail paths without adding history entries', () => {
     for (const [pathname, viewMode] of [['/post/123', 'thread'], ['/post/123/quotes', 'quotes']]) {
         const context = browserContext(pathname);
-        const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
         const app = immediateComponent(tweetApp());
         app.fetchSetup = async () => {};
         app.fetchNotices = async () => {};
@@ -2474,7 +2475,7 @@ test('popstate applies URL routes without pushing and restores list scroll', asy
             return { main: { tweet_id: url.split('/').at(-1) }, parents: [], children: [] };
         },
     });
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.fetchSetup = async () => {};
     app.fetchNotices = async () => {};
@@ -2507,7 +2508,7 @@ test('popstate applies URL routes without pushing and restores list scroll', asy
 test('Back and Forward dismiss article focus before restoring routes and scroll in both layouts', async () => {
     for (const splitPanel of [false, true]) {
         const context = browserContext('/post/123');
-        const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
         const app = immediateComponent(tweetApp());
         app.fetchSetup = async () => {};
         app.fetchNotices = async () => {};
@@ -2569,7 +2570,7 @@ test('split-panel routes follow browser history and rebuild cached content', asy
             },
         };
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.archiveResourcesLoaded = true;
     app.splitPanel = true;
@@ -2630,7 +2631,7 @@ test('direct detail Back and detail searches stay inside the archive route', asy
             return { main: { tweet_id: '123' }, parents: [], children: [] };
         },
     });
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.archiveResourcesLoaded = true;
     app.activeRoute = { viewMode: 'thread', tweetId: '123' };
@@ -2666,7 +2667,7 @@ test('thread and quote navigation update history, panel state, and network state
     });
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -2722,7 +2723,7 @@ test('thread cache reuses successes across modes but retries failures', async ()
     };
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -2757,7 +2758,7 @@ test('goBack tears down playing videos before navigating history', () => {
     context.__state.videos.push(video);
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -2885,7 +2886,7 @@ test('tag editing deduplicates case-insensitively and persists response state', 
     };
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -2938,7 +2939,7 @@ test('tweet overflow supports copying raw data, untagged tweets, and a one-secon
     context.clearTimeout = timer => { clearedTimer = timer; };
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -3001,7 +3002,7 @@ test('tweet overflow copies raw data when the Clipboard API is unavailable', asy
     };
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -3056,7 +3057,7 @@ test('thread reply surfaces render quoted tweets in both presentations', () => {
 
 test('recursive thread replies indent by bounded depth and disclose truncation', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const html = fs.readFileSync(
         path.join(ROOT, 'tweetnook', 'web', 'index.html'),
@@ -3090,7 +3091,7 @@ test('reply-recipient markup opens profile cards on every tweet surface', () => 
 
 test('tweet text and link cards open expanded destinations instead of t.co', () => {
     const context = browserContext();
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     const entity = { url: 'https://t.co/late', expanded_url: 'https://late.example/post', display_url: 'late.example/post' };
     const longText = `${'word '.repeat(70)}see https://t.co/late`;
     const note = { tweet_id: '1', text: longText, raw_json: { rest_id: '1', legacy: { full_text: 'word', entities: { urls: [entity] } } } };
@@ -3111,7 +3112,7 @@ test('tweet text and link cards open expanded destinations instead of t.co', () 
 
 test('demo reply metadata keeps body mentions out of the automatic recipient label', () => {
     const context = browserContext();
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     context.window.TWEETNOOK_DEMO = false;
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'jobs-replay.js'), 'utf8'), context);
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'demo-api.js'), 'utf8'), context);
@@ -3128,7 +3129,7 @@ test('demo reply metadata keeps body mentions out of the automatic recipient lab
 
 test('reply recipients use only the captured automatic prefix and retain safe labels', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const makeReply = (text, prefix, primary, mentions = null) => ({
         text,
@@ -3258,7 +3259,7 @@ test('config and stats requests update their matching UI state', async () => {
     });
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -3299,7 +3300,7 @@ test('replay setup saves an empty cookie as a disconnected account and can recon
         assert.equal(url, '/api/setup');
         return { ok: true, async json() { return { auth, dev, archive: { ready: false } }; } };
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     await app.fetchSetup();
     app.setupFlowStep = 2;
@@ -3379,7 +3380,7 @@ test('setup validates before saving auth then uploads, imports, and confirms arc
             this.onload();
         }
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
 
     await app.fetchSetup();
@@ -3459,7 +3460,7 @@ test('setup archive choices stay reversible until Setup finishes', async () => {
         if (url === '/api/setup/complete') return { ok: true, async json() { return { completed: true, reload: false }; } };
         throw new Error(`unexpected request: ${url}`);
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.setupData = { archive, auth: { verified: false }, web: { password_configured: true } };
     app.fetchSetup = async () => {};
@@ -3504,7 +3505,7 @@ test('first-run setup resumes at the first unfinished step after a reload', asyn
     const load = async () => {
         const context = browserContext();
         context.fetch = async () => ({ ok: true, async json() { return { required: true, completed: false, web: {}, auth, archive }; } });
-        const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
         const app = immediateComponent(tweetApp());
         await app.fetchSetup();
         return app;
@@ -3536,7 +3537,7 @@ test('setup schedule step saves through Setup before the scheduler starts', asyn
         throw new Error(`unexpected request: ${url}`);
     };
     const { tweetApp, nookToggleSyncCollection, nookScheduleHeadline } = loadScripts(
-        context, ['themes.js', 'app.js', 'header.js', 'settings.js'], '({tweetApp, nookToggleSyncCollection, nookScheduleHeadline})');
+        context, appScriptsWith('header.js', 'settings.js'), '({tweetApp, nookToggleSyncCollection, nookScheduleHeadline})');
     const app = immediateComponent(tweetApp());
     app.setupData = { completed: false, archive: {}, auth: { verified: false }, web: {} };
     app.showSetupModal = true;
@@ -3606,7 +3607,7 @@ test('setup replay source connects, toggles placeholder media, and disconnects',
         if (url === '/api/setup/replay' && options.method === 'DELETE') return { ok: true, async json() { return replay(false); } };
         throw new Error(`unexpected request: ${url}`);
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.setupData = { dev: replay(false), archive: {}, auth: {} };
 
@@ -3670,7 +3671,7 @@ test('setup password step validates matching passwords before finishing', async 
         bodies.push(JSON.parse(options.body));
         return { ok: true, async json() { return { completed: true, reload: false }; } };
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.setupData = { web: { password_configured: false }, archive: {}, auth: {} };
 
@@ -3722,7 +3723,7 @@ test('setup cookie help loads the generated guide and opens on the current brows
         return { ok: true, async json() { return help; } };
     };
     context.navigator = { ...(context.navigator || {}), userAgent: 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15' };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
 
     await app.openSetupHelp();
@@ -3810,7 +3811,7 @@ test('config saves only diffs and resets only eligible explicit fields', async (
         }
         return { ok: true, async json() { return { values: effective, explicit }; } };
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
 
     await app.fetchConfig();
@@ -3867,7 +3868,7 @@ test('config boolean controls bind actual booleans', () => {
 
 test('tweet text decodes one entity layer before safe rendering and length checks', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const text = 'Fish &amp; chips &lt;3 &quot;yes&quot; &apos;ok&apos;';
     const expected = 'Fish &amp; chips &lt;3 "yes" \'ok\'';
@@ -3890,7 +3891,7 @@ test('tweet text decodes one entity layer before safe rendering and length check
 
 test('result text bolds words, phrases, prefixes and hashtags safely', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.searchHighlightTerms = ['gif', '"night sky"', 'archiv*', '#python', 'cafe'];
     const tweet = {text: 'GIF gift gif night sky night blue sky Archives #Python python café Cafe\u0301 <gif> &amp; gif'};
@@ -3910,7 +3911,7 @@ test('result text bolds words, phrases, prefixes and hashtags safely', () => {
 
 test('result bolding preserves link destinations, attributes, entities and placeholders', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.searchHighlightTerms = ['gif', 'amp', 'class', 'script'];
     const html = app.formatText({text: 'gif &amp; https://t.co/x', raw_json: {legacy: {entities: {urls: [{
@@ -4217,7 +4218,7 @@ test('result highlights follow the returned query rather than edits to the searc
 
 test('demo hides captured media and quote links while preserving ordinary links', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'jobs-replay.js'), 'utf8'), context);
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'demo-api.js'), 'utf8'), context);
     const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo', 'data.json'), 'utf8'));
@@ -4249,7 +4250,7 @@ test('text and card renderers escape HTML and reject active URL schemes', () => 
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -4303,7 +4304,7 @@ test('availability placeholders replace content and support normalized attachmen
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -4370,7 +4371,7 @@ test('availability placeholders replace content and support normalized attachmen
 
 test('missing tweet skeletons cover terminal, relation, tombstone, and textless variants', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const reasons = [
         'protected_account',
@@ -4497,7 +4498,7 @@ test('media renderer preserves direct playback parents, placeholders and existin
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -4661,7 +4662,7 @@ test('video duration uses loaded metadata and shows only while the control bar i
         return id;
     };
     context.clearTimeout = id => timers.delete(id);
-    loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    loadScripts(context, appScripts(), '({tweetApp})');
     const classes = new Set();
     const attributes = new Map([['aria-hidden', 'true']]);
     const indicator = {
@@ -4744,7 +4745,7 @@ test('custom players retain native fallback, seek, toggle sound, and isolate key
     context.setTimeout = () => 1;
     context.clearTimeout = () => {};
     const { tweetApp, tweetNookInitVideoPlayer, tweetNookSyncVideoDuration, isVideoPlayer } = loadScripts(
-        context, ['themes.js', 'app.js'],
+        context, appScripts(),
         '({tweetApp, tweetNookInitVideoPlayer, tweetNookSyncVideoDuration, isVideoPlayer})',
     );
     const app = immediateComponent(tweetApp());
@@ -4847,7 +4848,7 @@ test('mobile feed taps open a video viewer, sound stays inline, and desktop clic
     context.window.matchMedia = () => ({matches: true});
     const opened = [];
     context.window.dispatchEvent = event => opened.push(event);
-    const { tweetApp, tweetNookInitVideoPlayer } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookInitVideoPlayer})');
+    const { tweetApp, tweetNookInitVideoPlayer } = loadScripts(context, appScripts(), '({tweetApp, tweetNookInitVideoPlayer})');
     const player = parseFakeHTML(tweetApp().renderMediaGrid([{type: 'video', download: {local_path: 'media/v.mp4'}}]))[0].querySelector('video').parentElement;
     const video = player.querySelector('video');
     for (const element of [player, player.querySelector('[data-video-seek]')]) element.style = {setProperty() {}};
@@ -4889,7 +4890,7 @@ test('mobile feed taps open a video viewer, sound stays inline, and desktop clic
 test('mobile viewer transfers playback position and restores feed mute on minimize', () => {
     for (const readyState of [0, 1]) {
         const context = browserContext();
-        const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
         const app = immediateComponent(tweetApp());
         app.videoVolume = .6;
         const origin = {currentTime: 3, muted: true, volume: .6, loop: true, isConnected: true,
@@ -4923,7 +4924,7 @@ test('mobile viewer transfers playback position and restores feed mute on minimi
 
 test('scrubbing holds playback, tracks preview time, resumes on release and restores on cancellation', () => {
     const context = browserContext();
-    const {tweetApp, tweetNookInitVideoPlayer} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookInitVideoPlayer})');
+    const {tweetApp, tweetNookInitVideoPlayer} = loadScripts(context, appScripts(), '({tweetApp, tweetNookInitVideoPlayer})');
     const player = parseFakeHTML(tweetApp().renderMediaGrid([{type: 'video', download: {local_path: 'media/v.mp4'}}]))[0].querySelector('video').parentElement;
     const video = player.querySelector('video');
     const seek = player.querySelector('[data-video-seek]');
@@ -4965,7 +4966,7 @@ test('mobile video bounds wait for a playback frame, return to the feed, and res
         const context = browserContext();
         context.window.matchMedia = query => ({matches: query.includes('prefers-reduced-motion') ? reduced : true});
         context.getComputedStyle = () => ({borderRadius: '16px', objectFit: 'contain'});
-        const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+        const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
         const app = immediateComponent(tweetApp());
         const origin = {currentTime: 3, muted: true, volume: .6, loop: true, isConnected: true,
             parentElement: {}, getBoundingClientRect: () => ({left: 60, top: 200, width: 300, height: 533}),
@@ -5052,7 +5053,7 @@ test('video motion keeps the resting lift exactly once in both directions', asyn
         let complete;
         surface.animate = () => ({finished: new Promise(resolve => {complete = resolve;}), cancel() {}});
         const origin = {isConnected: true, getBoundingClientRect: () => ({left: 65, top: 300, width: 316, height: 178})};
-        const {animateMobileMediaBounds, fittedMediaRect} = loadScripts(context, ['app.js'], '({animateMobileMediaBounds, fittedMediaRect})');
+        const {animateMobileMediaBounds, fittedMediaRect} = loadScripts(context, appScripts(), '({animateMobileMediaBounds, fittedMediaRect})');
         const resting = fittedMediaRect(video);
         const motion = animateMobileMediaBounds(video, origin, opening, 280);
         assert.ok(Math.abs(surface.getBoundingClientRect().top - resting.top) < .001);
@@ -5087,7 +5088,7 @@ test('video motion holds its final surface for handoff and preserves cropped pic
             frames = keyframes;
             return {finished: new Promise(resolve => {complete = resolve;}), cancel() {}};
         };
-        const {animateMobileMediaBounds} = loadScripts(context, ['app.js'], '({animateMobileMediaBounds})');
+        const {animateMobileMediaBounds} = loadScripts(context, appScripts(), '({animateMobileMediaBounds})');
         const originValues = new Map();
         const origin = {isConnected: true, style: style(originValues),
             // The inline player's placeholder records how the feed drew its picture.
@@ -5168,7 +5169,7 @@ test('dismissal fades the page shade and lifts covering headers above the return
         const video = {parentElement: surface, style: style(new Map()), videoWidth: 720, videoHeight: 1280,
             getBoundingClientRect: () => ({left: 0, top: 0, width: 390, height: 772}), closest: () => viewer};
         const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: 40, width: 300, height: 300 * 1280 / 720})};
-        const {animateMobileMediaBounds} = loadScripts(context, ['app.js'], '({animateMobileMediaBounds})');
+        const {animateMobileMediaBounds} = loadScripts(context, appScripts(), '({animateMobileMediaBounds})');
         const motion = animateMobileMediaBounds(video, origin, false, 280, null, shade);
         assert.deepEqual(hitPoint, [210, 65]); // Probe where the header covers the returning picture.
         const shadeFade = fades.find(fade => fade.target === 'shade');
@@ -5228,7 +5229,7 @@ test('video motion crops its feed frame at the visible viewport in both directio
         const video = {parentElement: surface, style: style(), videoWidth: 720, videoHeight: 1280,
             getBoundingClientRect: () => ({left: 0, top: 42, width: 390, height: 650}), closest: () => null};
         const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: 500, width: 300, height: 300 * 1280 / 720})};
-        const {animateMobileMediaBounds} = loadScripts(context, ['app.js'], '({animateMobileMediaBounds})');
+        const {animateMobileMediaBounds} = loadScripts(context, appScripts(), '({animateMobileMediaBounds})');
         const motion = animateMobileMediaBounds(video, origin, opening, 280);
         const insets = frames[opening ? 0 : 1].clipPath.match(/^inset\((.*?) round/)[1].split(' ').map(parseFloat);
         assert.ok(insets[2] > 0); // Safari never draws a fixed layer beneath its toolbar, so cut a straight edge there.
@@ -5279,7 +5280,7 @@ test('in-flight media joins the page so Safari draws it beneath its toolbars', a
             getBoundingClientRect: () => ({left: 0, top: 0, width: 390, height: 650}), closest: () => viewer};
         // The feed video's lower part sits beneath Safari's toolbar, past the 714px viewport.
         const origin = {isConnected: true, getBoundingClientRect: () => ({left: 60, top: 500, width: 300, height: 300 * 1280 / 720})};
-        const {animateMobileMediaBounds} = loadScripts(context, ['app.js'], '({animateMobileMediaBounds})');
+        const {animateMobileMediaBounds} = loadScripts(context, appScripts(), '({animateMobileMediaBounds})');
         const motion = animateMobileMediaBounds(video, origin, opening, 280);
         assert.equal(viewerValues.get('position'), 'absolute'); // In the page at the same screen position.
         assert.equal(viewerValues.get('top'), '1200px');
@@ -5304,7 +5305,7 @@ test('phone photos expand from their tile and return to the one on screen, or fa
     context.window.innerHeight = 844;
     const opened = [];
     context.window.dispatchEvent = event => opened.push(event.detail);
-    const {tweetApp, tweetNookOpenLightbox} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookOpenLightbox})');
+    const {tweetApp, tweetNookOpenLightbox} = loadScripts(context, appScripts(), '({tweetApp, tweetNookOpenLightbox})');
     const app = immediateComponent(tweetApp());
     const {styleOf, motions, record, viewer, stage, shade} = mediaMotionFixture(context);
     const photo = name => ({type: 'photo', download: {local_path: `media/${name}.jpg`}});
@@ -5392,7 +5393,7 @@ test('a fresh touch reopens photos and videos immediately while dismissal compat
     const context = browserContext();
     context.window.matchMedia = () => ({matches: true});
     const {tweetApp, tweetNookOpenLightbox, tweetNookOpenMobileVideo} = loadScripts(context,
-        ['themes.js', 'app.js'], '({tweetApp, tweetNookOpenLightbox, tweetNookOpenMobileVideo})');
+        appScripts(), '({tweetApp, tweetNookOpenLightbox, tweetNookOpenMobileVideo})');
     const app = immediateComponent(tweetApp());
     app.fetchSetup = app.fetchNotices = app.fetchActivityStatus = async () => {};
     app.initApp();
@@ -5419,7 +5420,7 @@ test('phone GIF taps open the viewer, which continues from the feed frame', asyn
     context.window.matchMedia = query => ({matches: phone && !query.includes('prefers-reduced-motion')});
     const opened = [];
     context.window.dispatchEvent = event => opened.push(event.detail);
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const {styleOf, motions, record, viewer, stage, shade} = mediaMotionFixture(context);
     const feed = parseFakeHTML(app.renderMediaGrid([{type: 'animated_gif', download: {local_path: 'media/g.mp4'}}]))[0];
@@ -5463,7 +5464,7 @@ test('Home Screen apps are told apart from Safari tabs for bottom spacing', () =
     for (const standalone of [true, false]) {
         const context = browserContext();
         context.navigator = {standalone};
-        loadScripts(context, ['app.js'], 'null');
+        loadScripts(context, appScripts(), 'null');
         assert.equal(context.__state.rootClasses.has('ios-home-screen'), standalone);
     }
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
@@ -5482,7 +5483,7 @@ test('phone media viewers keep the page paintable under Safari chrome while bloc
     let phone = true;
     context.window.matchMedia = () => ({matches: phone});
     context.window.scrollY = 500;
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const watchers = {};
     app.$watch = (name, callback) => {watchers[name] = callback;};
@@ -5520,7 +5521,7 @@ test('phone media viewers keep the page paintable under Safari chrome while bloc
 
 test('ordinary feed and grid videos start inline without a native controls mount race', () => {
     const context = browserContext();
-    const {tweetApp, tweetNookInitVideoPlayer} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookInitVideoPlayer})');
+    const {tweetApp, tweetNookInitVideoPlayer} = loadScripts(context, appScripts(), '({tweetApp, tweetNookInitVideoPlayer})');
     const media = {type: 'video', width: 720, height: 1280, download: {local_path: 'media/v.mp4'}};
     for (const list of [[media], [media, media]]) {
         const root = parseFakeHTML(tweetApp().renderMediaGrid(list))[0];
@@ -5553,7 +5554,7 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     context.clearTimeout = () => {};
     const opened = [];
     context.window.dispatchEvent = event => opened.push(event);
-    const {tweetApp, tweetNookInitVideoPlayer} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookInitVideoPlayer})');
+    const {tweetApp, tweetNookInitVideoPlayer} = loadScripts(context, appScripts(), '({tweetApp, tweetNookInitVideoPlayer})');
     const app = immediateComponent(tweetApp());
     const pendingTicks = [];
     app.$nextTick = callback => pendingTicks.push(callback);
@@ -5699,7 +5700,7 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
 
 test('opening a mobile video includes mixed gallery attachments and the tapped attachment index', () => {
     const context=browserContext(),opened=[];context.window.dispatchEvent=e=>opened.push(e);
-    const {tweetApp,tweetNookOpenMobileVideo}=loadScripts(context,['themes.js','app.js'],'({tweetApp,tweetNookOpenMobileVideo})');
+    const {tweetApp,tweetNookOpenMobileVideo}=loadScripts(context,appScripts(),'({tweetApp,tweetNookOpenMobileVideo})');
     const root=parseFakeHTML(tweetApp().renderMediaGrid([
         {type:'photo',download:{local_path:'media/photo.jpg'}},
         {type:'video',width:720,height:1280,download:{local_path:'media/first.mp4'}},
@@ -5716,7 +5717,7 @@ test('opening a mobile video includes mixed gallery attachments and the tapped a
 test('mobile video gallery swipes keep live decoders, one audio owner and each clips progress on return', () => {
     const context=browserContext();context.window.matchMedia=()=>({matches:true});
     context.getComputedStyle=()=>({objectFit:'contain',borderRadius:'16px'});
-    const {tweetApp,tweetNookInitVideoPlayer}=loadScripts(context,['themes.js','app.js'],'({tweetApp,tweetNookInitVideoPlayer})');
+    const {tweetApp,tweetNookInitVideoPlayer}=loadScripts(context,appScripts(),'({tweetApp,tweetNookInitVideoPlayer})');
     const app=immediateComponent(tweetApp());app.videoPlayback='paused';
     const media=[0,1,2].map(i=>({type:'video',width:720,height:1280,download:{local_path:`media/${i}.mp4`}}));
     const root=parseFakeHTML(app.renderMediaGrid(media))[0];root.connected=true;
@@ -5763,7 +5764,7 @@ test('mobile video gallery swipes keep live decoders, one audio owner and each c
 
 test('closing a swiped video reveals its feed destination before measuring the return motion', () => {
     const context = browserContext();
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     const track = {scrollLeft: 0, getBoundingClientRect: () => ({left: 0, width: 400})};
     const tile = {getBoundingClientRect: () => ({left: 1200 - track.scrollLeft, width: 200})};
     const origin = {closest: selector => selector === '.media-carousel-track' ? track : tile};
@@ -5784,7 +5785,7 @@ test('closing a swiped video reveals its feed destination before measuring the r
 test('the mobile viewer requests edge-to-edge layout and restores the original viewport settings', () => {
     const context=browserContext(),meta=new FakeElement('meta',[['content','width=device-width, initial-scale=1.0, viewport-fit=contain']]);
     context.document.querySelector=selector=>selector==='meta[name="viewport"]'?meta:null;
-    const app=loadScripts(context,['themes.js','app.js'],'tweetApp')();
+    const app=loadScripts(context,appScripts(),'tweetApp')();
     app.setLightboxViewport(true);assert.equal(meta.getAttribute('content'),'width=device-width, initial-scale=1.0, viewport-fit=cover');
     app.setLightboxViewport(true);app.setLightboxViewport(false);
     assert.equal(meta.getAttribute('content'),'width=device-width, initial-scale=1.0, viewport-fit=contain');
@@ -5796,7 +5797,7 @@ test('touch scrub owns its pointer, coalesces decoder seeks and retains the pend
     let nextFrame = 0;
     context.window.requestAnimationFrame = callback => {frames.set(++nextFrame, callback); return nextFrame;};
     context.window.cancelAnimationFrame = id => frames.delete(id);
-    const {tweetApp, tweetNookInitVideoPlayer, tweetNookSyncVideoDuration} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, tweetNookInitVideoPlayer, tweetNookSyncVideoDuration})');
+    const {tweetApp, tweetNookInitVideoPlayer, tweetNookSyncVideoDuration} = loadScripts(context, appScripts(), '({tweetApp, tweetNookInitVideoPlayer, tweetNookSyncVideoDuration})');
     const root = parseFakeHTML(tweetApp().renderMediaGrid([{type: 'video', download: {local_path: 'media/v.mp4'}}]))[0];
     root.connected = true;
     const video = root.querySelector('video'), player = video.parentElement, seek = player.querySelector('[data-video-seek]');
@@ -5844,7 +5845,7 @@ test('touch scrub owns its pointer, coalesces decoder seeks and retains the pend
 
 test('late lightbox observer and playback callbacks cannot restart a dismissed player', () => {
     const context = browserContext();
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.fetchSetup = async () => {};
     app.fetchNotices = async () => {};
@@ -5867,7 +5868,7 @@ test('late lightbox observer and playback callbacks cannot restart a dismissed p
 
 test('generic visibility observer leaves feed autoplay timing to its selector', () => {
     const context = browserContext();
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.fetchSetup = async () => {};
     app.fetchNotices = async () => {};
@@ -5891,7 +5892,7 @@ test('generic visibility observer leaves feed autoplay timing to its selector', 
 
 test('GIF indicator tracks playback state and toggles the archived animation', async () => {
     const context = browserContext();
-    loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    loadScripts(context, appScripts(), '({tweetApp})');
     const classes = new Set();
     const attributes = new Map();
     let playCalls = 0;
@@ -5978,7 +5979,7 @@ test('header collapses after pointer tab selection and keeps keyboard-focused ta
 test('volume and mute are shared in both playback modes and inherited by new players', () => {
     for (const mode of ['autoplay', 'paused']) {
         const context = browserContext();
-        const { tweetApp, forcedMuteVideos } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp, forcedMuteVideos})');
+        const { tweetApp, forcedMuteVideos } = loadScripts(context, appScripts(), '({tweetApp, forcedMuteVideos})');
         const app = immediateComponent(tweetApp());
         app.videoPlayback = mode;
         app.videoObserver = app.videoAutoplayObserver = { observe() {} };
@@ -6025,7 +6026,7 @@ test('volume and mute are shared in both playback modes and inherited by new pla
 
 test('autoplay setting plays the topmost visible video muted and shares unmuting', async () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     // Fake players dispatch their media events synchronously to the app handlers.
     const player = (top, { lightbox = false, custom = false } = {}) => {
@@ -6186,7 +6187,7 @@ test('activity drawer loads any pipeline and starts production jobs', async () =
             },
         };
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
 
     app.activityPageKey = 'old-run-stage';
@@ -6231,7 +6232,7 @@ test('activity updates retain unchanged rows and handle removal, cancellation, a
         },
     };
     context.fetch = async () => ({ok: true, json: async () => JSON.parse(JSON.stringify(data))});
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     await app.fetchActivityStatus();
     const original = app.activity;
@@ -6297,7 +6298,7 @@ test('activity requests coalesce and superseded responses cannot revive a finish
     const context = browserContext();
     const requests = [];
     context.fetch = (_url, {signal}) => new Promise(resolve => requests.push({resolve, signal}));
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const older = app.fetchActivityStatus();
     const shared = app.fetchActivityStatus();
@@ -6324,7 +6325,7 @@ test('activity request timeout releases the request and a successful retry clear
     context.fetch = (_url, {signal}) => new Promise((_resolve, reject) => {
         signal.addEventListener('abort', () => reject(new Error('aborted')), {once: true});
     });
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const request = app.fetchActivityStatus();
     timeout();
@@ -6353,7 +6354,7 @@ test('activity polling adapts to idle and visibility while its elapsed clock sta
         requests++;
         return {ok: true, json: async () => JSON.parse(JSON.stringify(data))};
     };
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.startActivityPolling();
     app.startActivityPolling();
@@ -6401,7 +6402,7 @@ test('incomplete enrichment starts the fixed Web action and refreshes status', a
         }
         throw new Error(`unexpected request: ${url}`);
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.archiveReady = true;
     let activityRefreshes = 0, enrichmentRefreshes = 0;
@@ -6427,7 +6428,7 @@ test('enrichment completion refreshes pending work before showing a reminder', a
         assert.equal(url, '/api/activity/status');
         return {ok: true, json: async () => ({active: false})};
     };
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.setupForced = false;
     app.archiveEnrichmentIncomplete = 10;
@@ -6459,7 +6460,7 @@ test('a slow enrichment count cannot overwrite the completion refresh', async ()
     const context = browserContext();
     const counts = [];
     context.fetch = async () => ({ok: true, json: () => new Promise(resolve => counts.push(resolve))});
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const older = app.fetchArchiveEnrichmentStatus();
     const newer = app.fetchArchiveEnrichmentStatus();
@@ -6511,7 +6512,7 @@ test('schedule settings load, normalize, and save through the activity API', asy
         }
         return { ok: true, async json() { return schedule; } };
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
 
     await app.fetchScheduleSettings();
@@ -6588,7 +6589,7 @@ test('unchecked square checkboxes use thinner outlines while checked states reta
 
 test('activity stages use focused pages and finish on a run summary', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.activity = {
         title: 'tweetnook sync',
@@ -6705,7 +6706,7 @@ test('activity stages use focused pages and finish on a run summary', () => {
 test('inactive unknown results are interrupted across the drawer and run history', () => {
     const context = browserContext();
     const { tweetApp, nookSyncPanel, nookLogsPage } = loadScripts(context,
-        ['themes.js', 'app.js', 'header.js', 'settings.js'], '({tweetApp, nookSyncPanel, nookLogsPage})');
+        appScriptsWith('header.js', 'settings.js'), '({tweetApp, nookSyncPanel, nookLogsPage})');
     const app = immediateComponent(tweetApp());
     app.lastActivity = {run_id: 'unknown', running: false, success: null, steps: []};
     const panel = nookMergeScope(app, nookSyncPanel());
@@ -6728,7 +6729,7 @@ test('inactive unknown results are interrupted across the drawer and run history
 
 test('activity schedule footer separates the day from the emphasized run time', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
 
     app.activitySchedule = {
@@ -6752,7 +6753,7 @@ test('activity schedule footer separates the day from the emphasized run time', 
 
 test('activity run summary turns structured outcomes into analytics-style cards', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.lastActivity = {
         running: false,
@@ -6824,7 +6825,7 @@ test('community notes escape headings, text, labels, and external links', () => 
     const context = browserContext();
     const { tweetApp } = loadScripts(
         context,
-        ['themes.js', 'app.js'],
+        appScripts(),
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
@@ -6852,7 +6853,7 @@ test('community notes escape headings, text, labels, and external links', () => 
 
 test('community note detail uses captured title and omits footers, while feed and quote retain compact title', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const raw = { birdwatch_pivot: {
         title: 'Full <b>title</b>',
@@ -6943,7 +6944,7 @@ test('Settings hidden checkboxes stay anchored inside the modal', () => {
 
 test('automated tagging spend periods normalize to the stored daily limit', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.automatedTagging = { daily_spend_limit_usd: 2 };
 
@@ -6961,7 +6962,7 @@ test('automated tagging spend periods normalize to the stored daily limit', () =
 
 test('automated tagging spend history summarizes ranges, chart groups, and models', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.automatedTaggingAccounting = {
         spend_history: [
@@ -7038,7 +7039,7 @@ test('automated tagging model refresh caches until forced', async () => {
             },
         };
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.automatedTagging = {
         api_key: '********',
@@ -7056,7 +7057,7 @@ test('automated tagging model refresh caches until forced', async () => {
 
 test('automated tagging context commits on Enter, comma, and Tab', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.automatedTaggingContextInput = 'Deadlock';
     let prevented = false;
@@ -7111,7 +7112,7 @@ test('saving automated tagging includes a context hint still in the input', asyn
             },
         };
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.automatedTagging = { enabled: false, api_key: '********', tagging_context: [] };
     app.automatedTaggingContextInput = 'Deadlock';
@@ -7125,7 +7126,7 @@ test('saving automated tagging includes a context hint still in the input', asyn
 
 test('offline fonts use local families, permission-based discovery, and no stylesheets', async () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({ tweetApp })');
+    const { tweetApp } = loadScripts(context, appScripts(), '({ tweetApp })');
     const component = immediateComponent(tweetApp());
     await component.discoverFonts();
     assert.match(component.fontDiscoveryMessage, /unavailable/);
@@ -7152,7 +7153,7 @@ test('offline fonts use local families, permission-based discovery, and no style
 
 test('saved media and Articles remain readable with unavailable warnings and no text', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'articles.js', 'app.js'], '({ tweetApp })');
+    const { tweetApp } = loadScripts(context, appScriptsWith('articles.js'), '({ tweetApp })');
     const app = immediateComponent(tweetApp());
     const missing = {
         tweet_id: 'saved', text: '', raw_json: null, media: [],
@@ -7177,7 +7178,7 @@ test('saved media and Articles remain readable with unavailable warnings and no 
 
 test('card thumbnails only render matching archived images or posters', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({ tweetApp })');
+    const { tweetApp } = loadScripts(context, appScripts(), '({ tweetApp })');
     const component = immediateComponent(tweetApp());
     const remote = 'https://example.com/card.jpg';
     assert.equal(component.localCardImage({}, remote), null);
@@ -7194,7 +7195,7 @@ test('card thumbnails only render matching archived images or posters', () => {
 
 test('link cards show archived large images and summary thumbnails in normalized quotes', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({ tweetApp })');
+    const { tweetApp } = loadScripts(context, appScripts(), '({ tweetApp })');
     const app = immediateComponent(tweetApp());
     const remote = 'https://example.com/preview.jpg';
     for (const name of ['summary', 'summary_large_image']) {
@@ -7223,7 +7224,7 @@ test('link cards show archived large images and summary thumbnails in normalized
 
 test('custom font dropdown supports keyboard focus and selection', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({ tweetApp })');
+    const { tweetApp } = loadScripts(context, appScripts(), '({ tweetApp })');
     const component = immediateComponent(tweetApp());
     const choices = component.fontChoices();
     const options = choices.map(() => ({ focus() { context.document.activeElement = this; } }));
@@ -7249,7 +7250,7 @@ test('custom font dropdown supports keyboard focus and selection', () => {
 
 test('loading tagging settings never discovers provider models implicitly', async () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({ tweetApp })');
+    const { tweetApp } = loadScripts(context, appScripts(), '({ tweetApp })');
     const component = immediateComponent(tweetApp());
     let requests = 0;
     context.fetch = async url => {
@@ -7287,7 +7288,7 @@ test('first-run gating loads archive resources only after completion and preserv
             archive: {ready, uploaded: false},
         }; } };
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const calls = [];
     for (const method of ['fetchTweets', 'fetchStats', 'fetchGlobalTags', 'fetchArchiveEnrichmentStatus', 'fetchAutomatedTagging']) app[method] = async () => calls.push(method);
@@ -7337,7 +7338,7 @@ test('a linked conversation opens without waiting for the feed and counters; a l
     const load = route => {
         const context = browserContext();
         context.fetch = async () => ({ ok: true, json: async () => setup });
-        const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+        const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
         const pending = {};
         const requested = [];
         for (const method of ['fetchTweets', 'fetchStats', 'fetchArchiveEnrichmentStatus', 'fetchAutomatedTagging']) {
@@ -7390,7 +7391,7 @@ test('settings for later menus are requested after the first feed page', async (
         return new Promise(() => {});
     };
     const { tweetApp, nookLoadSyncCollections } = loadScripts(
-        context, ['themes.js', 'header.js', 'app.js'], '({tweetApp, nookLoadSyncCollections})',
+        context, appScriptsWith('header.js'), '({tweetApp, nookLoadSyncCollections})',
     );
     const app = immediateComponent(tweetApp());
     app.fetchNotices = async () => {};
@@ -7410,7 +7411,7 @@ test('notification badge counts every unread item and actions use Settings desti
     const context = browserContext();
     const requests = [];
     context.fetch = async (url, options) => { requests.push([url, options.method]); return {ok: true}; };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js', 'settings.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScriptsWith('settings.js'), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.notices = [
         {id: 'a', severity: 'error', dismissed: false, action: 'setup'},
@@ -7436,7 +7437,7 @@ test('notices link to their run log and support bulk dismiss and clearing histor
     const context = browserContext();
     const requests = [];
     context.fetch = async (url, options) => { requests.push([url, options?.method]); return {ok: true, json: async () => ({runs: []})}; };
-    const { tweetApp, nookNoticeWhen } = loadScripts(context, ['themes.js', 'app.js', 'settings.js'], '({tweetApp, nookNoticeWhen})');
+    const { tweetApp, nookNoticeWhen } = loadScripts(context, appScriptsWith('settings.js'), '({tweetApp, nookNoticeWhen})');
     const app = immediateComponent(tweetApp());
     app.openSettings();
     app.notices = [
@@ -7475,7 +7476,7 @@ test('notification list shows times, run logs, and bulk actions', () => {
 
 test('log formatting does not mark zero-failure summaries as errors', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const component = immediateComponent(tweetApp());
 
     const formatted = component.formatLogText(
@@ -7579,7 +7580,7 @@ test('legacy setup reload queues completion without flashing it before navigatio
         assert.deepEqual(JSON.parse(options.body), {password: 'test-secret', confirm_password: 'test-secret', skip_auth: true});
         return {ok: true, async json() {return {completed: true, reload: true};}};
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.setupForced = true;
     app.setupSkipAuth = true;
@@ -7607,7 +7608,7 @@ test('setup finishes in place and refreshes archive resources and progress witho
         assert.equal(url, '/api/setup');
         return { ok: true, json: async () => data };
     };
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.setupForced = true;
     app.setupPassword = app.setupPasswordConfirm = 'test-secret';
@@ -7637,7 +7638,7 @@ test('setup completion survives the password reload once and supports both real 
     const context = browserContext();
     const data = { completed: true, required: false, auth: { verified: false, values: {} }, archive: { ready: true, initialization_mode: 'empty' } };
     context.fetch = async () => ({ ok: true, json: async () => data });
-    const { tweetApp } = loadScripts(context, ['themes.js', 'setup-completion.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.archiveResourcesLoaded = true;
     context.sessionStorage.setItem('tweetnook.setup-completion', 'pending');
@@ -7666,7 +7667,7 @@ test('failed setup completion neither reloads nor queues the explanation', async
     context.fetch = async () => ({ ok: false, json: async () => ({ detail: 'Cannot finish' }) });
     let reloads = 0;
     context.window.location.reload = () => reloads++;
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.setupData = { web: { password_configured: true } };
     app.setupForced = true;
@@ -7684,7 +7685,7 @@ test('setup still shows completion before reloading when browser storage is disa
     context.fetch = async () => ({ ok: true, json: async () => ({ completed: true, reload: true }) });
     let reloads = 0;
     context.window.location.reload = () => reloads++;
-    const { tweetApp } = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.setupData = { web: { password_configured: true } };
     await app.finishSetup();
@@ -7767,7 +7768,7 @@ test('automated tagging saves uncertainty policies and exposes their controls', 
         submitted = JSON.parse(options.body).values;
         return {ok: true, async json() {return {values: submitted};}};
     };
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.automatedTagging = {...values};
     await app.saveAutomatedTagging();
@@ -7789,7 +7790,7 @@ test('abbreviated raw tweet JSON renders exactly like the stored document', () =
         path.join(ROOT, 'tests', 'fixtures', 'web_raw_tweets.json'),
         'utf8',
     ));
-    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(browserContext(), appScripts(), 'tweetApp')());
     const event = () => ({
         currentTarget: {
             classList: { contains: () => true },
@@ -7841,7 +7842,7 @@ test('copy raw prefers the stored document prefetched when the menu opens', asyn
         return { ok: true, json: async () => ({ raw_json: { rest_id: '7', full: true } }) };
     };
     context.navigator = { clipboard: { async writeText(value) { copiedText = value; } } };
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
 
     app.toggleTweetMenu('list:7');
     await app.fullRawTweet({ tweet_id: '7' });
@@ -7857,7 +7858,7 @@ test('copy raw prefers the stored document prefetched when the menu opens', asyn
 
 test('large threads render replies in batches of nested tweets', async () => {
     const context = browserContext('/post/1');
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     const child = (id, nested) => ({
         tweet_id: id,
         op_replies: Array.from({ length: nested }, (_, index) => ({ tweet_id: `${id}-${index}` })),
@@ -7888,7 +7889,7 @@ test('large threads render replies in batches of nested tweets', async () => {
 
 test('mention-only replies wait behind Show other replies until regular replies are shown', async () => {
     const context = browserContext('/post/1');
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     const reply = id => ({ tweet_id: id, op_replies: [] });
     const data = {
         main: { tweet_id: '1' },
@@ -7934,7 +7935,7 @@ test('mention-only replies wait behind Show other replies until regular replies 
 
 test('the full tag list loads only when Tag Management opens', () => {
     const context = browserContext();
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     const watchers = {};
     let loads = 0;
     app.$watch = (key, callback) => { watchers[key] = callback; };
@@ -7959,7 +7960,7 @@ test('threads open on the tweet already shown while the conversation loads', asy
     const context = browserContext();
     const pending = [];
     context.fetch = url => new Promise(resolve => pending.push({ url, resolve }));
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     app.splitPanel = false;
     const feedTweet = {
         tweet_id: '5', text: 'Shown in the feed', author: { id: '1', username: 'a', display_name: 'A' },
@@ -7991,7 +7992,7 @@ test('thread main anchoring ignores hidden content and preserves visible content
     const context = browserContext();
     const pageScrolls = [];
     context.window.scrollBy = (...args) => pageScrolls.push(args);
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
 
     for (const panel of [false, true]) {
         let visible = false;
@@ -8027,7 +8028,7 @@ test('pressing or hovering a tweet starts loading its conversation once', () => 
     };
     context.setTimeout = (callback, delay) => timers.push({ callback, delay });
     context.clearTimeout = () => {};
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     app.fetchSetup = async () => {};
     app.fetchNotices = async () => {};
     app.fetchActivityStatus = async () => {};
@@ -8058,7 +8059,7 @@ test('the page requests the first feed page and a linked conversation before its
         return { context, requests };
     };
     const { context, requests } = run('/post/42');
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     assert.deepEqual(requests, [`${app.feedUrl(1)}&cursor=`, '/api/tweets/42'], 'matches the app\'s first page');
     assert.deepEqual(run('/post/42/quotes').requests, [`${app.feedUrl(1)}&cursor=`]);
     assert.deepEqual(run('/', true).requests, [], 'the static demo has no API');
@@ -8080,7 +8081,7 @@ test('a first feed page is shown without waiting for Setup status', async () => 
         context.fetch = url => (url.startsWith('/api/tweets?')
             ? Promise.resolve({ ok: status === 200, status, json: async () => ({ tweets: [] }) })
             : new Promise(() => {}));
-        const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+        const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
         app.fetchNotices = async () => {};
         app.fetchActivityStatus = async () => {};
         let loads = 0;
@@ -8108,7 +8109,7 @@ test('feeds reuse recent first pages and keep the old list while loading', async
     };
     let idle = null;
     context.requestIdleCallback = callback => { idle = callback; };
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     const page = ids => ({ tweets: ids.map(tweet_id => ({ tweet_id })), page: 1, pages: 1, total: ids.length, has_more: false });
     const likes = '/api/tweets?collection=likes&sort=liked_latest&page=1&cursor=';
     const all = '/api/tweets?collection=all&sort=newest&page=1&cursor=';
@@ -8161,7 +8162,7 @@ test('feeds reuse recent first pages and keep the old list while loading', async
 });
 
 test('feed media loads lazily and tweets render without mutating their data', () => {
-    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(browserContext(), appScripts(), 'tweetApp')());
     const photo = { type: 'photo', width: 10, height: 10, download: { local_path: 'media/1/p.jpg' } };
     const video = { type: 'video', download: { local_path: 'media/1/v.mp4', thumbnail_local_path: 'media/1/v.jpg' } };
     const bare = { type: 'video', download: { local_path: 'media/1/w.mp4' } };
@@ -8198,7 +8199,7 @@ test('status polling pauses in hidden tabs and refreshes on return', () => {
     const intervals = [];
     context.setInterval = (callback, delay) => intervals.push({ callback, delay });
     context.document.hidden = true;
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     let polls = 0;
     app.fetchSetup = async () => { polls++; };
     app.fetchNotices = async () => {};
@@ -8739,7 +8740,7 @@ test('media lightbox data and community note links cannot inject script', () => 
     const context = browserContext();
     const events = [];
     context.window.dispatchEvent = event => events.push(event);
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     const hostile = "x'),alert(1),('\"<b>";
     const photo = { type: 'photo', url: hostile, download: { local_path: 'media/1/p.jpg' } };
     for (const html of [app.renderMediaGrid([photo]), app.renderMediaGrid([photo, photo])]) {
@@ -8973,7 +8974,7 @@ test('closing jobs restores focus without moving the feed', () => {
 test('Jobs browser tint follows the shaded theme and restores on close, resize and teardown', () => {
     const {context, panel, sheet} = jobsSheetFixture();
     sheet.destroy();
-    const app = loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')();
+    const app = loadScripts(context, appScripts(), 'tweetApp')();
     app.activityDrawerOpen = true;
     const mobileSheet = vm.runInContext('nookJobsSheet', context)(panel, app);
     app.applyTheme('classic-dark');
@@ -9025,7 +9026,7 @@ test('Jobs shade and tint share one animation value through close reversal and t
     context.performance = {now: () => clock};
     context.requestAnimationFrame = callback => { frames.set(++frameId, callback); return frameId; };
     context.cancelAnimationFrame = id => frames.delete(id);
-    const app = loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')();
+    const app = loadScripts(context, appScripts(), 'tweetApp')();
     app.applyTheme('classic-dark');
     app.activityDrawerOpen = true;
     const mobileSheet = vm.runInContext('nookJobsSheet', context)(panel, app);
@@ -9084,7 +9085,7 @@ test('Jobs shade and tint share one animation value through close reversal and t
 test('Jobs keeps stage details and tab selection together through live stage gaps', () => {
     const context = browserContext();
     context.ResizeObserver = class { observe() {} disconnect() {} };
-    const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
+    const { tweetApp, nookSyncPanel } = loadScripts(context, appScriptsWith('header.js'), '({tweetApp, nookSyncPanel})');
     vm.runInContext('nookJobsSheet = () => ({sync() {}, destroy() {}})', context);
     const app = immediateComponent(tweetApp());
     app.fetchArchiveEnrichmentStatus = () => {};
@@ -9162,7 +9163,7 @@ test('Jobs keeps stage details and tab selection together through live stage gap
 
 test('sync panel shows paused and skipped reasons, new tweets, and the server schedule label', () => {
     const context = browserContext();
-    const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
+    const { tweetApp, nookSyncPanel } = loadScripts(context, appScriptsWith('header.js'), '({tweetApp, nookSyncPanel})');
     const app = immediateComponent(tweetApp());
     const panel = nookMergeScope(app, nookSyncPanel());
 
@@ -9199,7 +9200,7 @@ test('sync panel shows paused and skipped reasons, new tweets, and the server sc
 
 test('jobs panel retains import and enrichment results and keeps them selectable', () => {
     const context = browserContext();
-    const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
+    const { tweetApp, nookSyncPanel } = loadScripts(context, appScriptsWith('header.js'), '({tweetApp, nookSyncPanel})');
     for (const key of ['import', 'enrich']) {
         for (const success of [true, false, null]) {
             const app = immediateComponent(tweetApp());
@@ -9262,7 +9263,7 @@ test('jobs panel retains import and enrichment results and keeps them selectable
 
 test('collapsed On demand shows only failed jobs and expands to all run options', () => {
     const context = browserContext();
-    const { tweetApp, nookSyncPanel } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel})');
+    const { tweetApp, nookSyncPanel } = loadScripts(context, appScriptsWith('header.js'), '({tweetApp, nookSyncPanel})');
     const panel = nookMergeScope(immediateComponent(tweetApp()), nookSyncPanel());
     panel.jobs = [
         {key: 'sync', scheduled: true, state: 'failed'},
@@ -9291,7 +9292,7 @@ test('collapsed On demand shows only failed jobs and expands to all run options'
 
 test('sync panel labels unknown progress without fabricated fractions and animates active work', () => {
     const context = browserContext();
-    const { tweetApp, nookSyncPanel, nookSyncBreakdown } = loadScripts(context, ['themes.js', 'app.js', 'header.js'], '({tweetApp, nookSyncPanel, nookSyncBreakdown})');
+    const { tweetApp, nookSyncPanel, nookSyncBreakdown } = loadScripts(context, appScriptsWith('header.js'), '({tweetApp, nookSyncPanel, nookSyncBreakdown})');
     const panel = nookMergeScope(immediateComponent(tweetApp()), nookSyncPanel());
     const step = { state: 'active', title: 'Bookmarks', activity: 'Fetching page 3', completed: 3, total: 4, show_progress: false };
 
@@ -9400,7 +9401,7 @@ test('log copying falls back on HTTP and clipboard rejection, and only confirms 
     for (const mode of ['http', 'rejected', 'failed']) {
         const context = browserContext();
         const { tweetApp, nookLogsPage, nookLogParse } = loadScripts(
-            context, ['themes.js', 'app.js', 'settings.js'], '({tweetApp, nookLogsPage, nookLogParse})',
+            context, appScriptsWith('settings.js'), '({tweetApp, nookLogsPage, nookLogParse})',
         );
         const page = nookMergeScope(tweetApp(), nookLogsPage());
         const raw = '2026-10-22T21:01:16.123456Z Media: progress · 47 files\nERROR: Storage is full.\n';
@@ -9460,7 +9461,7 @@ test('log copying falls back on HTTP and clipboard rejection, and only confirms 
 
 test('combined archive preparation keeps its name through enrichment, sync, media and history', () => {
     const context = browserContext();
-    const { tweetApp, nookRunTitle } = loadScripts(context, ['themes.js', 'app.js', 'settings.js'], '({tweetApp, nookRunTitle})');
+    const { tweetApp, nookRunTitle } = loadScripts(context, appScriptsWith('settings.js'), '({tweetApp, nookRunTitle})');
     const app = immediateComponent(tweetApp());
     for (const key of ['archive-enrich', 'sync:likes:head', 'media']) {
         app.activity = { title: 'tweetnook import enrich', steps: [{key, state: 'active'}] };
@@ -9683,7 +9684,7 @@ test('setup polls fill an unset archive ID without replacing a user entry', asyn
     context.fetch = async () => ({ok: true, json: async () => ({
         required: true, auth: {values: {user_id: '4242'}}, archive: {ready: true},
     })});
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.setupAuth = {auth_token: 'synthetic', ct0: 'synthetic', user_id: ''};
     await app.fetchSetup();
@@ -9703,7 +9704,7 @@ test('enrichment status waits for setup and tolerates the archive attachment rac
     context.fetch = async () => { calls++; return {
         ok: false, status: 503, json: async () => ({detail: {code: 'archive_not_ready'}}),
     }; };
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.archiveReady = false;
     await app.fetchArchiveEnrichmentStatus();
@@ -9728,7 +9729,7 @@ test('historical activity on first load does not announce fresh content in demos
                 steps: [{key: 'sync:likes:head', state: 'complete'}, {key: 'media', state: 'complete'}]};
             let snapshot = history;
             context.fetch = async () => ({ok: true, json: async () => ({active: false, last_snapshot: snapshot})});
-            const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+            const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
             const app = immediateComponent(tweetApp());
             app.archiveReady = true;
             app.tweets = feedLoaded ? [{tweet_id: 'reading'}] : [];
@@ -9755,7 +9756,7 @@ test('a run finishing between initial status polls still announces new content',
     const context = browserContext();
     let snapshot = null;
     context.fetch = async () => ({ok: true, json: async () => ({active: false, last_snapshot: snapshot})});
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     app.archiveReady = true;
     app.tweets = [{tweet_id: 'reading'}];
     await app.fetchActivityStatus();
@@ -9771,7 +9772,7 @@ test('a task started before the first status response still announces its saved 
     context.fetch = async () => ({ok: true, json: async () => ({active: false,
         last_snapshot: {run_id: 'requested-sync', steps: [{key: 'sync:likes:head', state: 'complete'}]},
     })});
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     app.archiveReady = true;
     app.tweets = [{tweet_id: 'reading'}];
     app.activityStartPending = true;
@@ -9797,7 +9798,7 @@ test('committed collection stages refresh an empty feed and its count while medi
             page: 1, pages: 1, has_more: false,
         })};
     };
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.archiveReady = true;
     app.collectionFilter = 'bookmarks';
@@ -9823,7 +9824,7 @@ test('committed content offers a refresh without disturbing a populated feed', a
     context.fetch = async () => ({ok: true, json: async () => ({active: true,
         snapshot: {run_id: 'sync', steps: [{key: 'sync:likes:head', state: 'complete'}]},
     })});
-    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const {tweetApp} = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     app.archiveReady = true;
     app.tweets = [{tweet_id: 'reading'}];
@@ -9839,7 +9840,7 @@ test('committed content offers a refresh without disturbing a populated feed', a
 
 test('gallery preference defaults to the post date and changes the already rendered feed', () => {
     const context = browserContext();
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     assert.equal(app.mediaGallery, 'date');
     const calls = [];
     app.tweets = [{tweet_id: 'keep'}];
@@ -9863,7 +9864,7 @@ test('gallery preference defaults to the post date and changes the already rende
 });
 
 test('date-based media layout uses the UTC launch day and ignores archive dates', () => {
-    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(browserContext(), appScripts(), 'tweetApp')());
     app.mediaGallery = 'date';
     const photos = Array(2).fill({type:'photo', width:480, height:480, download:{local_path:'media/p.webp'}});
     const hasCarousel = created_at => app.renderMediaGrid(photos, 'feed', {created_at}).includes('media-carousel-track');
@@ -9884,7 +9885,7 @@ test('date-based media layout uses the UTC launch day and ignores archive dates'
 });
 
 test('quoted and reposted media use their original posting dates independently', () => {
-    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(browserContext(), appScripts(), 'tweetApp')());
     app.mediaGallery = 'date';
     const photos = Array(2).fill({type:'photo', width:480, height:480, download:{local_path:'media/p.webp'}});
     const parent = {tweet_id:'1', text:'New quote', created_at:'2026-10-20T00:00:00Z', media:photos,
@@ -9908,7 +9909,7 @@ test('all media layout preferences restore after initialization, with a safe def
     for (const saved of ['grid', 'carousel', 'date', 'invalid', null]) {
         const context = browserContext();
         if (saved !== null) context.localStorage.setItem('tvx-media-gallery', saved);
-        const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+        const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
         for (const method of ['fetchSetup', 'fetchNotices', 'fetchActivityStatus', 'fetchTweets', 'fetchStats', 'fetchArchiveEnrichmentStatus', 'fetchAutomatedTagging']) app[method] = async () => {};
         app.initApp();
         assert.equal(app.mediaGallery, ['grid', 'carousel', 'date'].includes(saved) ? saved : 'date');
@@ -9916,7 +9917,7 @@ test('all media layout preferences restore after initialization, with a safe def
 });
 
 test('carousel uses shared heights, native pair packing, and independent quoted proportions', () => {
-    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(browserContext(), appScripts(), 'tweetApp')());
     const portrait = {type:'photo', width:360, height:640};
     const landscape = {type:'photo', width:640, height:360};
     const square = {type:'photo', width:480, height:480};
@@ -9936,7 +9937,7 @@ test('carousel uses shared heights, native pair packing, and independent quoted 
 
 test('desktop list and post layouts follow X web: strips, page dashes, quotes, Show more, large cards', () => {
     const context = browserContext();
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     const desktop = css.slice(css.indexOf("/* X's desktop web, measured in October 2026."));
     const block = desktop.slice(0, desktop.indexOf('\n}\n'));
@@ -9958,7 +9959,7 @@ test('desktop list and post layouts follow X web: strips, page dashes, quotes, S
 
 test('phone layout follows the X app: strip heights, dates, large link cards, compact nested quotes', () => {
     const context = browserContext();
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     const portrait = {type:'photo', width:360, height:640};
     const landscape = {type:'photo', width:640, height:360};
     assert.equal(app.mediaCarouselLayout([portrait, landscape, landscape]).appHeight,
@@ -10003,7 +10004,7 @@ test('phone carousel scrolls freely by touch and its padding opens the post', ()
     assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.media-carousel-track \{\s*scroll-snap-type: none;\s*\}/);
     assert.match(css, /@media \(hover: none\) \{\s*\.media-carousel-arrow \{ display: none; \}/);
 
-    const app = immediateComponent(loadScripts(browserContext(), ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(browserContext(), appScripts(), 'tweetApp')());
     const opened = [];
     app.openThread = id => opened.push(id);
     const node = (classes, dataset = {}, parentElement = null) => ({
@@ -10130,7 +10131,7 @@ test('a phone post slides as a layer over the feed, with its own header', () => 
 
 test('the post layer moves as X does: spring in, follow the finger, spring back or leave', () => {
     const context = browserContext();
-    const { swipeBackIntent, swipeBackCompletes, detailSettle, detailTransitionStyles, detailBarOpacities } = loadScripts(context, ['themes.js', 'app.js'],
+    const { swipeBackIntent, swipeBackCompletes, detailSettle, detailTransitionStyles, detailBarOpacities } = loadScripts(context, appScripts(),
         '({swipeBackIntent, swipeBackCompletes, detailSettle, detailTransitionStyles, detailBarOpacities})');
     // Undecided until 10px; rightward and mostly sideways becomes a back swipe.
     assert.equal(swipeBackIntent(6, 2), null);
@@ -10212,7 +10213,7 @@ test('the phone post page spaces its parts and replies like X and shows the whol
 
 test('a short reply page sizes its spacer before retrying the scroll to the post', () => {
     const context = browserContext();
-    const app = loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')();
+    const app = loadScripts(context, appScripts(), 'tweetApp')();
     const spacer = {style: {}};
     let scrollTop = 0;
     const stage = {
@@ -10236,7 +10237,7 @@ test('a short reply page sizes its spacer before retrying the scroll to the post
 
 test('the page header and feed stay on the list beneath a post layer', () => {
     const context = browserContext();
-    const app = loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')();
+    const app = loadScripts(context, appScripts(), 'tweetApp')();
     app.viewMode = 'thread';
     assert.equal(app.pageView, 'thread');
     app.detailLayer = true;
@@ -10246,7 +10247,7 @@ test('the page header and feed stay on the list beneath a post layer', () => {
 test('phone avatar shrinks to clear a scrolled carousel and restores at the first photo', () => {
     const context = browserContext();
     context.window.matchMedia = query => ({matches: query.includes('(max-width: 640px)')});
-    const app = loadScripts(context, ['themes.js', 'app.js'], 'window');
+    const app = loadScripts(context, appScripts(), 'window');
     const avatar = (() => {
         const classes = new Set(['avatar']);
         const props = {};
@@ -10306,7 +10307,7 @@ test('phone avatar shrinks to clear a scrolled carousel and restores at the firs
 
 test('carousel arrows advance one tile, clamp at the ends, and retain player keyboard controls', () => {
     const context = browserContext();
-    const app = loadScripts(context, ['themes.js', 'app.js'], 'window');
+    const app = loadScripts(context, appScripts(), 'window');
     const calls = [];
     const buttons = {'.media-carousel-previous':{}, '.media-carousel-next':{}};
     const track = {scrollLeft:0, scrollWidth:1471, clientWidth:598,
@@ -10341,7 +10342,7 @@ test('carousel arrows advance one tile, clamp at the ends, and retain player key
 
 test('optional carousel preserves original indices, placeholders, GIFs, and single-media markup', () => {
     const context = browserContext();
-    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     const photo = {type:'photo', width:360, height:640, download:{local_path:'media/p.webp'}};
     const gif = {type:'animated_gif', width:480, height:480, download:{local_path:'media/g.mp4'}};
     const video = {type:'video', width:640, height:360, download:{local_path:'media/v.mp4'}};

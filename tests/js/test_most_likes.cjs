@@ -4,12 +4,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { appScripts, readScripts } = require('./page_scripts.cjs');
 const root = path.resolve(__dirname, '../..');
 
 async function main() {
-    const scripts = ['themes.js', 'app.js'].map(file => fs.readFileSync(
-        path.join(root, 'tweetnook/web/static/js', file), 'utf8')).join('\n');
-    const app = vm.runInNewContext(scripts + '\ntweetApp()', {window: {}});
+    const app = vm.runInNewContext(readScripts(appScripts()) + '\ntweetApp()', {window: {}});
     for (const collection of ['all', 'likes', 'bookmarks', 'tweets']) {
         for (const query of ['', 'needle']) {
             app.collectionFilter = collection;

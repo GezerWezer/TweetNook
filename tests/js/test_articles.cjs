@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { JS_DIR, appScripts } = require('./page_scripts.cjs');
 const root = path.resolve(__dirname, '../..');
 const events = [];
 const context = {URL, Map, Set, CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options.detail;}}, window: {dispatchEvent: e => events.push(e)}};
@@ -121,7 +122,7 @@ test('preview activation stops the enclosing quote and carries the intended twee
 });
 test('the application renders article feeds, quotes, and full detail through the new module', () => {
     context.document = {documentElement: {classList: {add(){}}}};
-    for (const file of ['themes.js', 'app.js']) vm.runInContext(fs.readFileSync(path.join(root, 'tweetnook/web/static/js', file), 'utf8'), context);
+    for (const file of appScripts()) vm.runInContext(fs.readFileSync(path.join(JS_DIR, file), 'utf8'), context, {filename: file});
     const component = vm.runInContext('tweetApp()', context);
     assert.equal(component.formatText(tweet), '');
     assert.match(component.renderCard(tweet), /article-preview/);
