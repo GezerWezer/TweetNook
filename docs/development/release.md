@@ -26,10 +26,11 @@ Review expected artifacts in `dist/`, inspect wheel/sdist contents and install t
 
 A pushed `v*` tag triggers `.github/workflows/release.yml`:
 
-1. Build distributions and run Twine validation.
-2. Publish through the protected PyPI environment using trusted publishing.
-3. Create a GitHub Release with distributions and `install.sh`.
-4. Build and deploy the static demonstration site to GitHub Pages.
+1. Run the CI workflow (`.github/workflows/ci.yml`); nothing below starts unless it passes.
+2. Build distributions and run Twine validation.
+3. Publish through the protected PyPI environment using trusted publishing.
+4. Create a GitHub Release with distributions and `install.sh`.
+5. Build and deploy the static demonstration site to GitHub Pages.
 
 Release notes are extracted from the matching changelog version's Added, Changed and Fixed sections. The workflow rejects an empty extraction and doesn't publish a Highlights section. Include a comparison link to the preceding tag when one exists.
 
