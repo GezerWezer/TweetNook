@@ -31,3 +31,19 @@ Run the Python asset/setup-help tests and the relevant JavaScript harnesses from
 Diagnostic scripts in this directory help inspect playback, media handoff, loading and browser behavior. Read a script's arguments and target before running it against an installation. Keep generated reports and test archives outside the repository.
 
 See [testing](../../docs/development/testing.md) for the usual harness commands.
+
+### iOS Safari scroll regression
+
+With an iPhone simulator booted, start `safaridriver -p 4444` in another terminal,
+then run `node dev/web/safari-scroll-check.cjs` from the repository root. Use
+`SAFARI_DEVICE_UDID` to select a simulator when several are available. The script
+serves synthetic posts and public demo videos on localhost, scrolls both ways
+with audible autoplay, and asserts that decoder handoffs preserve scroll position
+and never overlap audio. It saves measurements and a screenshot in a temporary
+folder printed at completion. No archive or account is opened.
+
+The test session enables Safari's autoplay test policy to avoid requiring a native
+tap, then injects per-element audible refusals to exercise the authorized-decoder
+fallback. It checks real Safari decoding, layout and scrolling; it does not establish
+user-gesture permission or physical-device momentum behavior. Set
+`SAFARI_SCROLL_CSS` to a saved stylesheet to check a pre-fix version.

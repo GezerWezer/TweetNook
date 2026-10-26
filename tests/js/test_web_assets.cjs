@@ -1623,12 +1623,12 @@ test('the phone video viewer sits where X puts it and shows the post\'s counts',
     context.window.innerWidth = 430;
     context.window.innerHeight = 873;
     const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
-    // A 16:9 video lifts the full 29.5pt; a 9:16 one only as far as its free space allows.
+    // Landscape footage keeps its measured lift; portrait footage fills the video area.
     app.lightboxMedia = [{type: 'video', m: {type: 'video', aspect_ratio: [16, 9]}}];
     assert.equal(app.lightboxVideoLift(), 29.5);
     assert.equal(app.lightboxBackdropStyle()['--lightbox-video-lift'], '29.5px');
     app.lightboxMedia = [{type: 'video', m: {type: 'video', aspect_ratio: [9, 16]}}];
-    assert.equal(app.lightboxVideoLift(), 14.3);
+    assert.equal(app.lightboxVideoLift(), 0);
     app.lightboxMedia = [{type: 'photo', m: {type: 'photo'}}];
     assert.equal(app.lightboxVideoLift(), 0);
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
@@ -4739,7 +4739,7 @@ test('video duration uses loaded metadata and shows only while the control bar i
     assert.ok(!classes.has(hidden));
 });
 
-test('custom players retain native fallback, seek, toggle sound, and isolate keyboard shortcuts', () => {
+test('custom players retain native fallback, seek, toggle sound, and isolate keyboard shortcuts', async () => {
     const context = browserContext();
     context.setTimeout = () => 1;
     context.clearTimeout = () => {};
@@ -4804,14 +4804,30 @@ test('custom players retain native fallback, seek, toggle sound, and isolate key
     dispatchFeed(player, 'input', volume);
     assert.equal(video.volume, 0.3);
     assert.equal(video.muted, false);
+    context.window.dispatchEvent = event => {
+        if (event.type === 'video-expanded-audio') app.setExpandedVideoAudio(event.detail.video, event.detail.expanded);
+    };
+    video.muted = true;
     let fullscreen = 0;
     player.requestFullscreen = () => { fullscreen++; return Promise.resolve(); };
     dispatchFeed(player, 'keydown', player, {key: 'f'});
     assert.equal(fullscreen, 1);
+    assert.equal(video.muted, false);
+    assert.equal(app.videoMuted, true);
     context.document.fullscreenElement = player;
+    dispatchFeed(player, 'fullscreenchange', player);
     context.document.exitFullscreen = () => { fullscreen--; return Promise.resolve(); };
     dispatchFeed(player, 'click', player.querySelector('[data-video-action="fullscreen"]'));
     assert.equal(fullscreen, 0);
+    context.document.fullscreenElement = null;
+    dispatchFeed(player, 'fullscreenchange', player); // Also delivered for browser Escape.
+    assert.equal(video.muted, true);
+    for (const request of [() => Promise.reject(new Error('Denied')), () => {throw new Error('Denied');}]) {
+        player.requestFullscreen = request;
+        dispatchFeed(player, 'keydown', player, {key: 'f'});
+        await Promise.resolve();
+        assert.equal(video.muted, true);
+    }
     // The seek thumb follows playback even after keyboard focus stays on it.
     context.document.activeElement = seek;
     video.currentTime = 60;
@@ -4870,14 +4886,15 @@ test('mobile feed taps open a video viewer, sound stays inline, and desktop clic
     assert.equal(video.paused, true);
 });
 
-test('mobile viewer transfers playback position and sound back to the originating video', () => {
+test('mobile viewer transfers playback position and restores feed mute on minimize', () => {
     for (const readyState of [0, 1]) {
         const context = browserContext();
         const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
         const app = immediateComponent(tweetApp());
+        app.videoVolume = .6;
         const origin = {currentTime: 3, muted: true, volume: .6, loop: true, isConnected: true,
             pause() {this.paused = true;}, play() {this.paused = false; return Promise.resolve();}};
-        const active = new FakeElement('video', [['autoplay', ''], ['data-lightbox-index', '0']]);
+        const active = new FakeElement('video', [['autoplay', ''], ['data-lightbox-index', '0'], ['data-video-player', '']]);
         Object.assign(active, {readyState, paused: true, ended: false, currentTime: 0, muted: false, volume: 1,
             closest: () => ({classList: {contains: () => true}}),
             pause() {this.paused = true;}, play() {this.paused = false; return Promise.resolve();}});
@@ -4887,7 +4904,8 @@ test('mobile viewer transfers playback position and sound back to the originatin
         assert.equal(app.lightboxMedia[0].loop, true);
         if (!readyState) dispatchFeed(active, 'loadedmetadata', active);
         assert.equal(active.currentTime, 3);
-        assert.equal(active.muted, true);
+        assert.equal(active.muted, false);
+        assert.equal(app.videoMuted, true);
         assert.equal(active.volume, .6);
         active.currentTime = 7;
         active.muted = false;
@@ -4898,7 +4916,7 @@ test('mobile viewer transfers playback position and sound back to the originatin
         assert.equal(app.lightboxOpen, false);
         assert.equal(active.paused, true);
         assert.equal(origin.currentTime, 7);
-        assert.equal(origin.muted, false);
+        assert.equal(origin.muted, true);
         assert.equal(origin.paused, !readyState);
     }
 });
@@ -5602,6 +5620,8 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     tweetNookInitVideoPlayer(video);
     app.openLightbox([{type: 'video', src: '/media/v.mp4', isGif: false}], 0, video);
     assert.equal(playParent, stage); // Mount and play run in the original trusted tap.
+    assert.equal(video.muted, false);
+    assert.equal(app.videoMuted, true);
     assert.equal(app.activeLightboxVideo(), video);
     assert.equal(feed.querySelectorAll('video').length, 0);
     assert.equal(stage.querySelectorAll('video').length, 1);
@@ -5638,8 +5658,9 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     assert.ok(!viewer.classList.contains('is-video-controls-hidden'));
     dispatchFeed(player, 'focusout', player);
     assert.equal(uiTimers.at(-1).delay, 3000); // Touch focus changes keep the normal reading interval.
+    assert.ok(player.classList.contains('is-video-fill')); // Portrait footage starts filled.
     dispatchFeed(player, 'click', player.querySelector('[data-video-action="fullscreen"]'));
-    assert.ok(player.classList.contains('is-video-fill'));
+    assert.ok(!player.classList.contains('is-video-fill')); // Fit reveals the uncropped picture.
     assert.equal(nativeFullscreen, 0);
     video.currentTime = 7;
     slot.style.transform = 'translate3d(0, 180px, 0)';
@@ -5666,6 +5687,7 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     assert.equal(stage.querySelectorAll('video').length, 0);
     assert.equal(video.currentTime, 7);
     assert.equal(video.paused, false);
+    assert.equal(video.muted, true);
     assert.ok(!player.classList.contains('is-video-fill'));
     dispatchFeed(player, 'click', video); // Safari's compatibility click following dismissal.
     assert.equal(opened.length, 0);
@@ -5673,6 +5695,99 @@ test('mobile viewer reuses its inline player and rejects dismissal click-through
     dispatchFeed(player, 'click', video);
     assert.equal(opened.length, 1); // A subsequent intentional tap still opens the viewer.
     assert.equal(nativeFullscreen, 0);
+});
+
+test('opening a mobile video includes mixed gallery attachments and the tapped attachment index', () => {
+    const context=browserContext(),opened=[];context.window.dispatchEvent=e=>opened.push(e);
+    const {tweetApp,tweetNookOpenMobileVideo}=loadScripts(context,['themes.js','app.js'],'({tweetApp,tweetNookOpenMobileVideo})');
+    const root=parseFakeHTML(tweetApp().renderMediaGrid([
+        {type:'photo',download:{local_path:'media/photo.jpg'}},
+        {type:'video',width:720,height:1280,download:{local_path:'media/first.mp4'}},
+        {type:'photo'},
+        {type:'video',width:1280,height:720,download:{local_path:'media/second.mp4'}},
+    ]))[0];
+    const videos=root.querySelectorAll('video');
+    tweetNookOpenMobileVideo(videos[1]);
+    assert.equal(opened[0].detail.media.length,3);assert.equal(opened[0].detail.index,2);
+    assert.equal(opened[0].detail.originVideo,videos[1]);
+    assert.equal(opened[0].detail.media[2].m.width,1280);
+});
+
+test('mobile video gallery swipes keep live decoders, one audio owner and each clips progress on return', () => {
+    const context=browserContext();context.window.matchMedia=()=>({matches:true});
+    context.getComputedStyle=()=>({objectFit:'contain',borderRadius:'16px'});
+    const {tweetApp,tweetNookInitVideoPlayer}=loadScripts(context,['themes.js','app.js'],'({tweetApp,tweetNookInitVideoPlayer})');
+    const app=immediateComponent(tweetApp());app.videoPlayback='paused';
+    const media=[0,1,2].map(i=>({type:'video',width:720,height:1280,download:{local_path:`media/${i}.mp4`}}));
+    const root=parseFakeHTML(app.renderMediaGrid(media))[0];root.connected=true;
+    const videos=root.querySelectorAll('video'),parents=videos.map(v=>v.parentElement),playLog=[];
+    const styled=tag=>new FakeElement(tag).cloneNode(false);
+    context.document.createElement=styled;
+    const stage=styled('div');stage.setAttribute('class','lightbox-stage');stage.connected=true;
+    const viewer=styled('div');viewer.setAttribute('class','lightbox-viewer');viewer.appendChild(stage);
+    app.$refs.lightboxViewer=viewer;
+    const initial=styled('div');initial.setAttribute('class','lightbox-slide is-active');initial.setAttribute('data-inline-video-slot','');stage.appendChild(initial);
+    for(const i of [1,2]){const slide=styled('div'),slot=styled('div');slide.setAttribute('class','lightbox-slide');slot.setAttribute('data-inline-video-index',String(i));slide.appendChild(slot);stage.appendChild(slide)}
+    app.$refs.lightboxStage=stage;app.$refs.inlineVideoSlot=initial;
+    videos.forEach((v,i)=>{v.parentElement.style=styled('div').style;v.parentElement.rect={left:0,top:120,width:200,height:356};
+        for(const n of [v,...v.parentElement.querySelectorAll('input')])n.style=styled('div').style;
+        Object.assign(v,{videoWidth:720,videoHeight:1280,volume:1,muted:true,currentTime:i*7,readyState:4,paused:i!==0,ended:false,
+            play(){playLog.push({i,otherPaused:videos.every(other=>other===this||other.paused)});this.paused=false;return Promise.resolve()},pause(){this.paused=true}});
+        tweetNookInitVideoPlayer(v);
+    });
+    const payload=JSON.parse(root.dataset.lightboxMedia);
+    app.openLightbox(payload,0,videos[0]);
+    assert.equal(stage.querySelectorAll('video').length,3);assert.equal(root.querySelectorAll('video').length,0);
+    assert.equal(app.activeLightboxVideo(),videos[0]);assert.ok(videos[0].parentElement.parentElement.classList.contains('is-video-fill'));
+    app.commitLightboxNavigation(1);assert.equal(app.activeLightboxVideo(),videos[1]);
+    assert.equal(videos[0].paused,true);assert.equal(videos[1].paused,false);assert.equal(playLog.at(-1).otherPaused,true);
+    videos[1].currentTime=9;app.commitLightboxNavigation(-1);videos[0].currentTime=4;app.commitLightboxNavigation(1);
+    app.finishCloseLightbox();
+    assert.equal(videos[0].parentElement,parents[0]);assert.equal(videos[1].parentElement,parents[1]);
+    assert.equal(videos[0].currentTime,4);assert.equal(videos[1].currentTime,9);
+    assert.equal(stage.querySelectorAll('video').length,0);assert.equal(videos[0].paused,true);assert.equal(videos[1].paused,false);
+    // The persistent initial slot still has the previous session's reactive
+    // transform when a later attachment opens, before Alpine's next tick.
+    initial.style.transform='translate3d(-300%, 0, 0)';
+    initial.style.transition='transform 180ms ease';
+    videos[2].play=function(){
+        assert.equal(initial.style.transform,'translate3d(0, 0, 0)','position the selected picture before audible play or motion measurement');
+        assert.equal(initial.style.transition,'none');
+        this.paused=false;return Promise.resolve();
+    };
+    app.openLightbox(payload,2,videos[2]);
+    assert.equal(app.activeLightboxVideo(),videos[2]);
+    assert.equal(videos[2].paused,false);
+    app.finishCloseLightbox();
+});
+
+test('closing a swiped video reveals its feed destination before measuring the return motion', () => {
+    const context = browserContext();
+    const app = immediateComponent(loadScripts(context, ['themes.js', 'app.js'], 'tweetApp')());
+    const track = {scrollLeft: 0, getBoundingClientRect: () => ({left: 0, width: 400})};
+    const tile = {getBoundingClientRect: () => ({left: 1200 - track.scrollLeft, width: 200})};
+    const origin = {closest: selector => selector === '.media-carousel-track' ? track : tile};
+    app.lightboxMotionOrigin = () => origin;
+    app.isMobileViewer = () => true;
+    app.lightboxOpen = true;
+    app.activeLightboxVideo = () => null;
+    app.activeLightboxMedia = () => {
+        assert.equal(track.scrollLeft, 1100);
+        return null;
+    };
+    app.fadeLightbox = () => false;
+    app.finishCloseLightbox = () => {};
+    app.closeLightbox();
+    assert.equal(tile.getBoundingClientRect().left, 100);
+});
+
+test('the mobile viewer requests edge-to-edge layout and restores the original viewport settings', () => {
+    const context=browserContext(),meta=new FakeElement('meta',[['content','width=device-width, initial-scale=1.0, viewport-fit=contain']]);
+    context.document.querySelector=selector=>selector==='meta[name="viewport"]'?meta:null;
+    const app=loadScripts(context,['themes.js','app.js'],'tweetApp')();
+    app.setLightboxViewport(true);assert.equal(meta.getAttribute('content'),'width=device-width, initial-scale=1.0, viewport-fit=cover');
+    app.setLightboxViewport(true);app.setLightboxViewport(false);
+    assert.equal(meta.getAttribute('content'),'width=device-width, initial-scale=1.0, viewport-fit=contain');
 });
 
 test('touch scrub owns its pointer, coalesces decoder seeks and retains the pending preview', () => {
@@ -5748,6 +5863,30 @@ test('late lightbox observer and playback callbacks cannot restart a dismissed p
     app.syncLightboxPlayback();
     assert.equal(plays, 1);
     assert.equal(video.paused, true);
+});
+
+test('generic visibility observer leaves feed autoplay timing to its selector', () => {
+    const context = browserContext();
+    const {tweetApp} = loadScripts(context, ['themes.js', 'app.js'], '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.fetchSetup = async () => {};
+    app.fetchNotices = async () => {};
+    app.fetchActivityStatus = async () => {};
+    app.initApp();
+    const video = {tagName: 'VIDEO', paused: false, closest: () => null,
+        hasAttribute: name => name === 'controls', pause() {this.paused = true;}};
+    // A tall player can cross the raw-area observer's boundary while still
+    // showing enough of the available viewport to retain autoplay ownership.
+    app.videoObserver.callback([{target: video, isIntersecting: false}]);
+    assert.equal(video.paused, false);
+    app.videoPlayback = 'paused';
+    app.videoObserver.callback([{target: video, isIntersecting: false}]);
+    assert.equal(video.paused, true, 'click-to-play still pauses outside view');
+    app.videoPlayback = 'autoplay';
+    video.paused = false;
+    video.hasAttribute = name => name === 'autoplay';
+    app.videoObserver.callback([{target: video, isIntersecting: false}]);
+    assert.equal(video.paused, true, 'GIF visibility remains independent');
 });
 
 test('GIF indicator tracks playback state and toggles the archived animation', async () => {

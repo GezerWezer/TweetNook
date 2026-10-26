@@ -62,7 +62,7 @@ Use a post's menu to open it on X or hide it. Hiding removes the post from ordin
 
 Settings > Appearance has themes, accent colors, text sizes, and fonts. Desktop layout controls the single-column and split-panel views. Media layout can use a grid, a carousel, or choose by post date: a grid before July 10, 2026, and a carousel from that date onward.
 
-You can turn muted video autoplay on or off. Appearance choices are kept by the browser, so your phone can have different preferences from your desktop.
+You can turn muted video autoplay on or off. Videos start when about a quarter of the picture is visible, accounting for sticky headers. When several are visible, playback follows the picture occupying more of the screen, including sideways swipes through a post's videos. Small movements keep the current video stable; without a replacement, it keeps playing until less than a tenth remains. Videos can start while you are scrolling; nearby clips keep preparing playback without waiting for scrolling to stop. One feed video owns the audio at a time. Appearance choices are kept by the browser, so your phone can have different preferences from your desktop.
 
 ## Jobs and logs
 
@@ -104,7 +104,7 @@ Open an Article preview to read its saved body, then use Focus mode for a center
 
 ## Media controls
 
-In the fullscreen viewer, swipe horizontally to move through a post's media and swipe down to close. On a focused carousel strip, Left/Right and Home/End move through the tiles. Wide images can be cropped in tiles; open them to see the complete picture.
+In the fullscreen viewer, swipe horizontally through a post's photos and videos without closing it, and swipe down to close. Each video keeps its playback position; closing returns to the selected clip in the feed. Portrait videos fill the available viewer area by cropping their sides, and the fit control shows the complete picture. The viewer requests edge-to-edge display while open; Safari may still reserve its status and toolbar areas. On a focused carousel strip, Left/Right and Home/End move through the tiles. Wide images can be cropped in tiles; open them to see the complete picture.
 
 By post date uses each original post's publication date, including quoted and reposted content, with a UTC boundary on July 10, 2026. Unknown dates use a grid. Saving an old post today doesn't give it a newer layout, and single attachments keep their existing layout.
 

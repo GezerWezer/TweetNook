@@ -73,6 +73,50 @@ Avatar fetching uses a separate executor so remote image waits don't occupy feed
 
 Browser caches and prefetch reuse feed and conversation results during navigation. Search suggestions discard stale responses. Media loads lazily, and activity updates preserve the visible feed and playback.
 
+Autoplay compares visible picture areas after viewport, sticky-header and container
+clipping. Candidates enter at 25% visibility; the current owner can stay down to
+10%, but a candidate with a ten-percentage-point area lead takes over sooner.
+The margin uses the smaller picture's viewport-limited area. This applies to
+vertical scrolling and carousels in both directions. Explicit playback keeps its
+tile selected until the reader scrolls again; automatic pauses do not create a
+manual hold.
+
+Video preparation follows the scroll direction within the 1,600px media window,
+including the direction of a swipe through the active carousel.
+The two closest upcoming clips aim for two seconds of buffered playback,
+with a four-second timeout. Preparation starts muted, pauses after decoding the
+first frame, restores the original position, and yields immediately to a selected
+player. Hidden tabs, blocking overlays, click-to-play mode and the browser's data
+saving preference stop this preparation. Transfer sizes remain browser-controlled.
+On phones, an Unmute tap also primes up to two silent spare decoders in that
+gesture. Nearby preparation reuses those decoders so Safari can start the buffered
+clip audibly without reloading its source at selection. Permission denial still
+falls back to the current authorized element before trying muted playback.
+Data saving disables spare preparation. Videos and GIFs outside the preparation
+window release their media resource and restore their source and progress on
+return. Scroll events immediately stop offscreen audio and coalesce selection
+into one animation frame using current geometry. A running-player frame guard
+also checks visibility before paint: Safari can move content before delivering
+its scroll event. Late offscreen play events cannot take ownership. Playback and
+bounded preparation remain active during continuous scrolling; neither waits
+for a scroll-idle timer. A fast touch swipe stops the outgoing owner once in the
+input task, before compositor scrolling can outrun JavaScript. New playback
+waits only for the next scroll position, with a 120ms recovery if a boundary
+swipe produces no scroll event. Slow drags keep playing. Warmup callbacks are
+scoped to their own preparation, so a canceled play promise cannot finish or
+unmute a newer warmup on a reused decoder.
+
+Mobile video taps open the post's downloaded media list at the tapped index.
+The viewer retains each live inline video in its own slide, pauses inactive
+players before starting the selected one within the swipe gesture, and restores
+all players to their feed placeholders on close. The persistent opening slot
+is positioned synchronously before motion measurement and playback, including
+when reopening a later attachment before Alpine updates its slide transform.
+The returned tile is brought into view horizontally. Portrait footage defaults to cover with a fit toggle;
+viewport-fit=cover is requested only while the video viewer is open, with the
+exact prior viewport setting restored on close. Safe-area controls remain inset;
+Safari browser chrome can still limit the area available to web content.
+
 ## HTTP caching and files
 
 Text/API responses use gzip when appropriate, while media/avatar paths bypass it to preserve compressed bytes and range behavior. Document routes add static content hashes, ETags and no-cache revalidation. Matching versioned static assets can be immutable; unversioned/stale-hash assets revalidate. Saved media is private-cacheable. Failed-fetch fallbacks use `no-store`; fallbacks when downloading is disabled use `private, max-age=300`.

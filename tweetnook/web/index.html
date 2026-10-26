@@ -1188,10 +1188,10 @@
                 <div x-show="lightboxTweet" class="lightbox-actions" x-html="lightboxTweet ? renderActionBar(lightboxTweet) : ''" @click.stop></div>
             </div>
 
-            <button x-show="lightboxMedia.length > 1 && lightboxIndex > 0" :disabled="lightboxGestureAnimating" @click.stop="prevLightbox()" aria-label="Previous image" title="Previous image" :style="lightboxChromeStyle()" class="lightbox-nav-button absolute left-4 p-3 text-white hover:bg-gray-800 rounded-full transition z-50">
+            <button x-show="lightboxMedia.length > 1 && lightboxIndex > 0" :disabled="lightboxGestureAnimating" @click.stop="prevLightbox()" aria-label="Previous media" title="Previous media" :style="lightboxChromeStyle()" class="lightbox-nav-button absolute left-4 p-3 text-white hover:bg-gray-800 rounded-full transition z-50">
                 <svg viewBox="0 0 24 24" class="w-8 h-8 fill-current"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"></path></svg>
             </button>
-            <button x-show="lightboxMedia.length > 1 && lightboxIndex < lightboxMedia.length - 1" :disabled="lightboxGestureAnimating" @click.stop="nextLightbox()" aria-label="Next image" title="Next image" :style="lightboxChromeStyle()" class="lightbox-nav-button absolute right-4 p-3 text-white hover:bg-gray-800 rounded-full transition z-50">
+            <button x-show="lightboxMedia.length > 1 && lightboxIndex < lightboxMedia.length - 1" :disabled="lightboxGestureAnimating" @click.stop="nextLightbox()" aria-label="Next media" title="Next media" :style="lightboxChromeStyle()" class="lightbox-nav-button absolute right-4 p-3 text-white hover:bg-gray-800 rounded-full transition z-50">
                 <svg viewBox="0 0 24 24" class="w-8 h-8 fill-current"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"></path></svg>
             </button>
 
@@ -1212,11 +1212,14 @@
                     <template x-if="lightboxMedia[mediaIndex]?.type === 'video'">
                         <div style="display: contents">
                             <template x-if="lightboxMedia[mediaIndex]?.isGif">
-                                <video :src="lightboxMedia[mediaIndex]?.src" :autoplay="lightboxOpen && mediaIndex === lightboxIndex" loop muted playsinline class="lightbox-media max-w-[90%] max-h-[90%] outline-none lightbox-gesture-surface" @click.stop="lightboxTap($event, true)"></video>
+                                <video :src="lightboxMedia[mediaIndex]?.src" :data-lightbox-index="mediaIndex" preload="metadata" :autoplay="lightboxOpen && mediaIndex === lightboxIndex" loop muted playsinline class="lightbox-media max-w-[90%] max-h-[90%] outline-none lightbox-gesture-surface" @click.stop="lightboxTap($event, true)"></video>
+                            </template>
+                            <template x-if="lightboxMedia[mediaIndex]?.inlinePlayer">
+                                <div data-inline-video-slot :data-inline-video-index="mediaIndex" class="w-full h-full"></div>
                             </template>
                             <template x-if="!lightboxMedia[mediaIndex]?.isGif && !lightboxMedia[mediaIndex]?.inlinePlayer">
                                 <div class="media-video-player lightbox-video-player" @click.stop>
-                                    <video :src="lightboxMedia[mediaIndex]?.src" :data-lightbox-index="mediaIndex" :loop="lightboxMedia[mediaIndex]?.loop || false" data-video-custom playsinline webkit-playsinline class="lightbox-media outline-none"></video>
+                                    <video :src="lightboxMedia[mediaIndex]?.src" :data-lightbox-index="mediaIndex" preload="metadata" :loop="lightboxMedia[mediaIndex]?.loop || false" data-video-custom playsinline webkit-playsinline class="lightbox-media outline-none"></video>
                                     <div x-html="renderVideoControls()"></div>
                                 </div>
                             </template>
@@ -1225,9 +1228,9 @@
                     </div>
                 </template>
                 <div x-ref="inlineVideoSlot" data-inline-video-slot
-                     x-show="lightboxOpen && lightboxMedia[lightboxIndex]?.inlinePlayer"
-                     :class="{ 'is-active': lightboxMedia[lightboxIndex]?.inlinePlayer }"
-                     :style="lightboxSlideStyle(lightboxIndex)"
+                     x-show="lightboxOpen && lightboxInlineIndex !== null"
+                     :class="{ 'is-active': lightboxInlineIndex === lightboxIndex }"
+                     :style="lightboxSlideStyle(lightboxInlineIndex)"
                      class="lightbox-slide lightbox-gesture-surface absolute inset-0"></div>
             </div>
         </div>

@@ -2840,7 +2840,8 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
         width: 40px;
         height: 40px;
         padding: 8px;
-        background: rgba(255, 255, 255, .2);
+        background: rgba(0, 0, 0, .46);
+        backdrop-filter: blur(8px);
         transition: opacity 200ms ease, visibility 0s, background-color 150ms ease;
     }
     .is-video-viewer.is-video-controls-hidden .lightbox-close-button,
@@ -2928,7 +2929,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
         pointer-events: none;
         transition: opacity 180ms ease, visibility 0s 180ms;
     }
-    .lightbox-video-player {
+    .media-video-player.lightbox-video-player {
         /* Safari keeps fixed content above the strip its toolbar reserves, so
            the controls sit directly on it. Standalone reaches the screen's
            edge and keeps clear of the home indicator (see the override below). */
@@ -3329,6 +3330,19 @@ html { touch-action: manipulation; }
 .media-frame-gif-video {
     object-fit: contain;
     background: #000;
+}
+/* Audible mobile autoplay moves the unlocked decoder between tiles. Keep a
+   permanent sizing box: Safari can clamp scrolling during the DOM move even
+   when JavaScript holds the tile's height and its final dimensions match. */
+.media-frame.media-video-player:not(.lightbox-video-player):not(:fullscreen)::before {
+    content: '';
+    display: block;
+    aspect-ratio: var(--media-frame-aspect);
+}
+.media-frame.media-video-player:not(.lightbox-video-player):not(:fullscreen) > .media-frame-video {
+    position: absolute;
+    inset: 0;
+    height: 100%;
 }
 .media-grid-video {
     object-fit: contain;
@@ -3880,6 +3894,7 @@ html { touch-action: manipulation; }
         border: 1px solid var(--border-color);
         border-radius: 16px;
     }
+    .quote-card:not(.quote-compact) > .quote-media > .media-single > .media-video-player::before,
     .quote-card:not(.quote-compact) > .quote-media > .media-single > .media-frame > video,
     .quote-card:not(.quote-compact) > .quote-media > .media-single > .media-frame > [data-video-poster] {
         aspect-ratio: clamp(1, var(--media-source-aspect), 1.7778);

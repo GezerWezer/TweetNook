@@ -52,12 +52,11 @@ const server=http.createServer((req,res)=>{
   await first.evaluate(v=>window.scrollBy(0,v.getBoundingClientRect().top-130));
   await page.waitForFunction(()=>{const v=document.querySelector('.feed-card video');return !v.paused&&v.readyState>=2&&v.currentTime>.05;},{},{timeout:10000});
   const initial=await first.evaluate(v=>({time:v.currentTime,muted:v.muted,ready:v.readyState,height:v.getBoundingClientRect().height}));assert.equal(initial.muted,false);
-  // Move to 45% unobscured visibility. The old observer sees more than 50%
-  // because it includes pixels underneath the sticky header.
+  // Move below 10% unobscured visibility, accounting for the sticky header.
   const paused=await page.evaluate(async speed=>{
    const video=document.querySelector('.feed-card video');const r=video.getBoundingClientRect();
    const header=[...document.querySelectorAll('[data-video-occluder]')].filter(h=>h.getBoundingClientRect().width)[0];
-   const target=window.scrollY+r.top-(header.getBoundingClientRect().bottom-r.height*.55);
+   const target=window.scrollY+r.top-(header.getBoundingClientRect().bottom-r.height*.95);
    const start=performance.now(),from=scrollY,duration=speed==='slow'?400:50;
    while(performance.now()-start<duration){const p=(performance.now()-start)/duration;window.scrollTo(0,from+(target-from)*p);await new Promise(requestAnimationFrame);}
    window.scrollTo(0,target);const crossed=performance.now();
@@ -65,19 +64,31 @@ const server=http.createServer((req,res)=>{
    const rect=video.getBoundingClientRect(),insets=videoFeedInsets(rect);
    return {pauseDelayMs:Math.round(performance.now()-crossed),timedOut:!video.paused,visibleRatio:Math.round((rect.height-insets.top-insets.bottom)/rect.height*100)/100};
   },speed);
+  const boundaries=[];
+  if(count===1&&phase==='after')for(const [ratio,playing] of [[.26,true],[.15,true],[.09,false],[.15,false],[.26,true]]){
+   await page.evaluate(ratio=>{
+    const video=document.querySelector('.feed-card video'),rect=video.getBoundingClientRect();
+    const header=[...document.querySelectorAll('[data-video-occluder]')].filter(h=>h.getBoundingClientRect().width)[0].getBoundingClientRect();
+    const visible=ratio*Math.min(rect.height,innerHeight-header.bottom);
+    scrollTo(0,scrollY+rect.top-(header.bottom+visible-rect.height));
+   },ratio);
+   await page.waitForTimeout(150);
+   const state=await first.evaluate(v=>({ratio:feedVideoVisibility(v).ratio,playing:!v.paused}));
+   boundaries.push(state);assert.ok(Math.abs(state.ratio-ratio)<.01);assert.equal(state.playing,playing);
+  }
   // Scan the same feed from top to bottom and back, sampling actual media state.
   const samples=await page.evaluate(async speed=>{
    const records=[];const collect=()=>{
     const players=[...document.querySelectorAll('.feed-card video')];
-    records.push({t:performance.now(),y:scrollY,players:players.map((v,i)=>{const r=v.getBoundingClientRect(),clip=videoFeedInsets(r);return {i,playing:!v.paused,audible:!v.paused&&!v.muted&&v.volume>0,ratio:r.height?Math.max(0,(r.height-clip.top-clip.bottom)/r.height):0,time:v.currentTime,ready:v.readyState};})});
+    records.push({t:performance.now(),y:scrollY,players:players.map((v,i)=>({i,playing:!v.paused,audible:!v.paused&&!v.muted&&v.volume>0,ratio:feedVideoVisibility(v).ratio,time:v.currentTime,ready:v.readyState}))});
    };
    const max=Math.min(document.documentElement.scrollHeight-innerHeight,document.querySelectorAll('.feed-card video').length*900);
    const scroll=async(from,to)=>{const start=performance.now(),duration=speed==='slow'?2600:600;while(performance.now()-start<duration){window.scrollTo(0,from+(to-from)*Math.min(1,(performance.now()-start)/duration));collect();await new Promise(requestAnimationFrame);}window.scrollTo(0,to);};
    window.scrollTo(0,0);await new Promise(r=>setTimeout(r,150));await scroll(0,max);await scroll(max,0);collect();return records;
   },speed);
   let overlapMs=0,staleAudioMs=0,playingFrames=0,eligibleGapMs=0,maxEligibleGapMs=0;const starts=[];let previous=null;
-  for(let i=1;i<samples.length;i++){const s=samples[i],dt=Math.min(100,s.t-samples[i-1].t),active=s.players.filter(p=>p.playing);if(active.length)playingFrames++;if(active.length>1)overlapMs+=dt;if(!active.length&&s.players.some(p=>p.ratio>=.6)){eligibleGapMs+=dt;maxEligibleGapMs=Math.max(maxEligibleGapMs,eligibleGapMs);}else eligibleGapMs=0;if(s.players.some(p=>p.audible&&p.ratio<.6))staleAudioMs+=dt;const owner=active[0]?.i??null;if(owner!==null&&owner!==previous)starts.push(owner);previous=owner;}
-  const result={...scenario,initial,...paused,staleAudioMs:Math.round(staleAudioMs),overlapMs:Math.round(overlapMs),maxEligibleGapMs:Math.round(maxEligibleGapMs),playingFrames,starts,errors};results.push(result);console.log(JSON.stringify(result));
+  for(let i=1;i<samples.length;i++){const s=samples[i],dt=Math.min(100,s.t-samples[i-1].t),active=s.players.filter(p=>p.playing);if(active.length)playingFrames++;if(active.length>1)overlapMs+=dt;if(!active.length&&s.players.some(p=>p.ratio>=.25)){eligibleGapMs+=dt;maxEligibleGapMs=Math.max(maxEligibleGapMs,eligibleGapMs);}else eligibleGapMs=0;if(s.players.some(p=>p.audible&&p.ratio<.1))staleAudioMs+=dt;const owner=active[0]?.i??null;if(owner!==null&&owner!==previous)starts.push(owner);previous=owner;}
+  const result={...scenario,initial,...paused,boundaries,staleAudioMs:Math.round(staleAudioMs),overlapMs:Math.round(overlapMs),maxEligibleGapMs:Math.round(maxEligibleGapMs),playingFrames,starts,errors};results.push(result);console.log(JSON.stringify(result));
   if(!reverse&&speed==='slow')await page.screenshot({path:`${out}/playback-${phase}-${device}-${count}.png`});
   assert.deepEqual(errors,[]);
   if(phase==='after'){assert.equal(paused.timedOut,false);assert.ok(paused.pauseDelayMs<=50);assert.equal(overlapMs,0);assert.ok(staleAudioMs<160);}
