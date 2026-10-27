@@ -8,10 +8,10 @@ import httpx
 import pytest
 from rich.console import Console
 
-import tweetnook.resurrection as resurrection
+import tweetnook.enrichment.resurrection as resurrection
 from tests.conftest import make_tweet_detail_response, make_tweet_result, request_details
 from tweetnook.core.timeline_parsing import TimelineTweet
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.storage import open_archive_store
 

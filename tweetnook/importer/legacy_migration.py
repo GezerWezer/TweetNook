@@ -10,7 +10,7 @@ from typing import Any
 from rich.console import Console
 
 from tweetnook.config import load_config
-from tweetnook.pipeline import current_pipeline
+from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.storage import open_archive_store
 
 WORKER_END_OF_TABLE = 42
@@ -519,7 +519,7 @@ def run_migration(
 if __name__ == "__main__":
     migration_console = Console(stderr=True)
     from tweetnook.config import resolve_paths
-    from tweetnook.pipeline import PipelineReporter
+    from tweetnook.jobs.pipeline import PipelineReporter
 
     with PipelineReporter(
         migration_console,

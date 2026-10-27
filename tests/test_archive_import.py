@@ -12,9 +12,8 @@ import httpx
 import pytest
 from rich.console import Console
 
-import tweetnook.archive_import as archive_import
+import tweetnook.importer.archive as archive_import
 from tests.conftest import make_tweet_detail_response, make_tweet_result, request_details
-from tweetnook.archive_import import enrich_imported_archive, import_x_archive
 from tweetnook.auth import ResolvedAuthBundle
 from tweetnook.config import AppConfig
 from tweetnook.core.exceptions import (
@@ -25,7 +24,8 @@ from tweetnook.core.exceptions import (
     StaleQueryIdError,
 )
 from tweetnook.core.timeline_parsing import TimelineTweet
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.importer.archive import enrich_imported_archive, import_x_archive
+from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
 
 

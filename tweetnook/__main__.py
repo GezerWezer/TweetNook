@@ -1,4 +1,4 @@
-from tweetnook.worker_logging import configure_worker_output
+from tweetnook.jobs.worker_logging import configure_worker_output
 
 
 def main() -> None:

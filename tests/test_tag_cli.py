@@ -14,8 +14,8 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 import tweetnook.cli as cli
-import tweetnook.jobs as jobs
-import tweetnook.tagging as tagging
+import tweetnook.jobs.context as jobs
+import tweetnook.tagging.tagger as tagging
 from tweetnook.config import AppConfig, TaggingConfig
 from tweetnook.core.exceptions import ConfigError, TweetNookError
 

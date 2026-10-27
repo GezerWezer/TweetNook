@@ -13,7 +13,10 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from tweetnook.activity_history import (
+from tweetnook.config import AppConfig, XDGPaths
+from tweetnook.core.exceptions import ProcessLockError
+from tweetnook.core.locking import ProcessLock
+from tweetnook.jobs.activity_history import (
     ACTIVITY_ORIGIN_ENV,
     ACTIVITY_RUN_ID_ENV,
     cleanup_runs,
@@ -22,9 +25,6 @@ from tweetnook.activity_history import (
     reserve_run,
     update_run_metadata,
 )
-from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.core.exceptions import ProcessLockError
-from tweetnook.core.locking import ProcessLock
 
 WORKER_INTERRUPT_TIMEOUT = 45
 WORKER_TERMINATE_TIMEOUT = 10

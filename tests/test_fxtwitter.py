@@ -10,7 +10,7 @@ import httpx
 import pytest
 from rich.console import Console
 
-import tweetnook.archive_import as archive_import
+import tweetnook.importer.archive as archive_import
 from tests.conftest import make_tweet_detail_response, make_tweet_result, request_details
 from tweetnook.auth import ResolvedAuthBundle
 from tweetnook.client import fxtwitter
@@ -18,8 +18,8 @@ from tweetnook.config import AppConfig, CheckConfig, ScheduleConfig, XDGPaths
 from tweetnook.core.extractor import extract_secondary_objects
 from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
 from tweetnook.core.timeline_parsing import TimelineTweet
-from tweetnook.job_supervisor import JobConflictError
-from tweetnook.scheduler import CHECK_CONFLICT_RETRY_SECONDS, ScheduleManager
+from tweetnook.jobs.scheduler import CHECK_CONFLICT_RETRY_SECONDS, ScheduleManager
+from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.common import ARCHIVE_SOURCE, FX_SOURCE, LIVE_SOURCE
 
@@ -618,8 +618,12 @@ def test_sync_retries_unavailable_tweets_only_while_the_check_cannot() -> None:
 
     from rich.console import Console
 
-    from tweetnook.pipeline import PipelineReporter
-    from tweetnook.sync import SyncFollowupPlan, check_owns_resurrection, plan_sync_pipeline
+    from tweetnook.jobs.pipeline import PipelineReporter
+    from tweetnook.sync.collection import (
+        SyncFollowupPlan,
+        check_owns_resurrection,
+        plan_sync_pipeline,
+    )
 
     def steps(config: AppConfig) -> list[str]:
         reporter = PipelineReporter(Console(file=StringIO()), "sync", interactive=False)

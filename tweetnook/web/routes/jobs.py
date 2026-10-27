@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from tweetnook.config import AppConfig
-from tweetnook.job_supervisor import JobConflictError
+from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.web.deps import server_state, verify_credentials
 from tweetnook.web.jobs import JOBS_BY_KEY, JobOptionsError, job_cli_args, jobs_payload
 from tweetnook.web.routes.activity import _read_active_snapshot

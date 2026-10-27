@@ -4,7 +4,7 @@ Enrichment takes content already selected for the archive and fills out its grap
 
 ## Thread expansion
 
-`threads.py` selects due or explicit targets, fetches TweetDetail responses, and persists extracted graph records. Explicit IDs and status URLs are normalized before deduplication. `--refresh` permits revisiting explicitly named targets that have already been expanded.
+`enrichment/threads.py` selects due or explicit targets, fetches TweetDetail responses, and persists extracted graph records. Explicit IDs and status URLs are normalized before deduplication. `--refresh` permits revisiting explicitly named targets that have already been expanded.
 
 Saved posts and the author's own thread can lead to quote or linked-status discovery up to `max_linked_depth` (default 50). Other authors' replies use `reply_linked_depth`, limited to zero or one, and `reply_linked_limit`, default 1 per sync. These are graph traversal bounds, not a promise that the remote response contains every reply.
 
@@ -12,13 +12,13 @@ Repeated responses that omit the requested focal post stop expansion. Related po
 
 ## Articles
 
-`articles.py` extracts and refreshes archived Article bodies using TweetDetail. The normal refresh selects incomplete/preview-only Articles; `--all` also revisits complete ones. `--limit` limits automatic selection and is ignored when explicit targets are supplied. Preserve structured body content as well as searchable text, covers, inline media and links.
+`enrichment/articles.py` extracts and refreshes archived Article bodies using TweetDetail. The normal refresh selects incomplete/preview-only Articles; `--all` also revisits complete ones. `--limit` limits automatic selection and is ignored when explicit targets are supplied. Preserve structured body content as well as searchable text, covers, inline media and links.
 
 `web/articles.py` formats saved bodies for the browser, and `static/js/articles.js` renders them. Presentation reads the saved Article state without starting remote fetches.
 
 ## Media
 
-`media.py` selects pending files, resolves image/video variants, downloads into managed paths, and records hashes, sizes, content types, local paths and failures. Photos-only mode excludes videos and animated GIFs. Retry-failed mode includes previous failures rather than just untouched work.
+`enrichment/media.py` selects pending files, resolves image/video variants, downloads into managed paths, and records hashes, sizes, content types, local paths and failures. Photos-only mode excludes videos and animated GIFs. Retry-failed mode includes previous failures rather than just untouched work.
 
 `core/media_metadata.py` reconciles dimensions/aspect ratios used by the browser. A downloaded file, thumbnail, poster, and remote URL are different candidates; preserve their identities and provenance. Support quoted media and Article assets as well as the focal tweet.
 
@@ -26,13 +26,13 @@ Storage exhaustion is a job-level failure. Don't report a failed write as a succ
 
 ## URL unfurling
 
-`unfurl.py` resolves expanded/canonical URLs and saves metadata and preview images. URL rows can be shared by multiple tweet references. Keep fetched metadata separate from original tweet text/entities, and don't replace a real destination with the shortened display label.
+`enrichment/unfurl.py` resolves expanded/canonical URLs and saves metadata and preview images. URL rows can be shared by multiple tweet references. Keep fetched metadata separate from original tweet text/entities, and don't replace a real destination with the shortened display label.
 
 A link-card image is presentation metadata, not an attached-photo fact for `has:image`. Browser cards, searches and detail views should use that distinction consistently.
 
 ## Unavailable posts
 
-Authenticated restoration is in `resurrection.py`; FxTwitter/public checks are in `check.py`. Retry policy is reason-aware, bounded, and independent from the last usable saved body. See [availability checks](availability-checks.md).
+Authenticated restoration is in `enrichment/resurrection.py`; FxTwitter/public checks are in `enrichment/check.py`. Retry policy is reason-aware, bounded, and independent from the last usable saved body. See [availability checks](availability-checks.md).
 
 ## Extraction and rebuilds
 

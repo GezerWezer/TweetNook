@@ -13,11 +13,11 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 
-from tweetnook.gemini_pricing import (
+from tweetnook.tagging.pricing import (
     OpenRouterPricing,
     calculate_estimated_cost_usd,
 )
-from tweetnook.gemini_pricing import (
+from tweetnook.tagging.pricing import (
     pricing_multiplier as tier_pricing_multiplier,
 )
 

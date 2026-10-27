@@ -1,6 +1,6 @@
 # Archive imports
 
-`archive_import.py` ingests an official X ZIP or extracted directory. Local ingest and live completion are separate phases, which lets Setup load a large archive while the user configures the connection and collection choices.
+`importer/archive.py` ingests an official X ZIP or extracted directory. Local ingest and live completion are separate phases, which lets Setup load a large archive while the user configures the connection and collection choices.
 
 ## Archive identity
 

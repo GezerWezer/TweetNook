@@ -9,7 +9,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import TextIO
 
-from tweetnook.activity_history import ACTIVITY_ORIGIN_ENV, ACTIVITY_RUN_ID_ENV
+from tweetnook.jobs.activity_history import ACTIVITY_ORIGIN_ENV, ACTIVITY_RUN_ID_ENV
 
 
 class TimestampedWorkerStream:

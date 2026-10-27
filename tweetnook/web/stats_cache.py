@@ -9,7 +9,7 @@ from datetime import datetime
 from threading import Condition, Event, Lock, Thread
 
 from tweetnook.config import ScheduleConfig
-from tweetnook.scheduler import next_run_after
+from tweetnook.jobs.scheduler import next_run_after
 from tweetnook.stats import StatsReport, build_stats_report
 from tweetnook.storage import ArchiveStore
 

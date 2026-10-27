@@ -29,9 +29,9 @@ from tweetnook.core.timeline_parsing import (
     parse_timeline_response,
     parse_tweet_detail_response,
 )
-from tweetnook.media import download_media
+from tweetnook.enrichment.media import download_media
 from tweetnook.storage import open_archive_store
-from tweetnook.sync import sync_collection
+from tweetnook.sync.collection import sync_collection
 from tweetnook.web.deps import server_state
 from tweetnook.web.notices import NoticeStore
 from tweetnook.web.replay_placeholders import placeholder_bytes
@@ -391,7 +391,7 @@ async def test_sync_without_explicit_transport_replays_from_the_source(
 
 
 async def test_fake_failure_token_replays_an_auth_error(replay_network, tmp_path, config) -> None:
-    from tweetnook.sync import RemotePreflightError
+    from tweetnook.sync.collection import RemotePreflightError
 
     failing = config.model_copy(
         update={"auth": config.auth.model_copy(update={"auth_token": "fail"})}

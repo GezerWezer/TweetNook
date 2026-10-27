@@ -15,14 +15,14 @@ from rich.console import Console
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from tweetnook.activity_history import cleanup_runs, read_run
 from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.job_supervisor import JobSupervisor
-from tweetnook.reminders import (
+from tweetnook.jobs.activity_history import cleanup_runs, read_run
+from tweetnook.jobs.reminders import (
     print_archive_migration_report,
     print_pending_archive_enrichment_reminder,
 )
-from tweetnook.scheduler import ScheduleManager
+from tweetnook.jobs.scheduler import ScheduleManager
+from tweetnook.jobs.supervisor import JobSupervisor
 from tweetnook.storage import open_archive_store
 from tweetnook.web.avatar_cache import AvatarCacheManager
 from tweetnook.web.deps import WebSessionMiddleware, server_state, verify_credentials

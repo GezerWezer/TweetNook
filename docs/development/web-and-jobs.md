@@ -36,7 +36,7 @@ All web-save routes use `reload_server_config` to update the running services fr
 
 ## Logs
 
-`PipelineReporter` publishes stages and final outcomes. `activity_history.py` keeps per-run records and logs under `activity/runs/`; retention is configurable. Worker logs receive timestamps. Notifications identify events that require attention and can link to a run.
+`PipelineReporter` publishes stages and final outcomes. `jobs/activity_history.py` keeps per-run records and logs under `activity/runs/`; retention is configurable. Worker logs receive timestamps. Notifications identify events that require attention and can link to a run.
 
 The browser receives live activity over an event stream, with polling as a fallback. `/api/jobs` returns each job's latest saved result, including import and enrichment. Jobs follows active work, then shows an unsuccessful run or the most recent result. Saved results remain available after reconnecting or restarting the server.
 
@@ -127,6 +127,6 @@ Text/API responses use gzip when appropriate, while media/avatar paths bypass it
 
 A run directory can contain `metadata.json`, `events.jsonl`, `output.log`, worker `console.log`, and `final.json`. The current `activity-status.json` snapshot uses atomic replacement. Log retrieval prefers worker console output and bounds it to the last 2,000,000 bytes. Retention skips active runs.
 
-Stop sends SIGINT to owned process groups, or the PID of discovered CLI activity. Shutdown waits for cooperative interruption, then escalates to SIGTERM and SIGKILL if needed. Timeout constants in `job_supervisor.py` leave the personal server and systemd enough time to finish worker shutdown.
+Stop sends SIGINT to owned process groups, or the PID of discovered CLI activity. Shutdown waits for cooperative interruption, then escalates to SIGTERM and SIGKILL if needed. Timeout constants in `jobs/supervisor.py` leave the personal server and systemd enough time to finish worker shutdown.
 
 Candidate X credentials are tested through an isolated temporary config with inherited credential overrides removed before real persistence. Upload staging streams to a unique temporary path, enforces raw bytes/nonempty ZIP, then replaces the fixed stage. Setup uses `--defer-followup` to enrich and download media without reconciling live collections; the first sync waits for the Setup gates described above.

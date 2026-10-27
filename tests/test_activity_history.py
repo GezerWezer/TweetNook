@@ -5,8 +5,8 @@ from io import StringIO
 
 from rich.console import Console
 
-from tweetnook.activity_history import list_runs, read_run, read_run_log
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.jobs.activity_history import list_runs, read_run, read_run_log
+from tweetnook.jobs.pipeline import PipelineReporter
 
 
 def test_pipeline_persists_structured_history_and_plain_log(tmp_path, monkeypatch) -> None:
@@ -64,7 +64,7 @@ def test_full_volume_releases_reserved_space_before_terminal_snapshot(tmp_path, 
 
     import pytest
 
-    import tweetnook.activity_history as history
+    import tweetnook.jobs.activity_history as history
 
     state_path = tmp_path / "activity-status.json"
     reporter = PipelineReporter(
@@ -112,7 +112,7 @@ def test_history_retains_fallback_when_all_writes_fail_and_repairs_after_restart
 ):
     import errno
 
-    import tweetnook.activity_history as history
+    import tweetnook.jobs.activity_history as history
 
     writer = history.ActivityRunWriter(tmp_path / "activity-status.json", "tweetnook import enrich")
     writer.start(pid=2**31 - 1, started_at=1)
@@ -143,7 +143,7 @@ def test_history_retains_fallback_when_all_writes_fail_and_repairs_after_restart
 
 
 def test_process_exit_cannot_turn_failed_followup_into_success(tmp_path):
-    from tweetnook.activity_history import mark_run_process_result
+    from tweetnook.jobs.activity_history import mark_run_process_result
 
     with PipelineReporter(
         Console(file=StringIO()),

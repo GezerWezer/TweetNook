@@ -16,7 +16,7 @@ from typing import Annotated
 
 import typer
 
-from tweetnook.job_supervisor import SERVICE_STOP_TIMEOUT
+from tweetnook.jobs.supervisor import SERVICE_STOP_TIMEOUT
 
 service_app = typer.Typer(
     no_args_is_help=True, help="Install and manage the Linux systemd service."

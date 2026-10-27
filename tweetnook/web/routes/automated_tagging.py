@@ -9,15 +9,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from rich.console import Console
 
-from tweetnook.automated_tagging import (
+from tweetnook.config import TaggingConfig
+from tweetnook.core.extractor import extract_status_id_from_url
+from tweetnook.storage.search_query import SearchQueryError, search_posts
+from tweetnook.tagging.accounting import AIUsageLedger
+from tweetnook.tagging.sdk import (
     automated_tagging_installed,
     list_models,
     model_is_compatible,
 )
-from tweetnook.config import TaggingConfig
-from tweetnook.core.extractor import extract_status_id_from_url
-from tweetnook.gemini_accounting import AIUsageLedger
-from tweetnook.storage.search_query import SearchQueryError, search_posts
 from tweetnook.web.deps import require_store, verify_credentials
 from tweetnook.web.runtime_config import reload_server_config
 
@@ -178,7 +178,7 @@ async def post_automated_tagging_test(
     if not validated.api_key:
         raise HTTPException(status_code=400, detail="Enter a Gemini API key first")
 
-    from tweetnook.tagging import TaggingPreview, tag_media_tweets
+    from tweetnook.tagging.tagger import TaggingPreview, tag_media_tweets
 
     test_config = config.model_copy(update={"tagging": validated})
     previews: list[TaggingPreview] = []

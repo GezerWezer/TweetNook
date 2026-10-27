@@ -7,8 +7,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tweetnook.enrichment.threads import walk_linked_statuses
 from tweetnook.storage import ArchiveStore
-from tweetnook.threads import walk_linked_statuses
 
 # Rows owned by a single tweet, keyed by its tweet_id.
 TWEET_RECORD_TYPES = (

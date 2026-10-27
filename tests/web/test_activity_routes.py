@@ -9,7 +9,7 @@ import pytest
 from rich.console import Console
 
 from tweetnook.config import XDGPaths
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.web.deps import server_state
 from tweetnook.web.routes import activity
 

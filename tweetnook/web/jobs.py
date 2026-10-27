@@ -10,9 +10,9 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-from tweetnook.activity_history import list_runs, read_run
 from tweetnook.client.fxtwitter import fx_enabled
 from tweetnook.config import AppConfig
+from tweetnook.jobs.activity_history import list_runs, read_run
 
 OptionKind = Literal["flag", "negflag", "level", "int", "text", "archive"]
 

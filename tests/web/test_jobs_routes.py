@@ -7,9 +7,9 @@ import pytest
 from rich.console import Console
 
 from tweetnook.config import AppConfig, CheckConfig, ScheduleConfig, XDGPaths
-from tweetnook.job_supervisor import JobConflictError, JobSupervisor
-from tweetnook.pipeline import PipelineReporter
-from tweetnook.scheduler import ScheduleManager
+from tweetnook.jobs.pipeline import PipelineReporter
+from tweetnook.jobs.scheduler import ScheduleManager
+from tweetnook.jobs.supervisor import JobConflictError, JobSupervisor
 from tweetnook.web.deps import server_state
 from tweetnook.web.jobs import JOBS_BY_KEY, JobOptionsError, job_cli_args
 from tweetnook.web.routes import jobs

@@ -14,7 +14,7 @@ import typer
 from rich.console import Console
 
 from tweetnook.config import load_config, update_config_values
-from tweetnook.job_supervisor import WEB_STOP_TIMEOUT
+from tweetnook.jobs.supervisor import WEB_STOP_TIMEOUT
 from tweetnook.web.address import display_web_url
 
 web_app = typer.Typer(no_args_is_help=True, help="Manage the background web UI server.")

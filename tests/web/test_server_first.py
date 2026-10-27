@@ -7,9 +7,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from tweetnook.activity_history import mark_run_process_result, new_run_id, reserve_run
 from tweetnook.config import AppConfig, ensure_paths, resolve_paths
-from tweetnook.job_supervisor import JobConflictError
+from tweetnook.jobs.activity_history import mark_run_process_result, new_run_id, reserve_run
+from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.storage import open_archive_store
 from tweetnook.web import server
 from tweetnook.web.deps import SESSION_COOKIE, server_state
@@ -536,7 +536,7 @@ def test_real_offline_import_worker_attaches_archive(first_run, tmp_path, monkey
     import time
 
     from tests.test_archive_import import _write_archive_dir, _write_archive_zip
-    from tweetnook.job_supervisor import JobSupervisor
+    from tweetnook.jobs.supervisor import JobSupervisor
 
     source = _write_archive_dir(tmp_path / "source")
     archive = _write_archive_zip(source, tmp_path / "fixture.zip")
@@ -598,8 +598,8 @@ def test_real_import_media_disk_full_keeps_archive_ready_without_retry(
 
     import tweetnook.cli as cli
     from tests.test_archive_import import _write_archive_dir, _write_archive_zip
-    from tweetnook.activity_history import read_run
-    from tweetnook.resource_failure import STORAGE_RECOVERY
+    from tweetnook.jobs.activity_history import read_run
+    from tweetnook.jobs.resource_failure import STORAGE_RECOVERY
 
     source = _write_archive_dir(tmp_path / "source", media_kind="video")
     archive = _write_archive_zip(source, tmp_path / "fixture.zip")
@@ -609,7 +609,7 @@ def test_real_import_media_disk_full_keeps_archive_ready_without_retry(
         downloads.append(url)
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr("tweetnook.media._download_file", full)
+    monkeypatch.setattr("tweetnook.enrichment.media._download_file", full)
     with TestClient(server.app) as client:
         coord = server_state["setup_coordinator"]
         jobs = server_state["job_supervisor"]
@@ -705,7 +705,7 @@ def test_stopping_the_local_import_needs_setup_attention(coordinator):
 def test_disk_full_import_does_not_start_media_or_first_sync(
     coordinator, connected, enrich_skipped
 ):
-    from tweetnook.resource_failure import STORAGE_RECOVERY
+    from tweetnook.jobs.resource_failure import STORAGE_RECOVERY
 
     coord, jobs, _ = coordinator
     coord.begin("import")

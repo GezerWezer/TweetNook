@@ -1,4 +1,4 @@
-from tweetnook.tagging_prompts import build_media_system_prompt, build_text_system_prompt
+from tweetnook.tagging.prompts import build_media_system_prompt, build_text_system_prompt
 
 
 def test_optional_prompt_fragments_are_omitted_entirely_when_empty() -> None:

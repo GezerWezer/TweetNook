@@ -13,8 +13,9 @@ from typer.testing import CliRunner
 
 from tweetnook import cli
 from tweetnook.config import AppConfig
-from tweetnook.pipeline import PipelineReporter, current_pipeline
-from tweetnook.storage import migrate, open_archive_store
+from tweetnook.importer import legacy_migration as migrate
+from tweetnook.jobs.pipeline import PipelineReporter, current_pipeline
+from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.schema import SCHEMA_VERSION
 

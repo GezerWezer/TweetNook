@@ -101,6 +101,6 @@ Bounded caches use persisted revisions and bypass ordinary reuse inside an uncom
 
 ## Legacy migration
 
-The optional LanceDB reader runs in subprocesses and writes the current SQLite shape. Destination inserts ignore existing row keys so a rerun cannot replace newer rows. A failed source range is retried in smaller batches; unreadable rows can be skipped and reported. Inspect the final migration report, not just the exit code, and retain the source until collection/search/media checks are satisfactory.
+`importer/legacy_migration.py` runs the optional LanceDB reader in subprocesses and writes the current SQLite shape. Destination inserts ignore existing row keys so a rerun cannot replace newer rows. A failed source range is retried in smaller batches; unreadable rows can be skipped and reported. Inspect the final migration report, not just the exit code, and retain the source until collection/search/media checks are satisfactory.
 
 `archive.lancedb/` remains a separate source. A current schema open is different from that explicit one-way migration. Test skipped-row/partial reporting, reruns, empty input, destination failures and full-text rebuild after import.

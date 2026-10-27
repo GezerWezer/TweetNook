@@ -1,6 +1,6 @@
 # Availability checks
 
-`check.py` checks public availability through FxTwitter and uses bounded authenticated detail lookups for cases that need the user's account. `resurrection.py` owns the reason-aware X retry policy. The web presentation reads durable availability state alongside the last saved content.
+`enrichment/check.py` checks public availability through FxTwitter and uses bounded authenticated detail lookups for cases that need the user's account. `enrichment/resurrection.py` owns the reason-aware X retry policy. The web presentation reads durable availability state alongside the last saved content.
 
 ## Public lookups
 

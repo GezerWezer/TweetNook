@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from tweetnook.resource_failure import StorageExhaustedError, raise_if_storage_exhausted
+from tweetnook.jobs.resource_failure import StorageExhaustedError, raise_if_storage_exhausted
 
 
 @pytest.mark.parametrize(

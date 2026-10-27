@@ -1,6 +1,6 @@
 # Client and sync
 
-`sync.py` coordinates authenticated collection reads. `client/base.py` owns transport and pacing; `client/timelines.py` builds timeline/detail operations, and `core/timeline_parsing.py` parses their responses. Keep protocol handling below the CLI and web layers so every entry point gets the same behavior.
+`sync/collection.py` coordinates authenticated collection reads. `client/base.py` owns transport and pacing; `client/timelines.py` builds timeline/detail operations, and `core/timeline_parsing.py` parses their responses. Keep protocol handling below the CLI and web layers so every entry point gets the same behavior.
 
 ## Credentials and preflight
 

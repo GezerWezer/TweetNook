@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from tweetnook.interactive import emit_status, progress_callback, status_printer
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.jobs.interactive import emit_status, progress_callback, status_printer
+from tweetnook.jobs.pipeline import PipelineReporter
 
 
 class FakeConsole:

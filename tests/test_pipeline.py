@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.text import Text
 
 from tweetnook.core.exceptions import ProcessLockError
-from tweetnook.pipeline import (
+from tweetnook.jobs.pipeline import (
     SPINNER_FRAMES,
     TWITTER_BLUE,
     PipelineReporter,
@@ -461,7 +461,7 @@ def test_full_console_does_not_prevent_final_snapshot_or_lock_release(tmp_path):
     import pytest
 
     from tweetnook.core.locking import ProcessLock
-    from tweetnook.pipeline import current_pipeline
+    from tweetnook.jobs.pipeline import current_pipeline
 
     class FullConsole:
         is_terminal = False

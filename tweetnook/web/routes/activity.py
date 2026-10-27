@@ -14,7 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from tweetnook.activity_history import (
+from tweetnook.config import AppConfig, ScheduleConfig, update_config_values
+from tweetnook.jobs.activity_history import (
     latest_finished_snapshot,
     list_runs,
     read_run,
@@ -23,8 +24,7 @@ from tweetnook.activity_history import (
     runs_root,
     terminal_snapshot,
 )
-from tweetnook.config import AppConfig, ScheduleConfig, update_config_values
-from tweetnook.job_supervisor import JobConflictError
+from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.web.activity_stream import ActivityStream
 from tweetnook.web.deps import server_state, verify_credentials
 from tweetnook.web.runtime_config import reload_server_config

@@ -13,16 +13,16 @@ import httpx
 import pytest
 from rich.console import Console
 
-from tweetnook import tagging
 from tweetnook.config import AppConfig, TaggingConfig
-from tweetnook.gemini_accounting import (
+from tweetnook.jobs.pipeline import PipelineReporter
+from tweetnook.tagging import tagger as tagging
+from tweetnook.tagging.accounting import (
     AIUsageLedger,
     UsageRecord,
     failed_usage_record,
     usage_from_interaction,
 )
-from tweetnook.gemini_pricing import OpenRouterPricing
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.tagging.pricing import OpenRouterPricing
 
 
 class Store:

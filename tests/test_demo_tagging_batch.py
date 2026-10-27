@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from tweetnook.tagging import TextTagResult
-from tweetnook.tagging_prompts import build_text_system_prompt
+from tweetnook.tagging.prompts import build_text_system_prompt
+from tweetnook.tagging.tagger import TextTagResult
 
 ROOT = Path(__file__).resolve().parents[1]
 

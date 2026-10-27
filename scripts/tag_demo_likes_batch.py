@@ -21,8 +21,8 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
-from tweetnook.tagging import MediaTagResult, TextTagResult
-from tweetnook.tagging_prompts import build_media_system_prompt, build_text_system_prompt
+from tweetnook.tagging.prompts import build_media_system_prompt, build_text_system_prompt
+from tweetnook.tagging.tagger import MediaTagResult, TextTagResult
 
 ROOT = Path(__file__).resolve().parents[1]
 PRIVATE = ROOT / "data/demo-content"
@@ -148,7 +148,7 @@ def prepare() -> None:
             "created_at": now(),
             "google_search": True,
             "provider_batch": True,
-            "prompt_source": "tweetnook.tagging_prompts",
+            "prompt_source": "tweetnook.tagging.prompts",
             "existing_tags": existing,
             "requests": requests,
         },

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-import tweetnook.jobs as jobs
+import tweetnook.jobs.context as jobs
 from tweetnook.core.exceptions import ConfigError
 
 
@@ -80,7 +80,7 @@ async def test_full_database_aborts_job_and_releases_store_and_lock(paths, confi
     import sqlite3
 
     from tweetnook.core.locking import ProcessLock
-    from tweetnook.resource_failure import StorageExhaustedError
+    from tweetnook.jobs.resource_failure import StorageExhaustedError
 
     store = _FakeStore()
     monkeypatch.setattr(jobs, "open_archive_store", lambda *args, **kwargs: store)

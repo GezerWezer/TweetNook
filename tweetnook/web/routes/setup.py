@@ -37,7 +37,7 @@ from tweetnook.core.dev_replay import (
     normalize_replay_url,
 )
 from tweetnook.core.exceptions import ProcessLockError
-from tweetnook.job_supervisor import JobConflictError
+from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.web.deps import remember_web_session, server_state, verify_credentials
 from tweetnook.web.routes.activity import _read_active_snapshot
 from tweetnook.web.runtime_config import reload_server_config

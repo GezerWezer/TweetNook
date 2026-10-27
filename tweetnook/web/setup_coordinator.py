@@ -8,8 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ValidationError
 
-from tweetnook.activity_history import latest_finished_snapshot, new_run_id, read_run
-from tweetnook.job_supervisor import JobConflictError
+from tweetnook.jobs.activity_history import latest_finished_snapshot, new_run_id, read_run
+from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.storage import open_archive_store
 from tweetnook.web.notices import atomic_json
 

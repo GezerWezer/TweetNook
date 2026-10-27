@@ -8,7 +8,7 @@ from typing import Any
 
 from rich.console import Console
 
-from tweetnook.pipeline import current_pipeline
+from tweetnook.jobs.pipeline import current_pipeline
 
 
 def _log_phase(console: Console, prefix: str, message: str) -> None:

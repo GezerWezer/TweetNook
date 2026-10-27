@@ -17,22 +17,23 @@ Start at the public operation you're changing, then follow its storage and prese
 | `core/fxtwitter_payloads.py` | FxTwitter payload adaptation to the GraphQL tweet shape. |
 | `query_ids/` | Operation defaults, cache and bundle discovery. |
 | `core/extractor.py`, `core/media_metadata.py` | Canonical fields, relations, Article structures and media geometry. |
-| `articles.py` | Article body refresh. |
-| `storage/` | SQLite archive: `ArchiveStore` in `backend.py`, one module per storage concern (see [storage](storage.md#layout)), shared search query parsing and sorts (`search_query.py`), rebuildable like order (`like_order.py`), and explicit legacy migration in `migrate.py`. |
-| `sync.py` | Collection preflight, resumable pages and follow-up plan. |
-| `archive_import.py` | Official export ingest, manifests and sparse completion. |
-| `threads.py`, `media.py`, `unfurl.py` | Conversation expansion, file downloads and link previews. |
-| `resurrection.py`, `check.py` | Authenticated retry policy and public availability checks. |
-| `prune.py` | Reachability planning and scoped context/file cleanup. |
+| `enrichment/articles.py` | Article body refresh. |
+| `storage/` | SQLite archive: `ArchiveStore` in `backend.py`, one module per storage concern (see [storage](storage.md#layout)), shared search query parsing and sorts (`search_query.py`), and rebuildable like order (`like_order.py`). |
+| `sync/collection.py` | Collection preflight, resumable pages and follow-up plan. |
+| `importer/archive.py` | Official export ingest, manifests and sparse completion. |
+| `importer/legacy_migration.py` | Explicit migration of a legacy LanceDB archive. |
+| `enrichment/threads.py`, `enrichment/media.py`, `enrichment/unfurl.py` | Conversation expansion, file downloads and link previews. |
+| `enrichment/resurrection.py`, `enrichment/check.py` | Authenticated retry policy and public availability checks. |
+| `enrichment/prune.py` | Reachability planning and scoped context/file cleanup. |
 | `export/` | JSON output and export file names. |
 | `stats/` | Structured reports shared by CLI and web consumers. |
-| `tagging.py`, `tagging_prompts.py` | Gemini request planning, evidence, validation and generated tags. |
-| `automated_tagging.py` | Optional dependency checks and model catalog. |
-| `gemini_accounting.py`, `gemini_pricing.py`, `rpd.py` | Local spend, Search usage and request allowances. |
-| `jobs.py`, `resource_failure.py` | Locked job context and storage-failure handling. |
-| `pipeline.py`, `activity_history.py`, `worker_logging.py` | Progress stages, durable outcomes and timestamped logs. |
-| `job_supervisor.py`, `scheduler.py` | Worker/queue ownership and scheduled submission. |
-| `reminders.py`, `interactive.py` | Notices and terminal interaction. |
+| `tagging/tagger.py`, `tagging/prompts.py` | Gemini request planning, evidence, validation and generated tags. |
+| `tagging/sdk.py` | Optional dependency checks and model catalog. |
+| `tagging/accounting.py`, `tagging/pricing.py`, `tagging/rpd.py` | Local spend, Search usage and request allowances. |
+| `jobs/context.py`, `jobs/resource_failure.py` | Locked job context and storage-failure handling. |
+| `jobs/pipeline.py`, `jobs/activity_history.py`, `jobs/worker_logging.py` | Progress stages, durable outcomes and timestamped logs. |
+| `jobs/supervisor.py`, `jobs/scheduler.py` | Worker/queue ownership and scheduled submission. |
+| `jobs/reminders.py`, `jobs/interactive.py` | Notices and terminal interaction. |
 | `web/server.py`, `web/deps.py` | FastAPI lifecycle, shared state, sessions and archive readiness. |
 | `web/runtime_config.py` | Apply saved settings to running services under the shared lifecycle lock. |
 | `web/setup_coordinator.py`, `web/jobs.py` | Setup transitions and validated job-to-CLI mapping. |

@@ -26,8 +26,9 @@ node tests/js/test_web_assets.cjs         # browser-asset harnesses; see tests/j
 `docs/development/architecture.md` explains the data flow. In short:
 
 - `tweetnook/client/`, `core/extractor.py` - X requests and response parsing.
-- `tweetnook/storage/` - the SQLite archive (`ArchiveStore`) and the LanceDB migration.
-- `sync.py`, `pipeline.py`, `archive_import.py` - collection runs and official-export import.
+- `tweetnook/storage/` - the SQLite archive (`ArchiveStore`).
+- `sync/`, `importer/` - collection runs, official-export import and the LanceDB migration.
+- `jobs/` - locked archive jobs, progress reporting, the worker supervisor and the scheduler.
 - `tweetnook/web/` - FastAPI app; `routes/` are thin handlers over the same archive operations
   the CLI uses. `static/js/` and `index.html` are the browser UI.
 - `cli.py` - the Typer command tree.

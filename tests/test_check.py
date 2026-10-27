@@ -14,9 +14,9 @@ from typer.testing import CliRunner
 from tests.conftest import make_tweet_result
 from tests.test_fxtwitter import fx_status, fx_transport, ok
 from tweetnook import cli
-from tweetnook.check import FX_NOT_FOUND_DETAIL, MAX_CONSECUTIVE_ERRORS, run_check
 from tweetnook.core.timeline_parsing import TimelineTweet
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.enrichment.check import FX_NOT_FOUND_DETAIL, MAX_CONSECUTIVE_ERRORS, run_check
+from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.common import FX_SOURCE, LIVE_SOURCE
 
@@ -96,7 +96,7 @@ def _history(store, tweet_id: str) -> list[str]:
 def test_check_publishes_all_enabled_steps_before_work(
     config, paths, monkeypatch, saves, context, unavailable, detail_budget
 ) -> None:
-    import tweetnook.check as check
+    import tweetnook.enrichment.check as check
 
     store = open_archive_store(paths, create=True, config=config)
     assert store is not None
@@ -174,7 +174,7 @@ def test_check_skips_planned_login_step_when_login_is_unavailable(
     config, paths, monkeypatch, expired
 ) -> None:
     import tweetnook.auth as auth
-    import tweetnook.resurrection as resurrection
+    import tweetnook.enrichment.resurrection as resurrection
     from tweetnook.core.exceptions import AuthExpiredError, AuthResolutionError
 
     def missing_login(_config):
@@ -372,7 +372,7 @@ def test_check_context_is_opt_in_and_scales_with_frequency(
 
 
 def test_check_does_not_run_while_fxtwitter_is_off(config, paths, monkeypatch) -> None:
-    import tweetnook.check as check
+    import tweetnook.enrichment.check as check
 
     config.fxtwitter.enabled = False
     store = open_archive_store(paths, create=True, config=config)
@@ -424,7 +424,7 @@ def test_mass_404s_mark_nothing_missing(config, paths) -> None:
 
 
 def test_mass_404s_undo_nothing_marked_in_earlier_chunks(config, paths, monkeypatch) -> None:
-    import tweetnook.check as check
+    import tweetnook.enrichment.check as check
 
     monkeypatch.setattr(check, "CHECK_CHUNK_SIZE", 10)
     store = open_archive_store(paths, create=True, config=config)
@@ -449,7 +449,7 @@ def test_mass_404s_undo_nothing_marked_in_earlier_chunks(config, paths, monkeypa
 
 
 def test_check_stops_when_fxtwitter_keeps_failing(config, paths, monkeypatch) -> None:
-    import tweetnook.check as check
+    import tweetnook.enrichment.check as check
 
     monkeypatch.setattr(check, "CHECK_CHUNK_SIZE", 10)
     config.check.context_enabled = True
@@ -646,7 +646,7 @@ def test_check_help_lists_its_flags() -> None:
 
 @pytest.mark.parametrize(("args", "expected"), [([], None), (["--skip-context"], False)])
 def test_check_cli_uses_context_setting_unless_skipped(config, paths, monkeypatch, args, expected):
-    import tweetnook.check as check
+    import tweetnook.enrichment.check as check
 
     seen = []
 

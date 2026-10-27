@@ -10,9 +10,8 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from tweetnook.automated_tagging import model_from_api, model_is_compatible
 from tweetnook.config import TaggingConfig
-from tweetnook.gemini_accounting import (
+from tweetnook.tagging.accounting import (
     AIUsageLedger,
     UsageRecord,
     failed_usage_record,
@@ -20,13 +19,14 @@ from tweetnook.gemini_accounting import (
     search_step_queries,
     usage_from_interaction,
 )
-from tweetnook.gemini_pricing import (
+from tweetnook.tagging.pricing import (
     OpenRouterPricing,
     calculate_estimated_cost_usd,
     load_openrouter_pricing,
     minimum_input_cost_usd,
     pricing_cache_path,
 )
+from tweetnook.tagging.sdk import model_from_api, model_is_compatible
 
 
 def usage_record(

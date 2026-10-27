@@ -19,9 +19,9 @@ from tweetnook.config import XDGPaths, ensure_paths, load_config
 from tweetnook.core.extractor import extract_status_id_from_url
 from tweetnook.core.media_metadata import raw_tweet_media
 from tweetnook.core.timeline_parsing import parse_tweet_detail_response
-from tweetnook.media import download_media
+from tweetnook.enrichment.media import download_media
+from tweetnook.enrichment.threads import expand_threads, normalize_thread_target
 from tweetnook.storage import open_archive_store
-from tweetnook.threads import expand_threads, normalize_thread_target
 from tweetnook.web import deps
 from tweetnook.web.articles import annotate_web_articles
 from tweetnook.web.routes.avatars import _avatar_response

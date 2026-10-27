@@ -14,10 +14,10 @@ from tweetnook.config import DEFAULT_USER_AGENT, AppConfig, XDGPaths
 from tweetnook.core.dev_replay import client_transport
 from tweetnook.core.extractor import canonicalize_url
 from tweetnook.core.utils import utc_now
-from tweetnook.interactive import emit_status, progress_callback, status_printer
-from tweetnook.jobs import locked_archive_job
-from tweetnook.pipeline import current_pipeline
-from tweetnook.resource_failure import raise_if_storage_exhausted
+from tweetnook.jobs.context import locked_archive_job
+from tweetnook.jobs.interactive import emit_status, progress_callback, status_printer
+from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 _CANONICAL_RE = re.compile(

@@ -14,10 +14,11 @@ from pydantic import BaseModel, Field, ValidationError
 from rich.console import Console
 from rich.text import Text
 
-from tweetnook.activity_history import new_run_id
-from tweetnook.automated_tagging import AutomatedTaggingUnavailable, load_gemini
 from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.gemini_accounting import (
+from tweetnook.jobs.activity_history import new_run_id
+from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.storage.backend import ArchiveStore
+from tweetnook.tagging.accounting import (
     SEARCH_MONTHLY_ALLOWANCE,
     AIUsageLedger,
     SearchAccounting,
@@ -28,15 +29,14 @@ from tweetnook.gemini_accounting import (
     usage_from_generate_content,
     usage_from_interaction,
 )
-from tweetnook.gemini_pricing import (
+from tweetnook.tagging.pricing import (
     load_openrouter_pricing,
     minimum_input_cost_usd,
     pricing_multiplier,
 )
-from tweetnook.pipeline import current_pipeline
-from tweetnook.rpd import RpdStatus, get_rpd_status, reserve_rpd_request
-from tweetnook.storage.backend import ArchiveStore
-from tweetnook.tagging_prompts import build_media_system_prompt, build_text_system_prompt
+from tweetnook.tagging.prompts import build_media_system_prompt, build_text_system_prompt
+from tweetnook.tagging.rpd import RpdStatus, get_rpd_status, reserve_rpd_request
+from tweetnook.tagging.sdk import AutomatedTaggingUnavailable, load_gemini
 
 try:  # Optional extra: importing this module must remain safe in base installations.
     from google import genai

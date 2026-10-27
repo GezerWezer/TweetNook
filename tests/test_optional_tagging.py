@@ -17,7 +17,7 @@ def reject(name, *args, **kwargs):
     return original(name, *args, **kwargs)
 builtins.__import__ = reject
 import tweetnook.cli
-import tweetnook.sync
+import tweetnook.sync.collection
 import tweetnook.web.server
 import tweetnook.web.routes.tags
 """

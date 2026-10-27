@@ -15,10 +15,10 @@ from tests.conftest import (
     make_video_media,
 )
 from tweetnook.core.timeline_parsing import TimelineTweet
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.enrichment.unfurl import unfurl_urls
+from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import ArchiveStore
-from tweetnook.unfurl import unfurl_urls
 
 
 def _complex_tweet(tweet_id: str = "100") -> TimelineTweet:
@@ -300,7 +300,7 @@ async def test_unfurl_urls_interactive_reports_status(paths, config, monkeypatch
     progress = MagicMock()
     on_progress = MagicMock()
     progress.return_value.__enter__.return_value = on_progress
-    monkeypatch.setattr("tweetnook.unfurl.progress_callback", progress)
+    monkeypatch.setattr("tweetnook.enrichment.unfurl.progress_callback", progress)
 
     def handler(request: httpx.Request) -> httpx.Response:
         html = """

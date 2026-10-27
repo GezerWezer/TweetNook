@@ -11,7 +11,7 @@ from rich.console import Console
 
 from tweetnook.config import AppConfig, XDGPaths, ensure_paths, load_config
 from tweetnook.core.exceptions import ConfigError
-from tweetnook.resource_failure import raise_if_storage_exhausted
+from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.storage import ArchiveStore, open_archive_store
 
 _INTERRUPT_OPTIMIZE_MESSAGE = (
@@ -126,7 +126,7 @@ async def locked_archive_job(
         if store is None:
             raise ConfigError("No local archive found.")
         if console is not None:
-            from tweetnook.reminders import print_archive_migration_report
+            from tweetnook.jobs.reminders import print_archive_migration_report
 
             print_archive_migration_report(console, store)
         tracker = ArchiveWriteTracker(store)

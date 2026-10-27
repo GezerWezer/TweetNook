@@ -1,6 +1,6 @@
 # Automated tagging
 
-The tagger is optional. `automated_tagging.py` checks for the SDK/Pillow dependencies and discovers usable model metadata. `tagging.py` plans requests, loads evidence, calls Gemini and persists descriptions/tags. Prompts live in `tagging_prompts.py`.
+The tagger is optional, and its modules are in `tweetnook/tagging/`. `sdk.py` checks for the SDK/Pillow dependencies and discovers usable model metadata. `tagger.py` plans requests, loads evidence, calls Gemini and persists descriptions/tags. Prompts live in `prompts.py`.
 
 ## Evidence and output
 
@@ -22,7 +22,7 @@ Model discovery filters metadata for Gemini models capable of content generation
 
 ## Usage accounting
 
-`gemini_accounting.py`, `gemini_pricing.py`, and `rpd.py` maintain reservations, observed usage and local allowance state. Reserve before a provider attempt, commit known usage afterward, and mark uncertain usage explicitly. Every retry has its own lifecycle; double-releasing a reservation can permit overspending.
+`tagging/accounting.py`, `tagging/pricing.py`, and `tagging/rpd.py` maintain reservations, observed usage and local allowance state. Reserve before a provider attempt, commit known usage afterward, and mark uncertain usage explicitly. Every retry has its own lifecycle; double-releasing a reservation can permit overspending.
 
 Paid requests with missing usage follow `unknown_billing_policy`: reserve an estimate and continue within limits, or stop. The minimum reserve and maximum uncertain requests per UTC day bound that policy. Actual charges can differ from estimates, and requests made outside this installation aren't visible here.
 
@@ -46,7 +46,7 @@ Free uses structured `generate_content` requests, homogeneous batches and an in-
 
 Free photos are sent inline through Pillow; Free videos/GIFs and Paid media use Gemini Files uploads. Enforce the per-item local-file size limit and clean remote uploads best-effort. Paid uses sequential Interactions requests with `store=false`, schema, thinking level, tier and optional Search. Prompts ask for two to five tags; text-only output has no description. At most fifty common existing tags are hints.
 
-Paid requests retry overloads with bounded backoff and stop after sustained failures. Structured capacity failures retain uncertainty reserves but are counted separately from generic billing-unknown failures. Strict billing policy and monetary limits still apply. Retry thresholds and classifications are defined in `tagging.py`.
+Paid requests retry overloads with bounded backoff and stop after sustained failures. Structured capacity failures retain uncertainty reserves but are counted separately from generic billing-unknown failures. Strict billing policy and monetary limits still apply. Retry thresholds and classifications are defined in `tagging/tagger.py`.
 
 Search uses a local 5,000-query monthly safety allowance and the configured reserve. Provider grounding counts are preferred, with interaction query steps as fallback. Missing usage follows the configured reserve/disable policy. Search coordination is in-process, unlike Free RPD's transactional reservation.
 

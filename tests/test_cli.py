@@ -1226,7 +1226,7 @@ def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch, co
         transport=None,
         console=None,
     ):
-        from tweetnook.pipeline import current_pipeline
+        from tweetnook.jobs.pipeline import current_pipeline
 
         assert current_pipeline().step_state("archive-auth") == "complete"
         captured.update(

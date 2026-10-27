@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from tweetnook.rpd import get_rpd_status, normalize_model_name, reserve_rpd_request
 from tweetnook.storage.backend import ArchiveStore
+from tweetnook.tagging.rpd import get_rpd_status, normalize_model_name, reserve_rpd_request
 
 
 def _connection(path: Path | str = ":memory:", *, check_same_thread: bool = True):

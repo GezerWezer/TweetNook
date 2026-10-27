@@ -6,13 +6,13 @@ from unittest.mock import patch
 import pytest
 
 from tweetnook.config import AppConfig, ScheduleConfig, XDGPaths
-from tweetnook.job_supervisor import JobConflictError
-from tweetnook.scheduler import (
+from tweetnook.jobs.scheduler import (
     ScheduleManager,
     next_run_after,
     schedule_description,
     schedule_label,
 )
+from tweetnook.jobs.supervisor import JobConflictError
 
 
 @pytest.mark.parametrize(
@@ -109,7 +109,7 @@ def test_randomized_time_uses_future_part_of_current_window() -> None:
         random_offset_max_hours=2,
     )
 
-    with patch("tweetnook.scheduler.random.uniform", return_value=1.25) as uniform:
+    with patch("tweetnook.jobs.scheduler.random.uniform", return_value=1.25) as uniform:
         result = next_run_after(config, datetime(2026, 8, 12, 10, 30, tzinfo=UTC))
 
     assert result == datetime(2026, 8, 12, 11, 15, tzinfo=UTC)
@@ -164,7 +164,7 @@ def test_randomized_time_uses_future_part_of_current_window() -> None:
 def test_consumed_randomized_occurrence_advances_to_next_nominal_run(
     config, after, expected
 ) -> None:
-    with patch("tweetnook.scheduler.random.uniform", return_value=1.0):
+    with patch("tweetnook.jobs.scheduler.random.uniform", return_value=1.0):
         assert next_run_after(config, after, occurrence_consumed=True) == expected
 
 
@@ -268,7 +268,7 @@ def test_scheduler_consumes_randomized_daily_occurrence_once(tmp_path) -> None:
     occurrence = datetime(2026, 8, 12, 3, 16, tzinfo=UTC)
     manager._state["next_run_at"] = occurrence.timestamp()
 
-    with patch("tweetnook.scheduler.random.uniform", return_value=1.0):
+    with patch("tweetnook.jobs.scheduler.random.uniform", return_value=1.0):
         manager.tick(now=occurrence.timestamp())
 
     next_run = datetime.fromtimestamp(manager._state["next_run_at"], UTC)
@@ -304,7 +304,7 @@ def test_scheduler_resumes_after_an_overdue_randomized_occurrence(tmp_path) -> N
     manager = ScheduleManager(paths, config, Supervisor())
     manager._state["next_run_at"] = datetime(2026, 8, 10, 3, 16, tzinfo=UTC).timestamp()
 
-    with patch("tweetnook.scheduler.random.uniform", return_value=1.0):
+    with patch("tweetnook.jobs.scheduler.random.uniform", return_value=1.0):
         manager.tick(now=datetime(2026, 8, 12, 12, 0, tzinfo=UTC).timestamp())
 
     assert datetime.fromtimestamp(manager._state["next_run_at"], UTC) == datetime(
@@ -379,7 +379,7 @@ def test_scheduler_conflict_consumes_randomized_daily_occurrence(tmp_path) -> No
     occurrence = datetime(2026, 8, 12, 3, 16, tzinfo=UTC)
     manager._state["next_run_at"] = occurrence.timestamp()
 
-    with patch("tweetnook.scheduler.random.uniform", return_value=0.5):
+    with patch("tweetnook.jobs.scheduler.random.uniform", return_value=0.5):
         manager.tick(now=occurrence.timestamp())
 
     assert datetime.fromtimestamp(manager._state["next_run_at"], UTC) == datetime(

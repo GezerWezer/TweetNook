@@ -4,7 +4,7 @@ import json
 import time
 
 from tweetnook.storage import open_archive_store
-from tweetnook.tagging import _defer_tagging_failure
+from tweetnook.tagging.tagger import _defer_tagging_failure
 
 
 def _tag_payload(store, tweet_id: str) -> dict[str, object] | None:

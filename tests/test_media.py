@@ -16,8 +16,8 @@ from tests.conftest import (
     make_video_media,
 )
 from tweetnook.core.timeline_parsing import TimelineTweet
-from tweetnook.media import download_media
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.enrichment.media import download_media
+from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import ArchiveStore
 
@@ -374,7 +374,7 @@ async def test_download_media_interactive_reports_status(paths, config, monkeypa
     progress = MagicMock()
     on_progress = MagicMock()
     progress.return_value.__enter__.return_value = on_progress
-    monkeypatch.setattr("tweetnook.media.progress_callback", progress)
+    monkeypatch.setattr("tweetnook.enrichment.media.progress_callback", progress)
 
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
@@ -418,7 +418,7 @@ async def test_full_disk_aborts_download_without_marking_remaining_rows_failed(
 ):
     import errno
 
-    from tweetnook.resource_failure import StorageExhaustedError
+    from tweetnook.jobs.resource_failure import StorageExhaustedError
 
     _seed_archive(paths)
     calls = []
@@ -427,7 +427,7 @@ async def test_full_disk_aborts_download_without_marking_remaining_rows_failed(
         calls.append(kwargs["url"])
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr("tweetnook.media._download_file", full)
+    monkeypatch.setattr("tweetnook.enrichment.media._download_file", full)
     with pytest.raises(StorageExhaustedError):
         await download_media(config=config, paths=paths, console=Console(file=StringIO()))
     assert len(calls) == 1

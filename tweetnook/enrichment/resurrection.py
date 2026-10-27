@@ -31,8 +31,8 @@ from tweetnook.core.timeline_parsing import (
     parse_tweet_detail_tweets,
 )
 from tweetnook.core.utils import utc_now
-from tweetnook.jobs import locked_archive_job, resolve_job_context
-from tweetnook.pipeline import current_pipeline
+from tweetnook.jobs.context import locked_archive_job, resolve_job_context
+from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.records import _PageBuffer

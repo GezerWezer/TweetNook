@@ -3,9 +3,9 @@ from __future__ import annotations
 import sqlite3
 from types import SimpleNamespace
 
-from tweetnook import tagging
-from tweetnook.automated_tagging import GeminiModel
 from tweetnook.config import AppConfig, TaggingConfig
+from tweetnook.tagging import tagger as tagging
+from tweetnook.tagging.sdk import GeminiModel
 from tweetnook.web.routes import automated_tagging as routes
 
 

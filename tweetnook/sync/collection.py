@@ -29,14 +29,14 @@ from tweetnook.core.exceptions import (
 )
 from tweetnook.core.locking import ProcessLock
 from tweetnook.core.timeline_parsing import TimelineTweet, parse_timeline_response
-from tweetnook.jobs import (
+from tweetnook.jobs.context import (
     ArchiveWriteTracker,
     best_effort_interrupt_optimize,
     is_interrupt_exception,
 )
-from tweetnook.pipeline import PipelineReporter, current_pipeline
+from tweetnook.jobs.pipeline import PipelineReporter, current_pipeline
+from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
-from tweetnook.resource_failure import raise_if_storage_exhausted
 from tweetnook.storage import ArchiveStore, SyncState, open_archive_store
 
 COLLECTION_TO_OPERATION = {
@@ -689,7 +689,7 @@ async def _run_followup_threads(
     console: Console,
     sleep: Callable[[float], Awaitable[None]],
 ):
-    from tweetnook.threads import expand_threads
+    from tweetnook.enrichment.threads import expand_threads
 
     return await expand_threads(
         limit=None,
@@ -712,7 +712,7 @@ async def _run_followup_articles(
     console: Console,
     sleep: Callable[[float], Awaitable[None]],
 ):
-    from tweetnook.articles import refresh_articles
+    from tweetnook.enrichment.articles import refresh_articles
 
     return await refresh_articles(
         targets=None,
@@ -733,7 +733,7 @@ async def _run_followup_media(
     paths: XDGPaths,
     console: Console,
 ):
-    from tweetnook.media import download_media
+    from tweetnook.enrichment.media import download_media
 
     return await download_media(
         limit=None,
@@ -751,7 +751,7 @@ async def _run_followup_unfurl(
     paths: XDGPaths,
     console: Console,
 ):
-    from tweetnook.unfurl import unfurl_urls
+    from tweetnook.enrichment.unfurl import unfurl_urls
 
     return await unfurl_urls(
         limit=None,
@@ -768,8 +768,8 @@ async def _run_followup_tagging(
     paths: XDGPaths,
     console: Console,
 ):
-    from tweetnook.jobs import locked_archive_job
-    from tweetnook.tagging import tag_pending_media_tweets
+    from tweetnook.jobs.context import locked_archive_job
+    from tweetnook.tagging.tagger import tag_pending_media_tweets
 
     async with locked_archive_job(config=config, paths=paths, console=console) as job:
         result = await tag_pending_media_tweets(
@@ -823,7 +823,7 @@ async def _run_auto_followups(
     if plan.enabled and plan.resurrection and not check_owns_resurrection(config):
         _log_sync_followup(console, "running resurrection checks")
         try:
-            from tweetnook.resurrection import (
+            from tweetnook.enrichment.resurrection import (
                 DEFAULT_RESURRECTION_BUDGET,
                 resurrect_due_tweets,
             )
@@ -961,7 +961,7 @@ async def _run_auto_followups(
             )
 
     if current_pipeline() is None:
-        from tweetnook.reminders import print_pending_archive_enrichment_reminder
+        from tweetnook.jobs.reminders import print_pending_archive_enrichment_reminder
 
         store = open_archive_store(paths, create=False, config=config)
         if store is not None:
@@ -999,7 +999,7 @@ async def _sync_collection_ready(
     try:
         store = open_archive_store(paths, create=True, config=config)
         assert store is not None
-        from tweetnook.reminders import print_archive_migration_report
+        from tweetnook.jobs.reminders import print_archive_migration_report
 
         print_archive_migration_report(console, store)
         try:

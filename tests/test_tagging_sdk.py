@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from tweetnook import tagging
+from tweetnook.tagging import tagger as tagging
 
 
 @pytest.mark.asyncio

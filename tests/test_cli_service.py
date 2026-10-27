@@ -6,7 +6,7 @@ from typer.testing import CliRunner
 
 from tweetnook import cli_service as service
 from tweetnook.cli import app
-from tweetnook.job_supervisor import WORKER_INTERRUPT_TIMEOUT, WORKER_TERMINATE_TIMEOUT
+from tweetnook.jobs.supervisor import WORKER_INTERRUPT_TIMEOUT, WORKER_TERMINATE_TIMEOUT
 
 
 def account():

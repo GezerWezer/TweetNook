@@ -16,10 +16,10 @@ from tests.conftest import (
     make_tweet_detail_response,
     make_tweet_result,
 )
-from tweetnook.articles import normalize_article_target, refresh_articles
 from tweetnook.config import AppConfig, AuthConfig, SyncConfig
 from tweetnook.core.timeline_parsing import TimelineTweet
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.enrichment.articles import normalize_article_target, refresh_articles
+from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.storage import open_archive_store
 
@@ -253,7 +253,7 @@ async def test_refresh_articles_interactive_reports_status(paths, config, auth_b
     progress = MagicMock()
     on_progress = MagicMock()
     progress.return_value.__enter__.return_value = on_progress
-    monkeypatch.setattr("tweetnook.articles.progress_callback", progress)
+    monkeypatch.setattr("tweetnook.enrichment.articles.progress_callback", progress)
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_fixture_payload(), request=request)

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from tweetnook.config import AppConfig, load_config, update_config_values
-from tweetnook.scheduler import ScheduleManager
+from tweetnook.jobs.scheduler import ScheduleManager
 from tweetnook.storage import open_archive_store
 from tweetnook.web.avatar_cache import AvatarCacheManager
 from tweetnook.web.deps import server_state
@@ -126,7 +126,7 @@ def test_post_check_settings_reloads_schedule_without_moving_sync(
     _, paths = _use_temp_config(monkeypatch, tmp_path)
     update_config_values(paths, {"schedule.enabled": True, "check.enabled": True})
     config, _ = load_config(_env(tmp_path))
-    monkeypatch.setattr("tweetnook.scheduler.load_config", lambda: load_config(_env(tmp_path)))
+    monkeypatch.setattr("tweetnook.jobs.scheduler.load_config", lambda: load_config(_env(tmp_path)))
     manager = ScheduleManager(paths, config, SimpleNamespace(config=config))
     client = make_web_client(config_routes.router)
     monkeypatch.setitem(server_state, "schedule_manager", manager)

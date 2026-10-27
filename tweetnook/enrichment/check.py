@@ -41,14 +41,14 @@ from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.extractor import classify_tweet_unavailability
 from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
 from tweetnook.core.utils import utc_now
-from tweetnook.jobs import locked_archive_job, resolve_job_context
-from tweetnook.pipeline import current_pipeline
-from tweetnook.resurrection import (
+from tweetnook.enrichment.resurrection import (
     ResurrectionResult,
     _as_utc_datetime,
     preserve_reason_confidence,
     resurrection_retry_schedule,
 )
+from tweetnook.jobs.context import locked_archive_job, resolve_job_context
+from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.records import _PageBuffer
 
@@ -607,7 +607,7 @@ async def _run_detail_fallback(
 
     from tweetnook.auth import resolve_auth_bundle
     from tweetnook.core.exceptions import AuthExpiredError, AuthResolutionError
-    from tweetnook.resurrection import resurrect_due_tweets
+    from tweetnook.enrichment.resurrection import resurrect_due_tweets
 
     pipeline = current_pipeline()
     try:

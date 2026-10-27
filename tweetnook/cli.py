@@ -19,13 +19,6 @@ from rich.table import Table
 from rich.text import Text
 
 from tweetnook import __version__
-from tweetnook.archive_import import (
-    ArchiveEnrichmentAborted,
-    ArchiveEnrichmentInterrupted,
-    enrich_imported_archive,
-    import_x_archive,
-)
-from tweetnook.articles import refresh_articles
 from tweetnook.auth import resolve_auth_bundle
 from tweetnook.cli_service import service_app, update_managed_installation
 from tweetnook.cli_web import web_app
@@ -34,25 +27,32 @@ from tweetnook.core.collection_names import display_collection_name, normalize_c
 from tweetnook.core.exceptions import ConfigError, ProcessLockError, TweetNookError
 from tweetnook.core.extractor import extract_status_id_from_url
 from tweetnook.core.locking import ProcessLock
+from tweetnook.enrichment.articles import refresh_articles
+from tweetnook.enrichment.media import download_media
+from tweetnook.enrichment.threads import expand_threads
+from tweetnook.enrichment.unfurl import unfurl_urls
 from tweetnook.export import export_json_archive
 from tweetnook.export.common import default_export_path
-from tweetnook.media import download_media
-from tweetnook.pipeline import PipelineReporter, current_pipeline
+from tweetnook.importer.archive import (
+    ArchiveEnrichmentAborted,
+    ArchiveEnrichmentInterrupted,
+    enrich_imported_archive,
+    import_x_archive,
+)
+from tweetnook.jobs.pipeline import PipelineReporter, current_pipeline
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids
 from tweetnook.stats import build_stats_report
 from tweetnook.stats.render_cli import render_stats_report
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.search_query import SearchQueryError, parse_search_query, search_posts
 from tweetnook.storage.search_query import sort_search_results as _sort_search_results
-from tweetnook.sync import (
+from tweetnook.sync.collection import (
     SyncFollowupPlan,
     plan_sync_pipeline,
     run_preflight,
     sync_all,
     sync_collection,
 )
-from tweetnook.threads import expand_threads
-from tweetnook.unfurl import unfurl_urls
 from tweetnook.web.address import display_web_url
 
 app = typer.Typer(no_args_is_help=True)
@@ -450,7 +450,7 @@ def _parse_search_collections(value: str | None, console: Console) -> set[str] |
 
 
 def _open_store_for_read(console: Console):
-    from tweetnook.reminders import print_archive_migration_report
+    from tweetnook.jobs.reminders import print_archive_migration_report
 
     config, paths = load_config()
     store = open_archive_store(paths, create=False, config=config)
@@ -1126,7 +1126,7 @@ def check_command(
         ),
     ] = None,
 ) -> None:
-    from tweetnook.check import run_check
+    from tweetnook.enrichment.check import run_check
 
     console = _configure_logging()
     try:
@@ -1589,8 +1589,8 @@ def tag_archive(
     console = _configure_logging()
     try:
         config, paths = load_config()
-        from tweetnook.jobs import locked_archive_job
-        from tweetnook.tagging import (
+        from tweetnook.jobs.context import locked_archive_job
+        from tweetnook.tagging.tagger import (
             TaggingRunResult,
             tag_media_tweets,
             tag_pending_media_tweets,
@@ -1747,7 +1747,12 @@ def prune_archive(
     with `threads expand` that are not on the save path. Back up archive.db before
     using --apply.
     """
-    from tweetnook.prune import apply_prune, describe_prune_plan, describe_prune_result, plan_prune
+    from tweetnook.enrichment.prune import (
+        apply_prune,
+        describe_prune_plan,
+        describe_prune_result,
+        plan_prune,
+    )
 
     console = _configure_logging()
     config, paths = load_config()
@@ -2042,7 +2047,7 @@ def serve_daemon_internal(
 @app.command()
 def migrate() -> None:
     """Migrate data from older LanceDB storage to native SQLite storage."""
-    from tweetnook.storage.migrate import run_migration
+    from tweetnook.importer.legacy_migration import run_migration
 
     console = _configure_logging()
     try:

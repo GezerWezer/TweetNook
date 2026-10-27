@@ -8,10 +8,10 @@ from io import StringIO
 
 import pytest
 
-from tweetnook.activity_history import read_run_log_since
 from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.job_supervisor import JobSupervisor
-from tweetnook.worker_logging import TimestampedWorkerStream, configure_worker_output
+from tweetnook.jobs.activity_history import read_run_log_since
+from tweetnook.jobs.supervisor import JobSupervisor
+from tweetnook.jobs.worker_logging import TimestampedWorkerStream, configure_worker_output
 
 
 def _messages(output: str) -> list[str]:

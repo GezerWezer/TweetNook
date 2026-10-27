@@ -10,7 +10,7 @@ import pytest
 
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.locking import ProcessLock
-from tweetnook.job_supervisor import JobConflictError, JobSupervisor
+from tweetnook.jobs.supervisor import JobConflictError, JobSupervisor
 
 
 def _paths(tmp_path):
@@ -37,7 +37,7 @@ def test_supervisor_launches_isolated_cli_worker_and_records_exit(tmp_path, monk
         captured.update(command=command, kwargs=kwargs)
         return Process()
 
-    monkeypatch.setattr("tweetnook.job_supervisor.subprocess.Popen", popen)
+    monkeypatch.setattr("tweetnook.jobs.supervisor.subprocess.Popen", popen)
     supervisor = JobSupervisor(paths, AppConfig())
 
     result = supervisor.start(
@@ -79,9 +79,9 @@ def test_supervisor_stops_the_worker_process_group(tmp_path, monkeypatch) -> Non
             finished.wait(2)
             return 130
 
-    monkeypatch.setattr("tweetnook.job_supervisor.subprocess.Popen", lambda *_a, **_k: Process())
+    monkeypatch.setattr("tweetnook.jobs.supervisor.subprocess.Popen", lambda *_a, **_k: Process())
     monkeypatch.setattr(
-        "tweetnook.job_supervisor.os.killpg",
+        "tweetnook.jobs.supervisor.os.killpg",
         lambda pid, sent_signal: signals.append((pid, sent_signal)),
     )
     supervisor = JobSupervisor(paths, AppConfig())
@@ -107,9 +107,9 @@ def test_supervisor_rejects_a_live_external_pipeline(tmp_path, monkeypatch) -> N
         json.dumps({"running": True, "pid": 2468}),
         encoding="utf-8",
     )
-    monkeypatch.setattr("tweetnook.job_supervisor.os.kill", lambda _pid, _signal: None)
+    monkeypatch.setattr("tweetnook.jobs.supervisor.os.kill", lambda _pid, _signal: None)
     monkeypatch.setattr(
-        "tweetnook.job_supervisor.subprocess.Popen",
+        "tweetnook.jobs.supervisor.subprocess.Popen",
         lambda *_args, **_kwargs: pytest.fail("worker should not launch"),
     )
     supervisor = JobSupervisor(paths, AppConfig())
@@ -130,7 +130,7 @@ def test_supervisor_rejects_lifecycle_lock_without_relying_on_snapshot(
     lock = ProcessLock(paths.command_lock_file)
     lock.acquire()
     monkeypatch.setattr(
-        "tweetnook.job_supervisor.subprocess.Popen",
+        "tweetnook.jobs.supervisor.subprocess.Popen",
         lambda *_args, **_kwargs: pytest.fail("worker should not launch"),
     )
     supervisor = JobSupervisor(paths, AppConfig())
@@ -172,8 +172,8 @@ def test_shutdown_escalates_only_after_grace_and_records_stop(tmp_path, monkeypa
         if sig == exit_on:
             finished.set()
 
-    monkeypatch.setattr("tweetnook.job_supervisor.subprocess.Popen", lambda *a, **k: Process())
-    monkeypatch.setattr("tweetnook.job_supervisor.os.killpg", killpg)
+    monkeypatch.setattr("tweetnook.jobs.supervisor.subprocess.Popen", lambda *a, **k: Process())
+    monkeypatch.setattr("tweetnook.jobs.supervisor.os.killpg", killpg)
     supervisor = JobSupervisor(paths, AppConfig(), on_complete=lambda *args: callbacks.append(args))
     result = supervisor.start(kind="import", cli_args=["import"], origin="web", title="Import")
     supervisor.shutdown(timeout=0.01)
@@ -192,7 +192,7 @@ def test_shutdown_escalates_only_after_grace_and_records_stop(tmp_path, monkeypa
 def test_shutdown_does_not_signal_finished_worker(tmp_path, monkeypatch):
     supervisor = JobSupervisor(_paths(tmp_path), AppConfig())
     monkeypatch.setattr(
-        "tweetnook.job_supervisor.os.killpg", lambda *args: pytest.fail("no active worker")
+        "tweetnook.jobs.supervisor.os.killpg", lambda *args: pytest.fail("no active worker")
     )
     supervisor.shutdown()
 
@@ -220,8 +220,8 @@ def test_monitor_always_cleans_up_and_calls_back_when_result_persistence_fails(
     def full(*args, **kwargs):
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr("tweetnook.job_supervisor.mark_run_process_result", full)
-    monkeypatch.setattr("tweetnook.job_supervisor.cleanup_runs", full)
+    monkeypatch.setattr("tweetnook.jobs.supervisor.mark_run_process_result", full)
+    monkeypatch.setattr("tweetnook.jobs.supervisor.cleanup_runs", full)
     supervisor._monitor(process, "test-run")
 
     assert supervisor.active is False
@@ -232,6 +232,6 @@ def test_monitor_always_cleans_up_and_calls_back_when_result_persistence_fails(
     assert supervisor.last_result["snapshot"]["success"] is False
     # Persistence failure must not leave the supervisor refusing the next start.
     monkeypatch.setattr(supervisor, "_external_activity_is_running", lambda: False)
-    monkeypatch.setattr("tweetnook.job_supervisor.reserve_run", full)
+    monkeypatch.setattr("tweetnook.jobs.supervisor.reserve_run", full)
     with pytest.raises(OSError):
         supervisor.start(kind="sync", cli_args=["sync"], origin="web", title="Sync")

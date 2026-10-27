@@ -14,9 +14,9 @@ from tweetnook.config import (
     load_config,
     update_config_values,
 )
+from tweetnook.enrichment.threads import expand_threads, walk_linked_statuses
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.storage import open_archive_store
-from tweetnook.threads import expand_threads, walk_linked_statuses
 
 
 def test_reply_limit_defaults_validation_persistence_and_schema(paths):

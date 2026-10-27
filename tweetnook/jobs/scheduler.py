@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from tweetnook.client.fxtwitter import fx_enabled
 from tweetnook.config import AppConfig, CheckConfig, ScheduleConfig, XDGPaths, load_config
-from tweetnook.job_supervisor import JobConflictError, JobSupervisor
+from tweetnook.jobs.supervisor import JobConflictError, JobSupervisor
 
 CHECK_CONFLICT_RETRY_SECONDS = 15 * 60
 

@@ -19,11 +19,11 @@ from tweetnook.core.exceptions import (
     RepeatedFocalAbsenceError,
 )
 from tweetnook.core.timeline_parsing import TimelineTweet
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.enrichment.resurrection import resurrect_due_tweets
+from tweetnook.enrichment.threads import expand_threads, normalize_thread_target
+from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.query_ids import QueryIdStore
-from tweetnook.resurrection import resurrect_due_tweets
 from tweetnook.storage import ArchiveStore, open_archive_store
-from tweetnook.threads import expand_threads, normalize_thread_target
 
 
 def _seed_thread_archive(paths, *, with_quote: bool = False) -> dict[str, object]:
@@ -981,7 +981,7 @@ async def test_expand_threads_explicit_targets_skip_already_expanded_by_default(
         raise AssertionError(f"should not refetch explicit target without --refresh: {request.url}")
 
     monkeypatch.setattr(
-        "tweetnook.threads.resolve_query_ids",
+        "tweetnook.enrichment.threads.resolve_query_ids",
         lambda *_args, **_kwargs: pytest.fail(
             "TweetDetail metadata should not resolve for an empty thread queue"
         ),

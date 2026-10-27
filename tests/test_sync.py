@@ -14,7 +14,7 @@ import pytest
 from rich.console import Console
 
 import tweetnook.storage.backend as storage_backend
-import tweetnook.sync as sync_module
+import tweetnook.sync.collection as sync_module
 from tests.conftest import (
     make_article_result,
     make_bookmarks_response,
@@ -22,16 +22,16 @@ from tests.conftest import (
     make_tweet_result,
     make_user_tweets_response,
 )
-from tweetnook.activity_history import mark_run_process_result, read_run
 from tweetnook.config import AppConfig
 from tweetnook.core.exceptions import ConfigError, ProcessLockError, TweetNookError
 from tweetnook.core.locking import ProcessLock
 from tweetnook.core.timeline_parsing import TimelineTweet
-from tweetnook.pipeline import PipelineReporter
+from tweetnook.jobs.activity_history import mark_run_process_result, read_run
+from tweetnook.jobs.pipeline import PipelineReporter
+from tweetnook.jobs.resource_failure import StorageExhaustedError
 from tweetnook.query_ids import QueryIdStore
-from tweetnook.resource_failure import StorageExhaustedError
 from tweetnook.storage import open_archive_store
-from tweetnook.sync import (
+from tweetnook.sync.collection import (
     RemotePreflightError,
     SyncFollowupPlan,
     plan_sync_pipeline,
@@ -75,7 +75,7 @@ async def test_sync_skips_only_quote_expansion_when_replay_option_is_enabled(
         calls.append(kwargs)
         return SimpleNamespace(processed=1)
 
-    monkeypatch.setattr("tweetnook.threads.expand_threads", expand)
+    monkeypatch.setattr("tweetnook.enrichment.threads.expand_threads", expand)
     await sync_module._run_followup_threads(
         config=config,
         paths=paths,
@@ -410,7 +410,7 @@ async def test_followup_outcomes_preserve_success_except_fatal_storage(
         raise RuntimeError("Provider unavailable")
 
     if stage == "resurrection":
-        monkeypatch.setattr("tweetnook.resurrection.resurrect_due_tweets", fail)
+        monkeypatch.setattr("tweetnook.enrichment.resurrection.resurrect_due_tweets", fail)
     else:
         monkeypatch.setattr(sync_module, f"_run_followup_{stage}", fail)
     config.tagging.enabled = True
@@ -483,7 +483,7 @@ async def test_run_auto_followups_continues_after_task_failure(
         calls.append("unfurl")
         return SimpleNamespace(processed=1, updated=1, failed=0)
 
-    import tweetnook.resurrection as resurrection_module
+    import tweetnook.enrichment.resurrection as resurrection_module
 
     monkeypatch.setattr(resurrection_module, "resurrect_due_tweets", fail_resurrection)
     monkeypatch.setattr(sync_module, "_run_followup_threads", ok_threads)
@@ -1794,7 +1794,7 @@ async def test_storage_exhaustion_stops_followups_before_link_previews(
     import errno
     import sqlite3
 
-    from tweetnook.resource_failure import StorageExhaustedError
+    from tweetnook.jobs.resource_failure import StorageExhaustedError
 
     calls = []
 

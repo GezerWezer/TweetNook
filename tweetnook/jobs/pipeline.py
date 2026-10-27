@@ -21,7 +21,7 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
-from tweetnook.resource_failure import STORAGE_RECOVERY, is_storage_exhausted
+from tweetnook.jobs.resource_failure import STORAGE_RECOVERY, is_storage_exhausted
 
 TWITTER_BLUE = "#1DA1F2"
 SPINNER_INTERVAL_MS = 80
@@ -320,7 +320,7 @@ class PipelineReporter:
             )
             self._command_lock.acquire()
             try:
-                from tweetnook.activity_history import ActivityRunWriter
+                from tweetnook.jobs.activity_history import ActivityRunWriter
 
                 self._run_writer = ActivityRunWriter(self.state_path, self.title)
                 self._run_writer.start(pid=os.getpid(), started_at=self._started_at_unix)
