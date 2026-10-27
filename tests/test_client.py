@@ -25,18 +25,20 @@ from tweetnook.client.base import (
     is_stale_query_id,
 )
 from tweetnook.client.timelines import (
-    FocalResultKind,
-    _entry_id_targets_tweet,
     build_bookmarks_url,
     build_likes_url,
     build_tweet_detail_url,
     build_user_tweets_url,
     fetch_page,
+)
+from tweetnook.config import SyncConfig
+from tweetnook.core.timeline_parsing import (
+    FocalResultKind,
+    _entry_id_targets_tweet,
     parse_timeline_response,
     parse_tweet_detail_response,
     parse_tweet_detail_tweets,
 )
-from tweetnook.config import SyncConfig
 
 
 def _detail_payload(entries: list[dict[str, object]]) -> dict[str, object]:

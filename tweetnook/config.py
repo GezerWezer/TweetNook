@@ -249,7 +249,7 @@ class TaggingConfig(BaseModel):
 
 
 class ReplayConfig(BaseModel):
-    """Developer replay source for a test install (see ``tweetnook.dev_replay``).
+    """Developer replay source for a test install (see ``tweetnook.core.dev_replay``).
 
     While ``url`` is set, every Twitter/X request this install makes goes to that
     TweetNook replay source instead of Twitter/X, and every other host is blocked.
@@ -559,7 +559,7 @@ def load_config(env: Mapping[str, str] | None = None) -> tuple[AppConfig, XDGPat
         config.tagging = config.tagging.model_copy(update={"api_key": api_key})
     # Every process that talks to Twitter/X loads its config first, so this is where
     # a test install's replay source is switched on (or off) for the whole process.
-    from tweetnook.dev_replay import configure_replay
+    from tweetnook.core.dev_replay import configure_replay
 
     configure_replay(config.replay)
     return config, paths

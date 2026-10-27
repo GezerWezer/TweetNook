@@ -12,7 +12,7 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from tweetnook import fastjson  # noqa: E402
+from tweetnook.core import fastjson  # noqa: E402
 from tweetnook.storage.backend import ArchiveStore  # noqa: E402
 from tweetnook.web.deps import get_store, server_state, verify_credentials  # noqa: E402
 from tweetnook.web.routes.tweets import (  # noqa: E402

@@ -6,10 +6,10 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from tweetnook import fastjson
-from tweetnook.client.timelines import TimelineTweet
-from tweetnook.extractor import link_card_lacks_image, restore_link_card_image
-from tweetnook.utils import utc_now
+from tweetnook.core import fastjson
+from tweetnook.core.extractor import link_card_lacks_image, restore_link_card_image
+from tweetnook.core.timeline_parsing import TimelineTweet
+from tweetnook.core.utils import utc_now
 
 from .common import AVAILABLE_SOURCES, LIVE_SOURCE, SOURCE_RANK, _expr_in, _expr_quote, _folder_key
 from .db import ConnectionMixin

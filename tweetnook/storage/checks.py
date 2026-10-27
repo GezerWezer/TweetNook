@@ -6,7 +6,7 @@ import hashlib
 import json
 from typing import Any
 
-from tweetnook.utils import utc_now
+from tweetnook.core.utils import utc_now
 
 from .common import _and_expr
 from .records import RecordsMixin

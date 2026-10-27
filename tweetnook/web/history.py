@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Any
 
-from tweetnook.client.timelines import FocalResultKind, parse_tweet_detail_response
+from tweetnook.core.timeline_parsing import FocalResultKind, parse_tweet_detail_response
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.web.availability import UNAVAILABLE_MESSAGES
 

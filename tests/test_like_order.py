@@ -8,14 +8,19 @@ import pytest
 from tests.conftest import make_tweet_result
 from tests.test_storage import _tweet
 from tests.test_web_tweets_api import _list_tweets
-from tweetnook import like_order
 from tweetnook.archive_import import _import_likes
-from tweetnook.client.timelines import _iter_entries, parse_timeline_response
-from tweetnook.like_order import _integer, merge_missing, page_observations, repair_archive_blocks
-from tweetnook.search import SearchQueryError, search_posts
+from tweetnook.core.timeline_parsing import _iter_entries, parse_timeline_response
+from tweetnook.storage import like_order
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.common import ARCHIVE_SOURCE, LIVE_SOURCE
+from tweetnook.storage.like_order import (
+    _integer,
+    merge_missing,
+    page_observations,
+    repair_archive_blocks,
+)
 from tweetnook.storage.records import _PageBuffer
+from tweetnook.storage.search_query import SearchQueryError, search_posts
 
 
 @pytest.fixture

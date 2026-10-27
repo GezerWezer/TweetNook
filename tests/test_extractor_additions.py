@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from tests.conftest import make_tweet_result
-from tweetnook.extractor import (
+from tweetnook.core.extractor import (
     classify_tweet_unavailability,
     extract_canonical_text,
     extract_note_tweet_text,

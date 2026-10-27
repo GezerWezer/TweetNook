@@ -7,7 +7,8 @@ from collections.abc import Iterable, Sequence
 
 import httpx
 
-from tweetnook.dev_replay import client_transport
+from tweetnook.core.dev_replay import client_transport
+from tweetnook.core.exceptions import QueryIdRefreshError
 from tweetnook.query_ids.constants import (
     BUNDLE_URL_PATTERN,
     CLIENT_WEB_BUNDLE_URL,
@@ -117,3 +118,26 @@ async def refresh_query_ids(
     merged = {**FALLBACK_QUERY_IDS, **discovered}
     store.save(merged)
     return {operation: merged[operation] for operation in operation_list if operation in merged}
+
+
+async def resolve_query_ids(
+    store: QueryIdStore,
+    operations: Sequence[str],
+    *,
+    force_refresh: bool,
+    transport: httpx.AsyncBaseTransport | None,
+) -> dict[str, str]:
+    ids = {operation: store.get(operation) for operation in operations}
+    if force_refresh or any(value is None for value in ids.values()):
+        client = httpx.AsyncClient(
+            follow_redirects=True, timeout=20.0, transport=client_transport(transport)
+        )
+        try:
+            await refresh_query_ids(store, operations=operations, client=client)
+        finally:
+            await client.aclose()
+        ids = {operation: store.get(operation) for operation in operations}
+    missing = [operation for operation, value in ids.items() if value is None]
+    if missing:
+        raise QueryIdRefreshError(f"Missing query IDs for operations: {', '.join(missing)}")
+    return {operation: value for operation, value in ids.items() if value is not None}

@@ -17,8 +17,8 @@ from tests.conftest import (
     make_tweet_result,
 )
 from tweetnook.articles import normalize_article_target, refresh_articles
-from tweetnook.client.timelines import TimelineTweet
 from tweetnook.config import AppConfig, AuthConfig, SyncConfig
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.pipeline import PipelineReporter
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.storage import open_archive_store

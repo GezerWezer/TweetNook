@@ -9,8 +9,8 @@ import time
 import pytest
 
 from tweetnook.config import AppConfig, XDGPaths
+from tweetnook.core.locking import ProcessLock
 from tweetnook.job_supervisor import JobConflictError, JobSupervisor
-from tweetnook.locking import ProcessLock
 
 
 def _paths(tmp_path):

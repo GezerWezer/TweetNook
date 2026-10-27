@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from tweetnook.client.timelines import TimelineTweet
-from tweetnook.extractor import (
+from tweetnook.core.extractor import (
     extract_note_tweet_text,
     extract_secondary_objects,
     extract_thread_objects,
 )
-from tweetnook.utils import utc_now
+from tweetnook.core.timeline_parsing import TimelineTweet
+from tweetnook.core.utils import utc_now
 
 from .common import FX_SOURCE, LIVE_SOURCE, SOURCE_RANK, _parse_created_at
 from .records import _PageBuffer

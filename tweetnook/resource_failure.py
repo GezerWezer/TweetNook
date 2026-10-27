@@ -5,7 +5,7 @@ from __future__ import annotations
 import errno
 import sqlite3
 
-from tweetnook.exceptions import TweetNookError
+from tweetnook.core.exceptions import TweetNookError
 
 STORAGE_RECOVERY = (
     "Storage is full. Free or add disk space, then run Sync now to resume. "

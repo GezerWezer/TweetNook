@@ -31,12 +31,12 @@ from tweetnook.config import (
     resolve_paths,
     update_config_values,
 )
-from tweetnook.dev_replay import (
+from tweetnook.core.dev_replay import (
     REPLAY_STATUS_PATH,
     dev_tools_enabled,
     normalize_replay_url,
 )
-from tweetnook.exceptions import ProcessLockError
+from tweetnook.core.exceptions import ProcessLockError
 from tweetnook.job_supervisor import JobConflictError
 from tweetnook.web.deps import remember_web_session, server_state, verify_credentials
 from tweetnook.web.routes.activity import _read_active_snapshot

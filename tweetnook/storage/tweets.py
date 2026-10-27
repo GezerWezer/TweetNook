@@ -6,9 +6,9 @@ import json
 import uuid
 from typing import Any
 
-from tweetnook.client.timelines import TimelineTweet
-from tweetnook.extractor import extract_note_tweet_text
-from tweetnook.utils import utc_now
+from tweetnook.core.extractor import extract_note_tweet_text
+from tweetnook.core.timeline_parsing import TimelineTweet
+from tweetnook.core.utils import utc_now
 
 from .common import LIVE_SOURCE, _folder_key, _parse_created_at
 from .objects import ObjectsMixin

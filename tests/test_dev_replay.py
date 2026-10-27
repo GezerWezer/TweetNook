@@ -3,10 +3,10 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from tweetnook import dev_replay
 from tweetnook.client.base import build_async_client
 from tweetnook.config import ReplayConfig, load_config, update_config_values
-from tweetnook.dev_replay import (
+from tweetnook.core import dev_replay
+from tweetnook.core.dev_replay import (
     FAILURE_HEADER,
     MEDIA_HEADER,
     ReplayBlockedError,
@@ -263,8 +263,7 @@ def test_web_avatar_fetch_goes_to_the_replay_source(monkeypatch) -> None:
 async def test_query_id_discovery_uses_the_replay_source_and_blocks_others(
     monkeypatch, tmp_path
 ) -> None:
-    from tweetnook.query_ids import QueryIdStore
-    from tweetnook.utils import resolve_query_ids
+    from tweetnook.query_ids import QueryIdStore, resolve_query_ids
 
     sent = _route_network(monkeypatch)
     env = {

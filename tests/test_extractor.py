@@ -8,7 +8,7 @@ from tests.conftest import (
     make_url_entity,
     make_video_media,
 )
-from tweetnook.extractor import (
+from tweetnook.core.extractor import (
     ArticleData,
     ExtractedTweetGraph,
     MediaData,

@@ -12,8 +12,8 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 import tweetnook.cli as cli
-from tweetnook.client.timelines import TimelineTweet
 from tweetnook.config import AppConfig, AuthConfig
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.storage import open_archive_store
 
 runner = CliRunner()

@@ -150,7 +150,7 @@ def test_article_preview_without_media_or_rich_state_remains_a_preview(tmp_path)
 
 
 def test_real_article_fixture_preserves_rich_body_and_inline_media(tmp_path):
-    from tweetnook.client.timelines import parse_tweet_detail_response
+    from tweetnook.core.timeline_parsing import parse_tweet_detail_response
 
     payload = json.loads(
         (Path(__file__).parents[1] / "fixtures/dimitris_article_tweet_detail.json").read_text()

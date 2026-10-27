@@ -20,7 +20,7 @@ Repeated responses that omit the requested focal post stop expansion. Related po
 
 `media.py` selects pending files, resolves image/video variants, downloads into managed paths, and records hashes, sizes, content types, local paths and failures. Photos-only mode excludes videos and animated GIFs. Retry-failed mode includes previous failures rather than just untouched work.
 
-`media_metadata.py` reconciles dimensions/aspect ratios used by the browser. A downloaded file, thumbnail, poster, and remote URL are different candidates; preserve their identities and provenance. Support quoted media and Article assets as well as the focal tweet.
+`core/media_metadata.py` reconciles dimensions/aspect ratios used by the browser. A downloaded file, thumbnail, poster, and remote URL are different candidates; preserve their identities and provenance. Support quoted media and Article assets as well as the focal tweet.
 
 Storage exhaustion is a job-level failure. Don't report a failed write as a successful download or leave a row claiming a partial file is complete. The [testing guide](testing.md) covers fixtures and file-boundary checks.
 

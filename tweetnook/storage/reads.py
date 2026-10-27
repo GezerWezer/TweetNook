@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from tweetnook import fastjson
-from tweetnook.media_metadata import aspect_ratio_for_media
+from tweetnook.core import fastjson
+from tweetnook.core.media_metadata import aspect_ratio_for_media
 
 from .common import (
     HIDDEN_TWEET_IDS_SQL,
@@ -107,7 +107,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
 
     def get_like_order(self):
         """Return the derived order independently of tweet content/source updates."""
-        from tweetnook.like_order import load_like_order
+        from tweetnook.storage.like_order import load_like_order
 
         with self._like_order_lock:
             return load_like_order(self)

@@ -6,14 +6,14 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from tweetnook.client.timelines import parse_tweet_detail_tweets
-from tweetnook.extractor import (
+from tweetnook.core.extractor import (
     extract_author_fields,
     extract_canonical_text,
     extract_note_tweet_text,
     extract_secondary_objects,
     extract_thread_objects,
 )
+from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
 
 from .common import FX_SOURCE, LIVE_SOURCE
 from .objects import ObjectsMixin
@@ -153,7 +153,7 @@ class ImportsMixin(ObjectsMixin):
             )
             if len(buffer.records) >= batch_size:
                 result.secondary_records += self._flush_rehydrate_buffer(buffer)
-        from tweetnook.client.fxtwitter import fx_status_to_graphql
+        from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql
 
         fx_rows = self._query(
             expr="record_type = 'raw_capture' AND operation = 'FxTwitterStatus'",

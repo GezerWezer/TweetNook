@@ -17,7 +17,7 @@ import tweetnook.cli as cli
 import tweetnook.jobs as jobs
 import tweetnook.tagging as tagging
 from tweetnook.config import AppConfig, TaggingConfig
-from tweetnook.exceptions import ConfigError, TweetNookError
+from tweetnook.core.exceptions import ConfigError, TweetNookError
 
 runner = CliRunner()
 

@@ -25,7 +25,7 @@ node tests/js/test_web_assets.cjs         # browser-asset harnesses; see tests/j
 `docs/development/module-reference.md` maps operations to modules, and
 `docs/development/architecture.md` explains the data flow. In short:
 
-- `tweetnook/client/`, `extractor.py` - X requests and response parsing.
+- `tweetnook/client/`, `core/extractor.py` - X requests and response parsing.
 - `tweetnook/storage/` - the SQLite archive (`ArchiveStore`) and the LanceDB migration.
 - `sync.py`, `pipeline.py`, `archive_import.py` - collection runs and official-export import.
 - `tweetnook/web/` - FastAPI app; `routes/` are thin handlers over the same archive operations

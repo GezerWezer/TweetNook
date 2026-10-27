@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from typing import Any, ClassVar
 
-from tweetnook.exceptions import ProcessLockError
+from tweetnook.core.exceptions import ProcessLockError
 
 
 class ProcessLock:

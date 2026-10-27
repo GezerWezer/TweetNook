@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tweetnook.extractor import PLACEHOLDER_TEXT_MARKER, PLACEHOLDER_TEXT_PREFIXES
+from tweetnook.core.extractor import PLACEHOLDER_TEXT_MARKER, PLACEHOLDER_TEXT_PREFIXES
 
 from .common import _parse_created_at
 from .db import ConnectionMixin

@@ -309,7 +309,7 @@ class PipelineReporter:
         self._started_at = time.monotonic()
         self._started_at_unix = time.time()
         if self.state_path is not None:
-            from tweetnook.locking import ProcessLock
+            from tweetnook.core.locking import ProcessLock
 
             self._command_lock = ProcessLock(
                 self.state_path.with_name("command.lock"),

@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from tweetnook.extractor import extract_status_id_from_url
-from tweetnook.utils import utc_now
+from tweetnook.core.extractor import extract_status_id_from_url
+from tweetnook.core.utils import utc_now
 
 from .common import SEARCH_COLLECTION_ORDER, _parse_created_at
 from .relations import RelationsMixin

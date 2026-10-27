@@ -123,7 +123,7 @@ def open_archive_store(
         return None
     migration_lock = None
     if paths.database_path.exists() and _database_requires_schema_migration(paths.database_path):
-        from tweetnook.sync import ProcessLock
+        from tweetnook.core.locking import ProcessLock
 
         migration_lock = ProcessLock(paths.lock_file)
         migration_lock.acquire(reentrant=True)

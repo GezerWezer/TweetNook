@@ -37,7 +37,7 @@ SIZE_EXCLUDED = (
     "tweetnook/web/static/css/tailwind.css",
 )
 
-CORE = {"exceptions", "extractor", "fastjson", "utils", "config"}
+CORE = {"core", "exceptions", "extractor", "fastjson", "utils", "config"}
 STORAGE = {"storage"}
 INTERFACE = {"__main__", "cli", "cli_service", "cli_web", "web"}
 LAYERS = {"core": 0, "storage": 1, "feature": 2, "interface": 3}

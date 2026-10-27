@@ -14,9 +14,10 @@ import tweetnook.archive_import as archive_import
 from tests.conftest import make_tweet_detail_response, make_tweet_result, request_details
 from tweetnook.auth import ResolvedAuthBundle
 from tweetnook.client import fxtwitter
-from tweetnook.client.timelines import TimelineTweet
 from tweetnook.config import AppConfig, CheckConfig, ScheduleConfig, XDGPaths
-from tweetnook.extractor import extract_secondary_objects
+from tweetnook.core.extractor import extract_secondary_objects
+from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.job_supervisor import JobConflictError
 from tweetnook.scheduler import CHECK_CONFLICT_RETRY_SECONDS, ScheduleManager
 from tweetnook.storage import open_archive_store
@@ -210,7 +211,7 @@ def test_rebuilt_status_feeds_the_extractor_like_graphql() -> None:
         ],
     )
 
-    result = fxtwitter.fx_status_to_graphql(status)
+    result = fx_status_to_graphql(status)
     graph = extract_secondary_objects(result)
 
     tweet = graph.tweet_objects["10"]
@@ -283,9 +284,7 @@ def test_fx_placeholder_never_replaces_live_data_but_replaces_archive_rows(paths
 
     for tweet_id in ("1", "2"):
         store.persist_fx_status(
-            tweet=fxtwitter.fx_timeline_tweet(
-                fxtwitter.fx_status_to_graphql(fx_status(tweet_id, "fx text"))
-            ),
+            tweet=fx_timeline_tweet(fx_status_to_graphql(fx_status(tweet_id, "fx text"))),
             payload={"code": 200, "status": fx_status(tweet_id, "fx text")},
         )
 

@@ -5,14 +5,14 @@ from typing import Any
 
 import pytest
 
-from tweetnook.search import (
+from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.search_query import (
     SearchQueryError,
     _parse_twitter_date,
     count_posts,
     parse_search_query,
     search_posts,
 )
-from tweetnook.storage.backend import ArchiveStore
 
 
 def _row(

@@ -141,7 +141,7 @@ class SetupCoordinator:
                 raise
 
     def create_empty_archive(self):
-        from tweetnook.locking import ProcessLock
+        from tweetnook.core.locking import ProcessLock
 
         with self.lock:
             probe = ProcessLock(self.paths.command_lock_file)

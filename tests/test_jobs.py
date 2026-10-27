@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 import tweetnook.jobs as jobs
-from tweetnook.exceptions import ConfigError
+from tweetnook.core.exceptions import ConfigError
 
 
 class _FakeStore:
@@ -79,7 +79,7 @@ async def test_locked_archive_job_loads_context_and_errors_when_archive_missing(
 async def test_full_database_aborts_job_and_releases_store_and_lock(paths, config, monkeypatch):
     import sqlite3
 
-    from tweetnook.locking import ProcessLock
+    from tweetnook.core.locking import ProcessLock
     from tweetnook.resource_failure import StorageExhaustedError
 
     store = _FakeStore()

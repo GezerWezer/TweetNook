@@ -15,7 +15,7 @@ from .common import (
 )
 
 if TYPE_CHECKING:
-    from tweetnook.search import ParsedSearchQuery
+    from tweetnook.storage.search_query import ParsedSearchQuery
 from .reads import ReadsMixin
 from .tags import TagsMixin
 
@@ -302,7 +302,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
         sort: str = "relevance",
     ) -> list[dict[str, Any]]:
         """Full-text search over exposed types, filtering and sorting before the limit."""
-        from tweetnook.search import (
+        from tweetnook.storage.search_query import (
             SearchQueryError,
             parse_search_query,
             search_posts,

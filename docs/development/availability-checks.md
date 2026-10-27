@@ -4,7 +4,7 @@
 
 ## Public lookups
 
-`client/fxtwitter.py` builds a cookie-free HTTP client against `fxtwitter.base_url`. It normalizes successful responses into the common graph shape, including nested quotes and Community Note information. Preserve the FxTwitter payload as source evidence and assign it the FxTwitter source rank.
+`client/fxtwitter.py` builds a cookie-free HTTP client against `fxtwitter.base_url`, and `core/fxtwitter_payloads.py` normalizes successful responses into the common graph shape, including nested quotes and Community Note information. Preserve the FxTwitter payload as source evidence and assign it the FxTwitter source rank.
 
 An authenticated X capture outranks FxTwitter; FxTwitter can fill an archive placeholder. Availability observations and richer canonical content are separate, so a successful public check needn't replace an already complete X body. Disabling FxTwitter disables `check`; authenticated restoration can then remain part of sync.
 

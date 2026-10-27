@@ -15,7 +15,7 @@ from tests.conftest import make_tweet_result
 from tests.test_fxtwitter import fx_status, fx_transport, ok
 from tweetnook import cli
 from tweetnook.check import FX_NOT_FOUND_DETAIL, MAX_CONSECUTIVE_ERRORS, run_check
-from tweetnook.client.timelines import TimelineTweet
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.common import FX_SOURCE, LIVE_SOURCE
@@ -175,7 +175,7 @@ def test_check_skips_planned_login_step_when_login_is_unavailable(
 ) -> None:
     import tweetnook.auth as auth
     import tweetnook.resurrection as resurrection
-    from tweetnook.exceptions import AuthExpiredError, AuthResolutionError
+    from tweetnook.core.exceptions import AuthExpiredError, AuthResolutionError
 
     def missing_login(_config):
         raise AuthResolutionError("No login configured")
@@ -600,7 +600,7 @@ def test_first_check_compares_with_the_note_saved_with_the_tweet(config, paths) 
 
 
 def test_rehydrate_keeps_availability_set_after_an_fxtwitter_copy(paths) -> None:
-    from tweetnook.client.fxtwitter import fx_status_to_graphql, fx_timeline_tweet
+    from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
 
     store = open_archive_store(paths, create=True)
     assert store is not None

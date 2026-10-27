@@ -12,19 +12,15 @@ from rich.console import Console
 
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
 from tweetnook.client.base import AdaptiveRequestPacer, build_async_client
-from tweetnook.client.timelines import (
-    build_tweet_detail_url,
-    fetch_page,
-    parse_tweet_detail_response,
-)
+from tweetnook.client.timelines import build_tweet_detail_url, fetch_page
 from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.exceptions import ConfigError
+from tweetnook.core.exceptions import ConfigError
+from tweetnook.core.timeline_parsing import parse_tweet_detail_response
 from tweetnook.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs import locked_archive_job, resolve_job_context
 from tweetnook.pipeline import current_pipeline
-from tweetnook.query_ids import QueryIdStore, refresh_query_ids
+from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 from tweetnook.resource_failure import raise_if_storage_exhausted
-from tweetnook.utils import resolve_query_ids
 
 _STATUS_URL_RE = re.compile(r"/status/(\d+)")
 

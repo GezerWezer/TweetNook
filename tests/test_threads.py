@@ -13,12 +13,12 @@ from tests.conftest import (
     make_tweet_result,
     make_url_entity,
 )
-from tweetnook.client.timelines import TimelineTweet
-from tweetnook.exceptions import (
+from tweetnook.core.exceptions import (
     AuthExpiredError,
     RateLimitExhaustedError,
     RepeatedFocalAbsenceError,
 )
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.pipeline import PipelineReporter
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.resurrection import resurrect_due_tweets

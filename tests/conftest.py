@@ -466,7 +466,7 @@ def request_details(url: str) -> tuple[str, dict[str, object]]:
 @pytest.fixture(autouse=True)
 def _no_replay_source():
     """Keep developer replay mode from leaking between tests."""
-    from tweetnook.dev_replay import configure_replay
+    from tweetnook.core.dev_replay import configure_replay
 
     configure_replay(None)
     yield

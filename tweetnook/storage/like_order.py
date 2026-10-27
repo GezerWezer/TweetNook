@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import Any, TypeVar
 
-from tweetnook import fastjson
-from tweetnook.client.timelines import _extract_tweet_results_from_content
+from tweetnook.core import fastjson
+from tweetnook.core.timeline_parsing import _extract_tweet_results_from_content
 
 LIKE_SORTS = frozenset({"liked_latest", "liked_earliest"})
 T = TypeVar("T")

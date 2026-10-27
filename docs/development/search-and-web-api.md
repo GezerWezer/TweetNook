@@ -1,6 +1,6 @@
 # Search and API
 
-`search.py` is shared by CLI search and web feeds. Routes handle HTTP validation/authentication and presentation; query parsing and result semantics belong in the shared search layer.
+`storage/search_query.py` is shared by CLI search and web feeds. Routes handle HTTP validation/authentication and presentation; query parsing and result semantics belong in the shared search layer.
 
 ## Query syntax
 

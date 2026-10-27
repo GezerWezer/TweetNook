@@ -14,7 +14,7 @@ from tests.conftest import (
     make_url_entity,
     make_video_media,
 )
-from tweetnook.client.timelines import TimelineTweet
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import ArchiveStore

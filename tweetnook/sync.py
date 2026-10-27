@@ -14,32 +14,30 @@ from rich.console import Console
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
 from tweetnook.client.base import build_async_client
 from tweetnook.client.timelines import (
-    TimelineTweet,
     build_bookmarks_url,
     build_likes_url,
     build_user_tweets_url,
     fetch_page,
-    parse_timeline_response,
 )
 from tweetnook.config import AppConfig, XDGPaths, ensure_paths, load_config
-from tweetnook.exceptions import (
+from tweetnook.core.exceptions import (
     APIResponseError,
     ArchiveOwnerMismatchError,
     AuthResolutionError,
     ConfigError,
     TweetNookError,
 )
+from tweetnook.core.locking import ProcessLock
+from tweetnook.core.timeline_parsing import TimelineTweet, parse_timeline_response
 from tweetnook.jobs import (
     ArchiveWriteTracker,
     best_effort_interrupt_optimize,
     is_interrupt_exception,
 )
-from tweetnook.locking import ProcessLock
 from tweetnook.pipeline import PipelineReporter, current_pipeline
-from tweetnook.query_ids import QueryIdStore, refresh_query_ids
+from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 from tweetnook.resource_failure import raise_if_storage_exhausted
 from tweetnook.storage import ArchiveStore, SyncState, open_archive_store
-from tweetnook.utils import resolve_query_ids
 
 COLLECTION_TO_OPERATION = {
     "bookmarks": "Bookmarks",

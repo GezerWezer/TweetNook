@@ -13,8 +13,8 @@ import httpx
 
 from tweetnook.auth import ResolvedAuthBundle
 from tweetnook.config import DEFAULT_USER_AGENT, PUBLIC_BEARER_TOKEN, SyncConfig
-from tweetnook.dev_replay import client_transport
-from tweetnook.exceptions import (
+from tweetnook.core.dev_replay import client_transport
+from tweetnook.core.exceptions import (
     APIResponseError,
     AuthExpiredError,
     FeatureFlagDriftError,

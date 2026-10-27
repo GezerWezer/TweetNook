@@ -4,7 +4,7 @@ import pytest
 
 from tweetnook.auth import resolve_auth_bundle
 from tweetnook.config import AppConfig, AuthConfig
-from tweetnook.exceptions import AuthResolutionError
+from tweetnook.core.exceptions import AuthResolutionError
 
 
 def test_resolve_auth_bundle_prefers_environment_over_config() -> None:

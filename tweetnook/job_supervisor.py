@@ -23,8 +23,8 @@ from tweetnook.activity_history import (
     update_run_metadata,
 )
 from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.exceptions import ProcessLockError
-from tweetnook.locking import ProcessLock
+from tweetnook.core.exceptions import ProcessLockError
+from tweetnook.core.locking import ProcessLock
 
 WORKER_INTERRUPT_TIMEOUT = 45
 WORKER_TERMINATE_TIMEOUT = 10

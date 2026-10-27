@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import make_article_result, make_tweet_detail_response, make_tweet_result
-from tweetnook.client.timelines import parse_tweet_detail_tweets
+from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
 from tweetnook.storage import ArchiveStore
 
 ROOT = Path(__file__).resolve().parents[1]

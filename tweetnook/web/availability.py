@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from tweetnook import fastjson
-from tweetnook.extractor import (
+from tweetnook.core import fastjson
+from tweetnook.core.extractor import (
     classify_tweet_unavailability,
     extract_author_fields,
     extract_canonical_text,
@@ -15,7 +15,7 @@ from tweetnook.extractor import (
     is_placeholder_text,
     unwrap_tweet_result,
 )
-from tweetnook.media_metadata import aspect_ratio_for_media
+from tweetnook.core.media_metadata import aspect_ratio_for_media
 
 UNAVAILABLE_MESSAGES = {
     "protected_account": "This tweet is from a protected account.",
@@ -420,7 +420,7 @@ def _overlay_community_notes(store: Any, tweets: list[dict[str, Any]]) -> None:
     ids = list(by_id)
     if not ids:
         return
-    from tweetnook.client.fxtwitter import community_note_pivot
+    from tweetnook.core.fxtwitter_payloads import community_note_pivot
 
     for start in range(0, len(ids), 500):
         chunk = ids[start : start + 500]

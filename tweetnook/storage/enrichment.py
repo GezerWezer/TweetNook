@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from tweetnook import fastjson
-from tweetnook.extractor import (
+from tweetnook.core import fastjson
+from tweetnook.core.extractor import (
     extract_secondary_objects,
     link_card_has_image,
     link_card_lacks_image,
     restore_link_card_image,
 )
-from tweetnook.utils import utc_now
+from tweetnook.core.utils import utc_now
 
 from .checks import ChecksMixin
 from .common import _and_expr, _expr_in, _expr_quote, _state_filter_expr

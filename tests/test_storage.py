@@ -16,8 +16,8 @@ from tests.conftest import (
     make_url_entity,
     make_video_media,
 )
-from tweetnook.client.timelines import TimelineTweet
-from tweetnook.exceptions import ArchiveOwnerMismatchError
+from tweetnook.core.exceptions import ArchiveOwnerMismatchError
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.records import _PageBuffer
 

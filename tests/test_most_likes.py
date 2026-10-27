@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from tests.test_web_tweets_api import _api_client
-from tweetnook.search import search_posts
 from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.search_query import search_posts
 
 
 def test_most_likes_browser_and_demo_suite():

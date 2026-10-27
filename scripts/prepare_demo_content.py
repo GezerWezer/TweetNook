@@ -15,11 +15,11 @@ from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
 
-from tweetnook.client.timelines import parse_tweet_detail_response
 from tweetnook.config import XDGPaths, ensure_paths, load_config
-from tweetnook.extractor import extract_status_id_from_url
+from tweetnook.core.extractor import extract_status_id_from_url
+from tweetnook.core.media_metadata import raw_tweet_media
+from tweetnook.core.timeline_parsing import parse_tweet_detail_response
 from tweetnook.media import download_media
-from tweetnook.media_metadata import raw_tweet_media
 from tweetnook.storage import open_archive_store
 from tweetnook.threads import expand_threads, normalize_thread_target
 from tweetnook.web import deps

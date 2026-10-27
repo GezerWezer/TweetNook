@@ -6,7 +6,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from tweetnook.export.common import normalize_collection_name
+from tweetnook.core.collection_names import normalize_collection_name
 from tweetnook.storage import ArchiveStore
 
 

@@ -15,9 +15,9 @@ from tweetnook.automated_tagging import (
     model_is_compatible,
 )
 from tweetnook.config import TaggingConfig
-from tweetnook.extractor import extract_status_id_from_url
+from tweetnook.core.extractor import extract_status_id_from_url
 from tweetnook.gemini_accounting import AIUsageLedger
-from tweetnook.search import SearchQueryError, search_posts
+from tweetnook.storage.search_query import SearchQueryError, search_posts
 from tweetnook.web.deps import require_store, verify_credentials
 from tweetnook.web.runtime_config import reload_server_config
 

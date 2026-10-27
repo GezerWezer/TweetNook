@@ -36,15 +36,11 @@ import httpx
 from rich.console import Console
 
 from tweetnook.client import fxtwitter
-from tweetnook.client.fxtwitter import (
-    FxLookup,
-    fx_enabled,
-    fx_status_to_graphql,
-    fx_timeline_tweet,
-    iter_fx_statuses,
-)
+from tweetnook.client.fxtwitter import FxLookup, fx_enabled, iter_fx_statuses
 from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.extractor import classify_tweet_unavailability
+from tweetnook.core.extractor import classify_tweet_unavailability
+from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
+from tweetnook.core.utils import utc_now
 from tweetnook.jobs import locked_archive_job, resolve_job_context
 from tweetnook.pipeline import current_pipeline
 from tweetnook.resurrection import (
@@ -55,7 +51,6 @@ from tweetnook.resurrection import (
 )
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.records import _PageBuffer
-from tweetnook.utils import utc_now
 
 CHECK_CHUNK_SIZE = 100
 # Progress is published as each lookup returns, at most this often (the Web activity
@@ -611,7 +606,7 @@ async def _run_detail_fallback(
     """Check what FxTwitter couldn't settle (protected accounts, bare 404s) with the login."""
 
     from tweetnook.auth import resolve_auth_bundle
-    from tweetnook.exceptions import AuthExpiredError, AuthResolutionError
+    from tweetnook.core.exceptions import AuthExpiredError, AuthResolutionError
     from tweetnook.resurrection import resurrect_due_tweets
 
     pipeline = current_pipeline()

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from tweetnook.client.timelines import TimelineTweet
-from tweetnook.extractor import ExtractedTweetGraph, extract_secondary_objects
+from tweetnook.core.extractor import ExtractedTweetGraph, extract_secondary_objects
+from tweetnook.core.timeline_parsing import TimelineTweet
 
 from .common import AVAILABLE_SOURCES, LIVE_SOURCE, _parse_created_at
 from .records import RecordsMixin, _PageBuffer

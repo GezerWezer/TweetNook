@@ -16,15 +16,15 @@ import tweetnook.archive_import as archive_import
 from tests.conftest import make_tweet_detail_response, make_tweet_result, request_details
 from tweetnook.archive_import import enrich_imported_archive, import_x_archive
 from tweetnook.auth import ResolvedAuthBundle
-from tweetnook.client.timelines import TimelineTweet
 from tweetnook.config import AppConfig
-from tweetnook.exceptions import (
+from tweetnook.core.exceptions import (
     APIResponseError,
     ArchiveOwnerMismatchError,
     ConfigError,
     RepeatedFocalAbsenceError,
     StaleQueryIdError,
 )
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
 

@@ -9,8 +9,8 @@ from typer.testing import CliRunner
 
 import tweetnook.cli as cli
 from tests.conftest import make_photo_media, make_tweet_result, make_url_entity
-from tweetnook.client.timelines import TimelineTweet
 from tweetnook.config import AppConfig
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.prune import apply_prune, plan_prune
 from tweetnook.storage import ArchiveStore, open_archive_store
 

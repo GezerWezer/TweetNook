@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from rich.console import Console
 
 from tweetnook.config import AppConfig, XDGPaths, ensure_paths, load_config
-from tweetnook.exceptions import ConfigError
+from tweetnook.core.exceptions import ConfigError
 from tweetnook.resource_failure import raise_if_storage_exhausted
 from tweetnook.storage import ArchiveStore, open_archive_store
 
@@ -116,7 +116,7 @@ async def locked_archive_job(
     paths: XDGPaths | None = None,
     console: Console | None = None,
 ) -> AsyncIterator[LockedArchiveJob]:
-    from tweetnook.sync import ProcessLock
+    from tweetnook.core.locking import ProcessLock
 
     config, paths = resolve_job_context(config=config, paths=paths)
     lock = ProcessLock(paths.lock_file)

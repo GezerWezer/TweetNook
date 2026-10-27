@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, Response
 
 from tweetnook.config import XDGPaths
-from tweetnook.dev_replay import client_transport
+from tweetnook.core.dev_replay import client_transport
 from tweetnook.web.avatar_cache import mark_avatar_accessed
 from tweetnook.web.deps import get_server_state, require_store, verify_credentials
 

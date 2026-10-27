@@ -30,24 +30,21 @@ from tweetnook.auth import resolve_auth_bundle
 from tweetnook.cli_service import service_app, update_managed_installation
 from tweetnook.cli_web import web_app
 from tweetnook.config import ensure_paths, load_config
-from tweetnook.exceptions import ConfigError, ProcessLockError, TweetNookError
+from tweetnook.core.collection_names import display_collection_name, normalize_collection_name
+from tweetnook.core.exceptions import ConfigError, ProcessLockError, TweetNookError
+from tweetnook.core.extractor import extract_status_id_from_url
+from tweetnook.core.locking import ProcessLock
 from tweetnook.export import export_json_archive
-from tweetnook.export.common import (
-    default_export_path,
-    display_collection_name,
-    normalize_collection_name,
-)
-from tweetnook.extractor import extract_status_id_from_url
+from tweetnook.export.common import default_export_path
 from tweetnook.media import download_media
 from tweetnook.pipeline import PipelineReporter, current_pipeline
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids
-from tweetnook.search import SearchQueryError, parse_search_query, search_posts
-from tweetnook.search import sort_search_results as _sort_search_results
 from tweetnook.stats import build_stats_report
 from tweetnook.stats.render_cli import render_stats_report
 from tweetnook.storage import open_archive_store
+from tweetnook.storage.search_query import SearchQueryError, parse_search_query, search_posts
+from tweetnook.storage.search_query import sort_search_results as _sort_search_results
 from tweetnook.sync import (
-    ProcessLock,
     SyncFollowupPlan,
     plan_sync_pipeline,
     run_preflight,
@@ -2027,7 +2024,7 @@ def serve_daemon_internal(
 ) -> None:
     """Internal command used by 'web start' to run the server process."""
     if dev_tools:
-        from tweetnook.dev_replay import DEV_TOOLS_ENV
+        from tweetnook.core.dev_replay import DEV_TOOLS_ENV
 
         os.environ[DEV_TOOLS_ENV] = "1"
     try:

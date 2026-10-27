@@ -23,15 +23,15 @@ from tests.conftest import (
     make_user_tweets_response,
 )
 from tweetnook.activity_history import mark_run_process_result, read_run
-from tweetnook.client.timelines import TimelineTweet
 from tweetnook.config import AppConfig
-from tweetnook.exceptions import ConfigError, ProcessLockError, TweetNookError
+from tweetnook.core.exceptions import ConfigError, ProcessLockError, TweetNookError
+from tweetnook.core.locking import ProcessLock
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.pipeline import PipelineReporter
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.resource_failure import StorageExhaustedError
 from tweetnook.storage import open_archive_store
 from tweetnook.sync import (
-    ProcessLock,
     RemotePreflightError,
     SyncFollowupPlan,
     plan_sync_pipeline,

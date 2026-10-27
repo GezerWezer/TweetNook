@@ -14,12 +14,12 @@ import httpx
 from rich.console import Console
 
 from tweetnook.config import DEFAULT_USER_AGENT, AppConfig, XDGPaths
-from tweetnook.dev_replay import client_transport
+from tweetnook.core.dev_replay import client_transport
+from tweetnook.core.utils import utc_now
 from tweetnook.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs import locked_archive_job
 from tweetnook.pipeline import current_pipeline
 from tweetnook.resource_failure import raise_if_storage_exhausted
-from tweetnook.utils import utc_now
 
 _CONTENT_TYPE_EXTENSIONS = {
     "image/gif": ".gif",

@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from pydantic import BaseModel, ConfigDict
 
 from tweetnook.config import AppConfig
-from tweetnook.exceptions import AuthResolutionError
+from tweetnook.core.exceptions import AuthResolutionError
 
 
 class ResolvedAuthBundle(BaseModel):

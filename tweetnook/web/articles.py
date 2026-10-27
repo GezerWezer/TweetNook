@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from tweetnook import fastjson
+from tweetnook.core import fastjson
 
 ARTICLE_COLUMNS = [
     "tweet_id",

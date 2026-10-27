@@ -13,21 +13,21 @@ from fastapi.testclient import TestClient
 
 from tests.conftest import make_bookmarks_response, make_tweet_detail_response, make_tweet_result
 from tweetnook import config as config_module
-from tweetnook import dev_replay
-from tweetnook.client.timelines import (
-    FocalResultKind,
-    TimelineTweet,
-    parse_timeline_response,
-    parse_tweet_detail_response,
-)
 from tweetnook.config import XDGPaths, ensure_paths
-from tweetnook.dev_replay import (
+from tweetnook.core import dev_replay
+from tweetnook.core.dev_replay import (
     FAILURE_HEADER,
     MEDIA_HEADER,
     RESULT_HEADER,
     ReplaySettings,
     ReplayTransport,
     configure_replay,
+)
+from tweetnook.core.timeline_parsing import (
+    FocalResultKind,
+    TimelineTweet,
+    parse_timeline_response,
+    parse_tweet_detail_response,
 )
 from tweetnook.media import download_media
 from tweetnook.storage import open_archive_store
@@ -725,7 +725,7 @@ def test_cli_jobs_inherit_replay_from_the_saved_config(monkeypatch, tmp_path) ->
     configure_replay(None)
     code = (
         "from tweetnook.config import load_config\n"
-        "from tweetnook.dev_replay import active_replay, client_transport\n"
+        "from tweetnook.core.dev_replay import active_replay, client_transport\n"
         "config, _ = load_config()\n"
         "print(active_replay().url, type(client_transport()).__name__, "
         "config.replay.skip_quote_expansion, config.replay.skip_link_previews)\n"

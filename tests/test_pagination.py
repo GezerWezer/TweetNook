@@ -6,8 +6,8 @@ import json
 import pytest
 
 from tests.test_web_tweets_api import _api_client
-from tweetnook.search import SearchCursorExpiredError, SearchQueryError, search_posts
 from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.search_query import SearchCursorExpiredError, SearchQueryError, search_posts
 
 
 @pytest.fixture

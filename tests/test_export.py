@@ -10,7 +10,7 @@ from tests.conftest import (
     make_url_entity,
     make_video_media,
 )
-from tweetnook.client.timelines import TimelineTweet
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.export import export_json_archive
 from tweetnook.storage import open_archive_store
 

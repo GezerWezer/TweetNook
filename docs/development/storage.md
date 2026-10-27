@@ -25,6 +25,8 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | `stats.py` | Counts and the archive statistics summary. |
 | `imports.py` | Official-archive import cleanup and rehydration from raw captures. |
 | `search.py` | Full-text and structured search. |
+| `search_query.py` | Search query parsing, filter predicates, sorts and cursors, shared by CLI search and web feeds. |
+| `like_order.py` | Like order rebuilt from captured observations. |
 
 Put a new storage operation in the module for its concern, and add a mixin base only when it calls into another group. Bases follow the order in `ArchiveStore`'s header, which keeps Python's method resolution order consistent.
 
@@ -73,7 +75,7 @@ Checks and Community Note changes have dedicated history storage. A post can hav
 
 Scalar indexes cover membership, ID, relation, media and queue reads. FTS5 indexes support saved post text and local descriptions. Article text is matched in Python using the shared query parser. Trigger-maintained tweet facts extract common raw-payload filters once when data changes. Cache revisions invalidate derived totals and search pages after relevant writes.
 
-Like order derives from immutable live/archive observations rather than invented timestamps. `like_order.py` uses anchors shared between captures, preserves preferred observations, and places disconnected history deterministically. Its archive block repair is empirical and chooses the candidate with fewer ordering disagreements against live anchors. Rebuilding is possible without changing the captured evidence.
+Like order derives from immutable live/archive observations rather than invented timestamps. `storage/like_order.py` uses anchors shared between captures, preserves preferred observations, and places disconnected history deterministically. Its archive block repair is empirical and chooses the candidate with fewer ordering disagreements against live anchors. Rebuilding is possible without changing the captured evidence.
 
 ## Maintenance
 

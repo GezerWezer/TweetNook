@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.responses import JSONResponse
 
-from tweetnook import fastjson
+from tweetnook.core import fastjson
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "web_raw_tweets.json"
 
