@@ -11,7 +11,7 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-`.github/workflows/ci.yml` runs these on every branch push and pull request, on Python 3.12 and 3.14, along with every `tests/js/` harness. It also reports, without failing, pyright errors and the output of `uv run python scripts/check_structure.py`: files over the 800-line budget (1,200 is the limit) and imports that point from a lower layer (core, storage) to a higher one (features, CLI and web).
+`.github/workflows/ci.yml` runs these on every branch push and pull request, on Python 3.12 and 3.14, along with every `tests/js/` harness. It fails on imports that point from a lower layer to a higher one (`uv run python scripts/check_structure.py --strict-imports`; the layers are listed in the [module reference](module-reference.md#layers)), and reports, without failing, pyright errors and files over the 800-line budget (1,200 is the limit).
 
 Optional tagging tests need `uv sync --group dev --extra automated-tagging`; migration tests may need `--extra legacy-migration`. Keep a minimal-install test path too, so ordinary imports, browsing and manual tags continue working without optional SDKs.
 

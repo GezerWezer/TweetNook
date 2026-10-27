@@ -11,7 +11,7 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
-from tests.conftest import make_tweet_result
+from tests.conftest import make_tweet_result, patch_cli
 from tests.test_fxtwitter import fx_status, fx_transport, ok
 from tweetnook import cli
 from tweetnook.core.timeline_parsing import TimelineTweet
@@ -654,7 +654,7 @@ def test_check_cli_uses_context_setting_unless_skipped(config, paths, monkeypatc
         seen.append(kwargs["context"])
         return check.CheckResult()
 
-    monkeypatch.setattr(cli, "load_config", lambda: (config, paths))
+    patch_cli(monkeypatch, "load_config", lambda: (config, paths))
     monkeypatch.setattr(check, "run_check", run)
     result = CliRunner().invoke(cli.app, ["check", *args])
     assert result.exit_code == 0, result.output

@@ -8,7 +8,7 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 import tweetnook.cli as cli
-from tests.conftest import make_photo_media, make_tweet_result, make_url_entity
+from tests.conftest import make_photo_media, make_tweet_result, make_url_entity, patch_cli
 from tweetnook.config import AppConfig
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.enrichment.prune import apply_prune, plan_prune
@@ -203,15 +203,15 @@ def _plan_is_empty(store: ArchiveStore, data_dir: Path) -> bool:
 def test_prune_cli_is_a_dry_run_until_apply(paths, monkeypatch) -> None:
     files = _seed(paths)
     buffer = StringIO()
-    monkeypatch.setattr(
-        cli,
+    patch_cli(
+        monkeypatch,
         "_configure_logging",
         lambda: Console(file=buffer, force_terminal=False, color_system=None, width=200),
     )
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
     lock_calls: list[Path] = []
-    monkeypatch.setattr(
-        cli,
+    patch_cli(
+        monkeypatch,
         "_with_archive_write_lock",
         lambda lock_paths, fn: (lock_calls.append(lock_paths.lock_file), fn())[1],
     )

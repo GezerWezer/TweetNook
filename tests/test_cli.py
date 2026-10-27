@@ -12,6 +12,14 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 import tweetnook.cli as cli
+from tests.conftest import patch_cli
+from tweetnook.cli import auth as cli_auth
+from tweetnook.cli import common as cli_common
+from tweetnook.cli import enrichment as cli_enrichment
+from tweetnook.cli import imports as cli_imports
+from tweetnook.cli import maintenance as cli_maintenance
+from tweetnook.cli import sync as cli_sync
+from tweetnook.cli import view as cli_view
 from tweetnook.config import AppConfig, AuthConfig
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.storage import open_archive_store
@@ -75,16 +83,16 @@ def _seed_archive(paths) -> None:
 
 
 def _capture_console(monkeypatch, buffer: StringIO) -> None:
-    monkeypatch.setattr(
-        cli,
+    patch_cli(
+        monkeypatch,
         "_configure_logging",
         lambda: Console(file=buffer, force_terminal=False, color_system=None),
     )
 
 
 def test_version_option_prints_version_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        cli,
+    patch_cli(
+        monkeypatch,
         "_version_text",
         lambda: f"tweetnook {cli.__version__} (abc1234, dirty)",
     )
@@ -99,14 +107,14 @@ def test_configure_logging_forces_plain_output_for_systemd(
 ) -> None:
     monkeypatch.setenv("INVOCATION_ID", "service-run-id")
 
-    console = cli._configure_logging()
+    console = cli_common._configure_logging()
 
     assert console.is_terminal is False
     assert console.color_system is None
 
 
 def test_version_text_falls_back_to_semver_without_git(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli, "_find_git_repo_root", lambda: None)
+    patch_cli(monkeypatch, "_find_git_repo_root", lambda: None)
 
     assert cli._version_text() == f"tweetnook {cli.__version__}"
 
@@ -115,7 +123,7 @@ def test_version_text_includes_git_revision_and_dirty_marker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo_root = Path("/repo")
-    monkeypatch.setattr(cli, "_find_git_repo_root", lambda: repo_root)
+    patch_cli(monkeypatch, "_find_git_repo_root", lambda: repo_root)
 
     def fake_git_command_output(root: Path, *args: str) -> str | None:
         assert root == repo_root
@@ -125,7 +133,7 @@ def test_version_text_includes_git_revision_and_dirty_marker(
             return " M tweetnook/cli.py"
         raise AssertionError(args)
 
-    monkeypatch.setattr(cli, "_git_command_output", fake_git_command_output)
+    patch_cli(monkeypatch, "_git_command_output", fake_git_command_output)
 
     assert cli._version_text() == f"tweetnook {cli.__version__} (abc1234, dirty)"
 
@@ -330,10 +338,10 @@ def test_view_bookmarks_prints_rows(paths, monkeypatch) -> None:
     _seed_archive(paths)
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(cli, "_format_created_at", lambda raw: "LOCAL-TIME")
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "_format_created_at", lambda raw: "LOCAL-TIME")
 
-    cli.view_bookmarks(limit=5)
+    cli_view.view_bookmarks(limit=5)
 
     output = " ".join(buffer.getvalue().split())
     assert "bookmark tweet" in output
@@ -347,9 +355,9 @@ def test_view_tweets_prints_rows(paths, monkeypatch) -> None:
     _seed_archive(paths)
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
 
-    cli.view_tweets(limit=5)
+    cli_view.view_tweets(limit=5)
 
     output = " ".join(buffer.getvalue().split())
     assert "authored tweet" in output
@@ -358,7 +366,7 @@ def test_view_tweets_prints_rows(paths, monkeypatch) -> None:
 
 
 def test_highlight_search_matches_marks_query_terms() -> None:
-    rendered = cli._highlight_search_matches(
+    rendered = cli_view._highlight_search_matches(
         "Machine learning beats keyword search for search-heavy tasks.",
         "search learning",
     )
@@ -373,8 +381,8 @@ def test_highlight_search_matches_marks_query_terms() -> None:
 def test_search_uses_shared_tweet_list_rendering(monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "_format_created_at", lambda raw: "LOCAL-TIME")
-    monkeypatch.setattr(cli, "_with_auto_optimize", lambda store, paths, console, fn: fn(store))
+    patch_cli(monkeypatch, "_format_created_at", lambda raw: "LOCAL-TIME")
+    patch_cli(monkeypatch, "_with_auto_optimize", lambda store, paths, console, fn: fn(store))
 
     class _FakeStore:
         def close(self) -> None:
@@ -402,8 +410,8 @@ def test_search_uses_shared_tweet_list_rendering(monkeypatch) -> None:
             truncated=False,
         )
 
-    monkeypatch.setattr(cli, "_open_store_for_read", lambda console: (_FakeStore(), object()))
-    monkeypatch.setattr(cli, "search_posts", fake_search_posts)
+    patch_cli(monkeypatch, "_open_store_for_read", lambda console: (_FakeStore(), object()))
+    patch_cli(monkeypatch, "search_posts", fake_search_posts)
 
     cli.search_archive(
         "bookmark",
@@ -447,8 +455,8 @@ def test_article_cli_uses_shared_query_and_hides_saved_posts(paths, monkeypatch,
         )
     store.merge_rows(rows)
     store.set_tweet_hidden("900003", True)
-    monkeypatch.setattr(cli, "_open_store_for_read", lambda console: (store, paths))
-    monkeypatch.setattr(cli, "_with_auto_optimize", lambda store, paths, console, fn: fn(store))
+    patch_cli(monkeypatch, "_open_store_for_read", lambda console: (store, paths))
+    patch_cli(monkeypatch, "_with_auto_optimize", lambda store, paths, console, fn: fn(store))
 
     result = runner.invoke(cli.app, ["search", query, "--type", types])
 
@@ -489,8 +497,8 @@ def test_article_cli_sorts_all_matches_before_limiting(paths, monkeypatch, types
             ]
         )
     store.merge_rows(rows)
-    monkeypatch.setattr(cli, "_open_store_for_read", lambda console: (store, paths))
-    monkeypatch.setattr(cli, "_with_auto_optimize", lambda store, paths, console, fn: fn(store))
+    patch_cli(monkeypatch, "_open_store_for_read", lambda console: (store, paths))
+    patch_cli(monkeypatch, "_with_auto_optimize", lambda store, paths, console, fn: fn(store))
 
     result = runner.invoke(
         cli.app, ["search", "coffee", "--type", types, "--sort", sort, "--limit", "1"]
@@ -521,8 +529,8 @@ def test_sort_search_results_reorders_newest_then_oldest() -> None:
         },
     ]
 
-    newest = cli._sort_search_results(rows, sort="newest")
-    oldest = cli._sort_search_results(rows, sort="oldest")
+    newest = cli_view._sort_search_results(rows, sort="newest")
+    oldest = cli_view._sort_search_results(rows, sort="oldest")
 
     assert [row["tweet_id"] for row in newest] == ["2", "1", "3"]
     assert [row["tweet_id"] for row in oldest] == ["1", "2", "3"]
@@ -532,10 +540,10 @@ def test_export_json_accepts_plural_collection_name(paths, monkeypatch, tmp_path
     _seed_archive(paths)
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
     out_path = tmp_path / "bookmarks.json"
 
-    cli.export_json(collection="bookmarks", out=out_path)
+    cli_view.export_json(collection="bookmarks", out=out_path)
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert [row["tweet_id"] for row in payload] == ["1"]
@@ -546,10 +554,10 @@ def test_export_json_accepts_tweets_collection_name(paths, monkeypatch, tmp_path
     _seed_archive(paths)
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
     out_path = tmp_path / "tweets.json"
 
-    cli.export_json(collection="tweets", out=out_path)
+    cli_view.export_json(collection="tweets", out=out_path)
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert [row["tweet_id"] for row in payload] == ["3"]
@@ -559,8 +567,8 @@ def test_export_json_accepts_tweets_collection_name(paths, monkeypatch, tmp_path
 def test_auth_check_uses_explicit_credentials(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(
-        cli,
+    patch_cli(
+        monkeypatch,
         "load_config",
         lambda: (
             AppConfig(auth=AuthConfig(auth_token="config-token", ct0="config-ct0")),
@@ -568,8 +576,8 @@ def test_auth_check_uses_explicit_credentials(paths, monkeypatch) -> None:
         ),
     )
     selected = {}
-    monkeypatch.setattr(
-        cli,
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config, env=None, status=None: SimpleNamespace(
             auth_token="config-token",
@@ -594,9 +602,9 @@ def test_auth_check_uses_explicit_credentials(paths, monkeypatch) -> None:
             has_remote_error=False,
         )
 
-    monkeypatch.setattr(cli, "run_preflight", fake_run_preflight)
+    patch_cli(monkeypatch, "run_preflight", fake_run_preflight)
 
-    cli.auth_check()
+    cli_auth.auth_check()
 
     assert selected["auth_bundle"].auth_token == "config-token"
     output = buffer.getvalue()
@@ -611,9 +619,9 @@ def test_sync_collection_commands_forward_article_backfill(
 ) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="t"),
     )
@@ -645,9 +653,9 @@ def test_sync_collection_commands_forward_article_backfill(
         )
         return SimpleNamespace(pages_fetched=2, tweets_seen=3, stop_reason="empty")
 
-    monkeypatch.setattr(cli, "sync_collection", fake_sync_collection)
+    patch_cli(monkeypatch, "sync_collection", fake_sync_collection)
 
-    getattr(cli, f"sync_{collection_name}")(article_backfill=True)
+    getattr(cli_sync, f"sync_{collection_name}")(article_backfill=True)
 
     assert forwarded == {
         "collection": collection_name,
@@ -656,7 +664,7 @@ def test_sync_collection_commands_forward_article_backfill(
         "article_backfill": True,
         "head_only": False,
         "limit": None,
-        "followups": cli.SyncFollowupPlan(),
+        "followups": cli_imports.SyncFollowupPlan(),
     }
     assert f"{collection_name}: 2 pages, 3 tweets, empty" in buffer.getvalue()
 
@@ -664,9 +672,9 @@ def test_sync_collection_commands_forward_article_backfill(
 def test_sync_all_forwards_article_backfill(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="t"),
     )
@@ -700,10 +708,10 @@ def test_sync_all_forwards_article_backfill(paths, monkeypatch) -> None:
             exit_code=2,
         )
 
-    monkeypatch.setattr(cli, "sync_all", fake_sync_all)
+    patch_cli(monkeypatch, "sync_all", fake_sync_all)
 
     with pytest.raises(typer.Exit) as excinfo:
-        cli.sync_everything(article_backfill=True)
+        cli_sync.sync_everything(article_backfill=True)
 
     assert excinfo.value.exit_code == 2
     assert forwarded == {
@@ -712,7 +720,7 @@ def test_sync_all_forwards_article_backfill(paths, monkeypatch) -> None:
         "article_backfill": True,
         "head_only": False,
         "limit": None,
-        "followups": cli.SyncFollowupPlan(),
+        "followups": cli_imports.SyncFollowupPlan(),
     }
     output = buffer.getvalue()
     assert "bookmarks: 2 pages, 3 tweets" in output
@@ -722,9 +730,9 @@ def test_sync_all_forwards_article_backfill(paths, monkeypatch) -> None:
 def test_sync_default_runs_sync_all_with_full_followups(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="t"),
     )
@@ -761,7 +769,7 @@ def test_sync_default_runs_sync_all_with_full_followups(paths, monkeypatch) -> N
             exit_code=0,
         )
 
-    monkeypatch.setattr(cli, "sync_all", fake_sync_all)
+    patch_cli(monkeypatch, "sync_all", fake_sync_all)
 
     result = runner.invoke(cli.app, ["sync"])
 
@@ -772,7 +780,7 @@ def test_sync_default_runs_sync_all_with_full_followups(paths, monkeypatch) -> N
         "article_backfill": False,
         "head_only": False,
         "limit": None,
-        "followups": cli.SyncFollowupPlan(),
+        "followups": cli_imports.SyncFollowupPlan(),
     }
     output = buffer.getvalue()
     assert "bookmarks: 2 pages, 3 tweets" in output
@@ -782,9 +790,9 @@ def test_sync_default_runs_sync_all_with_full_followups(paths, monkeypatch) -> N
 def test_sync_default_skip_flags_disable_selected_followups(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="t"),
     )
@@ -805,14 +813,14 @@ def test_sync_default_skip_flags_disable_selected_followups(paths, monkeypatch) 
         forwarded["followups"] = followups
         return SimpleNamespace(results=[], errors={}, exit_code=0)
 
-    monkeypatch.setattr(cli, "sync_all", fake_sync_all)
+    patch_cli(monkeypatch, "sync_all", fake_sync_all)
 
     result = runner.invoke(
         cli.app, ["sync", "--skip-resurrection", "--skip-media", "--skip-threads"]
     )
 
     assert result.exit_code == 0
-    assert forwarded["followups"] == cli.SyncFollowupPlan(
+    assert forwarded["followups"] == cli_imports.SyncFollowupPlan(
         resurrection=False,
         media=False,
         threads=False,
@@ -822,9 +830,9 @@ def test_sync_default_skip_flags_disable_selected_followups(paths, monkeypatch) 
 def test_sync_likes_forwards_head_only(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="t"),
     )
@@ -856,9 +864,9 @@ def test_sync_likes_forwards_head_only(paths, monkeypatch) -> None:
         )
         return SimpleNamespace(pages_fetched=1, tweets_seen=20, stop_reason="duplicate")
 
-    monkeypatch.setattr(cli, "sync_collection", fake_sync_collection)
+    patch_cli(monkeypatch, "sync_collection", fake_sync_collection)
 
-    cli.sync_likes(head_only=True)
+    cli_sync.sync_likes(head_only=True)
 
     assert forwarded == {
         "collection": "likes",
@@ -867,7 +875,7 @@ def test_sync_likes_forwards_head_only(paths, monkeypatch) -> None:
         "article_backfill": False,
         "head_only": True,
         "limit": None,
-        "followups": cli.SyncFollowupPlan(),
+        "followups": cli_imports.SyncFollowupPlan(),
     }
     assert "likes: 1 pages, 20 tweets, duplicate" in buffer.getvalue()
 
@@ -896,14 +904,14 @@ def test_maintenance_commands_report_runner_result(
 ) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
 
     async def fake_runner(**_kwargs):
         return SimpleNamespace(**result)
 
-    monkeypatch.setattr(cli, runner, fake_runner)
+    patch_cli(monkeypatch, runner, fake_runner)
 
-    getattr(cli, command)(**kwargs)
+    getattr(cli_enrichment, command)(**kwargs)
 
     assert summary in buffer.getvalue()
 
@@ -911,9 +919,9 @@ def test_maintenance_commands_report_runner_result(
 def test_refresh_archived_articles_reports_runner_result(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="token", ct0="ct0"),
     )
@@ -926,9 +934,9 @@ def test_refresh_archived_articles_reports_runner_result(paths, monkeypatch) -> 
         captured["detail_delay"] = kwargs["config"].sync.detail_delay
         return SimpleNamespace(processed=1, updated=1, failed=0)
 
-    monkeypatch.setattr(cli, "refresh_articles", fake_refresh_articles)
+    patch_cli(monkeypatch, "refresh_articles", fake_refresh_articles)
 
-    cli.refresh_archived_articles(["https://x.com/example/status/2026531440414925307"])
+    cli_enrichment.refresh_archived_articles(["https://x.com/example/status/2026531440414925307"])
 
     output = buffer.getvalue()
     assert captured == {"detail_delay": 0}
@@ -938,9 +946,9 @@ def test_refresh_archived_articles_reports_runner_result(paths, monkeypatch) -> 
 def test_expand_archive_threads_reports_runner_result(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="token", ct0="ct0"),
     )
@@ -951,9 +959,9 @@ def test_expand_archive_threads_reports_runner_result(paths, monkeypatch) -> Non
         assert kwargs["refresh"] is False
         return SimpleNamespace(processed=2, expanded=2, skipped=1, failed=0)
 
-    monkeypatch.setattr(cli, "expand_threads", fake_expand_threads)
+    patch_cli(monkeypatch, "expand_threads", fake_expand_threads)
 
-    cli.expand_archive_threads(
+    cli_enrichment.expand_archive_threads(
         ["https://x.com/example/status/2026531440414925307"],
         limit=5,
     )
@@ -965,9 +973,9 @@ def test_expand_archive_threads_reports_runner_result(paths, monkeypatch) -> Non
 def test_expand_archive_threads_forwards_refresh_flag(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="token", ct0="ct0"),
     )
@@ -978,9 +986,9 @@ def test_expand_archive_threads_forwards_refresh_flag(paths, monkeypatch) -> Non
         assert kwargs["config"].sync.detail_delay == 0
         return SimpleNamespace(processed=1, expanded=1, skipped=0, failed=0)
 
-    monkeypatch.setattr(cli, "expand_threads", fake_expand_threads)
+    patch_cli(monkeypatch, "expand_threads", fake_expand_threads)
 
-    cli.expand_archive_threads(["100"], refresh=True)
+    cli_enrichment.expand_archive_threads(["100"], refresh=True)
 
     assert "threads: 1 processed, 1 expanded, 0 skipped, 0 failed" in buffer.getvalue()
 
@@ -988,9 +996,9 @@ def test_expand_archive_threads_forwards_refresh_flag(paths, monkeypatch) -> Non
 def test_expand_archive_threads_forwards_linked_depth_overrides(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="token", ct0="ct0"),
     )
@@ -1001,9 +1009,9 @@ def test_expand_archive_threads_forwards_linked_depth_overrides(paths, monkeypat
         seen["reply"] = kwargs["config"].sync.reply_linked_depth
         return SimpleNamespace(processed=0, expanded=0, skipped=0, failed=0)
 
-    monkeypatch.setattr(cli, "expand_threads", fake_expand_threads)
+    patch_cli(monkeypatch, "expand_threads", fake_expand_threads)
 
-    cli.expand_archive_threads(None, max_linked_depth=3, reply_linked_depth=1)
+    cli_enrichment.expand_archive_threads(None, max_linked_depth=3, reply_linked_depth=1)
 
     assert seen == {"max": 3, "reply": 1}
 
@@ -1011,7 +1019,7 @@ def test_expand_archive_threads_forwards_linked_depth_overrides(paths, monkeypat
 def test_import_x_archive_reports_runner_result(paths, monkeypatch, tmp_path: Path) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
     captured = {}
 
     async def fake_import_x_archive(
@@ -1057,11 +1065,11 @@ def test_import_x_archive_reports_runner_result(paths, monkeypatch, tmp_path: Pa
             pending_enrichment=9,
         )
 
-    monkeypatch.setattr(cli, "import_x_archive", fake_import_x_archive)
+    patch_cli(monkeypatch, "import_x_archive", fake_import_x_archive)
     archive_path = tmp_path / "archive.zip"
     archive_path.write_bytes(b"placeholder")
 
-    cli.import_x_archive_command(
+    cli_imports.import_x_archive_command(
         archive_path,
         regen=True,
         detail_lookups=25,
@@ -1094,17 +1102,17 @@ def test_import_x_archive_interrupt_reports_completed_import_and_continuation(
 ) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
 
     async def fake_import_x_archive(*_args, **_kwargs):
-        raise cli.ArchiveEnrichmentInterrupted(12_481)
+        raise cli_imports.ArchiveEnrichmentInterrupted(12_481)
 
-    monkeypatch.setattr(cli, "import_x_archive", fake_import_x_archive)
+    patch_cli(monkeypatch, "import_x_archive", fake_import_x_archive)
     archive_path = tmp_path / "archive.zip"
     archive_path.write_bytes(b"placeholder")
 
     with pytest.raises(typer.Exit) as excinfo:
-        cli.import_x_archive_command(archive_path)
+        cli_imports.import_x_archive_command(archive_path)
 
     assert excinfo.value.exit_code == 130
     output = buffer.getvalue()
@@ -1128,7 +1136,7 @@ def test_archive_followup_explains_when_only_delayed_transient_rows_remain() -> 
         warnings=[],
     )
 
-    output = cli._archive_followup_summary(result)
+    output = cli_imports._archive_followup_summary(result)
 
     assert "0 pending untouched" in output
     assert "2,827 transient delayed" in output
@@ -1137,7 +1145,7 @@ def test_archive_followup_explains_when_only_delayed_transient_rows_remain() -> 
 def test_import_x_archive_enrich_reuses_existing_import(paths, monkeypatch, tmp_path: Path) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
     captured = {}
 
     async def fake_import_x_archive(
@@ -1181,11 +1189,11 @@ def test_import_x_archive_enrich_reuses_existing_import(paths, monkeypatch, tmp_
             pending_enrichment=5,
         )
 
-    monkeypatch.setattr(cli, "import_x_archive", fake_import_x_archive)
+    patch_cli(monkeypatch, "import_x_archive", fake_import_x_archive)
     archive_path = tmp_path / "archive.zip"
     archive_path.write_bytes(b"placeholder")
 
-    cli.import_x_archive_command(archive_path, enrich=True)
+    cli_imports.import_x_archive_command(archive_path, enrich=True)
 
     assert captured == {
         "archive": archive_path,
@@ -1209,9 +1217,9 @@ def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch, co
     _capture_console(monkeypatch, buffer)
     config = AppConfig()
     config.sync.collections = collections
-    monkeypatch.setattr(cli, "load_config", lambda: (config, paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (config, paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="token", ct0="ct0"),
     )
@@ -1245,7 +1253,7 @@ def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch, co
             pending_enrichment=4,
         )
 
-    monkeypatch.setattr(cli, "enrich_imported_archive", fake_enrich_imported_archive)
+    patch_cli(monkeypatch, "enrich_imported_archive", fake_enrich_imported_archive)
 
     async def fake_sync_all(**kwargs):
         assert captured["limit"] == 50
@@ -1257,9 +1265,9 @@ def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch, co
         captured["syncs"] = captured.get("syncs", 0) + 1
         return SimpleNamespace(exit_code=0, errors={})
 
-    monkeypatch.setattr(cli, "sync_all", fake_sync_all)
+    patch_cli(monkeypatch, "sync_all", fake_sync_all)
 
-    cli.import_archive_enrich(limit=50)
+    cli_imports.import_archive_enrich(limit=50)
 
     assert captured["limit"] == 50
     assert captured["auth_bundle"].auth_token == "token"
@@ -1276,8 +1284,8 @@ def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch, co
 def test_import_enrich_reports_a_failed_automatic_sync_separately(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(cli, "resolve_auth_bundle", lambda config: object())
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "resolve_auth_bundle", lambda config: object())
     events = []
 
     async def enrich(**kwargs):
@@ -1295,10 +1303,10 @@ def test_import_enrich_reports_a_failed_automatic_sync_separately(paths, monkeyp
         events.append("sync")
         return SimpleNamespace(exit_code=2, errors={"likes": "Connection expired"})
 
-    monkeypatch.setattr(cli, "enrich_imported_archive", enrich)
-    monkeypatch.setattr(cli, "sync_all", sync)
+    patch_cli(monkeypatch, "enrich_imported_archive", enrich)
+    patch_cli(monkeypatch, "sync_all", sync)
     with pytest.raises(typer.Exit) as raised:
-        cli.import_archive_enrich()
+        cli_imports.import_archive_enrich()
     assert raised.value.exit_code == 2
     assert events == ["enriched", "sync"]
     assert "Archive enrichment saved; automatic sync did not finish" in buffer.getvalue()
@@ -1308,12 +1316,12 @@ def test_import_enrich_reports_a_failed_automatic_sync_separately(paths, monkeyp
     ("raised", "exit_code", "expected"),
     [
         (
-            cli.ArchiveEnrichmentInterrupted(12_481),
+            cli_imports.ArchiveEnrichmentInterrupted(12_481),
             130,
             "Archive enrichment was interrupted.",
         ),
         (
-            cli.ArchiveEnrichmentAborted(17, TypeError("parser bug")),
+            cli_imports.ArchiveEnrichmentAborted(17, TypeError("parser bug")),
             2,
             "Archive enrichment stopped after TypeError: parser bug",
         ),
@@ -1324,9 +1332,9 @@ def test_import_enrich_reports_interruption_or_systemic_abort(
 ) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="token", ct0="ct0"),
     )
@@ -1334,13 +1342,15 @@ def test_import_enrich_reports_interruption_or_systemic_abort(
     async def fail_enrichment(**_kwargs):
         raise raised
 
-    monkeypatch.setattr(cli, "enrich_imported_archive", fail_enrichment)
-    monkeypatch.setattr(
-        cli, "sync_all", lambda **kwargs: pytest.fail("aborted enrichment must not start sync")
+    patch_cli(monkeypatch, "enrich_imported_archive", fail_enrichment)
+    patch_cli(
+        monkeypatch,
+        "sync_all",
+        lambda **kwargs: pytest.fail("aborted enrichment must not start sync"),
     )
 
     with pytest.raises(typer.Exit) as excinfo:
-        cli.import_archive_enrich()
+        cli_imports.import_archive_enrich()
 
     assert excinfo.value.exit_code == exit_code
     output = buffer.getvalue()
@@ -1352,15 +1362,15 @@ def test_import_enrich_reports_interruption_or_systemic_abort(
 def test_expand_archive_threads_refresh_requires_targets(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(
+        monkeypatch,
         "resolve_auth_bundle",
         lambda config: SimpleNamespace(auth_token="token", ct0="ct0"),
     )
 
     with pytest.raises(typer.Exit) as excinfo:
-        cli.expand_archive_threads(refresh=True)
+        cli_enrichment.expand_archive_threads(refresh=True)
 
     assert excinfo.value.exit_code == 1
     assert "--refresh requires one or more explicit thread targets." in buffer.getvalue()
@@ -1369,7 +1379,7 @@ def test_expand_archive_threads_refresh_requires_targets(paths, monkeypatch) -> 
 def test_optimize_archive_uses_write_lock(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
     lock_calls: list[Path] = []
 
     class FakeStore:
@@ -1384,9 +1394,9 @@ def test_optimize_archive_uses_write_lock(paths, monkeypatch) -> None:
             self.closed = True
 
     store = FakeStore()
-    monkeypatch.setattr(cli, "open_archive_store", lambda _paths, create=False, config=None: store)
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "open_archive_store", lambda _paths, create=False, config=None: store)
+    patch_cli(
+        monkeypatch,
         "_with_archive_write_lock",
         lambda lock_paths, fn: (lock_calls.append(lock_paths.lock_file), fn())[1],
     )
@@ -1453,9 +1463,9 @@ def test_database_check_runs_requested_diagnostic_and_closes_store(
             self.closed = True
 
     store = FakeStore()
-    monkeypatch.setattr(cli, "_open_store_for_read", lambda _console: (store, paths))
+    patch_cli(monkeypatch, "_open_store_for_read", lambda _console: (store, paths))
 
-    cli.check_database(full=full)
+    cli_maintenance.check_database(full=full)
 
     assert store.full_values == [full]
     assert store.closed is True
@@ -1481,10 +1491,10 @@ def test_database_check_reports_integrity_problems(
             self.closed = True
 
     store = FakeStore()
-    monkeypatch.setattr(cli, "_open_store_for_read", lambda _console: (store, paths))
+    patch_cli(monkeypatch, "_open_store_for_read", lambda _console: (store, paths))
 
     with pytest.raises(typer.Exit) as excinfo:
-        cli.check_database()
+        cli_maintenance.check_database()
 
     assert excinfo.value.exit_code == 2
     assert store.closed is True
@@ -1494,7 +1504,7 @@ def test_database_check_reports_integrity_problems(
 def test_stats_archive_renders_summary_tables(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
     _seed_archive(paths)
 
     cli.stats_archive()
@@ -1528,8 +1538,8 @@ def test_stats_archive_builds_a_fresh_report_on_every_invocation(paths, monkeypa
     store = Store()
     reports: list[object] = []
     rendered: list[object] = []
-    monkeypatch.setattr(cli, "_configure_logging", lambda: object())
-    monkeypatch.setattr(cli, "_open_store_for_read", lambda _console: (store, paths))
+    patch_cli(monkeypatch, "_configure_logging", lambda: object())
+    patch_cli(monkeypatch, "_open_store_for_read", lambda _console: (store, paths))
 
     def build(store_arg):
         assert store_arg is store
@@ -1537,9 +1547,9 @@ def test_stats_archive_builds_a_fresh_report_on_every_invocation(paths, monkeypa
         reports.append(report)
         return report
 
-    monkeypatch.setattr(cli, "build_stats_report", build)
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "build_stats_report", build)
+    patch_cli(
+        monkeypatch,
         "render_stats_report",
         lambda _console, report, *, detailed: rendered.append(report),
     )
@@ -1555,7 +1565,7 @@ def test_stats_archive_builds_a_fresh_report_on_every_invocation(paths, monkeypa
 def test_stats_archive_detailed_shows_full_storage_and_hidden_rows(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
     _seed_archive(paths)
 
     cli.stats_archive(detailed=True)
@@ -1571,7 +1581,7 @@ def test_stats_archive_detailed_shows_full_storage_and_hidden_rows(paths, monkey
 def test_rehydrate_archive_uses_write_lock(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
     lock_calls: list[Path] = []
 
     class FakeTqdm:
@@ -1608,9 +1618,9 @@ def test_rehydrate_archive_uses_write_lock(paths, monkeypatch) -> None:
             self.closed = True
 
     store = FakeStore()
-    monkeypatch.setattr(cli, "open_archive_store", lambda _paths, create=False, config=None: store)
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "open_archive_store", lambda _paths, create=False, config=None: store)
+    patch_cli(
+        monkeypatch,
         "_with_archive_write_lock",
         lambda lock_paths, fn: (lock_calls.append(lock_paths.lock_file), fn())[1],
     )

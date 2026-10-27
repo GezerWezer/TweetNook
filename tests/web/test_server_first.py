@@ -597,6 +597,7 @@ def test_real_import_media_disk_full_keeps_archive_ready_without_retry(
     from typer.testing import CliRunner
 
     import tweetnook.cli as cli
+    from tests.conftest import patch_cli
     from tests.test_archive_import import _write_archive_dir, _write_archive_zip
     from tweetnook.jobs.activity_history import read_run
     from tweetnook.jobs.resource_failure import STORAGE_RECOVERY
@@ -615,7 +616,7 @@ def test_real_import_media_disk_full_keeps_archive_ready_without_retry(
         jobs = server_state["job_supervisor"]
         config = server_state["config"]
         config.fxtwitter.enabled = False
-        monkeypatch.setattr(cli, "load_config", lambda: (config, first_run))
+        patch_cli(monkeypatch, "load_config", lambda: (config, first_run))
         assert client.put("/api/setup/archive", content=archive.read_bytes()).status_code == 200
         assert client.post("/api/setup/archive/import").status_code == 202
         run_id = jobs.active_run_id

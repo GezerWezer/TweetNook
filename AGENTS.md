@@ -25,13 +25,18 @@ node tests/js/test_web_assets.cjs         # browser-asset harnesses; see tests/j
 `docs/development/module-reference.md` maps operations to modules, and
 `docs/development/architecture.md` explains the data flow. In short:
 
-- `tweetnook/client/`, `core/extractor.py` - X requests and response parsing.
+- `tweetnook/core/` - errors, locks, X response parsing and extraction; `config.py` - settings.
+- `tweetnook/client/`, `auth/`, `query_ids/` - X requests and credentials.
 - `tweetnook/storage/` - the SQLite archive (`ArchiveStore`).
 - `sync/`, `importer/` - collection runs, official-export import and the LanceDB migration.
+- `enrichment/`, `tagging/` - follow-up work on archived posts, and automated tagging.
 - `jobs/` - locked archive jobs, progress reporting, the worker supervisor and the scheduler.
 - `tweetnook/web/` - FastAPI app; `routes/` are thin handlers over the same archive operations
   the CLI uses. `static/js/` and `index.html` are the browser UI.
-- `cli.py` - the Typer command tree.
+- `cli/` - the Typer command tree, one module per command group.
+
+Packages are layered: CLI and web, then features, then storage, then core. A module never
+imports from a higher layer, and CI fails if one does; the module reference lists the layers.
 
 Invariants that must hold:
 
@@ -43,7 +48,7 @@ Invariants that must hold:
   supervisor rather than starting its own write path.
 
 The codebase is being restructured out of a few very large files (`static/js/app.js`,
-`cli.py`, `index.html`). Put new code in a focused module for its
+`index.html`). Put new code in a focused module for its
 feature instead of growing those files, and keep moves separate from behavior changes.
 
 ## Code

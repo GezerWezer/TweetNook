@@ -43,25 +43,26 @@ def test_reports_files_over_the_budget_but_not_vendored_ones(tree) -> None:
 
 
 def test_reports_only_imports_that_point_up_the_stack(tree) -> None:
-    tree("tweetnook/utils.py", "import tweetnook.sync\n")
+    tree("tweetnook/core/utils.py", "import tweetnook.sync\nfrom tweetnook import config\n")
     tree(
         "tweetnook/storage/backend.py",
-        "from tweetnook import utils, sync\nfrom ..search import x\nfrom . import migrate\n",
+        "from tweetnook import config, sync\nfrom ..search import x\nfrom . import migrate\n",
     )
-    tree("tweetnook/sync.py", "from tweetnook.storage.backend import ArchiveStore\n")
+    tree("tweetnook/sync/collection.py", "from tweetnook.storage.backend import ArchiveStore\n")
     tree(
-        "tweetnook/web/server.py", "from tweetnook.sync import run\nfrom tweetnook.cli import app\n"
+        "tweetnook/web/server.py",
+        "from tweetnook.sync.collection import run\nfrom tweetnook.cli import app\n",
     )
 
     assert check_structure.upward_imports() == [
+        ("tweetnook.core.utils", "tweetnook.sync"),
         ("tweetnook.storage.backend", "tweetnook.search"),
         ("tweetnook.storage.backend", "tweetnook.sync"),
-        ("tweetnook.utils", "tweetnook.sync"),
     ]
 
 
 def test_strict_fails_only_when_something_is_reported(tree, capsys) -> None:
-    tree("tweetnook/sync.py", "from tweetnook.storage import backend\n")
+    tree("tweetnook/sync/collection.py", "from tweetnook.storage import backend\n")
     assert check_structure.main(["--strict"]) == 0
 
     tree("tweetnook/storage/backend.py", "from tweetnook.web import server\n")
@@ -71,3 +72,12 @@ def test_strict_fails_only_when_something_is_reported(tree, capsys) -> None:
         "tweetnook.storage.backend (storage) -> tweetnook.web (interface)"
         in capsys.readouterr().out
     )
+
+
+def test_strict_imports_fails_on_imports_but_not_on_size(tree) -> None:
+    tree("tweetnook/large.py", "x = 1\n" * 1201)
+    assert check_structure.main(["--strict"]) == 1
+    assert check_structure.main(["--strict-imports"]) == 0
+
+    tree("tweetnook/core/utils.py", "from tweetnook.storage import backend\n")
+    assert check_structure.main(["--strict-imports"]) == 1

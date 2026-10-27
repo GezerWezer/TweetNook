@@ -11,6 +11,7 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
+from tests.conftest import patch_cli
 from tweetnook import cli
 from tweetnook.config import AppConfig
 from tweetnook.importer import legacy_migration as migrate
@@ -52,7 +53,7 @@ def test_migrate_cli_activates_the_shared_pipeline(
         return migrate.MigrationResult(status=migration_status)
 
     monkeypatch.setattr(migrate, "run_migration", fake_run_migration)
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
 
     result = CliRunner().invoke(cli.app, ["migrate"])
 

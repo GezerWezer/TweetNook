@@ -1,14 +1,15 @@
 """Report source files over the size budget and imports that point up the layer stack.
 
-Both checks only report for now; --strict makes them fail, which CI switches on once the
-large files are split.
+Both checks report by default. --strict-imports fails on upward imports, which CI enforces;
+--strict also fails on files over the size limit, which CI switches on once the large files
+are split.
 
-    uv run python scripts/check_structure.py [--strict]
+    uv run python scripts/check_structure.py [--strict-imports | --strict]
 
 Size: files over WARN_LINES are listed, and files over LIMIT_LINES fail under --strict.
 
-Imports: modules are ranked interface (CLI, web) > feature > storage > core and may only
-import their own layer or a lower one. Unlisted top-level modules count as features.
+Imports: top-level packages are ranked interface (CLI, web) > feature > storage > core and
+may only import their own layer or a lower one. Unlisted packages count as features.
 """
 
 from __future__ import annotations
@@ -37,9 +38,10 @@ SIZE_EXCLUDED = (
     "tweetnook/web/static/css/tailwind.css",
 )
 
-CORE = {"core", "exceptions", "extractor", "fastjson", "utils", "config"}
+# config belongs to core but stays a top-level module: install.sh imports it by name.
+CORE = {"core", "config"}
 STORAGE = {"storage"}
-INTERFACE = {"__main__", "cli", "cli_service", "cli_web", "web"}
+INTERFACE = {"__main__", "cli", "cli_service", "system_install", "web"}
 LAYERS = {"core": 0, "storage": 1, "feature": 2, "interface": 3}
 
 
@@ -110,6 +112,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="exit non-zero on files over the limit or upward imports",
     )
+    parser.add_argument(
+        "--strict-imports",
+        action="store_true",
+        help="exit non-zero on upward imports; files over the limit are only reported",
+    )
     args = parser.parse_args(argv)
 
     oversized = oversized_files()
@@ -123,10 +130,13 @@ def main(argv: list[str] | None = None) -> int:
     for module, target in violations:
         print(f"  {module} ({layer(module)}) -> {target} ({layer(target)})")
 
-    failed = bool(over_limit or violations)
-    if failed and not args.strict:
+    if args.strict:
+        return 1 if over_limit or violations else 0
+    if args.strict_imports:
+        return 1 if violations else 0
+    if over_limit or violations:
         print("\nReport only: run with --strict to fail on these.")
-    return 1 if failed and args.strict else 0
+    return 0
 
 
 if __name__ == "__main__":

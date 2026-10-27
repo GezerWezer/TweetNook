@@ -17,6 +17,8 @@ An official archive enters at a separate import boundary and joins the same stor
 
 The [module reference](module-reference.md) maps operations to their owning modules. CLI and web handlers validate inputs and present results; archive operations share the transport, extraction and storage layers.
 
+The packages form four layers: the CLI and web interfaces, the feature packages (sync, import, enrichment, tagging, jobs and the X client), storage, and core. A module imports only from its own layer or a lower one, which CI checks; the [module reference](module-reference.md#layers) lists each package's layer.
+
 ## Stored and derived data
 
 Collection memberships answer why a post belongs in the archive. Tweet objects hold the best available content, while relation rows connect replies, quotes, and reposts. Raw captures preserve observations. Normalized fields, full-text indexes, like order, and cached statistics support fast reads.

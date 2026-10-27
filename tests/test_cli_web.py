@@ -13,8 +13,9 @@ import pytest
 from typer.testing import CliRunner
 
 import tweetnook.cli as cli
-import tweetnook.cli_web as cli_web
+import tweetnook.cli.web as cli_web
 import tweetnook.web.address as web_address
+from tests.conftest import patch_cli
 from tweetnook.config import AppConfig, XDGPaths
 
 runner = CliRunner()
@@ -469,8 +470,8 @@ def test_hidden_serve_daemon_exits_when_web_dependencies_are_missing(
     monkeypatch,
 ) -> None:
     monkeypatch.setitem(sys.modules, "tweetnook.web.server", None)
-    monkeypatch.setattr(
-        cli,
+    patch_cli(
+        monkeypatch,
         "load_config",
         lambda: pytest.fail("configuration must not load without web dependencies"),
     )
@@ -484,9 +485,11 @@ def test_hidden_serve_daemon_exits_when_web_dependencies_are_missing(
 def test_foreground_serve_without_archive(monkeypatch, tmp_path: Path) -> None:
     config, paths = _configured(tmp_path)
     calls = []
-    monkeypatch.setattr(cli, "load_config", lambda: (config, paths))
-    monkeypatch.setattr(
-        cli, "open_archive_store", lambda *_a, **_k: pytest.fail("CLI must not open storage")
+    patch_cli(monkeypatch, "load_config", lambda: (config, paths))
+    patch_cli(
+        monkeypatch,
+        "open_archive_store",
+        lambda *_a, **_k: pytest.fail("CLI must not open storage"),
     )
     monkeypatch.setattr("tweetnook.web.server.run_server", lambda *args: calls.append(args))
     result = runner.invoke(cli.app, ["serve"])
@@ -865,7 +868,7 @@ def test_serve_dev_tools_sets_environment(monkeypatch) -> None:
 
     # setenv records the variable so the value set by --dev-tools is undone afterwards.
     monkeypatch.setenv("TWEETNOOK_DEV_TOOLS", "0")
-    monkeypatch.setattr(cli, "load_config", lambda: (AppConfig(), None))
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), None))
     monkeypatch.setattr(web_server, "run_server", lambda *_args: None)
 
     result = runner.invoke(cli.app, ["serve", "--dev-tools"])

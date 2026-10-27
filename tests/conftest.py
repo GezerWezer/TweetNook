@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib
 import json
+import pkgutil
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -55,6 +57,24 @@ def auth_bundle() -> ResolvedAuthBundle:
         ct0_source="test",
         user_id_source="test",
     )
+
+
+def patch_cli(monkeypatch: pytest.MonkeyPatch, name: str, value: object) -> None:
+    """Replace name in every CLI module that holds it.
+
+    Each command module imports its own reference to shared helpers such as load_config, so
+    patching one module would leave the commands in the others unpatched.
+    """
+    import tweetnook.cli
+
+    modules = [tweetnook.cli] + [
+        importlib.import_module(f"tweetnook.cli.{info.name}")
+        for info in pkgutil.iter_modules(tweetnook.cli.__path__)
+    ]
+    holders = [module for module in modules if hasattr(module, name)]
+    assert holders, f"no CLI module has {name}"
+    for module in holders:
+        monkeypatch.setattr(module, name, value)
 
 
 def make_url_entity(

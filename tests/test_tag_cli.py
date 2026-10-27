@@ -16,6 +16,7 @@ from typer.testing import CliRunner
 import tweetnook.cli as cli
 import tweetnook.jobs.context as jobs
 import tweetnook.tagging.tagger as tagging
+from tests.conftest import patch_cli
 from tweetnook.config import AppConfig, TaggingConfig
 from tweetnook.core.exceptions import ConfigError, TweetNookError
 
@@ -55,8 +56,8 @@ class FakeLockedJob:
 
 def capture_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
     output = StringIO()
-    monkeypatch.setattr(
-        cli,
+    patch_cli(
+        monkeypatch,
         "_configure_logging",
         lambda: Console(
             file=output,
@@ -96,7 +97,7 @@ def configure_tag_command(
     direct_calls: list[dict[str, Any]] = []
     pending_calls: list[dict[str, Any]] = []
 
-    monkeypatch.setattr(cli, "load_config", lambda: (config, paths))
+    patch_cli(monkeypatch, "load_config", lambda: (config, paths))
 
     def fake_locked_archive_job(**kwargs: Any) -> FakeLockedJob:
         lock_calls.append(kwargs)
@@ -366,8 +367,8 @@ def test_tag_command_maps_config_error_to_exit_one(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     output = capture_console(monkeypatch)
-    monkeypatch.setattr(
-        cli,
+    patch_cli(
+        monkeypatch,
         "load_config",
         lambda: (_ for _ in ()).throw(ConfigError("invalid tagging config")),
     )
@@ -466,9 +467,9 @@ def test_hidden_serve_daemon_defers_archive_lifecycle_to_server(
     def fake_run_server(*args: Any) -> None:
         events.append(("run_server", args))
 
-    monkeypatch.setattr(cli, "load_config", lambda: (config, paths))
-    monkeypatch.setattr(
-        cli,
+    patch_cli(monkeypatch, "load_config", lambda: (config, paths))
+    patch_cli(
+        monkeypatch,
         "open_archive_store",
         lambda loaded_paths, *, create, config: (
             events.append(("open", loaded_paths, create, config)) or FakeArchive()
