@@ -1,0 +1,683 @@
+"""Archive table layout, derived search tables, and upgrades from released schemas."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from tweetnook.extractor import PLACEHOLDER_TEXT_MARKER, PLACEHOLDER_TEXT_PREFIXES
+
+from .common import _parse_created_at
+from .db import ConnectionMixin
+
+
+@dataclass(slots=True)
+class MigrationReport:
+    from_version: int
+    to_version: int
+
+
+ARCHIVE_COLUMNS = [
+    "row_key",
+    "record_type",
+    "tweet_id",
+    "collection_type",
+    "folder_id",
+    "sort_index",
+    "operation",
+    "cursor_in",
+    "cursor_out",
+    "captured_at",
+    "http_status",
+    "source",
+    "text",
+    "author_id",
+    "author_username",
+    "author_display_name",
+    "created_at",
+    "created_at_ts",
+    "deleted_at",
+    "conversation_id",
+    "lang",
+    "note_tweet_text",
+    "enrichment_state",
+    "enrichment_checked_at",
+    "enrichment_http_status",
+    "enrichment_reason",
+    "enrichment_detail",
+    "enrichment_retry_count",
+    "enrichment_next_retry_at",
+    "enrichment_first_unavailable_at",
+    "enrichment_retry_eligible",
+    "raw_json",
+    "first_seen_at",
+    "last_seen_at",
+    "added_at",
+    "synced_at",
+    "relation_type",
+    "target_tweet_id",
+    "position",
+    "media_key",
+    "media_type",
+    "media_url",
+    "thumbnail_url",
+    "width",
+    "height",
+    "duration_millis",
+    "variants_json",
+    "download_state",
+    "local_path",
+    "provenance_source",
+    "sha256",
+    "byte_size",
+    "content_type",
+    "thumbnail_local_path",
+    "thumbnail_sha256",
+    "thumbnail_byte_size",
+    "thumbnail_content_type",
+    "downloaded_at",
+    "download_error",
+    "url_hash",
+    "url",
+    "expanded_url",
+    "final_url",
+    "canonical_url",
+    "display_url",
+    "url_host",
+    "description",
+    "site_name",
+    "unfurl_state",
+    "last_fetched_at",
+    "article_id",
+    "title",
+    "summary_text",
+    "content_text",
+    "published_at",
+    "status",
+    "archive_digest",
+    "archive_generation_date",
+    "import_started_at",
+    "import_completed_at",
+    "warnings_json",
+    "counts_json",
+    "enrichment_followup_status",
+    "enrichment_aborted_reason",
+    "last_head_tweet_id",
+    "backfill_cursor",
+    "backfill_incomplete",
+    "updated_at",
+    "key",
+    "value",
+]
+
+SCHEMA_VERSION = 12
+COLUMN_TYPES = {
+    field: (
+        "TEXT PRIMARY KEY"
+        if field == "row_key"
+        else "INTEGER"
+        if field
+        in {
+            "created_at_ts",
+            "enrichment_retry_count",
+            "enrichment_retry_eligible",
+        }
+        else "TEXT"
+    )
+    for field in ARCHIVE_COLUMNS
+}
+ENRICHMENT_INDEXES = {
+    "idx_archive_enrichment_due": (
+        "record_type, enrichment_state, enrichment_retry_eligible, enrichment_next_retry_at"
+    ),
+    "idx_archive_dead_author": (
+        "record_type, enrichment_state, author_id, enrichment_retry_eligible, "
+        "enrichment_next_retry_at"
+    ),
+    "idx_archive_resurrection_reason_due": (
+        "record_type, enrichment_state, enrichment_retry_eligible, enrichment_reason, "
+        "enrichment_next_retry_at"
+    ),
+    "idx_archive_capture_target": "record_type, cursor_in, captured_at DESC",
+}
+
+
+def _media_tag_description(raw: str) -> str:
+    """The text description stored in a media_tag payload, or ''."""
+    return (
+        f"COALESCE(CASE WHEN json_valid({raw}) THEN CASE "
+        f"WHEN json_type({raw}, '$.description') = 'text' "
+        f"THEN json_extract({raw}, '$.description') END END, '')"
+    )
+
+
+def _json_each_texts(raw: str, path: str, field: str) -> str:
+    """Lowercased field values of a JSON array, joined and wrapped in char(31)."""
+    return (
+        "(SELECT char(31) || group_concat(LOWER(COALESCE(CASE WHEN item.type = 'object' "
+        f"THEN json_extract(item.value, '$.{field}') END, '')), char(31)) || char(31) "
+        f"FROM json_each({raw}, '{path}') AS item)"
+    )
+
+
+# Values that structured search filters read from a membership row's tweet JSON.
+# Triggers keep archive_tweet_facts in step with raw_json, so a filtered search
+# reads one small row per membership instead of parsing every tweet's JSON.
+TWEET_FACT_EXPRESSIONS = {
+    "reply_to": "LOWER(json_extract({raw}, '$.legacy.in_reply_to_screen_name'))",
+    "is_reply": (
+        "NULLIF(json_extract({raw}, '$.legacy.in_reply_to_status_id_str'), '') IS NOT NULL"
+    ),
+    "is_quote": "COALESCE(json_extract({raw}, '$.legacy.is_quote_status'), 0) != 0",
+    "is_retweet": (
+        "NULLIF(json_extract({raw}, '$.legacy.retweeted_status_id_str'), '') IS NOT NULL"
+    ),
+    "is_verified": (
+        "COALESCE(json_extract({raw}, '$.core.user_results.result.is_blue_verified'), "
+        "json_extract({raw}, '$.core.user_results.result.legacy.verified'), 0) != 0"
+    ),
+    "retweet_count": "CAST(COALESCE(json_extract({raw}, '$.legacy.retweet_count'), 0) AS INTEGER)",
+    "favorite_count": (
+        "CAST(COALESCE(json_extract({raw}, '$.legacy.favorite_count'), 0) AS INTEGER)"
+    ),
+    "reply_count": "CAST(COALESCE(json_extract({raw}, '$.legacy.reply_count'), 0) AS INTEGER)",
+    "quoted_status_id": "json_extract({raw}, '$.legacy.quoted_status_id_str')",
+    "source": "LOWER(COALESCE(json_extract({raw}, '$.source'), ''))",
+    "card_name": "json_extract({raw}, '$.card.name')",
+    "mentions": _json_each_texts("{raw}", "$.legacy.entities.user_mentions", "screen_name"),
+    "hashtags": _json_each_texts("{raw}", "$.legacy.entities.hashtags", "text"),
+}
+
+
+def _tweet_fact_values(raw: str) -> str:
+    # NULL JSON evaluates like an absent key. Malformed JSON yields NULL facts
+    # instead of failing the write that stored it.
+    return ", ".join(
+        f"CASE WHEN {raw} IS NULL OR json_valid({raw}) THEN {expression.format(raw=raw)} END"
+        for expression in TWEET_FACT_EXPRESSIONS.values()
+    )
+
+
+def _saved_post_text(value: str) -> str:
+    """SQL for non-empty text that is not X's placeholder, as is_placeholder_text decides."""
+    # Curly apostrophes fold to straight ones; LIKE already ignores ASCII case.
+    text = f"TRIM(REPLACE(COALESCE({value}, ''), '\u2019', ''''))"
+    patterns = (f"%{PLACEHOLDER_TEXT_MARKER}%", *(f"{p}%" for p in PLACEHOLDER_TEXT_PREFIXES))
+    placeholder = " OR ".join(
+        f"{text} LIKE '{pattern.replace(chr(39), chr(39) * 2)}'" for pattern in patterns
+    )
+    return f"({text} != '' AND NOT ({placeholder}))"
+
+
+def _tweet_content_values(row: str) -> str:
+    """Content and note presence, evaluated on writes rather than while browsing."""
+    raw = f"(CASE WHEN json_valid({row}.raw_json) THEN {row}.raw_json ELSE '{{}}' END)"
+    tombstone = (
+        f"COALESCE(json_extract({raw}, '$.__typename'), "
+        f"json_extract({raw}, '$.__typename__'), '') IN ('TweetTombstone', 'TweetUnavailable') "
+        f"OR COALESCE(json_extract({raw}, '$.__tombstone__'), 0) = 1"
+    )
+    full_text = f"json_extract({raw}, '$.legacy.full_text')"
+    captured = (
+        f"NOT ({tombstone}) AND ("
+        f"{_saved_post_text(full_text)} OR "
+        f"COALESCE(json_extract({raw}, '$.note_tweet.note_tweet_results.result.text'), '') "
+        "!= '' OR "
+        f"COALESCE(json_array_length({raw}, '$.legacy.extended_entities.media'), 0) > 0 OR "
+        f"{_saved_post_text(f'{row}.text')})"
+    )
+    note = f"COALESCE(json_extract({raw}, '$.birdwatch_pivot.subtitle.text'), '') != ''"
+    return f"{row}.tweet_id, ({captured}), ({note})"
+
+
+class SchemaMixin(ConnectionMixin):
+    def _migrate_schema(self) -> None:
+        current_version = self._get_schema_version()
+        if current_version > SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Archive schema version {current_version} is newer than this build supports "
+                f"({SCHEMA_VERSION})."
+            )
+        if current_version == SCHEMA_VERSION:
+            return
+
+        if not self._archive_table_exists():
+            self._create_latest_schema()
+            return
+
+        # Releases shipped schema 5 (0.0.9 and 0.1.0), schema 8 (0.1.1 to 0.1.6),
+        # schema 9 (0.1.7 and 0.1.8), and schema 11 (1.1.0).
+        if current_version in {8, 9, 10, 11}:
+            self._migrate_search_facts(current_version)
+            return
+        if current_version != 5:
+            raise RuntimeError(
+                f"Archive schema version {current_version} comes from a pre-release build "
+                "and cannot be upgraded."
+            )
+        self._migrate_search_index(current_version)
+
+    def _create_latest_schema(self) -> None:
+        col_def = ", ".join(f"{name} {COLUMN_TYPES[name]}" for name in ARCHIVE_COLUMNS)
+        with self.conn:
+            self.conn.execute(f"CREATE TABLE archive ({col_def})")
+            self._create_fts_schema()
+            self._create_archive_indexes()
+            self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        self.conn.execute("PRAGMA optimize=0x10002")
+
+    def _migrate_search_index(self, current_version: int) -> None:
+        """Repair derived FTS documents/triggers without copying canonical archive data."""
+        with self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
+            self._rebuild_fts_schema()
+            self._create_archive_indexes()
+            expected = self.conn.execute(
+                "SELECT COUNT(*) FROM archive WHERE record_type = 'tweet'"
+            ).fetchone()[0]
+            actual = self.conn.execute("SELECT COUNT(*) FROM archive_fts").fetchone()[0]
+            if actual != expected:
+                raise RuntimeError(
+                    "Search-index migration produced an unexpected row count: "
+                    f"expected={expected}, actual={actual}"
+                )
+            self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+        self.migration_report = MigrationReport(
+            from_version=current_version, to_version=SCHEMA_VERSION
+        )
+
+    def _migrate_search_facts(self, current_version: int) -> None:
+        """Add missing derived search tables; canonical rows are unchanged.
+
+        v8 lacks the search-filter facts; v8 and v9 lack the description index.
+        v10 lacks the content/note flags used to filter uncaptured tweets and notes;
+        v11 computed those flags from an incomplete list of placeholder texts.
+        """
+        with self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
+            self._create_archive_indexes()
+            expected = self.conn.execute(
+                "SELECT COUNT(*) FROM archive WHERE record_type = 'tweet' AND row_key IS NOT NULL"
+            ).fetchone()[0]
+            actual = self.conn.execute("SELECT COUNT(*) FROM archive_tweet_facts").fetchone()[0]
+            if actual != expected:
+                raise RuntimeError(
+                    "Search-filter migration produced an unexpected row count: "
+                    f"expected={expected}, actual={actual}"
+                )
+            description = _media_tag_description("raw_json")
+            expected = self.conn.execute(
+                f"SELECT COUNT(*) FROM archive WHERE record_type = 'media_tag' "
+                f"AND {description} != ''"
+            ).fetchone()[0]
+            actual = self.conn.execute("SELECT COUNT(*) FROM archive_description_fts").fetchone()[0]
+            if actual != expected:
+                raise RuntimeError(
+                    "Description-index migration produced an unexpected row count: "
+                    f"expected={expected}, actual={actual}"
+                )
+            self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+        self.migration_report = MigrationReport(
+            from_version=current_version, to_version=SCHEMA_VERSION
+        )
+
+    def _archive_table_exists(self) -> bool:
+        return (
+            self.conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'archive'"
+            ).fetchone()
+            is not None
+        )
+
+    def _get_schema_version(self) -> int:
+        return int(self.conn.execute("PRAGMA user_version").fetchone()[0])
+
+    def _backfill_created_at_timestamps(self) -> None:
+        remaining = self.conn.execute(
+            "SELECT row_key, created_at FROM archive "
+            "WHERE created_at IS NOT NULL AND created_at_ts IS NULL"
+        ).fetchall()
+        updates = []
+        for row in remaining:
+            created_at = _parse_created_at(row[1])
+            if created_at is not None:
+                updates.append((int(created_at.timestamp()), row[0]))
+        if updates:
+            self.conn.executemany("UPDATE archive SET created_at_ts = ? WHERE row_key = ?", updates)
+
+    def _create_fts_schema(self, *, populate: bool = False) -> None:
+        self.conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS archive_fts USING fts5(
+                author_username, author_display_name, text, note_tweet_text,
+                content=''
+            )
+        """)
+        self.conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS archive_ad AFTER DELETE ON archive
+        WHEN old.record_type = 'tweet' BEGIN
+          INSERT INTO archive_fts(
+            archive_fts, rowid, author_username, author_display_name, text, note_tweet_text
+          ) VALUES(
+            'delete', old.rowid, old.author_username, old.author_display_name,
+            old.text, old.note_tweet_text
+          );
+        END;
+        """)
+        self.conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS archive_ai AFTER INSERT ON archive
+        WHEN new.record_type = 'tweet' BEGIN
+          INSERT INTO archive_fts(
+            rowid, author_username, author_display_name, text, note_tweet_text
+          ) VALUES(
+            new.rowid, new.author_username, new.author_display_name,
+            new.text, new.note_tweet_text
+          );
+        END;
+        """)
+        self.conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS archive_au AFTER UPDATE ON archive
+        WHEN (old.record_type = 'tweet' OR new.record_type = 'tweet')
+          AND (old.record_type IS NOT new.record_type
+            OR old.author_username IS NOT new.author_username
+            OR old.author_display_name IS NOT new.author_display_name
+            OR old.text IS NOT new.text
+            OR old.note_tweet_text IS NOT new.note_tweet_text)
+        BEGIN
+          INSERT INTO archive_fts(
+            archive_fts, rowid, author_username, author_display_name, text, note_tweet_text
+          ) SELECT
+            'delete', old.rowid, old.author_username, old.author_display_name,
+            old.text, old.note_tweet_text
+          WHERE old.record_type = 'tweet';
+          INSERT INTO archive_fts(
+            rowid, author_username, author_display_name, text, note_tweet_text
+          ) SELECT
+            new.rowid, new.author_username, new.author_display_name,
+            new.text, new.note_tweet_text
+          WHERE new.record_type = 'tweet';
+        END;
+        """)
+        if populate:
+            self.conn.execute("""
+                INSERT INTO archive_fts(
+                    rowid, author_username, author_display_name, text, note_tweet_text
+                )
+                SELECT rowid, author_username, author_display_name, text, note_tweet_text
+                FROM archive
+                WHERE record_type = 'tweet'
+            """)
+
+    def _rebuild_fts_schema(self) -> None:
+        for trigger in ("archive_ad", "archive_ai", "archive_au"):
+            self.conn.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+        self.conn.execute("DROP TABLE IF EXISTS archive_fts")
+        self._create_fts_schema(populate=True)
+
+    def _create_archive_indexes(self) -> None:
+        index_sql = {
+            "idx_archive_tweet_id": "tweet_id",
+            "idx_archive_target_tweet_id": "target_tweet_id",
+            "idx_archive_sort": (
+                "collection_type, created_at_ts DESC, CAST(sort_index AS INTEGER) DESC"
+            ),
+            "idx_archive_record_sort": (
+                "record_type, collection_type, created_at_ts DESC, tweet_id DESC"
+            ),
+            "idx_archive_record_page": (
+                "record_type, created_at_ts DESC, CAST(sort_index AS INTEGER) DESC, tweet_id DESC"
+            ),
+            "idx_archive_record_collection_page": (
+                "record_type, collection_type, created_at_ts DESC, "
+                "CAST(sort_index AS INTEGER) DESC, tweet_id DESC"
+            ),
+            **ENRICHMENT_INDEXES,
+        }
+        for name, columns in index_sql.items():
+            self.conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON archive({columns})")
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archive_search_attachment
+            ON archive(record_type, tweet_id, media_type)
+            WHERE record_type IN ('media', 'url_ref')
+        """)
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archive_media_tag_lookup
+            ON archive(tweet_id, raw_json)
+            WHERE record_type = 'media_tag'
+        """)
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archive_membership
+            ON archive(tweet_id, row_key, collection_type)
+            WHERE record_type = 'tweet'
+        """)
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archive_search_author
+            ON archive(LOWER(COALESCE(author_username, '')), created_at_ts DESC, tweet_id)
+            WHERE record_type = 'tweet'
+        """)
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_archive_profile_author
+            ON archive(author_id)
+            WHERE author_id IS NOT NULL AND author_id != ''
+        """)
+        self._create_tweet_facts()
+        self._create_tweet_content()
+        self._create_description_fts()
+        self._create_cache_revisions()
+
+    def _create_tweet_content(self) -> None:
+        """Index captured content and notes in memberships and context objects."""
+        self._create_community_notes_table()
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS archive_tweet_content "
+            "(row_key TEXT PRIMARY KEY, tweet_id TEXT, has_content INTEGER NOT NULL, "
+            "has_note INTEGER NOT NULL) WITHOUT ROWID"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tweet_content_captured "
+            "ON archive_tweet_content (has_content, tweet_id)"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tweet_content_note "
+            "ON archive_tweet_content (has_note, tweet_id)"
+        )
+        # Rebuilt on upgrade so older trigger bodies pick up the current capture rules.
+        for suffix in ("ai", "au", "ad"):
+            self.conn.execute(f"DROP TRIGGER IF EXISTS archive_content_{suffix}")
+        columns = "row_key, tweet_id, has_content, has_note"
+        types = "('tweet', 'tweet_object')"
+        upsert = (
+            f"INSERT OR REPLACE INTO archive_tweet_content ({columns}) "
+            f"SELECT new.row_key, {_tweet_content_values('new')} "
+            f"WHERE new.record_type IN {types} AND new.row_key IS NOT NULL;"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_content_ai AFTER INSERT ON archive "
+            f"WHEN new.record_type IN {types} AND new.row_key IS NOT NULL "
+            f"BEGIN {upsert} END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_content_au "
+            "AFTER UPDATE OF row_key, record_type, tweet_id, text, raw_json ON archive "
+            f"WHEN old.record_type IN {types} OR new.record_type IN {types} BEGIN "
+            "DELETE FROM archive_tweet_content WHERE row_key = old.row_key; "
+            f"{upsert} END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_content_ad AFTER DELETE ON archive "
+            f"WHEN old.record_type IN {types} BEGIN "
+            "DELETE FROM archive_tweet_content WHERE row_key = old.row_key; END"
+        )
+        self.conn.execute(
+            f"INSERT OR REPLACE INTO archive_tweet_content ({columns}) "
+            f"SELECT content.row_key, {_tweet_content_values('content')} FROM archive AS content "
+            f"WHERE content.record_type IN {types} AND content.row_key IS NOT NULL"
+        )
+
+    def _create_community_notes_table(self) -> None:
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS community_notes ("
+            "tweet_id TEXT NOT NULL, text_hash TEXT NOT NULL, text TEXT NOT NULL, "
+            "raw_json TEXT, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, "
+            "removed_at TEXT, PRIMARY KEY (tweet_id, text_hash))"
+        )
+
+    def _create_tweet_facts(self) -> None:
+        """Create, backfill, and maintain the derived search-filter values.
+
+        Membership writes always carry a row key; keyless rows (only possible through
+        direct SQL) get no facts instead of failing the write.
+        """
+        columns = ", ".join(TWEET_FACT_EXPRESSIONS)
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS archive_tweet_facts "
+            f"(row_key TEXT PRIMARY KEY, {columns}) WITHOUT ROWID"
+        )
+
+        def upsert(row: str) -> str:
+            return (
+                f"INSERT OR REPLACE INTO archive_tweet_facts (row_key, {columns}) "
+                f"SELECT {row}.row_key, {_tweet_fact_values(row + '.raw_json')}"
+            )
+
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_facts_ai AFTER INSERT ON archive "
+            "WHEN new.record_type = 'tweet' AND new.row_key IS NOT NULL "
+            f"BEGIN {upsert('new')}; END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_facts_au "
+            "AFTER UPDATE OF row_key, record_type, raw_json ON archive "
+            "WHEN old.record_type = 'tweet' OR new.record_type = 'tweet' BEGIN "
+            "DELETE FROM archive_tweet_facts WHERE row_key = old.row_key; "
+            f"{upsert('new')} WHERE new.record_type = 'tweet' AND new.row_key IS NOT NULL; END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_facts_ad AFTER DELETE ON archive "
+            "WHEN old.record_type = 'tweet' BEGIN "
+            "DELETE FROM archive_tweet_facts WHERE row_key = old.row_key; END"
+        )
+        self.conn.execute(
+            f"INSERT OR REPLACE INTO archive_tweet_facts (row_key, {columns}) "
+            f"SELECT row_key, {_tweet_fact_values('raw_json')} "
+            "FROM archive WHERE record_type = 'tweet' AND row_key IS NOT NULL"
+        )
+
+    def _create_description_fts(self) -> None:
+        """Create, backfill, and maintain the full-text index of media-tag descriptions.
+
+        Rows share the media_tag archive row's rowid. The index stores its own copy
+        of each description, so triggers delete by rowid without the old text.
+        """
+        exists = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'archive_description_fts'"
+        ).fetchone()
+        self.conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS archive_description_fts USING fts5(description)"
+        )
+
+        def insert(row: str) -> str:
+            description = _media_tag_description(f"{row}.raw_json")
+            return (
+                "INSERT INTO archive_description_fts (rowid, description) "
+                f"SELECT {row}.rowid, {description} "
+                f"WHERE {row}.record_type = 'media_tag' AND {description} != ''"
+            )
+
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_description_ai AFTER INSERT ON archive "
+            f"WHEN new.record_type = 'media_tag' BEGIN {insert('new')}; END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_description_au "
+            "AFTER UPDATE OF record_type, raw_json ON archive "
+            "WHEN old.record_type = 'media_tag' OR new.record_type = 'media_tag' BEGIN "
+            "DELETE FROM archive_description_fts WHERE rowid = old.rowid; "
+            f"{insert('new')}; END"
+        )
+        self.conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS archive_description_ad AFTER DELETE ON archive "
+            "WHEN old.record_type = 'media_tag' BEGIN "
+            "DELETE FROM archive_description_fts WHERE rowid = old.rowid; END"
+        )
+        if not exists:
+            description = _media_tag_description("raw_json")
+            self.conn.execute(
+                "INSERT INTO archive_description_fts (rowid, description) "
+                f"SELECT rowid, {description} FROM archive "
+                f"WHERE record_type = 'media_tag' AND {description} != ''"
+            )
+
+    def _create_cache_revisions(self) -> None:
+        """Track derived-data inputs across processes, including direct SQL writes."""
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS archive_revisions "
+            "(scope TEXT PRIMARY KEY, generation INTEGER NOT NULL)"
+        )
+        self.conn.executemany(
+            "INSERT OR IGNORE INTO archive_revisions VALUES (?, 0)",
+            [("membership",), ("like_order",)],
+        )
+        scopes = {
+            "membership": (
+                "{row}.record_type = 'tweet'",
+                ("record_type", "tweet_id", "collection_type"),
+            ),
+            "like_order": (
+                "({row}.record_type = 'tweet' AND {row}.collection_type = 'like') OR "
+                "({row}.record_type = 'raw_capture' AND {row}.operation IN "
+                "('Likes', 'XArchiveLikes', 'XArchiveManifest')) OR "
+                "{row}.record_type = 'import_manifest'",
+                (
+                    "record_type",
+                    "tweet_id",
+                    "collection_type",
+                    "sort_index",
+                    "source",
+                    "operation",
+                    "raw_json",
+                    "cursor_in",
+                    "cursor_out",
+                    "http_status",
+                    "captured_at",
+                    "archive_digest",
+                    "archive_generation_date",
+                    "import_started_at",
+                    "row_key",
+                ),
+            ),
+        }
+        for scope, (relevant, columns) in scopes.items():
+            for event in ("INSERT", "DELETE", "UPDATE"):
+                rows = (
+                    ("new", "old")
+                    if event == "UPDATE"
+                    else ("new" if event == "INSERT" else "old",)
+                )
+                condition = " OR ".join(f"({relevant.format(row=row)})" for row in rows)
+                if event == "UPDATE":
+                    changed = " OR ".join(f"old.{col} IS NOT new.{col}" for col in columns)
+                    # Membership content/raw payload updates do not change like order.
+                    if scope == "like_order":
+                        membership_changed = " OR ".join(
+                            f"old.{col} IS NOT new.{col}" for col in columns[:5]
+                        )
+                        changed = (
+                            f"((old.record_type = 'tweet' AND new.record_type = 'tweet' "
+                            f"AND ({membership_changed})) OR "
+                            f"((old.record_type != 'tweet' OR new.record_type != 'tweet') "
+                            f"AND ({changed})))"
+                        )
+                    condition = f"({condition}) AND ({changed})"
+                self.conn.execute(
+                    f"CREATE TRIGGER IF NOT EXISTS archive_revision_{scope}_{event.lower()} "
+                    f"AFTER {event} ON archive WHEN {condition} BEGIN "
+                    "UPDATE archive_revisions SET generation = generation + 1 "
+                    f"WHERE scope = '{scope}'; END"
+                )
+
+    def rebuild_search_index(self) -> None:
+        """Finalize timestamp and full-text indexes after an explicit bulk import."""
+        with self.conn:
+            self._backfill_created_at_timestamps()
+            self._rebuild_fts_schema()

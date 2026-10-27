@@ -57,7 +57,8 @@ from tweetnook.query_ids import QueryIdStore, refresh_query_ids
 from tweetnook.resource_failure import raise_if_storage_exhausted
 from tweetnook.resurrection import resurrection_retry_schedule, transient_retry_at
 from tweetnook.storage import ArchiveStore, open_archive_store
-from tweetnook.storage.backend import ARCHIVE_SOURCE, LIVE_SOURCE, _PageBuffer
+from tweetnook.storage.common import ARCHIVE_SOURCE, LIVE_SOURCE
+from tweetnook.storage.records import _PageBuffer
 from tweetnook.sync import ProcessLock, sync_collection
 from tweetnook.utils import resolve_query_ids, utc_now
 

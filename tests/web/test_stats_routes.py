@@ -8,7 +8,8 @@ from types import SimpleNamespace
 import pytest
 
 from tweetnook.stats import STATS_SECTION_SPECS, build_stats_report
-from tweetnook.storage.backend import ArchiveCollectionStats, ArchiveStats, ArchiveStore
+from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.stats import ArchiveCollectionStats, ArchiveStats
 from tweetnook.web.routes import stats as stats_routes
 from tweetnook.web.stats_cache import WebStatsCache
 

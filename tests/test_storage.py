@@ -19,7 +19,7 @@ from tests.conftest import (
 from tweetnook.client.timelines import TimelineTweet
 from tweetnook.exceptions import ArchiveOwnerMismatchError
 from tweetnook.storage import open_archive_store
-from tweetnook.storage.backend import _PageBuffer
+from tweetnook.storage.records import _PageBuffer
 
 
 def _counts(**overrides: int) -> dict[str, int]:

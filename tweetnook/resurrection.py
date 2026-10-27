@@ -34,7 +34,8 @@ from tweetnook.exceptions import (
 from tweetnook.jobs import locked_archive_job, resolve_job_context
 from tweetnook.pipeline import current_pipeline
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids
-from tweetnook.storage.backend import ArchiveStore, _PageBuffer
+from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.records import _PageBuffer
 from tweetnook.utils import resolve_query_ids, utc_now
 
 DEFAULT_RESURRECTION_BUDGET = 200

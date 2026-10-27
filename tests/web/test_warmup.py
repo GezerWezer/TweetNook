@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from tweetnook.storage import backend
+from tweetnook.storage import db
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.web.warmup import ArchiveWarmer
 
@@ -19,13 +19,13 @@ def store(tmp_path):
 
 def test_warm_read_cache_reads_on_its_own_read_only_connection(store, monkeypatch):
     seen = []
-    connect = backend.sqlite3.connect
+    connect = db.sqlite3.connect
 
     def recording_connect(database, *args, **kwargs):
         seen.append((database, kwargs.get("uri")))
         return connect(database, *args, **kwargs)
 
-    monkeypatch.setattr(backend.sqlite3, "connect", recording_connect)
+    monkeypatch.setattr(db.sqlite3, "connect", recording_connect)
     changes = store.conn.total_changes
 
     store.warm_read_cache()
@@ -39,7 +39,7 @@ def test_interrupt_stops_a_running_warm_read_and_later_ones(store, monkeypatch):
     endless = (
         "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n) SELECT COUNT(*) FROM n"
     )
-    monkeypatch.setattr(backend, "_WARM_READ_QUERIES", (endless,))
+    monkeypatch.setattr(db, "_WARM_READ_QUERIES", (endless,))
     thread = threading.Thread(target=store.warm_read_cache)
     thread.start()
     time.sleep(0.05)
@@ -49,7 +49,7 @@ def test_interrupt_stops_a_running_warm_read_and_later_ones(store, monkeypatch):
 
     assert not thread.is_alive()
     monkeypatch.setattr(
-        backend.sqlite3, "connect", lambda *_a, **_k: pytest.fail("cancelled warm read connected")
+        db.sqlite3, "connect", lambda *_a, **_k: pytest.fail("cancelled warm read connected")
     )
     store.warm_read_cache()
 

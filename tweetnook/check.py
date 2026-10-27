@@ -53,7 +53,8 @@ from tweetnook.resurrection import (
     preserve_reason_confidence,
     resurrection_retry_schedule,
 )
-from tweetnook.storage.backend import ArchiveStore, _PageBuffer
+from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.records import _PageBuffer
 from tweetnook.utils import utc_now
 
 CHECK_CHUNK_SIZE = 100

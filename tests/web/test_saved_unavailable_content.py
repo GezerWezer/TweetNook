@@ -6,7 +6,8 @@ from contextlib import closing
 import pytest
 
 from tweetnook.search import count_posts, search_posts
-from tweetnook.storage.backend import UNCAPTURED_TWEET_IDS_SQL, ArchiveStore
+from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.common import UNCAPTURED_TWEET_IDS_SQL
 from tweetnook.web.availability import UNAVAILABLE_MESSAGES, annotate_web_tweets, slim_web_tweets
 
 

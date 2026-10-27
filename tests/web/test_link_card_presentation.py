@@ -5,7 +5,8 @@ from contextlib import closing
 from tests.conftest import make_link_card, make_photo_media, make_tweet_result
 from tweetnook.extractor import extract_secondary_objects
 from tweetnook.search import search_posts
-from tweetnook.storage.backend import ArchiveStore, _PageBuffer
+from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.records import _PageBuffer
 from tweetnook.web.availability import annotate_web_tweets, slim_web_tweets
 
 

@@ -14,7 +14,7 @@ Start at the public operation you're changing, then follow its storage and prese
 | `client/fxtwitter.py` | Cookie-free public lookup and payload adaptation. |
 | `query_ids/` | Operation defaults, cache and bundle discovery. |
 | `extractor.py`, `articles.py`, `media_metadata.py` | Canonical fields, relations, Article structures and media geometry. |
-| `storage/backend.py`, `storage/migrate.py` | SQLite records/schema and explicit legacy migration. |
+| `storage/` | SQLite archive: `ArchiveStore` in `backend.py`, one module per storage concern (see [storage](storage.md#layout)), and explicit legacy migration in `migrate.py`. |
 | `like_order.py` | Rebuildable like order from captured observations. |
 | `sync.py` | Collection preflight, resumable pages and follow-up plan. |
 | `archive_import.py` | Official export ingest, manifests and sparse completion. |

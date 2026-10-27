@@ -15,7 +15,8 @@ from tweetnook import cli
 from tweetnook.config import AppConfig
 from tweetnook.pipeline import PipelineReporter, current_pipeline
 from tweetnook.storage import migrate, open_archive_store
-from tweetnook.storage.backend import SCHEMA_VERSION, ArchiveStore
+from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.schema import SCHEMA_VERSION
 
 
 class FakeLegacyTable:

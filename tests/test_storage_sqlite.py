@@ -12,12 +12,8 @@ import tweetnook.storage.backend as storage_backend
 from tweetnook.config import AppConfig, DatabaseConfig
 from tweetnook.search import search_posts
 from tweetnook.storage import open_archive_store
-from tweetnook.storage.backend import (
-    ARCHIVE_COLUMNS,
-    ENRICHMENT_INDEXES,
-    SCHEMA_VERSION,
-    ArchiveStore,
-)
+from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.schema import ARCHIVE_COLUMNS, ENRICHMENT_INDEXES, SCHEMA_VERSION
 
 CREATED_2012 = "Tue Oct 09 21:39:26 +0000 2012"
 CREATED_2024 = "Thu Apr 11 03:55:13 +0000 2024"

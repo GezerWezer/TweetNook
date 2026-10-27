@@ -283,7 +283,7 @@ def test_selective_text_author_driver_preserves_ranking_and_all_matches(tmp_path
 def test_live_graph_prefetch_batches_existing_secondary_rows(tmp_path):
     from tests.test_storage import _complex_tweet
     from tweetnook.extractor import extract_secondary_objects
-    from tweetnook.storage.backend import _PageBuffer
+    from tweetnook.storage.records import _PageBuffer
 
     store = ArchiveStore(tmp_path / "archive.db", create=True)
     graph = extract_secondary_objects(_complex_tweet("123").raw_json)

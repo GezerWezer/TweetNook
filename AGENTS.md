@@ -42,7 +42,7 @@ Invariants that must hold:
   supervisor rather than starting its own write path.
 
 The codebase is being restructured out of a few very large files (`static/js/app.js`,
-`storage/backend.py`, `cli.py`, `index.html`). Put new code in a focused module for its
+`cli.py`, `index.html`). Put new code in a focused module for its
 feature instead of growing those files, and keep moves separate from behavior changes.
 
 ## Code

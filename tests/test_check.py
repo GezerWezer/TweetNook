@@ -18,7 +18,7 @@ from tweetnook.check import FX_NOT_FOUND_DETAIL, MAX_CONSECUTIVE_ERRORS, run_che
 from tweetnook.client.timelines import TimelineTweet
 from tweetnook.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
-from tweetnook.storage.backend import FX_SOURCE, LIVE_SOURCE
+from tweetnook.storage.common import FX_SOURCE, LIVE_SOURCE
 
 
 def _save(store, tweet_id: str, text: str, *, quoted: dict | None = None) -> None:

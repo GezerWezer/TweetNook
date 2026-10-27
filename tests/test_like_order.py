@@ -13,7 +13,9 @@ from tweetnook.archive_import import _import_likes
 from tweetnook.client.timelines import _iter_entries, parse_timeline_response
 from tweetnook.like_order import _integer, merge_missing, page_observations, repair_archive_blocks
 from tweetnook.search import SearchQueryError, search_posts
-from tweetnook.storage.backend import ARCHIVE_SOURCE, LIVE_SOURCE, ArchiveStore, _PageBuffer
+from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.common import ARCHIVE_SOURCE, LIVE_SOURCE
+from tweetnook.storage.records import _PageBuffer
 
 
 @pytest.fixture

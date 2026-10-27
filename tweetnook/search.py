@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 from tweetnook.export.common import normalize_collection_name
 from tweetnook.like_order import LIKE_SORTS
-from tweetnook.storage.backend import (
+from tweetnook.storage.common import (
     COMMUNITY_NOTE_TWEET_IDS_SQL,
     HIDDEN_TWEET_IDS_SQL,
     UNCAPTURED_TWEET_IDS_SQL,

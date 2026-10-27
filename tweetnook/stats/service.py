@@ -17,7 +17,7 @@ from tweetnook.stats.models import (
     TableColumn,
 )
 from tweetnook.storage import ArchiveStore
-from tweetnook.storage.backend import ArchiveStats
+from tweetnook.storage.stats import ArchiveStats
 
 UNAVAILABLE_REASON_LABELS = (
     ("protected_account", "Protected account"),

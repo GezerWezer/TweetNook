@@ -29,7 +29,7 @@ def _format_ts(ts: int | float | str | None) -> str | None:
         try:
             parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
         except ValueError:
-            from tweetnook.storage.backend import _parse_created_at
+            from tweetnook.storage.common import _parse_created_at
 
             parsed = _parse_created_at(ts)
             if parsed is None:
@@ -45,7 +45,7 @@ def _format_stats_timestamp(raw: str | None) -> str:
     if not raw:
         return "-"
     try:
-        from tweetnook.storage.backend import _parse_created_at
+        from tweetnook.storage.common import _parse_created_at
 
         parsed = _parse_created_at(raw)
         if parsed is None:

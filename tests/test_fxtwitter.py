@@ -20,7 +20,7 @@ from tweetnook.extractor import extract_secondary_objects
 from tweetnook.job_supervisor import JobConflictError
 from tweetnook.scheduler import CHECK_CONFLICT_RETRY_SECONDS, ScheduleManager
 from tweetnook.storage import open_archive_store
-from tweetnook.storage.backend import ARCHIVE_SOURCE, FX_SOURCE, LIVE_SOURCE
+from tweetnook.storage.common import ARCHIVE_SOURCE, FX_SOURCE, LIVE_SOURCE
 
 
 def fx_status(

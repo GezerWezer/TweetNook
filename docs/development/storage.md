@@ -2,6 +2,32 @@
 
 The active backend is SQLite, opened through `open_archive_store`. It stores multiple record types in the `archive` table and maintains derived search structures alongside it. A database is `archive.db` under the resolved data directory; files such as media live beside it.
 
+## Layout
+
+`ArchiveStore` in `storage/backend.py` owns the SQLite connection and combines one mixin per storage concern. Each mixin lives in its own module and inherits the mixins it calls, so the class headers show which groups depend on which.
+
+| Module | Owns |
+| --- | --- |
+| `common.py` | SQL fragment helpers, source names and ranks, shared hidden/uncaptured/note filters. |
+| `db.py` | Query helpers, cache revisions, read warming, close and optimize. |
+| `schema.py` | Table layout, FTS and derived tables, `SCHEMA_VERSION`, upgrades from released schemas. |
+| `records.py` | Row construction, row keys, `_PageBuffer` and source-precedence merging. |
+| `sync_state.py` | Sync cursors, the archive owner and import manifests. |
+| `tweets.py` | Timeline page writes: raw captures, memberships and `persist_page`. |
+| `objects.py` | Canonical tweet objects and their relations, media, URLs and articles. |
+| `details.py` | Tweet detail, thread, unavailable-tweet and FxTwitter writes. |
+| `enrichment.py` | Media download, URL unfurl, link card and resurrection queues. |
+| `checks.py` | Availability check results, context checks and Community Notes. |
+| `tags.py` | Media tags, global tag edits, hidden tweets and tagging candidates. |
+| `relations.py` | Known-ID, thread-target, URL-reference and quote lookups. |
+| `authors.py` | Avatar URLs, handle resolution, profile snapshots and handle search. |
+| `reads.py` | Feed pagination, like order, ID fetches and export hydration. |
+| `stats.py` | Counts and the archive statistics summary. |
+| `imports.py` | Official-archive import cleanup and rehydration from raw captures. |
+| `search.py` | Full-text and structured search. |
+
+Put a new storage operation in the module for its concern, and add a mixin base only when it calls into another group. Bases follow the order in `ArchiveStore`'s header, which keeps Python's method resolution order consistent.
+
 ## Opening the archive
 
 `open_archive_store` in `storage/backend.py` opens SQLite archives. With `create=False`, a missing archive stays missing, which lets the web server offer Setup without creating an empty database as a side effect. Legacy LanceDB content requires an explicit migration.
@@ -10,7 +36,7 @@ Writable connections use WAL and recursive triggers. Database configuration sets
 
 The schema maintains content and Community Note flags used by search, including uncaptured placeholders and note history. Migrations backfill derived data transactionally while preserving saved content.
 
-Schema migrations run when a writable store opens. `SCHEMA_VERSION` in `storage/backend.py` is the authoritative version. New databases receive the latest schema; migrations must preserve existing archive content and update derived structures as needed.
+Schema migrations run when a writable store opens. `SCHEMA_VERSION` in `storage/schema.py` is the authoritative version. New databases receive the latest schema; migrations must preserve existing archive content and update derived structures as needed.
 
 ## Record types
 
