@@ -46,4 +46,5 @@ The test session enables Safari's autoplay test policy to avoid requiring a nati
 tap, then injects per-element audible refusals to exercise the authorized-decoder
 fallback. It checks real Safari decoding, layout and scrolling; it does not establish
 user-gesture permission or physical-device momentum behavior. Set
-`SAFARI_SCROLL_CSS` to a saved stylesheet to check a pre-fix version.
+`SAFARI_SCROLL_CSS` to a saved copy of `tweetnook/web/static/css` to check a pre-fix
+version.

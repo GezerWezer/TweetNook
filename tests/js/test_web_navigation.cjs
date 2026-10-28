@@ -16,6 +16,7 @@ const {
     parseFakeHTML,
     test,
     run,
+    pageCss,
 } = require('./web_harness.cjs');
 
 test('detail routes parse and generate canonical string tweet IDs', () => {
@@ -750,7 +751,7 @@ test('media whitespace opens another post in split view while media surfaces ret
 
 test('opening a conversation in the split panel keeps the column width', () => {
     const html = pageHtml();
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     // Swapping border-x for border-l narrowed the column by 1px and re-wrapped the feed.
     const column = html.match(/<div [^>]*class="[^"]*app-column[^"]*"[^>]*>/)[0];
     assert.match(column, /class="border-x [^"]*app-column/);
@@ -761,7 +762,7 @@ test('opening a conversation in the split panel keeps the column width', () => {
 
 test('a conversation collapses the feed instead of removing it', () => {
     const html = pageHtml();
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     const feed = html.match(/<div id="nook-feed"[^>]*>/)[0];
     // display: none made WebKit lay out every card of a long feed again on return.
     assert.doesNotMatch(feed, /x-show="[^"]*viewMode/);
@@ -777,7 +778,7 @@ test('a conversation collapses the feed instead of removing it', () => {
 
 test('a phone post slides as a layer over the feed, with its own header', () => {
     const html = pageHtml();
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     const stage = html.match(/<div x-ref="detailStage"[^>]*>/)[0];
     assert.match(stage, /'detail-layer': detailLayer, 'is-open': detailLayerOpen/);
     const body = html.slice(html.indexOf(stage), html.indexOf('<!-- /detail-stage -->'));
@@ -852,14 +853,14 @@ test('the feed scroll indicator is never hidden or rebuilt around a post layer',
     // iOS never shows the page's indicator again once scrollbar-width or
     // ::-webkit-scrollbar hides it, and an overflow change to rebuild it made the
     // feed jump; the brief indicator over a post opened mid-scroll is the lesser cost.
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     const js = readScripts(pageScripts());
     assert.doesNotMatch(css, /detail-covering/);
     assert.doesNotMatch(js, /detail-covering|overflowY = 'scroll'/);
 });
 
 test('the phone post page spaces its parts and replies like X and shows the whole post', () => {
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     const html = pageHtml();
     assert.match(css, /--detail-bar: 38px;/);
     assert.doesNotMatch(css, /\.detail-layer-header \.nook-title-row \{[^}]*box-shadow/);

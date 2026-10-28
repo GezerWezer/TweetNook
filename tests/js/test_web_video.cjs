@@ -1,12 +1,9 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const { appScripts, pageHtml } = require('./page_scripts.cjs');
 const {
     FakeElement,
-    ROOT,
     browserContext,
     dispatchFeed,
     immediateComponent,
@@ -14,6 +11,7 @@ const {
     parseFakeHTML,
     test,
     run,
+    pageCss,
 } = require('./web_harness.cjs');
 
 test('media renderer preserves direct playback parents, placeholders and existing galleries', () => {
@@ -147,10 +145,7 @@ test('media renderer preserves direct playback parents, placeholders and existin
         /class="media-video-duration" data-video-duration hidden aria-hidden="true"><\/span>/,
     );
 
-    const css = fs.readFileSync(
-        path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'),
-        'utf8',
-    );
+    const css = pageCss();
     assert.match(css, /\.media-video-duration,/);
     assert.match(css, /\.media-video-duration\s*\{[^}]*display: inline-flex;[^}]*align-items: center;/s);
     assert.match(css, /\.media-video-player\.is-native-ui-hidden \.media-video-duration \{/);

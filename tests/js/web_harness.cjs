@@ -224,6 +224,16 @@ function browserContext(pathname = '/') {
     return context;
 }
 
+// The page's own stylesheets (not Tailwind's build), concatenated in the order the
+// page links them, so a test sees the rules wherever they live and in cascade order.
+function pageCss() {
+    const shell = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    return [...shell.matchAll(/<link rel="stylesheet" href="\/static\/css\/([\w-]+\.css)">/g)]
+        .filter(([, name]) => name !== 'tailwind.css')
+        .map(([, name]) => fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', name), 'utf8'))
+        .join('\n');
+}
+
 function loadScripts(context, names, exportExpression) {
     const source = names
         .map(name => fs.readFileSync(path.join(JS_DIR, name), 'utf8'))
@@ -509,6 +519,7 @@ async function run() {
 }
 
 module.exports = {
+    pageCss,
     FakeElement,
     JS_DIR,
     ROOT,

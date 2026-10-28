@@ -1,0 +1,592 @@
+/* Full-screen media viewer, video player controls, and video and GIF badges. */
+/* Fullscreen media uses direct-manipulation motion while retaining native pinch zoom. */
+.lightbox-viewer {
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+.lightbox-overlay-enter,
+.lightbox-overlay-leave {
+    transition: opacity 180ms ease;
+}
+.lightbox-overlay-enter-start,
+.lightbox-overlay-leave-end {
+    opacity: 0;
+}
+.lightbox-overlay-enter-end,
+.lightbox-overlay-leave-start {
+    opacity: 1;
+}
+.lightbox-stage {
+    contain: strict;
+}
+.lightbox-shade {
+    display: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 99;
+    pointer-events: none;
+    background: #000;
+}
+.lightbox-slide {
+    will-change: transform;
+    backface-visibility: hidden;
+}
+.lightbox-media {
+    user-select: none;
+    -webkit-user-drag: none;
+}
+.lightbox-gesture-surface {
+    touch-action: pinch-zoom;
+}
+.lightbox-chrome,
+.lightbox-nav-button,
+.lightbox-close-button {
+    transition: opacity 120ms linear, background-color 150ms ease;
+}
+.lightbox-close-button {
+    top: max(16px, env(safe-area-inset-top));
+    left: max(16px, env(safe-area-inset-left));
+}
+.lightbox-video-back-icon { display: none; }
+.lightbox-dots,
+.lightbox-actions { display: none; }
+.lightbox-position {
+    position: absolute;
+    top: max(22px, calc(env(safe-area-inset-top) + 6px));
+    left: 50%;
+    padding: 3px 9px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.46);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(8px);
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+    .lightbox-nav-button {
+        display: none !important;
+    }
+    .lightbox-media {
+        max-width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lightbox-viewer,
+    .lightbox-overlay-enter,
+    .lightbox-overlay-leave,
+    .lightbox-chrome,
+    .lightbox-nav-button,
+    .lightbox-close-button {
+        transition-duration: 1ms !important;
+    }
+}
+
+/* Darken photos on hover with an overlay; animating the img's own opacity
+   promotes it to a compositor layer that resamples it with visible aliasing. */
+.media-photo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+}
+.media-photo:hover::after {
+    opacity: 0.1;
+}
+
+/* Twitter/X-style playback badges for archived video and animated GIF media. */
+.media-video-duration,
+.media-gif-indicator {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    z-index: 2;
+    min-height: 20px;
+    border-radius: 4px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.77);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 16px;
+}
+.media-video-duration {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 8px;
+    font-weight: 400;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 100ms ease, visibility 100ms ease;
+}
+/* Only while the native control bar (which has its own time readout) is hidden. */
+.media-video-player.is-native-ui-hidden .media-video-duration {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Measurements and SVG geometry come from X's live desktop/mobile player.
+   The 62px gradient holds a 20px seek hit area and a 40px control row. */
+.media-video-player { position: relative; container-type: inline-size; }
+.media-video-player [hidden] { display: none !important; }
+.video-control-bar {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 3;
+    padding: 0 4px 2px;
+    height: 62px;
+    color: #fff;
+    background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, .77));
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    transition: opacity 150ms ease, visibility 150ms ease;
+}
+.video-control-row { display: flex; align-items: center; height: 40px; gap: 0; }
+.video-button {
+    display: inline-flex;
+    flex: 0 0 32px;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+}
+.video-button svg { width: 18px; height: 18px; fill: currentColor; }
+.video-button[data-video-action="fullscreen"] svg { width: 18.75px; height: 18.75px; }
+.video-button:hover { background: rgba(255, 255, 255, .1); }
+.video-button:disabled { cursor: default; }
+.video-button:focus-visible, .video-seek:focus-visible, .video-volume:focus-visible,
+.media-video-player:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.video-time {
+    margin: 0 4px 0 auto;
+    padding-left: 4px;
+    white-space: nowrap;
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 400;
+    font-variant-numeric: normal;
+}
+.video-mobile-time { display: none; }
+.video-scrub-time { display: none; }
+.video-seek-wrap { position: relative; height: 20px; }
+.video-scrub-track {
+    display: block;
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    top: 9px;
+    height: 2px;
+    border-radius: 8px;
+    background: #333;
+    pointer-events: none;
+    opacity: 0;
+    transition: height 120ms ease, top 120ms ease, opacity 120ms ease;
+}
+.video-scrub-track > span {
+    display: block;
+    width: var(--video-progress, 0%);
+    height: 100%;
+    border-radius: inherit;
+    background: #fff;
+}
+.video-seek, .video-volume {
+    display: block;
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0;
+    border: 0;
+    cursor: pointer;
+    color: #fff;
+    background: transparent;
+    touch-action: none;
+}
+.video-seek { width: calc(100% - 8px); height: 20px; margin: 0 4px; --video-progress: 0%; }
+.video-seek:disabled { cursor: default; opacity: .5; }
+.video-seek::-webkit-slider-runnable-track {
+    height: 2px;
+    border-radius: 8px;
+    background: linear-gradient(to right, #fff var(--video-progress), rgba(255,255,255,.33) var(--video-progress));
+}
+.video-seek::-moz-range-track { height: 2px; border-radius: 8px; background: rgba(255,255,255,.33); }
+.video-seek::-moz-range-progress { height: 2px; background: #fff; border-radius: 8px; }
+.video-seek::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -7px;
+    border: 0;
+    border-radius: 9999px;
+    background: #fff;
+    opacity: 0;
+}
+.video-seek::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 9999px; background: #fff; opacity: 0; }
+.video-seek:hover::-webkit-slider-thumb, .video-seek:focus-visible::-webkit-slider-thumb,
+.video-seek:active::-webkit-slider-thumb { opacity: 1; }
+.video-seek:hover::-moz-range-thumb, .video-seek:focus-visible::-moz-range-thumb,
+.video-seek:active::-moz-range-thumb { opacity: 1; }
+.video-volume-group { display: flex; align-items: center; position: relative; }
+.video-volume {
+    position: absolute;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%);
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 32px;
+    height: 112px;
+    padding: 16px 14px;
+    border-radius: 16px;
+    background: rgba(0,0,0,.3);
+    visibility: hidden;
+}
+@media (hover: hover) and (pointer: fine) {
+    .video-volume-group:hover .video-volume, .video-volume-group:focus-within .video-volume { visibility: visible; }
+}
+.video-volume::-webkit-slider-runnable-track { width: 4px; background: rgba(255,255,255,.33); border-radius: 8px; }
+.video-volume::-moz-range-track { width: 4px; background: rgba(255,255,255,.33); border-radius: 8px; }
+.video-volume::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-left: -6px;
+    border: 0;
+    border-radius: 9999px;
+    background: #fff;
+}
+.video-volume::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 9999px; background: #fff; }
+.video-center-play {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 4;
+    width: 60px;
+    height: 61px;
+    transform: translate(-50%, -50%);
+}
+.video-center-play svg { width: 60px; height: 61px; }
+.video-center-play:hover { background: transparent; }
+.has-started .video-center-play { display: none; }
+.video-idle-mute {
+    display: none;
+    position: absolute;
+    right: 12px;
+    bottom: 10px;
+    z-index: 3;
+    width: 24px;
+    height: 24px;
+    background: rgba(0,0,0,.77);
+    opacity: 0;
+    visibility: hidden;
+}
+.video-idle-mute svg { width: 14px; height: 14px; }
+.has-custom-controls.is-native-ui-hidden .video-control-bar { opacity: 0; visibility: hidden; pointer-events: none; }
+.has-custom-controls:not(.has-started) .media-video-duration { opacity: 1; visibility: visible; }
+.has-custom-controls:not(.has-started) .video-control-bar { opacity: 0; visibility: hidden; pointer-events: none; }
+.has-custom-controls:not(.has-started):focus-within .video-control-bar { opacity: 1; visibility: visible; pointer-events: auto; }
+.lightbox-video-player {
+    width: min(90vw, calc(90dvh * var(--video-aspect, 1.777778)));
+    max-width: 90%;
+    aspect-ratio: var(--video-aspect, 1.777778);
+    background: #000;
+}
+.lightbox-video-player > video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.media-video-player:fullscreen { width: 100%; height: 100%; max-width: none; background: #000; border-radius: 0; }
+.media-video-player:fullscreen > video { width: 100%; height: 100%; object-fit: contain; }
+@container (min-width: 300px) {
+    .video-control-row .video-button { flex-basis: 36px; width: 36px; height: 36px; }
+    .video-control-row .video-button svg { width: 20px; height: 20px; }
+    .video-control-row .video-button[data-video-action="fullscreen"] svg { width: 18.75px; height: 18.75px; }
+    .video-time { font-size: 15px; }
+}
+/* The phone feed uses a sound badge; tapping the video opens its own viewer. */
+@media (max-width: 640px), (pointer: coarse) {
+    .media-video-player:not(.lightbox-video-player):not(:fullscreen) .video-control-bar { display: none; }
+    .media-video-player:not(.lightbox-video-player):not(:fullscreen) .video-idle-mute {
+        display: inline-flex;
+        width: 28px;
+        height: 28px;
+        bottom: 12px;
+        background: rgba(0, 0, 0, .55);
+        opacity: 1;
+        visibility: visible;
+    }
+    .video-idle-mute svg { width: 16px; height: 16px; }
+    .media-video-player:not(.lightbox-video-player):not(:fullscreen) .media-video-duration {
+        opacity: 1;
+        visibility: visible;
+    }
+    /* Safari 26 fills the areas beneath its toolbars with one color sampled from
+       a fixed, viewport-sized element and holds it until that element is hidden,
+       so the fill can't follow a fade. Safari skips fixed elements larger than
+       105% of the viewport: oversize the viewer past every edge, and let the
+       page-positioned shade carry the backdrop. Safari draws page content
+       beneath its toolbars, so those areas fade with the rest of the screen. */
+    .lightbox-viewer {
+        --lightbox-bleed: 160px;
+        inset: calc(-1 * var(--lightbox-bleed));
+        background-color: transparent !important;
+    }
+    .lightbox-viewer > .lightbox-stage,
+    .lightbox-viewer > .lightbox-chrome { inset: var(--lightbox-bleed); }
+    .lightbox-viewer .lightbox-close-button {
+        top: calc(var(--lightbox-bleed) + max(16px, env(safe-area-inset-top)));
+        left: calc(var(--lightbox-bleed) + max(16px, env(safe-area-inset-left)));
+    }
+    .lightbox-viewer:not(.is-video-closed) + .lightbox-shade { display: block; }
+    .is-video-viewer .lightbox-backdrop { background: transparent; }
+    /* Media expands from and returns to the feed (or fades) on its own, in
+       place of Alpine's overlay fade, whose leave lifecycle also lasts a frame
+       after the return completes. */
+    .lightbox-viewer.is-video-closed { visibility: hidden; pointer-events: none; }
+    .lightbox-viewer.lightbox-overlay-enter,
+    .lightbox-viewer.lightbox-overlay-leave { transition: none; }
+    .lightbox-viewer.lightbox-overlay-enter-start,
+    .lightbox-viewer.lightbox-overlay-leave-end { opacity: 1; }
+    .is-video-preparing .lightbox-slide.is-active .lightbox-media { visibility: hidden; }
+    /* The shade is the only black fill; the moving picture and controls add none. */
+    .lightbox-video-player { background: transparent; }
+    .is-video-preparing .lightbox-video-player > video { visibility: hidden; }
+    .is-video-preparing [data-inline-video-slot] video { visibility: visible; }
+    .is-video-motion .lightbox-video-player .video-control-bar,
+    .is-video-motion .video-center-play { opacity: 0 !important; pointer-events: none !important; }
+    .is-video-viewer .lightbox-close-button {
+        width: 40px;
+        height: 40px;
+        padding: 8px;
+        background: rgba(0, 0, 0, .46);
+        backdrop-filter: blur(8px);
+        transition: opacity 200ms ease, visibility 0s, background-color 150ms ease;
+    }
+    .is-video-viewer.is-video-controls-hidden .lightbox-close-button,
+    .is-video-viewer.is-video-controls-hidden .lightbox-chrome {
+        opacity: 0 !important;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 180ms ease, visibility 0s 180ms;
+    }
+    .is-video-viewer .lightbox-close-icon { display: none; }
+    .is-video-viewer .lightbox-video-back-icon { display: block; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-close-button {
+        top: calc(var(--lightbox-bleed) + 14px);
+        left: calc(var(--lightbox-bleed) + 14px);
+        width: 40px;
+        height: 40px;
+        padding: 10px;
+        background: rgba(32, 32, 32, .8);
+    }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-close-button svg { width: 20px; height: 20px; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-close-icon { display: none; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-video-back-icon { display: block; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-position { display: none; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-slide { padding-bottom: 123px; }
+    .lightbox-viewer img.lightbox-media { width: 100%; height: 100%; }
+    .lightbox-viewer:not(.is-video-viewer) .lightbox-dots {
+        position: absolute;
+        bottom: 159px;
+        left: 50%;
+        display: flex;
+        transform: translateX(-50%);
+    }
+    .lightbox-dots > span {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 11px;
+        height: 8px;
+    }
+    .lightbox-dots > span::before {
+        content: '';
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, .35);
+    }
+    .lightbox-dots > span.is-current::before {
+        width: 8px;
+        height: 8px;
+        background: #fff;
+    }
+    .lightbox-viewer .lightbox-actions {
+        position: absolute;
+        right: 14px;
+        bottom: 105px;
+        left: 14px;
+        display: block;
+        pointer-events: auto;
+    }
+    .lightbox-actions .tweet-actions {
+        gap: 7px;
+        height: 40px;
+        margin: 0;
+        color: #fff;
+    }
+    .lightbox-actions .tweet-actions > div {
+        flex: 1 1 0;
+        justify-content: center;
+        height: 40px;
+        border-radius: 20px;
+        background: rgba(32, 32, 32, .8);
+    }
+    .lightbox-actions .tweet-actions > div:nth-last-child(-n + 2) { flex: 0 0 40px; }
+    .lightbox-actions .tweet-actions > .tweet-action-views { display: none; }
+    .lightbox-actions .tweet-actions svg { width: 20px; height: 20px; }
+    .lightbox-actions .tweet-action-count {
+        padding: 0 0 0 6px;
+        font-size: 15px;
+        font-weight: 500;
+    }
+    .lightbox-viewer.is-chrome-hidden .lightbox-close-button,
+    .lightbox-viewer.is-chrome-hidden .lightbox-chrome {
+        opacity: 0 !important;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 180ms ease, visibility 0s 180ms;
+    }
+    .media-video-player.lightbox-video-player {
+        /* Safari keeps fixed content above the strip its toolbar reserves, so
+           the controls sit directly on it. Standalone reaches the screen's
+           edge and keeps clear of the home indicator (see the override below). */
+        --video-controls-bottom: 0px;
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        aspect-ratio: auto;
+        border: 0;
+        border-radius: 0;
+        overflow: visible;
+    }
+    .lightbox-video-player.is-video-fill > video { object-fit: cover; }
+    .lightbox-video-player > .video-motion-surface {
+        width: 100%;
+        height: calc(100% - 72px - var(--video-controls-bottom));
+    }
+    .video-motion-surface > video { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .lightbox-video-player.is-video-fill .video-motion-surface > video { object-fit: cover; }
+    .lightbox-video-player .media-video-duration { display: none; }
+    .lightbox-video-player > video { height: calc(100% - 72px - var(--video-controls-bottom)); }
+    .lightbox-video-player.has-custom-controls .video-control-bar {
+        height: calc(72px + var(--video-controls-bottom));
+        padding: 0 12px var(--video-controls-bottom);
+        background: transparent;
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: translateY(0);
+        transition: opacity 220ms ease, transform 220ms ease, visibility 0s;
+    }
+    .lightbox-video-player.has-custom-controls.is-native-ui-hidden .video-control-bar {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translateY(6px);
+        transition: opacity 180ms ease, transform 180ms ease, visibility 0s 180ms;
+    }
+    .lightbox-video-player .video-seek-wrap { width: calc(100% + 24px); margin: -10px -12px 0; }
+    .lightbox-video-player .video-seek { width: 100%; margin: 0; }
+    .lightbox-video-player .video-control-row { height: 62px; padding-bottom: 32px; }
+    .lightbox-video-player > video,
+    .lightbox-video-player > .video-motion-surface { translate: 0 calc(-1 * var(--lightbox-video-lift, 0px)); }
+    .lightbox-video-player [data-video-time] { display: none; }
+    .lightbox-video-player .video-mobile-time { display: inline; margin: 0 auto 0 8px; color: #999; transition: opacity 160ms ease; }
+    .lightbox-video-player .video-scrub-time {
+        display: block;
+        position: absolute;
+        bottom: calc(146px + var(--video-controls-bottom));
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 18px;
+        line-height: 24px;
+        opacity: 0;
+        transform: translateY(6px);
+        transition: opacity 120ms ease, transform 120ms ease;
+        pointer-events: none;
+    }
+    .lightbox-video-player.is-scrubbing .video-scrub-time { opacity: 1; transform: translateY(0); }
+    .lightbox-video-player .video-control-row { transition: opacity 120ms ease; }
+    .lightbox-video-player.is-scrubbing .video-control-row { opacity: .35; pointer-events: none; }
+    .lightbox-video-player.is-scrubbing .video-mobile-time { opacity: 0; }
+    .lightbox-video-player.is-scrubbing .video-seek::-webkit-slider-runnable-track { height: 8px; background: #333; }
+    .lightbox-video-player.is-scrubbing .video-seek::-moz-range-track { height: 8px; background: #333; }
+    .lightbox-video-player.is-scrubbing .video-seek::-moz-range-progress { height: 8px; border-radius: 8px; }
+    .lightbox-video-player.is-scrubbing .video-seek::-webkit-slider-thumb { opacity: 0; }
+    .lightbox-video-player.is-scrubbing .video-seek::-moz-range-thumb { opacity: 0; }
+    .lightbox-video-player .video-scrub-track { left: 0; right: 0; }
+    .lightbox-video-player.is-scrubbing .video-scrub-track { top: 6px; height: 8px; opacity: 1; }
+    .is-video-viewer:has(.is-scrubbing) .lightbox-close-button,
+    .is-video-viewer:has(.is-scrubbing) .lightbox-chrome { opacity: 0 !important; pointer-events: none; }
+}
+@media (max-width: 640px), (pointer: coarse) {
+    /* A Home Screen app reaches the screen's edge, where the home indicator sits. */
+    .ios-home-screen .lightbox-video-player { --video-controls-bottom: max(8px, env(safe-area-inset-bottom)); }
+    /* In a Safari tab, the toolbar's reserved strip already spaces it from the edge. */
+    :root:not(.ios-home-screen) .scroll-to-top { bottom: 12px; }
+}
+@media (max-width: 640px) and (display-mode: standalone), (pointer: coarse) and (display-mode: standalone) {
+    .lightbox-video-player { --video-controls-bottom: max(8px, env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .video-scrub-time, .video-control-row, .video-scrub-track, .video-mobile-time, .video-control-bar { transition: none !important; }
+}
+.media-gif-indicator {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 2px;
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 0;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    cursor: pointer;
+}
+.media-gif-indicator:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+.media-gif-action,
+.media-gif-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.media-gif-action {
+    flex: 0 0 20px;
+    width: 20px;
+    min-height: 20px;
+    border-radius: 4px 0 0 4px;
+    background: rgba(0, 0, 0, 0.77);
+}
+.media-gif-label {
+    padding: 0 8px;
+    border-radius: 0 4px 4px 0;
+    background: rgba(0, 0, 0, 0.3);
+}
+.media-gif-action svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+}
+.media-gif-play-icon,
+.media-gif-indicator.is-paused .media-gif-pause-icon {
+    display: none;
+}
+.media-gif-indicator.is-paused .media-gif-play-icon {
+    display: block;
+}

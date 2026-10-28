@@ -2,7 +2,7 @@
 // simulator first; this serves only synthetic posts and public demo videos.
 // SAFARI_DRIVER_URL defaults to http://127.0.0.1:4444. SAFARI_DEVICE_UDID selects
 // a simulator. SAFARI_SESSION_ID reuses a session without closing it afterward.
-// SAFARI_SCROLL_CSS can select a saved stylesheet for a before/after comparison.
+// SAFARI_SCROLL_CSS can select a saved copy of static/css for a before/after comparison.
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -39,7 +39,14 @@ const server = http.createServer((req, res) => {
         res.end(pageHtml(web));
         return;
     }
-    const file = route === '/static/css/styles.css' && process.env.SAFARI_SCROLL_CSS ? path.resolve(process.env.SAFARI_SCROLL_CSS)
+    // A saved copy may predate a stylesheet the page now links; serve that one empty.
+    if (route.startsWith('/static/css/') && process.env.SAFARI_SCROLL_CSS
+        && !fs.existsSync(path.resolve(process.env.SAFARI_SCROLL_CSS, path.basename(route)))) {
+        res.writeHead(200, {'Content-Type': 'text/css', 'Cache-Control': 'no-store'}).end();
+        return;
+    }
+    const file = route.startsWith('/static/css/') && process.env.SAFARI_SCROLL_CSS
+        ? path.resolve(process.env.SAFARI_SCROLL_CSS, path.basename(route))
         : route.startsWith('/fixture/') ? path.join(root, 'demo/demo media', path.basename(route))
         : path.resolve(web, '.' + route);
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404).end(); return; }

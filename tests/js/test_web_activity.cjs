@@ -6,13 +6,13 @@ const path = require('node:path');
 const { appScripts, appScriptsWith, pageHtml } = require('./page_scripts.cjs');
 const {
     JS_DIR,
-    ROOT,
     browserContext,
     immediateComponent,
     loadScripts,
     nookMergeScope,
     test,
     run,
+    pageCss,
 } = require('./web_harness.cjs');
 
 test('activity updates retain unchanged rows and handle removal, cancellation, and new runs', async () => {
@@ -666,7 +666,7 @@ test('notifications live in Settings with unread counts', () => {
 });
 
 test('activity drawer animation isolates layout and transitions only geometry', () => {
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     const drawerRule = css.match(/\.activity-drawer\s*\{([^}]*)\}/)?.[1] || '';
     const readyRule = css.match(/\.activity-drawer\.activity-drawer-ready\s*\{([^}]*)\}/)?.[1] || '';
 

@@ -1,11 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const { appScripts, pageHtml } = require('./page_scripts.cjs');
 const {
-    ROOT,
     WEB_FIXTURE,
     browserContext,
     dispatchFeed,
@@ -14,6 +11,7 @@ const {
     loadScripts,
     test,
     run,
+    pageCss,
 } = require('./web_harness.cjs');
 
 test('tweet fetching encodes search state, hydrates pagination, appends, and reports errors', async () => {
@@ -414,7 +412,7 @@ test('feeds reuse recent first pages and keep the old list while loading', async
 
 test('feed layout hooks load early and skip off-screen work', () => {
     const html = pageHtml();
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
+    const css = pageCss();
     assert.ok(html.includes('x-ref="feedSentinel" x-intersect.margin.1200px="loadMore()"'));
     assert.equal((html.match(/x-intersect\.margin\.600px="if\(!(panelQ|q)uotesLoadingMore/g) || []).length, 2);
     assert.ok(html.includes(`<div x-ref="feedList" :class="{ 'feed-refreshing': loading && tweets.length > 0 }"></div>`));

@@ -1,0 +1,135 @@
+/* Search input capsules for filters, operators and quoted phrases. */
+/* Rich Search Input Capsules */
+
+.rich-search-input {
+    outline: none !important; /* Managed by focus ring classes */
+}
+.rich-search-input:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-secondary);
+    pointer-events: none;
+    display: block; /* For Firefox */
+}
+.rich-search-input.empty-content::before {
+    content: attr(data-placeholder);
+    color: var(--text-secondary);
+    pointer-events: none;
+    display: block;
+}
+
+/* Base Capsule */
+.search-capsule {
+    display: inline;
+    border-radius: 4px;
+    padding: 2px 0px;
+    margin: 0;
+    font-size: 0.9em;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+/* Completed Valid State */
+.search-capsule.valid-capsule {
+    background-color: color-mix(in srgb, var(--accent-color) 15%, transparent);
+    color: var(--accent-color);
+}
+.search-capsule.valid-capsule .capsule-key {
+    padding-left: 6px;
+    font-weight: 600;
+}
+.search-capsule.valid-capsule .capsule-value {
+    padding-right: 6px;
+}
+
+/* Valid Boolean Operators */
+.search-capsule.boolean-capsule {
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-weight: 600;
+    padding: 1px 6px;
+}
+
+/* Negative States */
+.search-capsule.negative-capsule.valid-capsule {
+    background-color: color-mix(in srgb, var(--danger-color) 15%, transparent);
+    color: var(--danger-color);
+}
+.search-capsule.negative-capsule.incomplete-capsule .capsule-key,
+.search-capsule.negative-capsule.invalid-capsule .capsule-key {
+    background-color: color-mix(in srgb, var(--danger-color) 15%, transparent);
+    color: var(--danger-color);
+}
+
+/* Incomplete / Prefix State */
+.search-capsule.incomplete-capsule .capsule-key {
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+/* Invalid Value State */
+.search-capsule.invalid-capsule .capsule-key {
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+.capsule-invalid-value {
+    color: var(--text-primary);
+    padding-left: 2px;
+}
+
+/* description: and tag: capsules. Their value is plain text, and the caret stays
+   inside while typing so spaces belong to the value. While the value is being
+   edited, is empty, or names an unknown tag, the capsule takes the incomplete look. */
+.filter-box {
+    display: inline;
+    border-radius: 4px;
+    padding: 2px 0px;
+    font-size: 0.9em;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    background-color: color-mix(in srgb, var(--accent-color) 15%, transparent);
+    color: var(--accent-color);
+}
+.filter-box .capsule-key {
+    padding-left: 6px;
+    font-weight: 600;
+}
+.filter-box .capsule-value {
+    padding-right: 6px;
+    caret-color: var(--text-primary);
+}
+.filter-box.negative {
+    background-color: color-mix(in srgb, var(--danger-color) 15%, transparent);
+    color: var(--danger-color);
+}
+.filter-box.is-editing,
+.filter-box.is-empty,
+.filter-box.is-unknown {
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+.filter-box.negative.is-editing .capsule-key,
+.filter-box.negative.is-empty .capsule-key,
+.filter-box.negative.is-unknown .capsule-key {
+    color: var(--danger-color);
+}
+.filter-box.is-editing .capsule-value,
+.filter-box.is-unknown .capsule-value {
+    color: var(--text-primary);
+}
+
+/* Multi-Word Quote Suppression */
+.hidden-quote {
+    display: inline-block;
+    width: 0;
+    overflow: hidden;
+    color: transparent;
+    caret-color: var(--text-primary);
+    vertical-align: bottom;
+}

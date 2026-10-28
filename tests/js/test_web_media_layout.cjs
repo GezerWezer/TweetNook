@@ -16,6 +16,7 @@ const {
     parseFakeHTML,
     test,
     run,
+    pageCss,
 } = require('./web_harness.cjs');
 
 test('lazy feed images are observed per card and loaded and decoded ahead of scrolling', () => {
@@ -233,7 +234,7 @@ test('media quoting media is compact in lists and flush in the detail view', () 
         assert.ok(html.includes(`<div class="quote-media" x-html="renderMediaGrid(${main}?.qt_media, (${mediaOwner}.main.media || []).length ? 'quote-detail-expanded' : 'quote-detail', getQuoteTweet(${mediaOwner}.main))" @click="stopMediaClick($event)"></div>`));
     }
     assert.equal((html.match(/renderMediaGrid\((?:threadData|panelThreadData)\.main\.media, 'detail', (?:threadData|panelThreadData)\.main\)/g) || []).length, 2);
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
+    const css = pageCss();
     assert.match(css, /\.quote-compact > \.quote-text \{[^}]*-webkit-line-clamp: 4;/);
     assert.match(css, /\.quote-compact \{[^}]*grid-template-columns: calc\(\(100% \+ 12px\) \/ 5\) minmax\(0, 1fr\);/);
     assert.match(css, /\.quote-compact > \.quote-media \{[^}]*margin-top: 4px;/);
@@ -579,7 +580,7 @@ test('phone layout follows the X app: strip heights, dates, large link cards, co
 });
 
 test('phone carousel scrolls freely by touch and its padding opens the post', () => {
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     // pointer-events: none on a scroller stops iOS touch scrolling even when its children accept touches.
     assert.doesNotMatch(css, /\.media-carousel-track \{ pointer-events: none; \}/);
     // Its padding opens the post, so it keeps the post's pointer cursor.
@@ -704,7 +705,7 @@ test('phone avatar shrinks to clear a scrolled carousel and restores at the firs
     app.tweetNookGalleryScroll(dotted);
     assert.deepEqual(dots.map(dot => dot.props['--dot-active']), ['0.000', '0.500', '0.500', '0.000']);
 
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     assert.match(css, /\.avatar\.avatar-yield \{\s*transform: translateY\(var\(--avatar-yield-shift, 0\)\) scale\(var\(--avatar-yield-scale, 1\)\);/);
     assert.match(css, /\.feed-card \[data-action="media"\] > \.mt-3 \{\s*margin-top: 8px;/);
     assert.match(css, /\.media-carousel-dots > span \{\s*width: calc\(12px \+ 10px \* var\(--dot-active, 0\)\);/);

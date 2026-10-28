@@ -1,13 +1,10 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
 const { appScripts, pageHtml, pageScripts, readScripts } = require('./page_scripts.cjs');
 const {
     FakeElement,
-    ROOT,
     browserContext,
     dispatchFeed,
     immediateComponent,
@@ -15,6 +12,7 @@ const {
     parseFakeHTML,
     test,
     run,
+    pageCss,
 } = require('./web_harness.cjs');
 
 test('the phone viewer pages and springs back on X\'s measured spring', () => {
@@ -44,7 +42,7 @@ test('the phone video viewer sits where X puts it and shows the post\'s counts',
     assert.equal(app.lightboxVideoLift(), 0);
     app.lightboxMedia = [{type: 'photo', m: {type: 'photo'}}];
     assert.equal(app.lightboxVideoLift(), 0);
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     assert.match(css, /\.lightbox-video-player > \.video-motion-surface \{ translate: 0 calc\(-1 \* var\(--lightbox-video-lift, 0px\)\); \}/);
     assert.match(css, /\.lightbox-viewer \.lightbox-actions \{\s*position: absolute;\s*right: 14px;\s*bottom: 105px;/);
     assert.match(css, /\.lightbox-video-player \.video-control-row \{ height: 62px; padding-bottom: 32px; \}/);
@@ -387,7 +385,7 @@ test('dismissal fades the page shade and lifts covering headers above the return
 });
 
 test('phone media viewer stays outside Safari toolbar sampling and backs itself with page content', () => {
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     const html = pageHtml();
     const mobile = css.slice(css.indexOf('/* The phone feed uses a sound badge'));
     const viewer = mobile.match(/\n    \.lightbox-viewer \{([^}]*)\}/)[1];
@@ -657,7 +655,7 @@ test('Home Screen apps are told apart from Safari tabs for bottom spacing', () =
         loadScripts(context, appScripts(), 'null');
         assert.equal(context.__state.rootClasses.has('ios-home-screen'), standalone);
     }
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     const html = pageHtml();
     // Safari tabs sit on the toolbar's reserved strip; Home Screen apps reach the screen edge.
     assert.match(css, /\.lightbox-video-player \{[^}]*--video-controls-bottom: 0px;/s);
@@ -950,7 +948,7 @@ test('closing a swiped video reveals its feed destination before measuring the r
 
 test('pages never zoom on touch screens, except media in the fullscreen viewer', () => {
     const html = pageHtml();
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     const js = readScripts(pageScripts());
     // No double-tap zoom anywhere; no pinch on the app's content.
     assert.match(css, /html \{ touch-action: manipulation; \}/);

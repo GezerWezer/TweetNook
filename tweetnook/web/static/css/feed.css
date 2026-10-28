@@ -1,0 +1,390 @@
+/* Feed cards, community notes and link cards. */
+/* Keep the previous list visible but subdued while a new filter or search loads. */
+.feed-refreshing {
+    opacity: 0.55;
+    transition: opacity 0.15s ease;
+}
+
+/* Skip layout and painting for off-screen feed tweets. The list's shared overflow
+   menu sits outside the cards, so this containment never clips it. */
+.feed-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 420px;
+}
+/* Media already has explicit aspect ratios. Skipping its layout replaces those
+   stable boxes with estimated card heights and can expose blank layers while
+   scrolling, especially in Safari. Keep text-only cards eligible for skipping. */
+.feed-card:has(.media-single, .media-photo, video) {
+    content-visibility: visible;
+}
+
+/* Community notes use distinct spacing in feeds, quotes, and detail views. */
+.community-note {
+    text-align: left;
+    color: var(--text-primary);
+}
+.community-note svg {
+    width: 18.75px;
+    height: 18.75px;
+    flex: 0 0 auto;
+}
+.community-note-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 20px;
+    font-size: 14px;
+    line-height: 16px;
+    font-weight: 700;
+}
+.community-note-header span {
+    padding: 2px 0;
+}
+.community-note-history {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: -4px -4px -4px auto;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.community-note-history:hover {
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    color: var(--accent-color);
+}
+.community-note .community-note-history svg {
+    width: 18px;
+    height: 18px;
+}
+.community-note-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 15px;
+    line-height: 20px;
+}
+.community-note-feed {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--bg-secondary);
+    cursor: pointer;
+    transition: background-color 150ms ease;
+}
+.community-note-feed .community-note-body {
+    margin-top: 8px;
+}
+.community-note-detail {
+    margin-top: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--bg-primary);
+}
+.community-note-detail .community-note-header {
+    padding: 12px;
+    background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+.community-note-detail .community-note-header span {
+    padding: 2px 0;
+}
+.community-note-detail .community-note-body {
+    padding: 12px;
+}
+.community-note-quote {
+    margin: 0 -12px -12px;
+    padding: 0 0 12px;
+    border-top: 1px solid var(--border-color);
+    border-radius: 0 0 16px 16px;
+    background: var(--bg-secondary);
+}
+.community-note-quote-spaced {
+    margin-top: 12px;
+}
+.community-note-quote-media {
+    margin-top: 0;
+}
+.quote-compact > div > .community-note-quote {
+    margin-top: 12px;
+}
+.community-note-quote .community-note-header {
+    padding: 12px 12px 0;
+}
+.community-note-quote .community-note-body {
+    margin-top: 12px;
+    padding: 0 12px;
+}
+
+/* Link-card images are archived separately from tweet galleries. */
+.link-card-image {
+    aspect-ratio: 1.91 / 1;
+    border-bottom: 1px solid var(--border-color);
+}
+.link-card-summary {
+    display: flex;
+    align-items: stretch;
+}
+.link-card-summary .link-card-image {
+    position: relative;
+    width: 96px;
+    min-height: 96px;
+    flex-shrink: 0;
+    aspect-ratio: auto;
+    border-bottom: 0;
+    border-right: 1px solid var(--border-color);
+}
+.link-card-summary .link-card-image img {
+    height: 100%;
+    position: absolute;
+    inset: 0;
+}
+.link-card-text {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Large link cards: X shows the image with the headline over it and the site
+   underneath, on the web and in its apps. Cards without an image keep the text. */
+.link-card-overlay-title,
+.link-card-from {
+    display: none;
+}
+
+.link-card-large:has(.link-card-image) {
+    border-width: 0;
+    border-radius: 0;
+    overflow: visible;
+    background: transparent;
+}
+.link-card-large:has(.link-card-image) > .link-card-image {
+    position: relative;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    overflow: hidden;
+}
+.link-card-large:has(.link-card-image) > .link-card-text {
+    display: none;
+}
+.link-card-large:has(.link-card-image) .link-card-overlay-title {
+    display: block;
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: fit-content;
+    max-width: calc(100% - 24px);
+    padding: 0 4px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.77);
+    color: #fff;
+    font-size: 13px;
+    line-height: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.link-card-large:has(.link-card-image) > .link-card-from {
+    display: block;
+    margin-top: 4px;
+    padding-left: 12px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 16px;
+}
+@media (min-width: 641px) {
+    .link-card-large:has(.link-card-image) > .link-card-from {
+        padding-left: 0;
+    }
+}
+
+.date-app {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    .app-column {
+        border-left-width: 0;
+        border-right-width: 0;
+    }
+    .feed-card,
+    .thread-row {
+        padding-left: 9px;
+        padding-right: 9px;
+    }
+    .feed-card > .flex > .avatar,
+    .thread-row > .avatar,
+    .thread-row > .tweet-detail-header > .avatar {
+        width: 48px;
+        height: 48px;
+    }
+    .thread-row > .thread-connector-up,
+    .thread-row > .thread-connector-down {
+        left: 33px;
+    }
+    .tweet-text,
+    .tweet-byline,
+    .tweet-reply-context {
+        font-size: 15.7px;
+        line-height: 20.5px;
+    }
+    .tweet-byline .roll-wrapper,
+    .tweet-byline .roll-item {
+        height: 20.5px;
+    }
+    .tweet-byline-name {
+        flex-shrink: 0;
+        max-width: 70%;
+    }
+    .feed-card > .flex > .flex-1 {
+        margin-top: -3.5px;
+    }
+    .feed-card .tweet-byline {
+        margin-bottom: 1.5px;
+    }
+    .feed-card [data-action="media"] > .mt-3 {
+        margin-top: 8px;
+    }
+    .tweet-text:has(> .tweet-text-clamp) {
+        position: relative;
+    }
+    .tweet-text-clamp {
+        display: block;
+        max-height: calc(9 * 20.5px);
+        overflow: hidden;
+    }
+    .tweet-text-more {
+        display: none;
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        padding-left: 6px;
+        background: var(--bg-primary);
+        color: var(--accent-color);
+        cursor: pointer;
+    }
+    .tweet-text-clamp.is-clamped + .tweet-text-more {
+        display: block;
+    }
+    .tweet-text-detail {
+        margin-top: 21px;
+        margin-bottom: 3px;
+        font-size: 17.8px;
+        line-height: 24.5px;
+    }
+    [data-thread-main].thread-row {
+        padding-top: 13px;
+    }
+    [data-thread-main] > div > .mt-3 {
+        margin-top: 22px;
+    }
+    [data-thread-main] > .tweet-text-detail:empty {
+        display: none;
+    }
+    [data-thread-main] > .tweet-text-detail:empty + div > .mt-3,
+    [data-thread-main] > .tweet-text-detail:empty + div:empty + div > .mt-3,
+    [data-thread-main] > .tweet-text-detail:empty + div:empty + div:empty ~ .main-tweet-quote > .mt-3 {
+        margin-top: 6px;
+    }
+    [data-thread-main] .tweet-timestamp {
+        padding: 22px 0 6px;
+    }
+    .tweet-actions-main {
+        height: 38px;
+        border-top-width: 0;
+    }
+    .thread-row:not([data-thread-main]) > .flex-1 {
+        margin-top: -3.5px;
+    }
+    .thread-row:not([data-thread-main]) .tweet-reply-context {
+        margin-bottom: 6px;
+    }
+    .thread-row:not([data-thread-main]) .tweet-actions {
+        margin-top: 7px;
+    }
+
+    .date-web {
+        display: none;
+    }
+    .date-app {
+        display: inline;
+    }
+    .tweet-action-views {
+        display: none;
+    }
+
+    .media-frame-feed,
+    .media-frame-detail {
+        width: min(100%, calc(100cqw * var(--media-frame-aspect) * 1.245));
+    }
+    .media-frame-portrait-photo > .media-frame-image,
+    .media-frame-portrait-photo > .media-frame-placeholder {
+        width: 100%;
+    }
+    .media-frame-detail.media-photo > .media-frame-image {
+        aspect-ratio: var(--media-source-aspect, var(--media-frame-aspect));
+    }
+
+    .quote-compact {
+        grid-template-columns: 100px minmax(0, 1fr);
+    }
+
+    .media-carousel {
+        --gallery-left: 65px;
+        --gallery-right: 9px;
+    }
+    .media-carousel-detail {
+        --gallery-left: 9px;
+    }
+    .media-carousel-track {
+        scroll-snap-type: none;
+    }
+    /* Scrolled strips pass under the avatar column; the avatar shrinks to
+       clear them (size and shift set in tweetNookGalleryAvatar). */
+    .feed-card > .flex > .avatar,
+    .thread-row > .avatar {
+        transform-origin: 50% 0;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+        .feed-card > .flex > .avatar,
+        .thread-row > .avatar {
+            transition: transform 160ms ease;
+        }
+    }
+    .avatar.avatar-yield {
+        transform: translateY(var(--avatar-yield-shift, 0)) scale(var(--avatar-yield-scale, 1));
+    }
+    .feed-card [data-action="media"] > .media-carousel:has(> .media-carousel-dots) {
+        margin-top: 7px;
+    }
+    .media-carousel-dots {
+        display: flex;
+        gap: 5px;
+        height: 4px;
+        margin-bottom: 12px;
+    }
+    .media-carousel-dots > span {
+        width: calc(12px + 10px * var(--dot-active, 0));
+        border-radius: 2px;
+        background: color-mix(in srgb, var(--text-primary) calc(23% + 43% * var(--dot-active, 0)), transparent);
+    }
+
+    .quote-card:not(.quote-compact) > .quote-media:has(> .media-single > :is(.media-video-player, .media-frame-gif)) {
+        margin: 12px 0 0;
+    }
+    .quote-card:not(.quote-compact) > .quote-media > .media-single > :is(.media-video-player, .media-frame-gif) {
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+    }
+    .quote-card:not(.quote-compact) > .quote-media > .media-single > .media-video-player::before,
+    .quote-card:not(.quote-compact) > .quote-media > .media-single > .media-frame > video,
+    .quote-card:not(.quote-compact) > .quote-media > .media-single > .media-frame > [data-video-poster] {
+        aspect-ratio: clamp(1, var(--media-source-aspect), 1.7778);
+        object-fit: cover;
+    }
+}

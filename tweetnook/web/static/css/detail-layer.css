@@ -1,0 +1,44 @@
+/* The post layer that slides over the feed when a conversation opens. */
+/* The split panel draws the column's right rule. Hiding this one by colour, not
+   width, keeps the column's content width, so opening a conversation does not
+   re-wrap every card in a long feed. */
+.app-column.app-column-split { border-right-color: transparent; }
+/* A conversation opened from the list collapses the feed instead of removing it
+   (display: none), so a long feed keeps its layout: WebKit spent seconds tearing
+   it down and laying every card out again. Only the height changes; the clip is
+   permanent because switching overflow or visibility restyles every card. */
+#nook-feed { overflow-y: clip; }
+#nook-feed.feed-collapsed { height: 0; padding-bottom: 0; }
+.detail-layer, .detail-underlay {
+    --detail-bar: 38px;
+    position: fixed; top: 0; bottom: 0; left: 0; right: 0; margin: 0 auto; max-width: 600px;
+    overflow-y: auto; overscroll-behavior: contain; background: var(--bg-primary);
+}
+.detail-layer { z-index: 35; display: none; touch-action: pan-y; }
+.detail-layer.is-open { display: block; }
+/* Always scrollable, so a drag at either end never scrolls the feed beneath. */
+.detail-layer > .detail-body { min-height: calc(100% + 1px); }
+.detail-layer.is-moving { box-shadow: 0 0 24px rgba(0, 0, 0, 0.18); }
+.detail-layer-header.nook-header { position: fixed; top: 0; left: 0; right: 0; margin: 0 auto; max-width: 600px; z-index: 36; }
+.detail-layer > .detail-body, .detail-underlay > .detail-body { padding-top: var(--detail-bar); }
+.detail-layer.is-moving { background: linear-gradient(transparent var(--detail-bar), var(--bg-primary) var(--detail-bar)); }
+/* The page header stays still beneath a moving post; its title and tabs fade
+   (tabs tucked away by scrolling keep their more specific hiding rule), with
+   the tabs' own slide transition paused so nothing trails the finger. */
+.nook-header > .nook-title-row, .nook-header > .nook-tabs-frame { opacity: var(--detail-beneath, 1); }
+.nook-header.is-beneath-detail > .nook-tabs-frame { transition: none; }
+/* Pages don't zoom: no double-tap zoom anywhere, and no pinch on the app's
+   content (app.js also blocks Safari's pinch gestures). The media viewer sits
+   outside these and keeps its native pinch zoom (.lightbox-gesture-surface). */
+html { touch-action: manipulation; }
+.app-column, .detail-layer-header, .detail-underlay { touch-action: pan-x pan-y; }
+/* The still copy takes taps (so none reach the feed) but none of its links do. */
+.detail-underlay { z-index: 33; display: none; overflow: hidden; }
+.detail-underlay > * { pointer-events: none; }
+.detail-underlay.is-shown { display: block; }
+.detail-shade { position: fixed; inset: 0; z-index: 34; display: none; background: #000; opacity: 0; pointer-events: none; }
+.detail-shade.is-shown { display: block; }
+.detail-layer-header .nook-title-row { min-height: var(--detail-bar); height: var(--detail-bar); padding: 4px 8px 0 16px; }
+.detail-layer-header .nook-back { height: 34px; margin-left: -14px; }
+.detail-layer-header .nook-title-block { position: absolute; left: 60px; right: 60px; top: 4px; bottom: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.nook-title-line .detail-layer-title { font-size: 17px; line-height: 21px; font-weight: 700; margin: 0; white-space: nowrap; }

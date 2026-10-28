@@ -1,11 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const { appScripts, pageHtml, pageScripts, readScripts } = require('./page_scripts.cjs');
 const {
-    ROOT,
     WEB_FIXTURE,
     browserContext,
     feedListApp,
@@ -14,6 +11,7 @@ const {
     nookMergeScope,
     test,
     run,
+    pageCss,
 } = require('./web_harness.cjs');
 
 test('every clickable byline name in the page opens that author\'s profile card', () => {
@@ -377,10 +375,7 @@ test('archive status filters empty reasons and summarizes retry state', () => {
 test('analytics markup exposes the Archive status cards and reason breakdown', () => {
     const html = pageHtml();
     const appJs = readScripts(pageScripts());
-    const styles = fs.readFileSync(
-        path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'),
-        'utf8',
-    );
+    const styles = pageCss();
 
     assert.match(html, /role="switch"[^>]*:aria-checked="showEmptyUnavailableReasons" @click="showEmptyUnavailableReasons = !showEmptyUnavailableReasons"/);
     assert.match(html, /@click="refreshStats\(\)"/);

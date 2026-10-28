@@ -1,16 +1,14 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const { appScripts, pageHtml } = require('./page_scripts.cjs');
 const {
-    ROOT,
     browserContext,
     immediateComponent,
     loadScripts,
     test,
     run,
+    pageCss,
 } = require('./web_harness.cjs');
 
 test('lightbox navigation moves through media and clamps at both ends', () => {
@@ -105,7 +103,7 @@ test('lightbox touch drags track the finger, navigate, and protect the following
     assert.match(html, /@touchend\.passive="endLightboxGesture\(\$event\)"/);
     assert.match(html, /lightboxSlideStyle\(mediaIndex\)/);
     assert.match(html, /lightboxVisibleIndices\(\)/);
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     assert.match(css, /\.lightbox-gesture-surface\s*\{[^}]*touch-action:\s*pinch-zoom;/s);
     assert.match(css, /\.lightbox-slide\s*\{[^}]*will-change:\s*transform;/s);
 });

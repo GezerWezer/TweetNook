@@ -13,6 +13,7 @@ const {
     withSetupDialog,
     test,
     run,
+    pageCss,
 } = require('./web_harness.cjs');
 
 test('setup polling keeps unchanged status objects and updates only what changed', async () => {
@@ -503,7 +504,7 @@ test('setup cookie help loads the generated guide and opens on the current brows
 
 test('setup uses a dedicated responsive X-style modal shell', () => {
     const html = pageHtml();
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     const js = readScripts(pageScripts());
     const settingsMarkup = html.slice(html.indexOf('<!-- Settings Modal'), html.indexOf('<!-- Setup Modal -->'));
     const settingsJs = fs.readFileSync(path.join(JS_DIR, 'settings.js'), 'utf8');

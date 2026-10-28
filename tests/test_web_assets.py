@@ -40,7 +40,27 @@ def test_index_loads_local_assets_in_dependency_order():
     app = html.index('<script src="/static/js/app.js"></script>')
 
     assert themes < autocomplete < completion < app
-    assert '<link rel="stylesheet" href="/static/css/styles.css">' in html
+    # The stylesheets were cut from one file; later ones may rely on overriding earlier rules.
+    stylesheets = [
+        "styles",
+        "activity",
+        "stats",
+        "search",
+        "setup",
+        "media-viewer",
+        "quotes",
+        "detail-layer",
+        "media-layout",
+        "feed",
+        "articles",
+        "header",
+        "settings",
+        "analytics",
+    ]
+    positions = [
+        html.index(f'<link rel="stylesheet" href="/static/css/{name}.css">') for name in stylesheets
+    ]
+    assert positions == sorted(positions)
     assert 'x-data="tweetApp()"' in html
     assert 'x-data="searchAutocomplete()"' in html
     assert '<meta name="theme-color" content="#000000">' in html

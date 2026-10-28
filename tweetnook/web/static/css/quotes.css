@@ -1,0 +1,199 @@
+/* Quoted tweets: compact thumbnails, nested quotes and quote cards. */
+/* When a tweet with media quotes one with media, list views show the quote as X
+   does: byline, then a thumbnail beside the reply line and clamped text. Grid
+   placement does this without reordering the markup. The thumbnail spans the reply
+   and text rows, and only the flexible text row grows to its height; other parts
+   (link card, note) follow at full width. */
+.quote-compact {
+    display: grid;
+    grid-template-columns: calc((100% + 12px) / 5) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    column-gap: 12px;
+    align-items: start;
+}
+.quote-compact > * {
+    grid-column: 1 / -1;
+}
+.quote-compact > .quote-media {
+    grid-column: 1;
+    grid-row: 2 / span 2;
+    margin-top: 4px;
+}
+.quote-compact > .quote-reply {
+    grid-column: 2;
+    grid-row: 2;
+    margin-top: 4px;
+}
+.quote-compact > .quote-text {
+    grid-column: 2;
+    grid-row: 3;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    overflow: hidden;
+}
+.quote-compact:not(:has(> .quote-reply)) > .quote-text {
+    margin-top: 8px;
+}
+.quote-thumbnail {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100px;
+    height: 100px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+}
+.quote-compact .quote-thumbnail {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    border-radius: 16px;
+}
+.quote-thumbnail img,
+.quote-thumbnail video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+/* Several items tile like the full media grid: two side by side, three with the
+   first one tall, four in two rows. */
+.quote-thumbnail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: 1fr;
+    align-items: stretch;
+    gap: 2px;
+    background: transparent;
+}
+.quote-thumbnail-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--bg-secondary);
+}
+.quote-thumbnail-cell:first-child:nth-last-child(3) {
+    grid-row: span 2;
+}
+.quote-thumbnail svg {
+    width: 28px;
+    height: 28px;
+    opacity: 0.5;
+}
+.quote-thumbnail-badge {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 0 8px;
+    border-radius: 4px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.3);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 16px;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+}
+.quote-thumbnail-duration {
+    font-weight: 400;
+    background: rgba(0, 0, 0, 0.77);
+}
+
+/* A quote's own quote, nested as X shows it: a bar instead of a border. It sits as
+   far below the quote's content as the quote's 12px padding leaves below it. Text
+   is clamped to two lines, centred beside a 64px thumbnail when there is media. */
+.quote-nested {
+    position: relative;
+    margin-top: 12px;
+    padding: 8px 0 8px 15px;
+}
+/* Right after text, the last line's leading already leaves about 6px below the
+   baseline. Thread templates keep empty card and media slots between the two. */
+.quote-text + .quote-nested,
+.quote-text + :empty + .quote-media:empty + * > .quote-nested {
+    margin-top: 6px;
+}
+.quote-nested::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 3px;
+    border-radius: 3px;
+    background: var(--border-color);
+}
+.quote-nested > .quote-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+}
+.quote-nested-media {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: center;
+}
+.quote-nested-media > :first-child {
+    grid-column: 1 / -1;
+}
+.quote-nested .quote-thumbnail {
+    width: 64px;
+    height: 64px;
+}
+
+.quote-card {
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+/* Regular quotes share one border with their media. Compact thumbnails retain
+   their own border; photo previews crop while video playback stays contained. */
+.quote-card:not(.quote-compact) > .quote-media:not(:empty) {
+    margin: 16px -12px 0;
+}
+.quote-card:not(.quote-compact) > .quote-media:not(:has(~ :not(:empty))) {
+    margin-bottom: -12px;
+}
+.quote-card:not(.quote-compact) > .quote-media > div {
+    width: 100% !important;
+    margin-top: 0;
+    border: 0;
+    border-radius: 0;
+}
+.quote-card:not(.quote-compact) > .quote-media > .media-single > .media-frame {
+    width: 100%;
+    border: 0;
+    border-radius: 0;
+    --media-border-size: 0px;
+}
+.quote-card:not(.quote-compact) > .quote-media > .media-single img {
+    object-fit: cover;
+}
+.quote-card:not(.quote-compact) > .quote-media > .media-single video {
+    object-fit: contain;
+    background: #000;
+}
+
+/* Measure the column separately from a narrow portrait frame. The ratio belongs
+   to the media area; the frame's border adds to its height. List photo previews
+   cap portrait height, while focal quoted photos fill the available width. */
+.media-single {
+    container-type: inline-size;
+}

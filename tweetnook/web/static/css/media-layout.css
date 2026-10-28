@@ -1,0 +1,208 @@
+/* Media frames, grids and carousels inside tweets and quotes. */
+.media-frame {
+    width: min(100%, var(--media-max-width, 100%));
+    --media-border-size: 2px;
+}
+.media-frame-image,
+.media-frame-video,
+.media-frame-gif-video,
+.media-frame-placeholder {
+    width: 100%;
+    height: auto;
+    aspect-ratio: var(--media-frame-aspect);
+}
+.media-frame-portrait-photo > .media-frame-image,
+.media-frame-portrait-photo > .media-frame-placeholder {
+    width: min(calc(100cqw - var(--media-border-size)), var(--media-photo-cap-width));
+    max-width: none;
+}
+.quote-media .media-frame-portrait-photo > .media-frame-image,
+.quote-media .media-frame-portrait-photo > .media-frame-placeholder {
+    margin-inline: auto;
+}
+/* Playback pixels are contained independently of the source/poster dimensions. */
+.media-frame-video,
+.media-frame-gif-video {
+    object-fit: contain;
+    background: #000;
+}
+/* Audible mobile autoplay moves the unlocked decoder between tiles. Keep a
+   permanent sizing box: Safari can clamp scrolling during the DOM move even
+   when JavaScript holds the tile's height and its final dimensions match. */
+.media-frame.media-video-player:not(.lightbox-video-player):not(:fullscreen)::before {
+    content: '';
+    display: block;
+    aspect-ratio: var(--media-frame-aspect);
+}
+.media-frame.media-video-player:not(.lightbox-video-player):not(:fullscreen) > .media-frame-video {
+    position: absolute;
+    inset: 0;
+    height: 100%;
+}
+.media-grid-video {
+    object-fit: contain;
+    background: #000;
+}
+/* Optional native-style strip. Its query container is the tweet content column;
+   the scrollport bleeds to the card edges without changing any single media. */
+.media-carousel {
+    container-type: inline-size;
+    --gallery-left: 64px;
+    --gallery-right: 16px;
+}
+.media-carousel-detail { --gallery-left: 16px; }
+.media-carousel-nav { position: relative; margin: -2px; }
+.media-carousel-dots { display: none; }
+.media-carousel-track {
+    display: flex;
+    gap: 4px;
+    margin-left: calc(2px - var(--gallery-left));
+    margin-right: calc(2px - var(--gallery-right));
+    padding: 2px var(--gallery-right) 2px var(--gallery-left);
+    scroll-padding: 0 var(--gallery-right) 0 var(--gallery-left);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+}
+.media-carousel-track::-webkit-scrollbar { display: none; }
+.media-carousel-item {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    height: var(--gallery-height);
+    width: calc(var(--gallery-height) * min(var(--gallery-item-aspect), var(--gallery-max-aspect)));
+}
+.media-carousel-feed .media-carousel-item,
+.media-carousel-detail .media-carousel-item {
+    height: var(--gallery-height-app, var(--gallery-height));
+    width: min(calc(var(--gallery-height-app, var(--gallery-height)) * var(--gallery-item-aspect)), 80cqw);
+}
+.media-carousel-tile {
+    height: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.media-carousel-tile img,
+.media-carousel-tile .media-grid-video,
+.media-carousel-tile [data-video-poster] { object-fit: cover; }
+.media-carousel-track:focus-visible,
+.media-carousel-tile img:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
+.media-carousel-arrow {
+    position: absolute;
+    top: calc(50% - 18px);
+    z-index: 25;
+    width: 36px;
+    height: 36px;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    background: rgba(15,20,25,.75);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: background-color 200ms, box-shadow 200ms;
+}
+.media-carousel-previous { left: 4px; }
+.media-carousel-next { right: 4px; }
+.media-carousel-arrow svg { width: 20px; height: 20px; fill: currentColor; }
+.media-carousel-nav:hover > .media-carousel-arrow:not(:disabled),
+.media-carousel-nav:has(:focus-visible) > .media-carousel-arrow:not(:disabled) { opacity: 1; }
+.media-carousel-nav > .media-carousel-arrow:active:not(:disabled) { opacity: .5; }
+.media-carousel-arrow:disabled { visibility: hidden; }
+.quote-card:not(.quote-compact) > .quote-media:has(> .media-carousel) {
+    margin: 12px 0 0;
+}
+.quote-media > .media-carousel {
+    --gallery-left: 12px;
+    --gallery-right: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .media-carousel-arrow { transition: none; }
+}
+/* X's desktop web, measured in October 2026. Phones keep their own app rules. */
+@media (min-width: 641px) {
+    /* Light desktop card/media outlines use the stronger control color;
+       feed separators keep their pale border color. */
+    .light .quote-card,
+    .light .quote-thumbnail,
+    .light .media-frame,
+    .light .media-carousel-tile,
+    .light [data-lightbox-media].grid {
+        border-color: var(--input-border);
+    }
+    /* Posts without text show 4px dashes under the name, 12px wide (22px for
+       the current photo), in the secondary text color at 35% → 100%. */
+    .feed-card [data-action="media"] > .media-carousel:has(> .media-carousel-dots) {
+        margin-top: 6px;
+    }
+    .media-carousel-dots {
+        display: flex;
+        gap: 5px;
+        height: 4px;
+        margin-bottom: 12px;
+    }
+    .media-carousel-dots > span {
+        width: calc(12px + 10px * var(--dot-active, 0));
+        border-radius: 2px;
+        background: var(--text-secondary);
+        opacity: calc(0.35 + 0.65 * var(--dot-active, 0));
+    }
+    .quote-card:not(.quote-compact) > .quote-text {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 5;
+        line-clamp: 5;
+        overflow: hidden;
+    }
+    /* An empty media slot keeps a text-only quote's bottom padding. */
+    .quote-card:not(.quote-compact) > .quote-media:empty {
+        margin-bottom: 0;
+    }
+    .quote-card:not(.quote-compact) > .quote-media:has(> .media-carousel) {
+        margin-top: 16px;
+    }
+    /* A quote sits 4px below a single photo or video in list rows. */
+    .feed-card [data-action="media"]:has(> .media-single) + .quote-card,
+    div:has(> .media-single) + template + div > .quote-card {
+        margin-top: 4px;
+    }
+}
+/* Touch screens keep :hover after a tap; the app has no arrows, only swiping. */
+@media (hover: none) {
+    .media-carousel-arrow { display: none; }
+}
+/* Keep the poster above the native video surface until a decoded frame has
+   actually been presented. Controls stay above it and receive all input. */
+[data-video-poster] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+    pointer-events: none;
+}
+[data-video-poster][hidden] { display: none; }
+@media (max-width: 640px), (pointer: coarse) {
+    .lightbox-video-player > [data-video-poster] {
+        height: calc(100% - 72px - var(--video-controls-bottom));
+    }
+}
+/* X releases portrait preview caps below its 676px layout breakpoint. Override
+   the inherited caps on the frame so resizing also updates existing media. */
+@media (max-width: 675px) {
+    .media-frame-feed,
+    .media-frame-detail,
+    .media-frame-quote {
+        --media-max-width: 100%;
+        --media-photo-cap-width: 100%;
+    }
+}
+
+.main-tweet-quote-after-single-media > .quote-card-detail,
+.main-tweet-quote-after-single-media > div > .tweet-skeleton-compact {
+    margin-top: 4px;
+}

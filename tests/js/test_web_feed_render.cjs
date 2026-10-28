@@ -16,6 +16,7 @@ const {
     parseFakeHTML,
     test,
     run,
+    pageCss,
 } = require('./web_harness.cjs');
 
 test('tweet counts use compact detail precision and whole feed units', () => {
@@ -361,7 +362,7 @@ test('a quote shows its own quote nested inside it, as X does', () => {
         assert.equal(template.split(slot).length - 1, name.endsWith('main') ? 1 : 2);
         assert.ok(template.includes(`${slot}\n${' '.repeat(template.split(slot)[0].split('\n').at(-1).length)}<div x-html="renderCommunityNote(getQuoteTweet(${name}), true, false, Boolean(${hasMedia}))"`));
     }
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
+    const css = pageCss();
     assert.match(css, /\.quote-nested \{[^}]*margin-top: 12px;[^}]*padding: 8px 0 8px 15px;/);
     assert.match(css, /\.quote-text \+ \.quote-nested,\n\.quote-text \+ :empty \+ \.quote-media:empty \+ \* > \.quote-nested \{[^}]*margin-top: 6px;/);
     assert.match(css, /\.quote-nested > \.quote-text \{[^}]*-webkit-line-clamp: 2;/);
@@ -558,7 +559,7 @@ test('missing tweet skeletons cover terminal, relation, tombstone, and textless 
     assert.match(app.formatText(tombstone), /This tweet is unavailable\./);
     assert.match(app.renderQuotePlaceholder(tombstone), /data-availability-reason="unavailable_unknown"/);
 
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
+    const css = pageCss();
     assert.match(css, /\.tweet-skeleton/);
     assert.match(css, /\.tweet-skeleton-main \{[\s\S]*font-size: 0;[\s\S]*line-height: 0;/);
 });
@@ -633,7 +634,7 @@ test('community note detail uses captured title and omits footers, while feed an
 
 test('tweet bylines size dates from the visible label and truncate handles when needed', () => {
     const html = pageHtml();
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
 
     assert.match(css, /\.tweet-byline-name\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
     assert.match(css, /\.tweet-byline-detail\s*\{[^}]*flex-shrink:\s*0;[^}]*white-space:\s*nowrap;/s);
@@ -831,7 +832,7 @@ test('feed cards escape hostile names, handles, reply targets, dates, sync label
 test('desktop list and post layouts follow X web: strips, page dashes, quotes, Show more, large cards', () => {
     const context = browserContext();
     const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
+    const css = pageCss();
     const desktop = css.slice(css.indexOf("/* X's desktop web, measured in October 2026."));
     const block = desktop.slice(0, desktop.indexOf('\n}\n'));
     // Inline strips use the first-item height at every width; quotes keep the shared height.
