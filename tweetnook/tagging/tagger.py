@@ -285,32 +285,6 @@ def _is_capacity_response(code: int | None, failure: Any, message: str) -> bool:
     ) or "currently experiencing high demand" in message.casefold()
 
 
-def _defer_tagging_failure(store: ArchiveStore, tweet_ids: list[str]) -> None:
-    """Persist backoff separately so explicit retries preserve existing tags."""
-    now = time.time()
-    for tweet_id in tweet_ids:
-        key = f"tagging_retry:{tweet_id}"
-        row = store.conn.execute("SELECT value FROM archive WHERE row_key = ?", (key,)).fetchone()
-        try:
-            previous = json.loads(row[0]) if row else {}
-            attempts = max(int(previous.get("attempts", 0)), 0) + 1
-        except (TypeError, ValueError, AttributeError):
-            attempts = 1
-        delay = min(3600 * 2 ** min(attempts - 1, 8), 7 * 86400)
-        store.conn.execute(
-            "INSERT OR REPLACE INTO archive "
-            "(row_key, record_type, key, value, updated_at) VALUES (?, ?, ?, ?, ?)",
-            (
-                key,
-                RecordType.METADATA,
-                key,
-                json.dumps({"attempts": attempts, "next_retry_at": now + delay}),
-                str(now),
-            ),
-        )
-    store.conn.commit()
-
-
 async def _wait_for_free_rpm(model: str, requests_per_minute: int) -> None:
     timestamps = _FREE_REQUEST_TIMES[model.casefold()]
     while True:
@@ -1017,7 +991,7 @@ async def tag_media_tweets(
         if content_type == "media" and not active_media_by_tweet:
             console.print("[yellow]No loadable media found for the selected tweets.[/yellow]")
             if not dry_run and tag_config.api_mode == "paid":
-                _defer_tagging_failure(store, tweet_ids)
+                store.defer_tagging_failure(tweet_ids)
             return 0
 
         console.print(
@@ -1450,7 +1424,7 @@ async def tag_media_tweets(
                     # Leave the queue eligible for the next run and reserve
                     # candidate backoff for item-specific failures.
                     if not dry_run and not retryable and code not in {401, 403}:
-                        _defer_tagging_failure(store, tweet_ids)
+                        store.defer_tagging_failure(tweet_ids)
                     if search.reliable:
                         await search_policy.commit(search_reservation, search)
                     else:
@@ -1524,7 +1498,7 @@ async def tag_media_tweets(
             console.print("[red]Gemini returned an empty response.[/red]")
             if not dry_run:
                 if tag_config.api_mode == "paid":
-                    _defer_tagging_failure(store, tweet_ids)
+                    store.defer_tagging_failure(tweet_ids)
                 else:
                     _mark_failed(store, tweet_ids)
             return 0
@@ -1540,7 +1514,7 @@ async def tag_media_tweets(
                     f"{_safe_error(error, tag_config.api_key)}[/red]"
                 )
                 if not dry_run:
-                    _defer_tagging_failure(store, tweet_ids)
+                    store.defer_tagging_failure(tweet_ids)
                 return 0
         else:
             free_model = _FreeMediaTagResult if content_type == "media" else _FreeTextTagResult
@@ -1573,7 +1547,7 @@ async def tag_media_tweets(
             normalized_tags = _normalized_tags(result.tags, existing_tags)
             if not 2 <= len(normalized_tags) <= 5:
                 if not dry_run and tag_config.api_mode == "paid":
-                    _defer_tagging_failure(store, [tweet_id])
+                    store.defer_tagging_failure([tweet_id])
                 continue
             description = getattr(result, "description", None)
             if dry_run:

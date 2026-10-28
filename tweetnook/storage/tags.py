@@ -273,6 +273,33 @@ class TagsMixin(ConnectionMixin):
             return 0, 0
         return int(row["eligible_tweets"]), int(row["tagged_tweets"])
 
+    def defer_tagging_failure(self, tweet_ids: list[str]) -> None:
+        """Persist backoff separately so explicit retries preserve existing tags."""
+        now = time.time()
+        for tweet_id in tweet_ids:
+            key = f"tagging_retry:{tweet_id}"
+            row = self.conn.execute(
+                "SELECT value FROM archive WHERE row_key = ?", (key,)
+            ).fetchone()
+            try:
+                previous = json.loads(row[0]) if row else {}
+                attempts = max(int(previous.get("attempts", 0)), 0) + 1
+            except (TypeError, ValueError, AttributeError):
+                attempts = 1
+            delay = min(3600 * 2 ** min(attempts - 1, 8), 7 * 86400)
+            self.conn.execute(
+                "INSERT OR REPLACE INTO archive "
+                "(row_key, record_type, key, value, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (
+                    key,
+                    RecordType.METADATA,
+                    key,
+                    json.dumps({"attempts": attempts, "next_retry_at": now + delay}),
+                    str(now),
+                ),
+            )
+        self.conn.commit()
+
     def delete_media_tag(self, tweet_id: str) -> None:
         self.conn.execute(
             f"DELETE FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' AND tweet_id = ?",

@@ -8,7 +8,7 @@ from typing import Any
 from tweetnook.core.exceptions import ArchiveOwnerMismatchError
 from tweetnook.core.utils import utc_now
 
-from .common import expr_quote, folder_key
+from .common import folder_key
 from .record_types import RecordType
 from .records import PageBuffer, RecordsMixin
 
@@ -75,16 +75,14 @@ class SyncStateMixin(RecordsMixin):
         self._queue_record(record, cursor=cursor)
 
     def reset_sync_state(self, collection_type: str, folder_id: str | None = None) -> None:
-        self._delete(
-            f"row_key = {expr_quote(self._row_key_for_sync_state(collection_type, folder_id))}"
-        )
+        self._delete("row_key = ?", (self._row_key_for_sync_state(collection_type, folder_id),))
 
     def get_collection_tweet_ids(self, collection_type: str) -> set[str]:
-        filter_expr = (
-            f"record_type = '{RecordType.TWEET}' "
-            f"AND collection_type = {expr_quote(collection_type)}"
+        rows = self._query(
+            f"record_type = '{RecordType.TWEET}' AND collection_type = ?",
+            (collection_type,),
+            cols=["tweet_id"],
         )
-        rows = self._query(expr=filter_expr, cols=["tweet_id"])
         return {row["tweet_id"] for row in rows}
 
     def get_archive_owner_id(self) -> str | None:

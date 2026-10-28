@@ -39,8 +39,8 @@ class QuotesStore:
         self.conn = QuotesConnection()
         self.query: dict[str, Any] | None = None
 
-    def _query(self, **kwargs: Any) -> list[dict[str, Any]]:
-        self.query = kwargs
+    def _query(self, expr: str, params=(), **kwargs: Any) -> list[dict[str, Any]]:
+        self.query = {"expr": expr, "params": tuple(params), **kwargs}
         return [{"tweet_id": "q3"}, {"tweet_id": "q2"}]
 
     def fetch_tweets_by_ids(
@@ -77,7 +77,8 @@ def test_api_tweet_quotes_parameterizes_count_and_paginates_distinct_ids():
     assert params == (payload,)
     assert "INDEXED BY idx_archive_target_tweet_id" in sql
     assert store.query is not None
-    assert "target'' OR 1=1 --" in store.query["expr"]
+    assert payload not in store.query["expr"]
+    assert store.query["params"] == (payload,)
     assert store.query["cols"] == ["DISTINCT tweet_id"]
     assert store.query["offset"] == 2
     assert store.query["indexed_by"] == "idx_archive_target_tweet_id"

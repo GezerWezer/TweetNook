@@ -16,6 +16,7 @@ from tweetnook.storage.common import (
     COMMUNITY_NOTE_TWEET_IDS_SQL,
     HIDDEN_TWEET_IDS_SQL,
     UNCAPTURED_TWEET_IDS_SQL,
+    Clause,
     parse_created_at,
 )
 from tweetnook.storage.like_order import LIKE_SORTS
@@ -302,10 +303,6 @@ def _parse_twitter_date(date_str: str) -> float | None:
         return None
 
 
-def _sql_quote(value: object) -> str:
-    return "'" + str(value).replace("'", "''") + "'"
-
-
 def _fact(column: str) -> str:
     """Read a derived search value of the membership row being filtered.
 
@@ -318,11 +315,11 @@ def _fact(column: str) -> str:
     )
 
 
-def _fact_list_contains(column: str, value: str) -> str:
+def _fact_list_contains(column: str, value: str) -> Clause:
     # Lists are lowercased values wrapped in char(31); no stored value contains one.
     if "\x1f" in value:
-        return "0"
-    return f"instr({_fact(column)}, char(31) || {_sql_quote(value)} || char(31)) > 0"
+        return Clause("0")
+    return Clause(f"instr({_fact(column)}, char(31) || ? || char(31)) > 0", (value,))
 
 
 def _description_match(value: str) -> str:
@@ -340,9 +337,9 @@ def _description_match(value: str) -> str:
     return " ".join(phrases)
 
 
-def _media_tag_match(matching_tweet_ids: str) -> str:
+def _media_tag_match(matching_tweet_ids: str, params: tuple[Any, ...] = ()) -> Clause:
     """Match selected tweets and their direct quoting posts, like tag searches."""
-    return (
+    sql = (
         "archive.tweet_id IN ("
         f"WITH matching_tags(tweet_id) AS MATERIALIZED ({matching_tweet_ids}) "
         "SELECT tweet_id FROM matching_tags "
@@ -353,9 +350,14 @@ def _media_tag_match(matching_tweet_ids: str) -> str:
         "AND relation.relation_type = 'quote_of' "
         ")"
     )
+    return Clause(sql, params)
 
 
-def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> str | None:
+def _negate(clause: Clause) -> Clause:
+    return Clause(f"NOT (COALESCE(({clause.sql}), 0))", clause.params)
+
+
+def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> Clause | None:
     """Translate filters backed by archive columns or JSON into SQLite predicates."""
     condition = None
     related_index = "idx_archive_tweet_id"
@@ -405,50 +407,50 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
             condition += (
                 f" AND related.record_type IN ('{RecordType.MEDIA}', '{RecordType.URL_REF}')"
             )
-        expression = (
+        related = Clause(
             f"EXISTS (SELECT 1 FROM archive AS related INDEXED BY {related_index} "
             "WHERE related.tweet_id = archive.tweet_id "
             f"AND {condition})"
         )
-        return f"NOT (COALESCE(({expression}), 0))" if negated else expression
+        return _negate(related) if negated else related
 
     expression = None
     if key == "from":
-        expression = f"LOWER(COALESCE(author_username, '')) = {_sql_quote(value.replace('@', ''))}"
+        expression = Clause("LOWER(COALESCE(author_username, '')) = ?", (value.replace("@", ""),))
     elif key == "to":
-        expression = f"COALESCE({_fact('reply_to')}, '') = {_sql_quote(value.replace('@', ''))}"
+        expression = Clause(f"COALESCE({_fact('reply_to')}, '') = ?", (value.replace("@", ""),))
     elif key == "mentions":
         expression = _fact_list_contains("mentions", value.replace("@", ""))
     elif key in {"since", "since_time", "until", "until_time"}:
         boundary = _parse_twitter_date(value) if key in {"since", "until"} else float(value)
         comparison = ">=" if key in {"since", "since_time"} else "<"
-        expression = f"created_at_ts {comparison} {int(boundary)}"
+        expression = Clause(f"created_at_ts {comparison} ?", (int(boundary),))
     elif key == "since_id":
-        expression = f"CAST(archive.tweet_id AS INTEGER) > {int(value)}"
+        expression = Clause("CAST(archive.tweet_id AS INTEGER) > ?", (int(value),))
     elif key == "max_id":
-        expression = f"CAST(archive.tweet_id AS INTEGER) <= {int(value)}"
+        expression = Clause("CAST(archive.tweet_id AS INTEGER) <= ?", (int(value),))
     elif (key, value) in {("is", "reply"), ("filter", "replies")}:
-        expression = _fact("is_reply")
+        expression = Clause(_fact("is_reply"))
     elif (key, value) in {("is", "quote"), ("filter", "quote")}:
-        expression = _fact("is_quote")
+        expression = Clause(_fact("is_quote"))
     elif (key, value) in {("is", "retweet"), ("filter", "nativeretweets")}:
-        expression = _fact("is_retweet")
+        expression = Clause(_fact("is_retweet"))
     elif (key, value) in {
         ("is", "thread"),
         ("filter", "self_threads"),
         ("filter", "threads"),
     }:
         reply_to = _fact("reply_to")
-        expression = (
+        expression = Clause(
             f"NULLIF({reply_to}, '') IS NOT NULL AND "
             f"{reply_to} = LOWER(COALESCE(author_username, ''))"
         )
     elif (key, value) in {("is", "verified"), ("filter", "verified")}:
-        expression = _fact("is_verified")
+        expression = Clause(_fact("is_verified"))
     elif (key, value) == ("is", "hidden"):
-        expression = f"archive.tweet_id IN ({HIDDEN_TWEET_IDS_SQL})"
+        expression = Clause(f"archive.tweet_id IN ({HIDDEN_TWEET_IDS_SQL})")
     elif (key, value) == ("is", "uncaptured"):
-        expression = f"archive.tweet_id IN ({UNCAPTURED_TWEET_IDS_SQL})"
+        expression = Clause(f"archive.tweet_id IN ({UNCAPTURED_TWEET_IDS_SQL})")
     elif (key, value) == ("has", "note"):
         expression = _media_tag_match(COMMUNITY_NOTE_TWEET_IDS_SQL)
     elif key in {"min_retweets", "min_faves", "min_replies"}:
@@ -457,27 +459,27 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
             "min_faves": "favorite_count",
             "min_replies": "reply_count",
         }[key]
-        expression = f"{_fact(count_field)} >= {int(value)}"
+        expression = Clause(f"{_fact(count_field)} >= ?", (int(value),))
     elif key == "conversation_id":
-        expression = f"conversation_id = {_sql_quote(value)}"
+        expression = Clause("conversation_id = ?", (value,))
     elif key == "quoted_tweet_id":
-        expression = f"{_fact('quoted_status_id')} = {_sql_quote(value)}"
+        expression = Clause(f"{_fact('quoted_status_id')} = ?", (value,))
     elif key == "url":
-        escaped = _sql_quote(f"%{value}%")
-        expression = (
+        pattern = f"%{value}%"
+        expression = Clause(
             "EXISTS (SELECT 1 FROM archive AS related INDEXED BY idx_archive_search_attachment "
             "WHERE related.tweet_id = archive.tweet_id AND related.record_type = "
             f"'{RecordType.URL_REF}' "
             f"AND related.record_type IN ('{RecordType.MEDIA}', '{RecordType.URL_REF}') "
-            f"AND (LOWER(COALESCE(related.expanded_url, '')) LIKE {escaped} "
-            f"OR LOWER(COALESCE(related.display_url, '')) LIKE {escaped}))"
+            "AND (LOWER(COALESCE(related.expanded_url, '')) LIKE ? "
+            "OR LOWER(COALESCE(related.display_url, '')) LIKE ?))",
+            (pattern, pattern),
         )
     elif key == "source":
-        expression = f"{_fact('source')} LIKE {_sql_quote('%' + value.replace('_', ' ') + '%')}"
+        expression = Clause(f"{_fact('source')} LIKE ?", (f"%{value.replace('_', ' ')}%",))
     elif key == "card_name":
-        expression = f"{_fact('card_name')} = {_sql_quote(value)}"
+        expression = Clause(f"{_fact('card_name')} = ?", (value,))
     elif key == "tag":
-        normalized_value = _sql_quote(value.lower())
         expression = _media_tag_match(
             "SELECT DISTINCT tagged.tweet_id "
             "FROM archive tagged INDEXED BY idx_archive_media_tag_lookup "
@@ -485,20 +487,22 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
             "THEN tagged.raw_json ELSE '{}' END, '$.tags') AS media_tag "
             f"WHERE tagged.record_type = '{RecordType.MEDIA_TAG}' "
             "AND media_tag.type = 'text' "
-            f"AND LOWER(CAST(media_tag.value AS TEXT)) = {normalized_value}"
+            "AND LOWER(CAST(media_tag.value AS TEXT)) = ?",
+            (value.lower(),),
         )
     elif key == "description":
         expression = _media_tag_match(
             "SELECT DISTINCT described.tweet_id FROM archive_description_fts "
             "JOIN archive described ON described.rowid = archive_description_fts.rowid "
-            f"WHERE archive_description_fts MATCH {_sql_quote(_description_match(value))}"
+            "WHERE archive_description_fts MATCH ?",
+            (_description_match(value),),
         )
     elif key == "hashtag":
         expression = _fact_list_contains("hashtags", value.replace("#", "").lower())
 
     if expression is None:
         return None
-    return f"NOT (COALESCE(({expression}), 0))" if negated else expression
+    return _negate(expression) if negated else expression
 
 
 def _search_result_score(row: dict[str, Any]) -> float:
@@ -582,7 +586,8 @@ def _compile_tweet_query(parsed: ParsedSearchQuery) -> tuple[tuple, bool, bool]:
             compiled_group.append(
                 {
                     "kind": "filter",
-                    "expression": expression,
+                    "expression": expression.sql,
+                    "params": list(expression.params),
                     "index_driver": clause.key == "from" and not clause.negated,
                 }
             )

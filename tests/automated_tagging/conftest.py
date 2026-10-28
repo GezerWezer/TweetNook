@@ -15,6 +15,7 @@ import httpx
 from rich.console import Console
 
 from tweetnook.config import AppConfig, TaggingConfig
+from tweetnook.storage.tags import TagsMixin
 from tweetnook.tagging import tagger as tagging
 from tweetnook.tagging.accounting import (
     AIUsageLedger,
@@ -63,6 +64,9 @@ class Store:
             "SELECT raw_json FROM archive WHERE record_type = 'media_tag' AND tweet_id = ?",
             (tweet_id,),
         ).fetchone()
+
+    def defer_tagging_failure(self, tweet_ids: list[str]) -> None:
+        TagsMixin.defer_tagging_failure(self, tweet_ids)
 
 
 class QueueStore:

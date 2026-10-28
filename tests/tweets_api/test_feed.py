@@ -105,18 +105,16 @@ def test_api_tweets_rejects_unknown_search_filters():
     assert "Unsupported search filter" in exc.value.detail
 
 
-def test_api_tweets_pushdown_quotes_untrusted_author_and_conversation():
+def test_api_tweets_pushdown_binds_untrusted_author_and_conversation():
     store = ListingStore([])
     payload = "alice' or 1=1 --"
 
     _list_tweets(store, q=f'from:"{payload}" conversation_id:"{payload}"')
 
     query = next(data for name, data in store.calls if name == "search_tweet_ids")
-    expressions = " ".join(
-        clause["expression"] for group in query["query_groups"] for clause in group
-    )
-    assert "alice'' or 1=1 --" in expressions
-    assert "alice' or 1=1 --'" not in expressions
+    clauses = [clause for group in query["query_groups"] for clause in group]
+    assert all("or 1=1" not in clause["expression"] for clause in clauses)
+    assert [clause["params"] for clause in clauses] == [["alice' or 1=1 --"], [payload]]
 
 
 def test_api_tweets_fts_path_sorts_and_paginates_hydrated_results():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Any
 
 from tweetnook.core import fastjson
@@ -12,7 +13,6 @@ from .common import (
     HIDDEN_TWEET_IDS_SQL,
     SEARCH_COLLECTION_ORDER,
     UNCAPTURED_TWEET_IDS_SQL,
-    expr_quote,
     parse_created_at,
 )
 from .record_types import RecordType
@@ -152,6 +152,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
     def query_like_order_ids(
         self,
         filter_expr: str,
+        params: Sequence[Any] = (),
         *,
         sort: str,
         limit: int,
@@ -173,7 +174,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
                 "(SELECT 1 FROM archive INDEXED BY idx_archive_tweet_id "
                 f"WHERE archive.tweet_id = ordering.tweet_id AND ({filter_expr})) "
                 f"ORDER BY ordering.{position} LIMIT ? OFFSET ?",
-                (-1 if after_position is None else after_position, limit, offset),
+                (-1 if after_position is None else after_position, *params, limit, offset),
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -576,8 +577,10 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         if limit is not None and limit < 0:
             raise ValueError("limit must be non-negative")
         filter_expr = f"record_type = '{RecordType.TWEET}'"
+        filter_params: tuple[str, ...] = ()
         if collection != "all":
-            filter_expr += f" AND collection_type = {expr_quote(collection)}"
+            filter_expr += " AND collection_type = ?"
+            filter_params = (collection,)
         tweet_columns = [
             "tweet_id",
             "text",
@@ -637,7 +640,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             f"PARTITION BY tweet_id ORDER BY {order}) AS duplicate_rank FROM candidates) "
             "SELECT row_key FROM ranked WHERE duplicate_rank = 1 "
             f"ORDER BY {order} LIMIT ? OFFSET ?",
-            (-1 if limit is None else limit, offset),
+            (*filter_params, -1 if limit is None else limit, offset),
         ).fetchall()
         selected = self._rows_for_values(
             RecordType.TWEET,

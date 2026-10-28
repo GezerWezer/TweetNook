@@ -14,7 +14,7 @@ from tweetnook.core.extractor import (
 from tweetnook.core.utils import utc_now
 
 from .checks import ChecksMixin
-from .common import and_expr, expr_in, expr_quote, state_filter_expr
+from .common import Clause, and_clauses, clause_in, state_filter
 from .objects import ObjectsMixin
 from .record_types import RecordType
 from .records import PageBuffer
@@ -209,10 +209,10 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             return []
         if media_types is not None and not media_types:
             return []
-        where_expr = and_expr(
+        where = and_clauses(
             f"record_type = '{RecordType.MEDIA}'",
-            state_filter_expr("download_state", states) if states is not None else "",
-            expr_in("media_type", media_types) if media_types is not None else "",
+            state_filter("download_state", states) if states is not None else "",
+            clause_in("media_type", media_types) if media_types is not None else "",
         )
         cols = [
             "row_key",
@@ -235,7 +235,8 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             "source",
         ]
         return self._query(
-            expr=where_expr,
+            where.sql,
+            where.params,
             cols=cols,
             order_by="COALESCE(tweet_id, ''), COALESCE(position, 1000000), rowid",
             limit=limit,
@@ -287,9 +288,9 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
     ) -> list[dict[str, Any]]:
         if states is not None and not states:
             return []
-        where_expr = and_expr(
+        where = and_clauses(
             f"record_type = '{RecordType.URL}'",
-            state_filter_expr("unfurl_state", states) if states is not None else "",
+            state_filter("unfurl_state", states) if states is not None else "",
         )
         cols = [
             "row_key",
@@ -306,7 +307,8 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             "unfurl_state",
         ]
         return self._query(
-            expr=where_expr,
+            where.sql,
+            where.params,
             cols=cols,
             order_by="COALESCE(NULLIF(canonical_url, ''), url, ''), rowid",
             limit=limit,
@@ -355,12 +357,13 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         preview_only: bool = False,
         limit: int | None = None,
     ) -> list[str]:
-        where_expr = and_expr(
+        where = and_clauses(
             f"record_type = '{RecordType.ARTICLE}'",
             "(status IS NULL OR status != 'body_present')" if preview_only else "",
+            "tweet_id IS NOT NULL AND tweet_id != ''",
         )
         rows = self._query(
-            expr=and_expr(where_expr, "tweet_id IS NOT NULL AND tweet_id != ''"),
+            where.sql,
             cols=["tweet_id"],
             order_by="tweet_id, rowid",
             limit=limit,
@@ -372,11 +375,11 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
     ) -> list[dict[str, Any]]:
         now = now or utc_now()
         return self._query(
-            expr=f"record_type = '{RecordType.TWEET_OBJECT}' "
+            f"record_type = '{RecordType.TWEET_OBJECT}' "
             "AND (enrichment_state = 'pending' OR ("
             "enrichment_state = 'transient_failure' AND ("
-            "enrichment_next_retry_at IS NULL OR "
-            f"enrichment_next_retry_at <= {expr_quote(now)})))",
+            "enrichment_next_retry_at IS NULL OR enrichment_next_retry_at <= ?)))",
+            (now,),
             cols=[
                 "tweet_id",
                 "enrichment_checked_at",
@@ -402,16 +405,16 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         now = now or utc_now()
         return self._count(
             f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = 'transient_failure' "
-            "AND (enrichment_next_retry_at IS NULL OR "
-            f"enrichment_next_retry_at <= {expr_quote(now)})"
+            "AND (enrichment_next_retry_at IS NULL OR enrichment_next_retry_at <= ?)",
+            (now,),
         )
 
     def count_delayed_transient_enrichment(self, now: str | None = None) -> int:
         now = now or utc_now()
         return self._count(
             f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = 'transient_failure' "
-            "AND enrichment_next_retry_at IS NOT NULL AND "
-            f"enrichment_next_retry_at > {expr_quote(now)}"
+            "AND enrichment_next_retry_at IS NOT NULL AND enrichment_next_retry_at > ?",
+            (now,),
         )
 
     def count_incomplete_initial_enrichment(self) -> int:
@@ -466,14 +469,16 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             "enrichment_retry_eligible = 1",
             "deleted_at IS NULL",
             "enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')",
-            f"(enrichment_next_retry_at IS NULL OR enrichment_next_retry_at <= {expr_quote(now)})",
+            Clause("(enrichment_next_retry_at IS NULL OR enrichment_next_retry_at <= ?)", (now,)),
         ]
         if reasons:
-            clauses.append(expr_in("enrichment_reason", reasons))
+            clauses.append(clause_in("enrichment_reason", reasons))
         if exclude_tweet_ids:
-            clauses.append(f"NOT {expr_in('tweet_id', exclude_tweet_ids)}")
+            clauses.append(clause_in("tweet_id", exclude_tweet_ids, negate=True))
+        where = and_clauses(*clauses)
         return self._query(
-            expr=and_expr(*clauses),
+            where.sql,
+            where.params,
             cols=[
                 "tweet_id",
                 "author_id",
@@ -505,18 +510,21 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             "enrichment_state = 'terminal_unavailable'",
             "enrichment_retry_eligible = 1",
             "deleted_at IS NULL",
-            f"author_id = {expr_quote(author_id)}",
+            Clause("author_id = ?", (author_id,)),
             "enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')",
         ]
         if due_only:
             clauses.append(
-                "(enrichment_next_retry_at IS NULL OR "
-                f"enrichment_next_retry_at <= {expr_quote(now)})"
+                Clause(
+                    "(enrichment_next_retry_at IS NULL OR enrichment_next_retry_at <= ?)", (now,)
+                )
             )
         if exclude_tweet_ids:
-            clauses.append(f"NOT {expr_in('tweet_id', exclude_tweet_ids)}")
+            clauses.append(clause_in("tweet_id", exclude_tweet_ids, negate=True))
+        where = and_clauses(*clauses)
         return self._query(
-            expr=and_expr(*clauses),
+            where.sql,
+            where.params,
             cols=[
                 "tweet_id",
                 "author_id",
@@ -542,15 +550,16 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             "enrichment_retry_eligible = 1",
             "deleted_at IS NULL",
             "enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')",
-            f"author_id = {expr_quote(author_id)}",
+            Clause("author_id = ?", (author_id,)),
         ]
         if exclude_tweet_ids:
-            clauses.append(f"NOT {expr_in('tweet_id', exclude_tweet_ids)}")
+            clauses.append(clause_in("tweet_id", exclude_tweet_ids, negate=True))
+        where = and_clauses(*clauses)
         with self.conn:
             cursor = self.conn.execute(
-                f"UPDATE archive SET enrichment_next_retry_at = ?, updated_at = ? "
-                f"WHERE {and_expr(*clauses)}",
-                (utc_now(), utc_now()),
+                "UPDATE archive SET enrichment_next_retry_at = ?, updated_at = ? "
+                f"WHERE {where.sql}",
+                (utc_now(), utc_now(), *where.params),
             )
         return cursor.rowcount
 
@@ -569,13 +578,14 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             "enrichment_retry_eligible = 1",
             "deleted_at IS NULL",
             "enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')",
-            expr_in("tweet_id", tweet_ids),
+            clause_in("tweet_id", tweet_ids),
         ]
+        where = and_clauses(*clauses)
         with self.conn:
             cursor = self.conn.execute(
-                f"UPDATE archive SET enrichment_next_retry_at = ?, updated_at = ? "
-                f"WHERE {and_expr(*clauses)}",
-                (now, now),
+                "UPDATE archive SET enrichment_next_retry_at = ?, updated_at = ? "
+                f"WHERE {where.sql}",
+                (now, now, *where.params),
             )
         return cursor.rowcount
 
@@ -586,6 +596,6 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             "AND enrichment_state = 'terminal_unavailable' "
             "AND enrichment_retry_eligible = 1 AND deleted_at IS NULL "
             "AND enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author') "
-            "AND (enrichment_next_retry_at IS NULL OR "
-            f"enrichment_next_retry_at <= {expr_quote(now)})"
+            "AND (enrichment_next_retry_at IS NULL OR enrichment_next_retry_at <= ?)",
+            (now,),
         )

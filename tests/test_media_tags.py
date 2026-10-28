@@ -4,7 +4,6 @@ import json
 import time
 
 from tweetnook.storage import open_archive_store
-from tweetnook.tagging.tagger import _defer_tagging_failure
 
 
 def _tag_payload(store, tweet_id: str) -> dict[str, object] | None:
@@ -148,8 +147,8 @@ def test_tagging_backoff_is_persistent_indexed_and_preserves_tags(paths):
     _seed_tag_candidate(store, "newest", created_at_ts=30, with_media=False)
     _seed_tag_candidate(store, "older", created_at_ts=20, with_media=False)
     store.update_media_tags("newest", ["Manual"])
-    _defer_tagging_failure(store, ["newest", "older"])
-    _defer_tagging_failure(store, ["older"])
+    store.defer_tagging_failure(["newest", "older"])
+    store.defer_tagging_failure(["older"])
     assert _tag_payload(store, "newest")["tags"] == ["Manual"]
     row = store.conn.execute(
         "SELECT value FROM archive WHERE row_key='tagging_retry:older'"

@@ -11,6 +11,7 @@ from fastapi.responses import Response
 from tweetnook.core import fastjson
 from tweetnook.core.collection_names import normalize_collection_name
 from tweetnook.core.media_metadata import aspect_ratio_for_media
+from tweetnook.storage.common import clause_in
 from tweetnook.storage.record_types import RecordType
 from tweetnook.storage.search_query import (
     SearchCursorExpiredError,
@@ -42,11 +43,6 @@ def _json(payload: dict) -> Response:
     return Response(fastjson.dumps(payload), media_type="application/json")
 
 
-def _sql_quote(value: object) -> str:
-    """Quote a scalar for the store's expression-only query interface."""
-    return "'" + str(value).replace("'", "''") + "'"
-
-
 def _indexed_relation_rows(
     store,
     tweet_id: str,
@@ -58,7 +54,6 @@ def _indexed_relation_rows(
     """Load both sides of a relation without leaving an index choice to SQLite."""
     rows = []
     seen = set()
-    quoted_tweet_id = _sql_quote(tweet_id)
     lookups = (
         ("tweet_id", source_types, "idx_archive_tweet_id"),
         ("target_tweet_id", target_types, "idx_archive_target_tweet_id"),
@@ -66,12 +61,10 @@ def _indexed_relation_rows(
     for field, relation_types, index_name in lookups:
         if not relation_types or len(rows) >= limit:
             continue
-        quoted_types = ", ".join(_sql_quote(value) for value in relation_types)
+        types = clause_in("relation_type", relation_types)
         candidates = store._query(
-            expr=(
-                f"record_type = '{RecordType.TWEET_RELATION}' AND {field} = {quoted_tweet_id} "
-                f"AND relation_type IN ({quoted_types})"
-            ),
+            f"record_type = '{RecordType.TWEET_RELATION}' AND {field} = ? AND {types.sql}",
+            (tweet_id, *types.params),
             cols=["tweet_id", "target_tweet_id", "relation_type"],
             limit=limit - len(rows),
             indexed_by=index_name,
@@ -358,10 +351,11 @@ def api_tweet_thread(
             related_ids.add(relation["tweet_id"])
             related_ids.add(relation["target_tweet_id"])
 
-        id_list = ", ".join(_sql_quote(tid) for tid in related_ids)
+        related = clause_in("tweet_id", related_ids)
         related_count = len(related_ids)
         objs = store._query(
-            expr=f"record_type = '{RecordType.TWEET_OBJECT}' AND tweet_id IN ({id_list})",
+            f"record_type = '{RecordType.TWEET_OBJECT}' AND {related.sql}",
+            related.params,
             cols=[
                 "tweet_id",
                 "text",
@@ -376,7 +370,8 @@ def api_tweet_thread(
             indexed_by="idx_archive_tweet_id",
         )
         media = store._query(
-            expr=f"record_type = '{RecordType.MEDIA}' AND tweet_id IN ({id_list})",
+            f"record_type = '{RecordType.MEDIA}' AND {related.sql}",
+            related.params,
             cols=[
                 "source",
                 "tweet_id",
@@ -394,7 +389,8 @@ def api_tweet_thread(
             indexed_by="idx_archive_tweet_id",
         )
         col_rows = store._query(
-            expr=f"record_type = '{RecordType.TWEET}' AND tweet_id IN ({id_list})",
+            f"record_type = '{RecordType.TWEET}' AND {related.sql}",
+            related.params,
             cols=[
                 "tweet_id",
                 "collection_type",
@@ -410,7 +406,8 @@ def api_tweet_thread(
             indexed_by="idx_archive_tweet_id",
         )
         tag_rows = store._query(
-            expr=f"record_type = '{RecordType.MEDIA_TAG}' AND tweet_id IN ({id_list})",
+            f"record_type = '{RecordType.MEDIA_TAG}' AND {related.sql}",
+            related.params,
             cols=["tweet_id", "raw_json"],
             limit=related_count,
             indexed_by="idx_archive_tweet_id",
@@ -664,10 +661,6 @@ def api_tweet_quotes(
     try:
         start = (page - 1) * limit
 
-        expr = (
-            f"record_type = '{RecordType.TWEET_RELATION}' AND relation_type = 'quote_of' "
-            f"AND target_tweet_id = {_sql_quote(tweet_id)}"
-        )
         total = store.conn.execute(
             f"""
             SELECT COUNT(DISTINCT tweet_id)
@@ -680,7 +673,9 @@ def api_tweet_quotes(
         ).fetchone()[0]
 
         rows = store._query(
-            expr=expr,
+            f"record_type = '{RecordType.TWEET_RELATION}' AND relation_type = 'quote_of' "
+            "AND target_tweet_id = ?",
+            (tweet_id,),
             cols=["DISTINCT tweet_id"],
             order_by="tweet_id DESC",
             limit=limit,

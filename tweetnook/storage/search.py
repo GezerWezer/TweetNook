@@ -11,7 +11,10 @@ from .common import (
     HIDDEN_TWEET_IDS_SQL,
     SEARCH_COLLECTION_ORDER,
     UNCAPTURED_TWEET_IDS_SQL,
-    expr_quote,
+    Clause,
+    and_clauses,
+    clause_in,
+    join_clauses,
 )
 from .record_types import RecordType
 
@@ -89,13 +92,12 @@ class SearchMixin(ReadsMixin, TagsMixin):
         order = {k: i for i, k in enumerate(SEARCH_COLLECTION_ORDER)}
         return sorted(list(collections), key=lambda c: (order.get(c, 99), c))
 
-    def _search_collection_expr(self, collections: set[str] | None) -> str:
+    def _search_collection_expr(self, collections: set[str] | None) -> Clause:
         if not collections:
-            return ""
+            return Clause("")
         if len(collections) == 1:
-            return f"collection_type = {expr_quote(next(iter(collections)))}"
-        formatted = ", ".join(expr_quote(c) for c in collections)
-        return f"collection_type IN ({formatted})"
+            return Clause("collection_type = ?", (next(iter(collections)),))
+        return clause_in("collection_type", collections)
 
     def _prepare_fts_query(self, query: str) -> str:
         import re
@@ -160,13 +162,15 @@ class SearchMixin(ReadsMixin, TagsMixin):
             return pieces[0] in words
 
         expr = f"record_type = '{RecordType.ARTICLE}' AND tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})"
+        params: tuple[Any, ...] = ()
         if collections:
             membership = self._search_collection_expr(collections)
             expr += (
                 " AND tweet_id IN (SELECT tweet_id FROM archive "
-                f"WHERE record_type = '{RecordType.TWEET}' AND ({membership}))"
+                f"WHERE record_type = '{RecordType.TWEET}' AND ({membership.sql}))"
             )
-        rows = self._query(expr=expr)
+            params = membership.params
+        rows = self._query(expr, params)
         matches: list[dict[str, Any]] = []
         for row in rows:
             haystack = " ".join(
@@ -386,8 +390,10 @@ class SearchMixin(ReadsMixin, TagsMixin):
         ):
             collection = next(iter(collections)) if collections else "all"
             filter_expr = f"record_type = '{RecordType.TWEET}'"
+            filter_params: tuple[str, ...] = ()
             if collection != "all":
-                filter_expr += f" AND collection_type = {expr_quote(collection)}"
+                filter_expr += " AND collection_type = ?"
+                filter_params = (collection,)
             total = self.count_export_rows(collection) if include_total else None
             if total is not None and excluded_sql:
                 total -= self._excluded_member_count(collection, excluded_sql)
@@ -396,6 +402,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
             if sort in {"liked_latest", "liked_earliest"}:
                 rows = self.query_like_order_ids(
                     f"{filter_expr} AND {excluded_expr}" if excluded_expr else filter_expr,
+                    filter_params,
                     sort=sort,
                     limit=limit + 1,
                     offset=offset,
@@ -425,19 +432,22 @@ class SearchMixin(ReadsMixin, TagsMixin):
         if author_groups and any(
             clause["kind"] == "text" for group in query_groups for clause in group
         ):
-            author_where = [f"archive.record_type = '{RecordType.TWEET}'"]
-            if collection_expr:
-                author_where.append(collection_expr)
+            author_where = [Clause(f"archive.record_type = '{RecordType.TWEET}'"), collection_expr]
             author_where.extend(
-                "(" + " OR ".join(f"({clause['expression']})" for clause in group) + ")"
+                Clause(
+                    "(" + " OR ".join(f"({clause['expression']})" for clause in group) + ")",
+                    tuple(param for clause in group for param in clause.get("params", ())),
+                )
                 for group in author_groups
             )
+            author_filter = and_clauses(*author_where)
             # A bounded selectivity probe chooses a per-row FTS lookup only for
             # small author sets. Larger sets use the complete FTS-led executor;
             # this threshold never caps the returned search population.
             probe = self.conn.execute(
                 "SELECT DISTINCT archive.tweet_id FROM archive "
-                f"WHERE {' AND '.join(author_where)} LIMIT 201"
+                f"WHERE {author_filter.sql} LIMIT 201",
+                author_filter.params,
             ).fetchall()
             if len(probe) <= 200:
                 narrow_ids = [row[0] for row in probe]
@@ -460,8 +470,8 @@ class SearchMixin(ReadsMixin, TagsMixin):
                     text_index += 1
                     compiled["alias"] = alias
                     where = f"archive.record_type = '{RecordType.TWEET}'"
-                    if collection_expr:
-                        where += f" AND {collection_expr}"
+                    if collection_expr.sql:
+                        where += f" AND {collection_expr.sql}"
                     rank = "MIN(archive_fts.rank)" if sort == "relevance" else "0.0"
                     text_from = "archive_fts JOIN archive ON archive.rowid = archive_fts.rowid"
                     if narrow_ids is not None:
@@ -493,6 +503,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
                         "GROUP BY archive.tweet_id)"
                     )
                     params.append(prepared)
+                    params.extend(collection_expr.params)
                 compiled_group.append(compiled)
             compiled_groups.append(compiled_group)
 
@@ -533,10 +544,10 @@ class SearchMixin(ReadsMixin, TagsMixin):
             from_sql = "archive AS archive"
 
         joins: list[str] = []
-        group_conditions: list[str] = []
+        group_conditions: list[Clause] = []
         group_scores: list[str] = []
         for group in compiled_groups:
-            alternatives: list[str] = []
+            alternatives: list[Clause] = []
             positive_scores: list[str] = []
             for clause in group:
                 if clause["kind"] == "text":
@@ -544,14 +555,17 @@ class SearchMixin(ReadsMixin, TagsMixin):
                     if alias != driver_alias:
                         joins.append(f"LEFT JOIN {alias} ON {alias}.tweet_id = archive.tweet_id")
                     if clause.get("negated", False):
-                        alternatives.append(f"{alias}.tweet_id IS NULL")
+                        alternatives.append(Clause(f"{alias}.tweet_id IS NULL"))
                     else:
-                        alternatives.append(f"{alias}.tweet_id IS NOT NULL")
+                        alternatives.append(Clause(f"{alias}.tweet_id IS NOT NULL"))
                         positive_scores.append(f"COALESCE(-{alias}.rank, 0.0)")
                 else:
-                    alternatives.append(f"({clause['expression']})")
+                    alternatives.append(
+                        Clause(f"({clause['expression']})", tuple(clause.get("params", ())))
+                    )
             if alternatives:
-                group_conditions.append(f"({' OR '.join(alternatives)})")
+                either = join_clauses(" OR ", alternatives)
+                group_conditions.append(Clause(f"({either.sql})", either.params))
             if positive_scores:
                 group_scores.append(
                     positive_scores[0]
@@ -559,12 +573,12 @@ class SearchMixin(ReadsMixin, TagsMixin):
                     else f"MAX({', '.join(positive_scores)})"
                 )
 
-        where = [f"archive.record_type = '{RecordType.TWEET}'"]
-        if collection_expr:
-            where.append(collection_expr)
-        if excluded_expr:
-            where.append(excluded_expr)
-        where.extend(group_conditions)
+        match_filter = and_clauses(
+            f"archive.record_type = '{RecordType.TWEET}'",
+            collection_expr,
+            excluded_expr,
+            *group_conditions,
+        )
         score_expr = " + ".join(group_scores) if group_scores else "0.0"
         likes_column = ", favorite_count" if sort == "most_likes" else ""
         likes_value = (
@@ -580,8 +594,9 @@ class SearchMixin(ReadsMixin, TagsMixin):
             f"MAX({score_expr}), MAX(archive.created_at_ts), "
             f"MAX(CAST(archive.sort_index AS INTEGER)){likes_value} "
             f"FROM {from_sql} {' '.join(dict.fromkeys(joins))} "
-            f"WHERE {' AND '.join(where)} GROUP BY archive.tweet_id)"
+            f"WHERE {match_filter.sql} GROUP BY archive.tweet_id)"
         )
+        params.extend(match_filter.params)
         with_sql = "WITH " + ", ".join(ctes)
 
         page_from = "matches"

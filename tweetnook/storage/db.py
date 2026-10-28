@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
@@ -60,6 +61,7 @@ class ConnectionMixin:
     def _query(
         self,
         expr: str,
+        params: Sequence[Any] = (),
         cols: list[str] | None = None,
         limit: int | None = None,
         is_fts: bool = False,
@@ -82,7 +84,7 @@ class ConnectionMixin:
         if indexed_by is not None:
             archive_source += f" INDEXED BY {indexed_by}"
         q = f"SELECT {c} FROM {archive_source}"
-        params = []
+        bound: list[Any] = []
         if is_fts and query:
             if c != "*":
                 c += ", archive_fts.rank AS rank"
@@ -93,13 +95,14 @@ class ConnectionMixin:
                 "JOIN archive_fts ON archive.rowid = archive_fts.rowid "
                 "WHERE archive_fts MATCH ?"
             )
-            params.append(query)
+            bound.append(query)
 
         if expr:
             if "WHERE" in q:
                 q += f" AND ({expr})"
             else:
                 q += f" WHERE {expr}"
+            bound.extend(params)
 
         if is_fts and query:
             q += " ORDER BY archive_fts.rank"
@@ -108,21 +111,23 @@ class ConnectionMixin:
 
         if limit is not None:
             q += " LIMIT ?"
-            params.append(limit)
+            bound.append(limit)
             if offset is not None:
                 q += " OFFSET ?"
-                params.append(offset)
+                bound.append(offset)
 
-        return [dict(row) for row in self.conn.execute(q, params).fetchall()]
+        return [dict(row) for row in self.conn.execute(q, bound).fetchall()]
 
-    def _count(self, filter_expr: str | None = None) -> int:
+    def _count(self, filter_expr: str | None = None, params: Sequence[Any] = ()) -> int:
         if not filter_expr:
             return self.conn.execute("SELECT COUNT(*) FROM archive").fetchone()[0]
-        return self.conn.execute(f"SELECT COUNT(*) FROM archive WHERE {filter_expr}").fetchone()[0]
+        return self.conn.execute(
+            f"SELECT COUNT(*) FROM archive WHERE {filter_expr}", params
+        ).fetchone()[0]
 
-    def _delete(self, filter_expr: str) -> None:
+    def _delete(self, filter_expr: str, params: Sequence[Any] = ()) -> None:
         with self.conn:
-            self.conn.execute(f"DELETE FROM archive WHERE {filter_expr}")
+            self.conn.execute(f"DELETE FROM archive WHERE {filter_expr}", params)
 
     def close(self) -> None:
         if self._closed:

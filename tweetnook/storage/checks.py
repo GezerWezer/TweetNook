@@ -8,7 +8,6 @@ from typing import Any
 
 from tweetnook.core.utils import utc_now
 
-from .common import and_expr
 from .record_types import RecordType
 from .records import RecordsMixin
 from .schema import SchemaMixin
@@ -239,13 +238,10 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
         """Every unavailable tweet that may come back, regardless of its retry date."""
 
         return self._query(
-            expr=and_expr(
-                f"record_type = '{RecordType.TWEET_OBJECT}'",
-                "enrichment_state = 'terminal_unavailable'",
-                "enrichment_retry_eligible = 1",
-                "deleted_at IS NULL",
-                "enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')",
-            ),
+            f"record_type = '{RecordType.TWEET_OBJECT}' "
+            "AND enrichment_state = 'terminal_unavailable' "
+            "AND enrichment_retry_eligible = 1 AND deleted_at IS NULL "
+            "AND enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')",
             cols=[
                 "tweet_id",
                 "author_id",

@@ -11,7 +11,7 @@ from tweetnook.core.extractor import link_card_lacks_image, restore_link_card_im
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.core.utils import utc_now
 
-from .common import AVAILABLE_SOURCES, LIVE_SOURCE, SOURCE_RANK, expr_in, expr_quote, folder_key
+from .common import AVAILABLE_SOURCES, LIVE_SOURCE, SOURCE_RANK, clause_in, folder_key
 from .db import ConnectionMixin
 from .record_types import RecordType
 from .schema import ARCHIVE_COLUMNS
@@ -146,7 +146,7 @@ class RecordsMixin(ConnectionMixin):
         return f"article:{tweet_id}"
 
     def _get_row(self, row_key: str) -> dict[str, Any] | None:
-        rows = self._query(expr=f"row_key = {expr_quote(row_key)}", limit=1)
+        rows = self._query("row_key = ?", (row_key,), limit=1)
         return rows[0] if rows else None
 
     def _rows_for_values(
@@ -207,8 +207,8 @@ class RecordsMixin(ConnectionMixin):
         chunk_size = 200
         for start in range(0, len(missing), chunk_size):
             chunk = missing[start : start + chunk_size]
-            expr = expr_in("row_key", set(chunk))
-            for row in self._query(expr=expr):
+            where = clause_in("row_key", set(chunk))
+            for row in self._query(where.sql, where.params):
                 row_key = row.get("row_key")
                 if isinstance(row_key, str) and row_key:
                     found[row_key] = row

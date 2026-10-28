@@ -19,7 +19,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | `details.py` | Tweet detail, thread, unavailable-tweet and FxTwitter writes. |
 | `enrichment.py` | Media download, URL unfurl, link card and resurrection queues. |
 | `checks.py` | Availability check results, context checks and Community Notes. |
-| `tags.py` | Media tags, global tag edits, hidden tweets and tagging candidates. |
+| `tags.py` | Media tags, global tag edits, hidden tweets, tagging candidates and retry metadata. |
 | `relations.py` | Known-ID, thread-target, URL-reference and quote lookups. |
 | `authors.py` | Avatar URLs, handle resolution, profile snapshots and handle search. |
 | `reads.py` | Feed pagination, like order, ID fetches and export hydration. |

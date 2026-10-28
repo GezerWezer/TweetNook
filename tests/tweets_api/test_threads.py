@@ -83,8 +83,9 @@ class ThreadStore:
 
     def _query(
         self,
-        *,
         expr: str,
+        params: tuple[object, ...] = (),
+        *,
         cols: list[str] | None = None,
         limit: int | None = None,
         indexed_by: str | None = None,
@@ -95,7 +96,7 @@ class ThreadStore:
         self.query_indexes.append((expr, indexed_by))
         if "record_type = 'tweet_relation'" in expr and "quote_of" not in expr:
             self.relation_call += 1
-            if " AND tweet_id = 'main'" in expr and "'reply_to'" in expr:
+            if " AND tweet_id = ?" in expr and params[0] == "main" and "reply_to" in params:
                 return [
                     {
                         "tweet_id": "main",
@@ -457,9 +458,9 @@ def test_reply_tree_deduplicates_dense_alternate_paths_per_frontier(tmp_path):
 
 def test_api_tweet_thread_parses_each_tweet_json_once_and_tolerates_malformed(monkeypatch):
     class MalformedThreadStore(ThreadStore):
-        def _query(self, **kwargs: Any) -> list[dict[str, Any]]:
-            rows = super()._query(**kwargs)
-            if "record_type = 'tweet_object'" in kwargs["expr"]:
+        def _query(self, expr: str, params=(), **kwargs: Any) -> list[dict[str, Any]]:
+            rows = super()._query(expr, params, **kwargs)
+            if "record_type = 'tweet_object'" in expr:
                 rows[0]["raw_json"] = "not-json"
             return rows
 
@@ -479,7 +480,9 @@ def test_api_tweet_thread_parses_each_tweet_json_once_and_tolerates_malformed(mo
 
 
 class CycleStore(ThreadStore):
-    def _query(self, *, expr: str, limit: int | None = None, **kwargs: Any) -> list[dict[str, Any]]:
+    def _query(
+        self, expr: str, params=(), *, limit: int | None = None, **kwargs: Any
+    ) -> list[dict[str, Any]]:
         if "record_type = 'tweet_relation'" in expr and "quote_of" not in expr:
             self.expressions.append(expr)
             self.relation_call += 1
@@ -500,7 +503,7 @@ class CycleStore(ThreadStore):
                     }
                 ]
             return []
-        return super()._query(expr=expr, limit=limit, **kwargs)
+        return super()._query(expr, params, limit=limit, **kwargs)
 
 
 def test_api_tweet_thread_stops_parent_cycles_before_depth_cap():
@@ -656,16 +659,16 @@ def test_api_tweet_thread_moves_mention_only_replies_to_other_children(tmp_path)
     store.close()
 
 
-def test_api_tweet_thread_quotes_untrusted_path_id_in_store_expressions():
+def test_api_tweet_thread_binds_untrusted_path_id_instead_of_writing_it_into_sql():
     payload = "main' OR 1=1 --"
 
     class MissingStore:
         def __init__(self) -> None:
-            self.expressions: list[str] = []
+            self.queries: list[tuple[str, tuple[object, ...]]] = []
             self.conn = self
 
-        def _query(self, *, expr: str, **_: Any) -> list[dict[str, Any]]:
-            self.expressions.append(expr)
+        def _query(self, expr: str, params=(), **_: Any) -> list[dict[str, Any]]:
+            self.queries.append((expr, tuple(params)))
             return []
 
         def execute(self, _sql: str, _params: tuple[object, ...]):
@@ -678,5 +681,6 @@ def test_api_tweet_thread_quotes_untrusted_path_id_in_store_expressions():
     with pytest.raises(fastapi.HTTPException) as exc:
         api_tweet_thread(payload, store=store, _auth=True)
     assert exc.value.status_code == 404
-    assert all("main'' OR 1=1 --" in expr for expr in store.expressions)
-    assert all("main' OR 1=1 --'" not in expr for expr in store.expressions)
+    assert store.queries
+    assert all(payload in params for _expr, params in store.queries)
+    assert all("OR 1=1" not in expr for expr, _params in store.queries)

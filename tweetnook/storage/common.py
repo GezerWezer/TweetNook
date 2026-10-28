@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterable
 from datetime import datetime
+from typing import Any, NamedTuple
 
 from .record_types import RecordType
 
@@ -11,32 +14,60 @@ def folder_key(folder_id: str | None) -> str:
     return folder_id or ""
 
 
-def expr_quote(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
+class Clause(NamedTuple):
+    """A WHERE fragment and the values bound to its ? placeholders, in order."""
+
+    sql: str
+    params: tuple[Any, ...] = ()
 
 
-def expr_in(field: str, values: set[str]) -> str:
-    return f"{field} IN ({', '.join(expr_quote(value) for value in sorted(values))})"
+# Past this many values an IN list binds one JSON array instead of a placeholder per value,
+# which keeps large ID sets under SQLite's bound-variable limit.
+_MAX_IN_PLACEHOLDERS = 500
+
+
+def clause_in(field: str, values: Iterable[Any], *, negate: bool = False) -> Clause:
+    operator = "NOT IN" if negate else "IN"
+    # Sorted so equal sets build equal SQL, which keeps statement and count caches warm.
+    ordered = tuple(sorted(values))
+    if len(ordered) > _MAX_IN_PLACEHOLDERS:
+        return Clause(
+            f"{field} {operator} (SELECT value FROM json_each(?))", (json.dumps(ordered),)
+        )
+    return Clause(f"{field} {operator} ({', '.join('?' for _value in ordered)})", ordered)
 
 
 def _pending_state_expr(field: str) -> str:
     return f"({field} IS NULL OR {field} = '' OR {field} = 'pending')"
 
 
-def state_filter_expr(field: str, states: set[str]) -> str:
-    clauses: list[str] = []
+def state_filter(field: str, states: set[str]) -> Clause:
+    clauses: list[Clause] = []
     explicit_states = {state for state in states if state != "pending"}
     if explicit_states:
-        clauses.append(expr_in(field, explicit_states))
+        clauses.append(clause_in(field, explicit_states))
     if "pending" in states:
-        clauses.append(_pending_state_expr(field))
+        clauses.append(Clause(_pending_state_expr(field)))
     if not clauses:
         raise ValueError("state filter requires at least one state")
-    return clauses[0] if len(clauses) == 1 else f"({' OR '.join(clauses)})"
+    if len(clauses) == 1:
+        return clauses[0]
+    joined = join_clauses(" OR ", clauses)
+    return Clause(f"({joined.sql})", joined.params)
 
 
-def and_expr(*clauses: str) -> str:
-    return " AND ".join(clause for clause in clauses if clause)
+def join_clauses(separator: str, clauses: Iterable[Clause | str]) -> Clause:
+    """Join fragments, skipping empty ones, and keep their parameters in placeholder order."""
+    parts = [Clause(clause) if isinstance(clause, str) else clause for clause in clauses]
+    parts = [part for part in parts if part.sql]
+    return Clause(
+        separator.join(part.sql for part in parts),
+        tuple(param for part in parts for param in part.params),
+    )
+
+
+def and_clauses(*clauses: Clause | str) -> Clause:
+    return join_clauses(" AND ", clauses)
 
 
 def parse_created_at(raw: str | None) -> datetime | None:
