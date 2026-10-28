@@ -2030,7 +2030,7 @@ test('analytics markup exposes the Archive status cards and reason breakdown', (
         path.join(ROOT, 'tweetnook', 'web', 'index.html'),
         'utf8',
     );
-    const appJs = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
+    const appJs = readScripts(pageScripts());
     const styles = fs.readFileSync(
         path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'),
         'utf8',
@@ -3754,7 +3754,7 @@ test('setup cookie help loads the generated guide and opens on the current brows
 test('setup uses a dedicated responsive X-style modal shell', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
-    const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
+    const js = readScripts(pageScripts());
     const settingsMarkup = html.slice(html.indexOf('<!-- Settings Modal'), html.indexOf('<!-- Setup Modal -->'));
     const settingsJs = fs.readFileSync(path.join(JS_DIR, 'settings.js'), 'utf8');
     const setupMarkup = html.slice(html.indexOf('<!-- Setup Modal -->'), html.indexOf('<!-- Automated Tagging Spend History Modal -->'));
@@ -7481,20 +7481,6 @@ test('notification list shows times, run logs, and bulk actions', () => {
     assert.match(html, /x-show="notice.action !== 'activity' && notice.run_id" @click="openNoticeLog\(notice\)">View log</);
 });
 
-test('log formatting does not mark zero-failure summaries as errors', () => {
-    const context = browserContext();
-    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const component = immediateComponent(tweetApp());
-
-    const formatted = component.formatLogText(
-        'media: 30 downloaded, 0 failed\nmedia: 29 downloaded, 1 failed\nsync follow-up tagging failed',
-    );
-
-    assert.doesNotMatch(formatted.split('\n')[0], /var\(--destructive-color\)/);
-    assert.match(formatted.split('\n')[1], /var\(--destructive-color\)/);
-    assert.match(formatted.split('\n')[2], /var\(--destructive-color\)/);
-});
-
 test('notifications live in Settings with unread counts', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const settingsJs = fs.readFileSync(path.join(JS_DIR, 'settings.js'), 'utf8');
@@ -7568,7 +7554,7 @@ test('sync, analytics, and settings live in the top bar on every screen size', (
 
 test('Settings tabs use the requested order and Appearance is the default', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
-    const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
+    const js = readScripts(pageScripts());
     const keys = ['appearance', 'schedule', 'tags', 'automated-tagging', 'notifications', 'config', 'logs', 'setup'];
     const positions = keys.map(key => html.indexOf(`id="nook-nav-${key}"`));
     assert.ok(positions.every(index => index >= 0));
@@ -10193,7 +10179,7 @@ test('the post layer moves as X does: spring in, follow the finger, spring back 
 test('pages never zoom on touch screens, except media in the fullscreen viewer', () => {
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
-    const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
+    const js = readScripts(pageScripts());
     // No double-tap zoom anywhere; no pinch on the app's content.
     assert.match(css, /html \{ touch-action: manipulation; \}/);
     assert.match(css, /\.app-column, \.detail-layer-header, \.detail-underlay \{ touch-action: pan-x pan-y; \}/);

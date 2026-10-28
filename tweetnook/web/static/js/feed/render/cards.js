@@ -3,6 +3,11 @@
  * placeholders for posts that weren't archived, and the missing-from-X badge.
  */
 
+// warning-fill from icons.md: marks an archived tweet that is no longer on X.
+// checkmark-circle from icons.md: the History dialog's "On X" status.
+const AVAILABLE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>';
+const MISSING_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9.4 3.5a3 3 0 0 1 5.2 0L22.4 17a3 3 0 0 1-2.6 4.5H4.2A3 3 0 0 1 1.6 17zM12 15.2a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4m0-6.95c-.8 0-1.4.7-1.3 1.49l.55 4.01h1.5l.55-4.01A1.3 1.3 0 0 0 12 8.25"/></svg>';
+
 function feedCardMethods() {
     return {
         // Render the quoted post consistently in feed cards and thread ancestors.
