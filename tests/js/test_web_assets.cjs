@@ -8168,6 +8168,22 @@ test('feeds reuse recent first pages and keep the old list while loading', async
     assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['A2']);
 });
 
+test('media grid sources and posters are escaped inside their attributes', () => {
+    const app = immediateComponent(loadScripts(browserContext(), appScripts(), 'tweetApp')());
+    const odd = 'media/1/a"b&c<d>.jpg';
+    const photo = { type: 'photo', width: 10, height: 10, download: { local_path: odd } };
+    const video = { type: 'video', download: { local_path: 'media/1/v"x.mp4', thumbnail_local_path: odd } };
+    const escaped = '/media/1/a&quot;b&amp;c&lt;d&gt;.jpg';
+    for (const markup of [app.renderMediaGrid([photo]), app.renderMediaGrid([photo, video]), app.renderMediaGrid([video])]) {
+        assert.doesNotMatch(markup, /a"b|v"x|&c<d>/);
+    }
+    assert.ok(app.renderMediaGrid([photo]).includes(`<img src="${escaped}"`));
+    const single = app.renderMediaGrid([video]);
+    assert.ok(single.includes('src="/media/1/v&quot;x.mp4"'));
+    assert.ok(single.includes(`poster="${escaped}"`));
+    assert.ok(app.renderMediaGrid([photo, video]).includes(`<img src="${escaped}"`));
+});
+
 test('feed media loads lazily and tweets render without mutating their data', () => {
     const app = immediateComponent(loadScripts(browserContext(), appScripts(), 'tweetApp')());
     const photo = { type: 'photo', width: 10, height: 10, download: { local_path: 'media/1/p.jpg' } };

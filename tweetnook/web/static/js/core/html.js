@@ -4,8 +4,8 @@
  * html`<a href="${url}">${name}</a>` escapes every interpolated value, so archived text can't
  * add markup by being left out of an escapeHTML call. Values that are already markup pass
  * through unchanged: the result of another html`` template, or rawHTML() for trusted
- * constants such as icon SVGs. Arrays are joined, each item escaped on its own. URLs still
- * need safeURL: escaping keeps a value inside its attribute, not a javascript: URL out of href.
+ * constants such as icon SVGs. Arrays are joined, each item escaped on its own. Links still
+ * need httpURL: escaping keeps a value inside its attribute, not a javascript: URL out of href.
  */
 
 // Same escaping as the app's escapeHTML method, which calls this; like it, empty values
@@ -17,6 +17,18 @@ function escapeHTML(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+// An http(s) URL resolved against the page, or '#' for anything else, unescaped for html``.
+// The app's safeURL method returns the same URL escaped, for markup built without html``.
+function httpURL(value) {
+    if (!value || value === '#') return '#';
+    try {
+        const parsed = new URL(value, globalThis.location?.origin || 'http://localhost');
+        return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '#';
+    } catch (_) {
+        return '#';
+    }
 }
 
 class SafeHTML {

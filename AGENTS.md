@@ -59,8 +59,10 @@ feature instead of growing those files, and keep moves separate from behavior ch
 - Commit messages explain why a change was made: the problem, the cause, and why this fix.
   They are where reasoning is recorded. Write them, and comments and docs, for a reader who
   never saw the session: no process IDs, scratch paths, tool names or step-by-step debugging.
-- Feed cards are rendered as HTML strings outside Alpine. Pass every archived value through
-  `escapeHTML` or `safeURL`.
+- Feed cards are rendered as HTML strings outside Alpine (`static/js/feed/render/`). Build
+  markup with the `html` template from `static/js/core/html.js`, which escapes every value;
+  pass links through `httpURL`, and use `rawHTML` only for another renderer's output or a
+  constant. Markup still built as plain strings needs `escapeHTML` or `safeURL`.
 - Use the custom listbox dropdown pattern, not native `<select>` elements.
 - New or changed CLI flags need explicit help text and a `--help` test.
 - Prefer deleting dead code over keeping compatibility paths. Exceptions: the LanceDB
