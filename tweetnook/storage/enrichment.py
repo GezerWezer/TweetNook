@@ -16,6 +16,7 @@ from tweetnook.core.utils import utc_now
 from .checks import ChecksMixin
 from .common import and_expr, expr_in, expr_quote, state_filter_expr
 from .objects import ObjectsMixin
+from .record_types import RecordType
 from .records import PageBuffer
 
 _DETAIL_OPERATIONS = ("ThreadExpandDetail", "TweetDetail", "TweetDetailResurrection")
@@ -55,7 +56,8 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         while True:
             rows = self.conn.execute(
                 "SELECT rowid, raw_json, source FROM archive "
-                "WHERE record_type IN ('tweet_object', 'tweet') AND rowid > ? "
+                f"WHERE record_type IN ('{RecordType.TWEET_OBJECT}', '{RecordType.TWEET}') AND "
+                "rowid > ? "
                 "AND raw_json LIKE '%\"card\"%' ORDER BY rowid LIMIT 500",
                 (after,),
             ).fetchall()
@@ -90,7 +92,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         self._queue_record(
             self._record(
                 row_key=marker,
-                record_type="metadata",
+                record_type=RecordType.METADATA,
                 key=key,
                 value="done",
                 updated_at=utc_now(),
@@ -114,7 +116,8 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         while True:
             rows = self.conn.execute(
                 "SELECT rowid, tweet_id, raw_json FROM archive "
-                "WHERE record_type IN ('tweet_object', 'tweet') AND rowid > ? "
+                f"WHERE record_type IN ('{RecordType.TWEET_OBJECT}', '{RecordType.TWEET}') AND "
+                "rowid > ? "
                 "AND raw_json LIKE '%\"card\"%' ORDER BY rowid LIMIT 500",
                 (after,),
             ).fetchall()
@@ -140,7 +143,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         if missing:
             # Timeline pages hold many tweets; read them once, newest last.
             rows = self.conn.execute(
-                "SELECT raw_json FROM archive WHERE record_type = 'raw_capture' "
+                f"SELECT raw_json FROM archive WHERE record_type = '{RecordType.RAW_CAPTURE}' "
                 "AND operation IN ('Likes', 'Bookmarks', 'UserTweets') "
                 "AND raw_json LIKE '%image_value%' ORDER BY captured_at"
             ).fetchall()
@@ -153,7 +156,8 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             for tweet_id, donor in donors.items():
                 rows = self.conn.execute(
                     "SELECT row_key, raw_json, source FROM archive "
-                    "WHERE tweet_id = ? AND record_type IN ('tweet_object', 'tweet')",
+                    f"WHERE tweet_id = ? AND record_type IN ('{RecordType.TWEET_OBJECT}', "
+                    f"'{RecordType.TWEET}')",
                     (tweet_id,),
                 ).fetchall()
                 for row in rows:
@@ -186,7 +190,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         self._queue_record(
             self._record(
                 row_key=marker,
-                record_type="metadata",
+                record_type=RecordType.METADATA,
                 key=key,
                 value="done",
                 updated_at=utc_now(),
@@ -206,7 +210,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         if media_types is not None and not media_types:
             return []
         where_expr = and_expr(
-            "record_type = 'media'",
+            f"record_type = '{RecordType.MEDIA}'",
             state_filter_expr("download_state", states) if states is not None else "",
             expr_in("media_type", media_types) if media_types is not None else "",
         )
@@ -284,7 +288,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         if states is not None and not states:
             return []
         where_expr = and_expr(
-            "record_type = 'url'",
+            f"record_type = '{RecordType.URL}'",
             state_filter_expr("unfurl_state", states) if states is not None else "",
         )
         cols = [
@@ -352,7 +356,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         limit: int | None = None,
     ) -> list[str]:
         where_expr = and_expr(
-            "record_type = 'article'",
+            f"record_type = '{RecordType.ARTICLE}'",
             "(status IS NULL OR status != 'body_present')" if preview_only else "",
         )
         rows = self._query(
@@ -368,7 +372,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
     ) -> list[dict[str, Any]]:
         now = now or utc_now()
         return self._query(
-            expr="record_type = 'tweet_object' "
+            expr=f"record_type = '{RecordType.TWEET_OBJECT}' "
             "AND (enrichment_state = 'pending' OR ("
             "enrichment_state = 'transient_failure' AND ("
             "enrichment_next_retry_at IS NULL OR "
@@ -390,12 +394,14 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         return self.count_incomplete_initial_enrichment()
 
     def count_pending_initial_enrichment(self) -> int:
-        return self._count("record_type = 'tweet_object' AND enrichment_state = 'pending'")
+        return self._count(
+            f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = 'pending'"
+        )
 
     def count_due_transient_enrichment(self, now: str | None = None) -> int:
         now = now or utc_now()
         return self._count(
-            "record_type = 'tweet_object' AND enrichment_state = 'transient_failure' "
+            f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = 'transient_failure' "
             "AND (enrichment_next_retry_at IS NULL OR "
             f"enrichment_next_retry_at <= {expr_quote(now)})"
         )
@@ -403,14 +409,14 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
     def count_delayed_transient_enrichment(self, now: str | None = None) -> int:
         now = now or utc_now()
         return self._count(
-            "record_type = 'tweet_object' AND enrichment_state = 'transient_failure' "
+            f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = 'transient_failure' "
             "AND enrichment_next_retry_at IS NOT NULL AND "
             f"enrichment_next_retry_at > {expr_quote(now)}"
         )
 
     def count_incomplete_initial_enrichment(self) -> int:
         return self._count(
-            "record_type = 'tweet_object' "
+            f"record_type = '{RecordType.TWEET_OBJECT}' "
             "AND (enrichment_state = 'pending' OR enrichment_state = 'transient_failure')"
         )
 
@@ -418,24 +424,30 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         return {
             "pending_initial_enrichment": self.count_pending_initial_enrichment(),
             "transient_initial_enrichment": self._count(
-                "record_type = 'tweet_object' AND enrichment_state = 'transient_failure'"
+                f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = "
+                "'transient_failure'"
             ),
             "terminal_unavailable": self._count(
-                "record_type = 'tweet_object' AND enrichment_state = 'terminal_unavailable'"
+                f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = "
+                "'terminal_unavailable'"
             ),
             "retryable_unavailable": self._count(
-                "record_type = 'tweet_object' AND enrichment_state = 'terminal_unavailable' "
+                f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = "
+                "'terminal_unavailable' "
                 "AND enrichment_retry_eligible = 1 AND deleted_at IS NULL "
                 "AND enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')"
             ),
             "permanent_unavailable": self._count(
-                "record_type = 'tweet_object' AND enrichment_state = 'terminal_unavailable' "
+                f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = "
+                "'terminal_unavailable' "
                 "AND (deleted_at IS NOT NULL OR enrichment_retry_eligible = 0 OR "
                 "enrichment_reason IN ('archive_deleted', 'deleted_by_author'))"
             ),
-            "done": self._count("record_type = 'tweet_object' AND enrichment_state = 'done'"),
+            "done": self._count(
+                f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = 'done'"
+            ),
             "resurrected": self._count(
-                "record_type = 'tweet_object' AND enrichment_state = 'resurrected'"
+                f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = 'resurrected'"
             ),
         }
 
@@ -449,7 +461,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
     ) -> list[dict[str, Any]]:
         now = now or utc_now()
         clauses = [
-            "record_type = 'tweet_object'",
+            f"record_type = '{RecordType.TWEET_OBJECT}'",
             "enrichment_state = 'terminal_unavailable'",
             "enrichment_retry_eligible = 1",
             "deleted_at IS NULL",
@@ -489,7 +501,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
     ) -> list[dict[str, Any]]:
         now = now or utc_now()
         clauses = [
-            "record_type = 'tweet_object'",
+            f"record_type = '{RecordType.TWEET_OBJECT}'",
             "enrichment_state = 'terminal_unavailable'",
             "enrichment_retry_eligible = 1",
             "deleted_at IS NULL",
@@ -525,7 +537,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         self, author_id: str, *, exclude_tweet_ids: set[str] | None = None
     ) -> int:
         clauses = [
-            "record_type = 'tweet_object'",
+            f"record_type = '{RecordType.TWEET_OBJECT}'",
             "enrichment_state = 'terminal_unavailable'",
             "enrichment_retry_eligible = 1",
             "deleted_at IS NULL",
@@ -552,7 +564,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             return 0
         now = due_at or utc_now()
         clauses = [
-            "record_type = 'tweet_object'",
+            f"record_type = '{RecordType.TWEET_OBJECT}'",
             "enrichment_state = 'terminal_unavailable'",
             "enrichment_retry_eligible = 1",
             "deleted_at IS NULL",
@@ -570,7 +582,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
     def count_due_resurrection_tweets(self, now: str | None = None) -> int:
         now = now or utc_now()
         return self._count(
-            "record_type = 'tweet_object' "
+            f"record_type = '{RecordType.TWEET_OBJECT}' "
             "AND enrichment_state = 'terminal_unavailable' "
             "AND enrichment_retry_eligible = 1 AND deleted_at IS NULL "
             "AND enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author') "

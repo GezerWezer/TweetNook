@@ -13,6 +13,7 @@ from .common import (
     UNCAPTURED_TWEET_IDS_SQL,
     expr_quote,
 )
+from .record_types import RecordType
 
 if TYPE_CHECKING:
     from tweetnook.storage.search_query import ParsedSearchQuery
@@ -45,8 +46,8 @@ class SearchMixin(ReadsMixin, TagsMixin):
     def _collect_search_context(
         self, tweet_ids: list[str]
     ) -> tuple[dict[str, list[str]], dict[str, dict[str, Any]]]:
-        tweet_rows = self._rows_for_values("tweet", "tweet_id", tweet_ids)
-        tweet_object_rows = self._rows_for_values("tweet_object", "tweet_id", tweet_ids)
+        tweet_rows = self._rows_for_values(RecordType.TWEET, "tweet_id", tweet_ids)
+        tweet_object_rows = self._rows_for_values(RecordType.TWEET_OBJECT, "tweet_id", tweet_ids)
         collections_by_tweet_id: dict[str, set[str]] = {}
         metadata_by_tweet_id: dict[str, dict[str, Any]] = {}
 
@@ -158,12 +159,12 @@ class SearchMixin(ReadsMixin, TagsMixin):
                 return any(words[index : index + width] == pieces for index in range(len(words)))
             return pieces[0] in words
 
-        expr = f"record_type = 'article' AND tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})"
+        expr = f"record_type = '{RecordType.ARTICLE}' AND tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})"
         if collections:
             membership = self._search_collection_expr(collections)
             expr += (
                 " AND tweet_id IN (SELECT tweet_id FROM archive "
-                f"WHERE record_type = 'tweet' AND ({membership}))"
+                f"WHERE record_type = '{RecordType.TWEET}' AND ({membership}))"
             )
         rows = self._query(expr=expr)
         matches: list[dict[str, Any]] = []
@@ -384,7 +385,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
             and (not collections or len(collections) == 1)
         ):
             collection = next(iter(collections)) if collections else "all"
-            filter_expr = "record_type = 'tweet'"
+            filter_expr = f"record_type = '{RecordType.TWEET}'"
             if collection != "all":
                 filter_expr += f" AND collection_type = {expr_quote(collection)}"
             total = self.count_export_rows(collection) if include_total else None
@@ -424,7 +425,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
         if author_groups and any(
             clause["kind"] == "text" for group in query_groups for clause in group
         ):
-            author_where = ["archive.record_type = 'tweet'"]
+            author_where = [f"archive.record_type = '{RecordType.TWEET}'"]
             if collection_expr:
                 author_where.append(collection_expr)
             author_where.extend(
@@ -458,7 +459,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
                     alias = f"text_match_{text_index}"
                     text_index += 1
                     compiled["alias"] = alias
-                    where = "archive.record_type = 'tweet'"
+                    where = f"archive.record_type = '{RecordType.TWEET}'"
                     if collection_expr:
                         where += f" AND {collection_expr}"
                     rank = "MIN(archive_fts.rank)" if sort == "relevance" else "0.0"
@@ -558,7 +559,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
                     else f"MAX({', '.join(positive_scores)})"
                 )
 
-        where = ["archive.record_type = 'tweet'"]
+        where = [f"archive.record_type = '{RecordType.TWEET}'"]
         if collection_expr:
             where.append(collection_expr)
         if excluded_expr:

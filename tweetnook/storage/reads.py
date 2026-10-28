@@ -15,6 +15,7 @@ from .common import (
     expr_quote,
     parse_created_at,
 )
+from .record_types import RecordType
 from .records import RecordsMixin
 from .relations import RelationsMixin
 
@@ -90,7 +91,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             return cached[1]
         sql = (
             "SELECT COUNT(DISTINCT tweet_id) FROM archive INDEXED BY idx_archive_membership "
-            "WHERE record_type = 'tweet'"
+            f"WHERE record_type = '{RecordType.TWEET}'"
         )
         params: tuple[str, ...] = ()
         if collection != "all":
@@ -193,9 +194,9 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             raise ValueError("limit must be non-negative")
         if offset < 0:
             raise ValueError("offset must be non-negative")
-        where = ["candidate.record_type = 'tweet'"]
+        where = [f"candidate.record_type = '{RecordType.TWEET}'"]
         duplicate_where = [
-            "duplicate.record_type = 'tweet'",
+            f"duplicate.record_type = '{RecordType.TWEET}'",
             "duplicate.tweet_id = candidate.tweet_id",
             "duplicate.row_key < candidate.row_key",
         ]
@@ -294,7 +295,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
 
         if defer_raw_json and tweet_ids:
             raw_rows = self._rows_for_values(
-                "tweet", "tweet_id", tweet_ids, columns=["tweet_id", "raw_json"]
+                RecordType.TWEET, "tweet_id", tweet_ids, columns=["tweet_id", "raw_json"]
             )
             raw_map = {r.get("tweet_id"): r.get("raw_json") for r in raw_rows}
             for row in sorted_rows:
@@ -361,11 +362,17 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             "download_error",
         ]
 
-        media_rows = self._rows_for_values("media", "tweet_id", tweet_ids, columns=media_cols)
-        article_rows = self._rows_for_values("article", "tweet_id", tweet_ids, columns=article_cols)
-        url_ref_rows = self._rows_for_values("url_ref", "tweet_id", tweet_ids, columns=url_ref_cols)
+        media_rows = self._rows_for_values(
+            RecordType.MEDIA, "tweet_id", tweet_ids, columns=media_cols
+        )
+        article_rows = self._rows_for_values(
+            RecordType.ARTICLE, "tweet_id", tweet_ids, columns=article_cols
+        )
+        url_ref_rows = self._rows_for_values(
+            RecordType.URL_REF, "tweet_id", tweet_ids, columns=url_ref_cols
+        )
         url_hashes = [row["url_hash"] for row in url_ref_rows if row.get("url_hash")]
-        url_rows = self._rows_for_values("url", "url_hash", url_hashes, columns=url_cols)
+        url_rows = self._rows_for_values(RecordType.URL, "url_hash", url_hashes, columns=url_cols)
 
         media_by_tweet: dict[str, list[dict[str, Any]]] = {}
         raw_tweet_by_id: dict[str, dict[str, Any]] = {}
@@ -427,7 +434,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         }
         tag_tweet_ids = list(dict.fromkeys([*tweet_ids, *quoted_tweet_by_source.values()]))
         media_tag_rows = self._rows_for_values(
-            "media_tag", "tweet_id", tag_tweet_ids, columns=["tweet_id", "raw_json"]
+            RecordType.MEDIA_TAG, "tweet_id", tag_tweet_ids, columns=["tweet_id", "raw_json"]
         )
         tags_by_tweet: dict[str, dict[str, Any]] = {}
         for row in media_tag_rows:
@@ -510,12 +517,12 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             "raw_json",
         ]
 
-        rows = self._rows_for_values("tweet", "tweet_id", tweet_ids, columns=tweet_columns)
+        rows = self._rows_for_values(RecordType.TWEET, "tweet_id", tweet_ids, columns=tweet_columns)
         object_ids: set[str] = set()
         if include_objects:
             member_ids = {row.get("tweet_id") for row in rows}
             object_rows = self._rows_for_values(
-                "tweet_object",
+                RecordType.TWEET_OBJECT,
                 "tweet_id",
                 [tid for tid in tweet_ids if tid not in member_ids],
                 columns=tweet_columns,
@@ -568,7 +575,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             raise ValueError("offset must be non-negative")
         if limit is not None and limit < 0:
             raise ValueError("limit must be non-negative")
-        filter_expr = "record_type = 'tweet'"
+        filter_expr = f"record_type = '{RecordType.TWEET}'"
         if collection != "all":
             filter_expr += f" AND collection_type = {expr_quote(collection)}"
         tweet_columns = [
@@ -633,7 +640,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             (-1 if limit is None else limit, offset),
         ).fetchall()
         selected = self._rows_for_values(
-            "tweet",
+            RecordType.TWEET,
             "row_key",
             [row["row_key"] for row in keys],
             columns=["row_key", *tweet_columns],

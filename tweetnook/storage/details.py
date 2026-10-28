@@ -13,6 +13,7 @@ from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.core.utils import utc_now
 
 from .common import FX_SOURCE, LIVE_SOURCE, SOURCE_RANK, parse_created_at
+from .record_types import RecordType
 from .records import PageBuffer
 from .tweets import TweetsMixin
 
@@ -80,7 +81,7 @@ class DetailsMixin(TweetsMixin):
         source: str = LIVE_SOURCE,
     ) -> None:
         legacy = tweet.raw_json.get("legacy") or {}
-        rows = self._rows_for_values("tweet", "tweet_id", [tweet.tweet_id])
+        rows = self._rows_for_values(RecordType.TWEET, "tweet_id", [tweet.tweet_id])
         now = utc_now()
         for row in rows:
             updated = dict(row)
@@ -251,7 +252,7 @@ class DetailsMixin(TweetsMixin):
         existing = self._lookup_row(row_key, cursor=buffer)
         if existing is None:
             existing = self._record(
-                record_type="tweet_object",
+                record_type=RecordType.TWEET_OBJECT,
                 row_key=row_key,
                 tweet_id=tweet_id,
                 source=LIVE_SOURCE,

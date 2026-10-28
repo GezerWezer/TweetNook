@@ -17,6 +17,7 @@ from tweetnook.stats.models import (
     TableColumn,
 )
 from tweetnook.storage import ArchiveStore
+from tweetnook.storage.record_types import RecordType
 from tweetnook.storage.stats import ArchiveStats
 
 UNAVAILABLE_REASON_LABELS = (
@@ -76,9 +77,9 @@ def format_bytes(size: float) -> str:
 def get_enrichment_incomplete_count(store: ArchiveStore) -> int:
     """Return the lightweight banner count without collecting the full report."""
     row = store.conn.execute(
-        """
+        f"""
         SELECT count(*) FROM archive
-        WHERE record_type = 'tweet_object'
+        WHERE record_type = '{RecordType.TWEET_OBJECT}'
           AND enrichment_state IN ('pending', 'transient_failure')
         """
     ).fetchone()
@@ -88,7 +89,7 @@ def get_enrichment_incomplete_count(store: ArchiveStore) -> int:
 def get_latest_sync_at(store: ArchiveStore) -> str | None:
     """Return the latest sync timestamp without collecting archive statistics."""
     row = store.conn.execute(
-        "SELECT max(updated_at) FROM archive WHERE record_type = 'sync_state'"
+        f"SELECT max(updated_at) FROM archive WHERE record_type = '{RecordType.SYNC_STATE}'"
     ).fetchone()
     if row and isinstance(row[0], str) and row[0]:
         return row[0]
@@ -107,12 +108,12 @@ def _backfill_status(cursor: str | None, incomplete: bool) -> str:
 
 def _archive_availability_counts(conn: Any) -> tuple[int, int]:
     row = conn.execute(
-        """
+        f"""
         SELECT
             count(*),
             count(*) FILTER (WHERE enrichment_state = 'terminal_unavailable')
         FROM archive
-        WHERE record_type = 'tweet_object'
+        WHERE record_type = '{RecordType.TWEET_OBJECT}'
         """
     ).fetchone()
     return (int(row[0] or 0), int(row[1] or 0)) if row else (0, 0)
@@ -126,7 +127,7 @@ def _unavailable_breakdown(
 ) -> dict[str, Any]:
     now = datetime.now(tz=UTC).isoformat()
     rows = conn.execute(
-        """
+        f"""
         SELECT
             COALESCE(NULLIF(enrichment_reason, ''), 'unavailable_unknown') AS reason,
             count(*) AS count,
@@ -166,7 +167,7 @@ def _unavailable_breakdown(
                 THEN 1 ELSE 0
             END) AS delayed
         FROM archive
-        WHERE record_type = 'tweet_object'
+        WHERE record_type = '{RecordType.TWEET_OBJECT}'
           AND enrichment_state = 'terminal_unavailable'
         GROUP BY COALESCE(NULLIF(enrichment_reason, ''), 'unavailable_unknown')
         """,
@@ -222,12 +223,18 @@ def _collect_overview(context: _StatsContext) -> StatsSection:
     def count(sql: str) -> int:
         return int(conn.execute(sql).fetchone()[0] or 0)
 
-    unique_posts = count("SELECT count(DISTINCT tweet_id) FROM archive WHERE record_type = 'tweet'")
-    collection_memberships = count("SELECT count(*) FROM archive WHERE record_type = 'tweet'")
-    articles = count("SELECT count(*) FROM archive WHERE record_type = 'article'")
-    raw_captures = count("SELECT count(*) FROM archive WHERE record_type = 'raw_capture'")
-    media_rows = count("SELECT count(*) FROM archive WHERE record_type = 'media'")
-    urls = count("SELECT count(*) FROM archive WHERE record_type = 'url'")
+    unique_posts = count(
+        f"SELECT count(DISTINCT tweet_id) FROM archive WHERE record_type = '{RecordType.TWEET}'"
+    )
+    collection_memberships = count(
+        f"SELECT count(*) FROM archive WHERE record_type = '{RecordType.TWEET}'"
+    )
+    articles = count(f"SELECT count(*) FROM archive WHERE record_type = '{RecordType.ARTICLE}'")
+    raw_captures = count(
+        f"SELECT count(*) FROM archive WHERE record_type = '{RecordType.RAW_CAPTURE}'"
+    )
+    media_rows = count(f"SELECT count(*) FROM archive WHERE record_type = '{RecordType.MEDIA}'")
+    urls = count(f"SELECT count(*) FROM archive WHERE record_type = '{RecordType.URL}'")
     profiles = count(
         """
         SELECT count(DISTINCT author_id)
@@ -236,29 +243,29 @@ def _collect_overview(context: _StatsContext) -> StatsSection:
         """
     )
     oldest_row = conn.execute(
-        """
+        f"""
         SELECT created_at FROM archive
-        WHERE record_type = 'tweet' AND created_at IS NOT NULL AND created_at != ''
+        WHERE record_type = '{RecordType.TWEET}' AND created_at IS NOT NULL AND created_at != ''
         ORDER BY created_at_ts ASC LIMIT 1
         """
     ).fetchone()
     newest_row = conn.execute(
-        """
+        f"""
         SELECT created_at FROM archive
-        WHERE record_type = 'tweet' AND created_at IS NOT NULL AND created_at != ''
+        WHERE record_type = '{RecordType.TWEET}' AND created_at IS NOT NULL AND created_at != ''
         ORDER BY created_at_ts DESC LIMIT 1
         """
     ).fetchone()
     latest_capture_row = conn.execute(
-        "SELECT max(captured_at) FROM archive WHERE record_type = 'raw_capture'"
+        f"SELECT max(captured_at) FROM archive WHERE record_type = '{RecordType.RAW_CAPTURE}'"
     ).fetchone()
     latest_sync_row = conn.execute(
-        "SELECT max(updated_at) FROM archive WHERE record_type = 'sync_state'"
+        f"SELECT max(updated_at) FROM archive WHERE record_type = '{RecordType.SYNC_STATE}'"
     ).fetchone()
     owner_row = conn.execute(
-        """
+        f"""
         SELECT value FROM archive
-        WHERE record_type = 'metadata' AND key = 'owner_user_id'
+        WHERE record_type = '{RecordType.METADATA}' AND key = 'owner_user_id'
         ORDER BY updated_at DESC LIMIT 1
         """
     ).fetchone()
@@ -426,11 +433,11 @@ def _collect_tags(context: _StatsContext) -> StatsSection:
     eligible_tweets, tagged_tweets = context.store.get_tagging_coverage_counts()
     unique_tags = int(
         conn.execute(
-            """
+            f"""
             SELECT count(DISTINCT LOWER(t.value))
             FROM (
                 SELECT raw_json FROM archive
-                WHERE record_type = 'media_tag'
+                WHERE record_type = '{RecordType.MEDIA_TAG}'
                   AND (enrichment_state = 'done' OR enrichment_state IS NULL)
                   AND json_valid(raw_json)
             ) a, json_each(a.raw_json, '$.tags') AS t
@@ -440,11 +447,11 @@ def _collect_tags(context: _StatsContext) -> StatsSection:
     )
     total_tag_instances = int(
         conn.execute(
-            """
+            f"""
             SELECT count(t.value)
             FROM (
                 SELECT raw_json FROM archive
-                WHERE record_type = 'media_tag'
+                WHERE record_type = '{RecordType.MEDIA_TAG}'
                   AND (enrichment_state = 'done' OR enrichment_state IS NULL)
                   AND json_valid(raw_json)
             ) a, json_each(a.raw_json, '$.tags') AS t
@@ -453,11 +460,11 @@ def _collect_tags(context: _StatsContext) -> StatsSection:
         or 0
     )
     top_tags_rows = conn.execute(
-        """
+        f"""
         SELECT LOWER(t.value) AS tag, count(*) AS count
         FROM (
             SELECT raw_json FROM archive
-            WHERE record_type = 'media_tag'
+            WHERE record_type = '{RecordType.MEDIA_TAG}'
               AND (enrichment_state = 'done' OR enrichment_state IS NULL)
               AND json_valid(raw_json)
         ) a, json_each(a.raw_json, '$.tags') AS t
@@ -536,10 +543,10 @@ def _collect_storage(context: _StatsContext) -> StatsSection:
     core_tweet_ids = {
         str(row[0])
         for row in store.conn.execute(
-            """
+            f"""
             SELECT tweet_id
             FROM archive INDEXED BY idx_archive_record_page
-            WHERE record_type = 'tweet' AND tweet_id IS NOT NULL
+            WHERE record_type = '{RecordType.TWEET}' AND tweet_id IS NOT NULL
             """
         )
     }
@@ -552,7 +559,7 @@ def _collect_storage(context: _StatsContext) -> StatsSection:
             SELECT target_tweet_id
             FROM archive INDEXED BY idx_archive_tweet_id
             WHERE tweet_id IN ({placeholders})
-              AND record_type = 'tweet_relation'
+              AND record_type = '{RecordType.TWEET_RELATION}'
               AND relation_type IN ('quote_of', 'quoted', 'links_to_status')
               AND target_tweet_id IS NOT NULL
             """,
@@ -561,10 +568,10 @@ def _collect_storage(context: _StatsContext) -> StatsSection:
         core_tweet_ids.update(str(row[0]) for row in related_rows)
 
     media_rows = store.conn.execute(
-        """
+        f"""
         SELECT tweet_id, local_path, thumbnail_local_path, media_type
         FROM archive INDEXED BY idx_archive_record_page
-        WHERE record_type = 'media'
+        WHERE record_type = '{RecordType.MEDIA}'
         """
     ).fetchall()
     core_media_rows = [row for row in media_rows if row[0] in core_tweet_ids]

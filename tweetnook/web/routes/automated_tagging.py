@@ -11,6 +11,7 @@ from rich.console import Console
 
 from tweetnook.config import TaggingConfig
 from tweetnook.core.extractor import extract_status_id_from_url
+from tweetnook.storage.record_types import RecordType
 from tweetnook.storage.search_query import SearchQueryError, search_posts
 from tweetnook.tagging.accounting import AIUsageLedger
 from tweetnook.tagging.sdk import (
@@ -123,7 +124,7 @@ def get_automated_tagging_tweets(
         row = store.conn.execute(
             "SELECT tweet_id, author_display_name, author_username, text "
             "FROM archive INDEXED BY idx_archive_tweet_id "
-            "WHERE record_type = 'tweet_object' AND tweet_id = ? LIMIT 1",
+            f"WHERE record_type = '{RecordType.TWEET_OBJECT}' AND tweet_id = ? LIMIT 1",
             (target_id,),
         ).fetchone()
         rows = [dict(row)] if row is not None else []
@@ -141,7 +142,7 @@ def get_automated_tagging_tweets(
             str(row["tweet_id"])
             for row in store.conn.execute(
                 f"SELECT DISTINCT tweet_id FROM archive INDEXED BY idx_archive_tweet_id "
-                f"WHERE record_type = 'media' AND tweet_id IN ({placeholders})",
+                f"WHERE record_type = '{RecordType.MEDIA}' AND tweet_id IN ({placeholders})",
                 tweet_ids,
             ).fetchall()
         }

@@ -5,13 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from .db import ConnectionMixin
+from .record_types import RecordType
 
 
 class AuthorsMixin(ConnectionMixin):
     def avatar_source_urls(self, author_id: str, *, limit: int = 8) -> list[str]:
         """Return distinct captured profile URLs, newest first, using the author index."""
         rows = self.conn.execute(
-            """
+            f"""
             SELECT avatar_url FROM (
                 SELECT last_seen_at,
                     CASE WHEN json_valid(raw_json) THEN COALESCE(
@@ -22,7 +23,7 @@ class AuthorsMixin(ConnectionMixin):
                     ) END AS avatar_url
                 FROM archive
                 WHERE author_id IS NOT NULL AND author_id != '' AND author_id = ?
-                    AND record_type IN ('tweet', 'tweet_object')
+                    AND record_type IN ('{RecordType.TWEET}', '{RecordType.TWEET_OBJECT}')
             )
             WHERE typeof(avatar_url) = 'text' AND avatar_url != ''
             GROUP BY avatar_url
@@ -36,9 +37,9 @@ class AuthorsMixin(ConnectionMixin):
     def resolve_author_id(self, username: str) -> str | None:
         """Return the author ID behind a saved tweet's handle, using the author index."""
         row = self.conn.execute(
-            """
+            f"""
             SELECT author_id FROM archive
-            WHERE record_type = 'tweet' AND LOWER(COALESCE(author_username, '')) = ?
+            WHERE record_type = '{RecordType.TWEET}' AND LOWER(COALESCE(author_username, '')) = ?
                 AND author_id IS NOT NULL AND author_id != ''
             ORDER BY created_at_ts DESC
             LIMIT 1
@@ -55,7 +56,7 @@ class AuthorsMixin(ConnectionMixin):
         archive imports) are skipped.
         """
         rows = self.conn.execute(
-            """
+            f"""
             SELECT display_name, username, description, followers_count, following_count,
                 MAX(last_seen_at) AS fetched_at
             FROM (
@@ -75,7 +76,7 @@ class AuthorsMixin(ConnectionMixin):
                         END END AS user_json
                     FROM archive
                     WHERE author_id IS NOT NULL AND author_id != '' AND author_id = ?
-                        AND record_type IN ('tweet', 'tweet_object')
+                        AND record_type IN ('{RecordType.TWEET}', '{RecordType.TWEET_OBJECT}')
                 )
             )
             WHERE description IS NOT NULL OR followers_count IS NOT NULL
@@ -106,12 +107,12 @@ class AuthorsMixin(ConnectionMixin):
         if not query:
             return []
 
-        sql = """
+        sql = f"""
             SELECT MIN(author_id) AS author_id,
                    author_username,
                    MIN(author_display_name) AS author_display_name
             FROM archive
-            WHERE record_type = 'tweet' 
+            WHERE record_type = '{RecordType.TWEET}' 
               AND author_username IS NOT NULL
               AND (LOWER(author_username) LIKE LOWER(?) OR LOWER(author_display_name) LIKE LOWER(?))
             GROUP BY LOWER(author_username)

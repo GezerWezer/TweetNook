@@ -13,6 +13,7 @@ from tweetnook.core.utils import utc_now
 
 from .common import AVAILABLE_SOURCES, LIVE_SOURCE, SOURCE_RANK, expr_in, expr_quote, folder_key
 from .db import ConnectionMixin
+from .record_types import RecordType
 from .schema import ARCHIVE_COLUMNS
 
 
@@ -150,7 +151,7 @@ class RecordsMixin(ConnectionMixin):
 
     def _rows_for_values(
         self,
-        record_type: str,
+        record_type: RecordType,
         field_name: str,
         values: set[str] | list[str] | tuple[str, ...],
         *,
@@ -161,7 +162,7 @@ class RecordsMixin(ConnectionMixin):
         unique_values = [value for value in dict.fromkeys(values) if value]
         if not unique_values:
             return []
-        if record_type == "url" and field_name == "url_hash":
+        if record_type == RecordType.URL and field_name == "url_hash":
             unique_values = [self._row_key_for_url(value) for value in unique_values]
             field_name = "row_key"
         rows: list[dict[str, Any]] = []

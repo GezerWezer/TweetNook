@@ -6,6 +6,8 @@ import sqlite3
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
+from .record_types import RecordType
+
 if TYPE_CHECKING:
     import threading
     from pathlib import Path
@@ -21,12 +23,13 @@ if TYPE_CHECKING:
 _WARM_READ_QUERIES = (
     "SELECT block FROM archive_fts_data",
     "SELECT SUM(LENGTH(raw_json)) FROM archive INDEXED BY idx_archive_membership "
-    "WHERE record_type = 'tweet'",
+    f"WHERE record_type = '{RecordType.TWEET}'",
     "SELECT SUM(LENGTH(object.raw_json)) "
     "FROM archive AS membership INDEXED BY idx_archive_membership "
     "JOIN archive AS object INDEXED BY idx_archive_tweet_id "
     "ON object.tweet_id = membership.tweet_id "
-    "WHERE membership.record_type = 'tweet' AND object.record_type = 'tweet_object'",
+    f"WHERE membership.record_type = '{RecordType.TWEET}' AND object.record_type = "
+    f"'{RecordType.TWEET_OBJECT}'",
 )
 
 

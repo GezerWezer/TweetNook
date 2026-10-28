@@ -9,6 +9,8 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
+from tweetnook.storage.record_types import RecordType
+
 _PACIFIC = ZoneInfo("America/Los_Angeles")
 _STATE_VERSION = 1
 _METADATA_KEY_PREFIX = "gemini_rpd"
@@ -184,7 +186,7 @@ def reserve_rpd_request(
         conn.execute(
             """
             INSERT INTO archive (row_key, record_type, key, value, updated_at)
-            VALUES (?, 'metadata', ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(row_key) DO UPDATE SET
                 record_type = excluded.record_type,
                 key = excluded.key,
@@ -193,6 +195,7 @@ def reserve_rpd_request(
             """,
             (
                 row_key,
+                RecordType.METADATA,
                 metadata_key,
                 value,
                 effective_now.astimezone(UTC).isoformat(),

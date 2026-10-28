@@ -16,6 +16,7 @@ from tweetnook.core.extractor import (
     unwrap_tweet_result,
 )
 from tweetnook.core.media_metadata import aspect_ratio_for_media
+from tweetnook.storage.record_types import RecordType
 
 UNAVAILABLE_MESSAGES = {
     "protected_account": "This tweet is from a protected account.",
@@ -356,13 +357,13 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
 
     tweet_ids = [str(tweet["tweet_id"]) for tweet in tweets if tweet.get("tweet_id")]
     object_rows = store._rows_for_values(
-        "tweet_object", "tweet_id", tweet_ids, columns=_OBJECT_COLUMNS
+        RecordType.TWEET_OBJECT, "tweet_id", tweet_ids, columns=_OBJECT_COLUMNS
     )
     objects_by_id = {str(row["tweet_id"]): row for row in object_rows if row.get("tweet_id")}
     hidden_ids = {
         str(row["tweet_id"])
         for row in store._rows_for_values(
-            "tweet_hidden", "tweet_id", tweet_ids, columns=["tweet_id"]
+            RecordType.TWEET_HIDDEN, "tweet_id", tweet_ids, columns=["tweet_id"]
         )
         if row.get("tweet_id")
     }
@@ -465,7 +466,7 @@ def _attach_targets(
     sources = [tweet for tweet in tweets if not tweet["availability"]["placeholder"]]
     source_ids = [str(tweet["tweet_id"]) for tweet in sources if tweet.get("tweet_id")]
     relation_rows = store._rows_for_values(
-        "tweet_relation",
+        RecordType.TWEET_RELATION,
         "tweet_id",
         source_ids,
         columns=["tweet_id", "target_tweet_id", "relation_type"],
@@ -502,13 +503,13 @@ def _attach_targets(
                 attached_ids.append(target_id)
 
     attached_object_rows = store._rows_for_values(
-        "tweet_object", "tweet_id", attached_ids, columns=_OBJECT_COLUMNS
+        RecordType.TWEET_OBJECT, "tweet_id", attached_ids, columns=_OBJECT_COLUMNS
     )
     attached_objects = {
         str(row["tweet_id"]): row for row in attached_object_rows if row.get("tweet_id")
     }
     media_rows = store._rows_for_values(
-        "media",
+        RecordType.MEDIA,
         "tweet_id",
         attached_ids,
         columns=[
@@ -530,7 +531,7 @@ def _attach_targets(
         if row.get("tweet_id"):
             media_by_id.setdefault(str(row["tweet_id"]), []).append(row)
     tag_rows = store._rows_for_values(
-        "media_tag", "tweet_id", attached_ids, columns=["tweet_id", "raw_json"]
+        RecordType.MEDIA_TAG, "tweet_id", attached_ids, columns=["tweet_id", "raw_json"]
     )
     tags_by_id: dict[str, dict[str, Any]] = {}
     for row in tag_rows:

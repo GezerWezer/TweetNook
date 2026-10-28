@@ -15,6 +15,8 @@ from typing import Any, TypeVar
 from tweetnook.core import fastjson
 from tweetnook.core.timeline_parsing import extract_tweet_results_from_content
 
+from .record_types import RecordType
+
 LIKE_SORTS = frozenset({"liked_latest", "liked_earliest"})
 T = TypeVar("T")
 _UNAVAILABLE_TYPENAMES = frozenset({"TweetTombstone", "TweetUnavailable"})
@@ -229,7 +231,10 @@ def _capture_pages(
     missing = {row_key for row_key, captured_at in keys if (row_key, captured_at) not in cached}
     if missing:
         rows = store._rows_for_values(
-            "raw_capture", "row_key", list(missing), columns=["row_key", "captured_at", "raw_json"]
+            RecordType.RAW_CAPTURE,
+            "row_key",
+            list(missing),
+            columns=["row_key", "captured_at", "raw_json"],
         )
         for row in rows:
             payload = _payload(row)
@@ -251,7 +256,7 @@ def load_like_order(store: Any) -> LikeOrder:
 
     memberships = store.conn.execute(
         "SELECT tweet_id, sort_index, source FROM archive "
-        "WHERE record_type = 'tweet' AND collection_type = 'like' ORDER BY tweet_id"
+        f"WHERE record_type = '{RecordType.TWEET}' AND collection_type = 'like' ORDER BY tweet_id"
     ).fetchall()
     members = {row["tweet_id"] for row in memberships}
     if not members:
@@ -263,7 +268,7 @@ def load_like_order(store: Any) -> LikeOrder:
     # requests. Some responses use request-relative indices rather than like IDs.
     captures = store.conn.execute(
         "SELECT row_key, captured_at, cursor_in, cursor_out FROM archive "
-        "WHERE record_type = 'raw_capture' AND operation = 'Likes' "
+        f"WHERE record_type = '{RecordType.RAW_CAPTURE}' AND operation = 'Likes' "
         "AND source = 'live_graphql' AND http_status = 200 "
         "ORDER BY captured_at, rowid"
     ).fetchall()
@@ -307,7 +312,7 @@ def load_like_order(store: Any) -> LikeOrder:
     archive: list[str] = []
     accounted: set[str] = set()
     manifests = store.conn.execute(
-        "SELECT archive_digest FROM archive WHERE record_type = 'import_manifest' "
+        f"SELECT archive_digest FROM archive WHERE record_type = '{RecordType.IMPORT_MANIFEST}' "
         "ORDER BY COALESCE(archive_generation_date, import_started_at), row_key"
     ).fetchall()
     for manifest in manifests:
@@ -354,7 +359,7 @@ def load_like_order(store: Any) -> LikeOrder:
         archive = merge_missing(ids, archive)
 
     for row in store.conn.execute(
-        "SELECT row_key, raw_json FROM archive WHERE record_type = 'raw_capture' "
+        f"SELECT row_key, raw_json FROM archive WHERE record_type = '{RecordType.RAW_CAPTURE}' "
         "AND operation = 'XArchiveLikes' ORDER BY captured_at DESC, rowid DESC"
     ):
         if row["row_key"] in accounted:

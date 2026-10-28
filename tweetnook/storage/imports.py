@@ -17,6 +17,7 @@ from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
 
 from .common import FX_SOURCE, LIVE_SOURCE
 from .objects import ObjectsMixin
+from .record_types import RecordType
 from .records import PageBuffer
 
 
@@ -26,13 +27,20 @@ class RehydrateResult:
     secondary_records: int = 0
 
 
-SECONDARY_RECORD_TYPES = ("tweet_object", "tweet_relation", "media", "url", "url_ref", "article")
+SECONDARY_RECORD_TYPES = (
+    RecordType.TWEET_OBJECT,
+    RecordType.TWEET_RELATION,
+    RecordType.MEDIA,
+    RecordType.URL,
+    RecordType.URL_REF,
+    RecordType.ARTICLE,
+)
 
 
 class ImportsMixin(ObjectsMixin):
     def list_archive_import_media_paths(self) -> list[str]:
         rows = self._query(
-            expr="record_type = 'media' AND provenance_source = 'x_archive'",
+            expr=f"record_type = '{RecordType.MEDIA}' AND provenance_source = 'x_archive'",
             cols=["local_path", "thumbnail_local_path"],
         )
         relative_paths = {
@@ -46,15 +54,17 @@ class ImportsMixin(ObjectsMixin):
     def clear_archive_import_data(self) -> dict[str, int]:
         deletions: dict[str, int] = {}
         filters = {
-            "raw_captures": "record_type = 'raw_capture' AND source = 'x_archive'",
-            "tweets": "record_type = 'tweet' AND source = 'x_archive'",
-            "tweet_objects": "record_type = 'tweet_object' AND source = 'x_archive'",
-            "tweet_relations": "record_type = 'tweet_relation' AND source = 'x_archive'",
-            "media": "record_type = 'media' AND provenance_source = 'x_archive'",
-            "urls": "record_type = 'url' AND source = 'x_archive'",
-            "url_refs": "record_type = 'url_ref' AND source = 'x_archive'",
-            "articles": "record_type = 'article' AND source = 'x_archive'",
-            "import_manifests": "record_type = 'import_manifest'",
+            "raw_captures": f"record_type = '{RecordType.RAW_CAPTURE}' AND source = 'x_archive'",
+            "tweets": f"record_type = '{RecordType.TWEET}' AND source = 'x_archive'",
+            "tweet_objects": f"record_type = '{RecordType.TWEET_OBJECT}' AND source = 'x_archive'",
+            "tweet_relations": (
+                f"record_type = '{RecordType.TWEET_RELATION}' AND source = 'x_archive'"
+            ),
+            "media": f"record_type = '{RecordType.MEDIA}' AND provenance_source = 'x_archive'",
+            "urls": f"record_type = '{RecordType.URL}' AND source = 'x_archive'",
+            "url_refs": f"record_type = '{RecordType.URL_REF}' AND source = 'x_archive'",
+            "articles": f"record_type = '{RecordType.ARTICLE}' AND source = 'x_archive'",
+            "import_manifests": f"record_type = '{RecordType.IMPORT_MANIFEST}'",
         }
         for key, expr in filters.items():
             count = self._count(expr)
@@ -80,7 +90,7 @@ class ImportsMixin(ObjectsMixin):
         self, *, progress: Callable[[int], None] | None = None
     ) -> RehydrateResult:
         """Rebuild normalized tweet fields and secondary rows from stored raw_json."""
-        rows = self._query(expr="record_type = 'tweet'")
+        rows = self._query(expr=f"record_type = '{RecordType.TWEET}'")
         if not rows:
             return RehydrateResult()
         buffer = PageBuffer()
@@ -134,7 +144,7 @@ class ImportsMixin(ObjectsMixin):
             if len(buffer.records) >= batch_size:
                 result.secondary_records += self._flush_rehydrate_buffer(buffer)
         detail_rows = self._query(
-            expr="record_type = 'raw_capture' "
+            expr=f"record_type = '{RecordType.RAW_CAPTURE}' "
             "AND (operation = 'TweetDetail' OR operation = 'ThreadExpandDetail')"
         )
         detail_rows.sort(key=lambda row: (row.get("captured_at") or "", row.get("cursor_in") or ""))
@@ -156,7 +166,7 @@ class ImportsMixin(ObjectsMixin):
         from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql
 
         fx_rows = self._query(
-            expr="record_type = 'raw_capture' AND operation = 'FxTwitterStatus'",
+            expr=f"record_type = '{RecordType.RAW_CAPTURE}' AND operation = 'FxTwitterStatus'",
             cols=["raw_json", "captured_at", "cursor_in"],
         )
         fx_rows.sort(key=lambda row: (row.get("captured_at") or "", row.get("cursor_in") or ""))

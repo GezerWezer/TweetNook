@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from tweetnook.core import fastjson
+from tweetnook.storage.record_types import RecordType
 
 ARTICLE_COLUMNS = [
     "tweet_id",
@@ -87,11 +88,13 @@ def annotate_web_articles(store: Any, tweets: list[dict[str, Any]]) -> None:
     ids = list(dict.fromkeys(str(node["tweet_id"]) for node in nodes if node.get("tweet_id")))
     if not ids:
         return
-    rows = store._rows_for_values("article", "tweet_id", ids, columns=ARTICLE_COLUMNS)
+    rows = store._rows_for_values(RecordType.ARTICLE, "tweet_id", ids, columns=ARTICLE_COLUMNS)
     articles = {str(row["tweet_id"]): row for row in rows if row.get("tweet_id")}
     if not articles:
         return
-    media_rows = store._rows_for_values("media", "tweet_id", list(articles), columns=MEDIA_COLUMNS)
+    media_rows = store._rows_for_values(
+        RecordType.MEDIA, "tweet_id", list(articles), columns=MEDIA_COLUMNS
+    )
     media_by_id: dict[str, list[dict[str, Any]]] = {}
     for row in sorted(media_rows, key=lambda item: item.get("position") or 0):
         if str(row.get("source") or "").startswith("article_"):

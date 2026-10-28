@@ -5,19 +5,24 @@ from __future__ import annotations
 from typing import Any
 
 from .db import ConnectionMixin
+from .record_types import RecordType
 
 
 class RelationsMixin(ConnectionMixin):
     def list_membership_tweet_ids(self, *, limit: int | None = None) -> list[str]:
-        rows = self._query(expr="record_type = 'tweet'", cols=["tweet_id", "added_at"])
+        rows = self._query(
+            expr=f"record_type = '{RecordType.TWEET}'", cols=["tweet_id", "added_at"]
+        )
         rows.sort(key=lambda row: (row.get("added_at") or "", row.get("tweet_id") or ""))
         tweet_ids = [row["tweet_id"] for row in rows if row.get("tweet_id")]
         unique = list(dict.fromkeys(tweet_ids))
         return unique[:limit] if limit is not None else unique
 
     def list_known_tweet_ids(self) -> set[str]:
-        tweet_rows = self._query(expr="record_type = 'tweet'", cols=["tweet_id"])
-        tweet_object_rows = self._query(expr="record_type = 'tweet_object'", cols=["tweet_id"])
+        tweet_rows = self._query(expr=f"record_type = '{RecordType.TWEET}'", cols=["tweet_id"])
+        tweet_object_rows = self._query(
+            expr=f"record_type = '{RecordType.TWEET_OBJECT}'", cols=["tweet_id"]
+        )
         tweet_ids = {
             row["tweet_id"]
             for row in tweet_rows + tweet_object_rows
@@ -29,11 +34,11 @@ class RelationsMixin(ConnectionMixin):
         """Return targets whose latest expansion marker does not predate recovery."""
 
         rows = self.conn.execute(
-            """
+            f"""
             WITH latest_expansions AS (
                 SELECT cursor_in AS tweet_id, MAX(captured_at) AS captured_at
                 FROM archive INDEXED BY idx_archive_capture_target
-                WHERE record_type = 'raw_capture'
+                WHERE record_type = '{RecordType.RAW_CAPTURE}'
                   AND operation = 'ThreadExpandDetail'
                   AND cursor_in IS NOT NULL AND cursor_in != ''
                 GROUP BY cursor_in
@@ -41,7 +46,7 @@ class RelationsMixin(ConnectionMixin):
             SELECT expansion.tweet_id, expansion.captured_at
             FROM latest_expansions AS expansion
             LEFT JOIN archive AS object INDEXED BY idx_archive_tweet_id
-              ON object.record_type = 'tweet_object'
+              ON object.record_type = '{RecordType.TWEET_OBJECT}'
              AND object.tweet_id = expansion.tweet_id
             WHERE object.enrichment_state IS NULL
                OR object.enrichment_state != 'resurrected'
@@ -55,7 +60,7 @@ class RelationsMixin(ConnectionMixin):
 
     def list_url_ref_rows(self) -> list[dict[str, Any]]:
         rows = self._query(
-            expr="record_type = 'url_ref'",
+            expr=f"record_type = '{RecordType.URL_REF}'",
             cols=["tweet_id", "position", "canonical_url", "expanded_url", "url"],
         )
         rows.sort(
@@ -78,7 +83,7 @@ class RelationsMixin(ConnectionMixin):
             query = f"""
                 SELECT tweet_id, target_tweet_id
                 FROM archive INDEXED BY idx_archive_tweet_id
-                WHERE record_type = 'tweet_relation'
+                WHERE record_type = '{RecordType.TWEET_RELATION}'
                   AND relation_type = 'quote_of'
                   AND tweet_id IN ({placeholders})
                 ORDER BY tweet_id, target_tweet_id
@@ -99,7 +104,7 @@ class RelationsMixin(ConnectionMixin):
         ephemeral indexes, so the cost stays linear on large archives.
         """
         rows = self.conn.execute(
-            """
+            f"""
             WITH saved AS MATERIALIZED (
                 SELECT DISTINCT
                     COALESCE(NULLIF(object.conversation_id, ''), membership.conversation_id)
@@ -108,8 +113,8 @@ class RelationsMixin(ConnectionMixin):
                 FROM archive AS membership INDEXED BY idx_archive_membership
                 LEFT JOIN archive AS object INDEXED BY idx_archive_tweet_id
                   ON object.tweet_id = membership.tweet_id
-                 AND object.record_type = 'tweet_object'
-                WHERE membership.record_type = 'tweet'
+                 AND object.record_type = '{RecordType.TWEET_OBJECT}'
+                WHERE membership.record_type = '{RecordType.TWEET}'
             )
             SELECT peer.tweet_id,
                    MAX(
@@ -117,7 +122,7 @@ class RelationsMixin(ConnectionMixin):
                        IN (SELECT conversation_id, author_id FROM saved)
                    ) AS is_self_thread
             FROM archive AS peer
-            WHERE peer.record_type = 'tweet_object'
+            WHERE peer.record_type = '{RecordType.TWEET_OBJECT}'
               AND peer.tweet_id IS NOT NULL AND peer.tweet_id != ''
               AND peer.conversation_id IN (
                   SELECT conversation_id FROM saved

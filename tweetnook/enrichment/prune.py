@@ -9,16 +9,17 @@ from pathlib import Path
 
 from tweetnook.enrichment.threads import walk_linked_statuses
 from tweetnook.storage import ArchiveStore
+from tweetnook.storage.record_types import RecordType
 
 # Rows owned by a single tweet, keyed by its tweet_id.
 TWEET_RECORD_TYPES = (
-    "tweet_object",
-    "tweet_relation",
-    "media",
-    "url_ref",
-    "article",
-    "media_tag",
-    "tweet_hidden",
+    RecordType.TWEET_OBJECT,
+    RecordType.TWEET_RELATION,
+    RecordType.MEDIA,
+    RecordType.URL_REF,
+    RecordType.ARTICLE,
+    RecordType.MEDIA_TAG,
+    RecordType.TWEET_HIDDEN,
 )
 # Raw captures whose cursor_in is the tweet they fetched.
 TWEET_CAPTURE_OPERATIONS = ("ThreadExpandDetail", "TweetDetail", "TweetDetailResurrection")
@@ -102,31 +103,32 @@ def _load_prune_rows(store: ArchiveStore, pruned_tweet_ids: Iterable[str]) -> No
     conn.execute(
         f"""
         INSERT OR IGNORE INTO temp.prune_rows
-        SELECT capture.rowid, 'raw_capture', capture.cursor_in, capture.operation
+        SELECT capture.rowid, '{RecordType.RAW_CAPTURE}', capture.cursor_in, capture.operation
         FROM temp.prune_ids AS pruned
         JOIN archive AS capture INDEXED BY idx_archive_capture_target
-          ON capture.record_type = 'raw_capture' AND capture.cursor_in = pruned.tweet_id
+          ON capture.record_type = '{RecordType.RAW_CAPTURE}'
+            AND capture.cursor_in = pruned.tweet_id
         WHERE capture.operation IN ({operations})
         """
     )
     # Unfurled links are shared by url_hash; drop only those no surviving ref uses.
     conn.execute(
-        """
+        f"""
         INSERT OR IGNORE INTO temp.prune_rows
-        SELECT url.rowid, 'url', NULL, NULL
+        SELECT url.rowid, '{RecordType.URL}', NULL, NULL
         FROM archive AS url
         WHERE url.row_key IN (
             SELECT 'url:' || ref.url_hash
             FROM temp.prune_rows AS doomed
             JOIN archive AS ref ON ref.rowid = doomed.rid
-            WHERE doomed.record_type = 'url_ref' AND ref.url_hash IS NOT NULL
+            WHERE doomed.record_type = '{RecordType.URL_REF}' AND ref.url_hash IS NOT NULL
             EXCEPT
             SELECT 'url:' || url_hash
             FROM archive
-            WHERE record_type = 'url_ref' AND url_hash IS NOT NULL
+            WHERE record_type = '{RecordType.URL_REF}' AND url_hash IS NOT NULL
               AND rowid NOT IN (SELECT rid FROM temp.prune_rows)
         )
-        AND url.record_type = 'url'
+        AND url.record_type = '{RecordType.URL}'
         """
     )
 
@@ -136,8 +138,10 @@ def _media_paths(store: ArchiveStore, *, pruned: bool) -> set[str]:
     rows = store.conn.execute(
         f"""
         SELECT local_path, thumbnail_local_path FROM archive
-        WHERE record_type = 'media'
-          AND rowid {membership} (SELECT rid FROM temp.prune_rows WHERE record_type = 'media')
+        WHERE record_type = '{RecordType.MEDIA}'
+          AND rowid {membership} (
+            SELECT rid FROM temp.prune_rows WHERE record_type = '{RecordType.MEDIA}'
+          )
           AND (local_path IS NOT NULL OR thumbnail_local_path IS NOT NULL)
         """
     )
@@ -176,10 +180,10 @@ def plan_prune(
     object_ids: set[str] = set()
     for tweet_id, record_type, conversation_id in store.conn.execute(
         "SELECT tweet_id, record_type, conversation_id FROM archive "
-        "WHERE record_type IN ('tweet', 'tweet_object') "
+        f"WHERE record_type IN ('{RecordType.TWEET}', '{RecordType.TWEET_OBJECT}') "
         "AND tweet_id IS NOT NULL AND tweet_id != ''"
     ):
-        if record_type == "tweet_object":
+        if record_type == RecordType.TWEET_OBJECT:
             object_ids.add(tweet_id)
         if conversation_id:
             conversation_of[tweet_id] = conversation_id
@@ -197,7 +201,8 @@ def plan_prune(
     embedded: dict[str, list[str]] = {}
     for source_id, target_id in store.conn.execute(
         "SELECT tweet_id, target_tweet_id FROM archive "
-        f"WHERE record_type = 'tweet_relation' AND relation_type IN ({relation_types}) "
+        f"WHERE record_type = '{RecordType.TWEET_RELATION}' AND relation_type IN "
+        f"({relation_types}) "
         "AND target_tweet_id IS NOT NULL AND target_tweet_id != ''"
     ):
         embedded.setdefault(source_id, []).append(target_id)
@@ -215,7 +220,7 @@ def plan_prune(
         str(row[0])
         for row in store.conn.execute(
             "SELECT DISTINCT cursor_in FROM archive INDEXED BY idx_archive_capture_target "
-            "WHERE record_type = 'raw_capture' AND operation = 'ThreadExpandDetail' "
+            f"WHERE record_type = '{RecordType.RAW_CAPTURE}' AND operation = 'ThreadExpandDetail' "
             "AND cursor_in IS NOT NULL AND cursor_in != ''"
         )
     }
@@ -234,7 +239,7 @@ def plan_prune(
     )
     plan.thread_fetch_count = store.conn.execute(
         "SELECT COUNT(DISTINCT tweet_id) FROM temp.prune_rows "
-        "WHERE record_type = 'raw_capture' AND operation = 'ThreadExpandDetail'"
+        f"WHERE record_type = '{RecordType.RAW_CAPTURE}' AND operation = 'ThreadExpandDetail'"
     ).fetchone()[0]
 
     media_root = (data_dir / "media").resolve()

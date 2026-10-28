@@ -20,6 +20,8 @@ from tweetnook.storage.common import (
 )
 from tweetnook.storage.like_order import LIKE_SORTS
 
+from .record_types import RecordType
+
 _FILTER_KEYS = frozenset(
     {
         "from",
@@ -347,7 +349,7 @@ def _media_tag_match(matching_tweet_ids: str) -> str:
         "UNION SELECT relation.tweet_id FROM matching_tags "
         "CROSS JOIN archive relation INDEXED BY idx_archive_target_tweet_id "
         "WHERE relation.target_tweet_id = matching_tags.tweet_id "
-        "AND relation.record_type = 'tweet_relation' "
+        f"AND relation.record_type = '{RecordType.TWEET_RELATION}' "
         "AND relation.relation_type = 'quote_of' "
         ")"
     )
@@ -358,29 +360,31 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
     condition = None
     related_index = "idx_archive_tweet_id"
     if (key, value) in {("has", "media"), ("filter", "media")}:
-        condition = "related.record_type = 'media'"
+        condition = f"related.record_type = '{RecordType.MEDIA}'"
     elif (key, value) in {("has", "image"), ("filter", "images")}:
-        condition = "related.record_type = 'media' AND related.media_type = 'photo'"
+        condition = f"related.record_type = '{RecordType.MEDIA}' AND related.media_type = 'photo'"
     elif (key, value) in {
         ("has", "video"),
         ("filter", "videos"),
         ("filter", "native_video"),
     }:
         condition = (
-            "related.record_type = 'media' AND related.media_type IN ('video', 'animated_gif')"
+            f"related.record_type = '{RecordType.MEDIA}' "
+            "AND related.media_type IN ('video', 'animated_gif')"
         )
     elif (key, value) in {("has", "links"), ("filter", "links")}:
-        condition = "related.record_type = 'url_ref'"
+        condition = f"related.record_type = '{RecordType.URL_REF}'"
     elif (key, value) in {("has", "article"), ("filter", "articles")}:
-        condition = "related.record_type = 'article'"
+        condition = f"related.record_type = '{RecordType.ARTICLE}'"
     elif (key, value) == ("is", "resurrected"):
         condition = (
-            "related.record_type = 'tweet_object' AND related.enrichment_state = 'resurrected'"
+            f"related.record_type = '{RecordType.TWEET_OBJECT}' "
+            "AND related.enrichment_state = 'resurrected'"
         )
     elif (key, value) == ("is", "missing"):
         # Archived tweets that are no longer on X, as the check or a lookup found.
         condition = (
-            "related.record_type = 'tweet_object' "
+            f"related.record_type = '{RecordType.TWEET_OBJECT}' "
             "AND related.enrichment_state = 'terminal_unavailable'"
         )
     if condition is not None:
@@ -398,7 +402,9 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
             ("filter", "links"),
         }:
             related_index = "idx_archive_search_attachment"
-            condition += " AND related.record_type IN ('media', 'url_ref')"
+            condition += (
+                f" AND related.record_type IN ('{RecordType.MEDIA}', '{RecordType.URL_REF}')"
+            )
         expression = (
             f"EXISTS (SELECT 1 FROM archive AS related INDEXED BY {related_index} "
             "WHERE related.tweet_id = archive.tweet_id "
@@ -460,8 +466,9 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
         escaped = _sql_quote(f"%{value}%")
         expression = (
             "EXISTS (SELECT 1 FROM archive AS related INDEXED BY idx_archive_search_attachment "
-            "WHERE related.tweet_id = archive.tweet_id AND related.record_type = 'url_ref' "
-            "AND related.record_type IN ('media', 'url_ref') "
+            "WHERE related.tweet_id = archive.tweet_id AND related.record_type = "
+            f"'{RecordType.URL_REF}' "
+            f"AND related.record_type IN ('{RecordType.MEDIA}', '{RecordType.URL_REF}') "
             f"AND (LOWER(COALESCE(related.expanded_url, '')) LIKE {escaped} "
             f"OR LOWER(COALESCE(related.display_url, '')) LIKE {escaped}))"
         )
@@ -476,7 +483,7 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
             "FROM archive tagged INDEXED BY idx_archive_media_tag_lookup "
             "JOIN json_each(CASE WHEN json_valid(tagged.raw_json) "
             "THEN tagged.raw_json ELSE '{}' END, '$.tags') AS media_tag "
-            "WHERE tagged.record_type = 'media_tag' "
+            f"WHERE tagged.record_type = '{RecordType.MEDIA_TAG}' "
             "AND media_tag.type = 'text' "
             f"AND LOWER(CAST(media_tag.value AS TEXT)) = {normalized_value}"
         )

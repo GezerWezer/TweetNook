@@ -12,6 +12,7 @@ from tweetnook.core.utils import utc_now
 
 from .common import LIVE_SOURCE, folder_key, parse_created_at
 from .objects import ObjectsMixin
+from .record_types import RecordType
 from .records import PageBuffer
 from .sync_state import SyncStateMixin
 
@@ -31,7 +32,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
         capture_id = capture_key or str(uuid.uuid4())
         return capture_id, self._record(
             row_key=f"raw_capture:{capture_id}",
-            record_type="raw_capture",
+            record_type=RecordType.RAW_CAPTURE,
             operation=operation,
             cursor_in=cursor_in,
             cursor_out=cursor_out,
@@ -95,7 +96,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
         return self._record_with_context(
             context,
             row_key=row_key,
-            record_type="tweet",
+            record_type=RecordType.TWEET,
             tweet_id=tweet.tweet_id,
             collection_type=collection_type,
             folder_id=folder_key(folder_id),

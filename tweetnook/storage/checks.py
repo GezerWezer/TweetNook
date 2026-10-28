@@ -9,6 +9,7 @@ from typing import Any
 from tweetnook.core.utils import utc_now
 
 from .common import and_expr
+from .record_types import RecordType
 from .records import RecordsMixin
 from .schema import SchemaMixin
 
@@ -155,7 +156,7 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
         rows = self.conn.execute(
             f"SELECT operation, captured_at, http_status, source, raw_json "
             f"FROM archive INDEXED BY idx_archive_capture_target "
-            f"WHERE record_type = 'raw_capture' AND cursor_in = ? "
+            f"WHERE record_type = '{RecordType.RAW_CAPTURE}' AND cursor_in = ? "
             f"AND operation IN ({placeholders}) ORDER BY captured_at",
             (tweet_id, *operations),
         ).fetchall()
@@ -163,7 +164,7 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
 
     def get_tweet_object_rows(self, tweet_ids: list[str]) -> dict[str, dict[str, Any]]:
         rows = self._rows_for_values(
-            "tweet_object",
+            RecordType.TWEET_OBJECT,
             "tweet_id",
             tweet_ids,
             columns=[
@@ -187,13 +188,14 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
 
         return int(
             self.conn.execute(
-                """
+                f"""
                 SELECT COUNT(*) FROM archive AS object
-                WHERE object.record_type = 'tweet_object'
+                WHERE object.record_type = '{RecordType.TWEET_OBJECT}'
                   AND COALESCE(object.enrichment_state, '') != 'terminal_unavailable'
                   AND NOT EXISTS (
                       SELECT 1 FROM archive AS saved INDEXED BY idx_archive_membership
-                      WHERE saved.record_type = 'tweet' AND saved.tweet_id = object.tweet_id
+                      WHERE saved.record_type = '{RecordType.TWEET}'
+                        AND saved.tweet_id = object.tweet_id
                   )
                 """
             ).fetchone()[0]
@@ -210,10 +212,10 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
             return []
         self.ensure_check_tables()
         rows = self.conn.execute(
-            """
+            f"""
             SELECT object.tweet_id FROM archive AS object
             LEFT JOIN tweet_checks AS checks ON checks.tweet_id = object.tweet_id
-            WHERE object.record_type = 'tweet_object'
+            WHERE object.record_type = '{RecordType.TWEET_OBJECT}'
               AND COALESCE(object.enrichment_state, '') != 'terminal_unavailable'
               AND (
                   checks.checked_at IS NULL
@@ -222,7 +224,8 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
               )
               AND NOT EXISTS (
                   SELECT 1 FROM archive AS saved INDEXED BY idx_archive_membership
-                  WHERE saved.record_type = 'tweet' AND saved.tweet_id = object.tweet_id
+                  WHERE saved.record_type = '{RecordType.TWEET}'
+                    AND saved.tweet_id = object.tweet_id
               )
             ORDER BY COALESCE(checks.outcome, '') != 'suspect',
                 checks.checked_at IS NOT NULL, checks.checked_at, object.tweet_id
@@ -237,7 +240,7 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
 
         return self._query(
             expr=and_expr(
-                "record_type = 'tweet_object'",
+                f"record_type = '{RecordType.TWEET_OBJECT}'",
                 "enrichment_state = 'terminal_unavailable'",
                 "enrichment_retry_eligible = 1",
                 "deleted_at IS NULL",
@@ -335,7 +338,7 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
     def stored_community_note(self, tweet_id: str) -> tuple[str | None, str | None]:
         """The note in the tweet's stored X payload, with when that copy was first saved."""
 
-        for record_type in ("tweet", "tweet_object"):
+        for record_type in (RecordType.TWEET, RecordType.TWEET_OBJECT):
             for row in self._rows_for_values(
                 record_type, "tweet_id", [tweet_id], columns=["raw_json", "first_seen_at"]
             ):

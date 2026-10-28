@@ -14,6 +14,7 @@ from tweetnook.jobs.context import (
 )
 from tweetnook.storage import ArchiveStore
 from tweetnook.storage.common import ARCHIVE_SOURCE
+from tweetnook.storage.record_types import RecordType
 
 
 def manifest_generation_date(manifest: dict[str, Any]) -> str | None:
@@ -133,7 +134,7 @@ def manifest_warnings(manifest_row: dict[str, Any] | None) -> list[str]:
 
 
 def list_import_manifest_rows(store: ArchiveStore) -> list[dict[str, Any]]:
-    return store._query("record_type = 'import_manifest' AND status = 'completed'")
+    return store._query(f"record_type = '{RecordType.IMPORT_MANIFEST}' AND status = 'completed'")
 
 
 def finalize_import_enrichment_status(

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tweetnook.storage.record_types import RecordType
+
 
 def annotate_web_link_cards(store: Any, tweets: list[dict[str, Any]]) -> None:
     nodes: list[dict[str, Any]] = []
@@ -25,7 +27,7 @@ def annotate_web_link_cards(store: Any, tweets: list[dict[str, Any]]) -> None:
         return
     media_by_id: dict[str, list[dict[str, Any]]] = {}
     for row in store._rows_for_values(
-        "media",
+        RecordType.MEDIA,
         "tweet_id",
         ids,
         columns=["tweet_id", "source", "media_url", "thumbnail_url", "local_path"],

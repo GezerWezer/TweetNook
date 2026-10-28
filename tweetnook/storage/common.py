@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from .record_types import RecordType
+
 
 def folder_key(folder_id: str | None) -> str:
     return folder_id or ""
@@ -57,7 +59,7 @@ SEARCH_COLLECTION_ORDER = ("bookmark", "like", "tweet")
 # Tweets hidden from Web lists and searches; `is:hidden` still finds them.
 HIDDEN_TWEET_IDS_SQL = (
     "SELECT hidden.tweet_id FROM archive AS hidden "
-    "WHERE hidden.record_type = 'tweet_hidden' AND hidden.tweet_id IS NOT NULL"
+    f"WHERE hidden.record_type = '{RecordType.TWEET_HIDDEN}' AND hidden.tweet_id IS NOT NULL"
 )
 UNCAPTURED_TWEET_IDS_SQL = (
     "SELECT DISTINCT content.tweet_id FROM archive_tweet_content AS content "
@@ -68,11 +70,11 @@ UNCAPTURED_TWEET_IDS_SQL = (
     # without post text/JSON. Use indexed IDs and scalar columns, not raw JSON.
     "AND NOT EXISTS (SELECT 1 FROM archive AS saved "
     "WHERE saved.tweet_id = content.tweet_id AND ("
-    "(saved.record_type = 'media' AND ("
+    f"(saved.record_type = '{RecordType.MEDIA}' AND ("
     "COALESCE(saved.media_url, '') != '' OR COALESCE(saved.local_path, '') != '' OR "
     "COALESCE(saved.thumbnail_url, '') != '' OR "
     "COALESCE(saved.thumbnail_local_path, '') != '')) OR "
-    "(saved.record_type = 'article' AND ("
+    f"(saved.record_type = '{RecordType.ARTICLE}' AND ("
     "COALESCE(saved.title, '') != '' OR COALESCE(saved.summary_text, '') != '' OR "
     "COALESCE(saved.content_text, '') != ''))))"
 )

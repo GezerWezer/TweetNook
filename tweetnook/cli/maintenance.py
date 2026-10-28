@@ -15,6 +15,7 @@ from tweetnook.cli.common import (
 from tweetnook.config import load_config
 from tweetnook.core.exceptions import ConfigError, ProcessLockError, TweetNookError
 from tweetnook.storage import open_archive_store
+from tweetnook.storage.record_types import RecordType
 
 db_app = typer.Typer(no_args_is_help=True, help="Inspect the local SQLite archive database.")
 
@@ -186,7 +187,7 @@ def rehydrate_archive() -> None:
             console.print("[red]No local archive found.[/red]")
             raise typer.Exit(1)
         try:
-            total = store._count("record_type = 'tweet'")
+            total = store._count(f"record_type = '{RecordType.TWEET}'")
             if total == 0:
                 console.print("archive has no tweet rows")
                 return

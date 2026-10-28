@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from .db import ConnectionMixin
+from .record_types import RecordType
 
 AVAILABLE_ENRICHMENT_STATES = ("done", "resurrected")
 
@@ -33,10 +34,10 @@ class TagsMixin(ConnectionMixin):
             return []
 
         state_placeholders = ", ".join("?" for _state in AVAILABLE_ENRICHMENT_STATES)
-        valid_tag_sql = """
+        valid_tag_sql = f"""
             NOT EXISTS (
                 SELECT 1 FROM archive retry
-                WHERE retry.row_key = 'tagging_retry:' || {tweet_id}
+                WHERE retry.row_key = 'tagging_retry:' || {{tweet_id}}
                   AND CASE WHEN json_valid(retry.value)
                       THEN CAST(json_extract(retry.value, '$.next_retry_at') AS REAL)
                       ELSE 0 END > CAST(strftime('%s', 'now') AS REAL)
@@ -44,8 +45,8 @@ class TagsMixin(ConnectionMixin):
             NOT EXISTS (
                 SELECT 1
                 FROM archive tag INDEXED BY idx_archive_tweet_id
-                WHERE tag.tweet_id = {tweet_id}
-                  AND tag.record_type = 'media_tag'
+                WHERE tag.tweet_id = {{tweet_id}}
+                  AND tag.record_type = '{RecordType.MEDIA_TAG}'
                   AND (tag.enrichment_state = 'done' OR tag.enrichment_state IS NULL)
                   AND json_valid(tag.raw_json)
                   AND json_type(tag.raw_json, '$.tags') = 'array'
@@ -55,12 +56,12 @@ class TagsMixin(ConnectionMixin):
         saved_query = f"""
             SELECT t.tweet_id, t.created_at_ts AS sort_ts
             FROM archive t INDEXED BY idx_archive_record_page
-            WHERE t.record_type = 'tweet'
+            WHERE t.record_type = '{RecordType.TWEET}'
               AND EXISTS (
                   SELECT 1
                   FROM archive o INDEXED BY idx_archive_tweet_id
                   WHERE o.tweet_id = t.tweet_id
-                    AND o.record_type = 'tweet_object'
+                    AND o.record_type = '{RecordType.TWEET_OBJECT}'
                     AND o.enrichment_state IN ({state_placeholders})
               )
               AND {valid_tag_sql.format(tweet_id="t.tweet_id")}
@@ -71,25 +72,25 @@ class TagsMixin(ConnectionMixin):
         quoted_query = f"""
             SELECT o.tweet_id, o.created_at_ts AS sort_ts
             FROM archive o INDEXED BY idx_archive_record_page
-            WHERE o.record_type = 'tweet_object'
+            WHERE o.record_type = '{RecordType.TWEET_OBJECT}'
               AND o.enrichment_state IN ({state_placeholders})
               AND {valid_tag_sql.format(tweet_id="o.tweet_id")}
               AND EXISTS (
                   SELECT 1
                   FROM archive relation INDEXED BY idx_archive_target_tweet_id
                   WHERE relation.target_tweet_id = o.tweet_id
-                    AND relation.record_type = 'tweet_relation'
+                    AND relation.record_type = '{RecordType.TWEET_RELATION}'
                     AND relation.relation_type = 'quote_of'
                     AND EXISTS (
                         SELECT 1
                         FROM archive saved INDEXED BY idx_archive_tweet_id
                         WHERE saved.tweet_id = relation.tweet_id
-                          AND saved.record_type = 'tweet'
+                          AND saved.record_type = '{RecordType.TWEET}'
                           AND EXISTS (
                               SELECT 1
                               FROM archive source_object INDEXED BY idx_archive_tweet_id
                               WHERE source_object.tweet_id = saved.tweet_id
-                                AND source_object.record_type = 'tweet_object'
+                                AND source_object.record_type = '{RecordType.TWEET_OBJECT}'
                                 AND source_object.enrichment_state IN ({state_placeholders})
                           )
                     )
@@ -98,13 +99,13 @@ class TagsMixin(ConnectionMixin):
                      CAST(o.sort_index AS INTEGER) DESC,
                      o.tweet_id DESC
         """
-        classification_query = """
+        classification_query = f"""
             SELECT
                 (
                     SELECT MIN(relation.target_tweet_id)
                     FROM archive relation INDEXED BY idx_archive_tweet_id
                     WHERE relation.tweet_id = ?
-                      AND relation.record_type = 'tweet_relation'
+                      AND relation.record_type = '{RecordType.TWEET_RELATION}'
                       AND relation.relation_type = 'quote_of'
                 ) AS quoted_tweet_id,
                 CASE WHEN
@@ -112,7 +113,7 @@ class TagsMixin(ConnectionMixin):
                         SELECT 1
                         FROM archive media INDEXED BY idx_archive_tweet_id
                         WHERE media.tweet_id = ?
-                          AND media.record_type = 'media'
+                          AND media.record_type = '{RecordType.MEDIA}'
                           AND COALESCE(media.source, '') != 'link_card'
                     )
                     OR EXISTS (
@@ -120,10 +121,10 @@ class TagsMixin(ConnectionMixin):
                         FROM archive relation INDEXED BY idx_archive_tweet_id
                         JOIN archive quoted_media INDEXED BY idx_archive_tweet_id
                           ON quoted_media.tweet_id = relation.target_tweet_id
-                         AND quoted_media.record_type = 'media'
+                         AND quoted_media.record_type = '{RecordType.MEDIA}'
                          AND COALESCE(quoted_media.source, '') != 'link_card'
                         WHERE relation.tweet_id = ?
-                          AND relation.record_type = 'tweet_relation'
+                          AND relation.record_type = '{RecordType.TWEET_RELATION}'
                           AND relation.relation_type = 'quote_of'
                     )
                     THEN 'media' ELSE 'text'
@@ -221,12 +222,12 @@ class TagsMixin(ConnectionMixin):
             WITH saved AS (
                 SELECT DISTINCT t.tweet_id
                 FROM archive t INDEXED BY idx_archive_record_page
-                WHERE t.record_type = 'tweet'
+                WHERE t.record_type = '{RecordType.TWEET}'
                   AND EXISTS (
                       SELECT 1
                       FROM archive o INDEXED BY idx_archive_tweet_id
                       WHERE o.tweet_id = t.tweet_id
-                        AND o.record_type = 'tweet_object'
+                        AND o.record_type = '{RecordType.TWEET_OBJECT}'
                         AND o.enrichment_state IN ({state_placeholders})
                   )
             ),
@@ -235,13 +236,13 @@ class TagsMixin(ConnectionMixin):
                 FROM saved
                 CROSS JOIN archive relation INDEXED BY idx_archive_tweet_id
                 WHERE relation.tweet_id = saved.tweet_id
-                  AND relation.record_type = 'tweet_relation'
+                  AND relation.record_type = '{RecordType.TWEET_RELATION}'
                   AND relation.relation_type = 'quote_of'
                   AND EXISTS (
                       SELECT 1
                       FROM archive quoted_object INDEXED BY idx_archive_tweet_id
                       WHERE quoted_object.tweet_id = relation.target_tweet_id
-                        AND quoted_object.record_type = 'tweet_object'
+                        AND quoted_object.record_type = '{RecordType.TWEET_OBJECT}'
                         AND quoted_object.enrichment_state IN ({state_placeholders})
                   )
             ),
@@ -256,7 +257,7 @@ class TagsMixin(ConnectionMixin):
                     SELECT 1
                     FROM archive tg INDEXED BY idx_archive_tweet_id
                     WHERE tg.tweet_id = eligible_tweets.tweet_id
-                      AND tg.record_type = 'media_tag'
+                      AND tg.record_type = '{RecordType.MEDIA_TAG}'
                       AND (tg.enrichment_state = 'done' OR tg.enrichment_state IS NULL)
                       AND json_valid(tg.raw_json)
                       AND json_type(tg.raw_json, '$.tags') = 'array'
@@ -274,7 +275,8 @@ class TagsMixin(ConnectionMixin):
 
     def delete_media_tag(self, tweet_id: str) -> None:
         self.conn.execute(
-            "DELETE FROM archive WHERE record_type = 'media_tag' AND tweet_id = ?", (tweet_id,)
+            f"DELETE FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' AND tweet_id = ?",
+            (tweet_id,),
         )
         self.conn.commit()
 
@@ -297,7 +299,8 @@ class TagsMixin(ConnectionMixin):
             normalized_tags.append(cleaned)
 
         row = self.conn.execute(
-            "SELECT raw_json FROM archive WHERE record_type = 'media_tag' AND tweet_id = ?",
+            f"SELECT raw_json FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' AND "
+            "tweet_id = ?",
             (tweet_id,),
         ).fetchone()
 
@@ -336,19 +339,22 @@ class TagsMixin(ConnectionMixin):
         if hidden:
             self.conn.execute(
                 "INSERT OR IGNORE INTO archive (row_key, record_type, tweet_id, updated_at) "
-                "VALUES (?, 'tweet_hidden', ?, ?)",
-                (f"tweet_hidden:{tweet_id}", tweet_id, str(time.time())),
+                "VALUES (?, ?, ?, ?)",
+                (f"tweet_hidden:{tweet_id}", RecordType.TWEET_HIDDEN, tweet_id, str(time.time())),
             )
         else:
             self.conn.execute(
-                "DELETE FROM archive WHERE record_type = 'tweet_hidden' AND tweet_id = ?",
+                f"DELETE FROM archive WHERE record_type = '{RecordType.TWEET_HIDDEN}' AND "
+                "tweet_id = ?",
                 (tweet_id,),
             )
         self.conn.commit()
 
     def _excluded_member_count(self, collection: str, excluded_ids: str) -> int:
         """Count excluded IDs that belong to this collection, deduplicating overlap."""
-        membership = "member.record_type = 'tweet' AND member.tweet_id = excluded.tweet_id"
+        membership = (
+            f"member.record_type = '{RecordType.TWEET}' AND member.tweet_id = excluded.tweet_id"
+        )
         params: tuple[str, ...] = ()
         if collection != "all":
             membership += " AND member.collection_type = ?"
@@ -364,14 +370,14 @@ class TagsMixin(ConnectionMixin):
 
     def delete_global_tag(self, tag: str) -> None:
         """Delete a tag globally across all tweets."""
-        sql = """
+        sql = f"""
         SELECT a.tweet_id, a.raw_json
         FROM archive a,
              json_each(
-               CASE WHEN json_valid(a.raw_json) THEN a.raw_json ELSE '{"tags":[]}' END,
+               CASE WHEN json_valid(a.raw_json) THEN a.raw_json ELSE '{{"tags":[]}}' END,
                '$.tags'
              ) as t
-        WHERE a.record_type = 'media_tag' AND LOWER(t.value) = LOWER(?)
+        WHERE a.record_type = '{RecordType.MEDIA_TAG}' AND LOWER(t.value) = LOWER(?)
         """
         rows = self.conn.execute(sql, (tag,)).fetchall()
 
@@ -386,13 +392,14 @@ class TagsMixin(ConnectionMixin):
                     data["tags"] = [t for t in data["tags"] if t.lower() != tag.lower()]
                     if not data["tags"]:
                         self.conn.execute(
-                            "DELETE FROM archive WHERE record_type = 'media_tag' AND tweet_id = ?",
+                            f"DELETE FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' "
+                            "AND tweet_id = ?",
                             (tid,),
                         )
                     else:
                         self.conn.execute(
                             "UPDATE archive SET raw_json = ?, updated_at = ? "
-                            "WHERE record_type = 'media_tag' AND tweet_id = ?",
+                            f"WHERE record_type = '{RecordType.MEDIA_TAG}' AND tweet_id = ?",
                             (json.dumps(data), now_ts, tid),
                         )
             except json.JSONDecodeError:
@@ -422,7 +429,7 @@ class TagsMixin(ConnectionMixin):
                CASE WHEN json_valid(a.raw_json) THEN a.raw_json ELSE '{{"tags":[]}}' END,
                '$.tags'
              ) as t
-        WHERE a.record_type = 'media_tag' AND LOWER(t.value) IN ({placeholders})
+        WHERE a.record_type = '{RecordType.MEDIA_TAG}' AND LOWER(t.value) IN ({placeholders})
         """
 
         rows = self.conn.execute(sql, tuple(normalized_merge_tags)).fetchall()
@@ -460,7 +467,7 @@ class TagsMixin(ConnectionMixin):
 
                     self.conn.execute(
                         "UPDATE archive SET raw_json = ?, updated_at = ? "
-                        "WHERE record_type = 'media_tag' AND tweet_id = ?",
+                        f"WHERE record_type = '{RecordType.MEDIA_TAG}' AND tweet_id = ?",
                         (json.dumps(data), now_ts, tid),
                     )
             except json.JSONDecodeError:
@@ -468,15 +475,15 @@ class TagsMixin(ConnectionMixin):
         self.conn.commit()
 
     def get_tag_counts(self, query: str = "", limit: int = 50) -> list[dict[str, Any]]:
-        sql = """
+        sql = f"""
         SELECT MIN(json_each.value) as tag, count(*) as count
         FROM archive,
              json_each(
                CASE WHEN json_valid(archive.raw_json)
-                    THEN archive.raw_json ELSE '{"tags":[]}' END,
+                    THEN archive.raw_json ELSE '{{"tags":[]}}' END,
                '$.tags'
              )
-        WHERE record_type = 'media_tag'
+        WHERE record_type = '{RecordType.MEDIA_TAG}'
           AND (enrichment_state = 'done' OR enrichment_state IS NULL)
           AND json_each.type = 'text'
         """

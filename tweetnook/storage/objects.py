@@ -8,6 +8,7 @@ from tweetnook.core.extractor import ExtractedTweetGraph, extract_secondary_obje
 from tweetnook.core.timeline_parsing import TimelineTweet
 
 from .common import AVAILABLE_SOURCES, LIVE_SOURCE, parse_created_at
+from .record_types import RecordType
 from .records import PageBuffer, RecordsMixin
 
 
@@ -91,7 +92,7 @@ class ObjectsMixin(RecordsMixin):
         return self._record_with_context(
             context,
             row_key=row_key,
-            record_type="tweet_object",
+            record_type=RecordType.TWEET_OBJECT,
             tweet_id=tweet.tweet_id,
             source=self._merged_source_value(context, source, prefer_incoming=prefer_incoming),
             text=self._merge_by_source_precedence(
@@ -200,7 +201,7 @@ class ObjectsMixin(RecordsMixin):
         return self._record_with_context(
             context,
             row_key=row_key,
-            record_type="tweet_relation",
+            record_type=RecordType.TWEET_RELATION,
             tweet_id=relation.source_tweet_id,
             relation_type=relation.relation_type,
             target_tweet_id=relation.target_tweet_id,
@@ -230,7 +231,7 @@ class ObjectsMixin(RecordsMixin):
         return self._record_with_context(
             context,
             row_key=row_key,
-            record_type="media",
+            record_type=RecordType.MEDIA,
             tweet_id=media.tweet_id,
             source=self._merge_by_source_precedence(
                 context,
@@ -329,7 +330,7 @@ class ObjectsMixin(RecordsMixin):
         return self._record_with_context(
             context,
             row_key=row_key,
-            record_type="url",
+            record_type=RecordType.URL,
             url_hash=url.url_hash,
             url=url.canonical_url,
             source=self._merged_source_value(context, source, prefer_incoming=prefer_incoming),
@@ -396,7 +397,7 @@ class ObjectsMixin(RecordsMixin):
         return self._record_with_context(
             context,
             row_key=row_key,
-            record_type="url_ref",
+            record_type=RecordType.URL_REF,
             tweet_id=url_ref.tweet_id,
             position=url_ref.position,
             source=self._merged_source_value(context, source, prefer_incoming=prefer_incoming),
@@ -466,7 +467,7 @@ class ObjectsMixin(RecordsMixin):
         return self._record_with_context(
             context,
             row_key=row_key,
-            record_type="article",
+            record_type=RecordType.ARTICLE,
             tweet_id=article.tweet_id,
             source=self._merged_source_value(context, source, prefer_incoming=prefer_incoming),
             article_id=self._merge_by_source_precedence(

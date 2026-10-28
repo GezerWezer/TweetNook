@@ -9,6 +9,7 @@ from tweetnook.core.exceptions import ArchiveOwnerMismatchError
 from tweetnook.core.utils import utc_now
 
 from .common import expr_quote, folder_key
+from .record_types import RecordType
 from .records import PageBuffer, RecordsMixin
 
 
@@ -45,7 +46,7 @@ class SyncStateMixin(RecordsMixin):
     ) -> dict[str, Any]:
         return self._record(
             row_key=self._row_key_for_sync_state(collection_type, folder_id),
-            record_type="sync_state",
+            record_type=RecordType.SYNC_STATE,
             collection_type=collection_type,
             folder_id=folder_key(folder_id),
             last_head_tweet_id=last_head_tweet_id,
@@ -79,7 +80,10 @@ class SyncStateMixin(RecordsMixin):
         )
 
     def get_collection_tweet_ids(self, collection_type: str) -> set[str]:
-        filter_expr = f"record_type = 'tweet' AND collection_type = {expr_quote(collection_type)}"
+        filter_expr = (
+            f"record_type = '{RecordType.TWEET}' "
+            f"AND collection_type = {expr_quote(collection_type)}"
+        )
         rows = self._query(expr=filter_expr, cols=["tweet_id"])
         return {row["tweet_id"] for row in rows}
 
@@ -90,7 +94,7 @@ class SyncStateMixin(RecordsMixin):
     def set_archive_owner_id(self, user_id: str, *, cursor: PageBuffer | None = None) -> None:
         record = self._record(
             row_key=self._row_key_for_metadata("owner_user_id"),
-            record_type="metadata",
+            record_type=RecordType.METADATA,
             key="owner_user_id",
             value=user_id,
             updated_at=utc_now(),
@@ -116,7 +120,10 @@ class SyncStateMixin(RecordsMixin):
         """Return whether at least one official archive import completed successfully."""
 
         return (
-            self._count("record_type = 'import_manifest' AND status IN ('completed', 'sampled')")
+            self._count(
+                f"record_type = '{RecordType.IMPORT_MANIFEST}' AND status IN ('completed', "
+                "'sampled')"
+            )
             > 0
         )
 
@@ -138,7 +145,7 @@ class SyncStateMixin(RecordsMixin):
             [
                 self._record(
                     row_key=self._row_key_for_import_manifest(archive_digest),
-                    record_type="import_manifest",
+                    record_type=RecordType.IMPORT_MANIFEST,
                     archive_digest=archive_digest,
                     archive_generation_date=archive_generation_date
                     or (existing.get("archive_generation_date") if existing else None),

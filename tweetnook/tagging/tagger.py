@@ -18,6 +18,7 @@ from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.jobs.activity_history import new_run_id
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.record_types import RecordType
 from tweetnook.tagging.accounting import (
     SEARCH_MONTHLY_ALLOWANCE,
     AIUsageLedger,
@@ -298,8 +299,14 @@ def _defer_tagging_failure(store: ArchiveStore, tweet_ids: list[str]) -> None:
         delay = min(3600 * 2 ** min(attempts - 1, 8), 7 * 86400)
         store.conn.execute(
             "INSERT OR REPLACE INTO archive "
-            "(row_key, record_type, key, value, updated_at) VALUES (?, 'metadata', ?, ?, ?)",
-            (key, key, json.dumps({"attempts": attempts, "next_retry_at": now + delay}), str(now)),
+            "(row_key, record_type, key, value, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (
+                key,
+                RecordType.METADATA,
+                key,
+                json.dumps({"attempts": attempts, "next_retry_at": now + delay}),
+                str(now),
+            ),
         )
     store.conn.commit()
 
@@ -427,7 +434,7 @@ def _quote_targets(store: ArchiveStore, tweet_ids: list[str]) -> dict[str, str]:
             f"""
             SELECT tweet_id, target_tweet_id
             FROM archive INDEXED BY idx_archive_tweet_id
-            WHERE record_type = 'tweet_relation'
+            WHERE record_type = '{RecordType.TWEET_RELATION}'
               AND relation_type = 'quote_of'
               AND tweet_id IN ({placeholders})
             ORDER BY tweet_id, target_tweet_id
@@ -458,7 +465,7 @@ def _content_types_for_tweets(
         f"""
         SELECT DISTINCT tweet_id
         FROM archive INDEXED BY idx_archive_tweet_id
-        WHERE record_type = 'media' AND tweet_id IN ({placeholders})
+        WHERE record_type = '{RecordType.MEDIA}' AND tweet_id IN ({placeholders})
           AND COALESCE(source, '') != 'link_card'
         """,
         relevant_ids,
@@ -788,7 +795,7 @@ async def tag_media_tweets(
         f"""
         SELECT tweet_id, media_key, media_type, local_path
         FROM archive INDEXED BY idx_archive_tweet_id
-        WHERE record_type = 'media' AND tweet_id IN ({placeholders})
+        WHERE record_type = '{RecordType.MEDIA}' AND tweet_id IN ({placeholders})
           AND COALESCE(source, '') != 'link_card'
         """,
         context_ids,
@@ -801,7 +808,7 @@ async def tag_media_tweets(
             f"""
             SELECT tweet_id, raw_json, author_display_name, author_username, text
             FROM archive INDEXED BY idx_archive_tweet_id
-            WHERE record_type = 'tweet_object' AND tweet_id IN ({placeholders})
+            WHERE record_type = '{RecordType.TWEET_OBJECT}' AND tweet_id IN ({placeholders})
             """,
             context_ids,
         ).fetchall()

@@ -9,6 +9,7 @@ from tweetnook.core.extractor import extract_status_id_from_url
 from tweetnook.core.utils import utc_now
 
 from .common import SEARCH_COLLECTION_ORDER, parse_created_at
+from .record_types import RecordType
 from .relations import RelationsMixin
 from .sync_state import SyncStateMixin
 
@@ -58,19 +59,19 @@ class ArchiveStats:
 
 class StatsMixin(SyncStateMixin, RelationsMixin):
     def counts(self) -> dict[str, int]:
-        tweet_rows = self._count("record_type = 'tweet'")
+        tweet_rows = self._count(f"record_type = '{RecordType.TWEET}'")
         return {
-            "raw_captures": self._count("record_type = 'raw_capture'"),
+            "raw_captures": self._count(f"record_type = '{RecordType.RAW_CAPTURE}'"),
             "tweets": tweet_rows,
             "collections": tweet_rows,
-            "tweet_objects": self._count("record_type = 'tweet_object'"),
-            "tweet_relations": self._count("record_type = 'tweet_relation'"),
-            "media": self._count("record_type = 'media'"),
-            "urls": self._count("record_type = 'url'"),
-            "url_refs": self._count("record_type = 'url_ref'"),
-            "articles": self._count("record_type = 'article'"),
-            "import_manifests": self._count("record_type = 'import_manifest'"),
-            "sync_state": self._count("record_type = 'sync_state'"),
+            "tweet_objects": self._count(f"record_type = '{RecordType.TWEET_OBJECT}'"),
+            "tweet_relations": self._count(f"record_type = '{RecordType.TWEET_RELATION}'"),
+            "media": self._count(f"record_type = '{RecordType.MEDIA}'"),
+            "urls": self._count(f"record_type = '{RecordType.URL}'"),
+            "url_refs": self._count(f"record_type = '{RecordType.URL_REF}'"),
+            "articles": self._count(f"record_type = '{RecordType.ARTICLE}'"),
+            "import_manifests": self._count(f"record_type = '{RecordType.IMPORT_MANIFEST}'"),
+            "sync_state": self._count(f"record_type = '{RecordType.SYNC_STATE}'"),
         }
 
     def archive_stats(self, max_linked_depth: int = 1) -> ArchiveStats:
@@ -78,15 +79,15 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
         tweet_rows = [
             dict(row)
             for row in self.conn.execute(
-                """
+                f"""
                 SELECT tweet_id, collection_type, created_at
                 FROM archive INDEXED BY idx_archive_record_page
-                WHERE record_type = 'tweet'
+                WHERE record_type = '{RecordType.TWEET}'
                 """
             ).fetchall()
         ]
         sync_rows = self._query(
-            expr="record_type = 'sync_state'",
+            expr=f"record_type = '{RecordType.SYNC_STATE}'",
             cols=[
                 "collection_type",
                 "updated_at",
@@ -98,10 +99,10 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
         enrichment_counts = {
             row[0]: int(row[1])
             for row in self.conn.execute(
-                """
+                f"""
                 SELECT enrichment_state, count(*)
                 FROM archive INDEXED BY idx_archive_enrichment_due
-                WHERE record_type = 'tweet_object'
+                WHERE record_type = '{RecordType.TWEET_OBJECT}'
                 GROUP BY enrichment_state
                 """
             ).fetchall()
@@ -110,11 +111,11 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
         scheduler_rows = [
             dict(row)
             for row in self.conn.execute(
-                """
+                f"""
                 SELECT deleted_at, enrichment_state, enrichment_reason,
                        enrichment_retry_eligible, enrichment_next_retry_at
                 FROM archive INDEXED BY idx_archive_enrichment_due
-                WHERE record_type = 'tweet_object'
+                WHERE record_type = '{RecordType.TWEET_OBJECT}'
                   AND enrichment_state IN ('transient_failure', 'terminal_unavailable')
                 """
             ).fetchall()
@@ -122,10 +123,10 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
         url_ref_rows = [
             dict(row)
             for row in self.conn.execute(
-                """
+                f"""
                 SELECT tweet_id, canonical_url, expanded_url, url
                 FROM archive INDEXED BY idx_archive_record_page
-                WHERE record_type = 'url_ref'
+                WHERE record_type = '{RecordType.URL_REF}'
                 """
             ).fetchall()
         ]
@@ -222,10 +223,10 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
                         due_resurrection_count += 1
         preview_article_count = int(
             self.conn.execute(
-                """
+                f"""
                 SELECT count(*)
                 FROM archive INDEXED BY idx_archive_record_page
-                WHERE record_type = 'article'
+                WHERE record_type = '{RecordType.ARTICLE}'
                   AND (status IS NULL OR status != 'body_present')
                 """
             ).fetchone()[0]
@@ -233,16 +234,16 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
         )
         missing_tweet_object_count = int(
             self.conn.execute(
-                """
+                f"""
                 SELECT count(DISTINCT tweet.tweet_id)
                 FROM archive tweet INDEXED BY idx_archive_record_page
-                WHERE tweet.record_type = 'tweet'
+                WHERE tweet.record_type = '{RecordType.TWEET}'
                   AND tweet.tweet_id IS NOT NULL
                   AND NOT EXISTS (
                       SELECT 1
                       FROM archive object INDEXED BY idx_archive_tweet_id
                       WHERE object.tweet_id = tweet.tweet_id
-                        AND object.record_type = 'tweet_object'
+                        AND object.record_type = '{RecordType.TWEET_OBJECT}'
                   )
                 """
             ).fetchone()[0]
@@ -250,10 +251,10 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
         )
 
         latest_capture_row = self.conn.execute(
-            """
+            f"""
             SELECT max(captured_at)
             FROM archive INDEXED BY idx_archive_capture_target
-            WHERE record_type = 'raw_capture'
+            WHERE record_type = '{RecordType.RAW_CAPTURE}'
             """
         ).fetchone()
         latest_capture_at = latest_capture_row[0] if latest_capture_row else None
@@ -360,7 +361,7 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
                     SELECT DISTINCT tweet_id
                     FROM archive INDEXED BY idx_archive_tweet_id
                     WHERE tweet_id IN ({placeholders})
-                      AND record_type = 'tweet_object'
+                      AND record_type = '{RecordType.TWEET_OBJECT}'
                     """,
                     chunk,
                 ).fetchall()

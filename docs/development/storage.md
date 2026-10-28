@@ -8,6 +8,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 
 | Module | Owns |
 | --- | --- |
+| `record_types.py` | `RecordType`, the names of the record types below. |
 | `common.py` | SQL fragment helpers, source names and ranks, shared hidden/uncaptured/note filters. |
 | `db.py` | Query helpers, cache revisions, read warming, close and optimize. |
 | `schema.py` | Table layout, FTS and derived tables, `SCHEMA_VERSION`, upgrades from released schemas. |
@@ -56,6 +57,8 @@ Schema migrations run when a writable store opens. `SCHEMA_VERSION` in `storage/
 | `media_tag` | Tags, description and tagging status attached to a tweet. |
 | `tweet_hidden` | A local visibility choice. |
 | `metadata` | Durable application metadata and accounting values. |
+
+Name record types through `RecordType` from `storage/record_types.py`, in SQL text as well as Python, so a misspelt type fails at import time instead of matching no rows. In SQL, interpolate the member as a quoted literal (`'{RecordType.MEDIA}'`) rather than binding it as a parameter: the partial indexes are declared on literal record types, and SQLite only uses one when the query's condition is the same literal.
 
 Use the row-key helpers in `ArchiveStore`; don't invent identifiers in callers. A canonical tweet object and its memberships are different facts. Deleting or enriching context must not manufacture a bookmark, like, or authored membership.
 
