@@ -9438,12 +9438,7 @@ function tweetApp() {
         },
 
         escapeHTML(str) {
-            if (!str) return '';
-            return String(str).replace(/&/g, '&amp;')
-                      .replace(/</g, '&lt;')
-                      .replace(/>/g, '&gt;')
-                      .replace(/"/g, '&quot;')
-                      .replace(/'/g, '&#039;');
+            return escapeHTML(str);
         },
 
         safeURL(value) {
