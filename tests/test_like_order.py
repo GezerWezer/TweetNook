@@ -9,7 +9,7 @@ from tests.conftest import make_tweet_result
 from tests.test_storage import _tweet
 from tests.test_web_tweets_api import _list_tweets
 from tweetnook.core.timeline_parsing import _iter_entries, parse_timeline_response
-from tweetnook.importer.archive import _import_likes
+from tweetnook.importer.archive_rows import _import_likes
 from tweetnook.storage import like_order
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.common import ARCHIVE_SOURCE, LIVE_SOURCE

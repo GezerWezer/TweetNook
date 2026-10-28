@@ -10,7 +10,8 @@ import httpx
 import pytest
 from rich.console import Console
 
-import tweetnook.importer.archive as archive_import
+import tweetnook.importer.archive_enrich as archive_enrich
+import tweetnook.importer.archive_rows as archive_rows
 from tests.conftest import make_tweet_detail_response, make_tweet_result, request_details
 from tweetnook.auth import ResolvedAuthBundle
 from tweetnook.client import fxtwitter
@@ -270,17 +271,17 @@ def test_fx_placeholder_never_replaces_live_data_but_replaces_archive_rows(paths
     store = open_archive_store(paths, create=True)
     assert store is not None
     _seed_live_tweet(store, "1", "live text")
-    buffer = archive_import._PageBuffer()
+    buffer = archive_rows._PageBuffer()
     store._queue_record(
         store._tweet_object_record(
-            archive_import._PlaceholderTweetObject(tweet_id="2", text="archive text"),
+            archive_rows._PlaceholderTweetObject(tweet_id="2", text="archive text"),
             source=ARCHIVE_SOURCE,
             enrichment_state="pending",
             cursor=buffer,
         ),
         cursor=buffer,
     )
-    archive_import._flush_buffer(store, buffer)
+    archive_rows._flush_buffer(store, buffer)
 
     for tweet_id in ("1", "2"):
         store.persist_fx_status(
@@ -334,21 +335,21 @@ def _run_enrichment(
     tweet_ids,
     *,
     signed_in: bool = True,
-) -> tuple[archive_import.ArchiveEnrichResult, list[str]]:
+) -> tuple[archive_enrich.ArchiveEnrichResult, list[str]]:
     store = open_archive_store(paths, create=True)
     assert store is not None
-    buffer = archive_import._PageBuffer()
+    buffer = archive_rows._PageBuffer()
     for tweet_id in tweet_ids:
         store._queue_record(
             store._tweet_object_record(
-                archive_import._PlaceholderTweetObject(tweet_id=tweet_id, text="placeholder"),
+                archive_rows._PlaceholderTweetObject(tweet_id=tweet_id, text="placeholder"),
                 source=ARCHIVE_SOURCE,
                 enrichment_state="pending",
                 cursor=buffer,
             ),
             cursor=buffer,
         )
-    archive_import._flush_buffer(store, buffer)
+    archive_rows._flush_buffer(store, buffer)
     store.close()
 
     @asynccontextmanager
@@ -385,13 +386,13 @@ def _run_enrichment(
     monkeypatch.setattr(
         fxtwitter, "build_fx_client", lambda config, **_: real_build(config, transport=transport)
     )
-    monkeypatch.setattr(archive_import, "locked_archive_job", fake_locked_archive_job)
-    monkeypatch.setattr(archive_import, "resolve_query_ids", fake_resolve_query_ids)
-    monkeypatch.setattr(archive_import, "build_async_client", lambda *_a, **_k: DummyClient())
-    monkeypatch.setattr(archive_import, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(archive_enrich, "locked_archive_job", fake_locked_archive_job)
+    monkeypatch.setattr(archive_enrich, "resolve_query_ids", fake_resolve_query_ids)
+    monkeypatch.setattr(archive_enrich, "build_async_client", lambda *_a, **_k: DummyClient())
+    monkeypatch.setattr(archive_enrich, "fetch_page", fake_fetch_page)
 
     result = asyncio.run(
-        archive_import._enrich_pending_rows(
+        archive_enrich._enrich_pending_rows(
             limit=None,
             config=AppConfig(),
             paths=paths,
@@ -476,7 +477,7 @@ def test_enrichment_progress_moves_with_each_fxtwitter_answer(
         code, body = ok(fx_status(tweet_id, "fx"))
         return httpx.Response(code, json=body)
 
-    monkeypatch.setattr(archive_import, "current_pipeline", lambda: Pipeline())
+    monkeypatch.setattr(archive_enrich, "current_pipeline", lambda: Pipeline())
     _run_enrichment(paths, monkeypatch, httpx.MockTransport(handler), ids, signed_in=False)
 
     completed = [value for value, _ in seen_during_batch]

@@ -535,7 +535,7 @@ def test_auth_endpoint_works_while_import_is_active(first_run, monkeypatch):
 def test_real_offline_import_worker_attaches_archive(first_run, tmp_path, monkeypatch):
     import time
 
-    from tests.test_archive_import import _write_archive_dir, _write_archive_zip
+    from tests.archive_import.conftest import _write_archive_dir, _write_archive_zip
     from tweetnook.jobs.supervisor import JobSupervisor
 
     source = _write_archive_dir(tmp_path / "source")
@@ -597,8 +597,8 @@ def test_real_import_media_disk_full_keeps_archive_ready_without_retry(
     from typer.testing import CliRunner
 
     import tweetnook.cli as cli
+    from tests.archive_import.conftest import _write_archive_dir, _write_archive_zip
     from tests.conftest import patch_cli
-    from tests.test_archive_import import _write_archive_dir, _write_archive_zip
     from tweetnook.jobs.activity_history import read_run
     from tweetnook.jobs.resource_failure import STORAGE_RECOVERY
 

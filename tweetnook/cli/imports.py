@@ -13,11 +13,11 @@ from tweetnook.cli.common import _configure_logging, _web_pipeline
 from tweetnook.config import load_config
 from tweetnook.core.exceptions import ConfigError, TweetNookError
 from tweetnook.enrichment.media import download_media
-from tweetnook.importer.archive import (
+from tweetnook.importer.archive import import_x_archive
+from tweetnook.importer.archive_enrich import (
     ArchiveEnrichmentAborted,
     ArchiveEnrichmentInterrupted,
     enrich_imported_archive,
-    import_x_archive,
 )
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.sync.collection import sync_all

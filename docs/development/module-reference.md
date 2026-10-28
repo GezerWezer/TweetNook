@@ -44,7 +44,11 @@ Some modules sit where their dependencies put them rather than where their name 
 | `query_ids/` | Operation defaults, cache and bundle discovery. |
 | `sync/collection.py` | Collection preflight and resumable pages. |
 | `sync/followups.py` | The follow-up plan and the work a sync runs after its collections. |
-| `importer/archive.py` | Official export ingest, manifests and sparse completion. |
+| `importer/archive.py` | Official export ingest: one import run from reading the export to its follow-up. |
+| `importer/archive_input.py`, `importer/archive_rows.py`, `importer/archive_media.py` | Reading the export, the rows it becomes and its copied media files. |
+| `importer/archive_manifests.py` | Import manifests, their counts and warnings, and the files an import owns. |
+| `importer/archive_enrich.py` | Live reconciliation and sparse completion, after an import or for one already saved. |
+| `importer/archive_progress.py` | Status lines and progress shared by import and enrichment. |
 | `importer/legacy_migration.py` | Explicit migration of a legacy LanceDB archive. |
 | `enrichment/threads.py`, `enrichment/media.py`, `enrichment/unfurl.py` | Conversation expansion, file downloads and link previews. |
 | `enrichment/articles.py` | Article body refresh. |
