@@ -1,0 +1,445 @@
+        <!-- POST AND QUOTE VIEWS (single column). On phones this is a layer pushed over
+             the feed, with its own header; elsewhere it follows the feed in the page. -->
+        <div x-ref="detailStage" class="detail-stage" :class="{ 'detail-layer': detailLayer, 'is-open': detailLayerOpen }" :aria-hidden="detailLayer && !detailLayerOpen ? 'true' : null">
+        <div class="detail-body">
+        <!-- THREAD VIEW (single-column only) -->
+        <div x-show="viewMode === 'thread' && !(splitPanel && panelMode)" x-cloak class="pb-20">
+            <template x-if="loadingThread"><div class="p-8 text-center text-gray-500">Loading thread...</div></template>
+
+            <template x-if="!loadingThread && threadData">
+                <div>
+                    <!-- PARENTS -->
+                    <template x-for="(parent, index) in threadData.parents" :key="parent.tweet_id">
+                        <div class="thread-row px-4 pt-3 flex relative cursor-pointer hover-bg" :data-thread-id="parent.tweet_id" @click="openThread(parent.tweet_id)">
+                            
+                            <template x-if="index > 0">
+                                <div class="thread-connector-up w-0.5 bg-[var(--thread-line)] absolute top-0 left-[36px] -translate-x-1/2 z-0"></div>
+                            </template>
+                            
+                            <div class="thread-connector-down w-0.5 bg-[var(--thread-line)] absolute bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
+                            
+                            <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, parent)">
+                                <span class="avatar-initial" x-text="getInitial(parent)"></span>
+                                <img :src="avatarUrl(parent.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                            </div>
+
+                            <div class="flex-1 min-w-0 z-10">
+                                <div class="tweet-byline flex items-center space-x-1 text-[15px]">
+                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, parent)" x-text="parent.author.display_name || 'Unknown'"></span>
+                                    <span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + (parent.author.username || 'unknown')"></span>
+                                    <span class="text-[var(--text-secondary)]">·</span>
+                                    <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
+                                        <div class="roll-inner">
+                                            <span class="roll-item hover:underline" x-html="dateLabel(parent.created_at)"></span>
+                                            <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(parent)"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <template x-if="getReplyRecipients(parent).length">
+                                    <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(parent)" @click="handleReplyRecipientClick($event)"></div>
+                                </template>
+
+                                <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(parent)" @click="handleTextClick($event)"></div>
+                                <div x-html="renderCard(parent)" @click.stop></div>
+                                <div x-html="renderMediaGrid(parent.media, 'feed', parent)" @click="stopMediaClick($event)"></div>
+                                <div x-html="renderQuoteCard(parent)" @click.stop="handleThreadParentQuoteClick($event, parent)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
+                                <div x-html="renderCommunityNote(parent.raw_json)" @click.stop></div>
+                                <div x-html="renderActionBar(parent)"></div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- MAIN TWEET -->
+                    <div class="thread-row px-4 pt-3 pb-3 tweet-border relative" data-thread-main="page">
+                        <template x-if="threadData.parents.length > 0">
+                            <div class="thread-connector-up absolute w-0.5 bg-[var(--thread-line)] top-0 left-[36px] -translate-x-1/2 z-0"></div>
+                        </template>
+
+                        <div class="tweet-detail-header flex space-x-2 relative z-10">
+                            <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden cursor-pointer" @click.stop="openProfileCard($event, threadData.main)">
+                                <span class="avatar-initial" x-text="getInitial(threadData.main)"></span>
+                                <img :src="avatarUrl(threadData.main.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                            </div>
+
+                            <div class="cursor-pointer flex-1" @click.stop="openProfileCard($event, threadData.main)">
+                                <div class="font-bold text-[var(--text-primary)] hover:underline" x-text="threadData.main.author.display_name || 'Unknown'"></div>
+                                <div class="text-[var(--text-secondary)]" x-text="'@' + (threadData.main.author.username || 'unknown')"></div>
+                            </div>
+                            <span class="tweet-detail-missing" x-html="missingBadge(threadData.main)" @click.stop="openTweetHistory(threadData.main.tweet_id)"></span>
+                            <div class="relative -mr-2 -mt-2 flex-shrink-0" @click.outside="closeTweetMenu('detail:' + threadData.main.tweet_id)" @keydown.escape.window="closeTweetMenu('detail:' + threadData.main.tweet_id)">
+                                <button type="button"
+                                        class="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)] select-none touch-manipulation"
+                                        aria-label="More actions" aria-haspopup="menu"
+                                        :aria-expanded="tweetMenuOpen === 'detail:' + threadData.main.tweet_id"
+                                        :class="{ 'opacity-0': tweetMenuOpen === 'detail:' + threadData.main.tweet_id }"
+                                        title="More actions (hold for Tags)"
+                                        @pointerdown.stop="startTweetMenuPress($event, threadData.main.tweet_id, threadData.main.media_tags)"
+                                        @pointerup.stop="cancelTweetMenuPress()"
+                                        @pointercancel.stop="cancelTweetMenuPress()"
+                                        @pointerleave="cancelTweetMenuPress()"
+                                        @click.stop="toggleTweetMenu('detail:' + threadData.main.tweet_id)">
+                                    <svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
+                                </button>
+                                <div x-show="tweetMenuOpen === 'detail:' + threadData.main.tweet_id" x-cloak
+                                     x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                                     x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+                                     class="absolute right-0 top-0 z-50 w-56 origin-top-right overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--dropdown-bg)] shadow-2xl"
+                                     role="menu">
+                                    <button type="button" role="menuitem" @click.stop="openTagsFromTweetMenu(threadData.main.tweet_id, threadData.main.media_tags)"
+                                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                                        <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M20.95 13.05 10.9 3H3v7.9l10.05 10.05a1.5 1.5 0 0 0 2.12 0l5.78-5.78a1.5 1.5 0 0 0 0-2.12ZM7.5 9A1.5 1.5 0 1 1 7.5 6a1.5 1.5 0 0 1 0 3Z"></path></svg>
+                                        <span>Tags</span>
+                                    </button>
+                                    <button type="button" role="menuitem" @click.stop="copyRawTweet(threadData.main)"
+                                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                                        <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M8 7V3h13v13h-4v5H3V7h5Zm2 0h7v7h2V5h-9v2Zm5 2H5v10h10V9Z"></path></svg>
+                                        <span>Copy raw</span>
+                                    </button>
+                                    <button type="button" role="menuitem" @click.stop="openTweetHistory(threadData.main.tweet_id)"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5"/><path d="m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z"/></svg>
+                        <span>History</span>
+                    </button>
+                    <button type="button" role="menuitem" x-show="hasNoteHistory(threadData.main)" @click.stop="openNoteHistory(threadData.main.tweet_id)"
+                                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg>
+                                        <span>Community notes</span>
+                                    </button>
+                                    <button type="button" role="menuitem" @click.stop="setTweetHidden(threadData.main.tweet_id, !threadData.main.hidden)"
+                                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                                        <svg x-show="!threadData.main.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.2M6.6 6.6C3.7 8.5 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"></path></svg>
+                                        <svg x-show="threadData.main.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                        <span x-text="threadData.main.hidden ? 'Unhide' : 'Hide'"></span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <template x-if="getReplyRecipients(threadData.main).length && threadData.parents.length === 0">
+                            <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-2" x-html="renderReplyRecipientContent(threadData.main)" @click="handleReplyRecipientClick($event)"></div>
+                        </template>
+
+                        <div class="tweet-text-detail text-[17px] whitespace-pre-wrap break-words" x-html="formatText(threadData.main, true)" @click="handleTextClick($event)"></div>
+                        <div x-html="renderCard(threadData.main, 'detail')" @click.stop></div>
+                        <div x-html="renderMediaGrid(threadData.main.media, 'detail', threadData.main)" @click="stopMediaClick($event)"></div>
+
+                        <!-- Quote Tweet -->
+                        <template x-if="getQuoteTweet(threadData?.main)">
+                            <div class="main-tweet-quote" :class="{ 'main-tweet-quote-after-single-media': (threadData.main.media || []).length === 1 }">
+                                <template x-if="isTombstone(getQuoteTweet(threadData?.main))">
+                                    <div x-html="renderQuotePlaceholder(getQuoteTweet(threadData?.main))" @click.stop></div>
+                                </template>
+                                <template x-if="!isTombstone(getQuoteTweet(threadData?.main))">
+                                    <div class="quote-card quote-card-detail mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :data-thread-id="getTweetId(getQuoteTweet(threadData?.main))" @click.stop="openThread(getTweetId(getQuoteTweet(threadData?.main)))">
+                                        <div class="quote-byline flex items-center space-x-1 text-[15px] mb-1">
+                                            <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                                <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(threadData?.main)).initial"></span>
+                                                <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(threadData?.main)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                            </div>
+                                            <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(threadData?.main)).name"></span>
+                                            <span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + getQuoteAuthor(getQuoteTweet(threadData?.main)).screen_name"></span>
+                                            <span class="text-[var(--text-secondary)]">·</span>
+                                            <span class="text-[var(--text-secondary)] tweet-byline-detail" x-html="dateLabel(getQuoteTweet(threadData?.main)?.legacy?.created_at || getQuoteTweet(threadData?.main)?.created_at)"></span>
+                                            <span class="quote-missing-slot" x-html="missingBadge(getQuoteTweet(threadData?.main))" @click.stop="openTweetHistory(getTweetId(getQuoteTweet(threadData?.main)))"></span>
+                                        </div>
+                                        
+                                        <template x-if="getReplyRecipients({raw_json: getQuoteTweet(threadData?.main)}).length">
+                                            <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(threadData?.main)})" @click="handleReplyRecipientClick($event)"></div>
+                                        </template>
+
+                                        <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(threadData?.main))" @click="handleTextClick($event)"></div>
+                                        <div x-html="renderCard({raw_json: getQuoteTweet(threadData?.main)})" @click.stop></div>
+                                        <div class="quote-media" x-html="renderMediaGrid(threadData?.main?.qt_media, (threadData.main.media || []).length ? 'quote-detail-expanded' : 'quote-detail', getQuoteTweet(threadData.main))" @click="stopMediaClick($event)"></div>
+                                        <div x-html="renderNestedQuote(getQuoteTweet(threadData?.main))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
+                                        <div x-html="renderCommunityNote(getQuoteTweet(threadData?.main), true, false, Boolean(threadData?.main?.qt_media?.length))" @click.stop></div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+
+                        <div x-html="renderCommunityNote(threadData.main.raw_json, false, true)" @click.stop></div>
+                        <div class="tweet-timestamp text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                            <div class="tweet-timestamp-meta flex flex-wrap items-center gap-x-1">
+                                <div class="roll-wrapper cursor-default">
+                                    <div class="roll-inner">
+                                        <span class="roll-item" x-html="dateLabel(threadData.main.created_at, true)"></span>
+                                        <span class="roll-item text-[var(--accent-color)] font-medium" x-text="formatSyncDate(threadData.main)"></span>
+                                    </div>
+                                </div>
+                                <template x-if="Number(threadData.main.raw_json?.views?.count) > 0">
+                                    <span class="tweet-detail-views"><span>·</span> <span class="tweet-detail-views-count" x-text="formatCompactCount(threadData.main.raw_json.views.count)"></span> <span>Views</span></span>
+                                </template>
+                            </div>
+                            <template x-if="threadData?.main?.local_quote_count > 0">
+                                <button @click="openQuotes(threadData.main.tweet_id)" class="tweet-detail-quotes text-[var(--accent-color)] hover:underline text-[15px] font-medium transition">
+                                    Browse <span x-text="threadData.main.local_quote_count"></span> Quote Tweets
+                                </button>
+                            </template>
+                        </div>
+                        
+                        <div x-html="renderActionBar(threadData.main, true)"></div>
+                    </div>
+
+                    <!-- CHILDREN / REPLIES -->
+                    <template x-if="threadData.partial">
+                        <div class="p-6 text-center text-[var(--text-secondary)]" role="status">Loading conversation...</div>
+                    </template>
+                    <template x-for="child in visibleReplies(threadReplies(threadData, threadOtherReplies), threadReplyLimit)" :key="child.tweet_id">
+                        <div class="tweet-border">
+                            <template x-if="child.tweet_id === firstOtherReplyId(threadData, threadOtherReplies)">
+                                <h2 class="px-4 pt-4 pb-1 text-xl font-extrabold text-[var(--text-primary)]">Other replies</h2>
+                            </template>
+                            <!-- Direct Reply Card -->
+                            <div class="thread-row px-4 py-3 flex relative cursor-pointer hover-bg" :data-thread-id="child.tweet_id" @click="openThread(child.tweet_id)">
+                                <!-- Connecting line down to nested replies (legacy op_replies key) -->
+                                <template x-if="child.op_replies && child.op_replies.length > 0">
+                                    <div class="thread-connector-down w-0.5 bg-[var(--thread-line)] absolute bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
+                                </template>
+                                
+                                <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, child)">
+                                    <span class="avatar-initial" x-text="getInitial(child)"></span>
+                                    <img :src="avatarUrl(child.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                </div>
+
+                                <div class="flex-1 min-w-0 z-10">
+                                    <div class="tweet-byline flex items-center space-x-1 text-[15px]">
+                                        <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, child)" x-text="child.author.display_name || 'Unknown'"></span>
+                                        <span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + (child.author.username || 'unknown')"></span>
+                                        <span class="text-[var(--text-secondary)]">·</span>
+                                        <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
+                                            <div class="roll-inner">
+                                                <span class="roll-item hover:underline" x-html="dateLabel(child.created_at)"></span>
+                                                <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(child)"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <template x-if="getReplyRecipients(child).length > 1 || (getReplyTo(child) && getReplyTo(child) !== threadData?.main?.author?.username)">
+                                        <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(child)" @click="handleReplyRecipientClick($event)"></div>
+                                    </template>
+
+                                    <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(child)" @click="handleTextClick($event)"></div>
+                                    <div x-html="renderCard(child)" @click.stop></div>
+                                    <div x-html="renderMediaGrid(child.media, 'feed', child)" @click="stopMediaClick($event)"></div>
+
+                                    <!-- Quote Tweet -->
+                                    <template x-if="getQuoteTweet(child)">
+                                        <div>
+                                            <template x-if="isTombstone(getQuoteTweet(child))">
+                                                <div x-html="renderQuotePlaceholder(getQuoteTweet(child))" @click.stop></div>
+                                            </template>
+                                            <template x-if="!isTombstone(getQuoteTweet(child))">
+                                                <div class="quote-card mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-compact': isMediaQuotingMedia(child) }" :data-thread-id="getTweetId(getQuoteTweet(child))" @click.stop="openThread(getTweetId(getQuoteTweet(child)))">
+                                                    <div class="quote-byline flex items-center space-x-1 text-[15px] mb-1">
+                                                        <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                                            <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(child)).initial"></span>
+                                                            <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(child)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                                        </div>
+                                                        <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(child)).name"></span>
+                                                        <span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + getQuoteAuthor(getQuoteTweet(child)).screen_name"></span>
+                                                        <span class="text-[var(--text-secondary)]">·</span>
+                                                        <span class="text-[var(--text-secondary)] tweet-byline-detail" x-html="dateLabel(getQuoteTweet(child)?.legacy?.created_at || getQuoteTweet(child)?.created_at)"></span>
+                                                    </div>
+                                                    <template x-if="getReplyRecipients({raw_json: getQuoteTweet(child)}).length">
+                                                        <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(child)})" @click="handleReplyRecipientClick($event)"></div>
+                                                    </template>
+                                                    <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(child), isMediaQuotingMedia(child))" @click="handleTextClick($event)"></div>
+                                                    <div x-html="renderCard({raw_json: getQuoteTweet(child)})" @click.stop></div>
+                                                    <div class="quote-media" x-html="isMediaQuotingMedia(child) ? renderQuoteThumbnail(child.qt_media) : renderMediaGrid(child.qt_media, 'quote', getQuoteTweet(child))" @click="if (!isMediaQuotingMedia(child)) stopMediaClick($event)"></div>
+                                                    <div x-html="renderNestedQuote(getQuoteTweet(child))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
+                                                    <div x-html="renderCommunityNote(getQuoteTweet(child), true, false, Boolean(child?.qt_media?.length))" @click.stop></div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+
+                                    <div x-html="renderCommunityNote(child.raw_json)" @click.stop></div>
+                                    <div x-html="renderActionBar(child)"></div>
+                                </div>
+                            </div>
+
+                            <!-- Replies to this direct reply (threaded directly underneath) -->
+                            <template x-if="child.op_replies && child.op_replies.length > 0">
+                                <div>
+                                    <template x-for="(reply, rIdx) in child.op_replies" :key="reply.tweet_id">
+                                        <div class="thread-row thread-nested-row px-4 pb-3 flex relative cursor-pointer hover-bg" :style="{ marginLeft: nestedReplyIndent(reply) + 'px' }" :data-thread-id="reply.tweet_id" @click="openThread(reply.tweet_id)">
+                                            
+                                            <!-- Top Line Bridge from Child -->
+                                            <div class="thread-connector-up w-0.5 bg-[var(--thread-line)] absolute top-0 left-[36px] -translate-x-1/2 z-0"></div>
+                                            
+                                            <!-- Bottom line (only if more nested replies follow) -->
+                                            <template x-if="rIdx < child.op_replies.length - 1">
+                                                <div class="thread-connector-down w-0.5 bg-[var(--thread-line)] absolute bottom-0 left-[36px] -translate-x-1/2 z-0"></div>
+                                            </template>
+                                            
+                                            <!-- Avatar -->
+                                            <div class="avatar w-10 h-10 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase overflow-hidden z-10 mr-2" @click.stop="openProfileCard($event, reply)">
+                                                <span class="avatar-initial" x-text="getInitial(reply)"></span>
+                                                <img :src="avatarUrl(reply.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                            </div>
+
+                                            <div class="flex-1 min-w-0 z-10">
+                                                <div class="tweet-byline flex items-center space-x-1 text-[15px]">
+                                                    <span class="font-bold text-[var(--text-primary)] truncate hover:underline tweet-byline-name" @click.stop="openProfileCard($event, reply)" x-text="reply.author.display_name || 'Unknown'"></span>
+                                                    <span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + (reply.author.username || 'unknown')"></span>
+                                                    <span class="text-[var(--text-secondary)]">·</span>
+                                                    <div class="roll-wrapper text-[var(--text-secondary)] tweet-byline-detail" @click.stop>
+                                                        <div class="roll-inner">
+                                                            <span class="roll-item hover:underline" x-html="dateLabel(reply.created_at)"></span>
+                                                            <span class="roll-item text-[var(--accent-color)] text-[13px] font-medium" x-text="formatSyncDate(reply)"></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <template x-if="getReplyRecipients(reply).length">
+                                                    <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(reply)" @click="handleReplyRecipientClick($event)"></div>
+                                                </template>
+
+                                                <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(reply)" @click="handleTextClick($event)"></div>
+                                                <div x-html="renderCard(reply)" @click.stop></div>
+                                                <div x-html="renderMediaGrid(reply.media, 'feed', reply)" @click="stopMediaClick($event)"></div>
+
+                                                <!-- Quote Tweet -->
+                                                <template x-if="getQuoteTweet(reply)">
+                                                    <div>
+                                                        <template x-if="isTombstone(getQuoteTweet(reply))">
+                                                            <div x-html="renderQuotePlaceholder(getQuoteTweet(reply))" @click.stop></div>
+                                                        </template>
+                                                        <template x-if="!isTombstone(getQuoteTweet(reply))">
+                                                            <div class="quote-card mt-3 border border-[var(--border-color)] rounded-xl p-3 hover-bg transition cursor-pointer" :class="{ 'quote-compact': isMediaQuotingMedia(reply) }" :data-thread-id="getTweetId(getQuoteTweet(reply))" @click.stop="openThread(getTweetId(getQuoteTweet(reply)))">
+                                                                <div class="quote-byline flex items-center space-x-1 text-[15px] mb-1">
+                                                                    <div class="avatar w-6 h-6 rounded-full flex-shrink-0 relative bg-[var(--gray-700)] flex items-center justify-center font-bold text-[var(--white-icon)] uppercase text-xs overflow-hidden">
+                                                                        <span class="avatar-initial" x-text="getQuoteAuthor(getQuoteTweet(reply)).initial"></span>
+                                                                        <img :src="avatarUrl(getQuoteAuthor(getQuoteTweet(reply)).id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                                                                    </div>
+                                                                    <span class="font-bold text-[var(--text-primary)] truncate tweet-byline-name" x-text="getQuoteAuthor(getQuoteTweet(reply)).name"></span>
+                                                                    <span class="text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + getQuoteAuthor(getQuoteTweet(reply)).screen_name"></span>
+                                                                    <span class="text-[var(--text-secondary)]">·</span>
+                                                                    <span class="text-[var(--text-secondary)] tweet-byline-detail" x-html="dateLabel(getQuoteTweet(reply)?.legacy?.created_at || getQuoteTweet(reply)?.created_at)"></span>
+                                                                </div>
+                                                                <template x-if="getReplyRecipients({raw_json: getQuoteTweet(reply)}).length">
+                                                                    <div class="quote-reply tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent({raw_json: getQuoteTweet(reply)})" @click="handleReplyRecipientClick($event)"></div>
+                                                                </template>
+                                                                <div class="quote-text text-[15px] whitespace-pre-wrap leading-normal break-words" x-html="formatText(getQuoteTweet(reply), isMediaQuotingMedia(reply))" @click="handleTextClick($event)"></div>
+                                                                <div x-html="renderCard({raw_json: getQuoteTweet(reply)})" @click.stop></div>
+                                                                <div class="quote-media" x-html="isMediaQuotingMedia(reply) ? renderQuoteThumbnail(reply.qt_media) : renderMediaGrid(reply.qt_media, 'quote', getQuoteTweet(reply))" @click="if (!isMediaQuotingMedia(reply)) stopMediaClick($event)"></div>
+                                                                <div x-html="renderNestedQuote(getQuoteTweet(reply))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>
+                                                                <div x-html="renderCommunityNote(getQuoteTweet(reply), true, false, Boolean(reply?.qt_media?.length))" @click.stop></div>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+
+                                                <div x-html="renderCommunityNote(reply.raw_json)" @click.stop></div>
+                                                <div x-html="renderActionBar(reply)"></div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <div x-show="hasHiddenReplies(threadReplies(threadData, threadOtherReplies), threadReplyLimit)" x-intersect="showMoreReplies()" class="p-6 text-center">
+                        <button type="button" @click="showMoreReplies()" class="text-[var(--accent-color)] hover:underline">Show more replies</button>
+                    </div>
+                    <div x-show="hasOtherReplies(threadData, threadReplyLimit, threadOtherReplies)" class="tweet-border">
+                        <button type="button" @click="showOtherReplies()" class="w-full px-4 py-4 text-center text-[15px] text-[var(--accent-color)] hover-bg">Show other replies</button>
+                    </div>
+                    <template x-if="threadData.reply_tree_truncated">
+                        <div class="px-4 py-3 text-[13px] text-[var(--text-secondary)] border-t border-[var(--border-color)]">
+                            This conversation has more saved replies than can be shown at once. Open a later reply to continue.
+                        </div>
+                    </template>
+                </div>
+            </template>
+            <div class="thread-bottom-space" :style="threadBottomSpace ? `height: ${threadBottomSpace}px` : ''" aria-hidden="true"></div>
+        </div>
+        <!-- QUOTES VIEW (single-column only) -->
+        <div x-show="viewMode === 'quotes' && !(splitPanel && panelMode)" x-cloak class="pb-20">
+            <template x-if="quotesLoading && quotesList.length === 0">
+                <div class="p-8 text-center text-[var(--text-secondary)]">Loading...</div>
+            </template>
+            
+            <template x-if="!quotesLoading && quotesList.length === 0">
+                <div class="p-8 text-center text-[var(--text-secondary)]">No quote tweets found.</div>
+            </template>
+            
+            <template x-if="threadData && threadData.main">
+                <div class="cursor-pointer transition border-b border-[var(--border-color)] pb-3 p-4">
+                    <div class="flex flex-col relative">
+                        <div class="flex space-x-2">
+                            <div class="flex-shrink-0 relative z-10 w-10">
+                                <img :src="avatarUrl(threadData.main.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image w-10 h-10 rounded-full bg-[var(--bg-primary)]" loading="lazy">
+                            </div>
+                            <div class="flex-1 min-w-0 pb-1">
+                                <div class="flex items-center justify-between">
+                                    <div class="tweet-byline flex items-center space-x-1 overflow-hidden">
+                                        <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="threadData.main.author.display_name" @click.stop="openProfileCard($event, threadData.main)"></span>
+                                        <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + threadData.main.author.username"></span>
+                                        <span class="text-[var(--text-secondary)] px-1">·</span>
+                                        <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(threadData.main.created_at)"></span>
+                                    </div>
+                                </div>
+                                <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(threadData.main)" @click="handleTextClick($event)"></div>
+                                <div x-html="renderMediaGrid(threadData.main.media, 'feed', threadData.main)" @click="stopMediaClick($event)"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+            
+            <template x-for="tweet in quotesList" :key="tweet.tweet_id">
+                <div class="tweet-border cursor-pointer hover-bg transition p-4" :data-thread-id="tweet.tweet_id" @click="openThread(tweet.tweet_id)">
+                    <div class="flex space-x-2">
+                        <img :src="avatarUrl(tweet.author.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image w-10 h-10 rounded-full flex-shrink-0 bg-[var(--bg-primary)]" loading="lazy">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between">
+                                <div class="tweet-byline flex items-center space-x-1 overflow-hidden">
+                                    <span class="font-bold text-[15px] truncate text-[var(--text-primary)] hover:underline tweet-byline-name" x-text="tweet.author.display_name" @click.stop="openProfileCard($event, tweet)"></span>
+                                    <span class="text-[15px] text-[var(--text-secondary)] tweet-byline-detail tweet-byline-handle" x-text="'@' + tweet.author.username"></span>
+                                    <span class="text-[var(--text-secondary)] px-1">·</span>
+                                    <span class="text-[var(--text-secondary)] hover:underline tweet-byline-detail" x-text="formatDate(tweet.created_at)"></span>
+                                </div>
+                            </div>
+                            
+                            <template x-if="getReplyRecipients(tweet).length">
+                                <div class="tweet-reply-context text-[15px] text-[var(--text-secondary)] mb-1" x-html="renderReplyRecipientContent(tweet)" @click="handleReplyRecipientClick($event)"></div>
+                            </template>
+
+                            <div class="tweet-text text-[15px] whitespace-pre-wrap break-words" x-html="formatText(tweet)" @click="handleTextClick($event)"></div>
+                            <div x-html="renderCard(tweet)" @click.stop></div>
+                            <div x-html="renderMediaGrid(tweet.media, 'feed', tweet)" @click="stopMediaClick($event)"></div>
+                            <div x-html="renderCommunityNote(tweet.raw_json)" @click.stop></div>
+                            <div x-html="renderActionBar(tweet)"></div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+            
+            <div x-intersect.margin.600px="if(!quotesLoadingMore && quotesPage < quotesTotalPages) { quotesPage++; fetchQuotes(true); }" class="h-10"></div>
+            <template x-if="quotesLoadingMore">
+                <div class="p-4 text-center text-[var(--text-secondary)]">Loading more...</div>
+            </template>
+        </div>
+        </div><!-- /detail-body -->
+        </div><!-- /detail-stage -->
+        <!-- The post layer's top bar sits outside its scroller, so it can stay put
+             while the post slides, as X's does. -->
+        <header x-cloak x-show="detailLayer && detailLayerOpen" data-video-occluder class="nook-header detail-layer-header">
+            <div class="nook-title-row">
+                <button @click="goBack()" class="nook-icon-button nook-back" type="button" aria-label="Back"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
+</svg></button>
+                <div class="nook-title-block">
+                    <div class="nook-title-line"><h2 class="detail-layer-title" x-text="viewMode === 'quotes' ? 'Quote tweets' : (articleForTweet(threadData?.main) ? 'Article' : 'Tweet')"></h2></div>
+                </div>
+                <div class="nook-utilities">
+                    <button x-cloak x-show="viewMode === 'thread' && articleForTweet(threadData?.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg><span class="article-focus-label">Focus mode</span></button>
+                </div>
+            </div>
+        </header>
+        <!-- While a post slides, the view it covers or uncovers: a still copy of the
+             previous post, under a shade that also dims the feed. -->
+        <div x-ignore data-detail-snapshot class="detail-underlay" aria-hidden="true"></div>
+        <div x-ref="detailShade" class="detail-shade" aria-hidden="true"></div>

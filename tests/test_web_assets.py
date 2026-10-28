@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from tweetnook.web.page import assemble_page
+
 ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = ROOT / "tweetnook" / "web"
 NODE_TEST = ROOT / "tests" / "js" / "test_web_assets.cjs"
@@ -30,7 +32,7 @@ def test_browser_javascript_unit_suite():
 
 
 def test_index_loads_local_assets_in_dependency_order():
-    html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    html = assemble_page(WEB_DIR)[0]
     themes = html.index('<script src="/static/js/themes.js"></script>')
     autocomplete = html.index('<script src="/static/js/autocomplete.js"></script>')
     completion = html.index('<script src="/static/js/setup-completion.js"></script>')

@@ -12,8 +12,9 @@ const web = process.env.PLAYBACK_WEB_DIR ? path.resolve(process.env.PLAYBACK_WEB
 const out = process.env.PLAYBACK_EVIDENCE_DIR || fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'tweetnook-playback-'));
 fs.mkdirSync(out, {recursive:true});
 const phase = process.argv[2] || 'after';
-// The page's scripts up to app.js, in index.html order, as tests/js/page_scripts.cjs reads them.
-const pageScripts = [...fs.readFileSync(path.join(web,'index.html'),'utf8').matchAll(/<script\b[^>]*\bsrc="\/static\/js\/([^"?]+)"/g)].map(match=>match[1]);
+// The page's scripts up to app.js, in page order, as tests/js/page_scripts.cjs reads them.
+const { pageHtml } = require('../../tests/js/page_scripts.cjs');
+const pageScripts = [...pageHtml(web).matchAll(/<script\b[^>]*\bsrc="\/static\/js\/([^"?]+)"/g)].map(match=>match[1]);
 const defaults = vm.runInNewContext(pageScripts.slice(0,pageScripts.indexOf('app.js')+1).map(name=>fs.readFileSync(path.join(web,'static/js',name),'utf8')).join('\n')+'\ntweetApp()', {window:{}});
 let scenario;
 const tweet = (id,media=[])=>({tweet_id:String(id), text: `Playback fixture ${id}`, created_at:'2026-09-05T00:00:00Z', author:{id:'42',username:'fixture',display_name:'Offline fixture'},collections:['like'],media,raw_json:{}});
@@ -28,7 +29,8 @@ const server=http.createServer((req,res)=>{
  else if(route==='/api/activity/status')data={active:false};
  else if(route.startsWith('/api/'))data={};
  if(data!==undefined){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;}
- let file=route==='/'?path.join(web,'index.html'):route.startsWith('/fixture/')?path.join(root,'demo/demo media',path.basename(route)):path.resolve(web,'.'+route);
+ if(route==='/'){res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});res.end(pageHtml(web));return;}
+ let file=route.startsWith('/fixture/')?path.join(root,'demo/demo media',path.basename(route)):path.resolve(web,'.'+route);
  if(fs.existsSync(file)&&fs.statSync(file).isFile()){
   if(scenario.popin&&route.endsWith('.mp4')&&!req.fixtureDelayed){req.fixtureDelayed=true;setTimeout(()=>server.emit('request',req,res),120);return;}
   const stat=fs.statSync(file);const range=req.headers.range;const headers={'Content-Type':{'.html':'text/html','.js':'text/javascript','.css':'text/css','.mp4':'video/mp4','.jpg':'image/jpeg','.jpeg':'image/jpeg'}[path.extname(file)]||'application/octet-stream','Cache-Control':'no-store','Accept-Ranges':'bytes'};

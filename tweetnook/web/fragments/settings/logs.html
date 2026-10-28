@@ -1,0 +1,55 @@
+                    <!-- Activity logs -->
+                    <!-- Runs by day; a run opens its log in the detail pane -->
+                    <div class="nook-setting-body nook-logs-page" x-show="settingsTab === 'logs'" x-data="nookLogsPage()" @keydown.escape="if (nookLogRun) { $event.stopPropagation(); back(); }">
+                        <div x-show="!nookLogRun">
+                            <div x-show="activityRunsLoading && !activityRuns.length" class="nook-empty"><span>Loading logs…</span></div>
+                            <div x-show="!activityRunsLoading && !activityRuns.length" class="nook-empty"><strong>No logs yet</strong><span>Runs appear here after your first sync or import.</span></div>
+                            <template x-for="run in activityRuns" :key="run.run_id">
+                                <button type="button" class="nook-log-row" :data-run="run.run_id" @click="open(run)" :aria-label="nookRunTitle(run.title) + ', ' + metaText(run)">
+                                    <span class="nook-log-copy">
+                                        <strong x-text="nookRunTitle(run.title)"></strong>
+                                        <span class="nook-log-meta"><span x-text="originLabel(run.origin)"></span> · <span class="nook-log-state" :class="'is-' + statusKind(run)" x-text="statusLabel(run)"></span> · <span x-text="whenLabel(run.started_at)"></span><span x-show="durationLabel(run)" x-text="' · ' + durationLabel(run)"></span></span>
+                                    </span>
+                                    <span class="nook-category-arrow"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M14.586 12L7.543 4.96l1.414-1.42L17.414 12l-8.457 8.46-1.414-1.42L14.586 12z" />
+</svg></span>
+                                </button>
+                            </template>
+                        </div>
+
+                        <template x-if="nookLogRun">
+                            <div class="nook-log-detail">
+                                <p class="nook-log-summary" x-show="nookLogRun.summary" x-text="nookLogRun.summary"></p>
+                                <p class="nook-log-meta"><span x-text="originLabel(nookLogRun.origin)"></span> · <span class="nook-log-state" :class="'is-' + statusKind(nookLogRun)" x-text="statusLabel(nookLogRun)"></span> · <span x-text="fullTime(nookLogRun.started_at)"></span><span x-show="durationLabel(nookLogRun)" x-text="' · ' + durationLabel(nookLogRun)"></span><span x-show="nookLogRun.exit_code" x-text="' · exit code ' + nookLogRun.exit_code"></span></p>
+
+                                <div class="nook-log-toolbar">
+                                    <span class="nook-log-counts">
+                                        <span x-text="lineCountLabel()"></span>
+                                        <button type="button" class="is-error" x-show="countOf('error')" @click="jumpTo('error')" x-text="plural(countOf('error'), 'error')"></button>
+                                        <button type="button" class="is-warning" x-show="countOf('warning')" @click="jumpTo('warning')" x-text="plural(countOf('warning'), 'warning')"></button>
+                                    </span>
+                                    <span class="nook-log-actions">
+                                        <button type="button" class="nook-secondary-button" :disabled="!nookLogLines?.length" @click="copy()" x-text="copied ? 'Copied' : 'Copy'"></button>
+                                        <button type="button" class="nook-secondary-button" :disabled="!nookLogLines?.length" @click="download()">Download</button>
+                                    </span>
+                                </div>
+
+                                <div class="nook-log-panel" :class="{ 'has-time': hasTime }" role="log" aria-label="Run output" tabindex="0">
+                                    <div x-show="nookLogLines === null" class="nook-log-placeholder">Loading log…</div>
+                                    <div x-show="nookLogLines && !nookLogLines.length" class="nook-log-placeholder">No log output.</div>
+                                    <template x-for="item in items()" :key="item.key">
+                                        <div>
+                                            <template x-if="item.type === 'fold'">
+                                                <button type="button" class="nook-log-fold" @click="toggleFold(item.id)" :aria-expanded="openFolds.includes(item.id)"><span aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M14.586 12L7.543 4.96l1.414-1.42L17.414 12l-8.457 8.46-1.414-1.42L14.586 12z" />
+</svg></span><span x-text="foldLabel(item)"></span></button>
+                                            </template>
+                                            <template x-if="item.type === 'line'">
+                                                <div class="nook-log-line" :class="['is-' + item.line.tone, item.line.index === flash ? 'is-flash' : '']" :data-line="item.line.index"><time x-show="hasTime" x-text="item.line.time"></time><span x-text="item.line.text"></span></div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>

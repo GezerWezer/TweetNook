@@ -1,9 +1,51 @@
 /**
- * Tags: the dialog that shows and edits one post's tags and description, tag
- * suggestions, and loading the archive's tag list for the Tags settings page.
+ * Tags: the archive's tag list for the Tags settings page, and the dialog that shows
+ * and edits one post's tags and description (tagDialog(), its own component).
  */
 
 function tagMethods() {
+    return {
+        globalTags: [],
+        globalTagsLoading: false,
+
+        openTagsFromTweetMenu(tweetId, tagsData) {
+            this.closeTweetMenu();
+            this.openTagModal(tweetId, tagsData);
+        },
+
+        // The app can't reach into the dialog's component, so it asks with an event.
+        openTagModal(tweetId, tagsData) {
+            this.closeTweetMenu();
+            window.dispatchEvent(new CustomEvent('open-tag-dialog', { detail: { tweetId, tagsData } }));
+        },
+
+        updateTweetTagData(tweetId, tagData) {
+            this.updateLoadedTweet(tweetId, tweet => {
+                tweet.media_tags = tagData ? {
+                    description: tagData.description,
+                    tags: [...tagData.tags],
+                } : null;
+            });
+        },
+
+        async fetchGlobalTags() {
+            this.globalTagsLoading = true;
+            try {
+                const res = await fetch('/api/tags/stats');
+                if (res.ok) {
+                    const data = await res.json();
+                    this.globalTags = data.tags;
+                }
+            } catch(e) { console.error(e); }
+            finally { this.globalTagsLoading = false; }
+        },
+    };
+}
+
+// The tag dialog (x-data="tagDialog()"), opened by the app's open-tag-dialog event.
+function tagDialog() {
+    let closeTimer = null;
+    let autocompleteRequest = 0;
     return {
         tagModalOpen: false,
         tagModalData: null,
@@ -22,21 +64,18 @@ function tagMethods() {
         tagConfirmError: '',
         tagFocusTarget: 'tags',
 
-        globalTags: [],
-        globalTagsLoading: false,
-
-        openTagsFromTweetMenu(tweetId, tagsData) {
-            this.closeTweetMenu();
-            this.openTagModal(tweetId, tagsData);
+        init() {
+            window.addEventListener('open-tag-dialog', event => {
+                this.showTagDialog(event.detail.tweetId, event.detail.tagsData);
+            });
         },
 
-        openTagModal(tweetId, tagsData) {
+        showTagDialog(tweetId, tagsData) {
             const normalizedData = {
                 description: typeof tagsData?.description === 'string' ? tagsData.description : '',
                 tags: Array.isArray(tagsData?.tags) ? [...tagsData.tags] : [],
             };
-            if (this._tagModalCloseTimer) clearTimeout(this._tagModalCloseTimer);
-            this.closeTweetMenu();
+            if (closeTimer) clearTimeout(closeTimer);
             this.tagModalTweetId = tweetId;
             this.tagModalData = normalizedData;
             this.isEditingTags = false;
@@ -54,11 +93,11 @@ function tagMethods() {
             this.tagModalOpen = true;
             document.body.style.overflow = 'hidden';
         },
-        
+
         closeTagModal() {
             this.tagModalOpen = false;
             this.tagDeleteConfirm = false;
-            this._tagModalCloseTimer = setTimeout(() => {
+            closeTimer = setTimeout(() => {
                 this.tagModalData = null;
                 this.tagModalTweetId = null;
                 this.isEditingTags = false;
@@ -67,17 +106,8 @@ function tagMethods() {
                 this.tagSearchDropdown = false;
                 this.tagSearchQuery = '';
                 document.body.style.overflow = '';
-                this._tagModalCloseTimer = null;
+                closeTimer = null;
             }, 300);
-        },
-
-        updateTweetTagData(tweetId, tagData) {
-            this.updateLoadedTweet(tweetId, tweet => {
-                tweet.media_tags = tagData ? {
-                    description: tagData.description,
-                    tags: [...tagData.tags],
-                } : null;
-            });
         },
 
         tagModalHasContent() {
@@ -287,11 +317,10 @@ function tagMethods() {
         },
 
         async fetchTagAutocomplete(query) {
-            const request = (this._tagAutocompleteRequest || 0) + 1;
-            this._tagAutocompleteRequest = request;
+            const request = ++autocompleteRequest;
             try {
                 const res = await fetch(`/api/tags/autocomplete?q=${encodeURIComponent(query.trim())}`);
-                if (res.ok && request === this._tagAutocompleteRequest) {
+                if (res.ok && request === autocompleteRequest) {
                     const data = await res.json();
                     this.tagAutocompleteOptions = data.tags;
                     if (this.tagOptionIndex >= this.tagSuggestions().length) this.tagOptionIndex = -1;
@@ -356,18 +385,6 @@ function tagMethods() {
             } finally {
                 this.tagSaving = false;
             }
-        },
-        
-        async fetchGlobalTags() {
-            this.globalTagsLoading = true;
-            try {
-                const res = await fetch('/api/tags/stats');
-                if (res.ok) {
-                    const data = await res.json();
-                    this.globalTags = data.tags;
-                }
-            } catch(e) { console.error(e); }
-            finally { this.globalTagsLoading = false; }
         },
     };
 }

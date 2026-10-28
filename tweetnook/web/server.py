@@ -27,6 +27,7 @@ from tweetnook.storage import open_archive_store
 from tweetnook.web.avatar_cache import AvatarCacheManager
 from tweetnook.web.deps import WebSessionMiddleware, server_state, verify_credentials
 from tweetnook.web.notices import NoticeStore
+from tweetnook.web.page import assemble_page
 from tweetnook.web.routes.activity import router as activity_router
 from tweetnook.web.routes.automated_tagging import router as automated_tagging_router
 from tweetnook.web.routes.avatars import router as avatars_router
@@ -341,18 +342,17 @@ _index_cache: tuple[tuple[tuple[Path, int], ...], bytes, str, dict[str, str]] | 
 
 
 def _versioned_index() -> tuple[bytes, str, dict[str, str]]:
-    """Return index.html with content-hashed asset URLs, its ETag, and asset versions.
+    """Return the assembled page with content-hashed asset URLs, its ETag, and asset versions.
 
-    Rebuilt whenever the document or a referenced asset changes on disk, so an
-    upgrade or edit never serves stale cached scripts or styles.
+    Rebuilt whenever the shell, a fragment or a referenced asset changes on disk,
+    so an upgrade or edit never serves stale cached markup, scripts or styles.
     """
     global _index_cache
     with _index_lock:
         cached = _index_cache
         if cached is not None and _unchanged(cached[0]):
             return cached[1], cached[2], cached[3]
-        html_path = WEB_ROOT / "index.html"
-        stamps = [(html_path, html_path.stat().st_mtime_ns)]
+        page, stamps = assemble_page(WEB_ROOT)
         versions: dict[str, str] = {}
 
         def version(match: re.Match[str]) -> str:
@@ -367,7 +367,7 @@ def _versioned_index() -> tuple[bytes, str, dict[str, str]]:
             versions[asset] = digest
             return f"{match.group(1)}?v={digest}{match.group(3)}"
 
-        body = _STATIC_REFERENCE.sub(version, html_path.read_text(encoding="utf-8")).encode()
+        body = _STATIC_REFERENCE.sub(version, page).encode()
         etag = f'"{hashlib.sha256(body).hexdigest()[:32]}"'
         _index_cache = (tuple(stamps), body, etag, versions)
         return body, etag, versions

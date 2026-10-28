@@ -1,0 +1,528 @@
+        <!-- Setup Modal -->
+        <div x-data="setupDialog()" x-show="showSetupModal"
+             @keydown.window.escape="closeSetup()"
+             class="settings-modal-backdrop fixed inset-0 z-[100] flex justify-center items-center"
+             x-cloak
+             @click.self="closeSetup()">
+            <div class="setup-modal-shell bg-[var(--bg-primary)] w-full h-full flex flex-col overflow-hidden relative"
+                 :class="{ 'is-complete': setupCompletionVisible, 'is-appearance': setupFlowStep === 4 && !setupCompletionVisible }"
+                 @keydown.tab="if (setupCompletionVisible) nookTrapFocus($event, $event.currentTarget)"
+                 role="dialog" aria-modal="true" aria-labelledby="setup-modal-title">
+                    <!-- Focused first-run setup in its own Twitter/X-style modal -->
+                    <div class="setup-modal-header" x-show="showSetupModal">
+                        <button x-show="!setupForced" @click="closeSetup()" class="setup-modal-close" aria-label="Close setup">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
+                        </button>
+                        <h1 id="setup-modal-title" class="setup-modal-heading">Setup</h1>
+                        <span x-show="setupReplayConnected" x-cloak class="nook-demo-badge setup-replay-badge">Replay mode</span>
+                        <span class="setup-modal-step" x-show="!setupCompletionVisible && (setupForced || setupRerun || !setupData?.completed)" x-text="`Step ${setupFlowStep} of ${SETUP_STEP_COUNT}`"></span>
+                    </div>
+                    <div class="setup-desktop-required" role="note">
+                        <div class="setup-desktop-required-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24"><path d="M4 4.75A2.75 2.75 0 0 1 6.75 2h10.5A2.75 2.75 0 0 1 20 4.75v10.5A2.75 2.75 0 0 1 17.25 18h-4.5v2H16a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3.25v-2h-4.5A2.75 2.75 0 0 1 4 15.25V4.75ZM6.75 4a.75.75 0 0 0-.75.75v10.5c0 .414.336.75.75.75h10.5a.75.75 0 0 0 .75-.75V4.75a.75.75 0 0 0-.75-.75H6.75Z"></path></svg>
+                        </div>
+                        <h2>Continue setup on desktop</h2>
+                        <p>Open TweetNook on a desktop computer to import your archive, connect Twitter/X, and finish setup.</p>
+                    </div>
+                    <div class="setup-modal-progress" x-show="showSetupModal && !setupCompletionVisible && (setupForced || setupRerun || !setupData?.completed)" aria-hidden="true">
+                        <template x-for="step in SETUP_STEP_COUNT" :key="step">
+                            <span :class="setupFlowStep >= step ? 'is-complete' : ''"></span>
+                        </template>
+                    </div>
+                    <div class="setup-modal-content flex-1 overflow-y-auto" x-show="showSetupModal">
+                        <template x-if="!setupData || !setupAuth">
+                            <div class="flex flex-col items-center justify-center p-12 gap-3">
+                                <div class="setup-spinner"></div>
+                                <span class="text-sm text-[var(--text-secondary)]">Loading setup…</span>
+                            </div>
+                        </template>
+                        <template x-if="setupData && setupAuth">
+                            <div class="setup-modal-inner">
+                                <p class="setup-flow-error" x-show="setupError" x-text="setupError" role="alert"></p>
+                                <div x-show="!setupCompletionVisible && (setupForced || setupRerun || !setupData.completed)">
+                                <!-- ── Step 1 · Twitter/X Archive Import ─────────────────────── -->
+                                <div class="setup-step setup-flow-panel" x-show="setupFlowStep === 1"
+                                     :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
+                                     x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
+                                    <div class="setup-step-body">
+                                        <div class="setup-step-header">
+                                            <div class="flex-1 min-w-0">
+                                                <h2 id="setup-step-title-1" class="setup-modal-title" tabindex="-1">Bring your archive with you</h2>
+                                                <p class="setup-modal-description">
+                                                    Start with your official Twitter/X archive for the most complete history.
+                                                    <a href="https://help.x.com/en/managing-your-account/how-to-download-your-x-archive" target="_blank" rel="noopener noreferrer" class="setup-link">How to download your Twitter/X archive</a>
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <input x-ref="setupArchiveInput" type="file" accept=".zip,application/zip" class="hidden" @change="uploadSetupArchive($event)">
+
+                                        <!-- What the archive already holds, so returning to this step shows where things stand -->
+                                        <div class="setup-status setup-archive-summary" x-show="setupArchiveSummary" role="status">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 18c0 .78-.4 1.42-.9 1.9a6 6 0 0 1-1.93 1.15c-1.5.6-3.5.95-5.67.95s-4.17-.35-5.67-.95a6 6 0 0 1-1.93-1.16A2.6 2.6 0 0 1 3.5 18V5.5c0-.78.48-1.37.97-1.76.5-.4 1.17-.71 1.91-.96C7.86 2.28 9.85 2 12 2s4.14.29 5.62.78c.74.25 1.4.56 1.9.96s.98.98.98 1.76zm-2-3.83q-.4.2-.83.38c-1.5.6-3.5.95-5.67.95s-4.17-.35-5.67-.95a8 8 0 0 1-.83-.38V18c0 .05.02.2.28.44q.38.37 1.29.75c1.21.49 2.95.81 4.93.81s3.72-.32 4.93-.8q.91-.39 1.3-.76c.25-.24.27-.39.27-.44zm-13-2.67c0 .05.02.2.28.44q.38.37 1.29.75c1.21.49 2.95.81 4.93.81s3.72-.32 4.93-.8q.91-.39 1.3-.76c.25-.24.27-.39.27-.44V7.87a9 9 0 0 1-.88.35c-1.48.5-3.47.78-5.62.78s-4.14-.29-5.62-.78q-.46-.15-.88-.35zM12 4c-2 0-3.76.27-4.99.68q-.93.32-1.3.63l-.19.19q.03.06.19.19.37.3 1.3.63c1.23.4 3 .68 4.99.68s3.76-.27 4.99-.68q.93-.32 1.3-.63.16-.13.19-.19l-.19-.19q-.37-.3-1.3-.63c-1.23-.4-3-.68-4.99-.68"/></svg>
+                                            <span x-text="setupArchiveSummary"></span>
+                                        </div>
+
+                                        <!-- Any time no file is staged, so a choice made earlier can still be changed -->
+                                        <button type="button" class="setup-upload-zone" x-show="!setupUploading && !setupData.archive.uploaded && setupArchiveStatus !== 'importing'"
+                                                :disabled="!!activity"
+                                                aria-describedby="setup-archive-help"
+                                                @click="$refs.setupArchiveInput.click()"
+                                                @dragover.prevent="$el.classList.add('is-dragover')"
+                                                @dragleave.prevent="$el.classList.remove('is-dragover')"
+                                                @drop.prevent="$el.classList.remove('is-dragover'); if($event.dataTransfer.files.length){const input=$refs.setupArchiveInput; const dt=new DataTransfer(); dt.items.add($event.dataTransfer.files[0]); input.files=dt.files; input.dispatchEvent(new Event('change'))}">
+                                            <span class="setup-upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.59l5.7 5.7-1.41 1.42L13 6.41V16h-2V6.41l-3.3 3.3-1.41-1.42L12 2.59zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z"></path></svg></span>
+                                            <span class="setup-upload-title" x-text="setupData.archive.ready ? 'Import your archive.zip' : 'Choose your archive.zip'"></span>
+                                            <span class="setup-upload-hint" x-text="setupData.archive.ready ? 'Adds your full history to this archive. Drop it here or browse your files.' : 'Drop it here or browse your files'"></span>
+                                        </button>
+
+                                        <!-- Uploading, staged, importing, or imported: one file row with its state -->
+                                        <div class="setup-file-row" x-show="setupUploading || setupData.archive.uploaded">
+                                            <span class="setup-file-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16h-2v-2h2zm2-2h-2v-2h2zm-2-2h-2v-2h2zm2-2h-2V8h2zm-2-2h-2V6h2z"/><path d="M14.1 2.5q1.65-.02 2.7.06c.74.06 1.38.18 1.97.48a5 5 0 0 1 2.19 2.19c.3.6.42 1.23.48 1.96q.08 1.06.06 2.71v4.2q.02 1.65-.06 2.7a5 5 0 0 1-.48 1.97 5 5 0 0 1-2.19 2.19c-.6.3-1.23.42-1.96.48q-1.06.08-2.71.06H9.9q-1.65.02-2.7-.06a5 5 0 0 1-1.97-.48 5 5 0 0 1-2.19-2.19c-.3-.6-.42-1.23-.48-1.96q-.07-1.06-.06-2.71V9.9q-.02-1.65.06-2.7c.06-.74.18-1.38.48-1.97a5 5 0 0 1 2.19-2.19c.6-.3 1.23-.42 1.96-.48q1.06-.07 2.71-.06zm-4.2 2c-1.14 0-1.93 0-2.55.05-.6.05-.95.14-1.21.28a3 3 0 0 0-1.31 1.3 3 3 0 0 0-.28 1.22c-.05.62-.05 1.41-.05 2.55v4.2c0 1.14 0 1.93.05 2.55.05.6.14.95.28 1.21a3 3 0 0 0 1.3 1.31c.27.14.62.23 1.22.28.62.05 1.41.05 2.55.05h4.2c1.14 0 1.93 0 2.55-.05.6-.05.95-.14 1.21-.28a3 3 0 0 0 1.31-1.3c.14-.27.23-.62.28-1.22.05-.62.05-1.41.05-2.55V9.9c0-1.14 0-1.93-.05-2.55a3 3 0 0 0-.28-1.21 3 3 0 0 0-1.3-1.31 3 3 0 0 0-1.22-.28c-.62-.05-1.41-.05-2.55-.05H14V6h-2V4.5z"/></svg></span>
+                                            <div class="setup-file-copy">
+                                                <strong x-text="setupUploading ? setupUpload?.name : setupData.archive.filename"></strong>
+                                                <span x-show="setupUploading" x-text="`Uploading · ${setupUploadPercent}% of ${formatSetupBytes(setupUpload?.total || 0)}`"></span>
+                                                <span x-show="!setupUploading" x-text="`${formatSetupBytes(setupData.archive.size)} · ${setupArchiveFileState}`"></span>
+                                                <div class="setup-progress" x-show="setupUploading" role="progressbar" aria-label="Archive upload" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="setupUploadPercent">
+                                                    <span :style="`width: ${setupUploadPercent}%`"></span>
+                                                </div>
+                                            </div>
+                                            <button type="button" class="setup-btn" x-show="setupUploading" @click="cancelSetupUpload()">Cancel</button>
+                                            <button type="button" class="setup-icon-btn is-destructive" x-show="!setupUploading && !['importing'].includes(setupArchiveStatus)"
+                                                    :disabled="!!activity"
+                                                    @click="clearSetupArchive()" aria-label="Remove uploaded archive" title="Remove uploaded archive">
+                                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6V4.5C16 3.12 14.88 2 13.5 2h-3C9.11 2 8 3.12 8 4.5V6H3v2h1.06l.81 11.21C4.98 20.78 6.28 22 7.86 22h8.27c1.58 0 2.88-1.22 3-2.79L19.93 8H21V6h-5zm-6-1.5c0-.28.22-.5.5-.5h3c.27 0 .5.22.5.5V6h-4V4.5zm7.13 14.57c-.04.52-.47.93-1 .93H7.86c-.53 0-.96-.41-1-.93L6.07 8h11.85l-.79 11.07zM9 17v-6h2v6H9zm4 0v-6h2v6h-2z"></path></svg>
+                                            </button>
+                                        </div>
+
+                                        <p class="setup-field-error setup-step-error" x-show="setupArchiveError" x-text="setupArchiveError" role="alert"></p>
+
+                                        <!-- Import state, so a background import or failure is visible without leaving Setup -->
+                                        <div class="setup-status" x-show="setupArchiveStatusText" role="status" :class="setupArchiveStatus === 'failed' ? 'is-error' : ''">
+                                            <span class="setup-btn-spinner" x-show="setupArchiveStatus === 'importing'" aria-hidden="true"></span>
+                                            <svg x-show="setupArchiveStatus === 'failed'" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4m0-6.45c.8 0 1.4.7 1.29 1.48L12.75 14h-1.5l-.54-3.77A1.3 1.3 0 0 1 12 8.75"/><path d="M9.4 3.5a3 3 0 0 1 5.2 0L22.4 17a3 3 0 0 1-2.6 4.5H4.2A3 3 0 0 1 1.6 17zm3.47 1a1 1 0 0 0-1.74 0L3.34 18a1 1 0 0 0 .87 1.5h15.58a1 1 0 0 0 .87-1.5z"/></svg>
+                                            <span x-text="setupArchiveStatusText"></span>
+                                        </div>
+
+                                        <p id="setup-archive-help" class="setup-help">Imports and migrations run in the background, so you can connect Twitter/X while they finish.</p>
+
+                                        <!-- Alternatives stay visible as quiet rows instead of hiding behind a disclosure -->
+                                        <section class="setup-options" x-show="setupArchiveStatus !== 'importing' && (setupData.archive.legacy_migration_available || !setupData.archive.database_exists)" aria-labelledby="setup-options-title-1">
+                                            <h3 id="setup-options-title-1">Other ways to start</h3>
+                                            <button type="button" class="setup-option-row" x-show="setupData.archive.legacy_migration_available" :disabled="!!activity" @click="chooseSetupArchive('migration')" :aria-pressed="setupArchiveChoice === 'migration'">
+                                                <span class="setup-option-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20.5 18c0 .78-.4 1.42-.9 1.9a6 6 0 0 1-1.93 1.15c-1.5.6-3.5.95-5.67.95s-4.17-.35-5.67-.95a6 6 0 0 1-1.93-1.16A2.6 2.6 0 0 1 3.5 18V5.5c0-.78.48-1.37.97-1.76.5-.4 1.17-.71 1.91-.96C7.86 2.28 9.85 2 12 2s4.14.29 5.62.78c.74.25 1.4.56 1.9.96s.98.98.98 1.76zm-2-3.83q-.4.2-.83.38c-1.5.6-3.5.95-5.67.95s-4.17-.35-5.67-.95a8 8 0 0 1-.83-.38V18c0 .05.02.2.28.44q.38.37 1.29.75c1.21.49 2.95.81 4.93.81s3.72-.32 4.93-.8q.91-.39 1.3-.76c.25-.24.27-.39.27-.44zm-13-2.67c0 .05.02.2.28.44q.38.37 1.29.75c1.21.49 2.95.81 4.93.81s3.72-.32 4.93-.8q.91-.39 1.3-.76c.25-.24.27-.39.27-.44V7.87a9 9 0 0 1-.88.35c-1.48.5-3.47.78-5.62.78s-4.14-.29-5.62-.78q-.46-.15-.88-.35zM12 4c-2 0-3.76.27-4.99.68q-.93.32-1.3.63l-.19.19q.03.06.19.19.37.3 1.3.63c1.23.4 3 .68 4.99.68s3.76-.27 4.99-.68q.93-.32 1.3-.63.16-.13.19-.19l-.19-.19q-.37-.3-1.3-.63c-1.23-.4-3-.68-4.99-.68"/></svg></span>
+                                                <span class="setup-option-copy"><strong>Migrate from TweetXVault</strong><span>Copy an existing TweetXVault archive into TweetNook.</span></span>
+                                                <svg class="setup-option-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>
+                                            </button>
+                                            <button type="button" class="setup-option-row" x-show="!setupData.archive.database_exists" :disabled="!!activity" @click="chooseSetupArchive('empty')" :aria-pressed="setupArchiveChoice === 'empty'">
+                                                <span class="setup-option-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 17h3v2h-3v3h-2v-3h-3v-2h3v-3h2z"/><path d="M15.5 2.5q1.02-.01 1.72.04c.48.04.94.12 1.37.34.66.34 1.2.87 1.53 1.53.22.43.3.89.34 1.37q.05.7.04 1.72V11h-2V7.5c0-.72 0-1.2-.03-1.56a2 2 0 0 0-.13-.62 1.5 1.5 0 0 0-.66-.66c-.1-.05-.26-.1-.62-.13-.37-.03-.84-.03-1.56-.03H12a1 1 0 0 0-1 1v1A3.5 3.5 0 0 1 7.5 10H7c-.83 0-1.5.67-1.5 1.5v5c0 .72 0 1.2.03 1.56s.08.52.13.62q.23.43.66.66c.1.05.26.1.62.13.37.03.84.03 1.56.03H10v2H8.5q-1.03.01-1.72-.04a4 4 0 0 1-1.37-.34 3.5 3.5 0 0 1-1.53-1.53 4 4 0 0 1-.34-1.37q-.05-.7-.04-1.72V10A7.5 7.5 0 0 1 11 2.5zM9.07 4.85A5.5 5.5 0 0 0 5.8 8.2 4 4 0 0 1 7 8h.5C8.33 8 9 7.33 9 6.5v-1a3 3 0 0 1 .07-.65"/></svg></span>
+                                                <span class="setup-option-copy"><strong>Start with an empty archive</strong><span>Skip the import and sync from Twitter/X. Older history may be incomplete.</span></span>
+                                                <svg class="setup-option-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>
+                                            </button>
+                                        </section>
+
+                                        <!-- Developer tools (serve --dev-tools): send Twitter/X traffic to another TweetNook's archive -->
+                                        <section class="setup-options setup-replay" x-show="setupData.dev?.tools" aria-labelledby="setup-replay-title">
+                                            <h3 id="setup-replay-title">Replay source</h3>
+                                            <p class="setup-help setup-replay-lede">Developer tool. Send this install's Twitter/X requests to another TweetNook archive instead of Twitter/X. Turn on "Serve as replay source" in that archive's Settings first.</p>
+
+                                            <div class="setup-status" x-show="setupReplayConnected" role="status">
+                                                <svg class="is-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>
+                                                <span x-text="setupReplaySummary"></span>
+                                            </div>
+
+                                            <form id="setup-replay-form" class="setup-fields setup-replay-fields" x-show="!setupReplayConnected" @submit.prevent="connectSetupReplay()">
+                                                <div class="setup-field">
+                                                    <div class="setup-field-body">
+                                                        <label for="setup-replay-url">Archive address</label>
+                                                        <input id="setup-replay-url" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="192.168.1.20:8000" x-model="setupReplayForm.url" @input="setupReplayError = ''">
+                                                    </div>
+                                                </div>
+                                                <div class="setup-field" x-data="{ shown: false }">
+                                                    <div class="setup-field-body">
+                                                        <label for="setup-replay-password">Archive web password</label>
+                                                        <input id="setup-replay-password" :type="shown ? 'text' : 'password'" autocomplete="off" x-model="setupReplayForm.password" @input="setupReplayError = ''">
+                                                    </div>
+                                                    <button type="button" class="setup-field-toggle" :aria-label="shown ? 'Hide password' : 'Show password'" :aria-pressed="shown" @click="shown = !shown">
+                                                        <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5"/><path fill-rule="evenodd" d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0"/></svg>
+                                                        <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10"/></svg>
+                                                    </button>
+                                                </div>
+                                            </form>
+
+                                            <label class="setup-check-row">
+                                                <span class="setup-option-copy"><strong>Use placeholder media</strong><span>Download tiny stand-in images and videos instead of the real files to save space.</span></span>
+                                                <input type="checkbox" :checked="setupReplayPlaceholder" :disabled="setupReplaySaving" @change="setSetupReplayPlaceholder($event.target.checked)">
+                                            </label>
+                                            <label class="setup-check-row">
+                                                <span class="setup-option-copy"><strong>Skip quote expansion during sync</strong><span>Skip lookups for quoted tweets during replay syncs. Thread and linked-tweet expansion still run. Applies to the next sync.</span></span>
+                                                <input type="checkbox" :checked="setupReplaySkipQuotes" :disabled="setupReplaySaving" @change="setSetupReplaySkipQuotes($event.target.checked)">
+                                            </label>
+                                            <label class="setup-check-row">
+                                                <span class="setup-option-copy"><strong>Skip link previews during sync</strong><span>Skip external website lookups blocked by replay. Applies to the next sync.</span></span>
+                                                <input type="checkbox" :checked="setupReplaySkipPreviews" :disabled="setupReplaySaving" @change="setSetupReplaySkipPreviews($event.target.checked)">
+                                            </label>
+
+                                            <p class="setup-field-error setup-step-error" x-show="setupReplayError" x-text="setupReplayError" role="alert"></p>
+
+                                            <div class="setup-replay-actions">
+                                                <button type="submit" form="setup-replay-form" class="setup-btn" x-show="!setupReplayConnected" :disabled="setupReplaySaving || !setupReplayForm.url.trim()">
+                                                    <span class="setup-btn-spinner" x-show="setupReplaySaving" aria-hidden="true"></span>
+                                                    <span x-text="setupReplaySaving ? 'Testing…' : 'Test and connect'"></span>
+                                                </button>
+                                                <button type="button" class="setup-btn" x-show="setupReplayConnected" :disabled="setupReplaySaving" @click="disconnectSetupReplay()">Disconnect</button>
+                                            </div>
+                                        </section>
+                                    </div>
+                                </div>
+                                <!-- ── Step 2 · Authentication ──────────────────────── -->
+                                <div class="setup-step setup-flow-panel" x-show="setupFlowStep === 2"
+                                     :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
+                                     x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
+                                    <div class="setup-step-body">
+                                        <div class="setup-step-header">
+                                            <div class="flex-1 min-w-0">
+                                                <h2 id="setup-step-title-2" class="setup-modal-title" tabindex="-1">Connect your Twitter/X account</h2>
+                                                <p class="setup-modal-description">
+                                                    Paste two session cookies from a browser where you're signed in to Twitter/X.
+                                                    <button type="button" id="setup-help-trigger" class="setup-link" aria-haspopup="dialog" @click="openSetupHelp()">Where do I find these?</button>
+                                                </p>
+                                                <p class="setup-help" x-show="setupReplayConnected">Replay mode: fill both cookies to connect; leave either empty to continue without an account. Enter <code>fail</code>, <code>ratelimit</code> or <code>offline</code> as auth_token to test job errors.</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="setup-status" x-show="setupData.auth.verified && !setupAuthEdited" role="status">
+                                            <svg class="is-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>
+                                            <span>Connected to Twitter/X. Edit the cookies below only to reconnect.</span>
+                                        </div>
+                                        <div class="setup-status" x-show="setupData.auth.configured && !setupData.auth.verified && !setupAuthEdited" role="status">
+                                            <span>Saved cookies were found. Test the connection to continue.</span>
+                                        </div>
+
+                                        <div class="setup-fields">
+                                            <template x-for="field in [
+                                                {key: 'auth_token', id: 'setup-auth-token', label: 'auth_token'},
+                                                {key: 'ct0', id: 'setup-ct0', label: 'ct0'},
+                                            ]" :key="field.key">
+                                                <div class="setup-field" x-data="{ shown: false }">
+                                                    <div class="setup-field-body">
+                                                        <label :for="field.id" x-text="field.label"></label>
+                                                        <input :id="field.id" :type="shown ? 'text' : 'password'" x-model="setupAuth[field.key]" @input="editSetupAuth()"
+                                                               autocomplete="off" spellcheck="false" placeholder="Paste cookie value">
+                                                    </div>
+                                                    <button type="button" class="setup-field-toggle" x-show="setupAuth[field.key] !== '********'"
+                                                            :aria-label="(shown ? 'Hide ' : 'Show ') + field.label" :aria-pressed="shown" @click="shown = !shown">
+                                                        <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5"/><path fill-rule="evenodd" d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0"/></svg>
+                                                        <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10"/></svg>
+                                                    </button>
+                                                    <button type="button" class="setup-field-toggle" x-show="setupAuth[field.key] === '********'"
+                                                            :aria-label="'Clear saved ' + field.label" title="Clear saved value"
+                                                            @click="setupAuth[field.key] = ''; editSetupAuth(); $nextTick(() => document.getElementById(field.id)?.focus())">
+                                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z"/></svg>
+                                                    </button>
+                                                </div>
+                                            </template>
+                                            <div>
+                                                <div class="setup-field">
+                                                    <div class="setup-field-body">
+                                                        <label for="setup-user-id">X user ID</label>
+                                                        <input id="setup-user-id" type="text" inputmode="numeric" x-model="setupAuth.user_id" @input="editSetupAuth()" autocomplete="off">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <p class="setup-field-error setup-step-error" x-show="!setupSavingAuth && setupAuthResult && !setupAuthResult.success" x-text="setupAuthResult?.message" role="alert"></p>
+                                        <div class="setup-status" x-show="setupAuthResult?.success" role="status">
+                                            <svg class="is-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>
+                                            <span x-text="setupAuthResult?.message"></span>
+                                        </div>
+
+                                        <section class="setup-options" x-show="!setupData.auth.verified" aria-labelledby="setup-options-title-2">
+                                            <h3 id="setup-options-title-2">Not ready to connect?</h3>
+                                            <button type="button" class="setup-option-row" :disabled="setupSavingAuth || setupAuthSuccessPending" @click="skipSetupAuth()">
+                                                <span class="setup-option-copy"><strong>Continue without connecting</strong><span>Browse your imported archive now and connect later in Settings. Import, enrichment and media downloads keep running; syncing needs a connection.</span></span>
+                                                <svg class="setup-option-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.586 12L7.543 4.96l1.414-1.42L17.414 12l-8.457 8.46-1.414-1.42L14.586 12z"/></svg>
+                                            </button>
+                                        </section>
+                                    </div>
+                                </div>
+
+                                <!-- ── Step 3 · Schedule: on or off and what to sync; Settings has the rest ── -->
+                                <div class="setup-step setup-flow-panel" x-show="setupFlowStep === 3"
+                                     :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
+                                     x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
+                                    <div class="setup-step-body">
+                                        <div class="setup-step-header">
+                                            <div class="flex-1 min-w-0">
+                                                <h2 id="setup-step-title-3" class="setup-modal-title" tabindex="-1">Keep your archive up to date</h2>
+                                                <p class="setup-modal-description">TweetNook can check Twitter/X on a schedule and save anything new.</p>
+                                            </div>
+                                        </div>
+                                        <div class="setup-status" x-show="!setupData.auth.verified" role="status">
+                                            <span>Scheduled syncs need a Twitter/X connection. Until you connect one, they won't run.</span>
+                                        </div>
+                                        <p class="setup-field-error setup-step-error" x-show="scheduleError" x-text="scheduleError" role="alert"></p>
+                                        <div x-show="!scheduleForm && !scheduleError" class="setup-help">Loading schedule…</div>
+                                        <template x-if="scheduleForm">
+                                            <div>
+                                                <div class="nook-choice-row setup-sync-switch">
+                                                    <span><strong id="setup-sync-label">Sync automatically</strong><span x-text="setupScheduleSummary"></span></span>
+                                                    <button type="button" role="switch" class="nook-switch-button" aria-labelledby="setup-sync-label" :aria-checked="scheduleForm.enabled" @click="scheduleForm.enabled = !scheduleForm.enabled; scheduleFieldChanged()"><span class="nook-switch-track"><span></span></span></button>
+                                                </div>
+                                                <section class="setup-sync-section">
+                                                    <h3 id="setup-sync-what-title">What to sync</h3>
+                                                    <div role="group" aria-labelledby="setup-sync-what-title">
+                                                        <template x-for="item in [
+                                                            {key: 'bookmarks', label: 'Bookmarks', detail: 'Posts you’ve bookmarked'},
+                                                            {key: 'likes', label: 'Likes', detail: 'Posts you’ve liked'},
+                                                            {key: 'tweets', label: 'Your tweets', detail: 'Posts you’ve written'},
+                                                        ]" :key="item.key">
+                                                            <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes(item.key)" @click="nookToggleSyncCollection($data, item.key)"><span><strong x-text="item.label"></strong><span x-text="item.detail"></span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" /></svg></span></button>
+                                                        </template>
+                                                    </div>
+                                                </section>
+                                                <p class="setup-help">Change how often and when it syncs, and more, in Settings → Schedule.</p>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- ── Step 4 · Appearance ──────────────────────── -->
+                                <div class="setup-step setup-flow-panel setup-appearance" x-show="setupFlowStep === 4"
+                                     :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
+                                     x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
+                                    <div class="setup-step-body">
+                                        <div class="setup-step-header">
+                                            <div class="flex-1 min-w-0">
+                                                <h2 id="setup-step-title-4" class="setup-modal-title" tabindex="-1">Choose a theme</h2>
+                                            </div>
+                                        </div>
+                                        <template x-for="group in nookThemeGroups()" :key="group.label">
+                                            <div class="nook-theme-group">
+                                                <h4 :id="'setup-theme-group-' + group.label" x-text="group.label"></h4>
+                                                <div class="nook-theme-grid" role="radiogroup" :aria-labelledby="'setup-theme-group-' + group.label">
+                                                    <template x-for="item in group.themes" :key="item.key">
+                                                        <button type="button" role="radio" class="nook-theme-tile" :aria-checked="currentTheme === item.key" :aria-label="item.theme._name"
+                                                                :style="nookThemeTileStyle(item.key, item.theme, $data)" @click="applyTheme(item.key)">
+                                                            <span class="nook-theme-sample" aria-hidden="true">
+                                                                <span class="cts-post">
+                                                                    <span class="cts-avatar"></span>
+                                                                    <span class="cts-body">
+                                                                        <span class="cts-identity"><i class="cts-name"></i><i class="cts-handle"></i></span>
+                                                                        <i class="cts-text"></i>
+                                                                        <span class="cts-identity"><i class="cts-text is-short"></i><i class="cts-link"></i></span>
+                                                                        <span class="cts-actions"><i></i><i></i><i class="is-like"></i><i></i></span>
+                                                                    </span>
+                                                                </span>
+                                                            </span>
+                                                            <span class="nook-theme-label"><span x-text="item.theme._name"></span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" /></svg></span></span>
+                                                        </button>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <section class="setup-accent-section" x-show="THEMES[currentTheme]?._accents?.length">
+                                            <div class="nook-section-title"><h3 id="setup-accent-label">Accent color</h3><span x-text="THEMES[currentTheme]?._accents?.find(a => a.color === currentAccent)?.name"></span></div>
+                                            <div class="nook-accent-choices" role="radiogroup" aria-labelledby="setup-accent-label">
+                                                <template x-for="a in THEMES[currentTheme]._accents || []" :key="currentTheme + a.color">
+                                                    <button type="button" role="radio" :aria-label="a.name" :aria-checked="currentAccent === a.color" @click="setAccent(a)" class="nook-accent-choice" :style="'--swatch:' + a.color + ';--swatch-text:' + a.text"><span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" /></svg></span></button>
+                                                </template>
+                                            </div>
+                                        </section>
+                                        <p class="setup-help">Text size, fonts and layout are in Settings → Appearance.</p>
+                                    </div>
+                                </div>
+
+                                <!-- ── Step 5 · Web password ──────────────────────── -->
+                                <div class="setup-step setup-flow-panel" x-show="setupFlowStep === 5"
+                                     :class="setupDirection === 'back' ? 'slide-back' : 'slide-forward'"
+                                     x-transition:enter="setup-flow-enter" x-transition:enter-start="setup-flow-enter-start" x-transition:enter-end="setup-flow-enter-end">
+                                    <div class="setup-step-body">
+                                        <div class="setup-step-header">
+                                            <div class="flex-1 min-w-0">
+                                                <h2 id="setup-step-title-5" class="setup-modal-title" tabindex="-1">Protect your archive</h2>
+                                                <p class="setup-modal-description">Your browser asks for this password whenever it opens TweetNook.</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="setup-status" x-show="!setupPasswordRequired" role="status">
+                                            <svg class="is-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>
+                                            <span>A web password is already set. Leave these fields empty to keep it.</span>
+                                        </div>
+
+                                        <form @submit.prevent="finishSetup()" id="setup-password-form">
+                                            <!-- Disabled rather than hidden when no password is chosen, so nothing moves -->
+                                            <fieldset class="setup-fields setup-password-fields" :disabled="setupNoPassword">
+                                            <div class="setup-field" x-data="{ shown: false }">
+                                                <div class="setup-field-body">
+                                                    <label for="setup-password" x-text="setupPasswordRequired ? 'Web password' : 'New web password'"></label>
+                                                    <input id="setup-password" :type="shown ? 'text' : 'password'" autocomplete="new-password" x-model="setupPassword">
+                                                </div>
+                                                <button type="button" class="setup-field-toggle" :aria-label="shown ? 'Hide password' : 'Show password'" :aria-pressed="shown" @click="shown = !shown">
+                                                    <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5"/><path fill-rule="evenodd" d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0"/></svg>
+                                                    <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10"/></svg>
+                                                </button>
+                                            </div>
+                                            <div>
+                                                <div class="setup-field" :class="setupPasswordMismatch ? 'is-invalid' : ''">
+                                                    <div class="setup-field-body">
+                                                        <label for="setup-password-confirm">Confirm password</label>
+                                                        <input id="setup-password-confirm" type="password" autocomplete="new-password" x-model="setupPasswordConfirm"
+                                                               :aria-invalid="setupPasswordMismatch" aria-describedby="setup-password-mismatch">
+                                                    </div>
+                                                </div>
+                                                <p id="setup-password-mismatch" class="setup-field-error" x-show="setupPasswordMismatch && !setupNoPassword" role="alert">Passwords don't match.</p>
+                                            </div>
+                                            </fieldset>
+                                        </form>
+                                        <p class="setup-help">When your browser asks you to sign in, leave the username empty. Import and enrichment keep running after you finish.</p>
+
+                                        <section class="setup-options" aria-labelledby="setup-options-title-5">
+                                            <h3 id="setup-options-title-5">Don't need a password?</h3>
+                                            <button type="button" class="setup-option-row" :aria-pressed="setupNoPassword" @click="setupNoPassword = !setupNoPassword">
+                                                <span class="setup-option-copy"><strong>Continue without a password</strong><span x-text="setupNoPasswordWarning"></span></span>
+                                                <svg class="setup-option-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>
+                                            </button>
+                                        </section>
+                                    </div>
+                                </div>
+                                </div>
+
+                                <section class="setup-completion" x-show="setupCompletionVisible" aria-labelledby="setup-completion-title">
+                                    <h2 id="setup-completion-title" tabindex="-1">Setup complete</h2>
+                                    <p class="setup-completion-intro" x-text="setupCompletion.intro"></p>
+                                    <div class="setup-completion-pipeline" aria-label="Your archive preparation workflow">
+                                        <template x-for="stage in setupCompletion.stages" :key="stage.key">
+                                            <article class="setup-completion-stage" :data-state="stage.state">
+                                                <div class="setup-completion-stage-icon" aria-hidden="true" x-html="stage.icon"></div>
+                                                <div class="setup-completion-stage-heading">
+                                                    <h3 x-text="stage.title"></h3>
+                                                    <span class="setup-completion-status">
+                                                        <svg x-show="stage.state === 'done'" data-icon="checkmark" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z"/></svg>
+                                                        <span x-text="stage.label"></span>
+                                                    </span>
+                                                </div>
+                                                <p x-text="stage.description"></p>
+                                                <svg class="setup-completion-connector" data-icon="arrow-down" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4h2v12.59l5-5L19.41 13 12 20.41 4.59 13 6 11.59l5 5z"/></svg>
+                                            </article>
+                                        </template>
+                                    </div>
+                                    <p class="setup-completion-note" x-show="setupCompletion.note" x-text="setupCompletion.note" role="status" aria-live="polite"></p>
+                                    <section class="setup-completion-expectations" aria-labelledby="setup-completion-expectations-title">
+                                        <svg data-icon="clock" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.75c-4.55 0-8.25 3.69-8.25 8.25s3.7 8.25 8.25 8.25 8.25-3.69 8.25-8.25S16.56 3.75 12 3.75zM1.75 12C1.75 6.34 6.34 1.75 12 1.75S22.25 6.34 22.25 12 17.66 22.25 12 22.25 1.75 17.66 1.75 12zM11 6h2v5.28l3.82 1.27-.63 1.9L11 12.72V6z"/></svg>
+                                        <div>
+                                            <h3 id="setup-completion-expectations-title" x-text="setupCompletion.title"></h3>
+                                            <p x-text="setupCompletion.time"></p>
+                                            <p x-text="setupCompletion.usability"></p>
+                                        </div>
+                                    </section>
+                                    <p class="setup-completion-note" x-text="setupCompletion.keep"></p>
+                                    <p class="setup-completion-note" x-text="setupCompletion.schedule"></p>
+                                </section>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- One footer for every step: Back on the left, the step's commit action on the right -->
+                    <div class="setup-modal-footer" x-show="setupData && setupAuth && !setupCompletionVisible && (setupForced || setupRerun || !setupData?.completed)">
+                        <button type="button" class="setup-btn" x-show="setupFlowStep > 1" :disabled="setupSavingAuth || setupAuthSuccessPending || setupFinishing" @click="goToSetupStep(setupFlowStep - 1)">Back</button>
+                        <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 1"
+                                :disabled="setupArchiveAction.disabled" @click="setupArchiveAction.run()">
+                            <span class="setup-btn-spinner" x-show="setupStartingImport" aria-hidden="true"></span>
+                            <span x-text="setupStartingImport ? 'Starting import…' : setupArchiveAction.label"></span>
+                        </button>
+                        <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 2"
+                                @click="if (!setupAuthSuccessPending) saveSetupAuth()" :disabled="setupSavingAuth"
+                                :aria-disabled="setupAuthSuccessPending">
+                            <span class="setup-btn-spinner" x-show="setupSavingAuth" aria-hidden="true"></span>
+                            <span x-text="setupSavingAuth ? (setupReplayConnected ? 'Saving…' : 'Testing connection…') : (setupAuthSuccessPending ? 'Connected' : (setupAuthNeedsTest &amp;&amp; !setupReplayConnected ? 'Test and continue' : 'Continue'))"></span>
+                        </button>
+                        <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 3"
+                                :disabled="!scheduleForm || scheduleSaving || !scheduleRandomWindowValid()" @click="saveSetupSchedule()">
+                            <span class="setup-btn-spinner" x-show="scheduleSaving" aria-hidden="true"></span>
+                            <span x-text="scheduleSaving ? 'Saving…' : 'Continue'"></span>
+                        </button>
+                        <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 4" @click="goToSetupStep(5)">Continue</button>
+                        <button type="submit" form="setup-password-form" class="setup-btn is-primary" x-show="setupFlowStep === 5"
+                                :disabled="!setupCanFinish" x-text="setupFinishing ? 'Finishing…' : 'Finish setup'"></button>
+                    </div>
+
+                    <div class="setup-modal-footer setup-completion-footer" x-show="setupCompletionVisible">
+                        <button type="button" class="setup-btn" @click="closeSetup()">Browse archive</button>
+                        <button type="button" class="setup-btn is-primary" @click="setupCompletionAction()" x-text="setupCompletion.needsConnection ? 'Connect X' : 'View activity'"></button>
+                    </div>
+
+                    <!-- Cookie instructions, generated from docs/getting-started.md -->
+                    <div class="nook-sheet-backdrop" x-cloak x-show="setupHelpOpen" @click.self="closeSetupHelp()">
+                        <div class="nook-sheet setup-help-sheet" role="dialog" aria-modal="true" aria-labelledby="setup-help-title" @keydown.tab="nookTrapFocus($event, $event.currentTarget)">
+                            <div class="nook-sheet-header">
+                                <button type="button" class="setup-modal-close" aria-label="Close instructions" @click="closeSetupHelp()">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z"/></svg>
+                                </button>
+                                <h3 id="setup-help-title">Find your cookies</h3>
+                            </div>
+                            <p class="setup-field-error setup-help-error" x-show="setupHelpError" x-text="setupHelpError" role="alert"></p>
+                            <template x-if="setupHelp">
+                                <div>
+                                    <div class="nook-tabs setup-help-tabs" role="tablist" aria-label="Browser">
+                                        <template x-for="(browser, index) in setupHelp.browsers" :key="browser.name">
+                                            <button type="button" class="nook-tab" role="tab" :id="`setup-help-tab-${index}`" aria-controls="setup-help-panel"
+                                                    :aria-selected="setupHelpBrowser === index" :tabindex="setupHelpBrowser === index ? 0 : -1"
+                                                    @click="setupHelpBrowser = index"
+                                                    @keydown.arrow-right.prevent="setupHelpBrowser = (index + 1) % setupHelp.browsers.length; $nextTick(() => document.getElementById(`setup-help-tab-${setupHelpBrowser}`)?.focus())"
+                                                    @keydown.arrow-left.prevent="setupHelpBrowser = (index - 1 + setupHelp.browsers.length) % setupHelp.browsers.length; $nextTick(() => document.getElementById(`setup-help-tab-${setupHelpBrowser}`)?.focus())">
+                                                <span x-text="setupHelpTabLabel(browser)"></span>
+                                            </button>
+                                        </template>
+                                    </div>
+                                    <div id="setup-help-panel" class="setup-help-body" role="tabpanel" :aria-labelledby="`setup-help-tab-${setupHelpBrowser}`" x-data="{ browser: null }" x-effect="browser = setupHelp.browsers[setupHelpBrowser]">
+                                        <p class="setup-help-caution" role="note">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4m0-6.45c.8 0 1.4.7 1.29 1.48L12.75 14h-1.5l-.54-3.77A1.3 1.3 0 0 1 12 8.75"/><path d="M9.4 3.5a3 3 0 0 1 5.2 0L22.4 17a3 3 0 0 1-2.6 4.5H4.2A3 3 0 0 1 1.6 17zm3.47 1a1 1 0 0 0-1.74 0L3.34 18a1 1 0 0 0 .87 1.5h15.58a1 1 0 0 0 .87-1.5z"/></svg>
+                                            <span><template x-for="(part, partIndex) in setupHelp.caution" :key="partIndex"><span :class="`setup-help-${part.t}`" x-text="part.v"></span></template></span>
+                                        </p>
+                                        <template x-if="browser">
+                                            <div>
+                                                <p class="setup-help-also" x-show="setupHelpAlsoFor(browser)" x-text="setupHelpAlsoFor(browser)"></p>
+                                                <template x-for="(block, blockIndex) in browser.intro" :key="'intro' + blockIndex">
+                                                    <div class="setup-help-block">
+                                                        <pre x-show="block.type === 'code'" x-text="block.text"></pre>
+                                                        <p x-show="block.type === 'p'"><template x-for="(part, partIndex) in block.inline || []" :key="partIndex"><span :class="`setup-help-${part.t}`" x-text="part.v"></span></template></p>
+                                                    </div>
+                                                </template>
+                                                <ol class="setup-help-steps">
+                                                    <template x-for="(step, stepIndex) in browser.steps" :key="browser.name + stepIndex">
+                                                        <li>
+                                                            <span class="setup-help-number" aria-hidden="true" x-text="stepIndex + 1"></span>
+                                                            <div class="setup-help-step">
+                                                                <h4><template x-for="(part, partIndex) in step.title" :key="partIndex"><span :class="`setup-help-${part.t}`" x-text="part.v"></span></template></h4>
+                                                                <template x-for="(block, blockIndex) in step.blocks" :key="blockIndex">
+                                                                    <div class="setup-help-block">
+                                                                        <pre x-show="block.type === 'code'" x-text="block.text"></pre>
+                                                                        <p x-show="block.type === 'p'"><template x-for="(part, partIndex) in block.inline || []" :key="partIndex"><span :class="`setup-help-${part.t}`" x-text="part.v"></span></template></p>
+                                                                    </div>
+                                                                </template>
+                                                            </div>
+                                                        </li>
+                                                    </template>
+                                                </ol>
+                                                <a class="setup-link setup-help-source" :href="`https://github.com/gezerwezer/tweetnook/blob/main/${setupHelp.source}`" target="_blank" rel="noopener">Open the full guide</a>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- In-app confirmation instead of the browser's blocking confirm() -->
+                    <div class="nook-sheet-backdrop" x-cloak x-show="setupConfirm" @click.self="setupConfirm?.resolve(false)">
+                        <div class="nook-sheet nook-confirm setup-confirm" role="alertdialog" aria-modal="true" aria-labelledby="setup-confirm-title" aria-describedby="setup-confirm-copy" @keydown.tab="nookTrapFocus($event, $event.currentTarget)">
+                            <h3 id="setup-confirm-title" x-text="setupConfirm?.title"></h3>
+                            <p id="setup-confirm-copy" x-text="setupConfirm?.body"></p>
+                            <button type="button" class="setup-confirm-accept" :class="setupConfirm?.destructive ? 'nook-destructive-button' : 'nook-confirm-primary'" @click="setupConfirm?.resolve(true)" x-text="setupConfirm?.confirmLabel"></button>
+                            <button type="button" class="nook-secondary-button" @click="setupConfirm?.resolve(false)">Cancel</button>
+                        </div>
+                    </div>
+            </div>
+        </div>

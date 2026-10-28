@@ -12,7 +12,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
 const web = path.join(root, 'tweetnook/web');
-const { appScripts, readScripts } = require('../../tests/js/page_scripts.cjs');
+const { appScripts, pageHtml, readScripts } = require('../../tests/js/page_scripts.cjs');
 const defaults = vm.runInNewContext(readScripts(appScripts()) + '\ntweetApp()', {window: {}});
 const tweets = Array.from({length: 12}, (_, i) => ({
     tweet_id: String(100 + i), text: `Safari scroll fixture ${i + 1}`,
@@ -34,8 +34,12 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify(data));
         return;
     }
-    const file = route === '/' ? path.join(web, 'index.html')
-        : route === '/static/css/styles.css' && process.env.SAFARI_SCROLL_CSS ? path.resolve(process.env.SAFARI_SCROLL_CSS)
+    if (route === '/') {
+        res.writeHead(200, {'Content-Type': 'text/html', 'Cache-Control': 'no-store'});
+        res.end(pageHtml(web));
+        return;
+    }
+    const file = route === '/static/css/styles.css' && process.env.SAFARI_SCROLL_CSS ? path.resolve(process.env.SAFARI_SCROLL_CSS)
         : route.startsWith('/fixture/') ? path.join(root, 'demo/demo media', path.basename(route))
         : path.resolve(web, '.' + route);
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404).end(); return; }

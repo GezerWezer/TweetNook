@@ -6,7 +6,7 @@ const http = require('node:http');
 const path = require('node:path');
 const vm = require('node:vm');
 const { chromium } = require('playwright');
-const { appScripts, readScripts } = require('../../tests/js/page_scripts.cjs');
+const { appScripts, pageHtml, readScripts } = require('../../tests/js/page_scripts.cjs');
 const web = path.resolve(__dirname, '../../tweetnook/web');
 const defaults = vm.runInNewContext(readScripts(appScripts()) + '\ntweetApp()', { window: {} });
 const tweet = {
@@ -56,7 +56,12 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify(data));
         return;
     }
-    const file = route === '/' ? path.join(web, 'index.html') : path.resolve(web, '.' + route);
+    if (route === '/') {
+        res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-store' });
+        res.end(pageHtml(web));
+        return;
+    }
+    const file = path.resolve(web, '.' + route);
     if (file.startsWith(web + path.sep) && fs.existsSync(file) && fs.statSync(file).isFile()) {
         const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' }[path.extname(file)];
         res.writeHead(200, { 'Content-Type': mime || 'application/octet-stream', 'Cache-Control': 'no-store' });

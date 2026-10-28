@@ -25,6 +25,8 @@ from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 from starlette.routing import Route
 
+from tweetnook.web.page import assemble_page
+
 WEB_ROOT = Path(__file__).resolve().parents[4] / "tweetnook" / "web"
 STATIC_ROOT = WEB_ROOT / "static"
 # Paths the server answers with index.html; keep in sync with tweetnook/web/server.py.
@@ -69,7 +71,7 @@ def local_page() -> bytes:
         digest = hashlib.sha256(asset.read_bytes()).hexdigest()[:16]
         return f"{match[1]}?v={digest}{match[3]}"
 
-    return STATIC_REFERENCE.sub(version, (WEB_ROOT / "index.html").read_text()).encode()
+    return STATIC_REFERENCE.sub(version, assemble_page(WEB_ROOT)[0]).encode()
 
 
 def local_static(path: str) -> Response:

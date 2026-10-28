@@ -1,0 +1,287 @@
+                    <!-- Optional direct-Gemini automated tagging -->
+                    <div class="nook-setting-body nook-original-body" x-show="settingsTab === 'automated-tagging' && automatedTaggingInstalled">
+                        <template x-if="!automatedTagging">
+                            <div class="text-center p-8 text-[var(--text-secondary)]">Loading…</div>
+                        </template>
+                        <template x-if="automatedTagging">
+                            <div class="pb-10">
+                                <div x-show="automatedTaggingError" role="alert" class="rounded-xl border border-[var(--destructive-color)] p-4 text-sm text-[var(--destructive-color)]" x-text="automatedTaggingError"></div>
+
+                                <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+                                    <p class="text-sm text-[var(--text-secondary)]">Please read the <a href="https://github.com/gezerwezer/tweetnook/blob/main/docs/automated-tagging.md" target="_blank" rel="noopener noreferrer" class="font-bold text-[var(--accent-color)] hover:underline">automated tagging documentation</a> first.</p>
+                                    
+                                </div>
+
+                                <div class="mb-8">
+                                    <div class="flex items-start justify-between gap-4">
+                                        <div><h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Enable automated tagging</h3><p class="text-sm text-[var(--text-secondary)] mb-4">Generate tags for archived tweets automatically via a Gemini LLM. Manual tags remain available when this is off.</p></div>
+                                        <div class="flex shrink-0 items-center">
+                                            <label class="relative inline-flex cursor-pointer items-center rounded-lg">
+                                                <input type="checkbox" role="switch" aria-label="Enable automated tagging" x-model="automatedTagging.enabled" class="sr-only">
+                                                <span class="nook-switch-track" :class="automatedTagging.enabled ? 'is-on' : ''"><span></span></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <fieldset :disabled="!automatedTagging.enabled" :class="!automatedTagging.enabled ? 'opacity-50' : ''" class="mt-4 min-w-0">
+                                        <label class="block">
+                                            <span class="text-sm font-bold text-[var(--text-secondary)]">Gemini API key</span>
+                                            <input type="password" autocomplete="off" aria-label="Demo API key" x-model="automatedTagging.api_key" class="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--input-border)] text-[var(--text-primary)] rounded-lg px-3 py-2 focus:outline-none focus:border-[var(--accent-color)]">
+                                        </label>
+                                        <div class="mt-4">
+                                            <span class="text-sm font-bold text-[var(--text-secondary)]">API usage</span>
+                                            <div class="mt-2 flex w-full items-center gap-3 rounded-xl bg-[var(--bg-secondary)] p-1" role="group" aria-label="API usage">
+                                                <button type="button" @click="setAutomatedTaggingApiMode('free')"
+                                                        :aria-pressed="automatedTagging.api_mode === 'free'"
+                                                        :class="automatedTagging.api_mode === 'free' ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
+                                                        class="flex-1 rounded-lg px-3 py-2 text-sm font-bold transition">Free</button>
+                                                <button type="button" @click="setAutomatedTaggingApiMode('paid')"
+                                                        :aria-pressed="automatedTagging.api_mode === 'paid'"
+                                                        :class="automatedTagging.api_mode === 'paid' ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
+                                                        class="flex-1 rounded-lg px-3 py-2 text-sm font-bold transition">Paid</button>
+                                            </div>
+                                            <p class="mt-2 text-sm text-[var(--text-secondary)]">Free batches multiple tweets without Google Search. Paid sends one tweet per Gemini request and can use Google Search. <a href="#" @click.prevent="null" class="font-bold text-[var(--accent-color)] hover:underline">Learn more</a></p>
+                                        </div>
+                                    </fieldset>
+                                </div>
+
+                                <fieldset :disabled="!automatedTagging.enabled" :class="!automatedTagging.enabled ? 'opacity-50' : ''" class="min-w-0 w-full">
+                                <div class="mb-8">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <h3 class="text-lg font-bold text-[var(--text-primary)]">Model</h3>
+                                        <button @click="loadAutomatedTaggingModels(true)" :disabled="automatedTaggingLoadingModels" class="w-auto min-w-[9rem] shrink-0 whitespace-nowrap border border-[var(--border-color)] rounded-full px-3 py-1.5 text-center text-sm font-bold hover:bg-[var(--hover-bg)]" x-text="automatedTaggingLoadingModels ? 'Loading…' : 'Refresh models'"></button>
+                                    </div>
+                                    <p class="mt-2 mb-4 text-sm text-[var(--text-secondary)]">Model refresh and test runs require internet access from the server. Choose a Gemini model for text and media tagging. Most models support this configuration, but capabilities vary. Check the <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener noreferrer" class="font-bold text-[var(--accent-color)] hover:underline">model documentation</a> before choosing one.</p>
+                                    <div class="mt-2 w-full" role="group" aria-label="Gemini model">
+                                        <template x-if="!automatedTaggingModels.length">
+                                            <div class="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-3 text-sm text-[var(--text-primary)]">
+                                                <div class="font-bold" x-text="automatedTagging.model"></div>
+                                                <div class="mt-1 text-xs text-[var(--text-secondary)]">Refresh models to choose from the live Gemini catalog.</div>
+                                            </div>
+                                        </template>
+                                        <template x-if="automatedTaggingModels.length">
+                                            <label class="block w-full">
+                                                <span class="sr-only">Gemini model</span>
+                                                <select x-model="automatedTagging.model" class="block w-full min-w-0 rounded-lg border border-[var(--input-border)] bg-[var(--bg-primary)] px-3 py-2 text-[var(--text-primary)] focus:border-[var(--accent-color)] focus:outline-none">
+                                                <template x-for="model in automatedTaggingModels" :key="model.id">
+                                                    <option :value="model.id" x-text="model.name"></option>
+                                                </template>
+                                                </select>
+                                            </label>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <div class="mb-8">
+                                    <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Thinking</h3>
+                                    <p class="text-sm text-[var(--text-secondary)] mb-4">Choose how much reasoning Gemini should use for each tag.</p>
+                                    <div class="flex w-full items-center gap-3 rounded-xl bg-[var(--bg-secondary)] p-1" role="group" aria-label="Thinking level">
+                                        <template x-for="level in [
+                                            {key: 'none', label: 'None'},
+                                            {key: 'low', label: 'Low'},
+                                            {key: 'medium', label: 'Medium'},
+                                            {key: 'high', label: 'High'}
+                                        ]" :key="level.key">
+                                            <button type="button" @click="automatedTagging.thinking_level = level.key"
+                                                    :aria-pressed="automatedTagging.thinking_level === level.key"
+                                                    :class="automatedTagging.thinking_level === level.key ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
+                                                    class="flex-1 rounded-lg px-2 py-2 text-sm font-bold transition" x-text="level.label"></button>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <div class="mb-8" x-show="automatedTagging.api_mode === 'free'">
+                                    <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Free quota limits</h3>
+                                    <p class="text-sm text-[var(--text-secondary)] mb-4">Keep Free requests within the configured Gemini quota.</p>
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <label><span class="text-sm font-bold text-[var(--text-secondary)]">Batch size</span><input type="number" min="1" max="20" x-model.number="automatedTagging.free_batch_size" class="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--input-border)] rounded-lg px-3 py-2"><span class="mt-1 block text-xs text-[var(--text-secondary)]">Tweets per homogeneous request, up to 20.</span></label>
+                                        <label><span class="text-sm font-bold text-[var(--text-secondary)]">Requests per minute</span><input type="number" min="1" x-model.number="automatedTagging.free_rpm" class="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--input-border)] rounded-lg px-3 py-2"></label>
+                                        <label><span class="text-sm font-bold text-[var(--text-secondary)]">Requests per day</span><input type="number" min="1" x-model.number="automatedTagging.free_rpd" class="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--input-border)] rounded-lg px-3 py-2"></label>
+                                    </div>
+                                </div>
+
+                                <div class="mb-8" x-show="automatedTagging.api_mode === 'paid'">
+                                    <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Processing</h3>
+                                    <p class="text-sm text-[var(--text-secondary)] mb-4">Choose the Gemini processing tier for Paid requests. <a href="https://ai.google.dev/gemini-api/docs/flex-inference#how-it-works" target="_blank" rel="noopener noreferrer" class="font-bold text-[var(--accent-color)] hover:underline">Learn more</a></p>
+                                    <div class="flex w-full items-center gap-3 rounded-xl bg-[var(--bg-secondary)] p-1" role="group" aria-label="Processing tier">
+                                        <button type="button" @click="automatedTagging.processing_tier = 'standard'"
+                                                :aria-pressed="automatedTagging.processing_tier === 'standard'"
+                                                :class="automatedTagging.processing_tier === 'standard' ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
+                                                class="flex-1 rounded-lg px-3 py-2 text-sm font-bold transition">Standard</button>
+                                        <button type="button" @click="automatedTagging.processing_tier = 'flex'"
+                                                :aria-pressed="automatedTagging.processing_tier === 'flex'"
+                                                :class="automatedTagging.processing_tier === 'flex' ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
+                                                class="flex-1 rounded-lg px-3 py-2 text-sm font-bold transition">Flex</button>
+                                    </div>
+                                </div>
+
+                                <div class="mb-8" x-show="automatedTagging.api_mode === 'paid'">
+                                    <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Spend limit</h3>
+                                    <p class="text-sm text-[var(--text-secondary)] mb-4">Set the maximum amount you want to spend over the selected period.</p>
+                                    <div class="flex w-full max-w-md items-center gap-3" role="group" aria-label="Spend limit">
+                                        <label class="relative flex h-12 min-w-0 flex-1 items-center rounded-xl border border-[var(--input-border)] bg-[var(--bg-primary)] px-3 focus-within:border-[var(--accent-color)]">
+                                            <span class="sr-only">Spend limit in USD</span>
+                                            <span class="pointer-events-none text-base font-semibold text-[var(--text-secondary)]">$</span>
+                                            <input type="number" min="0.01" step="0.01" x-model="automatedTaggingSpendAmount" @input="setAutomatedTaggingSpendAmount($event.target.value)" class="h-full min-w-0 flex-1 border-0 bg-transparent px-1 py-2 text-base font-semibold text-[var(--text-primary)] focus:outline-none focus:ring-0">
+                                        </label>
+                                        <label class="relative h-12 w-28 shrink-0">
+                                            <span class="sr-only">Spend limit period</span>
+                                            <select x-model="automatedTaggingSpendPeriod" @change="setAutomatedTaggingSpendPeriod($event.target.value)" aria-label="Spend limit period" class="h-full w-full appearance-none rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] px-3 py-2 pr-9 text-center text-base font-bold text-[var(--text-primary)] focus:border-[var(--accent-color)] focus:outline-none">
+                                                <option value="day">Day</option>
+                                                <option value="week">Week</option>
+                                                <option value="month">Month</option>
+                                                <option value="year">Year</option>
+                                            </select>
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 fill-current text-[var(--text-secondary)]">
+                                                <path d="M7 10l5 5 5-5z"></path>
+                                            </svg>
+                                        </label>
+                                    </div>
+                                    <button type="button" x-ref="automatedTaggingSpendButton" @click="openAutomatedTaggingSpendHistory()" class="mt-4 rounded-full border border-[var(--border-color)] px-4 py-2 text-sm font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">View spend history</button>
+                                </div>
+
+                                <details class="mb-8" x-show="automatedTagging.api_mode === 'paid'">
+                                    <summary class="cursor-pointer text-sm font-bold text-[var(--text-primary)]">Missing usage limits</summary>
+                                    <div class="mt-3 space-y-3 text-sm text-[var(--text-secondary)]">
+                                        <p>When billing usage is missing, keep a local estimated reserve and continue within your daily budget, or stop immediately. Reserves are estimates; actual charges may differ.</p>
+                                        <label class="block">Missing billing usage
+                                            <select x-model="automatedTagging.unknown_billing_policy" class="mt-1 block w-full rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] p-2 text-[var(--text-primary)]">
+                                                <option value="reserve">Reserve and continue</option>
+                                                <option value="stop">Stop immediately</option>
+                                            </select>
+                                        </label>
+                                        <label class="block" x-show="automatedTagging.unknown_billing_policy === 'reserve'">Minimum reserve per uncertain request (USD)
+                                            <input type="number" min="0.001" step="0.001" x-model.number="automatedTagging.unknown_request_reserve_usd" class="mt-1 block w-full rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] p-2 text-[var(--text-primary)]">
+                                        </label>
+                                        <label class="block" x-show="automatedTagging.unknown_billing_policy === 'reserve'">Maximum uncertain billing requests per UTC day
+                                            <input type="number" min="1" max="100" step="1" x-model.number="automatedTagging.max_unknown_requests_per_day" class="mt-1 block w-full rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] p-2 text-[var(--text-primary)]">
+                                        </label>
+                                        <p x-show="automatedTaggingAccounting?.today_unknown_cost_requests">Today: <span x-text="automatedTaggingAccounting.today_unknown_cost_requests"></span> uncertain requests; $<span x-text="automatedTaggingAccounting.today_unknown_reserved_cost_usd || '0'"></span> reserved.</p>
+                                        <label class="block">Missing Search usage
+                                            <select x-model="automatedTagging.search_unknown_policy" class="mt-1 block w-full rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] p-2 text-[var(--text-primary)]">
+                                                <option value="reserve">Reserve and continue</option>
+                                                <option value="disable">Disable Search for the run</option>
+                                            </select>
+                                        </label>
+                                        <label class="block" x-show="automatedTagging.search_unknown_policy === 'reserve'">Maximum uncertain Search requests per run
+                                            <input type="number" min="1" max="100" step="1" x-model.number="automatedTagging.max_unknown_search_requests" class="mt-1 block w-full rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] p-2 text-[var(--text-primary)]">
+                                        </label>
+                                        <p>Each uncertain Search request consumes an estimated five-query reserve. Five is not a provider limit. Search turns off when the uncertainty limit is reached.</p>
+                                    </div>
+                                </details>
+
+                                <div class="mb-8">
+                                    <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Google Search</h3>
+                                    <p class="text-sm text-[var(--text-secondary)] mb-4">Identification aid for uncertain entities and references.</p>
+                                    <label :class="automatedTagging.api_mode === 'free' ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'" class="flex items-center justify-between gap-4 rounded-lg">
+                                        <span class="text-sm font-bold text-[var(--text-secondary)]">Enable Google Search</span>
+                                        <span class="relative inline-flex shrink-0 items-center rounded-lg">
+                                            <input type="checkbox" x-model="automatedTagging.google_search" :disabled="automatedTagging.api_mode === 'free'" class="sr-only">
+                                            <span :class="automatedTagging.google_search ? 'border-[var(--accent-color)] bg-[var(--accent-color)] text-white border-[3px]' : 'border-[var(--text-secondary)] bg-transparent text-transparent'" class="flex h-6 w-6 items-center justify-center rounded-lg border-2 transition">
+                                                <svg viewBox="0 0 24 24" aria-hidden="true" class="h-5 w-5 fill-current"><g><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z"></path></g></svg>
+                                            </span>
+                                        </span>
+                                    </label>
+                                    <p x-show="automatedTagging.api_mode === 'free'" class="text-sm text-[var(--text-secondary)]">Google Search is unavailable in Free mode.</p>
+                                    <p x-show="automatedTagging.api_mode === 'paid'" class="text-sm text-[var(--text-secondary)]"><span class="font-bold text-[var(--text-primary)]" x-text="automatedTaggingAccounting?.search_queries_this_month || 0"></span> / <span x-text="automatedTaggingAccounting?.search_allowance || 5000"></span> locally observed searches this month. TweetNook stops before the free allowance using a safety reserve and resumes after the monthly rollover. This counter only knows about TweetNook requests; it cannot see searches made by another application sharing the same Google project.</p>
+                                </div>
+
+                                <div class="mb-8">
+                                    <div>
+                                        <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Tagging context <span class="font-normal text-[var(--text-secondary)]">(optional)</span></h3>
+                                        <p class="text-sm text-[var(--text-secondary)] mb-4">Add subjects you commonly archive. These remain weak hints and never override tweet or media evidence.</p>
+                                        <div class="mt-3 flex min-h-[44px] flex-wrap items-center gap-2 rounded-xl border border-[var(--input-border)] bg-[var(--bg-primary)] p-2 focus-within:border-[var(--accent-color)] transition">
+                                            <template x-for="item in automatedTaggingContextItems" :key="item">
+                                                <div class="relative group flex items-center rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-1 pr-8 text-sm font-medium text-[var(--text-primary)]">
+                                                    <span x-text="item"></span>
+                                                    <button type="button" @click="removeAutomatedTaggingContext(item)" class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-[var(--text-secondary)] hover:text-[var(--destructive-color)]" :aria-label="`Remove ${item}`">
+                                                        <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.024-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293.39-.39 1.024-1.024 0-1.414L13.414 12z"></path></svg>
+                                                    </button>
+                                                </div>
+                                            </template>
+                                            <input x-ref="automatedTaggingContextInput" type="text" x-model="automatedTaggingContextInput" @keydown="handleAutomatedTaggingContextKeydown($event)" placeholder="Add a subject…" class="min-w-[12rem] flex-1 bg-transparent px-2 py-1 text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none">
+                                        </div>
+                                        <p class="mt-2 text-xs text-[var(--text-secondary)]">Press Enter, Tab, or comma to add a subject. No autocomplete is used here.</p>
+                                    </div>
+                                </div>
+
+                                <div class="mb-8">
+                                    <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Additional user instructions <span class="font-normal text-[var(--text-secondary)]">(optional)</span></h3>
+                                    <p class="text-sm text-[var(--text-secondary)] mb-4">Add rules for how you prefer supported subjects to be tagged. Built-in evidence, safety, output, isolation, and tag-count rules always take priority.</p>
+                                    <div class="flex items-stretch gap-2">
+                                        <label class="min-w-0 flex-1">
+                                            <span class="sr-only">New additional user instruction</span>
+                                            <input x-model="automatedTaggingInstructionInput" @keydown.enter.prevent="addAutomatedTaggingInstruction()" maxlength="1000" type="text" placeholder="For example: Prefer original-language film titles." class="w-full rounded-lg border border-[var(--input-border)] bg-[var(--bg-primary)] px-3 py-2 text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:border-[var(--accent-color)] focus:outline-none">
+                                        </label>
+                                        <button type="button" @click="addAutomatedTaggingInstruction()" class="shrink-0 rounded-lg bg-[var(--accent-color)] px-4 py-2 text-sm font-bold text-[var(--accent-text)] hover:opacity-90">Add</button>
+                                    </div>
+                                    <div x-show="automatedTaggingInstructionItems.length" class="mt-3 space-y-2">
+                                        <template x-for="item in automatedTaggingInstructionItems" :key="item">
+                                            <div class="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
+                                                <span class="min-w-0 break-words text-sm text-[var(--text-primary)]" x-text="item"></span>
+                                                <button type="button" @click="removeAutomatedTaggingInstruction(item)" class="shrink-0 rounded-full p-1 text-[var(--text-secondary)] hover:text-[var(--destructive-color)]" :aria-label="`Remove ${item}`">
+                                                    <svg viewBox="0 0 24 24" aria-hidden="true" class="h-4 w-4 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-1.024-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.024-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.024 0 1.414s1.024.39 1.414 0L12 13.414l5.793 5.793c.39.39 1.024.39 1.414 0s.39-1.024 0-1.414L13.414 12z"></path></svg>
+                                                </button>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <div id="automated-tagging-test" class="mb-8">
+                                    <div>
+                                        <h3 class="text-lg font-bold text-[var(--text-primary)]">Test run</h3>
+                                        <p class="mt-2 text-sm text-[var(--text-secondary)]">Enter an archived tweet ID to preview it using the settings currently shown above, including unsaved edits.</p>
+                                    </div>
+
+                                    <div>
+                                        <label for="automated-tagging-tweet-id" class="text-sm font-bold text-[var(--text-secondary)]">Archived tweet ID</label>
+                                        <input id="automated-tagging-tweet-id" type="text" inputmode="numeric" autocomplete="off" x-model="automatedTaggingTweetId" @input.debounce.350ms="lookupAutomatedTaggingTweet()" @keydown.enter.prevent="lookupAutomatedTaggingTweet()" placeholder="Enter the numeric tweet ID" class="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--input-border)] text-[var(--text-primary)] rounded-lg px-3 py-2 focus:outline-none focus:border-[var(--accent-color)]">
+                                        <p class="mt-2 text-xs text-[var(--text-secondary)]">The ID must belong to a tweet already in your archive.</p>
+                                        <p x-show="automatedTaggingTweetLookingUp" class="mt-2 text-sm text-[var(--text-secondary)]">Loading archived tweet…</p>
+                                        <p x-show="automatedTaggingTweetLookupError" role="alert" class="mt-2 text-sm text-[var(--destructive-color)]" x-text="automatedTaggingTweetLookupError"></p>
+                                    </div>
+
+                                    <div x-show="automatedTaggingSelectedTweet" class="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div class="min-w-0">
+                                                <p class="truncate text-sm font-bold text-[var(--text-primary)]"><span x-text="automatedTaggingSelectedTweet?.author_display_name || 'Unknown author'"></span> <span class="font-normal text-[var(--text-secondary)]" x-text="automatedTaggingSelectedTweet?.author_username ? `@${automatedTaggingSelectedTweet.author_username}` : ''"></span></p>
+                                                <p class="mt-1 text-sm text-[var(--text-primary)]" x-text="automatedTaggingSelectedTweet?.text || '(No tweet text)'"></p>
+                                                <p class="mt-1 text-xs text-[var(--text-secondary)]" x-text="`ID ${automatedTaggingSelectedTweet?.tweet_id || ''}`"></p>
+                                            </div>
+                                            <button type="button" @click="automatedTaggingTweetId = ''; automatedTaggingSelectedTweet = null; automatedTaggingTestResult = null; automatedTaggingTestError = ''; automatedTaggingTweetLookupError = ''" class="shrink-0 text-sm font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)]">Change</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-4 flex flex-col gap-3">
+                                        <p class="text-xs text-[var(--text-secondary)]"><span class="font-bold text-[var(--accent-color)]">Your settings, descriptions, and tags won't be changed.</span> The test sends one request at a time using your selected Free or Paid mode. Retries or Google Search may use additional quota, and any applicable paid spend and Search usage still count.</p>
+                                        <button id="run-automated-tagging-test-btn" type="button" @click="runAutomatedTaggingTest()" :disabled="!automatedTaggingSelectedTweet || automatedTaggingTesting" class="w-full rounded-full bg-[var(--accent-color)] px-5 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-50" x-text="automatedTaggingTesting ? 'Running test…' : 'Run test'"></button>
+                                    </div>
+
+                                    <div x-show="automatedTaggingTestError" role="alert" class="rounded-xl border border-[var(--destructive-color)] p-4 text-sm text-[var(--destructive-color)] whitespace-pre-wrap" x-text="automatedTaggingTestError"></div>
+
+                                    <template x-if="automatedTaggingTestResult?.success">
+                                        <div class="rounded-xl border border-[var(--accent-color)] bg-[var(--bg-primary)] p-5 space-y-4">
+                                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                                <h5 class="font-bold text-[var(--text-primary)]">Generated preview</h5>
+                                                <span class="text-xs text-[var(--text-secondary)]" x-text="`${automatedTaggingTestResult.result.model} · ${automatedTaggingTestResult.result.content_type}`"></span>
+                                            </div>
+                                            <div x-show="automatedTaggingTestResult.result.description">
+                                                <p class="text-xs font-bold uppercase tracking-wide text-[var(--text-secondary)]">Description</p>
+                                                <p class="mt-1 text-sm leading-relaxed text-[var(--text-primary)]" x-text="automatedTaggingTestResult.result.description"></p>
+                                            </div>
+                                            <div>
+                                                <p class="text-xs font-bold uppercase tracking-wide text-[var(--text-secondary)]">Tags</p>
+                                                <div class="mt-2 flex flex-wrap gap-2">
+                                                    <template x-for="tag in automatedTaggingTestResult.result.tags" :key="tag"><span class="tag-capsule" x-text="tag"></span></template>
+                                                </div>
+                                            </div>
+                                            <details x-show="automatedTaggingTestResult.output" class="text-sm text-[var(--text-secondary)]">
+                                                <summary class="cursor-pointer font-bold">Run details</summary>
+                                                <pre class="mt-2 whitespace-pre-wrap break-words font-mono text-xs" x-text="automatedTaggingTestResult.output"></pre>
+                                            </details>
+                                        </div>
+                                    </template>
+                                </div>
+                                </fieldset>
+                            </div>
+                        </template>
+                    </div>

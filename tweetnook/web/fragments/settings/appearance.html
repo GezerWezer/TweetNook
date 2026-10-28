@@ -1,0 +1,128 @@
+                    <!-- Appearance Section -->
+
+                    <div class="nook-setting-body nook-appearance" x-show="settingsTab === 'appearance'">
+                        <section class="nook-setting-section">
+                            <div class="nook-section-title"><h3>Theme</h3><span x-text="THEMES[currentTheme]?._name"></span></div>
+                            <template x-for="group in nookThemeGroups()" :key="group.label">
+                                <div class="nook-theme-group">
+                                    <h4 :id="'nook-theme-group-' + group.label" x-text="group.label"></h4>
+                                    <div class="nook-theme-grid" role="radiogroup" :aria-labelledby="'nook-theme-group-' + group.label">
+                                        <template x-for="item in group.themes" :key="item.key">
+                                            <button type="button" role="radio" class="nook-theme-tile" :aria-checked="currentTheme === item.key" :aria-label="item.theme._name"
+                                                    :style="nookThemeTileStyle(item.key, item.theme, $data)" @click="applyTheme(item.key)">
+                                                <!-- A single tweet: each theme color sits where the app uses it. -->
+                                                <span class="nook-theme-sample" aria-hidden="true">
+                                                    <span class="cts-post">
+                                                        <span class="cts-avatar"></span>
+                                                        <span class="cts-body">
+                                                            <span class="cts-identity"><i class="cts-name"></i><i class="cts-handle"></i></span>
+                                                            <i class="cts-text"></i>
+                                                            <span class="cts-identity"><i class="cts-text is-short"></i><i class="cts-link"></i></span>
+                                                            <span class="cts-actions"><i></i><i></i><i class="is-like"></i><i></i></span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                                <span class="nook-theme-label"><span x-text="item.theme._name"></span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></span>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </section>
+                        <section class="nook-setting-section" x-show="THEMES[currentTheme]?._accents">
+                            <h3>Accent color</h3>
+                            <p class="nook-setting-help nook-help-above" x-text="THEMES[currentTheme]?._name + ' comes in several accents.'"></p>
+                            <div class="nook-accent-choices" role="radiogroup" aria-label="Accent color">
+                                <template x-for="a in THEMES[currentTheme]._accents || []" :key="currentTheme + a.color">
+                                    <button type="button" role="radio" :aria-label="a.name" :aria-checked="currentAccent === a.color" @click="setAccent(a)" class="nook-accent-choice" :style="'--swatch:' + a.color + ';--swatch-text:' + a.text"><span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></button>
+                                </template>
+                            </div>
+                        </section>
+                        <section class="nook-setting-section">
+                            <div class="nook-section-title"><h3>Text size</h3><span x-text="nookFontSizeLabel(fontSize)"></span></div>
+                            <div class="nook-font-slider"><span class="nook-small-aa">Aa</span><input type="range" min="0" max="3" step="1" aria-label="Text size" :aria-valuetext="nookFontSizeLabel(fontSize)" :value="['small', 'default', 'large', 'xl'].indexOf(fontSize)" :style="'--range-progress:' + ['small','default','large','xl'].indexOf(fontSize) * 100 / 3 + '%'" @input="nookSetFontSize($data, $event.target.value)"><span class="nook-large-aa">Aa</span></div>
+                        </section>
+                        
+                        <section class="nook-setting-section nook-font">
+                            <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Font</h3>
+                            <div id="font-picker-label" class="block text-sm font-bold mb-2">Display font</div>
+                            <div class="relative" @click.outside="fontPickerOpen = false"
+                                 @focusout="if (!$el.contains($event.relatedTarget)) fontPickerOpen = false"
+                                 @keydown.escape.stop.prevent="fontPickerOpen = false; $refs.fontTrigger.focus()">
+                                <button id="display-font" x-ref="fontTrigger" type="button" aria-haspopup="listbox"
+                                        aria-controls="font-options" :aria-expanded="fontPickerOpen"
+                                        aria-labelledby="font-picker-label selected-font-label"
+                                        @click="fontPickerOpen ? fontPickerOpen = false : openFontPicker()"
+                                        @keydown.arrow-down.prevent="openFontPicker('first')"
+                                        @keydown.arrow-up.prevent="openFontPicker('last')"
+                                        class="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--input-border)] bg-[var(--bg-primary)] px-3 py-2 text-left text-[var(--text-primary)]">
+                                    <span id="selected-font-label" class="truncate" :style="{ fontFamily: selectedFontChoice().family }" x-text="selectedFontChoice().label"></span>
+                                    <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="m5 7 5 5 5-5H5Z"/></svg>
+                                </button>
+                                <div id="font-options" x-ref="fontOptions" x-show="fontPickerOpen" x-cloak
+                                     role="listbox" aria-labelledby="font-picker-label"
+                                     @keydown.arrow-down.prevent="focusFontOption(1)"
+                                     @keydown.arrow-up.prevent="focusFontOption(-1)"
+                                     @keydown.home.prevent="focusFontOption('first')"
+                                     @keydown.end.prevent="focusFontOption('last')"
+                                     class="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-[var(--input-border)] bg-[var(--bg-primary)] p-1 shadow-xl">
+                                    <template x-for="f in fontChoices()" :key="f.key">
+                                        <button type="button" role="option" tabindex="-1" :aria-selected="fontFamily === f.key"
+                                                @click="selectFont(f.key)" :style="{ fontFamily: f.family }"
+                                                :class="fontFamily === f.key ? 'bg-[var(--bg-secondary)] text-[var(--accent-color)]' : 'text-[var(--text-primary)]'"
+                                                class="block w-full truncate rounded-md px-3 py-2 text-left hover:bg-[var(--bg-secondary)] focus:bg-[var(--bg-secondary)] focus:outline-none"
+                                                x-text="f.label"></button>
+                                    </template>
+                                </div>
+                            </div>
+                            <button type="button" x-show="canDiscoverFonts()" @click="discoverFonts()" :disabled="fontDiscoveryBusy" class="mt-3 rounded-full px-4 py-2 bg-[var(--accent-color)] text-[var(--accent-text)] font-bold disabled:opacity-50" x-text="fontDiscoveryBusy ? 'Reading fonts…' : 'Load local fonts'"></button>
+                            <p class="mt-2 text-sm text-[var(--text-secondary)]" x-show="!canDiscoverFonts()">This browser cannot list installed fonts. Local fallback fonts are available in the dropdown.</p>
+                            <p role="status" class="mt-2 text-sm text-[var(--text-secondary)]" x-text="fontDiscoveryMessage"></p>
+                        </section>
+
+
+                        <section class="nook-setting-section">
+                            <h3>Desktop layout</h3>
+                            <div role="radiogroup" aria-label="Desktop layout">
+                                <button type="button" role="radio" class="nook-choice-row" aria-label="Single column" :aria-checked="!splitPanel" @click="toggleSplitPanel(false)"><span><strong>Single column</strong><span>Open tweets in the main feed.</span></span><span class="nook-radio-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></button>
+                                <button type="button" role="radio" class="nook-choice-row" aria-label="Split panel" :aria-checked="splitPanel" @click="toggleSplitPanel(true)"><span><strong>Split panel</strong><span>Keep the feed beside an open tweet.</span></span><span class="nook-radio-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></button>
+                            </div>
+                        </section>
+                        <section class="nook-setting-section">
+                            <h3>Media layout</h3>
+                            <p class="nook-setting-help nook-help-above">For tweets with multiple photos, videos, or GIFs.</p>
+                            <div class="nook-media-tiles" role="radiogroup" aria-label="Multi-media layout">
+                                <button type="button" role="radio" class="nook-theme-tile nook-media-tile" aria-label="Grid" :aria-checked="mediaGallery === 'grid'" @click="setMediaGallery('grid')">
+                                    <span class="nook-theme-sample nook-media-sample" aria-hidden="true"><span class="cms-media is-grid"><span></span><span></span><span></span><span></span></span></span>
+                                    <span class="nook-theme-label"><span>Grid</span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></span>
+                                </button>
+                                <button type="button" role="radio" class="nook-theme-tile nook-media-tile" aria-label="Carousel" :aria-checked="mediaGallery === 'carousel'" @click="setMediaGallery('carousel')">
+                                    <span class="nook-theme-sample nook-media-sample" aria-hidden="true"><span class="cms-media is-carousel"><span></span><span></span></span></span>
+                                    <span class="nook-theme-label"><span>Carousel</span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></span>
+                                </button>
+                                <button type="button" role="radio" class="nook-theme-tile nook-media-tile" aria-label="By post date" aria-describedby="media-date-description" :aria-checked="mediaGallery === 'date'" @click="setMediaGallery('date')">
+                                    <span class="nook-theme-sample nook-media-sample" aria-hidden="true"><span class="cms-media is-date"><span class="cms-media is-grid"><span></span><span></span><span></span><span></span></span><span class="cms-media is-carousel"><span></span><span></span></span></span></span>
+                                    <span class="nook-theme-label"><span>By post date</span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></span>
+                                    <span class="nook-media-tile-help" id="media-date-description">Grid for tweets posted before July 10, 2026; carousel from then on.</span>
+                                </button>
+                            </div>
+                        </section>
+                        <section class="nook-setting-section">
+                            <h3>Playback</h3>
+                            <div class="nook-choice-row nook-autoplay-row"><span><strong>Autoplay videos</strong><span>Play videos muted as they scroll into view.</span></span><button type="button" role="switch" aria-label="Autoplay videos" :aria-checked="videoPlayback === 'autoplay'" @click="setVideoPlayback(videoPlayback === 'autoplay' ? 'paused' : 'autoplay')" class="nook-switch-button"><span class="nook-switch-track"><span></span></span></button></div>
+                        </section>
+                    </div>

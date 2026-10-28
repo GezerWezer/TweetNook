@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import shutil
@@ -241,6 +242,16 @@ def normalize_base_path(value: str) -> str:
     return "/" if normalized == "/" else normalized + "/"
 
 
+def _assemble_page() -> str:
+    # The release job runs this script with a bare Python, without installing the
+    # package, so the page assembler (standard library only) is loaded by path.
+    spec = importlib.util.spec_from_file_location("tweetnook_page", WEB_ROOT / "page.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.assemble_page(WEB_ROOT)[0]
+
+
 def render_index(source: str, *, base_path: str, version: str) -> str:
     asset_version = quote(version, safe="")
     bootstrap = (
@@ -319,8 +330,7 @@ def build_pages_demo(output: Path, *, version: str, base_path: str) -> Path:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(DEMO_MEDIA_ROOT / relative, target)
 
-    source = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
-    rendered = render_index(source, base_path=normalized_base, version=version)
+    rendered = render_index(_assemble_page(), base_path=normalized_base, version=version)
     (output / "index.html").write_text(rendered, encoding="utf-8")
     (output / "404.html").write_text(rendered, encoding="utf-8")
     (output / ".nojekyll").touch()

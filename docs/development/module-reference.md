@@ -66,6 +66,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `web/activity_stream.py`, `web/notices.py` | Live activity snapshots and durable notifications. |
 | `web/replay_source.py`, `web/replay_placeholders.py` | Source-side replay and placeholder media. |
 | `web/routes/` | HTTP resource groups; see the [API guide](search-and-web-api.md). |
-| `web/index.html`, `web/static/` | Browser UI and shipped assets. |
+| `web/index.html`, `web/fragments/`, `web/page.py` | The page shell and per-feature markup, assembled when served. |
+| `web/static/` | Browser scripts, styles and shipped assets. |
 
 `scripts/build_setup_help.py` generates the in-app cookie guide. `scripts/build_pages_demo.py` builds the public fixture demo, and `scripts/prepare_demo_content.py` prepares approved demonstration content. `dev/web/` holds the Node asset build and browser diagnostics.

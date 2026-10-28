@@ -1,6 +1,7 @@
 /**
- * The Stats dialog: archive summary, collections, health, tags and storage, refreshed
- * in the background, and the reminder shown while archive enrichment is incomplete.
+ * Analytics: the Stats dialog's report, refreshed in the background, and the reminder
+ * shown while archive enrichment is incomplete. The app opens and closes the dialog;
+ * statsDialog() owns the report while it is shown.
  */
 
 const statsSuspendedVideos = new Set();
@@ -10,35 +11,10 @@ function statsMethods() {
         lastSyncFormatted: '',
 
         showStatsModal: false,
-        statsSummary: null,
-        loadingStatsSummary: false,
-        statsCollections: [],
-        loadingStatsCollections: false,
-        statsHealth: null,
-        loadingStatsHealth: false,
-        showEmptyUnavailableReasons: false,
-        hoveredUnavailableReason: null,
         archiveEnrichmentIncomplete: 0,
         archiveEnrichmentRefreshing: false,
         archiveEnrichmentRequestId: 0,
-        statsTags: null,
-        loadingStatsTags: false,
-        loadingStatsSnapshot: false,
-        statsGeneratedAt: null,
-        statsRefreshing: false,
-        statsRefreshFailed: false,
-        statsRefreshPollTimer: null,
-        statsRefreshPollAttempts: 0,
-        statsAgeNow: Date.now(),
 
-        storageData: null,
-        storageLoading: false,
-        storageDetailedView: false,
-        storageGapsCollapsed: false,
-        animatingStorageToggle: false,
-        hoveredStorageId: null,
-        expandedStorageId: null,
-        
         async fetchStats() {
             try {
                 const res = await fetch('/api/stats/latest-sync');
@@ -51,18 +27,13 @@ function statsMethods() {
             }
         },
 
-        async openStatsModal() {
+        openStatsModal() {
             this.suspendMediaForStats();
             this.showStatsModal = true;
-            await this.fetchStatsSnapshot();
         },
 
         closeStatsModal() {
             this.showStatsModal = false;
-            if (this.statsRefreshPollTimer) {
-                clearTimeout(this.statsRefreshPollTimer);
-                this.statsRefreshPollTimer = null;
-            }
             this.resumeMediaAfterStats();
         },
 
@@ -84,6 +55,87 @@ function statsMethods() {
                 }
             });
             statsSuspendedVideos.clear();
+        },
+
+        get showArchiveEnrichmentReminder() {
+            return this.archiveEnrichmentIncomplete > 0
+                && !this.archiveEnrichmentRefreshing
+                && !this.activity && !this.activityStartPending
+                && !this.setupForced
+                // Setup's first sync finishes these posts once X is connected.
+                && !['running', 'waiting_for_import', 'waiting_for_worker', 'waiting_for_setup', 'waiting_for_auth'].includes(
+                    this.setupData?.archive?.enrichment_state);
+        },
+
+        async fetchArchiveEnrichmentStatus() {
+            // Import completion and store attachment can briefly occur between polls.
+            if (this.archiveReady === false || this.setupForced) return;
+            const requestId = ++this.archiveEnrichmentRequestId;
+            this.archiveEnrichmentRefreshing = true;
+            try {
+                const response = await fetch('/api/stats/enrichment-incomplete');
+                if (!response.ok) {
+                    if (response.status === 503 || response.status === 409) {
+                        const pending = await response.json().catch(() => ({}));
+                        if (['archive_not_ready', 'setup_required'].includes(pending.detail?.code)) return;
+                    }
+                    throw new Error('Could not load archive enrichment status');
+                }
+                const data = await response.json();
+                if (requestId === this.archiveEnrichmentRequestId) {
+                    this.archiveEnrichmentIncomplete = data.incomplete || 0;
+                }
+            } catch (error) {
+                // A stale count must not become a completion warning on refresh failure.
+                if (requestId === this.archiveEnrichmentRequestId) this.archiveEnrichmentIncomplete = 0;
+                console.error('Failed to fetch archive enrichment status', error);
+            } finally {
+                if (requestId === this.archiveEnrichmentRequestId) this.archiveEnrichmentRefreshing = false;
+            }
+        },
+    };
+}
+
+// The Stats dialog (x-data="statsDialog()"): loads the snapshot when the dialog opens
+// and polls a background refresh until it finishes or the dialog closes.
+function statsDialog() {
+    return {
+        statsSummary: null,
+        loadingStatsSummary: false,
+        statsCollections: [],
+        loadingStatsCollections: false,
+        statsHealth: null,
+        loadingStatsHealth: false,
+        showEmptyUnavailableReasons: false,
+        hoveredUnavailableReason: null,
+        statsTags: null,
+        loadingStatsTags: false,
+        loadingStatsSnapshot: false,
+        statsGeneratedAt: null,
+        statsRefreshing: false,
+        statsRefreshFailed: false,
+        statsRefreshPollTimer: null,
+        statsRefreshPollAttempts: 0,
+        statsAgeNow: Date.now(),
+
+        storageData: null,
+        storageLoading: false,
+        storageDetailedView: false,
+        storageGapsCollapsed: false,
+        animatingStorageToggle: false,
+        hoveredStorageId: null,
+        expandedStorageId: null,
+
+        init() {
+            this.$watch('showStatsModal', open => {
+                if (open) {
+                    this.fetchStatsSnapshot();
+                } else if (this.statsRefreshPollTimer) {
+                    clearTimeout(this.statsRefreshPollTimer);
+                    this.statsRefreshPollTimer = null;
+                }
+            });
+            setInterval(() => { this.statsAgeNow = Date.now(); }, 30000);
         },
 
         setStatsLoading(loading) {
@@ -244,43 +296,6 @@ function statsMethods() {
             if ((reason.permanent || 0) > 0) parts.push(`${reason.permanent.toLocaleString()} permanent`);
             if (parts.length) return parts.join(' · ');
             return (reason.count || 0) > 0 ? 'Availability recorded' : 'No unavailable tweets';
-        },
-
-        get showArchiveEnrichmentReminder() {
-            return this.archiveEnrichmentIncomplete > 0
-                && !this.archiveEnrichmentRefreshing
-                && !this.activity && !this.activityStartPending
-                && !this.setupForced
-                // Setup's first sync finishes these posts once X is connected.
-                && !['running', 'waiting_for_import', 'waiting_for_worker', 'waiting_for_setup', 'waiting_for_auth'].includes(
-                    this.setupData?.archive?.enrichment_state);
-        },
-
-        async fetchArchiveEnrichmentStatus() {
-            // Import completion and store attachment can briefly occur between polls.
-            if (this.archiveReady === false || this.setupForced) return;
-            const requestId = ++this.archiveEnrichmentRequestId;
-            this.archiveEnrichmentRefreshing = true;
-            try {
-                const response = await fetch('/api/stats/enrichment-incomplete');
-                if (!response.ok) {
-                    if (response.status === 503 || response.status === 409) {
-                        const pending = await response.json().catch(() => ({}));
-                        if (['archive_not_ready', 'setup_required'].includes(pending.detail?.code)) return;
-                    }
-                    throw new Error('Could not load archive enrichment status');
-                }
-                const data = await response.json();
-                if (requestId === this.archiveEnrichmentRequestId) {
-                    this.archiveEnrichmentIncomplete = data.incomplete || 0;
-                }
-            } catch (error) {
-                // A stale count must not become a completion warning on refresh failure.
-                if (requestId === this.archiveEnrichmentRequestId) this.archiveEnrichmentIncomplete = 0;
-                console.error('Failed to fetch archive enrichment status', error);
-            } finally {
-                if (requestId === this.archiveEnrichmentRequestId) this.archiveEnrichmentRefreshing = false;
-            }
         },
 
         setHoveredStorage(id) {

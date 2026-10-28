@@ -1,0 +1,201 @@
+        <!-- LIST VIEW -->
+        <div id="nook-feed" role="tabpanel" :aria-labelledby="'nook-tab-' + collectionFilter" x-show="archiveReady && !setupForced" :class="{ 'feed-collapsed': pageView !== 'list' }" :aria-hidden="viewMode !== 'list' ? 'true' : null" data-feed-stage class="pb-4">
+            <div class="nook-search-wrap relative" x-data="searchAutocomplete()" @click.away="showDropdown = false">
+                <div class="nook-search-field relative w-full">
+                    <span class="nook-search-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.25 3.75c-3.59 0-6.5 2.91-6.5 6.5s2.91 6.5 6.5 6.5c1.795 0 3.419-.726 4.596-1.904 1.178-1.177 1.904-2.801 1.904-4.596 0-3.59-2.91-6.5-6.5-6.5zm-8.5 6.5c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5c0 1.986-.682 3.815-1.824 5.262l4.781 4.781-1.414 1.414-4.781-4.781c-1.447 1.142-3.276 1.824-5.262 1.824-4.694 0-8.5-3.806-8.5-8.5z" />
+</svg></span>
+                    <div contenteditable="true" spellcheck="false" autocorrect="off"
+                         @input="handleInput" 
+                         @focus="showDropdown = true; handleInput()" 
+                         @keydown.enter.prevent="search(); showDropdown = false; $el.blur()" 
+                         @keydown.up.prevent="moveUp" 
+                         @keydown.down.prevent="moveDown" 
+                         @keydown.tab.prevent="selectOption"
+                         @keydown.escape="handleEscape"
+                         @keydown.right="handleArrowRight($event)"
+                         @beforeinput="handleBeforeInput($event)"
+                         @copy="handleCopy($event)"
+                         @cut="handleCopy($event)"
+                         @blur="syncEditingState()"
+                         @compositionstart="isComposing = true"
+                         @compositionend="isComposing = false; handleInput()"
+                         @paste="setTimeout(() => handleInput(), 0)"
+                         x-ref="searchInput" 
+                         :class="{'empty-content': searchQuery.length === 0}"
+                         role="searchbox" aria-label="Search your archive" data-placeholder="Search your archive"
+                         aria-controls="nook-suggest" :aria-expanded="String(showDropdown && (options.length > 0 || !!emptyNote))"
+                         :aria-activedescendant="showDropdown && options.length && !options[0].isDatePicker ? 'nook-suggest-' + selectedIndex : null" 
+                         class="nook-search-input rich-search-input w-full bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full py-2 pl-4 pr-10 focus:outline-none focus:ring-1 focus:ring-[var(--accent-color)] border border-[var(--input-border)] whitespace-pre-wrap overflow-hidden block min-h-[38px] leading-relaxed"></div>
+                    <button type="button" aria-label="Clear search" x-show="searchQuery" @click="searchQuery = ''; $refs.searchInput.innerHTML = ''; search()" class="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-[var(--text-secondary)] rounded-full hover:bg-[var(--text-primary)] transition z-10">
+                        <svg viewBox="0 0 24 24" class="w-3 h-3 fill-[var(--bg-primary)]"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.023-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.023 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
+                    </button>
+                </div>
+                
+                <div x-ref="dropdownMenu" id="nook-suggest" role="listbox" aria-label="Search suggestions"
+                     x-show="showDropdown && (options.length > 0 || emptyNote)" x-transition.opacity.duration.100ms
+                     :class="options[0]?.isDatePicker && 'is-calendar'" class="nook-suggest">
+                    <template x-for="(opt, index) in options" :key="index">
+                        <div :id="opt.isDatePicker ? null : 'nook-suggest-' + index"
+                             :role="opt.isDatePicker ? null : 'option'"
+                             :aria-selected="opt.isDatePicker ? null : String(selectedIndex === index)"
+                             @click="!opt.isDatePicker && selectOptionIndex(index)"
+                             @mouseenter="!opt.isDatePicker && (selectedIndex = index)"
+                             :class="opt.isDatePicker ? 'nook-suggest-calendar' : (opt.isAuthor ? 'nook-suggest-row is-person' : 'nook-suggest-row')">
+                            <template x-if="opt.glyph">
+                                <span class="nook-suggest-glyph" x-html="suggestionGlyph(opt.glyph)"></span>
+                            </template>
+                            <template x-if="opt.isAuthor">
+                                <span class="nook-suggest-text is-person">
+                                    <span class="avatar nook-suggest-avatar relative bg-[var(--gray-700)] text-[var(--white-icon)] overflow-hidden">
+                                        <span class="avatar-initial" x-text="avatarInitial(opt.desc || opt.value)"></span>
+                                        <img :src="avatarUrl(opt.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" alt="" loading="lazy">
+                                    </span>
+                                    <span class="nook-suggest-person">
+                                        <span class="nook-suggest-name" x-html="highlightMatch(opt.desc || opt.value, opt.query)"></span>
+                                        <span class="nook-suggest-handle" x-html="highlightMatch('@' + opt.value, opt.query)"></span>
+                                    </span>
+                                </span>
+                            </template>
+                            <template x-if="opt.isTag">
+                                <span class="nook-suggest-text">
+                                    <span class="nook-suggest-tag" x-html="highlightTagMatch(opt.value, opt.query)"></span>
+                                    <span class="nook-suggest-count" x-text="opt.count + (opt.total === 1 ? ' tweet' : ' tweets')"></span>
+                                </span>
+                            </template>
+                            <template x-if="!opt.isAuthor && !opt.isTag && !opt.isDatePicker">
+                                <span class="nook-suggest-text">
+                                    <template x-if="opt.value">
+                                        <span class="nook-suggest-prefix" :class="opt.negated && 'is-negative'" x-text="opt.prefix"></span>
+                                    </template>
+                                    <span class="nook-suggest-key" :class="!opt.value && opt.negated && 'is-negative'" x-text="opt.value || opt.prefix"></span>
+                                    <span class="nook-suggest-desc" x-text="opt.desc"></span>
+                                </span>
+                            </template>
+                            <template x-if="opt.isDatePicker">
+                                <div class="select-none" @mousedown.prevent>
+                                    <div class="nook-calendar-head">
+                                        <h2 x-text="new Date(dpYear, dpMonth, 1).toLocaleString('default', { month: 'long', year: 'numeric' })"></h2>
+                                        <button type="button" class="nook-calendar-nav" aria-label="Previous month" @click.stop="dpPrevMonth()">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.91 7.5 9.41 12l4.5 4.5-1.41 1.41L6.59 12l5.91-5.91z"></path></svg>
+                                        </button>
+                                        <button type="button" class="nook-calendar-nav" aria-label="Next month" @click.stop="dpNextMonth()">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.91 12 10 17.91 8.59 16.5l4.5-4.5-4.5-4.5L10 6.09z"></path></svg>
+                                        </button>
+                                    </div>
+                                    <div role="grid" class="nook-calendar-grid">
+                                        <template x-for="day in ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']">
+                                            <div role="columnheader" class="nook-calendar-dow" x-text="day"></div>
+                                        </template>
+                                        <template x-for="dayObj in dpGetDays()">
+                                            <div role="gridcell" class="nook-calendar-cell" :aria-selected="dpIsSelected(dayObj, opt)">
+                                                <button type="button" tabindex="-1" class="nook-calendar-day"
+                                                        :class="{ 'is-outside': !dayObj.isCurrentMonth, 'is-today': dayObj.isToday, 'is-selected': dpIsSelected(dayObj, opt) }"
+                                                        :aria-current="dayObj.isToday ? 'date' : null"
+                                                        @click.stop="dpSelectDate(dayObj.dateStr, opt)"
+                                                        x-text="dayObj.day"></button>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <template x-if="emptyNote && options.length === 0">
+                        <div class="nook-suggest-empty" role="status">
+                            <template x-if="emptyNote.query">
+                                <span>No <span x-text="emptyNote.noun"></span> match “<b x-text="emptyNote.query"></b>”.<span x-show="emptyNote.noun === 'people'"> Try part of a name or handle.</span></span>
+                            </template>
+                            <template x-if="!emptyNote.query">
+                                <span>No <span x-text="emptyNote.noun"></span> yet.</span>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+
+            <div class="nook-results-row">
+                <span class="nook-count" role="status" aria-live="polite" x-text="loading ? 'Loading…' : resultCountLabel()"></span>
+                <div x-ref="feedMenus" class="feed-pickers" @click.outside="closeFeedMenu()" @focusout="if ($event.relatedTarget && !$el.contains($event.relatedTarget)) closeFeedMenu()" @keydown.escape.stop.prevent="closeFeedMenu(true)">
+                    <div class="feed-picker">
+                        <button type="button" class="feed-picker-trigger nook-sort" id="feed-trigger-sort" aria-controls="feed-menu-sort" :aria-label="'Sort: ' + feedLabel('sort')" aria-haspopup="menu" :aria-expanded="feedMenu === 'sort'" @click="feedMenu === 'sort' ? closeFeedMenu() : openFeedMenu('sort', $el)" @keydown.arrow-down.prevent="openFeedMenu('sort', $el)" @keydown.arrow-up.prevent="openFeedMenu('sort', $el)">
+                            <span x-text="feedLabel('sort')"></span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+</svg>
+                        </button>
+                        <div x-cloak x-show="feedMenu === 'sort'" x-transition.opacity.duration.100ms class="feed-picker-menu nook-sort-menu" id="feed-menu-sort" data-feed-menu="sort" role="menu" aria-labelledby="feed-trigger-sort" @keydown.tab="closeFeedMenu()">
+                            <template x-for="(option, index) in feedOptions('sort')" :key="option.value">
+                                <button type="button" class="feed-picker-option" role="menuitemradio" tabindex="-1" :aria-checked="sortOrder === option.value" @click="selectFeedOption('sort', option.value)" @keydown.arrow-down.prevent="focusFeedOption('sort', index + 1)" @keydown.arrow-up.prevent="focusFeedOption('sort', index - 1)" @keydown.home.prevent="focusFeedOption('sort', 0)" @keydown.end.prevent="focusFeedOption('sort', feedOptions('sort').length - 1)">
+                                    <span x-text="option.label"></span>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" :class="{ 'is-selected': sortOrder === option.value }"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" x-cloak x-show="feedUpdateAvailable" class="nook-feed-refresh" :disabled="loading" @click="fetchTweets()">Updates available · Refresh</button>
+
+            <template x-if="error">
+                <div class="p-4 mx-4 my-2 border rounded-lg" style="background-color: color-mix(in srgb, var(--destructive-color) 20%, transparent); border-color: var(--destructive-color); color: var(--destructive-color);">
+                    <div class="font-bold mb-1">Error Loading Tweets</div>
+                    <div x-text="error"></div>
+                    <button @click="error = null; fetchTweets()" class="mt-2 text-sm text-red-300 hover:text-red-100 underline">Try Again</button>
+                </div>
+            </template>
+
+            <template x-if="loading && tweets.length === 0 && !error"><div class="p-8 text-center text-gray-500">Loading...</div></template>
+            <template x-if="archiveReady && !setupForced && !loading && tweets.length === 0 && !error"><div class="p-8 text-center text-gray-500">No tweets found in this collection.</div></template>
+
+            <!-- TWEET LIST: cards are plain markup from renderFeedCard(), written outside
+                 Alpine and handled by listeners on the list (bindFeedList). -->
+            <div class="relative" x-ref="feedArea">
+                <div x-ref="feedList" :class="{ 'feed-refreshing': loading && tweets.length > 0 }"></div>
+                <!-- One overflow menu for every card, placed over the button that opened it. -->
+                <div x-show="tweetMenuOpen === listMenu.key" x-cloak
+                     x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+                     class="absolute z-50 w-56 origin-top-right overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--dropdown-bg)] shadow-2xl"
+                     :style="{ top: listMenu.top + 'px', right: listMenu.right + 'px' }"
+                     role="menu"
+                     @click.outside="closeTweetMenu(listMenu.key)" @keydown.escape.window="closeTweetMenu(listMenu.key)">
+                    <button type="button" role="menuitem" @click.stop="openTagsFromTweetMenu(listMenu.tweet.tweet_id, listMenu.tweet.media_tags)"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg class="w-5 h-5 flex-shrink-0"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18.5 7c0-.72 0-1.2-.03-1.56a2 2 0 0 0-.13-.62 1.5 1.5 0 0 0-.66-.66c-.1-.05-.26-.1-.62-.13S16.22 4 15.5 4h-7c-.72 0-1.2 0-1.56.03s-.52.08-.62.13a1.5 1.5 0 0 0-.66.66c-.05.1-.1.26-.13.62-.03.37-.03.84-.03 1.56v11.33l6.5-3.46 6.5 3.46zm2 14.67L12 17.13l-8.5 4.54V7q-.01-1.03.04-1.72c.04-.48.12-.94.34-1.37a3.5 3.5 0 0 1 1.53-1.53c.43-.22.89-.3 1.37-.34q.7-.05 1.72-.04h7q1.02-.01 1.72.04c.48.04.94.12 1.37.34.66.34 1.2.87 1.53 1.53.22.43.3.89.34 1.37q.05.7.04 1.72z"/></svg>
+                        <span>Tags</span>
+                    </button>
+                    <button type="button" role="menuitem" @click.stop="copyRawTweet(listMenu.tweet)"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg class="w-5 h-5 flex-shrink-0"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="m10.85 10.5-3.11 3.42-1.48-1.34 1.89-2.08-1.89-2.08 1.48-1.34z"/><path d="M14.1 2.5q1.65-.02 2.7.06c.74.06 1.38.18 1.97.48a5 5 0 0 1 2.19 2.19c.3.6.42 1.23.48 1.96q.08 1.06.06 2.71v4.2q.02 1.65-.06 2.7a5 5 0 0 1-.48 1.97 5 5 0 0 1-2.19 2.19c-.6.3-1.23.42-1.96.48q-1.06.08-2.71.06H9.9q-1.65.02-2.7-.06a5 5 0 0 1-1.97-.48 5 5 0 0 1-2.19-2.19c-.3-.6-.42-1.23-.48-1.96q-.07-1.06-.06-2.71V9.9q-.02-1.65.06-2.7c.06-.74.18-1.38.48-1.97a5 5 0 0 1 2.19-2.19c.6-.3 1.23-.42 1.96-.48q1.06-.07 2.71-.06zm-4.2 2c-1.14 0-1.93 0-2.55.05-.6.05-.95.14-1.21.28a3 3 0 0 0-1.31 1.3 3 3 0 0 0-.28 1.22c-.05.62-.05 1.41-.05 2.55v4.2c0 1.14 0 1.93.05 2.55.05.6.14.95.28 1.21a3 3 0 0 0 1.3 1.31c.27.14.62.23 1.22.28.62.05 1.41.05 2.55.05h4.2c1.14 0 1.93 0 2.55-.05.6-.05.95-.14 1.21-.28a3 3 0 0 0 1.31-1.3c.14-.27.23-.62.28-1.22.05-.62.05-1.41.05-2.55V9.9c0-1.14 0-1.93-.05-2.55a3 3 0 0 0-.28-1.21 3 3 0 0 0-1.3-1.31 3 3 0 0 0-1.22-.28c-.62-.05-1.41-.05-2.55-.05z"/></svg>
+                        <span>Copy raw</span>
+                    </button>
+                    <button type="button" role="menuitem" @click.stop="openTweetHistory(listMenu.key.slice('list:'.length))"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5"/><path d="m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z"/></svg>
+                        <span>History</span>
+                    </button>
+                    <button type="button" role="menuitem" x-show="hasNoteHistory(listMenu.tweet)" @click.stop="openNoteHistory(listMenu.key.slice('list:'.length))"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg>
+                        <span>Community notes</span>
+                    </button>
+                    <button type="button" role="menuitem" @click.stop="setTweetHidden(listMenu.key.slice('list:'.length), !listMenu.hidden)"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                        <svg class="w-5 h-5 flex-shrink-0" x-show="!listMenu.hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10"/></svg>
+                        <svg class="w-5 h-5 flex-shrink-0" x-show="listMenu.hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5"/><path fill-rule="evenodd" d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0"/></svg>
+                        <span x-text="listMenu.hidden ? 'Unhide' : 'Hide'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Infinite Scroll Sentinel -->
+            <div x-show="!loading && hasMore" x-ref="feedSentinel" x-intersect.margin.1200px="loadMore()" class="p-6 text-center text-[var(--accent-color)] flex justify-center">
+                <button x-show="!loadingMore" @click="loadMore()" class="hover:underline" x-text="error ? 'Retry loading more' : 'Load more'"></button>
+                <svg x-show="loadingMore" aria-label="Loading more tweets" class="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+        </div>

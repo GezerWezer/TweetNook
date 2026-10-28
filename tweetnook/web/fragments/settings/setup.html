@@ -1,0 +1,36 @@
+                                        <!-- Setup status stays inside Settings; the active flow uses its own modal. -->
+                    <div class="nook-setting-body nook-original-body" x-show="settingsTab === 'setup'">
+                        <template x-if="!setupData">
+                            <div class="flex items-center gap-3 p-6">
+                                <div class="setup-spinner"></div>
+                                <span class="text-sm text-[var(--text-secondary)]">Loading setup…</span>
+                            </div>
+                        </template>
+                        <template x-if="setupData">
+                            <div class="space-y-4">
+                                <div class="setup-card">
+                                    <h3 class="text-lg font-bold text-[var(--text-primary)]">Setup status</h3>
+                                    <p class="mt-2 text-sm text-[var(--text-secondary)]" x-text="setupProgressMessage"></p>
+                                    <p class="mt-2 text-sm text-[var(--destructive-color)]" x-show="setupError" x-text="setupError" role="alert"></p>
+                                </div>
+                                <div class="setup-card">
+                                    <div class="flex items-center justify-between gap-4 py-1">
+                                        <span class="text-sm font-bold text-[var(--text-primary)]">Archive</span>
+                                        <span class="text-sm text-[var(--text-secondary)]" x-text="setupData.archive.ready ? 'Ready' : 'Needs setup'"></span>
+                                    </div>
+                                    <div class="flex items-center justify-between gap-4 py-3 border-t border-[var(--border-color)] mt-2">
+                                        <span class="text-sm font-bold text-[var(--text-primary)]">Twitter/X connection</span>
+                                        <span class="text-sm text-[var(--text-secondary)]" x-text="setupData.auth?.verified ? 'Connected' : 'Not connected'"></span>
+                                    </div>
+                                    <div class="flex items-center justify-between gap-4 py-3 border-t border-[var(--border-color)]">
+                                        <span class="text-sm font-bold text-[var(--text-primary)]">Web password</span>
+                                        <span class="text-sm text-[var(--text-secondary)]" x-text="setupData.web?.password_configured ? 'Configured' : 'Not configured'"></span>
+                                    </div>
+                                </div>
+                                <div class="flex flex-wrap gap-3 pt-2">
+                                    <button class="setup-btn is-primary" @click="rerunSetup()" :disabled="isDemo">Run setup again</button>
+                                    <button class="setup-btn" x-show="setupData.archive.pending_enrichment > 0 && !activity" @click="startActivity('enrich')">Retry enrichment</button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>

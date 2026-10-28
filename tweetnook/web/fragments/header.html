@@ -1,0 +1,50 @@
+        <!-- HEADER: title, sync / analytics / settings, collection tabs (the tabs tuck away on scroll) -->
+        <header data-video-occluder class="nook-header">
+            <div class="nook-title-row">
+                <button x-cloak x-show="pageView !== 'list'" @click="goBack()" class="nook-icon-button nook-back" type="button" aria-label="Back to archive"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
+</svg></button>
+                <div class="nook-title-block">
+                    <div class="nook-title-line">
+                        <h1 x-text="pageView === 'list' ? 'Your archive' : viewMode === 'quotes' ? 'Quote tweets' : (articleForTweet(threadData?.main) ? 'Article' : 'Tweet')"></h1>
+                        <span x-show="isDemo" class="nook-demo-badge">Demo</span>
+                        <span x-show="setupReplayConnected" x-cloak class="nook-demo-badge" :title="`Twitter/X requests go to the replay source at ${setupData?.dev?.replay?.url}`">Replay mode</span>
+                    </div>
+                    <span x-show="pageView === 'list'" class="nook-sync" x-text="activityHeaderText()" :title="displayActivity?.summary || (lastSyncFormatted ? 'Last synced ' + lastSyncFormatted : null)"></span>
+                </div>
+                <div class="nook-utilities">
+                    <button x-cloak x-show="pageView === 'thread' && articleForTweet(threadData?.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg><span class="article-focus-label">Focus mode</span></button>
+                    <button type="button" class="nook-icon-button nook-activity-button" @click="nookToggleActivity($data, $el)" aria-controls="nook-activity-drawer" :aria-expanded="activityDrawerOpen" :aria-label="(activity || activityStartPending) ? activityCommandLabel() + ', in progress' : 'Sync activity'" :title="(activity || activityStartPending) ? activityCommandLabel() + ' in progress' : 'Sync activity'"><span x-show="!(activity || activityStartPending)" class="nook-activity-glyph"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M11.99 16l-5.7-5.7L7.7 8.88l3.29 3.3V2.59h2v9.59l3.3-3.3 1.41 1.42-5.71 5.7zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z" />
+</svg></span><span x-cloak x-show="activity || activityStartPending" class="nook-activity-spinner" aria-hidden="true"></span></button>
+                    <button type="button" class="nook-icon-button" @click="openStatsModal()" aria-label="Analytics" title="Analytics"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21l.004-10h2L6 21H4zm9.248 0v-7h2v7h-2z" />
+</svg></button>
+                    <button type="button" class="nook-icon-button" @click="openSettings()" :aria-label="noticeCount ? `Settings, ${noticeCount} unread notifications` : 'Settings'" title="Settings"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.54 1.75h2.92l1.57 2.36c.11.17.32.25.53.21l2.53-.59 2.17 2.17-.58 2.54c-.05.2.04.41.21.53l2.36 1.57v2.92l-2.36 1.57c-.17.12-.26.33-.21.53l.58 2.54-2.17 2.17-2.53-.59c-.21-.04-.42.04-.53.21l-1.57 2.36h-2.92l-1.58-2.36c-.11-.17-.32-.25-.52-.21l-2.54.59-2.17-2.17.58-2.54c.05-.2-.03-.41-.21-.53l-2.35-1.57v-2.92L4.1 8.97c.18-.12.26-.33.21-.53L3.73 5.9 5.9 3.73l2.54.59c.2.04.41-.04.52-.21l1.58-2.36zm1.07 2l-.98 1.47C10.05 6.08 9 6.5 7.99 6.27l-1.46-.34-.6.6.33 1.46c.24 1.01-.18 2.07-1.05 2.64l-1.46.98v.78l1.46.98c.87.57 1.29 1.63 1.05 2.64l-.33 1.46.6.6 1.46-.34c1.01-.23 2.06.19 2.64 1.05l.98 1.47h.78l.97-1.47c.58-.86 1.63-1.28 2.65-1.05l1.45.34.61-.6-.34-1.46c-.23-1.01.18-2.07 1.05-2.64l1.47-.98v-.78l-1.47-.98c-.87-.57-1.28-1.63-1.05-2.64l.34-1.46-.61-.6-1.45.34c-1.02.23-2.07-.19-2.65-1.05l-.97-1.47h-.78zM12 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5c.82 0 1.5-.67 1.5-1.5s-.68-1.5-1.5-1.5zM8.5 12c0-1.93 1.56-3.5 3.5-3.5 1.93 0 3.5 1.57 3.5 3.5s-1.57 3.5-3.5 3.5c-1.94 0-3.5-1.57-3.5-3.5z" />
+</svg><span x-cloak x-show="noticeCount" class="nook-notice-count" aria-hidden="true" x-text="noticeCount > 9 ? '9+' : noticeCount"></span></button>
+                </div>
+            </div>
+            <div x-show="pageView === 'list'" class="nook-tabs-frame" x-init="nookTabsInit($el)">
+                <nav class="nook-tabs" role="tablist" aria-label="Archive collection">
+                    <template x-for="option in feedOptions('collection')" :key="option.value">
+                        <button type="button" role="tab" class="nook-tab" :id="'nook-tab-' + option.value" aria-controls="nook-feed" :aria-selected="collectionFilter === option.value" :tabindex="collectionFilter === option.value ? 0 : -1" @click="selectFeedOption('collection', option.value); nookRevealTab($el)" @keydown="nookTabKey($event, $data)"><span x-text="option.label"></span></button>
+                    </template>
+                </nav>
+            </div>
+        </header>
+
+        <section x-cloak x-show="setupData && !setupForced && !archiveReady" data-feed-stage class="setup-card m-4" role="status">
+            <h2 class="text-xl font-bold" x-text="['failed', 'interrupted'].includes(setupData?.archive?.initialization_state) ? 'Archive setup needs attention' : 'Your archive is being initialized'"></h2>
+            <p class="text-sm text-[var(--text-secondary)] mt-2" x-text="setupProgressMessage"></p>
+            <p class="text-sm text-[var(--text-secondary)] mt-2">Browsing becomes available when local initialization finishes.</p>
+            <div class="flex gap-3 mt-4"><button class="setup-btn" @click="activityDrawerOpen = true">View activity</button><button class="setup-btn" @click="openSetup()">Open Setup</button></div>
+        </section>
+
+        <div x-show="showArchiveEnrichmentReminder" x-cloak role="alert" data-feed-stage
+             class="px-4 py-3 border-b border-[var(--border-color)] bg-[color-mix(in_srgb,var(--accent-color)_12%,var(--bg-primary))] text-sm text-[var(--text-primary)]">
+            <div class="font-semibold">Archive enrichment is incomplete</div>
+            <div class="mt-1 text-[var(--text-secondary)]"><span x-text="archiveEnrichmentIncomplete.toLocaleString()"></span> tweets remain.</div>
+            <button type="button" class="setup-btn mt-3" :disabled="!!activity || activityStartPending" @click="startActivity('enrich')">Continue enrichment</button>
+            <span x-show="activity && !activity?.title?.includes('enrich')" class="ml-2 text-[var(--text-secondary)]">Wait for the active task to finish.</span>
+        </div>

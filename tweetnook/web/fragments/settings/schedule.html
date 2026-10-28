@@ -1,0 +1,269 @@
+                    <!-- Scheduled sync settings -->
+                    <!-- Schedule: summary, what to sync, cadence, time, and random delay -->
+                    <div class="nook-setting-body nook-schedule-page" x-show="settingsTab === 'schedule'">
+                        <div x-show="!scheduleForm && !scheduleError" class="nook-empty"><span>Loading schedule…</span></div>
+                        <p x-show="scheduleError" role="alert" class="nook-inline-status nook-schedule-error" x-text="scheduleError"></p>
+                        <template x-if="scheduleForm">
+                            <div>
+                                <!-- Like X's "Will send on …" line: a quiet glyph-led summary, not a card. -->
+                                <p class="nook-schedule-summary" :class="{ 'is-dirty': scheduleHasChanges() }" aria-live="polite">
+                                    <span class="nook-schedule-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M6 3V2h2v1h6V2h2v1h1.5C18.88 3 20 4.119 20 5.5v2h-2v-2c0-.276-.22-.5-.5-.5H16v1h-2V5H8v1H6V5H4.5c-.28 0-.5.224-.5.5v12c0 .276.22.5.5.5h3v2h-3C3.12 20 2 18.881 2 17.5v-12C2 4.119 3.12 3 4.5 3H6zm9.5 8c-2.49 0-4.5 2.015-4.5 4.5s2.01 4.5 4.5 4.5 4.5-2.015 4.5-4.5-2.01-4.5-4.5-4.5zM9 15.5C9 11.91 11.91 9 15.5 9s6.5 2.91 6.5 6.5-2.91 6.5-6.5 6.5S9 19.09 9 15.5zm5.5-2.5h2v2.086l1.71 1.707-1.42 1.414-2.29-2.293V13z" />
+</svg></span>
+                                    <span class="nook-schedule-copy">
+                                        <span class="nook-schedule-when" x-text="nookScheduleHeadline($data)"></span>
+                                        <span class="nook-schedule-next" x-text="nookScheduleStatusLine($data)"></span>
+                                    </span>
+                                </p>
+
+                                <div class="nook-choice-row nook-schedule-master">
+                                    <span><strong>Sync automatically</strong><span>Keeps your archive up to date. Needs internet access from the server; turn it off for local-only browsing.</span></span>
+                                    <button type="button" role="switch" class="nook-switch-button" aria-label="Sync automatically" :aria-checked="scheduleForm.enabled" @click="scheduleForm.enabled = !scheduleForm.enabled; scheduleFieldChanged()"><span class="nook-switch-track"><span></span></span></button>
+                                </div>
+
+                                <section class="nook-setting-section nook-sync-what">
+                                    <h3 id="nook-sync-what-title">What to sync</h3>
+                                    <div role="group" aria-labelledby="nook-sync-what-title">
+                                        <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('bookmarks')" @click="nookToggleSyncCollection($data, 'bookmarks')"><span><strong>Bookmarks</strong><span>Posts you’ve bookmarked</span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></button>
+                                        <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('likes')" @click="nookToggleSyncCollection($data, 'likes')"><span><strong>Likes</strong><span>Posts you’ve liked</span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></button>
+                                        <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('tweets')" @click="nookToggleSyncCollection($data, 'tweets')"><span><strong>Your tweets</strong><span>Posts you’ve written</span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span></button>
+                                    </div>
+                                </section>
+
+                                <fieldset class="nook-schedule-fields" :disabled="!scheduleForm.enabled">
+                                    <section class="nook-setting-section">
+                                        <h3 id="nook-repeat-title">Repeat</h3>
+                                        <div class="nook-segmented nook-segmented-full" role="radiogroup" aria-labelledby="nook-repeat-title">
+                                            <template x-for="cadence in [{key: 'hours', label: 'Hourly'}, {key: 'daily', label: 'Daily'}, {key: 'weekly', label: 'Weekly'}, {key: 'monthly', label: 'Monthly'}]" :key="cadence.key">
+                                                <button type="button" role="radio" :aria-checked="scheduleForm.cadence === cadence.key" @click="scheduleForm.cadence = cadence.key; scheduleFieldChanged()" x-text="cadence.label"></button>
+                                            </template>
+                                        </div>
+                                        <div class="nook-schedule-detail" x-show="scheduleForm.cadence === 'hours'">
+                                            <div class="nook-select" x-data="nookSelect({ label: 'Interval', searchable: false, options: () => nookIntervalOptions(scheduleForm.every_hours), value: () => scheduleForm.every_hours, choose: value => { scheduleForm.every_hours = value; scheduleFieldChanged() } })"
+                 @click.outside="open && close(false)" @keydown="open && key($event)">
+                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                        aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
+                    <span class="nook-select-label" x-text="label"></span>
+                    <span class="nook-select-value" x-text="currentLabel()"></span>
+                    <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+</svg></span>
+                </button>
+                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                    <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
+                        <template x-for="(option, index) in filtered()" :key="option.value">
+                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                                <span class="nook-select-option" x-text="option.label"></span>
+                                <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
+                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span>
+                            </li>
+                        </template>
+                        <li class="nook-select-empty" x-show="!filtered().length" role="presentation">No matches</li>
+                    </ul>
+                </div>
+            </div>
+                                            <p class="nook-setting-help">Counted from when you save, then after each sync.</p>
+                                        </div>
+                                        <div class="nook-schedule-detail" x-show="scheduleForm.cadence === 'weekly'">
+                                            <span class="nook-field-label" id="nook-weekday-title">On</span>
+                                            <div class="nook-day-chips" role="radiogroup" aria-labelledby="nook-weekday-title">
+                                                <template x-for="(day, index) in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']" :key="day">
+                                                    <button type="button" role="radio" :aria-checked="scheduleForm.weekday === index" :aria-label="day" @click="scheduleForm.weekday = index; scheduleFieldChanged()" x-text="day.slice(0, 3)"></button>
+                                                </template>
+                                            </div>
+                                        </div>
+                                        <div class="nook-schedule-detail" x-show="scheduleForm.cadence === 'monthly'">
+                                            <div class="nook-select" x-data="nookSelect({ label: 'Day of the month', searchable: false, options: () => nookDayOptions(), value: () => scheduleForm.day_of_month, choose: value => { scheduleForm.day_of_month = value; scheduleFieldChanged() } })"
+                 @click.outside="open && close(false)" @keydown="open && key($event)">
+                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                        aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
+                    <span class="nook-select-label" x-text="label"></span>
+                    <span class="nook-select-value" x-text="currentLabel()"></span>
+                    <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+</svg></span>
+                </button>
+                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                    <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
+                        <template x-for="(option, index) in filtered()" :key="option.value">
+                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                                <span class="nook-select-option" x-text="option.label"></span>
+                                <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
+                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span>
+                            </li>
+                        </template>
+                        <li class="nook-select-empty" x-show="!filtered().length" role="presentation">No matches</li>
+                    </ul>
+                </div>
+            </div>
+                                            <p class="nook-setting-help">In shorter months, a day that doesn’t exist runs on the last day instead.</p>
+                                        </div>
+                                    </section>
+
+                                    <section class="nook-setting-section" x-show="scheduleForm.cadence !== 'hours'">
+                                        <h3>Time</h3>
+                                        <div class="nook-time-row" role="group" aria-label="Run time">
+                                            <div class="nook-select" x-data="nookSelect({ label: 'Hour', searchable: false, options: () => nookHourOptions(), value: () => scheduleTimeHour, choose: value => { setScheduleTimePart('hour', value) } })"
+                 @click.outside="open && close(false)" @keydown="open && key($event)">
+                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                        aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
+                    <span class="nook-select-label" x-text="label"></span>
+                    <span class="nook-select-value" x-text="currentLabel()"></span>
+                    <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+</svg></span>
+                </button>
+                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                    <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
+                        <template x-for="(option, index) in filtered()" :key="option.value">
+                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                                <span class="nook-select-option" x-text="option.label"></span>
+                                <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
+                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span>
+                            </li>
+                        </template>
+                        <li class="nook-select-empty" x-show="!filtered().length" role="presentation">No matches</li>
+                    </ul>
+                </div>
+            </div>
+                                            <span class="nook-time-colon" aria-hidden="true">:</span>
+                                            <div class="nook-select" x-data="nookSelect({ label: 'Minute', searchable: false, options: () => nookMinuteOptions(), value: () => scheduleTimeMinute, choose: value => { setScheduleTimePart('minute', value) } })"
+                 @click.outside="open && close(false)" @keydown="open && key($event)">
+                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                        aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
+                    <span class="nook-select-label" x-text="label"></span>
+                    <span class="nook-select-value" x-text="currentLabel()"></span>
+                    <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+</svg></span>
+                </button>
+                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                    <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
+                        <template x-for="(option, index) in filtered()" :key="option.value">
+                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                                <span class="nook-select-option" x-text="option.label"></span>
+                                <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
+                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span>
+                            </li>
+                        </template>
+                        <li class="nook-select-empty" x-show="!filtered().length" role="presentation">No matches</li>
+                    </ul>
+                </div>
+            </div>
+                                            <div class="nook-segmented nook-period" role="radiogroup" aria-label="AM or PM">
+                                                <button type="button" role="radio" :aria-checked="scheduleTimePeriod === 'AM'" @click="setScheduleTimePart('period', 'AM')">AM</button>
+                                                <button type="button" role="radio" :aria-checked="scheduleTimePeriod === 'PM'" @click="setScheduleTimePart('period', 'PM')">PM</button>
+                                            </div>
+                                        </div>
+                                        <div class="nook-schedule-detail">
+                                            <div class="nook-select is-wide" x-data="nookSelect({ label: 'Time zone', searchable: true, options: () => nookZoneOptions($data), value: () => scheduleForm.timezone, choose: value => { scheduleForm.timezone = value; scheduleFieldChanged() } })"
+                 @click.outside="open && close(false)" @keydown="open && key($event)">
+                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                        aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
+                    <span class="nook-select-label" x-text="label"></span>
+                    <span class="nook-select-value" x-text="currentLabel()"></span>
+                    <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+</svg></span>
+                </button>
+                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                <div class="nook-select-search" x-show="searchable">
+                    <input type="search" x-ref="search" x-model="query" :placeholder="placeholder" role="combobox" aria-autocomplete="list" :aria-expanded="open"
+                           :aria-controls="uid + '-list'" :aria-activedescendant="filtered().length ? uid + '-' + active : null" @input="active = 0" autocomplete="off" spellcheck="false">
+                </div>
+                    <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
+                        <template x-for="(option, index) in filtered()" :key="option.value">
+                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                                <span class="nook-select-option" x-text="option.label"></span>
+                                <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
+                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span>
+                            </li>
+                        </template>
+                        <li class="nook-select-empty" x-show="!filtered().length" role="presentation">No matches</li>
+                    </ul>
+                </div>
+            </div>
+                                            <p class="nook-setting-help" x-text="nookZoneNow(scheduleForm.timezone)"></p>
+                                        </div>
+                                    </section>
+
+                                    <section class="nook-setting-section" x-show="scheduleForm.cadence !== 'hours'">
+                                        <div class="nook-choice-row">
+                                            <span><strong>Vary the start time</strong><span>Each sync starts at a random moment after the time above, instead of the same minute every time.</span></span>
+                                            <button type="button" role="switch" class="nook-switch-button" aria-label="Vary the start time" :aria-checked="scheduleForm.randomize_time" @click="scheduleForm.randomize_time = !scheduleForm.randomize_time; scheduleFieldChanged()"><span class="nook-switch-track"><span></span></span></button>
+                                        </div>
+                                        <div class="nook-delay-row" x-show="scheduleForm.randomize_time">
+                                            <div class="nook-select" x-data="nookSelect({ label: 'Earliest', searchable: false, options: () => nookDelayOptions(scheduleForm.random_offset_min_hours), value: () => scheduleForm.random_offset_min_hours, choose: value => { scheduleForm.random_offset_min_hours = value; scheduleFieldChanged() } })"
+                 @click.outside="open && close(false)" @keydown="open && key($event)">
+                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                        aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
+                    <span class="nook-select-label" x-text="label"></span>
+                    <span class="nook-select-value" x-text="currentLabel()"></span>
+                    <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+</svg></span>
+                </button>
+                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                    <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
+                        <template x-for="(option, index) in filtered()" :key="option.value">
+                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                                <span class="nook-select-option" x-text="option.label"></span>
+                                <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
+                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span>
+                            </li>
+                        </template>
+                        <li class="nook-select-empty" x-show="!filtered().length" role="presentation">No matches</li>
+                    </ul>
+                </div>
+            </div>
+                                            <span class="nook-delay-to" aria-hidden="true">to</span>
+                                            <div class="nook-select" x-data="nookSelect({ label: 'Latest', searchable: false, options: () => nookDelayOptions(scheduleForm.random_offset_max_hours), value: () => scheduleForm.random_offset_max_hours, choose: value => { scheduleForm.random_offset_max_hours = value; scheduleFieldChanged() } })"
+                 @click.outside="open && close(false)" @keydown="open && key($event)">
+                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                        aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
+                    <span class="nook-select-label" x-text="label"></span>
+                    <span class="nook-select-value" x-text="currentLabel()"></span>
+                    <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+</svg></span>
+                </button>
+                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                    <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
+                        <template x-for="(option, index) in filtered()" :key="option.value">
+                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                                <span class="nook-select-option" x-text="option.label"></span>
+                                <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
+                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+</svg></span>
+                            </li>
+                        </template>
+                        <li class="nook-select-empty" x-show="!filtered().length" role="presentation">No matches</li>
+                    </ul>
+                </div>
+            </div>
+                                        </div>
+                                        <p x-show="scheduleForm.randomize_time && !scheduleRandomWindowValid()" role="alert" class="nook-field-error">The earliest start can’t be later than the latest.</p>
+                                    </section>
+                                </fieldset>
+                            </div>
+                        </template>
+                    </div>

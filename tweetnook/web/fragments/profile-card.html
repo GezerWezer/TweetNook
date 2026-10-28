@@ -1,0 +1,67 @@
+        <!-- Mini Profile Card Modal -->
+        <template x-if="profileCard">
+            <div id="profile-card-modal" class="fixed z-[100] bg-[var(--dropdown-bg)] border border-[var(--border-color)] rounded-xl shadow-[0_0_15px_rgba(255,255,255,0.1)] w-[300px]"
+                 :style="`left: ${profileCard?.x}px; top: ${profileCard?.y}px;`"
+                 @click.outside="closeProfileCard()"
+                 @keydown.escape.window="closeProfileCard()"
+                 @scroll.window="closeProfileCard()">
+                <div class="p-4 flex flex-col">
+                    <div class="flex justify-between items-start mb-3">
+                        <div class="avatar w-16 h-16 rounded-full overflow-hidden bg-[var(--gray-700)] flex items-center justify-center font-bold text-2xl text-[var(--white-icon)] relative flex-shrink-0">
+                            <span class="avatar-initial" x-text="profileCard?.initial"></span>
+                            <img :src="avatarUrl(profileCard?.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
+                        </div>
+                        <button class="bg-[var(--text-primary)] text-[var(--bg-primary)] px-4 py-1.5 rounded-full font-bold text-[15px] hover:opacity-90 transition"
+                                @click="searchFrom(profileCard?.username); closeProfileCard()">
+                            Search
+                        </button>
+                    </div>
+                    <template x-if="profileCard?.snapshots?.length > 1">
+                        <div class="flex items-center justify-between mb-2 text-[13px] text-[var(--text-secondary)]">
+                            <button type="button" class="p-1 rounded-full hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    aria-label="Older profile capture" title="Older profile capture"
+                                    :disabled="profileCard?.snapshotIndex >= profileCard?.snapshots?.length - 1"
+                                    @click="showProfileSnapshot(profileCard?.snapshotIndex + 1)">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"></path></svg>
+                            </button>
+                            <span class="truncate" :title="formatDate(profileCard?.syncDate, true)">
+                                Fetched <span x-text="formatRelativeDate(profileCard?.syncDate)"></span>
+                                · <span x-text="profileCard?.snapshots?.length - profileCard?.snapshotIndex"></span> of <span x-text="profileCard?.snapshots?.length"></span>
+                            </span>
+                            <button type="button" class="p-1 rounded-full hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    aria-label="Newer profile capture" title="Newer profile capture"
+                                    :disabled="profileCard?.snapshotIndex <= 0"
+                                    @click="showProfileSnapshot(profileCard?.snapshotIndex - 1)">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path></svg>
+                            </button>
+                        </div>
+                    </template>
+                    <div class="flex flex-col mb-3">
+                        <span class="font-bold text-[17px] text-[var(--text-primary)] leading-tight truncate" x-text="profileCard?.name"></span>
+                        <span class="text-[15px] text-[var(--text-secondary)] truncate" x-text="'@' + profileCard?.username"></span>
+                    </div>
+                    <template x-if="profileCard?.description">
+                        <div class="text-[14px] text-[var(--text-primary)] leading-snug mb-3 whitespace-pre-wrap" x-html="formatText({text: profileCard?.description})" @click="handleTextClick($event)"></div>
+                    </template>
+                    <div class="flex items-center justify-between w-full mt-1 mb-1">
+                        <template x-if="profileCard && (profileCard.followingCount > 0 || profileCard.followersCount > 0)">
+                            <div class="flex items-center space-x-4">
+                                <span class="text-[14px] text-[var(--text-secondary)]"><span class="font-bold text-[var(--text-primary)]" x-text="profileCard?.followingCount?.toLocaleString()"></span> Following</span>
+                                <span class="text-[14px] text-[var(--text-secondary)]"><span class="font-bold text-[var(--text-primary)]" x-text="profileCard?.followersCount?.toLocaleString()"></span> Followers</span>
+                            </div>
+                        </template>
+                        
+                        <template x-if="profileCard?.syncDate">
+                            <div class="group relative flex items-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-help shrink-0 ml-auto">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <div class="absolute bottom-full right-0 mb-1 px-2 py-1 text-[11px] font-bold bg-[var(--text-primary)] text-[var(--bg-primary)] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 z-[101] pointer-events-none">
+                                    Fetched <span x-text="formatRelativeDate(profileCard?.syncDate)"></span> (<span x-text="formatDate(profileCard?.syncDate, true)"></span>)
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </template>

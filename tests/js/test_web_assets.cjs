@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { appScripts, appScriptsWith, pageScripts, readScripts } = require('./page_scripts.cjs');
+const { appScripts, appScriptsWith, pageHtml, pageScripts, readScripts } = require('./page_scripts.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const JS_DIR = path.join(ROOT, 'tweetnook', 'web', 'static', 'js');
@@ -230,9 +230,38 @@ function loadScripts(context, names, exportExpression) {
     return context.__exports;
 }
 
-// Like Alpine's nested x-data scopes: the child's own properties, getters included, win.
+// Like Alpine's nested x-data scopes: a read finds the nearest component that has the
+// name, a write goes to the component that owns it (the outer one for a new name), and
+// methods and getters run with the merged scope as `this`.
 function nookMergeScope(parent, child) {
-    return Object.defineProperties(Object.create(parent), Object.getOwnPropertyDescriptors(child));
+    const owner = name => [child, parent].find(object => name in object);
+    const scope = new Proxy({}, {
+        has: (_, name) => Boolean(owner(name)),
+        get: (_, name) => {
+            const target = owner(name);
+            return target && Reflect.get(target, name, scope);
+        },
+        set: (_, name, value) => {
+            const target = owner(name) || parent;
+            const setter = Object.getOwnPropertyDescriptor(target, name)?.set;
+            if (!setter) return Reflect.set(target, name, value);
+            setter.call(scope, value);
+            return true;
+        },
+    });
+    return scope;
+}
+
+// The tag dialog as the page mounts it: inside the app's scope, opened by its event.
+function mountTagDialog(context, app) {
+    const dialog = nookMergeScope(app, vm.runInContext('tagDialog()', context));
+    dialog.init();
+    return dialog;
+}
+
+// The app as the setup dialog sees it: the dialog's own state over the app's.
+function withSetupDialog(context, app) {
+    return nookMergeScope(app, vm.runInContext('setupDialog()', context));
 }
 
 function immediateComponent(component) {
@@ -522,7 +551,7 @@ test('tweet counts use compact detail precision and whole feed units', () => {
         assert.equal([...detail.matchAll(/class="tweet-action-count"/g)].length, 4);
         assert.doesNotMatch(detail, /tweet-action-count">(?:0|undefined)/);
     }
-    const page = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const page = pageHtml();
     for (const prefix of ['threadData.main', 'panelThreadData.main']) {
         const at = page.indexOf(`class="tweet-timestamp`, page.indexOf(`renderCommunityNote(${prefix}.raw_json, false, true)`));
         const end = page.indexOf(`renderActionBar(${prefix}, true)`, at);
@@ -754,7 +783,7 @@ test('tag autocomplete highlights partial fragments and escapes labels', () => {
     assert.equal(component.highlightTagMatch('<img> 100%_ [tag]', '%_ ['), '&lt;img&gt; 100<b>%_</b> <b>[</b>tag]');
     assert.equal(component.highlightTagMatch('<script>', ' \t '), '&lt;script&gt;');
     assert.equal(component.highlightTagMatch('<img>', 'missing'), '&lt;img&gt;');
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.ok(html.includes('x-html="highlightTagMatch(opt.value, opt.query)"'));
 });
 
@@ -1243,10 +1272,10 @@ test('autocomplete calendar shows the whole date when the caret is inside it', (
 
 test('tweet app starts with coherent list, panel, modal, and theme state', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(
+    const { tweetApp, statsDialog } = loadScripts(
         context,
         appScripts(),
-        '({tweetApp})',
+        '({tweetApp, statsDialog})',
     );
     const app = immediateComponent(tweetApp());
     assert.equal(app.viewMode, 'list');
@@ -1255,11 +1284,13 @@ test('tweet app starts with coherent list, panel, modal, and theme state', () =>
     assert.equal(app.sortOrder, 'liked_latest');
     assert.equal(app.panelMode, null);
     assert.deepEqual(Array.from(app.panelStack), []);
-    assert.equal(app.tagModalOpen, false);
+    assert.equal(vm.runInContext('tagDialog()', context).tagModalOpen, false);
     assert.equal(app.currentTheme, 'classic-light');
-    assert.equal(app.showEmptyUnavailableReasons, false);
-    assert.equal(app.statsGeneratedAt, null);
-    assert.equal(app.statsRefreshing, false);
+    assert.equal(app.showStatsModal, false);
+    const stats = statsDialog();
+    assert.equal(stats.showEmptyUnavailableReasons, false);
+    assert.equal(stats.statsGeneratedAt, null);
+    assert.equal(stats.statsRefreshing, false);
     assert.ok(Object.keys(app.THEMES).length >= 15);
     assert.equal(app.avatarUrl('user/42'), '/api/avatar/user%2F42?v=3');
 });
@@ -1398,7 +1429,7 @@ test('avatar initials preserve emoji and combining graphemes across author surfa
 });
 
 test('all avatar templates expose load and error handling, including reply and profile initials', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const images = html.match(/<img\b[^>]*:src="avatarUrl\([^>]*>/g) || [];
     assert.equal(images.length, 20);
     for (const image of images) {
@@ -1419,7 +1450,7 @@ test('all avatar templates expose load and error handling, including reply and p
 });
 
 test('every clickable byline name in the page opens that author\'s profile card', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const names = html.match(/<span\b[^>]*hover:underline tweet-byline-name[^>]*>/g) || [];
     assert.equal(names.length, 10);
     for (const name of names) assert.match(name, /@click\.stop="openProfileCard\(\$event, [\w.]+\)"/);
@@ -1427,7 +1458,7 @@ test('every clickable byline name in the page opens that author\'s profile card'
 
 test('lightbox navigation moves through media and clamps at both ends', () => {
     const context = browserContext();
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const { tweetApp } = loadScripts(
         context,
         appScripts(),
@@ -1461,7 +1492,7 @@ test('lightbox navigation moves through media and clamps at both ends', () => {
 
 test('lightbox touch drags track the finger, navigate, and protect the following click', () => {
     const context = browserContext();
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const { tweetApp } = loadScripts(
         context,
         appScripts(),
@@ -1658,7 +1689,7 @@ test('a tap shows or hides the phone photo viewer\'s controls instead of closing
     assert.equal(app.lightboxChromeHidden, false);
     assert.equal(app.closed, undefined);
     assert.equal(app.lightboxRestingOpacity(), 1);
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /'is-chrome-hidden': lightboxChromeHidden/);
     assert.match(html, /class="lightbox-dots"/);
     assert.match(html, /class="lightbox-actions" x-html="lightboxTweet \? renderActionBar\(lightboxTweet\) : ''"/);
@@ -1806,7 +1837,7 @@ test('profile cards show the newest captured profile and cycle through older one
     app.showProfileSnapshot(0);
     assert.equal(app.profileCard.y, 192);
 
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.ok(html.includes('@click="showProfileSnapshot(profileCard?.snapshotIndex + 1)"'));
     assert.ok(html.includes('@click="showProfileSnapshot(profileCard?.snapshotIndex - 1)"'));
     assert.ok(html.includes('aria-label="Older profile capture"'));
@@ -1839,34 +1870,66 @@ test('analytics uses one cached snapshot and retains it during manual refresh', 
             },
         };
     };
-    const { tweetApp } = loadScripts(
+    const { tweetApp, statsDialog } = loadScripts(
         context,
         appScripts(),
-        '({tweetApp})',
+        '({tweetApp, statsDialog})',
     );
     const app = immediateComponent(tweetApp());
+    const watchers = new Map();
+    app.$watch = (key, callback) => watchers.set(key, callback);
+    const stats = nookMergeScope(app, statsDialog());
+    stats.init();
     let polls = 0;
-    app.scheduleStatsRefreshPoll = () => { polls += 1; };
+    stats.scheduleStatsRefreshPoll = () => { polls += 1; };
 
-    await app.openStatsModal();
+    app.openStatsModal();
+    watchers.get('showStatsModal')(app.showStatsModal);
+    await new Promise(resolve => setTimeout(resolve, 0));
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0][0], '/api/stats/snapshot');
-    assert.equal(app.statsSummary.unique_posts, 12);
-    assert.equal(app.statsCollections[0].collection, 'Bookmarks');
-    assert.equal(app.storageData.total_bytes, 42);
-    assert.equal(app.statsTags.unique_tags, 3);
-    assert.equal(app.loadingStatsSnapshot, false);
-    assert.equal(app.statsAgeLabel(), 'Updated just now');
+    assert.equal(stats.statsSummary.unique_posts, 12);
+    assert.equal(stats.statsCollections[0].collection, 'Bookmarks');
+    assert.equal(stats.storageData.total_bytes, 42);
+    assert.equal(stats.statsTags.unique_tags, 3);
+    assert.equal(stats.loadingStatsSnapshot, false);
+    assert.equal(stats.statsAgeLabel(), 'Updated just now');
+    // The header's last-sync text belongs to the app, which the dialog updates.
+    assert.equal(app.lastSyncFormatted, 'Aug 10, 2026');
 
-    await app.refreshStats();
+    await stats.refreshStats();
 
     assert.equal(calls[1][0], '/api/stats/refresh');
     assert.equal(calls[1][1].method, 'POST');
-    assert.equal(app.statsSummary.unique_posts, 12);
-    assert.equal(app.statsRefreshing, true);
-    assert.equal(app.statsAgeLabel(), 'Refreshing · updated just now');
+    assert.equal(stats.statsSummary.unique_posts, 12);
+    assert.equal(stats.statsRefreshing, true);
+    assert.equal(stats.statsAgeLabel(), 'Refreshing · updated just now');
     assert.equal(polls, 1);
+});
+
+test('closing analytics stops its refresh poll', () => {
+    const context = browserContext();
+    const cleared = [];
+    context.clearTimeout = id => cleared.push(id);
+    const { tweetApp, statsDialog } = loadScripts(
+        context,
+        appScripts(),
+        '({tweetApp, statsDialog})',
+    );
+    const app = immediateComponent(tweetApp());
+    const watchers = new Map();
+    app.$watch = (key, callback) => watchers.set(key, callback);
+    const stats = nookMergeScope(app, statsDialog());
+    stats.init();
+    app.showStatsModal = true;
+    stats.statsRefreshPollTimer = 7;
+
+    app.closeStatsModal();
+    watchers.get('showStatsModal')(app.showStatsModal);
+
+    assert.deepEqual(cleared, [7]);
+    assert.equal(stats.statsRefreshPollTimer, null);
 });
 
 test('analytics refresh polling does not replace an unchanged report', async () => {
@@ -1885,23 +1948,24 @@ test('analytics refresh polling does not replace an unchanged report', async () 
             },
         };
     };
-    const { tweetApp } = loadScripts(
+    const { tweetApp, statsDialog } = loadScripts(
         context,
         appScripts(),
-        '({tweetApp})',
+        '({tweetApp, statsDialog})',
     );
     const app = immediateComponent(tweetApp());
+    const stats = nookMergeScope(app, statsDialog());
     const originalSummary = { unique_posts: 12 };
     app.showStatsModal = true;
-    app.statsGeneratedAt = '2026-08-10T00:00:00+00:00';
-    app.statsSummary = originalSummary;
-    app.scheduleStatsRefreshPoll = () => {};
+    stats.statsGeneratedAt = '2026-08-10T00:00:00+00:00';
+    stats.statsSummary = originalSummary;
+    stats.scheduleStatsRefreshPoll = () => {};
 
-    await app.pollStatsRefresh();
+    await stats.pollStatsRefresh();
 
     assert.deepEqual(calls, ['/api/stats/status']);
-    assert.equal(app.statsSummary, originalSummary);
-    assert.equal(app.statsRefreshing, true);
+    assert.equal(stats.statsSummary, originalSummary);
+    assert.equal(stats.statsRefreshing, true);
 });
 
 test('analytics suspends only playing videos and resumes them on close', async () => {
@@ -1952,13 +2016,13 @@ test('analytics suspends only playing videos and resumes them on close', async (
 
 test('archive status filters empty reasons and summarizes retry state', () => {
     const context = browserContext();
-    const { tweetApp } = loadScripts(
+    const { tweetApp, statsDialog } = loadScripts(
         context,
         appScripts(),
-        '({tweetApp})',
+        '({tweetApp, statsDialog})',
     );
-    const app = immediateComponent(tweetApp());
-    app.statsHealth = {
+    const stats = nookMergeScope(immediateComponent(tweetApp()), statsDialog());
+    stats.statsHealth = {
         enrichment: {
             unavailable: {
                 reasons: [
@@ -1992,44 +2056,41 @@ test('archive status filters empty reasons and summarizes retry state', () => {
     };
 
     assert.deepEqual(
-        Array.from(app.getUnavailableReasons(), item => item.reason),
+        Array.from(stats.getUnavailableReasons(), item => item.reason),
         ['unavailable_unknown', 'deleted_by_author'],
     );
     assert.deepEqual(
-        Array.from(app.getUnavailableBarReasons(), item => item.reason),
+        Array.from(stats.getUnavailableBarReasons(), item => item.reason),
         ['unavailable_unknown', 'deleted_by_author'],
     );
     assert.equal(
-        app.getUnavailableReasonStatus(app.statsHealth.enrichment.unavailable.reasons[1]),
+        stats.getUnavailableReasonStatus(stats.statsHealth.enrichment.unavailable.reasons[1]),
         '1 due now · 1 scheduled',
     );
     assert.equal(
-        app.getUnavailableReasonStatus(app.statsHealth.enrichment.unavailable.reasons[0]),
+        stats.getUnavailableReasonStatus(stats.statsHealth.enrichment.unavailable.reasons[0]),
         '1 permanent',
     );
     assert.ok(
-        app.getUnavailableSegmentWidth(app.statsHealth.enrichment.unavailable.reasons[1])
-        > app.getUnavailableSegmentWidth(app.statsHealth.enrichment.unavailable.reasons[0]),
+        stats.getUnavailableSegmentWidth(stats.statsHealth.enrichment.unavailable.reasons[1])
+        > stats.getUnavailableSegmentWidth(stats.statsHealth.enrichment.unavailable.reasons[0]),
     );
 
-    app.showEmptyUnavailableReasons = true;
-    assert.equal(app.getUnavailableReasons().length, 3);
+    stats.showEmptyUnavailableReasons = true;
+    assert.equal(stats.getUnavailableReasons().length, 3);
     assert.deepEqual(
-        Array.from(app.getUnavailableReasons(), item => item.reason),
+        Array.from(stats.getUnavailableReasons(), item => item.reason),
         ['unavailable_unknown', 'deleted_by_author', 'withheld'],
     );
-    assert.equal(app.getUnavailableBarReasons().length, 2);
+    assert.equal(stats.getUnavailableBarReasons().length, 2);
     assert.equal(
-        app.getUnavailableReasonStatus(app.statsHealth.enrichment.unavailable.reasons[2]),
+        stats.getUnavailableReasonStatus(stats.statsHealth.enrichment.unavailable.reasons[2]),
         'No unavailable tweets',
     );
 });
 
 test('analytics markup exposes the Archive status cards and reason breakdown', () => {
-    const html = fs.readFileSync(
-        path.join(ROOT, 'tweetnook', 'web', 'index.html'),
-        'utf8',
-    );
+    const html = pageHtml();
     const appJs = readScripts(pageScripts());
     const styles = fs.readFileSync(
         path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'),
@@ -2316,7 +2377,7 @@ test('like order is exposed for Likes, preserved during search, and reset on col
             ['liked_earliest', 'Earliest liked'],
         ]),
     );
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /x-for="option in feedOptions\('collection'\)"/);
     assert.match(html, /x-for="\(option, index\) in feedOptions\('sort'\)"/);
 });
@@ -2325,7 +2386,7 @@ test('feed menus retain null focus transitions and close when focus moves outsid
     const context = browserContext();
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     const expression = html.match(/@focusout="([^"]+)"/)[1];
     const handleFocusOut = new Function('$el', '$event', 'closeFeedMenu', expression);
     const inside = {};
@@ -2374,7 +2435,7 @@ test('list searching, incremental loading, and back-to-top obey state guards', (
     app.loadMore();
     assert.equal(fetches, 11);
 
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /x-show="!loading && hasMore"/);
 
     app.scrollToTop();
@@ -2446,10 +2507,7 @@ test('detail routes parse and generate canonical string tweet IDs', () => {
 });
 
 test('single-column thread quote count tolerates route teardown', () => {
-    const html = fs.readFileSync(
-        path.join(ROOT, 'tweetnook', 'web', 'index.html'),
-        'utf8',
-    );
+    const html = pageHtml();
     assert.match(html, /threadData\?\.main\?\.local_quote_count > 0/);
 });
 
@@ -2871,7 +2929,7 @@ test('tag settings search all pages and preserve merge selection through paging 
 });
 
 test('tag settings only mount when open and expose accessible bounded page controls', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /<template x-if="showSettingsModal && settingsTab === 'tags'">/);
     assert.match(html, /<template x-for="tag in rows\(\)"/);
     assert.match(html, /aria-label="Tag pages" x-show="filteredRows\(\).length > pageSize"/);
@@ -2903,15 +2961,16 @@ test('tag editing deduplicates case-insensitively and persists response state', 
         parents: [],
         children: [],
     };
-    app.tagModalTweetId = '1';
-    app.tagModalData = app.tweets[0].media_tags;
-    app.editableTags = ['Night'];
-    app.editableDescription = '  A moonlit view  ';
-    app.addEditableTag(' night ');
-    app.addEditableTag('Sky');
-    assert.deepEqual(Array.from(app.editableTags), ['Night', 'Sky']);
+    const dialog = mountTagDialog(context, app);
+    dialog.tagModalTweetId = '1';
+    dialog.tagModalData = app.tweets[0].media_tags;
+    dialog.editableTags = ['Night'];
+    dialog.editableDescription = '  A moonlit view  ';
+    dialog.addEditableTag(' night ');
+    dialog.addEditableTag('Sky');
+    assert.deepEqual(Array.from(dialog.editableTags), ['Night', 'Sky']);
 
-    await app.saveTags();
+    await dialog.saveTags();
     assert.deepEqual(Array.from(app.tweets[0].media_tags.tags), ['Night', 'Sky']);
     assert.equal(app.tweets[0].media_tags.description, 'A moonlit view');
     assert.equal(app.panelThreadData.main.media_tags.description, 'A moonlit view');
@@ -2950,6 +3009,7 @@ test('tweet overflow supports copying raw data, untagged tweets, and a one-secon
         '({tweetApp})',
     );
     const app = immediateComponent(tweetApp());
+    const dialog = mountTagDialog(context, app);
 
     app.toggleTweetMenu('list:2');
     assert.equal(app.tweetMenuOpen, 'list:2');
@@ -2960,12 +3020,12 @@ test('tweet overflow supports copying raw data, untagged tweets, and a one-secon
     app.toggleTweetMenu('list:2');
     app.openTagsFromTweetMenu('2', null);
     assert.equal(app.tweetMenuOpen, null);
-    assert.equal(app.tagModalOpen, true);
+    assert.equal(dialog.tagModalOpen, true);
     // Nothing saved yet, so the dialog opens in the editor.
-    assert.equal(app.isEditingTags, true);
-    assert.deepEqual(Array.from(app.tagModalData.tags), []);
-    assert.equal(app.tagModalData.description, '');
-    assert.deepEqual(Array.from(app.editableTags), []);
+    assert.equal(dialog.isEditingTags, true);
+    assert.deepEqual(Array.from(dialog.tagModalData.tags), []);
+    assert.equal(dialog.tagModalData.description, '');
+    assert.deepEqual(Array.from(dialog.editableTags), []);
 
     app.startTweetMenuPress({ pointerType: 'touch', button: 0 }, '3', {
         description: 'Existing',
@@ -2973,9 +3033,9 @@ test('tweet overflow supports copying raw data, untagged tweets, and a one-secon
     });
     assert.equal(app.tweetMenuPressTimer, 41);
     pressCallback();
-    assert.equal(app.tagModalTweetId, '3');
-    assert.equal(app.tagModalData.description, 'Existing');
-    assert.equal(app.isEditingTags, false);
+    assert.equal(dialog.tagModalTweetId, '3');
+    assert.equal(dialog.tagModalData.description, 'Existing');
+    assert.equal(dialog.isEditingTags, false);
     assert.equal(app.tweetMenuPressTimer, null);
 
     app.startTweetMenuPress({ pointerType: 'mouse', button: 0 }, '4', null);
@@ -3019,10 +3079,7 @@ test('tweet overflow copies raw data when the Clipboard API is unavailable', asy
 });
 
 test('tweet overflow menus are wired on list and detail surfaces', () => {
-    const html = fs.readFileSync(
-        path.join(ROOT, 'tweetnook', 'web', 'index.html'),
-        'utf8',
-    );
+    const html = pageHtml();
 
     // Detail surfaces keep per-tweet menus; feed cards render their button in app.js
     // and share one Alpine menu.
@@ -3043,10 +3100,7 @@ test('tweet overflow menus are wired on list and detail surfaces', () => {
 });
 
 test('thread reply surfaces render quoted tweets in both presentations', () => {
-    const html = fs.readFileSync(
-        path.join(ROOT, 'tweetnook', 'web', 'index.html'),
-        'utf8',
-    );
+    const html = pageHtml();
 
     assert.equal((html.match(/<template x-if="getQuoteTweet\(child\)">/g) || []).length, 2);
     assert.equal((html.match(/<template x-if="getQuoteTweet\(reply\)">/g) || []).length, 2);
@@ -3066,10 +3120,7 @@ test('recursive thread replies indent by bounded depth and disclose truncation',
     const context = browserContext();
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
-    const html = fs.readFileSync(
-        path.join(ROOT, 'tweetnook', 'web', 'index.html'),
-        'utf8',
-    );
+    const html = pageHtml();
 
     assert.equal(app.nestedReplyIndent({ thread_depth: 2 }), 0);
     assert.equal(app.nestedReplyIndent({ thread_depth: 3 }), 12);
@@ -3081,10 +3132,7 @@ test('recursive thread replies indent by bounded depth and disclose truncation',
 });
 
 test('reply-recipient markup opens profile cards on every tweet surface', () => {
-    const html = fs.readFileSync(
-        path.join(ROOT, 'tweetnook', 'web', 'index.html'),
-        'utf8',
-    );
+    const html = pageHtml();
 
     assert.equal((html.match(/renderReplyRecipientContent\(/g) || []).length, 16);
     assert.equal((html.match(/getReplyRecipients\(child\)\.length > 1 \|\|/g) || []).length, 2);
@@ -3308,7 +3356,7 @@ test('replay setup saves an empty cookie as a disconnected account and can recon
         return { ok: true, async json() { return { auth, dev, archive: { ready: false } }; } };
     };
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
     await app.fetchSetup();
     app.setupFlowStep = 2;
     app.setupAuth.ct0 = '  ';
@@ -3388,7 +3436,7 @@ test('setup validates before saving auth then uploads, imports, and confirms arc
         }
     };
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
 
     await app.fetchSetup();
     assert.equal(app.setupAuth.auth_token, '********');
@@ -3468,7 +3516,7 @@ test('setup archive choices stay reversible until Setup finishes', async () => {
         throw new Error(`unexpected request: ${url}`);
     };
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
     app.setupData = { archive, auth: { verified: false }, web: { password_configured: true } };
     app.fetchSetup = async () => {};
     app.fetchActivityStatus = async () => {};
@@ -3513,7 +3561,7 @@ test('first-run setup resumes at the first unfinished step after a reload', asyn
         const context = browserContext();
         context.fetch = async () => ({ ok: true, async json() { return { required: true, completed: false, web: {}, auth, archive }; } });
         const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-        const app = immediateComponent(tweetApp());
+        const app = withSetupDialog(context, immediateComponent(tweetApp()));
         await app.fetchSetup();
         return app;
     };
@@ -3545,7 +3593,7 @@ test('setup schedule step saves through Setup before the scheduler starts', asyn
     };
     const { tweetApp, nookToggleSyncCollection, nookScheduleHeadline } = loadScripts(
         context, appScriptsWith('header.js', 'settings.js'), '({tweetApp, nookToggleSyncCollection, nookScheduleHeadline})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
     app.setupData = { completed: false, archive: {}, auth: { verified: false }, web: {} };
     app.showSetupModal = true;
     app.setupFlowStep = 3;
@@ -3615,7 +3663,7 @@ test('setup replay source connects, toggles placeholder media, and disconnects',
         throw new Error(`unexpected request: ${url}`);
     };
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
     app.setupData = { dev: replay(false), archive: {}, auth: {} };
 
     assert.equal(app.setupReplayConnected, false);
@@ -3662,7 +3710,7 @@ test('setup replay source connects, toggles placeholder media, and disconnects',
     assert.deepEqual(requests.at(-1), ['/api/setup/replay/skip-link-previews', 'PUT', {skip_link_previews: false}]);
     assert.equal(app.setupReplaySkipPreviews, false);
     assert.equal(app.setupReplaySkipQuotes, false);
-    const markup = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const markup = pageHtml();
     assert.match(markup, /Use placeholder media[\s\S]*Skip quote expansion during sync[\s\S]*setSetupReplaySkipQuotes/);
 
     await app.disconnectSetupReplay();
@@ -3679,7 +3727,7 @@ test('setup password step validates matching passwords before finishing', async 
         return { ok: true, async json() { return { completed: true, reload: false }; } };
     };
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
     app.setupData = { web: { password_configured: false }, archive: {}, auth: {} };
 
     assert.equal(app.setupCanFinish, false);
@@ -3731,7 +3779,7 @@ test('setup cookie help loads the generated guide and opens on the current brows
     };
     context.navigator = { ...(context.navigator || {}), userAgent: 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15' };
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
 
     await app.openSetupHelp();
     assert.equal(app.setupHelpOpen, true);
@@ -3752,7 +3800,7 @@ test('setup cookie help loads the generated guide and opens on the current brows
 });
 
 test('setup uses a dedicated responsive X-style modal shell', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     const js = readScripts(pageScripts());
     const settingsMarkup = html.slice(html.indexOf('<!-- Settings Modal'), html.indexOf('<!-- Setup Modal -->'));
@@ -3859,7 +3907,7 @@ test('config saves only diffs and resets only eligible explicit fields', async (
 });
 
 test('config boolean controls bind actual booleans', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /role="switch"[^>]*:aria-checked="nookConfigOn\(\$data, field\)"[^>]*@click="nookConfigToggle\(\$data, field\)"/);
     assert.doesNotMatch(html, /<option value="(?:true|false)">/);
     const { nookConfigToggle } = loadScripts(browserContext(), ['settings.js'], '({nookConfigToggle})');
@@ -4016,7 +4064,7 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     assert.match(app.renderQuoteThumbnail([{ type: 'video' }]), /aria-label="Media not downloaded"/);
     assert.equal(app.renderQuoteThumbnail([]), '');
 
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     for (const name of ['child', 'reply']) {
         assert.equal(html.split(`:class="{ 'quote-compact': isMediaQuotingMedia(${name}) }"`).length - 1, 2);
         assert.equal(html.split(`isMediaQuotingMedia(${name}) ? renderQuoteThumbnail(${name}.qt_media) : renderMediaGrid(${name}.qt_media, 'quote', getQuoteTweet(${name}))`).length - 1, 2);
@@ -4126,7 +4174,7 @@ test('thread parents render shared quotes with the right layout, interactions, a
     assert.equal(stopped, true);
 
     assert.deepEqual([standaloneParent, mediaParent], originalPayloads);
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     const parentRenderer = 'x-html="renderQuoteCard(parent)" @click.stop="handleThreadParentQuoteClick($event, parent)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"';
     assert.equal(html.split(parentRenderer).length - 1, 2);
 });
@@ -4191,7 +4239,7 @@ test('a quote shows its own quote nested inside it, as X does', () => {
     assert.equal(event.propagationStopped, true);
     app.openNestedQuote({ target: quoteText, stopPropagation() { throw new Error('outside'); } });
 
-    const template = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const template = pageHtml();
     for (const name of ['threadData?.main', 'panelThreadData?.main', 'child', 'reply']) {
         const slot = `<div x-html="renderNestedQuote(getQuoteTweet(${name}))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>`;
         const hasMedia = name.endsWith('main') ? name.replace('?.main', '?.main?.qt_media?.length') : `${name}?.qt_media?.length`;
@@ -5205,7 +5253,7 @@ test('dismissal fades the page shade and lifts covering headers above the return
 
 test('phone media viewer stays outside Safari toolbar sampling and backs itself with page content', () => {
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const mobile = css.slice(css.indexOf('/* The phone feed uses a sound badge'));
     const viewer = mobile.match(/\n    \.lightbox-viewer \{([^}]*)\}/)[1];
     const bleed = Number(viewer.match(/--lightbox-bleed:\s*(\d+)px/)[1]);
@@ -5475,7 +5523,7 @@ test('Home Screen apps are told apart from Safari tabs for bottom spacing', () =
         assert.equal(context.__state.rootClasses.has('ios-home-screen'), standalone);
     }
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     // Safari tabs sit on the toolbar's reserved strip; Home Screen apps reach the screen edge.
     assert.match(css, /\.lightbox-video-player \{[^}]*--video-controls-bottom: 0px;/s);
     assert.match(css, /\.ios-home-screen \.lightbox-video-player \{ --video-controls-bottom: max\(8px, env\(safe-area-inset-bottom\)\); \}/);
@@ -5546,7 +5594,7 @@ test('ordinary feed and grid videos start inline without a native controls mount
             assert.ok(!video.hasAttribute('controls'));
         }
     }
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.doesNotMatch(html, /<video[^>]*\scontrols(?:\s|>)/);
 });
 
@@ -6138,7 +6186,7 @@ test('autoplay setting plays the topmost visible video muted and shares unmuting
     context.localStorage.removeItem('tvx-video-playback');
     assert.equal(restoredPlayback(), 'autoplay');
 
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /role="switch" aria-label="Autoplay videos" :aria-checked="videoPlayback === 'autoplay'" @click="setVideoPlayback\(videoPlayback === 'autoplay' \? 'paused' : 'autoplay'\)"/);
     assert.match(html, /Play videos muted as they scroll into view\./);
 });
@@ -6374,7 +6422,7 @@ test('activity polling adapts to idle and visibility while its elapsed clock sta
     [...intervals.values()][0].callback();
     assert.equal(app.activityNowSeconds, 101);
     assert.equal(app.activity, original);
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const headerJs = fs.readFileSync(path.join(JS_DIR, 'header.js'), 'utf8');
     assert.match(headerJs, /this\.formatActivityDuration\(this\.activityNowSeconds - this\.activity\.started_at\)/);
 
@@ -6421,7 +6469,7 @@ test('incomplete enrichment starts the fixed Web action and refreshes status', a
     assert.deepEqual(requests, [['/api/activity/enrich', 'POST']]);
     assert.equal(activityRefreshes, 1);
     assert.equal(enrichmentRefreshes, 1);
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /Continue enrichment/);
 });
 
@@ -6458,7 +6506,7 @@ test('enrichment completion refreshes pending work before showing a reminder', a
         app.setupData = {archive: {enrichment_state: state}};
         assert.equal(app.showArchiveEnrichmentReminder, false);
     }
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /x-show="showArchiveEnrichmentReminder"/);
     assert.doesNotMatch(html, /role="status">Archive enrichment is running in the background/);
 });
@@ -6562,7 +6610,7 @@ test('schedule settings load, normalize, and save through the activity API', asy
 });
 
 test('schedule settings bind every control to the schedule form', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     const start = html.indexOf('<!-- Scheduled sync settings -->');
     const end = html.indexOf('<!-- Activity logs -->');
     const scheduleHtml = html.slice(start, end);
@@ -6586,7 +6634,7 @@ test('schedule settings bind every control to the schedule form', () => {
 });
 
 test('unchecked square checkboxes use thinner outlines while checked states retain weight', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     assert.equal(
         (html.match(/class="flex h-6 w-6 items-center justify-center rounded-lg border-2 transition"/g) || []).length,
         1,
@@ -6887,7 +6935,7 @@ test('community note detail uses captured title and omits footers, while feed an
     const missingText = app.renderCommunityNote({ birdwatch_pivot: { shorttitle: 'No note text' } }, false, true);
     assert.equal(missingText, '');
 
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     for (const prefix of ['threadData.main', 'panelThreadData.main']) {
         const detailCall = `renderCommunityNote(${prefix}.raw_json, false, true)`;
         const detailIndex = html.indexOf(detailCall);
@@ -6897,7 +6945,7 @@ test('community note detail uses captured title and omits footers, while feed an
 });
 
 test('automated tagging has a dedicated conditional Settings page', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /x-show="automatedTaggingInstalled"/);
     assert.match(html, /id="nook-nav-automated-tagging"[^>]*x-show="automatedTaggingInstalled"|x-show="automatedTaggingInstalled"[^>]*id="nook-nav-automated-tagging"/);
     assert.match(html, /@click="nookSettingsNavigate\(\$data, 'automated-tagging'\)"/);
@@ -6930,7 +6978,7 @@ test('automated tagging has a dedicated conditional Settings page', () => {
 });
 
 test('Settings hidden checkboxes stay anchored inside the modal', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     const settingsHtml = html.slice(
         html.indexOf('<!-- Settings Modal'),
         html.indexOf('<!-- Setup Modal -->'),
@@ -7250,7 +7298,7 @@ test('custom font dropdown supports keyboard focus and selection', () => {
     assert.equal(component.fontPickerOpen, false);
     assert.equal(context.document.activeElement, trigger);
     assert.equal(component.selectedFontChoice().key, choices.at(-1).key);
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /Load local fonts/);
     assert.match(html, /:style="\{ fontFamily: f.family \}"/);
 });
@@ -7275,7 +7323,7 @@ test('loading tagging settings never discovers provider models implicitly', asyn
 });
 
 test('packaged page loads only same-origin runtime assets', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const head = html.split('</head>')[0];
     assert.doesNotMatch(head, /(?:src|href)=["']https?:/);
     for (const match of head.matchAll(/(?:src|href)=["'](\/static\/[^"']+)/g)) {
@@ -7296,7 +7344,7 @@ test('first-run gating loads archive resources only after completion and preserv
         }; } };
     };
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
     const calls = [];
     for (const method of ['fetchTweets', 'fetchStats', 'fetchGlobalTags', 'fetchArchiveEnrichmentStatus', 'fetchAutomatedTagging']) app[method] = async () => calls.push(method);
     let appliedDeepLinks = 0;
@@ -7404,7 +7452,7 @@ test('settings for later menus are requested after the first feed page', async (
     app.fetchNotices = async () => {};
     app.fetchActivityStatus = async () => {};
     app.initApp();
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     assert.ok(html.includes('afterStartupFeed(() => nookLoadSyncCollections($data))'));
     app.afterStartupFeed(() => nookLoadSyncCollections(app));
     await new Promise(resolve => setImmediate(resolve));
@@ -7474,7 +7522,7 @@ test('notices link to their run log and support bulk dismiss and clearing histor
 });
 
 test('notification list shows times, run logs, and bulk actions', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /x-show="noticeCount > 1" @click="dismissAllNotices\(\)">Dismiss all</);
     assert.match(html, /@click="clearDismissedNotices\(\)">Clear history</);
     assert.match(html, /class="notice-time" x-show="nookNoticeWhen\(notice\)"/);
@@ -7482,7 +7530,7 @@ test('notification list shows times, run logs, and bulk actions', () => {
 });
 
 test('notifications live in Settings with unread counts', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const settingsJs = fs.readFileSync(path.join(JS_DIR, 'settings.js'), 'utf8');
     assert.match(html, /id="nook-nav-notifications" :aria-label="noticeCount \? 'Notifications, ' \+ noticeCount \+ ' unread' : 'Notifications'"/);
     assert.match(html, /@click="nookSettingsNavigate\(\$data, 'notifications'\)"/);
@@ -7494,7 +7542,7 @@ test('notifications live in Settings with unread counts', () => {
 });
 
 test('Settings and Setup stay above an expanded activity drawer', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const headerCss = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/header.css'), 'utf8');
     const settingsCss = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/settings.css'), 'utf8');
     const zIndex = (css, selector) => Number(css.match(new RegExp(`${selector.replace('.', '\\.')}\\s*\\{[^}]*z-index:\\s*(\\d+)`))?.[1]);
@@ -7519,7 +7567,7 @@ test('activity drawer animation isolates layout and transitions only geometry', 
 });
 
 test('tweet bylines size dates from the visible label and truncate handles when needed', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
 
     assert.match(css, /\.tweet-byline-name\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
@@ -7541,7 +7589,7 @@ test('tweet bylines size dates from the visible label and truncate handles when 
 });
 
 test('sync, analytics, and settings live in the top bar on every screen size', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const utilities = html.slice(html.indexOf('<div class="nook-utilities">'), html.indexOf('<nav class="nook-tabs"'));
 
     assert.match(utilities, /class="nook-icon-button nook-activity-button" @click="nookToggleActivity\(\$data, \$el\)" aria-controls="nook-activity-drawer"/);
@@ -7553,7 +7601,7 @@ test('sync, analytics, and settings live in the top bar on every screen size', (
 });
 
 test('Settings tabs use the requested order and Appearance is the default', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const js = readScripts(pageScripts());
     const keys = ['appearance', 'schedule', 'tags', 'automated-tagging', 'notifications', 'config', 'logs', 'setup'];
     const positions = keys.map(key => html.indexOf(`id="nook-nav-${key}"`));
@@ -7574,7 +7622,7 @@ test('legacy setup reload queues completion without flashing it before navigatio
         return {ok: true, async json() {return {completed: true, reload: true};}};
     };
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
     app.setupForced = true;
     app.setupSkipAuth = true;
     app.setupPassword = app.setupPasswordConfirm = 'test-secret';
@@ -7602,7 +7650,7 @@ test('setup finishes in place and refreshes archive resources and progress witho
         return { ok: true, json: async () => data };
     };
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
     app.setupForced = true;
     app.setupPassword = app.setupPasswordConfirm = 'test-secret';
     app.setupData = { web: { password_configured: false } };
@@ -7632,7 +7680,7 @@ test('setup completion survives the password reload once and supports both real 
     const data = { completed: true, required: false, auth: { verified: false, values: {} }, archive: { ready: true, initialization_mode: 'empty' } };
     context.fetch = async () => ({ ok: true, json: async () => data });
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
     app.archiveResourcesLoaded = true;
     context.sessionStorage.setItem('tweetnook.setup-completion', 'pending');
     await app.fetchSetup();
@@ -7661,7 +7709,7 @@ test('failed setup completion neither reloads nor queues the explanation', async
     let reloads = 0;
     context.window.location.reload = () => reloads++;
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
     app.setupData = { web: { password_configured: true } };
     app.setupForced = true;
     await app.finishSetup();
@@ -7679,7 +7727,7 @@ test('setup still shows completion before reloading when browser storage is disa
     let reloads = 0;
     context.window.location.reload = () => reloads++;
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
-    const app = immediateComponent(tweetApp());
+    const app = withSetupDialog(context, immediateComponent(tweetApp()));
     app.setupData = { web: { password_configured: true } };
     await app.finishSetup();
     assert.equal(app.setupCompletionVisible, true);
@@ -7765,7 +7813,7 @@ test('automated tagging saves uncertainty policies and exposes their controls', 
     const app = immediateComponent(tweetApp());
     app.automatedTagging = {...values};
     await app.saveAutomatedTagging();
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     for (const field of [
         'unknown_billing_policy', 'unknown_request_reserve_usd',
         'max_unknown_requests_per_day', 'search_unknown_policy', 'max_unknown_search_requests',
@@ -7873,7 +7921,7 @@ test('large threads render replies in batches of nested tweets', async () => {
     await app.showFullThread('1');
     assert.equal(app.threadReplyLimit, 30);
 
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     assert.ok(html.includes('x-for="child in visibleReplies(threadReplies(threadData, threadOtherReplies), threadReplyLimit)"'));
     assert.ok(html.includes('x-for="child in visibleReplies(threadReplies(panelThreadData, panelOtherReplies), panelReplyLimit)"'));
     assert.ok(html.includes('x-intersect="showMoreReplies()"'));
@@ -7918,7 +7966,7 @@ test('mention-only replies wait behind Show other replies until regular replies 
     assert.equal(app.panelOtherReplies, true);
     assert.equal(app.panelReplyLimit, 60);
 
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     assert.ok(html.includes('x-show="hasOtherReplies(threadData, threadReplyLimit, threadOtherReplies)"'));
     assert.ok(html.includes('x-show="hasOtherReplies(panelThreadData, panelReplyLimit, panelOtherReplies)"'));
     assert.equal(html.split('>Show other replies</button>').length - 1, 2);
@@ -8034,13 +8082,13 @@ test('pressing or hovering a tweet starts loading its conversation once', () => 
     context.__state.events.get('document:pointerdown')(target('not-a-tweet'));
 
     assert.deepEqual(requests.filter(url => url.startsWith('/api/tweets/')), ['/api/tweets/7']);
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     assert.equal((html.match(/:data-thread-id="/g) || []).length, (html.match(/="openThread\(/g) || []).length);
     assert.ok(html.includes('data-thread-main="page"') && html.includes('data-thread-main="panel"'));
 });
 
 test('the page requests the first feed page and a linked conversation before its scripts load', async () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     const startup = /<script>([\s\S]*?)<\/script>/.exec(html);
     assert.ok(startup && startup.index < html.indexOf('<link rel="stylesheet"'), 'runs before any stylesheet or script');
     const run = (pathname, demo = false) => {
@@ -8193,7 +8241,7 @@ test('feed media loads lazily and tweets render without mutating their data', ()
 });
 
 test('feed layout hooks load early and skip off-screen work', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'styles.css'), 'utf8');
     assert.ok(html.includes('x-ref="feedSentinel" x-intersect.margin.1200px="loadMore()"'));
     assert.equal((html.match(/x-intersect\.margin\.600px="if\(!(panelQ|q)uotesLoadingMore/g) || []).length, 2);
@@ -8628,7 +8676,7 @@ test('feed cards share one overflow menu placed over the opening button', async 
     assert.equal(reloaded.getAttribute('aria-expanded'), 'false');
     assert.equal(reloaded.classList.contains('opacity-0'), false);
 
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     const menu = html.slice(html.indexOf('x-show="tweetMenuOpen === listMenu.key"'));
     assert.match(menu, /^x-show="tweetMenuOpen === listMenu\.key" x-cloak/);
     assert.match(menu, /@click\.outside="closeTweetMenu\(listMenu\.key\)" @keydown\.escape\.window="closeTweetMenu\(listMenu\.key\)"/);
@@ -8692,6 +8740,7 @@ test('feed overflow buttons keep the long-press Tags shortcut and avatars their 
     context.setTimeout = (callback, delay) => { timers.push({ callback, delay }); return timers.length; };
     context.clearTimeout = id => { if (timers[id - 1]) timers[id - 1].cleared = true; };
     const { app, list } = feedListApp(context);
+    const dialog = mountTagDialog(context, app);
     app.tweets = [JSON.parse(JSON.stringify(WEB_FIXTURE.slim[2]))];
     app.tweets[0].retweeted_tweet.media_tags = { description: 'Kept', tags: ['Poll'] };
     app.renderFeedList(app.tweets);
@@ -8710,9 +8759,9 @@ test('feed overflow buttons keep the long-press Tags shortcut and avatars their 
     const press = timers.at(-1);
     assert.equal(press.delay, 1000);
     press.callback();
-    assert.equal(app.tagModalOpen, true);
-    assert.equal(app.tagModalTweetId, '300');
-    assert.equal(app.tagModalData.description, 'Kept');
+    assert.equal(dialog.tagModalOpen, true);
+    assert.equal(dialog.tagModalTweetId, '300');
+    assert.equal(dialog.tagModalData.description, 'Kept');
     // The click that ends a long press does not open the menu.
     dispatchFeed(list, 'click', button);
     assert.equal(app.tweetMenuOpen, null);
@@ -9006,7 +9055,7 @@ test('Jobs browser tint follows the shaded theme and restores on close, resize a
     mobileSheet.destroy();
     assert.equal(context.__state.themeColor.content, '#ffffff');
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/header.css'), 'utf8');
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /class="nook-sync-scrim"[^>]*><\/div>\s*<div class="nook-sync-edge" aria-hidden="true"><\/div>/);
     assert.match(html, /class="nook-sync-scrim" x-cloak x-show="activityDrawerOpen \|\| activityShadeProgress"/);
     assert.match(css, /\.nook-sync-scrim \{[^}]*opacity: 0;/);
@@ -9335,7 +9384,7 @@ test('sync panel labels unknown progress without fabricated fractions and animat
     const active = nookSyncBreakdown({ state: 'active', stats: [], total: 0 });
     assert.deepEqual(Array.from(active.bars, bar => ({ ...bar })), [{ kind: 'done is-indeterminate', width: 30 }]);
 
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
+    const html = pageHtml();
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'header.css'), 'utf8');
     assert.match(html, /class="cs-step-tab"[^\n]*stepState\(steps\(\)\[index\]\)/);
     assert.match(html, /class="bd-part" :class="'is-' \+ part.kind" :style="`width:\$\{part.width\}%`"/);
@@ -9701,7 +9750,7 @@ test('setup polls fill an unset archive ID without replacing a user entry', asyn
     app.setupAuth.user_id = '5151';
     await app.fetchSetup();
     assert.equal(app.setupAuth.user_id, '5151');
-    const markup = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const markup = pageHtml();
     assert.match(markup, /Settings<\/h2><span x-show="isDemo"/);
     assert.doesNotMatch(markup, /Filled from your imported archive when available/);
 });
@@ -9843,7 +9892,7 @@ test('committed content offers a refresh without disturbing a populated feed', a
     assert.equal(app.feedUpdateAvailable, true);
     assert.equal(feeds, 0);
     assert.equal(app.tweets[0].tweet_id, 'reading');
-    const markup = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const markup = pageHtml();
     assert.match(markup, /x-show="feedUpdateAvailable"[^>]*@click="fetchTweets\(\)"/);
 });
 
@@ -9865,7 +9914,7 @@ test('gallery preference defaults to the post date and changes the already rende
     app.setMediaGallery('unknown');
     assert.equal(app.mediaGallery, 'date');
     assert.equal(context.localStorage.getItem('tvx-media-gallery'), 'date');
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(html, /class="nook-media-tiles" role="radiogroup" aria-label="Multi-media layout"/);
     assert.match(html, /id="media-date-description">Grid for tweets posted before July 10, 2026; carousel from then on\.</);
     assert.match(html, /role="radio" class="nook-theme-tile nook-media-tile" aria-label="Carousel" :aria-checked="mediaGallery === 'carousel'" @click="setMediaGallery\('carousel'\)"/);
@@ -10065,7 +10114,7 @@ test('phone carousel scrolls freely by touch and its padding opens the post', ()
     assert.equal(stops(track), false);
     assert.equal(stops(item), true);
     assert.equal(stops(node([], {}, media)), true);
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.doesNotMatch(html, /x-html="[^"]*renderMediaGrid\([^"]*"[^>]*@click\.stop/);
     assert.doesNotMatch(html, /renderMediaGrid\([^"]*"[^>]*\$event\.stopPropagation\(\)/);
     // Alpine binds handlers inside x-html, so the carousel itself must not stop clicks.
@@ -10077,7 +10126,7 @@ test('phone carousel scrolls freely by touch and its padding opens the post', ()
 });
 
 test('opening a conversation in the split panel keeps the column width', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     // Swapping border-x for border-l narrowed the column by 1px and re-wrapped the feed.
     const column = html.match(/<div [^>]*class="[^"]*app-column[^"]*"[^>]*>/)[0];
@@ -10088,7 +10137,7 @@ test('opening a conversation in the split panel keeps the column width', () => {
 });
 
 test('a conversation collapses the feed instead of removing it', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     const feed = html.match(/<div id="nook-feed"[^>]*>/)[0];
     // display: none made WebKit lay out every card of a long feed again on return.
@@ -10104,7 +10153,7 @@ test('a conversation collapses the feed instead of removing it', () => {
 });
 
 test('a phone post slides as a layer over the feed, with its own header', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     const stage = html.match(/<div x-ref="detailStage"[^>]*>/)[0];
     assert.match(stage, /'detail-layer': detailLayer, 'is-open': detailLayerOpen/);
@@ -10177,7 +10226,7 @@ test('the post layer moves as X does: spring in, follow the finger, spring back 
 });
 
 test('pages never zoom on touch screens, except media in the fullscreen viewer', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     const js = readScripts(pageScripts());
     // No double-tap zoom anywhere; no pinch on the app's content.
@@ -10216,7 +10265,7 @@ test('Tailwind scans every browser script, including nested modules', () => {
 
 test('the phone post page spaces its parts and replies like X and shows the whole post', () => {
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
-    const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.match(css, /--detail-bar: 38px;/);
     assert.doesNotMatch(css, /\.detail-layer-header \.nook-title-row \{[^}]*box-shadow/);
     assert.match(css, /\.detail-layer-header \.nook-title-block \{[^}]*justify-content: center/);

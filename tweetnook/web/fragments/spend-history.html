@@ -1,0 +1,178 @@
+        <!-- Automated Tagging Spend History Modal -->
+        <div x-show="showSettingsModal && showAutomatedTaggingSpendModal"
+             class="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-0 md:p-6"
+             x-cloak
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="automated-tagging-spend-title"
+             @click.self="closeAutomatedTaggingSpendHistory()">
+            <div class="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-primary)] shadow-2xl md:h-[88vh] md:max-w-5xl md:rounded-2xl md:border md:border-[var(--border-color)]">
+                <div class="stats-modal-header">
+                    <h2 id="automated-tagging-spend-title" class="stats-modal-title">Spend history</h2>
+                    <button type="button" x-ref="automatedTaggingSpendClose" @click="closeAutomatedTaggingSpendHistory()" class="rounded-full p-2 text-[var(--text-secondary)] hover-bg hover:text-[var(--text-primary)]" aria-label="Close spend history">
+                        <svg viewBox="0 0 24 24" class="h-5 w-5 fill-current" aria-hidden="true"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
+                    </button>
+                </div>
+
+                <div class="flex-1 space-y-8 overflow-y-auto p-4 md:p-6">
+                    <p x-show="automatedTaggingAccounting?.scope" x-text="automatedTaggingAccounting?.scope" class="text-sm text-[var(--text-secondary)]"></p>
+                    <div>
+                        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                            <h3 class="stats-section-title">Pricing overview</h3>
+                            <div class="flex items-center gap-2" role="group" aria-label="Spend history range">
+                                <template x-for="range in [
+                                    {key: '7d', label: '7D'},
+                                    {key: '30d', label: '30D'},
+                                    {key: '3m', label: '3M'},
+                                    {key: '1y', label: '1Y'},
+                                    {key: 'lifetime', label: 'Lifetime'}
+                                ]" :key="range.key">
+                                    <button type="button"
+                                            @click="automatedTaggingSpendRange = range.key"
+                                            :aria-pressed="automatedTaggingSpendRange === range.key"
+                                            :class="automatedTaggingSpendRange === range.key ? 'border-[var(--accent-color)] bg-[var(--accent-color)] text-[var(--accent-text)]' : 'border-[var(--border-color)] text-[var(--text-primary)] hover:bg-[var(--hover-bg)]'"
+                                            class="min-w-11 rounded-full border px-3 py-1.5 text-xs font-bold"
+                                            x-text="range.label"></button>
+                                </template>
+                            </div>
+                        </div>
+
+                        <div class="stats-grid">
+                            <div class="stats-card">
+                                <div class="stats-label">Today</div>
+                                <div class="stats-value" x-text="formatAutomatedTaggingUsd(automatedTaggingAccounting?.today_estimated_cost_usd)"></div>
+                                <div class="stats-subtitle" x-text="`${automatedTaggingAccounting?.today_requests || 0} requests`"></div>
+                            </div>
+                            <div class="stats-card">
+                                <div class="stats-label">This month</div>
+                                <div class="stats-value" x-text="formatAutomatedTaggingUsd(automatedTaggingAccounting?.month_estimated_cost_usd)"></div>
+                                <div class="stats-subtitle" x-text="`${automatedTaggingAccounting?.month_requests || 0} requests`"></div>
+                            </div>
+                            <div class="stats-card">
+                                <div class="stats-label">Lifetime estimate</div>
+                                <div class="stats-value" x-text="formatAutomatedTaggingUsd(automatedTaggingAccounting?.lifetime_estimated_cost_usd)"></div>
+                                <div class="stats-subtitle">Locally recorded spend</div>
+                            </div>
+                            <div class="stats-card">
+                                <div class="stats-label">Lifetime requests</div>
+                                <div class="stats-value" x-text="Number(automatedTaggingAccounting?.lifetime_requests || 0).toLocaleString()"></div>
+                                <div class="stats-subtitle">Free and paid attempts</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="spend-history-panel">
+                        <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+                            <div>
+                                <div class="stats-label">Selected-period estimate</div>
+                                <div class="mt-1 text-2xl font-extrabold tracking-tight text-[var(--text-primary)]" x-text="formatAutomatedTaggingUsd(automatedTaggingSpendRangeTotal())"></div>
+                            </div>
+                            <div class="text-right text-xs text-[var(--text-secondary)]">
+                                <div x-text="`${automatedTaggingSpendRangeRequests().toLocaleString()} requests`"></div>
+                                <div x-text="automatedTaggingSpendRange === 'lifetime' ? 'Monthly bars · UTC' : 'Daily bars · UTC'"></div>
+                            </div>
+                        </div>
+
+                        <div class="spend-history-chart" aria-label="Estimated automated tagging spend over time">
+                            <template x-for="item in automatedTaggingSpendChartData()" :key="item.date">
+                                <div class="spend-history-column" :title="automatedTaggingSpendBarLabel(item)">
+                                    <div class="spend-history-bar" :style="{height: automatedTaggingSpendBarHeight(item)}"></div>
+                                </div>
+                            </template>
+                        </div>
+                        <div class="mt-2 flex justify-between text-[11px] text-[var(--text-secondary)]">
+                            <span x-text="formatAutomatedTaggingSpendDate(automatedTaggingSpendHistory().at(0)?.date, true, automatedTaggingSpendRange === 'lifetime')"></span>
+                            <span x-text="formatAutomatedTaggingSpendDate(automatedTaggingSpendHistory().at(-1)?.date, true, automatedTaggingSpendRange === 'lifetime')"></span>
+                        </div>
+                        <p x-show="automatedTaggingSpendRangeTotal() === 0" class="mt-4 text-center text-sm text-[var(--text-secondary)]">No estimated paid spend in this period.</p>
+                    </div>
+
+                    <div>
+                        <div class="mb-4 flex items-center justify-between gap-3">
+                            <h3 class="stats-section-title">Cost by model</h3>
+                            <span class="text-xs text-[var(--text-secondary)]" x-text="`${automatedTaggingSpendModels().length} models`"></span>
+                        </div>
+                        <div class="overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                            <div class="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-4 border-b border-[var(--border-color)] px-4 py-3 text-xs font-bold text-[var(--text-secondary)] md:px-5">
+                                <span>Model</span>
+                                <span class="text-right">Requests</span>
+                                <span class="min-w-20 text-right">Estimate</span>
+                            </div>
+                            <template x-for="row in automatedTaggingSpendModels()" :key="row.model">
+                                <div class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 border-b border-[var(--border-color)] px-4 py-4 last:border-b-0 md:px-5">
+                                    <div class="min-w-0">
+                                        <div class="truncate font-bold text-[var(--text-primary)]" x-text="row.model"></div>
+                                        <div class="mt-1 text-xs text-[var(--text-secondary)]" x-text="`${formatAutomatedTaggingUsd(row.requests ? row.estimated_cost_usd / row.requests : 0)} average / request`"></div>
+                                    </div>
+                                    <div class="text-right tabular-nums text-[var(--text-secondary)]" x-text="row.requests.toLocaleString()"></div>
+                                    <div class="min-w-20 text-right font-bold tabular-nums text-[var(--text-primary)]" x-text="formatAutomatedTaggingUsd(row.estimated_cost_usd)"></div>
+                                </div>
+                            </template>
+                            <div x-show="automatedTaggingSpendModels().length === 0" class="px-5 py-8 text-center text-sm text-[var(--text-secondary)]">No Gemini requests have been recorded yet.</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+                            <div>
+                                <h3 class="stats-section-title">Averages by tweet type</h3>
+                                <p class="mt-1 text-xs text-[var(--text-secondary)]">Averages use only requests with a known estimate; counts include all locally recorded requests.</p>
+                            </div>
+                            <span class="text-xs text-[var(--text-secondary)]" x-text="`${automatedTaggingSpendTweetTypes().length} types`"></span>
+                        </div>
+                        <div class="overflow-x-auto rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                            <div class="min-w-[820px]">
+                                <div class="grid grid-cols-[minmax(190px,1fr)_90px_80px_100px_110px_110px_100px] gap-3 border-b border-[var(--border-color)] px-5 py-3 text-xs font-bold text-[var(--text-secondary)]">
+                                    <span>Tweet type</span>
+                                    <span class="text-right">Requests</span>
+                                    <span class="text-right">Tweets</span>
+                                    <span class="text-right">Media items</span>
+                                    <span class="text-right">Avg / tweet</span>
+                                    <span class="text-right">Avg / request</span>
+                                    <span class="text-right">Estimate</span>
+                                </div>
+                                <template x-for="row in automatedTaggingSpendTweetTypes()" :key="row.type">
+                                    <div class="grid grid-cols-[minmax(190px,1fr)_90px_80px_100px_110px_110px_100px] items-center gap-3 border-b border-[var(--border-color)] px-5 py-4 last:border-b-0">
+                                        <div class="min-w-0">
+                                            <div class="font-bold text-[var(--text-primary)]" x-text="row.label"></div>
+                                            <div class="mt-1 truncate text-xs text-[var(--text-secondary)]" x-text="automatedTaggingTweetTypeMediaLabel(row)"></div>
+                                        </div>
+                                        <div class="text-right tabular-nums text-[var(--text-secondary)]" x-text="row.requests.toLocaleString()"></div>
+                                        <div class="text-right tabular-nums text-[var(--text-secondary)]" x-text="row.tweets.toLocaleString()"></div>
+                                        <div class="text-right tabular-nums text-[var(--text-secondary)]" x-text="row.media_items.toLocaleString()"></div>
+                                        <div class="text-right font-bold tabular-nums text-[var(--text-primary)]" x-text="formatAutomatedTaggingUsd(row.average_tweet_usd)"></div>
+                                        <div class="text-right font-bold tabular-nums text-[var(--text-primary)]" x-text="formatAutomatedTaggingUsd(row.average_request_usd)"></div>
+                                        <div class="text-right font-bold tabular-nums text-[var(--text-primary)]" x-text="formatAutomatedTaggingUsd(row.estimated_cost_usd)"></div>
+                                    </div>
+                                </template>
+                                <div x-show="automatedTaggingSpendTweetTypes().length === 0" class="px-5 py-8 text-center text-sm text-[var(--text-secondary)]">No tweet-type averages are available yet.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div class="stats-card">
+                            <div class="stats-label">Google Search this month</div>
+                            <div class="mt-2 flex items-baseline gap-2">
+                                <span class="text-2xl font-extrabold text-[var(--text-primary)]" x-text="Number(automatedTaggingAccounting?.search_queries_this_month || 0).toLocaleString()"></span>
+                                <span class="text-sm text-[var(--text-secondary)]" x-text="`of ${(automatedTaggingAccounting?.search_allowance || 5000).toLocaleString()} locally observed`"></span>
+                            </div>
+                        </div>
+                        <div class="stats-card">
+                            <div class="stats-label">Pricing gaps today</div>
+                            <div class="mt-2 flex items-baseline gap-2">
+                                <span class="text-2xl font-extrabold text-[var(--text-primary)]" x-text="Number((automatedTaggingAccounting?.today_unknown_cost_requests || 0) + (automatedTaggingAccounting?.today_unpriced_requests || 0)).toLocaleString()"></span>
+                                <span class="text-sm text-[var(--text-secondary)]">requests without an estimate</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-2xl border border-[var(--border-color)] bg-[color-mix(in_srgb,var(--accent-color)_8%,var(--bg-secondary))] p-4 text-sm text-[var(--text-secondary)]">
+                        <p class="font-bold text-[var(--text-primary)]">How pricing is calculated</p>
+                        <p x-show="automatedTaggingAccounting?.pricing_note" x-text="automatedTaggingAccounting?.pricing_note" class="mt-1"></p>
+                        <p x-show="!automatedTaggingAccounting?.pricing_note" class="mt-1">Estimates use Gemini-reported token usage and the OpenRouter reference rates stored with each paid request. Free requests are recorded at $0.00. Missing provider usage or unavailable pricing is shown as a pricing gap instead of being guessed.</p>
+                        <p class="mt-2">These local estimates can differ from Google’s final bill and cannot include requests made by other applications. Review <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener noreferrer" class="font-bold text-[var(--accent-color)] hover:underline">Gemini API pricing</a> for current provider terms.</p>
+                    </div>
+                </div>
+            </div>
+        </div>

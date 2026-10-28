@@ -53,9 +53,9 @@ node tests/js/test_template_names.cjs
 node tests/js/test_html.cjs
 ```
 
-`test_html.cjs` loads `core/html.js` on its own and checks its escaping. `test_media_playback.cjs` runs each playback case twice: in the whole app, and against `media/player.js` and `media/video.js` alone with a bare host, so the video module stays loadable without `app.js` (cases that drive the media viewer run only in the app). `test_template_names.cjs` fails when an Alpine expression in `index.html` reads a name that its scope (x-for aliases, x-data objects and components, page-script and browser globals) doesn't define.
+`test_html.cjs` loads `core/html.js` on its own and checks its escaping. `test_media_playback.cjs` runs each playback case twice: in the whole app, and against `media/player.js` and `media/video.js` alone with a bare host, so the video module stays loadable without `app.js` (cases that drive the media viewer run only in the app). `test_template_names.cjs` fails when an Alpine expression in the assembled page (`index.html` and `fragments/`) reads a name that its scope (x-for aliases, x-data objects and components, page-script and browser globals) doesn't define.
 
-The harnesses load the browser scripts in the order `index.html` lists them, through `tests/js/page_scripts.cjs`, so a new script needs only its `<script>` tag. Scripts up to `app.js` are always loaded; later ones are added per test with `appScriptsWith()`.
+The harnesses load the browser scripts in the order the assembled page lists them, through `tests/js/page_scripts.cjs` (whose `pageHtml()` assembles the page like `web/page.py`), so a new script needs only its `<script>` tag. Scripts up to `app.js` are always loaded; later ones are added per test with `appScriptsWith()`.
 
 These are Node harnesses, not a substitute for opening the UI. For layout, navigation, fullscreen media, keyboard focus and touch gestures, verify the interaction in a browser and capture the relevant viewport/state.
 

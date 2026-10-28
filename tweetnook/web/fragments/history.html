@@ -1,0 +1,95 @@
+        <!-- Community note history: every recorded version of one tweet's note. -->
+        <div class="nook-td-layer" x-show="notesOpen" x-cloak
+             @keydown.escape.window="notesOpen && closeNoteHistory()">
+            <div class="nook-td-backdrop" @click="closeNoteHistory()"></div>
+            <section class="nook-td nook-history" role="dialog" aria-modal="true" aria-labelledby="nook-notes-title">
+                <header class="nook-td-head">
+                    <button type="button" class="nook-icon-button" @click="closeNoteHistory()" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
+</svg></button>
+                    <h2 class="nook-td-title" id="nook-notes-title">Community notes</h2>
+                </header>
+                <div class="nook-td-body">
+                    <p class="nook-history-empty" x-show="notesLoading">Loading…</p>
+                    <div class="nook-td-error" role="alert" x-show="notesError"><span x-text="notesError"></span></div>
+                    <template x-if="notesData">
+                        <div>
+                            <!-- Versions use the same note card as the feed; the current one leads. -->
+                            <section class="nook-notes-section" x-show="notesCurrent()">
+                                <h3 class="nook-notes-heading">Showing now</h3>
+                                <template x-if="notesCurrent()">
+                                    <div class="nook-notes-version">
+                                        <div class="community-note community-note-detail">
+                                            <div class="community-note-header"><svg viewBox="0 0 24 24" fill="var(--accent-color)" aria-hidden="true"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg><span>Readers added context</span></div>
+                                            <div class="community-note-body" x-text="notesCurrent().text"></div>
+                                        </div>
+                                        <p class="nook-notes-dates" x-text="noteVersionDates(notesCurrent())"></p>
+                                    </div>
+                                </template>
+                            </section>
+                            <p class="nook-notes-none" x-show="notesData.versions.length && !notesCurrent()">No note is showing on this tweet now.</p>
+                            <section class="nook-notes-section" x-show="notesEarlier().length">
+                                <h3 class="nook-notes-heading">Earlier versions</h3>
+                                <template x-for="(version, index) in notesEarlier()" :key="index">
+                                    <div class="nook-notes-version is-earlier">
+                                        <div class="community-note community-note-detail">
+                                            <div class="community-note-header"><svg viewBox="0 0 24 24" fill="var(--accent-color)" aria-hidden="true"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg><span>Readers added context</span></div>
+                                            <div class="community-note-body" x-text="version.text"></div>
+                                        </div>
+                                        <p class="nook-notes-dates" x-text="noteVersionDates(version)"></p>
+                                    </div>
+                                </template>
+                            </section>
+                            <p class="nook-history-empty" x-show="!notesData.versions.length">No community notes recorded for this tweet.</p>
+                        </div>
+                    </template>
+                </div>
+            </section>
+        </div>
+
+        <!-- Tweet History: availability checks, lookups and community-note versions. -->
+        <div class="nook-td-layer" x-show="historyOpen" x-cloak
+             @keydown.escape.window="historyOpen && closeTweetHistory()">
+            <div class="nook-td-backdrop" @click="closeTweetHistory()"></div>
+            <section class="nook-td nook-history nook-post-history" role="dialog" aria-modal="true" aria-labelledby="nook-history-title">
+                <header class="nook-td-head">
+                    <button type="button" class="nook-icon-button" @click="closeTweetHistory()" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
+</svg></button>
+                    <h2 class="nook-td-title" id="nook-history-title">History</h2>
+                </header>
+                <div class="nook-td-body">
+                    <p class="nook-history-empty" x-show="historyLoading">Loading…</p>
+                    <div class="nook-td-error" role="alert" x-show="historyError"><span x-text="historyError"></span></div>
+                    <template x-if="historyData">
+                        <div>
+                            <div class="nook-history-status" :class="historyData.status.state === 'missing' ? 'is-missing' : 'is-available'">
+                                <span class="nook-history-status-icon" x-html="historyData.status.state === 'missing' ? missingIcon() : availableIcon()"></span>
+                                <div>
+                                    <strong x-text="historyData.status.state === 'missing' ? 'Missing from X' : 'On X'"></strong>
+                                    <span x-show="historyData.status.message" x-text="historyData.status.message"></span>
+                                    <span class="nook-history-status-meta" x-text="historyStatusMeta()"></span>
+                                </div>
+                            </div>
+                            <!-- Rail segments show the tweet's state between events; dots mark the events. -->
+                            <ol class="nook-timeline" x-show="historyData.events.length" aria-label="History, newest first">
+                                <template x-for="(event, index) in historyTimeline()" :key="index">
+                                    <li class="nook-timeline-item" :class="['is-' + event.status, 'seg-' + event.segment]">
+                                        <span class="nook-timeline-rail" aria-hidden="true"><span class="nook-timeline-dot"></span></span>
+                                        <div class="nook-timeline-body">
+                                            <div class="nook-timeline-title" x-text="event.event"></div>
+                                            <div class="nook-timeline-meta"><span x-text="historyTime(event.at)"></span><span aria-hidden="true">·</span><span x-text="event.source"></span></div>
+                                            <p class="nook-timeline-detail" x-show="event.detail" x-text="event.detail"></p>
+                                        </div>
+                                    </li>
+                                </template>
+                            </ol>
+                            <div class="nook-timeline-legend" x-show="historyLegend().length" aria-hidden="true">
+                                <template x-for="[segment, label] in historyLegend()" :key="segment"><span :class="'seg-' + segment" x-text="label"></span></template>
+                            </div>
+                            <p class="nook-history-empty" x-show="!historyData.events.length">No history recorded yet.</p>
+                        </div>
+                    </template>
+                </div>
+            </section>
+        </div>

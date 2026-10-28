@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { JS_DIR, appScripts } = require('./page_scripts.cjs');
+const { JS_DIR, appScripts, pageHtml } = require('./page_scripts.cjs');
 const root = path.resolve(__dirname, '../..');
 const events = [];
 const context = {URL, Map, Set, CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options.detail;}}, window: {dispatchEvent: e => events.push(e)}};
@@ -227,7 +227,7 @@ test('reopening focus replaces the reader and native close still cleans up once'
     });
 });
 test('article focus controls are in the sticky headers and absent from body markup', () => {
-    const html = fs.readFileSync(path.join(root, 'tweetnook/web/index.html'), 'utf8');
+    const html = pageHtml();
     assert.equal((html.match(/aria-label="Open article focus mode"/g) || []).length, 3);
     const mainHeader = html.slice(html.indexOf('<header data-video-occluder'), html.indexOf('</header>'));
     const layerStart = html.indexOf('detail-layer-header">');

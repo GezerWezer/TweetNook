@@ -1,0 +1,147 @@
+        <!-- Tag Modal -->
+        <!-- One sheet for a tweet's tags and description: view first, Edit swaps in the editor. -->
+        <div class="nook-td-layer" x-data="tagDialog()" x-show="tagModalOpen" x-cloak
+             @keydown.window="tagModalOpen && tagDialogKeydown($event)"
+             x-init="let opener = null;
+                     $watch('tagModalOpen', open => {
+                         if (open) { opener = document.activeElement; focusTagDialogControl(isEditingTags ? 'nook-td-input' : 'nook-td-edit'); }
+                         else { opener?.focus?.(); opener = null; }
+                     });
+                     $watch('isEditingTags', editing => tagModalOpen && focusTagDialogControl(editing ? (tagFocusTarget === 'desc' ? 'nook-td-desc' : 'nook-td-input') : 'nook-td-edit'));">
+            <div class="nook-td-backdrop" @click="tagBackdropClick()"></div>
+            <section class="nook-td" role="dialog" aria-modal="true" aria-labelledby="nook-td-title" @keydown.tab="!tagDeleteConfirm && nookTrapFocus($event, $el)" :inert="tagDeleteConfirm">
+                <header class="nook-td-head">
+                    <button type="button" class="nook-icon-button" x-show="!isEditingTags || !tagModalHasContent()" @click="isEditingTags ? cancelEditingTags() : closeTagModal()" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
+</svg></button>
+                    <button type="button" class="nook-icon-button" x-show="isEditingTags && tagModalHasContent()" @click="cancelEditingTags()" aria-label="Cancel editing"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
+</svg></button>
+                    <h2 class="nook-td-title" id="nook-td-title" x-text="!isEditingTags ? 'Tags' : (tagModalHasContent() ? 'Edit tags' : 'Add tags')"></h2>
+                    <button type="button" class="nook-secondary-button" id="nook-td-edit" x-show="!isEditingTags" @click="startEditingTags()">Edit</button>
+                    <button type="button" class="nook-primary-button nook-td-save" x-show="isEditingTags" @click="saveTags()"
+                            :aria-disabled="String(tagSaving || !tagIsDirty())" :aria-busy="String(tagSaving)" x-text="tagSaving ? 'Saving…' : 'Save'"></button>
+                </header>
+
+                <div class="nook-td-body" x-ref="tagDialogBody">
+                    <div class="nook-td-error" role="alert" x-show="tagError"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M13.5 8.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5S11.17 7 12 7s1.5.67 1.5 1.5zM13 17v-5h-2v5h2zm-1 5.25c5.66 0 10.25-4.59 10.25-10.25S17.66 1.75 12 1.75 1.75 6.34 1.75 12 6.34 22.25 12 22.25zM20.25 12c0 4.56-3.69 8.25-8.25 8.25S3.75 16.56 3.75 12 7.44 3.75 12 3.75s8.25 3.69 8.25 8.25z" />
+</svg><span x-text="tagError"></span></div>
+
+                    <!-- The tweet being tagged, as a quoted-post card -->
+                    <template x-if="tagModalTweet()">
+                        <figure class="nook-td-tweet" aria-label="Tweet">
+                            <div class="nook-td-tweet-head">
+                                <span class="nook-td-avatar" aria-hidden="true" x-text="getInitial(tagModalTweet())"></span>
+                                <span class="nook-td-name" x-text="tagModalTweet().author?.display_name || 'Unknown'"></span>
+                                <span class="nook-td-handle" x-text="'@' + (tagModalTweet().author?.username || 'unknown') + (tagModalTweet().created_at ? ' · ' + formatDate(tagModalTweet().created_at) : '')"></span>
+                            </div>
+                            <p class="nook-td-tweet-text" x-show="tagModalTweet().text" x-text="tagModalTweet().text"></p>
+                        </figure>
+                    </template>
+
+                    <!-- Viewing -->
+                    <template x-if="tagModalData && !isEditingTags">
+                        <div>
+                            <section class="nook-td-section" aria-labelledby="nook-td-tags-heading">
+                                <div class="nook-td-section-head">
+                                    <h3 id="nook-td-tags-heading">Tags</h3>
+                                    <span class="nook-td-badge" x-show="tagModalData.tags.length" x-text="tagModalData.tags.length"></span>
+                                </div>
+                                <ul class="nook-td-chips" x-show="tagModalData.tags.length">
+                                    <template x-for="tag in tagModalData.tags" :key="tag">
+                                        <li><button type="button" class="nook-td-chip" @click="searchForTag(tag)" :title="'Show tweets tagged ' + tag" :aria-label="'Show tweets tagged ' + tag"><span x-text="tag"></span></button></li>
+                                    </template>
+                                </ul>
+                                <p class="nook-td-empty" x-show="!tagModalData.tags.length">No tags yet. <button type="button" class="nook-td-link" @click="startEditingTags('tags')">Add tags</button></p>
+                            </section>
+                            <section class="nook-td-section" aria-labelledby="nook-td-desc-heading">
+                                <div class="nook-td-section-head"><h3 id="nook-td-desc-heading">Description</h3></div>
+                                <p class="nook-td-description" x-show="tagModalData.description" x-text="tagModalData.description"></p>
+                                <p class="nook-td-empty" x-show="!tagModalData.description">No description. <button type="button" class="nook-td-link" @click="startEditingTags('desc')">Add a description</button></p>
+                            </section>
+                            <div class="nook-td-rule" role="presentation"></div>
+                            <button type="button" class="nook-td-delete" id="nook-td-delete" @click="requestDeleteTags()"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M16 6V4.5C16 3.12 14.88 2 13.5 2h-3C9.11 2 8 3.12 8 4.5V6H3v2h1.06l.81 11.21C4.98 20.78 6.28 22 7.86 22h8.27c1.58 0 2.88-1.22 3-2.79L19.93 8H21V6h-5zm-6-1.5c0-.28.22-.5.5-.5h3c.27 0 .5.22.5.5V6h-4V4.5zm7.13 14.57c-.04.52-.47.93-1 .93H7.86c-.53 0-.96-.41-1-.93L6.07 8h11.85l-.79 11.07zM9 17v-6h2v6H9zm4 0v-6h2v6h-2z" />
+</svg><span x-text="tagDeleteLabel()"></span></button>
+                        </div>
+                    </template>
+
+                    <!-- Editing -->
+                    <template x-if="tagModalData && isEditingTags">
+                        <div class="nook-td-edit">
+                            <div class="nook-td-fieldwrap" @focusout="if (!$el.contains($event.relatedTarget)) { tagSearchDropdown = false; tagOptionIndex = -1; }">
+                                <div class="nook-td-field" @mousedown="if (!$event.target.closest('button, input')) { $event.preventDefault(); $refs.tagSearchInput.focus(); openTagSuggestions(); }">
+                                    <div class="nook-td-field-top">
+                                        <label class="nook-td-label" for="nook-td-input">Tags</label>
+                                        <span class="nook-td-count" x-text="editableTags.length ? (editableTags.length === 1 ? '1 tag' : editableTags.length + ' tags') : ''"></span>
+                                    </div>
+                                    <div class="nook-td-chipflow">
+                                        <ul class="nook-td-tokens" aria-label="Added tags">
+                                            <template x-for="(tag, index) in editableTags" :key="tag">
+                                                <li class="nook-td-token"><span :title="tag" x-text="tag"></span><button type="button" :aria-label="'Remove tag ' + tag"
+                                                        @click="const i = removeEditableTag(tag); $nextTick(() => { const next = document.querySelectorAll('.nook-td-token button')[Math.min(i, editableTags.length - 1)]; (next || $refs.tagSearchInput).focus(); })"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
+</svg></button></li>
+                                            </template>
+                                        </ul>
+                                        <input id="nook-td-input" class="nook-td-input" type="text" x-ref="tagSearchInput" x-model="tagSearchQuery"
+                                               :placeholder="editableTags.length ? 'Add another tag' : 'Add a tag'" :readonly="tagSaving"
+                                               role="combobox" aria-autocomplete="list" aria-controls="nook-td-options"
+                                               :aria-expanded="String(tagSearchDropdown && tagSuggestions().length > 0)"
+                                               :aria-activedescendant="tagSearchDropdown && tagOptionIndex >= 0 ? 'nook-td-option-' + tagOptionIndex : null"
+                                               autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="enter"
+                                               @click="tagSearchDropdown || openTagSuggestions()"
+                                               @input="tagSearchDropdown = true; tagOptionIndex = -1; $nextTick(() => revealTagOptions())"
+                                               @input.debounce.150ms="fetchTagAutocomplete(tagSearchQuery)"
+                                               @keydown="tagInputKeydown($event)">
+                                    </div>
+                                </div>
+                                <ul class="nook-td-options" id="nook-td-options" role="listbox" aria-label="Tag suggestions" x-ref="tagOptions"
+                                    x-show="tagSearchDropdown && tagSuggestions().length > 0" @mousedown.prevent>
+                                    <template x-for="(opt, index) in tagSuggestions()" :key="(opt.isNew ? 'new:' : '') + opt.tag">
+                                        <li role="option" class="nook-td-option" :class="{ 'is-active': index === tagOptionIndex, 'is-new': opt.isNew }"
+                                            :id="'nook-td-option-' + index" :aria-selected="String(index === tagOptionIndex)"
+                                            :aria-label="opt.isNew ? 'Add new tag: ' + opt.tag : opt.tag + ', ' + tagCountLabel(opt.count)"
+                                            @mousemove="tagOptionIndex = index" @click="pickTagSuggestion(opt)">
+                                            <template x-if="opt.isNew">
+                                                <span class="nook-td-option-label"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M11 11V4h2v7h7v2h-7v7h-2v-7H4v-2h7z" />
+</svg><span>Add new tag “<b x-text="opt.tag"></b>”</span></span>
+                                            </template>
+                                            <template x-if="!opt.isNew">
+                                                <span class="nook-td-option-label" x-html="tagOptionHtml(opt.tag)"></span>
+                                            </template>
+                                            <span class="nook-td-option-count" aria-hidden="true" x-show="!opt.isNew" x-text="tagCountLabel(opt.count)"></span>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </div>
+
+                            <div class="nook-td-field nook-td-desc-field">
+                                <div class="nook-td-field-top">
+                                    <label class="nook-td-label" for="nook-td-desc">Description</label>
+                                    <span class="nook-td-count" :class="{ 'is-near': editableDescription.length >= 3800 }" x-text="editableDescription.length.toLocaleString() + ' / 4,000'"></span>
+                                </div>
+                                <textarea id="nook-td-desc" class="nook-td-textarea" x-model="editableDescription" maxlength="4000" rows="3" :readonly="tagSaving"
+                                          placeholder="Why you saved it, what to remember"
+                                          x-init="$nextTick(() => { $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'; })"
+                                          @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"></textarea>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </section>
+
+            <!-- Delete confirmation -->
+            <div class="nook-td-confirm-layer" x-show="tagDeleteConfirm" x-cloak>
+                <div class="nook-td-backdrop" @click="closeDeleteConfirm()"></div>
+                <section class="nook-td-confirm" role="alertdialog" aria-modal="true" aria-labelledby="nook-td-confirm-title" aria-describedby="nook-td-confirm-copy" @keydown.tab="nookTrapFocus($event, $el)">
+                    <h2 id="nook-td-confirm-title" x-text="tagDeleteLabel() + '?'"></h2>
+                    <p id="nook-td-confirm-copy" x-text="tagDeleteCopy()"></p>
+                    <p class="nook-td-confirm-error" role="alert" x-show="tagConfirmError" x-text="tagConfirmError"></p>
+                    <button type="button" class="nook-destructive-button" @click="deleteTags()" :aria-disabled="String(tagSaving)" x-text="tagSaving ? 'Deleting…' : 'Delete'"></button>
+                    <button type="button" class="nook-secondary-button" id="nook-td-confirm-cancel" @click="closeDeleteConfirm()">Cancel</button>
+                </section>
+            </div>
+        </div>

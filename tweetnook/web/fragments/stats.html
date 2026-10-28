@@ -1,0 +1,351 @@
+        <!-- Stats Modal (Twitter/X Analytics Style) -->
+        <div x-data="statsDialog()" x-show="showStatsModal"
+             @keydown.window.escape="closeStatsModal()"
+             class="fixed inset-0 z-[100] bg-black/60 flex justify-center items-center p-4 md:p-6" 
+             x-cloak 
+             @click.self="closeStatsModal()">
+            <div role="dialog" aria-modal="true" aria-labelledby="nook-stats-title" class="nook-stats bg-[var(--bg-primary)] rounded-2xl w-full h-full md:h-[85vh] md:max-w-5xl flex flex-col overflow-hidden shadow-2xl relative border border-[var(--border-color)]">
+                
+                <!-- Modal Header -->
+        <div class="stats-modal-header">
+            <div class="nook-stats-heading">
+                <h2 id="nook-stats-title" class="stats-modal-title">Analytics</h2>
+                <span x-show="statsGeneratedAt" role="status" x-text="statsAgeLabel()"></span>
+            </div>
+            <div class="flex items-center gap-1 flex-shrink-0">
+                <button type="button" class="nook-secondary-button nook-refresh" @click="refreshStats()" :disabled="statsRefreshing || loadingStatsSnapshot">
+                    <span class="nook-log-spinner" x-show="statsRefreshing" aria-hidden="true"></span>
+                    <span x-text="statsRefreshing ? 'Refreshing' : 'Refresh'"></span>
+                </button>
+                <button type="button" @click="closeStatsModal()" class="nook-icon-button" aria-label="Close analytics"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
+</svg></button>
+            </div>
+        </div>
+
+        <!-- Scrollable Content -->
+                <div class="stats-modal-scroll flex-1 overflow-y-auto p-4 md:p-6 space-y-8">
+
+                    <!-- ── Archive Overview ─────────────────────────────────── -->
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="stats-section-title">Archive overview</h3>
+                            <span x-show="lastSyncFormatted" class="text-xs text-[var(--text-secondary)]" x-text="'Last synced ' + lastSyncFormatted"></span>
+                        </div>
+
+                        <!-- Loading skeleton -->
+                        <template x-if="loadingStatsSummary">
+                    <div class="space-y-3" aria-hidden="true">
+                        <div class="stats-card animate-pulse h-[132px]"></div>
+                        <div class="stats-card animate-pulse h-[76px]"></div>
+                    </div>
+                </template>
+
+                        <template x-if="!loadingStatsSummary && statsSummary">
+                    <div class="space-y-3">
+                        <div class="stats-card nook-overview-lead">
+                            <div class="nook-overview-total">
+                                <div class="stats-label">Tweets in archive</div>
+                                <div class="nook-overview-value" x-text="statsSummary.unique_posts.toLocaleString()"></div>
+                                <div class="stats-subtitle">Your likes, bookmarks, and tweets, plus the conversations around them.</div>
+                            </div>
+                            <div class="nook-overview-range">
+                                <div class="stats-label">Posted between</div>
+                                <div class="nook-overview-dates"><span x-text="statsSummary.oldest_post || 'N/A'"></span><span class="nook-overview-arrow" aria-label="to">→</span><span x-text="statsSummary.newest_post || 'N/A'"></span></div>
+                                <div class="stats-subtitle" x-text="nookSpanLabel(statsSummary.oldest_post, statsSummary.newest_post)"></div>
+                            </div>
+                            <a href="#nook-stats-unavailable" class="nook-overview-note" x-show="statsSummary.missing_archive_tweets > 0" @click.prevent="nookScrollTo('nook-stats-unavailable')">
+                                <span x-text="statsSummary.missing_archive_tweets.toLocaleString() + (statsSummary.missing_archive_tweets === 1 ? ' imported tweet is' : ' imported tweets are') + ' no longer on X'"></span>
+                                <span class="nook-overview-note-link">View in Archive status</span>
+                            </a>
+                        </div>
+                        <dl class="stats-card nook-overview-strip">
+                            <div><dt class="stats-label">Authors</dt><dd x-text="statsSummary.profiles.toLocaleString()"></dd></div>
+                            <div><dt class="stats-label">Photos &amp; videos</dt><dd x-text="statsSummary.media_rows.toLocaleString()"></dd></div>
+                            <div><dt class="stats-label">Links</dt><dd x-text="statsSummary.urls.toLocaleString()"></dd></div>
+                            <div><dt class="stats-label">Articles</dt><dd x-text="statsSummary.articles.toLocaleString()"></dd></div>
+                        </dl>
+                    </div>
+                </template>
+                    </div>
+
+                    <!-- ── Collections ──────────────────────────────────────── -->
+                    <div>
+                        <h3 class="stats-section-title mb-4">Collections</h3>
+
+                        <template x-if="loadingStatsCollections">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <template x-for="i in 3">
+                                    <div class="stats-card animate-pulse">
+                                        <div class="h-3 bg-[var(--bg-tertiary)] rounded w-1/3 mb-3"></div>
+                                        <div class="h-7 bg-[var(--bg-tertiary)] rounded w-1/2"></div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+
+                        <template x-if="!loadingStatsCollections && statsCollections.length">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <template x-for="c in statsCollections" :key="c.collection">
+                            <a href="#" class="stats-card nook-stats-link" @click.prevent="nookOpenCollection($data, c)" :aria-label="'Browse ' + nookCollectionLabel(c)">
+                                <div class="stats-label" x-text="nookCollectionLabel(c)"></div>
+                                <div class="stats-value" x-text="c.count.toLocaleString()"></div>
+                                <div class="stats-subtitle" x-text="nookCollectionRange(c)"></div>
+                                <div class="nook-stats-flag" x-show="nookCollectionBehind(c)">Older tweets still to fetch</div>
+                            </a>
+                        </template>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- ── Archive Status ───────────────────────────────────── -->
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="stats-section-title">Archive status</h3>
+                            <label class="nook-stats-switch">
+                        <span>Show all reasons</span>
+                        <button type="button" role="switch" class="nook-switch-button" :aria-checked="showEmptyUnavailableReasons" @click="showEmptyUnavailableReasons = !showEmptyUnavailableReasons"><span class="nook-switch-track"><span></span></span></button>
+                    </label>
+                        </div>
+
+                        <template x-if="loadingStatsHealth">
+                            <div class="space-y-3">
+                                <div class="stats-grid">
+                                    <template x-for="i in 4">
+                                        <div class="stats-card animate-pulse">
+                                            <div class="h-3 bg-[var(--bg-tertiary)] rounded w-2/3 mb-3"></div>
+                                            <div class="h-7 bg-[var(--bg-tertiary)] rounded w-1/3"></div>
+                                        </div>
+                                    </template>
+                                </div>
+                                <div class="stats-card h-20 animate-pulse"></div>
+                            </div>
+                        </template>
+
+                        <template x-if="!loadingStatsHealth && statsHealth">
+                            <div class="space-y-3">
+                                <div class="stats-grid">
+                                    <div class="stats-card">
+                                        <div class="stats-label">Full details</div>
+                                        <div class="stats-value" x-text="statsHealth.enrichment.done.toLocaleString()"></div>
+                                <div class="stats-subtitle" x-text="statsHealth.enrichment.details_description || 'Fetched from X'"></div>
+                                    </div>
+                                    <div class="stats-card">
+                                        <div class="stats-label">Conversations</div>
+                                        <div class="stats-value" x-text="statsHealth.threads_expanded.toLocaleString()"></div>
+                                        <div class="stats-subtitle">Threads expanded around tweets</div>
+                                    </div>
+                                    <div class="stats-card">
+                                        <div class="stats-label">Waiting for details</div>
+                                        <div class="stats-value" x-text="statsHealth.enrichment.incomplete.toLocaleString()"></div>
+                                        <div class="stats-subtitle" x-text="statsHealth.enrichment.pending.toLocaleString() + ' pending · ' + statsHealth.enrichment.transient.toLocaleString() + ' retrying'"></div>
+                                    </div>
+                                    <div class="stats-card">
+                                        <div class="stats-label">Came back on X</div>
+                                        <div class="stats-value" x-text="statsHealth.enrichment.resurrected.toLocaleString()"></div>
+                                        <div class="stats-subtitle">Available again</div>
+                                    </div>
+                                </div>
+
+                                <div class="stats-card" id="nook-stats-unavailable">
+                                    <div class="stats-label">Unavailable on X</div>
+                                    <div class="flex items-center gap-4 mt-1 min-w-0">
+                                        <div class="stats-value !mt-0 flex-shrink-0" x-text="statsHealth.enrichment.unavailable.total.toLocaleString()"></div>
+                                        <div class="w-px h-8 flex-shrink-0 bg-[var(--border-color)]" aria-hidden="true"></div>
+                                        <div class="flex-1 min-w-0 h-[31px] flex gap-1">
+                                            <template x-for="(reason, i) in getUnavailableBarReasons()" :key="reason.reason">
+                                                <div :style="'width: ' + getUnavailableSegmentWidth(reason) + '%'"
+                                                     :class="{
+                                                         'bg-[var(--accent-color)] border-[var(--accent-color)] opacity-100 shadow-[0_0_12px_rgba(var(--accent-rgb),0.35)]': hoveredUnavailableReason === reason.reason,
+                                                         'bg-[var(--text-secondary)] border-[var(--text-secondary)] opacity-40': hoveredUnavailableReason !== reason.reason,
+                                                         'rounded-l-lg': i === 0,
+                                                         'rounded-r-lg': i === getUnavailableBarReasons().length - 1
+                                                     }"
+                                                     class="archive-status-bar-seg h-full rounded-sm border shadow-sm"
+                                                     @mouseenter="hoveredUnavailableReason = reason.reason"
+                                                     @mouseleave="hoveredUnavailableReason = null">
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <div class="stats-subtitle" x-text="statsHealth.enrichment.unavailable.percent_of_archive.toFixed(1) + '% of imported archive tweets'"></div>
+                                </div>
+
+                                <div class="stats-card" style="padding: 0; overflow: hidden;">
+                                    <template x-if="getUnavailableReasons().length === 0">
+                                        <div class="px-5 py-4 text-[14px] text-[var(--text-secondary)]">No unavailable tweets.</div>
+                                    </template>
+                                    <template x-for="(reason, i) in getUnavailableReasons()" :key="reason.reason">
+                                        <div class="archive-status-reason-row"
+                                             :class="hoveredUnavailableReason === reason.reason ? 'bg-[var(--bg-tertiary)]' : ''"
+                                             @mouseenter="hoveredUnavailableReason = reason.reason"
+                                             @mouseleave="hoveredUnavailableReason = null">
+                                            <div class="flex items-center justify-between px-5 py-3.5"
+                                                 :class="i > 0 ? 'border-t border-[var(--border-color)]' : ''">
+                                                <div class="min-w-0 pr-4">
+                                                    <div class="text-[14px] font-semibold text-[var(--text-primary)]" x-text="reason.label"></div>
+                                                    <div class="text-[12px] text-[var(--text-secondary)] mt-0.5" x-text="getUnavailableReasonStatus(reason)"></div>
+                                                </div>
+                                                <div class="text-right flex-shrink-0">
+                                                    <div class="text-[14px] font-semibold text-[var(--text-primary)]" x-text="reason.count.toLocaleString()"></div>
+                                                    <div class="text-[12px] font-medium text-[var(--text-secondary)]"
+                                                         :class="hoveredUnavailableReason === reason.reason ? 'text-[var(--accent-color)]' : ''"
+                                                         x-text="reason.percent_of_missing.toFixed(1) + '%'"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- ── Storage ──────────────────────────────────────────── -->
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="stats-section-title">Storage</h3>
+                            <div class="nook-segmented" role="radiogroup" aria-label="Storage detail">
+                        <button type="button" role="radio" :aria-checked="!storageDetailedView" @click="storageDetailedView && toggleStorageDetailView()">Simplified</button>
+                        <button type="button" role="radio" :aria-checked="storageDetailedView" @click="!storageDetailedView && toggleStorageDetailView()">Detailed</button>
+                    </div>
+                        </div>
+
+                        <template x-if="storageLoading">
+                            <div class="stats-card py-12 text-center animate-pulse text-[var(--text-secondary)]">
+                                Computing disk space and database breakdown...
+                            </div>
+                        </template>
+
+                        <template x-if="!storageLoading && storageData">
+                            <div>
+                                <!-- Total Storage hero card with inline segmented bar -->
+                                <div class="stats-card mb-3">
+                                    <div class="stats-label">Total</div>
+                                    <div class="flex items-center gap-4 mt-1 min-w-0">
+                                        <div class="stats-value !mt-0 flex-shrink-0" x-text="storageData.formatted_total"></div>
+                                        <div class="w-px h-8 flex-shrink-0 bg-[var(--border-color)]" aria-hidden="true"></div>
+                                        <div class="flex-1 min-w-0 h-[31px] flex transition-all duration-300 ease-in-out"
+                                             :class="storageGapsCollapsed ? 'gap-0' : 'gap-1'">
+                                            <template x-for="(seg, i) in getActiveStorageSegments()" :key="seg.id">
+                                                <div :style="'width: ' + getSegmentWidth(seg) + '%'"
+                                                     :class="{
+                                                         'bg-[var(--accent-color)] border-[var(--accent-color)] opacity-100 shadow-[0_0_12px_rgba(var(--accent-rgb),0.35)]': hoveredStorageId === seg.id,
+                                                         'bg-[var(--text-secondary)] border-[var(--text-secondary)] opacity-40': hoveredStorageId !== seg.id,
+                                                         'rounded-l-lg': i === 0,
+                                                         'rounded-r-lg': i === getActiveStorageSegments().length - 1
+                                                     }"
+                                                     class="storage-bar-seg h-full rounded-sm transition-[width] duration-500 ease-out cursor-pointer border shadow-sm"
+                                                     @mouseenter="setHoveredStorage(seg.id)"
+                                                     @mouseleave="clearHoveredStorage()"
+                                                     @click="toggleExpandStorage(seg.id)">
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Category list inside a single card -->
+                                <div class="stats-card" style="padding: 0; overflow: hidden;">
+                                        <template x-for="(seg, i) in getActiveStorageSegments()" :key="seg.id">
+                                            <div class="storage-row"
+                                                 :class="hoveredStorageId === seg.id ? 'bg-[var(--bg-tertiary)]' : ''"
+                                                 @mouseenter="setHoveredStorage(seg.id)" 
+                                                 @mouseleave="clearHoveredStorage()">
+                                                
+                                                <!-- Row content -->
+                                                <div class="storage-row-header flex items-center justify-between cursor-pointer px-5 py-3.5"
+                                                     :class="i > 0 ? 'border-t border-[var(--border-color)]' : ''"
+                                                     @click="toggleExpandStorage(seg.id)">
+                                                    <div class="flex items-center gap-3 min-w-0">
+                                                        <div class="min-w-0">
+                                                            <div class="text-[14px] font-semibold text-[var(--text-primary)]" x-text="seg.name"></div>
+                                                            <div class="text-[12px] text-[var(--text-secondary)] mt-0.5" x-text="seg.formatted_count || (seg.count.toLocaleString() + ' ' + seg.unit)"></div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="flex items-center gap-3 flex-shrink-0">
+                                                        <div class="text-right">
+                                                            <div class="text-[14px] font-semibold text-[var(--text-primary)]" x-text="seg.formatted_size"></div>
+                                                            <div class="text-[12px] font-medium text-[var(--text-secondary)]"
+                                                                 :class="hoveredStorageId === seg.id ? 'text-[var(--accent-color)]' : ''"
+                                                                 x-text="seg.percent + '%'"></div>
+                                                        </div>
+                                                        <svg x-show="storageDetailedView" viewBox="0 0 24 24" class="w-4 h-4 fill-current text-[var(--text-secondary)] transition-transform duration-300"
+                                                             :class="expandedStorageId === seg.id ? 'rotate-180' : ''">
+                                                            <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"></path>
+                                                        </svg>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Expandable Description -->
+                                                <div x-show="storageDetailedView && expandedStorageId === seg.id" x-collapse>
+                                                    <div class="px-5 pb-3.5">
+                                                        <div class="text-[13px] leading-relaxed text-[var(--text-secondary)]" x-text="seg.description"></div>
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                        </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- ── Tagging & Search ─────────────────────────────────── -->
+                    <div>
+                        <h3 class="stats-section-title mb-4">Tagging &amp; search</h3>
+
+                        <template x-if="loadingStatsTags">
+                            <div class="stats-grid">
+                                <template x-for="i in 3">
+                                    <div class="stats-card animate-pulse">
+                                        <div class="h-3 bg-[var(--bg-tertiary)] rounded w-2/3 mb-3"></div>
+                                        <div class="h-7 bg-[var(--bg-tertiary)] rounded w-1/3"></div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+
+                        <template x-if="!loadingStatsTags && statsTags">
+                            <div class="space-y-3">
+                                <p x-show="statsTags.scope" x-text="statsTags.scope" class="text-sm text-[var(--text-secondary)]"></p>
+                                <!-- Metric cards row -->
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div class="stats-card">
+                                        <div class="stats-label">Coverage</div>
+                                        <div class="stats-value" x-text="statsTags.coverage_pct + '%'"></div>
+                                        <div class="stats-subtitle" x-text="statsTags.tagged_tweets.toLocaleString() + ' / ' + statsTags.eligible_tweets.toLocaleString() + ' eligible'"></div>
+                                    </div>
+                                    <div class="stats-card">
+                                        <div class="stats-label">Different tags</div>
+                                        <div class="stats-value" x-text="statsTags.unique_tags.toLocaleString()"></div>
+                                    </div>
+                                    <div class="stats-card">
+                                        <div class="stats-label">Tagged tweets</div>
+                                        <div class="stats-value" x-text="statsTags.tagged_tweets.toLocaleString()"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Most used tags -->
+                        <div class="stats-card">
+                            <div class="flex items-center justify-between gap-3 mb-3">
+                                <div class="stats-label">Most used tags</div>
+                                <button type="button" class="nook-text-button" @click="nookManageTags($data)">Manage tags</button>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="t in statsTags.top_tags" :key="t.tag">
+                                    <button type="button" class="nook-stats-chip" @click="nookShowTag($data, t.tag)" :aria-label="'Show tweets tagged ' + t.tag + ', ' + t.count.toLocaleString()">
+                                        <span x-text="t.tag"></span><span x-text="t.count.toLocaleString()"></span>
+                                    </button>
+                                </template>
+                                <template x-if="!statsTags.top_tags || !statsTags.top_tags.length">
+                                    <span class="text-sm text-[var(--text-secondary)]">No tags yet.</span>
+                                </template>
+                            </div>
+                        </div>
+                            </div>
+                        </template>
+                    </div>
+
+                </div>
+            </div>
+        </div>

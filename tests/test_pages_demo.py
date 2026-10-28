@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tweetnook.web.page import assemble_page
+
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER_PATH = ROOT / "scripts" / "build_pages_demo.py"
 FIXTURE_PATH = ROOT / "tests" / "fixtures" / "demo-synthetic.json"
@@ -349,8 +351,11 @@ def test_demo_javascript_adapter_suite() -> None:
 
 
 def test_production_frontend_only_exposes_demo_behavior_behind_explicit_flag() -> None:
-    html = (ROOT / "tweetnook" / "web" / "index.html").read_text(encoding="utf-8")
-    app = (ROOT / "tweetnook" / "web" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    html = assemble_page(ROOT / "tweetnook" / "web")[0]
+    app = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((ROOT / "tweetnook" / "web" / "static" / "js").rglob("*.js"))
+    )
 
     assert "window.TWEETNOOK_DEMO = true" not in html
     assert "window.TWEETNOOK_DEMO === true" in app

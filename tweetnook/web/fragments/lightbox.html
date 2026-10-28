@@ -1,0 +1,84 @@
+        <!-- Lightbox Modal -->
+        <div x-ref="lightboxViewer" x-show="lightboxOpen"
+             :class="{ 'is-video-viewer': lightboxMedia[lightboxIndex]?.type === 'video' && !lightboxMedia[lightboxIndex]?.isGif, 'is-video-motion': !!lightboxVideoMotionPhase, 'is-video-preparing': lightboxVideoMotionPhase === 'preparing', 'is-video-closed': !lightboxOpen, 'is-chrome-hidden': lightboxChromeHidden }"
+             @keydown.window.escape="closeLightbox()"
+             @keydown.window.right="if(lightboxOpen) nextLightbox()" 
+             @keydown.window.left="if(lightboxOpen) prevLightbox()"
+             @touchstart.passive="startLightboxGesture($event)"
+             @touchmove="moveLightboxGesture($event)"
+             @touchend.passive="endLightboxGesture($event)"
+             @touchcancel="cancelLightboxGesture()"
+             :style="lightboxBackdropStyle()"
+             x-transition:enter="lightbox-overlay-enter"
+             x-transition:enter-start="lightbox-overlay-enter-start"
+             x-transition:enter-end="lightbox-overlay-enter-end"
+             x-transition:leave="lightbox-overlay-leave"
+             x-transition:leave-start="lightbox-overlay-leave-start"
+             x-transition:leave-end="lightbox-overlay-leave-end"
+             class="lightbox-viewer fixed inset-0 z-[100] flex items-center justify-center"
+             x-cloak
+             @click="handleLightboxBackdropClick($event)"
+             role="dialog"
+             aria-modal="true"
+             aria-label="Media viewer">
+
+            <div class="absolute inset-0 lightbox-gesture-surface lightbox-backdrop" aria-hidden="true"></div>
+             
+            <div class="lightbox-chrome absolute inset-0 pointer-events-none z-50" :style="lightboxChromeStyle()">
+                <div x-show="lightboxMedia.length > 1" class="lightbox-position" aria-live="polite">
+                    <span x-text="lightboxIndex + 1"></span><span aria-hidden="true"> / </span><span class="sr-only"> of </span><span x-text="lightboxMedia.length"></span>
+                </div>
+                <!-- Phones: X's page dots and the post's counts above where its reply box sits. -->
+                <div x-show="lightboxMedia.length > 1" class="lightbox-dots" aria-hidden="true">
+                    <template x-for="(_, dotIndex) in lightboxMedia" :key="dotIndex"><span :class="{ 'is-current': dotIndex === lightboxIndex }"></span></template>
+                </div>
+                <div x-show="lightboxTweet" class="lightbox-actions" x-html="lightboxTweet ? renderActionBar(lightboxTweet) : ''" @click.stop></div>
+            </div>
+
+            <button x-show="lightboxMedia.length > 1 && lightboxIndex > 0" :disabled="lightboxGestureAnimating" @click.stop="prevLightbox()" aria-label="Previous media" title="Previous media" :style="lightboxChromeStyle()" class="lightbox-nav-button absolute left-4 p-3 text-white hover:bg-gray-800 rounded-full transition z-50">
+                <svg viewBox="0 0 24 24" class="w-8 h-8 fill-current"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"></path></svg>
+            </button>
+            <button x-show="lightboxMedia.length > 1 && lightboxIndex < lightboxMedia.length - 1" :disabled="lightboxGestureAnimating" @click.stop="nextLightbox()" aria-label="Next media" title="Next media" :style="lightboxChromeStyle()" class="lightbox-nav-button absolute right-4 p-3 text-white hover:bg-gray-800 rounded-full transition z-50">
+                <svg viewBox="0 0 24 24" class="w-8 h-8 fill-current"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"></path></svg>
+            </button>
+
+            <button @click.stop="closeLightbox()" aria-label="Close media viewer" title="Close media viewer" :style="lightboxChromeStyle()" class="lightbox-close-button absolute p-2 text-white hover:bg-gray-800 rounded-full transition z-50">
+                <svg viewBox="0 0 24 24" class="lightbox-close-icon w-6 h-6 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
+                <svg viewBox="0 0 24 24" class="lightbox-video-back-icon w-6 h-6 fill-current" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.42-1.41L7.83 13H20z"></path></svg>
+            </button>
+
+            <div x-ref="lightboxStage" class="lightbox-stage absolute inset-0 z-10 overflow-hidden">
+                <template x-for="mediaIndex in lightboxVisibleIndices()" :key="lightboxMedia[mediaIndex]?.src + ':' + mediaIndex">
+                    <div class="lightbox-slide lightbox-gesture-surface absolute inset-0 flex items-center justify-center"
+                         :class="{ 'is-active': mediaIndex === lightboxIndex }"
+                         :style="lightboxSlideStyle(mediaIndex)"
+                         :aria-hidden="mediaIndex !== lightboxIndex">
+                    <template x-if="lightboxMedia[mediaIndex]?.type === 'photo'">
+                        <img :src="lightboxMedia[mediaIndex]?.src" class="lightbox-media max-w-full max-h-full object-contain lightbox-gesture-surface" decoding="async" draggable="false" @click.stop="lightboxTap($event, true)">
+                    </template>
+                    <template x-if="lightboxMedia[mediaIndex]?.type === 'video'">
+                        <div style="display: contents">
+                            <template x-if="lightboxMedia[mediaIndex]?.isGif">
+                                <video :src="lightboxMedia[mediaIndex]?.src" :data-lightbox-index="mediaIndex" preload="metadata" :autoplay="lightboxOpen && mediaIndex === lightboxIndex" loop muted playsinline class="lightbox-media max-w-[90%] max-h-[90%] outline-none lightbox-gesture-surface" @click.stop="lightboxTap($event, true)"></video>
+                            </template>
+                            <template x-if="lightboxMedia[mediaIndex]?.inlinePlayer">
+                                <div data-inline-video-slot :data-inline-video-index="mediaIndex" class="w-full h-full"></div>
+                            </template>
+                            <template x-if="!lightboxMedia[mediaIndex]?.isGif && !lightboxMedia[mediaIndex]?.inlinePlayer">
+                                <div class="media-video-player lightbox-video-player" @click.stop>
+                                    <video :src="lightboxMedia[mediaIndex]?.src" :data-lightbox-index="mediaIndex" preload="metadata" :loop="lightboxMedia[mediaIndex]?.loop || false" data-video-custom playsinline webkit-playsinline class="lightbox-media outline-none"></video>
+                                    <div x-html="renderVideoControls()"></div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    </div>
+                </template>
+                <div x-ref="inlineVideoSlot" data-inline-video-slot
+                     x-show="lightboxOpen && lightboxInlineIndex !== null"
+                     :class="{ 'is-active': lightboxInlineIndex === lightboxIndex }"
+                     :style="lightboxSlideStyle(lightboxInlineIndex)"
+                     class="lightbox-slide lightbox-gesture-surface absolute inset-0"></div>
+            </div>
+        </div>
+        <div x-ref="lightboxShade" class="lightbox-shade" :style="lightboxShadeStyle()" aria-hidden="true"></div>

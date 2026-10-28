@@ -250,7 +250,6 @@ function tweetApp() {
             setInterval(() => {
                 if (!document.hidden && this.archiveResourcesLoaded) this.fetchArchiveEnrichmentStatus();
             }, 60000);
-            setInterval(() => { this.statsAgeNow = Date.now(); }, 30000);
             this.startActivityPolling();
 
             this.$watch('showStatsModal', val => {

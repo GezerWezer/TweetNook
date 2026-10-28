@@ -1,6 +1,6 @@
 'use strict';
 
-// Every name an Alpine expression in index.html reads must exist in the scope that evaluates it:
+// Every name an Alpine expression in the page reads must exist in the scope that evaluates it:
 // an x-for alias, an inline x-data object, a component's state or methods, a page-script global
 // or a browser global. Moving methods between components, or out of app.js, breaks this check
 // instead of leaving a silently undefined name in the markup.
@@ -9,9 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { JS_DIR, pageScripts } = require('./page_scripts.cjs');
-
-const INDEX = path.resolve(__dirname, '..', '..', 'tweetnook', 'web', 'index.html');
+const { JS_DIR, pageLines, pageScripts } = require('./page_scripts.cjs');
 
 const KEYWORDS = new Set(('true false null undefined typeof instanceof new in of this let const var '
     + 'return if else function await async void delete NaN Infinity').split(' '));
@@ -223,7 +221,8 @@ function isExpression(name) {
     return name.startsWith('x-') && !NOT_EXPRESSIONS.test(name);
 }
 
-function checkTemplate(html, context) {
+// origin(line) names the file and line a line of html came from.
+function checkTemplate(html, context, origin = line => `index.html:${line}`) {
     const problems = [];
     const stack = [{ scopes: [] }];
     const check = (scopes, expression, where) => {
@@ -233,7 +232,7 @@ function checkTemplate(html, context) {
                 : scopes.some(scope => scope.has(name)) || isGlobal(context, name);
             if (!resolved) {
                 const chain = scopes.map(scope => scope.label).reverse().join(' > ') || 'page';
-                problems.push(`index.html:${where.line} ${where.attribute}: '${name}' is not defined in ${chain}`);
+                problems.push(`${origin(where.line)} ${where.attribute}: '${name}' is not defined in ${chain}`);
             }
         }
     };
@@ -267,7 +266,8 @@ function checkTemplate(html, context) {
 // --- Tests -----------------------------------------------------------------------------------
 
 const context = pageContext();
-const page = fs.readFileSync(INDEX, 'utf8');
+const lines = pageLines();
+const page = lines.map(line => line.text).join('');
 let failures = 0;
 function test(name, body) {
     try { body(); console.log(`ok - ${name}`); } catch (error) { failures++; console.error(`not ok - ${name}\n${error.message}`); }
@@ -293,8 +293,8 @@ test('names resolve through x-for aliases, nested components and page globals', 
     ]);
 });
 
-test('every name index.html reads resolves in the scope that evaluates it', () => {
-    const problems = checkTemplate(page, context);
+test('every name the page reads resolves in the scope that evaluates it', () => {
+    const problems = checkTemplate(page, context, line => lines[line - 1].where);
     assert.deepEqual(problems, [], `${problems.length} unresolved names:\n${problems.join('\n')}`);
 });
 
