@@ -74,10 +74,44 @@ def test_strict_fails_only_when_something_is_reported(tree, capsys) -> None:
     )
 
 
-def test_strict_imports_fails_on_imports_but_not_on_size(tree) -> None:
-    tree("tweetnook/large.py", "x = 1\n" * 1201)
-    assert check_structure.main(["--strict"]) == 1
-    assert check_structure.main(["--strict-imports"]) == 0
+def test_strict_fails_on_files_over_the_limit(tree) -> None:
+    tree("tweetnook/large.py", "x = 1\n" * 1200)
+    assert check_structure.main(["--strict"]) == 0
 
-    tree("tweetnook/core/utils.py", "from tweetnook.storage import backend\n")
-    assert check_structure.main(["--strict-imports"]) == 1
+    tree("tweetnook/large.py", "x = 1\n" * 1201)
+    assert check_structure.main([]) == 0
+    assert check_structure.main(["--strict"]) == 1
+
+
+def test_exempt_file_fails_only_past_its_ceiling(tree, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(check_structure, "SIZE_EXEMPT", {"tweetnook/large.py": 1500})
+    tree("tweetnook/large.py", "x = 1\n" * 1500)
+    assert check_structure.main(["--strict"]) == 0
+    assert "exempt   1500  tweetnook/large.py" in capsys.readouterr().out
+
+    tree("tweetnook/large.py", "x = 1\n" * 1501)
+    assert check_structure.main(["--strict"]) == 1
+    assert "LIMIT    1501  tweetnook/large.py" in capsys.readouterr().out
+
+
+def test_reports_private_names_imported_from_another_module(tree) -> None:
+    tree("tweetnook/storage/common.py", "def _quote(x): ...\ndef shared(x): ...\n")
+    tree(
+        "tweetnook/storage/reads.py",
+        "from .common import _quote, shared\nfrom tweetnook.storage.common import __all__\n",
+    )
+    tree(
+        "tweetnook/web/server.py",
+        "from tweetnook.storage.common import _quote\nfrom os import _exit\n",
+    )
+
+    assert check_structure.private_imports() == [
+        ("tweetnook.storage.reads", "tweetnook.storage.common._quote"),
+        ("tweetnook.web.server", "tweetnook.storage.common._quote"),
+    ]
+
+
+def test_private_imports_never_fail_strict(tree) -> None:
+    tree("tweetnook/storage/common.py", "def _quote(x): ...\n")
+    tree("tweetnook/storage/reads.py", "from .common import _quote\n")
+    assert check_structure.main(["--strict"]) == 0

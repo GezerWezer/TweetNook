@@ -19,6 +19,20 @@ The [module reference](module-reference.md) maps operations to their owning modu
 
 The packages form four layers: the CLI and web interfaces, the feature packages (sync, import, enrichment, tagging, jobs and the X client), storage, and core. A module imports only from its own layer or a lower one, which CI checks; the [module reference](module-reference.md#layers) lists each package's layer.
 
+## Browser UI
+
+The page has no JavaScript build step. `web/page.py` assembles it from the `index.html` shell, replacing each `<!-- include NAME.html -->` line with the fragment of that name, so the result is what a single file holding the same markup would be. When it serves the page, the server adds a content hash to every `/static/` reference, so browsers can cache scripts and stylesheets indefinitely and still pick up a changed file.
+
+Scripts are classic scripts that share globals and load in the order the page lists them. `tweetApp()` in `app.js` is the page's Alpine component. It holds the state several features share and merges in one method factory per feature (`statsMethods()`, `feedMethods()`, and so on, from `features/`, `feed/` and `media/`). The factories are merged with property descriptors, so their getters stay getters, and in their methods `this` is the app.
+
+Dialogs that own their state are their own components, mounted with `x-data` on their fragment's root: `statsDialog()`, `tagDialog()` and `setupDialog()`, the Tags and Activity logs settings pages (`nookTagsPage()`, `nookLogsPage()`) and the Jobs sync panel (`nookSyncPanel()`). They are global factory functions used in `x-data`, not `Alpine.data` registrations. They nest inside `tweetApp()`, so they read the app's state through Alpine's scope, and a write goes to whichever component declares the name; a name the dialog doesn't declare is written to the app. The app can't call into a nested component, so it signals one through state the dialog watches (`showStatsModal`) or a window event (`open-tag-dialog`, `open-lightbox`).
+
+Settings, Configuration, Schedule and automated tagging stay in the app because other features read and write their state: Setup reuses the schedule form and the Settings tab, and the automated-tagging page and the spend-history dialog share spend data. There is no `Alpine.store`: every component nests inside `tweetApp()`, so shared state is reachable through scope. A store becomes worth adding when two separate component trees need the same state.
+
+Feed cards are rendered outside Alpine as HTML strings (`feed/render/`) and handled by delegated listeners. They are written while Alpine's observer is paused, so Alpine doesn't walk and bind every card. Video playback (`media/video.js`, `media/player.js`) doesn't depend on Alpine: the app passes it the playback settings and the open-dialog flags that pause it.
+
+Stylesheets are linked one per feature. Later ones override earlier ones, so a rule's file and the link order decide the cascade; `styles.css`, linked first after Tailwind's build, holds the theme variables, base elements and tweet cards.
+
 ## Stored and derived data
 
 Collection memberships answer why a post belongs in the archive. Tweet objects hold the best available content, while relation rows connect replies, quotes, and reposts. Raw captures preserve observations. Normalized fields, full-text indexes, like order, and cached statistics support fast reads.

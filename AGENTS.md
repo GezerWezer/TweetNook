@@ -32,7 +32,12 @@ for f in tests/js/test_*.cjs; do node "$f"; done   # browser-asset harnesses
 - `enrichment/`, `tagging/` - follow-up work on archived posts, and automated tagging.
 - `jobs/` - locked archive jobs, progress reporting, the worker supervisor and the scheduler.
 - `tweetnook/web/` - FastAPI app; `routes/` are thin handlers over the same archive operations
-  the CLI uses. `static/js/` and `index.html` are the browser UI.
+  the CLI uses. `page.py` assembles the page from the `index.html` shell and per-feature
+  markup in `fragments/`.
+- `web/static/js/` - the browser UI: `app.js` builds the page's Alpine component from method
+  factories in `features/`, `feed/` (with card rendering in `feed/render/`) and `media/`;
+  `core/html.js` is the escaping template. `static/css/` has one stylesheet per feature,
+  linked in cascade order.
 - `cli/` - the Typer command tree, one module per command group.
 
 Packages are layered: CLI and web, then features, then storage, then core. A module never
@@ -47,9 +52,17 @@ Invariants that must hold:
 - Archive-changing work takes the process lock; the scheduler submits through the job
   supervisor rather than starting its own write path.
 
-The codebase is being restructured out of a few very large files (`static/js/app.js`,
-`index.html`). Put new code in a focused module for its
-feature instead of growing those files, and keep moves separate from behavior changes.
+Put new code in the module, fragment or stylesheet for its feature rather than in `app.js` or
+the `index.html` shell. CI fails on files over 1,200 lines:
+
+- Split a file that approaches the limit along a real boundary (a stage, a feature, a separate
+  concern), and keep moves separate from behavior changes.
+- If it has no such boundary, or a fix pushes it over, add it to `SIZE_EXEMPT` in
+  `scripts/check_structure.py` in the same commit, with the reason. Never split code only to
+  meet the number.
+- Modules that import each other's underscore names usually share one concern, so a split
+  between them is suspect; `check_structure.py` lists those imports. A helper other modules
+  are meant to use is public: name it without a leading underscore.
 
 ## Code
 
@@ -64,6 +77,8 @@ feature instead of growing those files, and keep moves separate from behavior ch
   pass links through `httpURL`, and use `rawHTML` only for another renderer's output or a
   constant. Markup still built as plain strings needs `escapeHTML` or `safeURL`.
 - Use the custom listbox dropdown pattern, not native `<select>` elements.
+- In a dialog component (`x-data` on a fragment's root), a write to a name the dialog doesn't
+  declare lands on the app. Declare the dialog's state as fields.
 - New or changed CLI flags need explicit help text and a `--help` test.
 - Prefer deleting dead code over keeping compatibility paths. Exceptions: the LanceDB
   migration and upgrades from released SQLite schemas (5 and later) still serve real users.
