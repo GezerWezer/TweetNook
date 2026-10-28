@@ -6,12 +6,9 @@ const http = require('node:http');
 const path = require('node:path');
 const vm = require('node:vm');
 const { chromium } = require('playwright');
+const { appScripts, readScripts } = require('../../tests/js/page_scripts.cjs');
 const web = path.resolve(__dirname, '../../tweetnook/web');
-const defaults = vm.runInNewContext(
-    fs.readFileSync(path.join(web, 'static/js/themes.js'), 'utf8') + '\n' +
-    fs.readFileSync(path.join(web, 'static/js/app.js'), 'utf8') + '\ntweetApp()',
-    { window: {} },
-);
+const defaults = vm.runInNewContext(readScripts(appScripts()) + '\ntweetApp()', { window: {} });
 const tweet = {
     tweet_id: '100', text: 'Offline archive fixture', created_at: '2026-09-05T00:00:00Z',
     author: { id: '42', username: 'fixture', display_name: 'Offline fixture' },

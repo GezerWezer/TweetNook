@@ -12,7 +12,8 @@ const out = process.env.PLAYBACK_EVIDENCE_DIR || fs.mkdtempSync(path.join(requir
 fs.mkdirSync(out, {recursive:true});
 const phase = process.argv[2] || 'after';
 const script = process.env.PLAYBACK_APP_SCRIPT || path.join(web,'static/js/app.js');
-const defaults = vm.runInNewContext(fs.readFileSync(path.join(web,'static/js/themes.js'),'utf8')+'\n'+fs.readFileSync(script,'utf8')+'\ntweetApp()', {window:{}});
+const { JS_DIR, appScripts } = require('../../tests/js/page_scripts.cjs');
+const defaults = vm.runInNewContext(appScripts().map(name=>fs.readFileSync(name==='app.js'?script:path.join(JS_DIR,name),'utf8')).join('\n')+'\ntweetApp()', {window:{}});
 let scenario;
 const tweet = (id,media=[])=>({tweet_id:String(id), text: `Playback fixture ${id}`, created_at:'2026-09-05T00:00:00Z', author:{id:'42',username:'fixture',display_name:'Offline fixture'},collections:['like'],media,raw_json:{}});
 const media=(id)=>({type:'video',width:720,height:1280,duration_millis:10000,download:{local_path:`fixture/video${id}.mp4`}});

@@ -12,8 +12,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
 const web = path.join(root, 'tweetnook/web');
-const defaults = vm.runInNewContext(['themes.js', 'app.js'].map(file =>
-    fs.readFileSync(path.join(web, 'static/js', file), 'utf8')).join('\n') + '\ntweetApp()', {window: {}});
+const { appScripts, readScripts } = require('../../tests/js/page_scripts.cjs');
+const defaults = vm.runInNewContext(readScripts(appScripts()) + '\ntweetApp()', {window: {}});
 const tweets = Array.from({length: 12}, (_, i) => ({
     tweet_id: String(100 + i), text: `Safari scroll fixture ${i + 1}`,
     created_at: '2026-09-05T00:00:00Z', collections: ['like'], raw_json: {},

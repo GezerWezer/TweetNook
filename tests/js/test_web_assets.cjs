@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { appScripts, appScriptsWith } = require('./page_scripts.cjs');
+const { appScripts, appScriptsWith, pageScripts, readScripts } = require('./page_scripts.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const JS_DIR = path.join(ROOT, 'tweetnook', 'web', 'static', 'js');
@@ -10195,7 +10195,7 @@ test('the feed scroll indicator is never hidden or rebuilt around a post layer',
     // ::-webkit-scrollbar hides it, and an overflow change to rebuild it made the
     // feed jump; the brief indicator over a post opened mid-scroll is the lesser cost.
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
-    const js = fs.readFileSync(path.join(JS_DIR, 'app.js'), 'utf8');
+    const js = readScripts(pageScripts());
     assert.doesNotMatch(css, /detail-covering/);
     assert.doesNotMatch(js, /detail-covering|overflowY = 'scroll'/);
 });
