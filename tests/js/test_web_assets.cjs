@@ -10216,6 +10216,18 @@ test('the feed scroll indicator is never hidden or rebuilt around a post layer',
     assert.doesNotMatch(js, /detail-covering|overflowY = 'scroll'/);
 });
 
+test('Tailwind scans every browser script, including nested modules', () => {
+    // A script outside the content globs loses its utility classes on the next
+    // asset build, while the shipped CSS still hides the loss.
+    const webDir = path.join(ROOT, 'dev/web');
+    const { content } = require(path.join(webDir, 'tailwind.config.cjs'));
+    const scripts = fs.readdirSync(JS_DIR, { recursive: true }).filter(file => file.endsWith('.js'));
+    assert.ok(scripts.some(file => file.includes(path.sep)), 'expected nested script modules');
+    const missed = scripts.filter(file => !content.files.some(glob =>
+        path.matchesGlob(path.relative(webDir, path.join(JS_DIR, file)), glob)));
+    assert.deepEqual(missed, []);
+});
+
 test('the phone post page spaces its parts and replies like X and shows the whole post', () => {
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/styles.css'), 'utf8');
     const html = fs.readFileSync(path.join(ROOT, 'tweetnook/web/index.html'), 'utf8');

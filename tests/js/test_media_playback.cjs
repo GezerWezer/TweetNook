@@ -6,6 +6,19 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { appScripts, readScripts } = require('./page_scripts.cjs');
 const source = readScripts(appScripts());
+// The video module on its own: the media scripts and a bare host holding only the settings
+// and dialog flags feedVideoMethods() reads. Every case runs against both.
+const videoSource = readScripts(['media/player.js', 'media/video.js']);
+let standalone = false;
+
+function videoHost(feedVideoMethods) {
+    const host = {
+        videoPlayback: 'autoplay', videoMuted: false, videoVolume: 1,
+        lightboxOpen: false, showSettingsModal: false, showSetupModal: false, showStatsModal: false,
+        isInlineLightboxPlayer: () => false,
+    };
+    return Object.defineProperties(host, Object.getOwnPropertyDescriptors(feedVideoMethods()));
+}
 
 function fixture(timers = {}) {
     const videos = [], headers = [];
@@ -19,8 +32,9 @@ function fixture(timers = {}) {
         getComputedStyle: node => node.style || {},
         requestAnimationFrame: timers.requestAnimationFrame,
     };
-    const { tweetApp, feedVideoVisibility, forcedMuteVideos, tweetNookWatchVideoPoster } = vm.runInNewContext(source + '\n({tweetApp, feedVideoVisibility, forcedMuteVideos, tweetNookWatchVideoPoster})', context);
-    const app = tweetApp();
+    const exports = '\n({feedVideoMethods, feedVideoVisibility, forcedMuteVideos, tweetNookWatchVideoPoster, tweetApp: typeof tweetApp === "function" ? tweetApp : null})';
+    const { tweetApp, feedVideoMethods, feedVideoVisibility, forcedMuteVideos, tweetNookWatchVideoPoster } = vm.runInNewContext((standalone ? videoSource : source) + exports, context);
+    const app = standalone ? videoHost(feedVideoMethods) : tweetApp();
     app.videoMuted = false;
     app.videoVolume = 1;
     const player = (top, height = 400) => {
@@ -37,7 +51,8 @@ function fixture(timers = {}) {
     return {app, player, window, document, headers, visibility: feedVideoVisibility, forcedMuteVideos, watchPoster: tweetNookWatchVideoPoster};
 }
 const tests = [];
-function test(name, run) { tests.push([name, run]); }
+// wholeApp: the case drives the viewer too, so it needs tweetApp().
+function test(name, run, { wholeApp = false } = {}) { tests.push([name, run, wholeApp]); }
 const settle = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
 
 test('expanded audio stays local through queued volume events and restores the feed preference', () => {
@@ -83,7 +98,7 @@ test('swipe dismissal releases standalone viewer audio and GIFs remain silent', 
     app.queueLightboxMotion=()=>{};app.lightboxOpen=true;
     app.finishLightboxDismiss();
     assert.equal(video.muted,true);assert.equal(app.videoMuted,true);assert.equal(app.lightboxOpen,false);
-});
+}, { wholeApp: true });
 
 test('sticky headers count toward the later stop boundary', async () => {
     const {app,player,headers,visibility}=fixture();
@@ -702,7 +717,16 @@ test('offscreen first-frame capture stays silent and survives the narrower autop
 
 (async()=>{
     let failures=0;
-    for(const [name,run] of tests){try{await run();console.log(`ok - ${name}`);}catch(error){failures++;console.error(`not ok - ${name}\n${error.stack}`);}}
-    console.log(`${tests.length-failures}/${tests.length} media playback tests passed`);
+    let runs=0;
+    for(const mode of [false,true]){
+        standalone=mode;
+        const label=mode?' (video module alone)':'';
+        for(const [name,run,wholeApp] of tests){
+            if(mode&&wholeApp)continue;
+            runs++;
+            try{await run();console.log(`ok - ${name}${label}`);}catch(error){failures++;console.error(`not ok - ${name}${label}\n${error.stack}`);}
+        }
+    }
+    console.log(`${runs-failures}/${runs} media playback tests passed`);
     if(failures)process.exitCode=1;
 })();

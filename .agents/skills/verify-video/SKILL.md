@@ -11,7 +11,7 @@ up this ladder and stop when the evidence matches the risk of the change.
 ## The behavior being checked
 
 The full rules are in the autoplay paragraphs of `docs/development/web-and-jobs.md`,
-and their constants are at the top of `tweetnook/web/static/js/app.js`. In short:
+and their constants are at the top of `tweetnook/web/static/js/media/video.js`. In short:
 
 - A video starts once 25% of its picture is visible and keeps playing until less
   than 10% is visible.
@@ -43,8 +43,9 @@ permission, and WebDriver scrolling isn't native momentum.
 
 ## 3. Before/after in Chromium (optional)
 
-`dev/web/playback-comparison.cjs` compares the current `app.js` with a saved one
-(`PLAYBACK_APP_SCRIPT`). It needs Playwright and `CHROMIUM_EXECUTABLE_PATH`.
+`dev/web/playback-comparison.cjs` runs the same scenarios against the current page or a
+saved copy of `tweetnook/web` (`PLAYBACK_WEB_DIR`, for example from a worktree of the
+baseline commit). It needs Playwright and `CHROMIUM_EXECUTABLE_PATH`.
 Chromium timing doesn't establish Safari timing.
 
 ## 4. Native simulator measurement (for scroll and audio bugs)
@@ -60,7 +61,7 @@ Use this when the bug only shows with real touch scrolling.
    muted, volume, `readyState`, whether `currentTime` advances). Record no text,
    URLs or account data. Never commit the recorder.
 4. Compute the expected owner independently from the recorded geometry with the
-   rules above. Don't call `app.js` functions to compute the expectation.
+   rules above. Don't call the app's functions to compute the expectation.
 5. Compare: ownership agreement, frames with audio from an offscreen video, frames
    with two audible videos, how long a stale owner kept playing, and startup gaps.
 

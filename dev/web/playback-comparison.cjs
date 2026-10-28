@@ -4,16 +4,17 @@ const http = require('node:http');
 const path = require('node:path');
 const vm = require('node:vm');
 // Optional real-browser comparison: provide Playwright and CHROMIUM_EXECUTABLE_PATH.
-// PLAYBACK_APP_SCRIPT can point to a saved pre-change app.js; no archive is opened.
+// PLAYBACK_WEB_DIR can point to a saved pre-change copy of tweetnook/web (for example
+// `git worktree add` of the baseline commit); no archive is opened.
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '../..');
-const web = path.join(root,'tweetnook/web');
+const web = process.env.PLAYBACK_WEB_DIR ? path.resolve(process.env.PLAYBACK_WEB_DIR) : path.join(root,'tweetnook/web');
 const out = process.env.PLAYBACK_EVIDENCE_DIR || fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'tweetnook-playback-'));
 fs.mkdirSync(out, {recursive:true});
 const phase = process.argv[2] || 'after';
-const script = process.env.PLAYBACK_APP_SCRIPT || path.join(web,'static/js/app.js');
-const { JS_DIR, appScripts } = require('../../tests/js/page_scripts.cjs');
-const defaults = vm.runInNewContext(appScripts().map(name=>fs.readFileSync(name==='app.js'?script:path.join(JS_DIR,name),'utf8')).join('\n')+'\ntweetApp()', {window:{}});
+// The page's scripts up to app.js, in index.html order, as tests/js/page_scripts.cjs reads them.
+const pageScripts = [...fs.readFileSync(path.join(web,'index.html'),'utf8').matchAll(/<script\b[^>]*\bsrc="\/static\/js\/([^"?]+)"/g)].map(match=>match[1]);
+const defaults = vm.runInNewContext(pageScripts.slice(0,pageScripts.indexOf('app.js')+1).map(name=>fs.readFileSync(path.join(web,'static/js',name),'utf8')).join('\n')+'\ntweetApp()', {window:{}});
 let scenario;
 const tweet = (id,media=[])=>({tweet_id:String(id), text: `Playback fixture ${id}`, created_at:'2026-09-05T00:00:00Z', author:{id:'42',username:'fixture',display_name:'Offline fixture'},collections:['like'],media,raw_json:{}});
 const media=(id)=>({type:'video',width:720,height:1280,duration_millis:10000,download:{local_path:`fixture/video${id}.mp4`}});
@@ -27,7 +28,7 @@ const server=http.createServer((req,res)=>{
  else if(route==='/api/activity/status')data={active:false};
  else if(route.startsWith('/api/'))data={};
  if(data!==undefined){res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));return;}
- let file=route==='/'?path.join(web,'index.html'):route==='/static/js/app.js'?script:route.startsWith('/fixture/')?path.join(root,'demo/demo media',path.basename(route)):path.resolve(web,'.'+route);
+ let file=route==='/'?path.join(web,'index.html'):route.startsWith('/fixture/')?path.join(root,'demo/demo media',path.basename(route)):path.resolve(web,'.'+route);
  if(fs.existsSync(file)&&fs.statSync(file).isFile()){
   if(scenario.popin&&route.endsWith('.mp4')&&!req.fixtureDelayed){req.fixtureDelayed=true;setTimeout(()=>server.emit('request',req,res),120);return;}
   const stat=fs.statSync(file);const range=req.headers.range;const headers={'Content-Type':{'.html':'text/html','.js':'text/javascript','.css':'text/css','.mp4':'video/mp4','.jpg':'image/jpeg','.jpeg':'image/jpeg'}[path.extname(file)]||'application/octet-stream','Cache-Control':'no-store','Accept-Ranges':'bytes'};

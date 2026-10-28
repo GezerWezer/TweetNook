@@ -26,6 +26,9 @@ function formatMediaDuration(durationMillis) {
     return `${Math.floor(totalMinutes / 60)}:${minutes}:${seconds}`;
 }
 
+// The post layer while it is on screen. Feed videos beneath it are covered.
+let openDetailLayer = null;
+
 // Phones and touch-first tablets get the full-screen media viewer; styles.css
 // uses the same query.
 const PHONE_MEDIA_QUERY = '(max-width: 640px), (pointer: coarse)';
