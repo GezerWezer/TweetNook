@@ -11,13 +11,13 @@ from tweetnook.core.extractor import link_card_lacks_image, restore_link_card_im
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.core.utils import utc_now
 
-from .common import AVAILABLE_SOURCES, LIVE_SOURCE, SOURCE_RANK, _expr_in, _expr_quote, _folder_key
+from .common import AVAILABLE_SOURCES, LIVE_SOURCE, SOURCE_RANK, expr_in, expr_quote, folder_key
 from .db import ConnectionMixin
 from .schema import ARCHIVE_COLUMNS
 
 
 @dataclass(slots=True)
-class _PageBuffer:
+class PageBuffer:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
     pending_tweets: dict[str, TimelineTweet] = field(default_factory=dict)
     existing_rows: dict[str, dict[str, Any] | None] = field(default_factory=dict)
@@ -113,10 +113,10 @@ class RecordsMixin(ConnectionMixin):
     def _row_key_for_tweet(
         self, tweet_id: str, collection_type: str, folder_id: str | None = None
     ) -> str:
-        return f"tweet:{collection_type}:{_folder_key(folder_id)}:{tweet_id}"
+        return f"tweet:{collection_type}:{folder_key(folder_id)}:{tweet_id}"
 
     def _row_key_for_sync_state(self, collection_type: str, folder_id: str | None = None) -> str:
-        return f"sync_state:{collection_type}:{_folder_key(folder_id)}"
+        return f"sync_state:{collection_type}:{folder_key(folder_id)}"
 
     def _row_key_for_metadata(self, key: str) -> str:
         return f"metadata:{key}"
@@ -145,7 +145,7 @@ class RecordsMixin(ConnectionMixin):
         return f"article:{tweet_id}"
 
     def _get_row(self, row_key: str) -> dict[str, Any] | None:
-        rows = self._query(expr=f"row_key = {_expr_quote(row_key)}", limit=1)
+        rows = self._query(expr=f"row_key = {expr_quote(row_key)}", limit=1)
         return rows[0] if rows else None
 
     def _rows_for_values(
@@ -184,7 +184,7 @@ class RecordsMixin(ConnectionMixin):
         return rows
 
     def _lookup_row(
-        self, row_key: str, *, cursor: _PageBuffer | None = None
+        self, row_key: str, *, cursor: PageBuffer | None = None
     ) -> dict[str, Any] | None:
         if cursor is None:
             return self._get_row(row_key)
@@ -194,7 +194,7 @@ class RecordsMixin(ConnectionMixin):
             cursor.existing_rows[row_key] = self._get_row(row_key)
         return cursor.existing_rows[row_key]
 
-    def prefetch_rows(self, row_keys: list[str], *, cursor: _PageBuffer) -> None:
+    def prefetch_rows(self, row_keys: list[str], *, cursor: PageBuffer) -> None:
         missing = [
             row_key
             for row_key in dict.fromkeys(row_keys)
@@ -206,7 +206,7 @@ class RecordsMixin(ConnectionMixin):
         chunk_size = 200
         for start in range(0, len(missing), chunk_size):
             chunk = missing[start : start + chunk_size]
-            expr = _expr_in("row_key", set(chunk))
+            expr = expr_in("row_key", set(chunk))
             for row in self._query(expr=expr):
                 row_key = row.get("row_key")
                 if isinstance(row_key, str) and row_key:
@@ -214,14 +214,14 @@ class RecordsMixin(ConnectionMixin):
         for row_key in missing:
             cursor.existing_rows[row_key] = found.get(row_key)
 
-    def _queue_record(self, record: dict[str, Any], *, cursor: _PageBuffer | None = None) -> None:
+    def _queue_record(self, record: dict[str, Any], *, cursor: PageBuffer | None = None) -> None:
         if cursor is None:
             self._merge_records([record])
             return
         cursor.records[record["row_key"]] = record
 
     def _row_timestamps(
-        self, row_key: str, *, cursor: _PageBuffer | None = None, now: str | None = None
+        self, row_key: str, *, cursor: PageBuffer | None = None, now: str | None = None
     ) -> tuple[dict[str, Any] | None, str, str]:
         existing = self._lookup_row(row_key, cursor=cursor)
         stamp = now or utc_now()
@@ -233,7 +233,7 @@ class RecordsMixin(ConnectionMixin):
         self,
         row_key: str,
         *,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> _RecordContext:
         now = utc_now()
         existing, first_seen_at, added_at = self._row_timestamps(row_key, cursor=cursor, now=now)
@@ -301,7 +301,7 @@ class RecordsMixin(ConnectionMixin):
         *,
         prefer_incoming: bool,
         fallback_key: str | None = None,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> Any:
         incoming = self._json_value(raw)
         merged = self._merge_by_source_precedence(

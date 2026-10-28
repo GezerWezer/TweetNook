@@ -12,8 +12,8 @@ from .common import (
     HIDDEN_TWEET_IDS_SQL,
     SEARCH_COLLECTION_ORDER,
     UNCAPTURED_TWEET_IDS_SQL,
-    _expr_quote,
-    _parse_created_at,
+    expr_quote,
+    parse_created_at,
 )
 from .records import RecordsMixin
 from .relations import RelationsMixin
@@ -570,7 +570,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             raise ValueError("limit must be non-negative")
         filter_expr = "record_type = 'tweet'"
         if collection != "all":
-            filter_expr += f" AND collection_type = {_expr_quote(collection)}"
+            filter_expr += f" AND collection_type = {expr_quote(collection)}"
         tweet_columns = [
             "tweet_id",
             "text",
@@ -592,7 +592,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         # secondary objects only for the selected logical tweets. Legacy dates
         # without a timestamp retain the export parser's unknown-last semantics.
         def legacy_timestamp(value):
-            parsed = _parse_created_at(value)
+            parsed = parse_created_at(value)
             return parsed.timestamp() if parsed is not None else None
 
         def export_integer_key(value):

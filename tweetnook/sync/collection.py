@@ -38,7 +38,7 @@ from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 from tweetnook.storage import ArchiveStore, SyncState, open_archive_store
-from tweetnook.sync.followups import SyncFollowupPlan, _log_embedding_warning, _run_auto_followups
+from tweetnook.sync.followups import SyncFollowupPlan, run_auto_followups
 
 COLLECTION_TO_OPERATION = {
     "bookmarks": "Bookmarks",
@@ -547,7 +547,7 @@ async def sync_collection(
         sleep=sleep,
     )
     if followups is not None:
-        await _run_auto_followups(
+        await run_auto_followups(
             plan=followups,
             config=config,
             paths=paths,
@@ -557,11 +557,6 @@ async def sync_collection(
             sleep=sleep,
         )
     return result
-
-
-def _embed_new_tweets(store: Any, console: Console | None) -> None:
-    """Embed any unembedded tweets if embedding deps are available."""
-    return
 
 
 async def _sync_collection_ready(
@@ -633,7 +628,6 @@ async def _sync_collection_ready(
         client = build_async_client(
             preflight.auth, timeout=config.sync.timeout, transport=transport
         )
-        completed = False
         try:
             try:
                 head_step_key = f"sync:{collection}:head"
@@ -826,21 +820,9 @@ async def _sync_collection_ready(
                     best_effort_interrupt_optimize(store, write_tracker, console=console)
                 raise_if_storage_exhausted(exc)
                 raise
-            else:
-                completed = True
         finally:
             try:
                 await client.aclose()
-                if completed and write_tracker.has_writes:
-                    try:
-                        _embed_new_tweets(store, console)
-                    except Exception as exc:
-                        raise_if_storage_exhausted(exc)
-                        _log_embedding_warning(
-                            console,
-                            "sync completed, but auto-embedding was skipped; "
-                            f"run 'tweetnook embed' later ({exc})",
-                        )
             finally:
                 store.close()
     finally:
@@ -944,7 +926,7 @@ async def sync_all(
                 console.print(f"{collection}: failed ({exc})")
             break
     if exit_code == 0 and followups is not None:
-        await _run_auto_followups(
+        await run_auto_followups(
             plan=followups,
             config=config,
             paths=paths,

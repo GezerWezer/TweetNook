@@ -11,7 +11,7 @@ from .common import (
     HIDDEN_TWEET_IDS_SQL,
     SEARCH_COLLECTION_ORDER,
     UNCAPTURED_TWEET_IDS_SQL,
-    _expr_quote,
+    expr_quote,
 )
 
 if TYPE_CHECKING:
@@ -92,8 +92,8 @@ class SearchMixin(ReadsMixin, TagsMixin):
         if not collections:
             return ""
         if len(collections) == 1:
-            return f"collection_type = {_expr_quote(next(iter(collections)))}"
-        formatted = ", ".join(_expr_quote(c) for c in collections)
+            return f"collection_type = {expr_quote(next(iter(collections)))}"
+        formatted = ", ".join(expr_quote(c) for c in collections)
         return f"collection_type IN ({formatted})"
 
     def _prepare_fts_query(self, query: str) -> str:
@@ -386,7 +386,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
             collection = next(iter(collections)) if collections else "all"
             filter_expr = "record_type = 'tweet'"
             if collection != "all":
-                filter_expr += f" AND collection_type = {_expr_quote(collection)}"
+                filter_expr += f" AND collection_type = {expr_quote(collection)}"
             total = self.count_export_rows(collection) if include_total else None
             if total is not None and excluded_sql:
                 total -= self._excluded_member_count(collection, excluded_sql)

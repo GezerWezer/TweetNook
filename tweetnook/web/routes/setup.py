@@ -39,7 +39,7 @@ from tweetnook.core.dev_replay import (
 from tweetnook.core.exceptions import ProcessLockError
 from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.web.deps import remember_web_session, server_state, verify_credentials
-from tweetnook.web.routes.activity import _read_active_snapshot
+from tweetnook.web.routes.activity import read_active_snapshot
 from tweetnook.web.runtime_config import reload_server_config
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
@@ -485,7 +485,7 @@ async def upload_archive(
     paths = server_state.get("paths")
     if paths is None:
         raise HTTPException(status_code=503, detail="Setup storage is not initialized.")
-    if _read_active_snapshot() is not None:
+    if read_active_snapshot() is not None:
         raise HTTPException(status_code=409, detail="Wait for the active command to finish.")
     archive = paths.staged_archive_file
     archive.parent.mkdir(parents=True, exist_ok=True)
@@ -502,7 +502,7 @@ async def upload_archive(
                 handle.write(chunk)
         if size == 0 or not zipfile.is_zipfile(temporary):
             raise HTTPException(status_code=422, detail="Upload must be a valid archive.zip file.")
-        if _read_active_snapshot() is not None:
+        if read_active_snapshot() is not None:
             raise HTTPException(
                 status_code=409, detail="A command started during upload. Retry after it finishes."
             )
@@ -517,7 +517,7 @@ def clear_archive(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[s
     paths = server_state.get("paths")
     if paths is None:
         raise HTTPException(status_code=503, detail="Setup storage is not initialized.")
-    if _read_active_snapshot() is not None:
+    if read_active_snapshot() is not None:
         raise HTTPException(status_code=409, detail="Wait for the active command to finish.")
     paths.staged_archive_file.unlink(missing_ok=True)
     return _archive_payload()

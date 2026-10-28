@@ -16,6 +16,7 @@ from tweetnook.storage.common import (
     COMMUNITY_NOTE_TWEET_IDS_SQL,
     HIDDEN_TWEET_IDS_SQL,
     UNCAPTURED_TWEET_IDS_SQL,
+    parse_created_at,
 )
 from tweetnook.storage.like_order import LIKE_SORTS
 
@@ -493,15 +494,6 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> s
     return f"NOT (COALESCE(({expression}), 0))" if negated else expression
 
 
-def _parse_created_at(raw: str | None) -> datetime | None:
-    if not raw:
-        return None
-    try:
-        return datetime.strptime(raw, "%a %b %d %H:%M:%S %z %Y")
-    except (ValueError, TypeError):
-        return None
-
-
 def _search_result_score(row: dict[str, Any]) -> float:
     score = row.get("match_score")
     try:
@@ -515,7 +507,7 @@ def sort_search_results(rows: list[dict[str, Any]], *, sort: str) -> list[dict[s
         return rows
 
     def sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
-        created_at = _parse_created_at(row.get("created_at"))
+        created_at = parse_created_at(row.get("created_at"))
         score_key = -_search_result_score(row)
         tweet_id = str(row.get("tweet_id") or "")
         if created_at is None:

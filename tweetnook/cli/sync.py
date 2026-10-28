@@ -13,8 +13,8 @@ from tweetnook.auth import resolve_auth_bundle
 from tweetnook.cli.common import (
     SYNC_MAX_LINKED_DEPTH_OPTION,
     SYNC_REPLY_LINKED_DEPTH_OPTION,
-    _configure_logging,
-    _web_pipeline,
+    configure_logging,
+    web_pipeline,
 )
 from tweetnook.config import load_config
 from tweetnook.core.exceptions import ConfigError, TweetNookError
@@ -92,10 +92,10 @@ def _run_sync_command(
     head_only: bool,
     summarize: Callable[[Any], str] | None = None,
 ) -> tuple[Console, Any]:
-    console = _configure_logging()
+    console = configure_logging()
     try:
         config, paths = load_config()
-        with _web_pipeline(console, "tweetnook sync", paths) as pipeline:
+        with web_pipeline(console, "tweetnook sync", paths) as pipeline:
             plan_sync_pipeline(
                 pipeline,
                 config=config,

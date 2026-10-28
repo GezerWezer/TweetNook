@@ -5,7 +5,7 @@ from contextlib import closing
 from tests.conftest import make_link_card, make_photo_media, make_tweet_result
 from tweetnook.core.extractor import extract_secondary_objects
 from tweetnook.storage.backend import ArchiveStore
-from tweetnook.storage.records import _PageBuffer
+from tweetnook.storage.records import PageBuffer
 from tweetnook.storage.search_query import search_posts
 from tweetnook.web.availability import annotate_web_tweets, slim_web_tweets
 
@@ -19,7 +19,7 @@ def test_link_card_media_survives_feed_thread_quote_and_retweet_presentation(
     nested = make_tweet_result("3", "nested", quoted_tweet=quote)
     repost = make_tweet_result("4", "repost", retweeted_tweet=raw)
     with closing(ArchiveStore(tmp_path / "archive.db", create=True)) as store:
-        buffer = _PageBuffer()
+        buffer = PageBuffer()
         for tweet in (raw, quote, nested, repost):
             store._buffer_secondary_graph(extract_secondary_objects(tweet), cursor=buffer)
         store._merge_records(list(buffer.records.values()))
@@ -65,7 +65,7 @@ def test_link_card_images_do_not_match_tweet_media_filters_and_survive_deletion(
     with closing(ArchiveStore(tmp_path / "archive.db", create=True)) as store:
         raw = make_tweet_result("1", "link only")
         raw["card"] = make_link_card()
-        buffer = _PageBuffer()
+        buffer = PageBuffer()
         store._buffer_secondary_graph(extract_secondary_objects(raw), cursor=buffer)
         store._merge_records(list(buffer.records.values()))
         store.merge_rows(

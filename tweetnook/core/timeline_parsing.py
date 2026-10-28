@@ -134,7 +134,7 @@ def _entry_id_targets_tweet(entry_id: str | None, tweet_id: str) -> bool:
     return entry_id == direct_entry_id or entry_id.endswith(f"-{direct_entry_id}")
 
 
-def _extract_tweet_results_from_content(content: dict[str, Any]) -> list[dict[str, Any]]:
+def extract_tweet_results_from_content(content: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         unwrapped
         for raw_result in _extract_raw_tweet_results_from_content(content)
@@ -195,7 +195,7 @@ def parse_timeline_response(
     for entry in _iter_entries(data):
         bottom_cursor = bottom_cursor or _extract_cursor(entry)
         sort_index = entry.get("sortIndex")
-        for result in _extract_tweet_results_from_content(entry.get("content", {})):
+        for result in extract_tweet_results_from_content(entry.get("content", {})):
             tweet = _tweet_from_result(result, sort_index=sort_index)
             if tweet and tweet.tweet_id not in seen_ids:
                 seen_ids.add(tweet.tweet_id)
@@ -211,7 +211,7 @@ def parse_tweet_detail_tweets(data: dict[str, Any]) -> list[TimelineTweet]:
     seen_ids: set[str] = set()
     for entry in _iter_entries(data):
         sort_index = entry.get("sortIndex")
-        for result in _extract_tweet_results_from_content(entry.get("content", {})):
+        for result in extract_tweet_results_from_content(entry.get("content", {})):
             tweet = _tweet_from_result(result, sort_index=sort_index)
             if tweet and tweet.tweet_id not in seen_ids:
                 seen_ids.add(tweet.tweet_id)

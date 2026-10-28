@@ -234,7 +234,7 @@ async def _run_followup_tagging(
         return result.tagged
 
 
-async def _run_auto_followups(
+async def run_auto_followups(
     *,
     plan: SyncFollowupPlan,
     config: AppConfig,

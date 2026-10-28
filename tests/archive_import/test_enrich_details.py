@@ -219,7 +219,7 @@ def test_enrich_pending_rows_uses_command_start_time_for_stable_snapshot(
 def test_enrich_pending_rows_batches_detail_writes(paths, monkeypatch: pytest.MonkeyPatch) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None
-    buffer = archive_rows._PageBuffer()
+    buffer = archive_rows.PageBuffer()
     for index in range(12):
         tweet_id = str(1000 + index)
         store._queue_record(
@@ -234,7 +234,7 @@ def test_enrich_pending_rows_batches_detail_writes(paths, monkeypatch: pytest.Mo
             ),
             cursor=buffer,
         )
-    archive_rows._flush_buffer(store, buffer)
+    archive_rows.flush_buffer(store, buffer)
     store.close()
     dirty_calls: list[tuple[int, int]] = []
 

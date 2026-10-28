@@ -134,7 +134,7 @@ def test_import_x_archive_finalizes_manifest_when_followup_is_interrupted(
     async def interrupt_followup(**_kwargs):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(archive_import, "_run_archive_followup", interrupt_followup)
+    monkeypatch.setattr(archive_enrich, "_run_archive_followup", interrupt_followup)
 
     with pytest.raises(archive_enrich.ArchiveEnrichmentInterrupted):
         asyncio.run(
@@ -273,7 +273,7 @@ def test_interrupted_import_marks_manifest_failed_and_rerun_reuses_archive_captu
 ) -> None:
     archive_dir = _write_archive_dir(tmp_path)
     _disable_live_reconciliation(monkeypatch)
-    original_import_authored_tweets = archive_import._import_authored_tweets
+    original_import_authored_tweets = archive_import.import_authored_tweets
     optimize_calls = {"count": 0}
 
     def abort_import(*_args, **_kwargs) -> None:
@@ -282,7 +282,7 @@ def test_interrupted_import_marks_manifest_failed_and_rerun_reuses_archive_captu
     def fake_optimize(self) -> None:
         optimize_calls["count"] += 1
 
-    monkeypatch.setattr(archive_import, "_import_authored_tweets", abort_import)
+    monkeypatch.setattr(archive_import, "import_authored_tweets", abort_import)
     monkeypatch.setattr(archive_import.ArchiveStore, "optimize", fake_optimize)
 
     with pytest.raises(KeyboardInterrupt):
@@ -304,7 +304,7 @@ def test_interrupted_import_marks_manifest_failed_and_rerun_reuses_archive_captu
 
     assert optimize_calls["count"] == 0
 
-    monkeypatch.setattr(archive_import, "_import_authored_tweets", original_import_authored_tweets)
+    monkeypatch.setattr(archive_import, "import_authored_tweets", original_import_authored_tweets)
 
     rerun = asyncio.run(
         import_x_archive(
@@ -401,7 +401,7 @@ def test_remove_archive_owned_files_only_removes_media_subtree(tmp_path: Path) -
     media_path.write_bytes(b"media")
     notes_path.write_bytes(b"notes")
 
-    removed = archive_manifests._remove_archive_owned_files(
+    removed = archive_manifests.remove_archive_owned_files(
         data_dir,
         ["media/100/asset.jpg", "notes/asset.jpg", "../escape.jpg", "/tmp/escape.jpg"],
     )

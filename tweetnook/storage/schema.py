@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from tweetnook.core.extractor import PLACEHOLDER_TEXT_MARKER, PLACEHOLDER_TEXT_PREFIXES
 
-from .common import _parse_created_at
+from .common import parse_created_at
 from .db import ConnectionMixin
 
 
@@ -340,7 +340,7 @@ class SchemaMixin(ConnectionMixin):
         ).fetchall()
         updates = []
         for row in remaining:
-            created_at = _parse_created_at(row[1])
+            created_at = parse_created_at(row[1])
             if created_at is not None:
                 updates.append((int(created_at.timestamp()), row[0]))
         if updates:

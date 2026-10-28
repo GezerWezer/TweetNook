@@ -11,7 +11,7 @@ from tweetnook.config import AppConfig
 from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.web.deps import server_state, verify_credentials
 from tweetnook.web.jobs import JOBS_BY_KEY, JobOptionsError, job_cli_args, jobs_payload
-from tweetnook.web.routes.activity import _read_active_snapshot
+from tweetnook.web.routes.activity import read_active_snapshot
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -33,7 +33,7 @@ def list_jobs(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, 
     payload = jobs_payload(
         config=_config(),
         data_dir=getattr(paths, "data_dir", None),
-        active=_read_active_snapshot(),
+        active=read_active_snapshot(),
         queue=getattr(supervisor, "queue", []) if supervisor is not None else [],
         schedule=manager.status() if manager is not None else {},
         check=manager.check_status() if manager is not None else {},

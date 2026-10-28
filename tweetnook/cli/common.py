@@ -15,7 +15,7 @@ from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
 
 
-def _web_pipeline(console: Console, title: str, paths) -> PipelineReporter:
+def web_pipeline(console: Console, title: str, paths) -> PipelineReporter:
     """Publish CLI lifecycle state for the always-installed Web activity drawer."""
 
     return PipelineReporter(
@@ -49,7 +49,7 @@ SYNC_REPLY_LINKED_DEPTH_OPTION = Annotated[
 ]
 
 
-def _configure_logging() -> Console:
+def configure_logging() -> Console:
     service_mode = bool(os.environ.get("INVOCATION_ID") or os.environ.get("JOURNAL_STREAM"))
     return Console(
         stderr=True,
@@ -58,7 +58,7 @@ def _configure_logging() -> Console:
     )
 
 
-def _normalize_collection_or_exit(collection: str, console: Console) -> str:
+def normalize_collection_or_exit(collection: str, console: Console) -> str:
     try:
         return normalize_collection_name(collection)
     except ValueError as exc:
@@ -66,7 +66,7 @@ def _normalize_collection_or_exit(collection: str, console: Console) -> str:
         raise typer.Exit(1) from exc
 
 
-def _open_store_for_read(console: Console):
+def open_store_for_read(console: Console):
     from tweetnook.jobs.reminders import print_archive_migration_report
 
     config, paths = load_config()
@@ -78,7 +78,7 @@ def _open_store_for_read(console: Console):
     return store, paths
 
 
-def _with_archive_write_lock(paths, fn):
+def with_archive_write_lock(paths, fn):
     lock = ProcessLock(paths.lock_file)
     lock.acquire()
     try:
@@ -87,6 +87,6 @@ def _with_archive_write_lock(paths, fn):
         lock.release()
 
 
-def _with_auto_optimize(store, paths, console: Console, fn):
+def with_auto_optimize(store, paths, console: Console, fn):
     """Run a storage operation through the shared read/write wrapper."""
     return fn(store)

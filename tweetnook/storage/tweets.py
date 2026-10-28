@@ -10,9 +10,9 @@ from tweetnook.core.extractor import extract_note_tweet_text
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.core.utils import utc_now
 
-from .common import LIVE_SOURCE, _folder_key, _parse_created_at
+from .common import LIVE_SOURCE, folder_key, parse_created_at
 from .objects import ObjectsMixin
-from .records import _PageBuffer
+from .records import PageBuffer
 from .sync_state import SyncStateMixin
 
 
@@ -51,7 +51,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
         *,
         source: str = LIVE_SOURCE,
         capture_key: str | None = None,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> str:
         capture_id, record = self._capture_record(
             operation,
@@ -65,7 +65,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
         self._queue_record(record, cursor=cursor)
         return capture_id
 
-    def upsert_tweet(self, tweet: TimelineTweet, *, cursor: _PageBuffer | None = None) -> None:
+    def upsert_tweet(self, tweet: TimelineTweet, *, cursor: PageBuffer | None = None) -> None:
         if cursor is None:
             raise RuntimeError(
                 "ArchiveStore.upsert_tweet() is only supported inside page buffering "
@@ -82,7 +82,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
         deleted_at: str | None = None,
         sort_index: str | None = None,
         folder_id: str | None = None,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> dict[str, Any]:
         row_key = self._row_key_for_tweet(tweet.tweet_id, collection_type, folder_id)
         legacy = tweet.raw_json.get("legacy") or {}
@@ -98,7 +98,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
             record_type="tweet",
             tweet_id=tweet.tweet_id,
             collection_type=collection_type,
-            folder_id=_folder_key(folder_id),
+            folder_id=folder_key(folder_id),
             sort_index=self._merge_by_source_precedence(
                 context, "sort_index", sort_index, prefer_incoming=prefer_incoming
             ),
@@ -135,8 +135,8 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
                     prefer_incoming=prefer_incoming,
                 )
             ),
-            created_at_ts=int(_parse_created_at(merged_created_at).timestamp())
-            if _parse_created_at(merged_created_at)
+            created_at_ts=int(parse_created_at(merged_created_at).timestamp())
+            if parse_created_at(merged_created_at)
             else None,
             deleted_at=self._merged_deleted_at(
                 context,
@@ -180,7 +180,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
         deleted_at: str | None = None,
         sort_index: str | None = None,
         folder_id: str | None = None,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> None:
         if cursor is None:
             raise RuntimeError(
@@ -220,7 +220,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
         backfill_cursor: str | None,
         backfill_incomplete: bool,
     ) -> None:
-        buffer = _PageBuffer()
+        buffer = PageBuffer()
         self.append_raw_capture(
             operation,
             cursor_in,

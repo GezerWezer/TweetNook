@@ -205,14 +205,14 @@ def test_prune_cli_is_a_dry_run_until_apply(paths, monkeypatch) -> None:
     buffer = StringIO()
     patch_cli(
         monkeypatch,
-        "_configure_logging",
+        "configure_logging",
         lambda: Console(file=buffer, force_terminal=False, color_system=None, width=200),
     )
     patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
     lock_calls: list[Path] = []
     patch_cli(
         monkeypatch,
-        "_with_archive_write_lock",
+        "with_archive_write_lock",
         lambda lock_paths, fn: (lock_calls.append(lock_paths.lock_file), fn())[1],
     )
 

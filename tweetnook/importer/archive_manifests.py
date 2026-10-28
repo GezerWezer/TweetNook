@@ -16,13 +16,13 @@ from tweetnook.storage import ArchiveStore
 from tweetnook.storage.common import ARCHIVE_SOURCE
 
 
-def _manifest_generation_date(manifest: dict[str, Any]) -> str | None:
+def manifest_generation_date(manifest: dict[str, Any]) -> str | None:
     archive_info = manifest.get("archiveInfo") or {}
     generation = archive_info.get("generationDate")
     return generation if isinstance(generation, str) and generation else None
 
 
-def _record_archive_capture(
+def record_archive_capture(
     store: ArchiveStore,
     operation: str,
     filename: str,
@@ -54,7 +54,7 @@ def _safe_relative_data_path(relative_path: str) -> Path | None:
     return relative
 
 
-def _remove_archive_owned_files(base_dir: Path, relative_paths: list[str]) -> int:
+def remove_archive_owned_files(base_dir: Path, relative_paths: list[str]) -> int:
     removed = 0
     for relative_path in sorted(set(relative_paths)):
         relative = _safe_relative_data_path(relative_path)
@@ -75,7 +75,7 @@ def _remove_archive_owned_files(base_dir: Path, relative_paths: list[str]) -> in
     return removed
 
 
-def _initial_counts() -> dict[str, int]:
+def initial_counts() -> dict[str, int]:
     return {
         "authored_tweets": 0,
         "deleted_authored_tweets": 0,
@@ -84,19 +84,19 @@ def _initial_counts() -> dict[str, int]:
     }
 
 
-def _manifest_counts(manifest_row: dict[str, Any] | None) -> dict[str, int]:
+def manifest_counts(manifest_row: dict[str, Any] | None) -> dict[str, int]:
     if not manifest_row:
-        return _initial_counts()
+        return initial_counts()
     raw = manifest_row.get("counts_json")
     if not isinstance(raw, str) or not raw:
-        return _initial_counts()
+        return initial_counts()
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
-        return _initial_counts()
+        return initial_counts()
     if not isinstance(parsed, dict):
-        return _initial_counts()
-    counts = _initial_counts()
+        return initial_counts()
+    counts = initial_counts()
     for key in counts:
         value = parsed.get(key)
         if isinstance(value, int):
@@ -106,18 +106,18 @@ def _manifest_counts(manifest_row: dict[str, Any] | None) -> dict[str, int]:
 
 def _manifest_all_counts(manifest_row: dict[str, Any] | None) -> dict[str, Any]:
     if not manifest_row:
-        return _initial_counts()
+        return initial_counts()
     raw = manifest_row.get("counts_json")
     if not isinstance(raw, str) or not raw:
-        return _initial_counts()
+        return initial_counts()
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
-        return _initial_counts()
-    return parsed if isinstance(parsed, dict) else _initial_counts()
+        return initial_counts()
+    return parsed if isinstance(parsed, dict) else initial_counts()
 
 
-def _manifest_warnings(manifest_row: dict[str, Any] | None) -> list[str]:
+def manifest_warnings(manifest_row: dict[str, Any] | None) -> list[str]:
     if not manifest_row:
         return []
     raw = manifest_row.get("warnings_json")
@@ -132,11 +132,11 @@ def _manifest_warnings(manifest_row: dict[str, Any] | None) -> list[str]:
     return [item for item in parsed if isinstance(item, str) and item]
 
 
-def _list_import_manifest_rows(store: ArchiveStore) -> list[dict[str, Any]]:
+def list_import_manifest_rows(store: ArchiveStore) -> list[dict[str, Any]]:
     return store._query("record_type = 'import_manifest' AND status = 'completed'")
 
 
-def _finalize_import_enrichment_status(
+def finalize_import_enrichment_status(
     store: ArchiveStore,
     manifest_row: dict[str, Any],
     *,
@@ -160,17 +160,17 @@ def _finalize_import_enrichment_status(
         status=str(manifest_row.get("status") or "completed"),
         import_started_at=manifest_row.get("import_started_at"),
         import_completed_at=utc_now(),
-        warnings=_manifest_warnings(manifest_row),
+        warnings=manifest_warnings(manifest_row),
         counts=counts,
         enrichment_followup_status=followup_status,
         enrichment_aborted_reason=aborted_reason,
     )
 
 
-def _aggregate_import_counts(manifest_rows: list[dict[str, Any]]) -> dict[str, int]:
-    counts = _initial_counts()
+def aggregate_import_counts(manifest_rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts = initial_counts()
     for row in manifest_rows:
-        parsed = _manifest_counts(row)
+        parsed = manifest_counts(row)
         for key, value in parsed.items():
             counts[key] += value
     return counts

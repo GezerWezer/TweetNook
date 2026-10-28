@@ -24,13 +24,13 @@ _MANIFEST_ASSIGNMENT_RE = re.compile(r"^\s*window\.__THAR_CONFIG\s*=\s*", re.DOT
 
 
 @dataclass(slots=True)
-class _ArchiveIdentity:
+class ArchiveIdentity:
     account_id: str | None
     username: str | None
     display_name: str
 
 
-class _ArchiveInput:
+class ArchiveInput:
     def __init__(self, path: Path) -> None:
         self.path = path
         self._zip: zipfile.ZipFile | None = None
@@ -54,7 +54,7 @@ class _ArchiveInput:
             self.close()
             raise
 
-    def __enter__(self) -> _ArchiveInput:
+    def __enter__(self) -> ArchiveInput:
         return self
 
     def __exit__(self, *_args: object) -> None:
@@ -209,7 +209,7 @@ def parse_ytd_js(raw: str, *, label: str = "YTD data") -> Any:
     return _parse_assigned_json(raw, _YTD_ASSIGNMENT_RE, label)
 
 
-def _archive_identity(manifest: dict[str, Any], account_items: list[Any]) -> _ArchiveIdentity:
+def archive_identity(manifest: dict[str, Any], account_items: list[Any]) -> ArchiveIdentity:
     account_entry = account_items[0] if account_items and isinstance(account_items[0], dict) else {}
     account_block = account_entry.get("account") or {}
     user_info = manifest.get("userInfo") or {}
@@ -224,7 +224,7 @@ def _archive_identity(manifest: dict[str, Any], account_items: list[Any]) -> _Ar
     display_name = str(
         user_info.get("displayName") or account_block.get("accountDisplayName") or username
     ).strip()
-    return _ArchiveIdentity(
+    return ArchiveIdentity(
         account_id=account_id or None,
         username=username or None,
         display_name=display_name or username or "Unknown User",

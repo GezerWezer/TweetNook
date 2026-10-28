@@ -17,7 +17,7 @@ from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
 
 from .common import FX_SOURCE, LIVE_SOURCE
 from .objects import ObjectsMixin
-from .records import _PageBuffer
+from .records import PageBuffer
 
 
 @dataclass(slots=True)
@@ -63,7 +63,7 @@ class ImportsMixin(ObjectsMixin):
             deletions[key] = count
         return deletions
 
-    def _flush_rehydrate_buffer(self, buffer: _PageBuffer) -> int:
+    def _flush_rehydrate_buffer(self, buffer: PageBuffer) -> int:
         if not buffer.records:
             return 0
         secondary_records = sum(
@@ -83,7 +83,7 @@ class ImportsMixin(ObjectsMixin):
         rows = self._query(expr="record_type = 'tweet'")
         if not rows:
             return RehydrateResult()
-        buffer = _PageBuffer()
+        buffer = PageBuffer()
         batch_size = 500
         result = RehydrateResult()
         for row in rows:

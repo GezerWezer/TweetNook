@@ -43,14 +43,14 @@ from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_
 from tweetnook.core.utils import utc_now
 from tweetnook.enrichment.resurrection import (
     ResurrectionResult,
-    _as_utc_datetime,
+    as_utc_datetime,
     preserve_reason_confidence,
     resurrection_retry_schedule,
 )
 from tweetnook.jobs.context import locked_archive_job, resolve_job_context
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.storage.backend import ArchiveStore
-from tweetnook.storage.records import _PageBuffer
+from tweetnook.storage.records import PageBuffer
 
 CHECK_CHUNK_SIZE = 100
 # Progress is published as each lookup returns, at most this often (the Web activity
@@ -123,7 +123,7 @@ class _CheckApplier:
         self.store = store
         self.result = result
         self.now = now
-        self.buffer = _PageBuffer()
+        self.buffer = PageBuffer()
         self.checks: list[tuple[str, str, int | None, str, str | None]] = []
         # Tweets looked up directly this run, and every tweet applied this run: an embedded
         # quote of either is skipped so each tweet gets one result per run.
@@ -143,7 +143,7 @@ class _CheckApplier:
         written = len(self.buffer.records)
         if written:
             self.store.merge_rows(list(self.buffer.records.values()))
-            self.buffer = _PageBuffer()
+            self.buffer = PageBuffer()
         self.store.record_tweet_checks(self.checks, checked_at=self.now)
         self.checks = []
         return written
@@ -459,7 +459,7 @@ async def run_check(
                     store.count_context_tweets() * interval_days / config.check.context_days
                 )
                 checked_before = (
-                    _as_utc_datetime(now) - timedelta(days=max(config.check.context_days - 1, 0))
+                    as_utc_datetime(now) - timedelta(days=max(config.check.context_days - 1, 0))
                 ).isoformat()
                 return store.list_context_check_tweet_ids(
                     limit=per_run, checked_before=checked_before

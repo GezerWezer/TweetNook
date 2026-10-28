@@ -10,16 +10,12 @@ from typing import Any
 
 from rich.console import Console
 
+from tweetnook.jobs.interactive import emit_status
 from tweetnook.jobs.pipeline import current_pipeline
 
 
 def _log_archive_phase(console: Console, prefix: str, message: str) -> None:
     console.print(f"{prefix}: {message}", highlight=False)
-
-
-def _emit_status(status: Callable[[str], None] | None, message: str) -> None:
-    if status is not None:
-        status(message)
 
 
 def _status_printer(
@@ -35,7 +31,7 @@ def _status_printer(
     return lambda message: _log_archive_phase(console, prefix, message)
 
 
-def _runner_console(console: Console, *, force: bool = False) -> Console:
+def runner_console_for(console: Console, *, force: bool = False) -> Console:
     if current_pipeline() is not None:
         return console
     if force or console.is_terminal:
@@ -53,7 +49,7 @@ def _format_debug_rate(processed: int | None, elapsed: float, *, unit: str) -> s
     return f"{processed / elapsed:.1f} {suffix}"
 
 
-def _record_debug_timing(
+def record_debug_timing(
     status: Callable[[str], None] | None,
     summaries: list[str],
     label: str,
@@ -68,7 +64,7 @@ def _record_debug_timing(
     if rate is not None:
         summary += f" ({rate})"
     summaries.append(summary)
-    _emit_status(status, f"debug {summary}")
+    emit_status(status, f"debug {summary}")
 
 
 @contextmanager

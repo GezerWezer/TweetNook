@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 from rich.console import Console
 
-import tweetnook.importer.archive as archive_import
 import tweetnook.importer.archive_enrich as archive_enrich
 from tests.archive_import.conftest import (
     _console,
@@ -41,7 +40,7 @@ def test_offline_import_copies_full_archive_without_live_followup(
     async def unexpected_followup(*args, **kwargs):
         pytest.fail("Offline import must not start live follow-up")
 
-    monkeypatch.setattr(archive_import, "_run_archive_followup", unexpected_followup)
+    monkeypatch.setattr(archive_enrich, "_run_archive_followup", unexpected_followup)
     for repeated in (False, True):
         result = asyncio.run(
             import_x_archive(

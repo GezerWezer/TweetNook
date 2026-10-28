@@ -15,13 +15,13 @@ from tweetnook.core.extractor import ExtractedTweetGraph, extract_secondary_obje
 from tweetnook.core.timeline_parsing import (
     TimelineTweet,
 )
-from tweetnook.importer.archive_input import _ArchiveIdentity
+from tweetnook.importer.archive_input import ArchiveIdentity
 from tweetnook.jobs.context import (
     ArchiveWriteTracker,
 )
 from tweetnook.storage import ArchiveStore
 from tweetnook.storage.common import ARCHIVE_SOURCE, LIVE_SOURCE
-from tweetnook.storage.records import _PageBuffer
+from tweetnook.storage.records import PageBuffer
 
 _AUTHORED_IMPORT_PREFETCH_CHUNK = 50
 
@@ -74,7 +74,7 @@ def _deepcopy_json(value: Any) -> Any:
 
 
 def _adapt_archive_tweet_payload(
-    tweet_payload: dict[str, Any], identity: _ArchiveIdentity
+    tweet_payload: dict[str, Any], identity: ArchiveIdentity
 ) -> dict[str, Any]:
     legacy = _deepcopy_json(tweet_payload)
     tweet_id = str(legacy.get("id_str") or legacy.get("id") or "").strip()
@@ -110,7 +110,7 @@ def _adapt_archive_tweet_payload(
 
 def _timeline_tweet_from_archive(
     tweet_payload: dict[str, Any],
-    identity: _ArchiveIdentity,
+    identity: ArchiveIdentity,
     *,
     sort_index: str | None,
 ) -> TimelineTweet:
@@ -141,7 +141,7 @@ def _placeholder_tweet_object(like_payload: dict[str, Any]) -> _PlaceholderTweet
 
 def _queue_secondary_graph(
     store: ArchiveStore,
-    buffer: _PageBuffer,
+    buffer: PageBuffer,
     graph: ExtractedTweetGraph,
     *,
     source: str,
@@ -188,7 +188,7 @@ def _queue_secondary_graph(
         )
 
 
-def _flush_buffer(store: ArchiveStore, buffer: _PageBuffer) -> int:
+def flush_buffer(store: ArchiveStore, buffer: PageBuffer) -> int:
     if not buffer.records:
         return 0
     pending = len(buffer.records)
@@ -199,7 +199,7 @@ def _flush_buffer(store: ArchiveStore, buffer: _PageBuffer) -> int:
     return pending
 
 
-def _deleted_headers_map(items: list[Any]) -> dict[str, str]:
+def deleted_headers_map(items: list[Any]) -> dict[str, str]:
     result: dict[str, str] = {}
     for item in items:
         tweet = item.get("tweet") if isinstance(item, dict) else {}
@@ -240,10 +240,10 @@ def _secondary_graph_row_keys(store: ArchiveStore, graph: ExtractedTweetGraph) -
     return row_keys
 
 
-def _import_authored_tweets(
+def import_authored_tweets(
     store: ArchiveStore,
     tweets: list[Any],
-    identity: _ArchiveIdentity,
+    identity: ArchiveIdentity,
     *,
     deleted_headers: dict[str, str],
     counts: dict[str, int],
@@ -252,7 +252,7 @@ def _import_authored_tweets(
     item_status: Callable[[str, int, int], None] | None = None,
     write_tracker: ArchiveWriteTracker | None = None,
 ) -> None:
-    buffer = _PageBuffer()
+    buffer = PageBuffer()
     valid_items = [
         item for item in tweets if isinstance(item, dict) and isinstance(item.get("tweet"), dict)
     ]
@@ -312,12 +312,12 @@ def _import_authored_tweets(
             processed += 1
             if progress:
                 progress(processed, total)
-        flushed = _flush_buffer(store, buffer)
+        flushed = flush_buffer(store, buffer)
         if write_tracker is not None and flushed > 0:
             write_tracker.mark_dirty(rows=flushed, batches=1)
 
 
-def _should_seed_like_placeholder(store: ArchiveStore, buffer: _PageBuffer, tweet_id: str) -> bool:
+def _should_seed_like_placeholder(store: ArchiveStore, buffer: PageBuffer, tweet_id: str) -> bool:
     row = store._lookup_row(store._row_key_for_tweet_object(tweet_id), cursor=buffer)
     if row is None:
         return True
@@ -329,7 +329,7 @@ def _should_seed_like_placeholder(store: ArchiveStore, buffer: _PageBuffer, twee
     )
 
 
-def _import_likes(
+def import_likes(
     store: ArchiveStore,
     likes: list[Any],
     *,
@@ -338,7 +338,7 @@ def _import_likes(
     item_status: Callable[[str, int, int], None] | None = None,
     write_tracker: ArchiveWriteTracker | None = None,
 ) -> None:
-    buffer = _PageBuffer()
+    buffer = PageBuffer()
     prepared: list[_PreparedLikeImport] = []
     for index, item in enumerate(likes, start=1):
         payload = item.get("like") if isinstance(item, dict) else None
@@ -399,6 +399,6 @@ def _import_likes(
             processed += 1
             if progress:
                 progress(processed, total)
-        flushed = _flush_buffer(store, buffer)
+        flushed = flush_buffer(store, buffer)
         if write_tracker is not None and flushed > 0:
             write_tracker.mark_dirty(rows=flushed, batches=1)

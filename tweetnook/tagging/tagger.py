@@ -22,8 +22,8 @@ from tweetnook.tagging.accounting import (
     SEARCH_MONTHLY_ALLOWANCE,
     AIUsageLedger,
     SearchAccounting,
-    _has_usable_interaction_usage,
     failed_usage_record,
+    has_usable_interaction_usage,
     interaction_search_accounting,
     new_request_id,
     usage_from_generate_content,
@@ -1373,7 +1373,7 @@ async def tag_media_tweets(
                         if isinstance(failure, dict)
                         else getattr(failure, "usage", None)
                     )
-                    has_usage = _has_usable_interaction_usage(usage)
+                    has_usage = has_usable_interaction_usage(usage)
                     # Explicit validation/auth/rate rejections with no evidence
                     # of generation are distinct from timeouts/5xx ambiguity.
                     interaction_id = (

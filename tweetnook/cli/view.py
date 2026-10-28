@@ -15,10 +15,10 @@ from rich.table import Table
 from rich.text import Text
 
 from tweetnook.cli.common import (
-    _configure_logging,
-    _normalize_collection_or_exit,
-    _open_store_for_read,
-    _with_auto_optimize,
+    configure_logging,
+    normalize_collection_or_exit,
+    open_store_for_read,
+    with_auto_optimize,
 )
 from tweetnook.core.collection_names import display_collection_name, normalize_collection_name
 from tweetnook.export import export_json_archive
@@ -187,11 +187,11 @@ def _render_tweet_list(
 def _render_archive_view(
     console: Console, *, collection: str, limit: int, sort: str = "newest"
 ) -> None:
-    normalized = _normalize_collection_or_exit(collection, console)
-    store, paths = _open_store_for_read(console)
+    normalized = normalize_collection_or_exit(collection, console)
+    store, paths = open_store_for_read(console)
     try:
         total_rows = store.count_export_rows(normalized)
-        rows = _with_auto_optimize(
+        rows = with_auto_optimize(
             store,
             paths,
             console,
@@ -241,25 +241,25 @@ def _highlight_search_matches(text: str, query: str) -> Text:
 
 @view_app.command("bookmarks", help="View bookmarked tweets.")
 def view_bookmarks(limit: VIEW_LIMIT_OPTION = 20, sort: VIEW_SORT_OPTION = "newest") -> None:
-    console = _configure_logging()
+    console = configure_logging()
     _render_archive_view(console, collection="bookmarks", limit=limit, sort=sort)
 
 
 @view_app.command("likes", help="View liked tweets.")
 def view_likes(limit: VIEW_LIMIT_OPTION = 20, sort: VIEW_SORT_OPTION = "newest") -> None:
-    console = _configure_logging()
+    console = configure_logging()
     _render_archive_view(console, collection="likes", limit=limit, sort=sort)
 
 
 @view_app.command("all", help="View bookmarks, likes, and authored tweets together.")
 def view_all(limit: VIEW_LIMIT_OPTION = 20, sort: VIEW_SORT_OPTION = "newest") -> None:
-    console = _configure_logging()
+    console = configure_logging()
     _render_archive_view(console, collection="all", limit=limit, sort=sort)
 
 
 @view_app.command("tweets", help="View authored tweets.")
 def view_tweets(limit: VIEW_LIMIT_OPTION = 20, sort: VIEW_SORT_OPTION = "newest") -> None:
-    console = _configure_logging()
+    console = configure_logging()
     _render_archive_view(console, collection="tweets", limit=limit, sort=sort)
 
 
@@ -268,16 +268,16 @@ def export_json(
     collection: EXPORT_COLLECTION_OPTION = "all",
     out: EXPORT_OUT_OPTION = None,
 ) -> None:
-    console = _configure_logging()
-    normalized = _normalize_collection_or_exit(collection, console)
-    store, paths = _open_store_for_read(console)
+    console = configure_logging()
+    normalized = normalize_collection_or_exit(collection, console)
+    store, paths = open_store_for_read(console)
     try:
         out_path = out or default_export_path(
             paths.data_dir / "exports",
             normalized,
             extension="json",
         )
-        _with_auto_optimize(
+        with_auto_optimize(
             store,
             paths,
             console,
@@ -301,8 +301,8 @@ def stats_archive(
     ] = False,
 ) -> None:
     """Show archive totals, collection coverage, sync timestamps, and storage health."""
-    console = _configure_logging()
-    store, _paths = _open_store_for_read(console)
+    console = configure_logging()
+    store, _paths = open_store_for_read(console)
     try:
         render_stats_report(console, build_stats_report(store), detailed=detailed)
     finally:
@@ -319,8 +319,8 @@ def search_archive(
     ] = None,
 ) -> None:
     """Full-text search archived tweets and articles."""
-    console = _configure_logging()
-    store, paths = _open_store_for_read(console)
+    console = configure_logging()
+    store, paths = open_store_for_read(console)
     try:
         search_types = _parse_search_types(type_filter, console) or {"post"}
         search_collections = _parse_search_collections(collection_filter, console)
@@ -374,7 +374,7 @@ def search_archive(
                 )
             return combined, post_page
 
-        results, post_page = _with_auto_optimize(store, paths, console, run_search)
+        results, post_page = with_auto_optimize(store, paths, console, run_search)
         results = _sort_search_results(results, sort=sort)[:limit]
         if not results:
             console.print("[yellow]No results found.[/yellow]")

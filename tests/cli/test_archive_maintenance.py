@@ -54,7 +54,7 @@ def test_optimize_archive_uses_write_lock(paths, monkeypatch) -> None:
     patch_cli(monkeypatch, "open_archive_store", lambda _paths, create=False, config=None: store)
     patch_cli(
         monkeypatch,
-        "_with_archive_write_lock",
+        "with_archive_write_lock",
         lambda lock_paths, fn: (lock_calls.append(lock_paths.lock_file), fn())[1],
     )
 
@@ -120,7 +120,7 @@ def test_database_check_runs_requested_diagnostic_and_closes_store(
             self.closed = True
 
     store = FakeStore()
-    patch_cli(monkeypatch, "_open_store_for_read", lambda _console: (store, paths))
+    patch_cli(monkeypatch, "open_store_for_read", lambda _console: (store, paths))
 
     cli_maintenance.check_database(full=full)
 
@@ -148,7 +148,7 @@ def test_database_check_reports_integrity_problems(
             self.closed = True
 
     store = FakeStore()
-    patch_cli(monkeypatch, "_open_store_for_read", lambda _console: (store, paths))
+    patch_cli(monkeypatch, "open_store_for_read", lambda _console: (store, paths))
 
     with pytest.raises(typer.Exit) as excinfo:
         cli_maintenance.check_database()
@@ -195,8 +195,8 @@ def test_stats_archive_builds_a_fresh_report_on_every_invocation(paths, monkeypa
     store = Store()
     reports: list[object] = []
     rendered: list[object] = []
-    patch_cli(monkeypatch, "_configure_logging", lambda: object())
-    patch_cli(monkeypatch, "_open_store_for_read", lambda _console: (store, paths))
+    patch_cli(monkeypatch, "configure_logging", lambda: object())
+    patch_cli(monkeypatch, "open_store_for_read", lambda _console: (store, paths))
 
     def build(store_arg):
         assert store_arg is store
@@ -278,7 +278,7 @@ def test_rehydrate_archive_uses_write_lock(paths, monkeypatch) -> None:
     patch_cli(monkeypatch, "open_archive_store", lambda _paths, create=False, config=None: store)
     patch_cli(
         monkeypatch,
-        "_with_archive_write_lock",
+        "with_archive_write_lock",
         lambda lock_paths, fn: (lock_calls.append(lock_paths.lock_file), fn())[1],
     )
     monkeypatch.setitem(sys.modules, "tqdm", SimpleNamespace(tqdm=FakeTqdm))

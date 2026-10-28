@@ -8,8 +8,8 @@ from typing import Any
 from tweetnook.core.exceptions import ArchiveOwnerMismatchError
 from tweetnook.core.utils import utc_now
 
-from .common import _expr_quote, _folder_key
-from .records import RecordsMixin, _PageBuffer
+from .common import expr_quote, folder_key
+from .records import PageBuffer, RecordsMixin
 
 
 @dataclass(slots=True)
@@ -47,7 +47,7 @@ class SyncStateMixin(RecordsMixin):
             row_key=self._row_key_for_sync_state(collection_type, folder_id),
             record_type="sync_state",
             collection_type=collection_type,
-            folder_id=_folder_key(folder_id),
+            folder_id=folder_key(folder_id),
             last_head_tweet_id=last_head_tweet_id,
             backfill_cursor=backfill_cursor,
             backfill_incomplete=backfill_incomplete,
@@ -62,7 +62,7 @@ class SyncStateMixin(RecordsMixin):
         backfill_cursor: str | None = None,
         backfill_incomplete: bool = False,
         folder_id: str | None = None,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> None:
         record = self._sync_state_record(
             collection_type,
@@ -75,11 +75,11 @@ class SyncStateMixin(RecordsMixin):
 
     def reset_sync_state(self, collection_type: str, folder_id: str | None = None) -> None:
         self._delete(
-            f"row_key = {_expr_quote(self._row_key_for_sync_state(collection_type, folder_id))}"
+            f"row_key = {expr_quote(self._row_key_for_sync_state(collection_type, folder_id))}"
         )
 
     def get_collection_tweet_ids(self, collection_type: str) -> set[str]:
-        filter_expr = f"record_type = 'tweet' AND collection_type = {_expr_quote(collection_type)}"
+        filter_expr = f"record_type = 'tweet' AND collection_type = {expr_quote(collection_type)}"
         rows = self._query(expr=filter_expr, cols=["tweet_id"])
         return {row["tweet_id"] for row in rows}
 
@@ -87,7 +87,7 @@ class SyncStateMixin(RecordsMixin):
         row = self._get_row(self._row_key_for_metadata("owner_user_id"))
         return row["value"] if row else None
 
-    def set_archive_owner_id(self, user_id: str, *, cursor: _PageBuffer | None = None) -> None:
+    def set_archive_owner_id(self, user_id: str, *, cursor: PageBuffer | None = None) -> None:
         record = self._record(
             row_key=self._row_key_for_metadata("owner_user_id"),
             record_type="metadata",

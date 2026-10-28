@@ -77,7 +77,7 @@ def _read_snapshot() -> dict[str, Any] | None:
     return snapshot if isinstance(snapshot, dict) else None
 
 
-def _read_active_snapshot() -> dict[str, Any] | None:
+def read_active_snapshot() -> dict[str, Any] | None:
     snapshot = _read_snapshot()
     if (
         snapshot is not None
@@ -125,7 +125,7 @@ def activity_status_payload(
     *, finished_snapshot: Callable[..., dict[str, Any] | None] | None = None
 ) -> dict[str, Any]:
     """Build the same current-state snapshot for polling and stream clients."""
-    snapshot = _read_active_snapshot()
+    snapshot = read_active_snapshot()
     paths = server_state.get("paths")
     data_dir = getattr(paths, "data_dir", None)
     last_snapshot = None
@@ -228,7 +228,7 @@ def stop_activity(
         except JobConflictError:
             pass
 
-    snapshot = _read_active_snapshot()
+    snapshot = read_active_snapshot()
     if snapshot is None or snapshot.get("origin") not in {"web", "schedule", "cli"}:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -249,7 +249,7 @@ def stop_activity(
 
 
 def _start_activity(kind: str, cli_args: list[str], title: str) -> dict[str, Any]:
-    active = _read_active_snapshot()
+    active = read_active_snapshot()
     if active is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

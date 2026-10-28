@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-import tweetnook.importer.archive as archive_import
 import tweetnook.importer.archive_enrich as archive_enrich
 from tests.archive_import.conftest import (
     _auth_bundle,
@@ -100,7 +99,7 @@ def test_repeated_import_enrich_preserves_existing_manifest_warnings(
             pending_enrichment=first.pending_enrichment,
         )
 
-    monkeypatch.setattr(archive_import, "_run_archive_followup", fake_followup)
+    monkeypatch.setattr(archive_enrich, "_run_archive_followup", fake_followup)
 
     second = asyncio.run(
         import_x_archive(

@@ -58,7 +58,7 @@ def capture_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
     output = StringIO()
     patch_cli(
         monkeypatch,
-        "_configure_logging",
+        "configure_logging",
         lambda: Console(
             file=output,
             force_terminal=False,

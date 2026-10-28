@@ -72,6 +72,6 @@ def _seed_archive(paths) -> None:
 def _capture_console(monkeypatch, buffer: StringIO) -> None:
     patch_cli(
         monkeypatch,
-        "_configure_logging",
+        "configure_logging",
         lambda: Console(file=buffer, force_terminal=False, color_system=None),
     )

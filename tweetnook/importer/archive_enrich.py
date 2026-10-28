@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 import httpx
 from rich.console import Console
@@ -34,26 +35,26 @@ from tweetnook.core.timeline_parsing import (
 from tweetnook.core.utils import utc_now
 from tweetnook.enrichment.resurrection import resurrection_retry_schedule, transient_retry_at
 from tweetnook.importer.archive_manifests import (
-    _aggregate_import_counts,
-    _finalize_import_enrichment_status,
-    _list_import_manifest_rows,
+    aggregate_import_counts,
+    finalize_import_enrichment_status,
+    list_import_manifest_rows,
 )
 from tweetnook.importer.archive_progress import (
-    _emit_status,
     _progress_callback,
-    _runner_console,
     _status_printer,
+    runner_console_for,
 )
-from tweetnook.importer.archive_rows import _flush_buffer
+from tweetnook.importer.archive_rows import flush_buffer
 from tweetnook.jobs.context import (
     locked_archive_job,
     resolve_job_context,
 )
+from tweetnook.jobs.interactive import emit_status
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 from tweetnook.storage import ArchiveStore
-from tweetnook.storage.records import _PageBuffer
+from tweetnook.storage.records import PageBuffer
 from tweetnook.sync.collection import sync_collection
 
 _DETAIL_ENRICH_WRITE_BATCH = 100
@@ -197,7 +198,7 @@ async def _run_live_reconciliation(
     completed: list[str] = []
     for collection in collections:
         try:
-            _emit_status(status, f"running live {collection} reconciliation...")
+            emit_status(status, f"running live {collection} reconciliation...")
             await sync_collection(
                 collection,
                 full=False,
@@ -315,6 +316,73 @@ async def _run_archive_followup(
     return enrichment_result
 
 
+def _followup_manifest_rows(store: ArchiveStore, digest: str | None) -> list[dict[str, Any]]:
+    if digest is None:
+        return list_import_manifest_rows(store)
+    manifest_row = store.get_import_manifest(digest)
+    return [manifest_row] if manifest_row is not None else []
+
+
+async def run_import_followup(
+    *,
+    counts: dict[str, int],
+    manifest_digest: str | None,
+    detail_limit: int | None,
+    reconcile_live: bool,
+    config: AppConfig,
+    paths: XDGPaths,
+    auth_bundle: ResolvedAuthBundle | None,
+    transport: httpx.AsyncBaseTransport | None,
+    console: Console,
+    status: Callable[[str], None] | None = None,
+    enrichment_started_at: str | None = None,
+    account_optional: bool = False,
+) -> ArchiveEnrichResult:
+    """Reconcile and enrich the collections an import's counts cover.
+
+    An interrupted or failed follow-up is recorded on the import manifest it belongs to
+    (manifest_digest, or every completed import when None) before the error propagates, so
+    the next run and the UI know enrichment stopped part way. Recording success is left to
+    the caller, which knows what counts to write.
+    """
+    try:
+        return await _run_archive_followup(
+            collections=_followup_collections_from_counts(counts),
+            detail_limit=detail_limit,
+            reconcile_live=reconcile_live,
+            config=config,
+            paths=paths,
+            auth_bundle=auth_bundle,
+            transport=transport,
+            console=console,
+            status=status,
+            enrichment_started_at=enrichment_started_at,
+            account_optional=account_optional,
+        )
+    except (KeyboardInterrupt, asyncio.CancelledError) as exc:
+        async with locked_archive_job(config=config, paths=paths) as job:
+            remaining = job.store.count_incomplete_initial_enrichment()
+            for manifest_row in _followup_manifest_rows(job.store, manifest_digest):
+                finalize_import_enrichment_status(
+                    job.store,
+                    manifest_row,
+                    followup_status="enrichment_interrupted",
+                    aborted_reason=str(exc) or exc.__class__.__name__,
+                )
+        raise ArchiveEnrichmentInterrupted(remaining) from exc
+    except Exception as exc:
+        raise_if_storage_exhausted(exc)
+        async with locked_archive_job(config=config, paths=paths) as job:
+            for manifest_row in _followup_manifest_rows(job.store, manifest_digest):
+                finalize_import_enrichment_status(
+                    job.store,
+                    manifest_row,
+                    followup_status="enrichment_aborted",
+                    aborted_reason=str(exc),
+                )
+        raise
+
+
 def _archive_enrich_counts(store: ArchiveStore, *, now: str | None = None) -> ArchiveEnrichResult:
     return ArchiveEnrichResult(
         pending_enrichment=store.count_incomplete_initial_enrichment(),
@@ -351,9 +419,9 @@ async def _enrich_pending_rows(
         desc_type = "eligible sparse tweets"
         if not rows:
             result = _archive_enrich_counts(store, now=selection_started_at)
-            _emit_status(status, "no archive enrichment rows are currently due")
+            emit_status(status, "no archive enrichment rows are currently due")
             if result.transient_delayed:
-                _emit_status(
+                emit_status(
                     status,
                     f"{result.transient_delayed:,} transient failures remain scheduled "
                     "for later retry",
@@ -384,7 +452,7 @@ async def _enrich_pending_rows(
                 counters="0 checked · 0 enriched · 0 unavailable · 0 transient",
             )
         limit_suffix = "" if limit is None else f" (limit {limit})"
-        _emit_status(status, f"detail enrichment over {len(rows)} {desc_type}{limit_suffix}")
+        emit_status(status, f"detail enrichment over {len(rows)} {desc_type}{limit_suffix}")
         query_store = QueryIdStore(paths)
         # Without an account only FxTwitter runs; rows it can't answer wait for TweetDetail.
         client = None
@@ -404,7 +472,7 @@ async def _enrich_pending_rows(
         transient = 0
         deferred = 0
         pacer = AdaptiveRequestPacer(config.sync.detail_delay)
-        write_buffer = _PageBuffer()
+        write_buffer = PageBuffer()
         buffered_writes = 0
         absence_tracker = absence_tracker or _FocalAbsenceTracker()
         # FxTwitter answers most lookups without the login; TweetDetail handles the rest.
@@ -417,7 +485,7 @@ async def _enrich_pending_rows(
             nonlocal buffered_writes
             if buffered_writes <= 0:
                 return
-            _flush_buffer(store, write_buffer)
+            flush_buffer(store, write_buffer)
             job.mark_dirty(rows=buffered_writes, batches=1)
             buffered_writes = 0
 
@@ -537,7 +605,7 @@ async def _enrich_pending_rows(
                             refresh_once=refresh_once,
                             status=(
                                 (
-                                    lambda message, tweet_id=tweet_id: _emit_status(
+                                    lambda message, tweet_id=tweet_id: emit_status(
                                         status, f"detail {tweet_id}: {message}"
                                     )
                                 )
@@ -754,17 +822,17 @@ async def enrich_imported_archive(
     enrichment_started_at = utc_now()
     console = console or Console(stderr=True)
     status = _status_printer(console, "archive enrich")
-    runner_console = _runner_console(console)
-    _emit_status(status, "loading completed archive imports...")
+    runner_console = runner_console_for(console)
+    emit_status(status, "loading completed archive imports...")
     try:
         async with locked_archive_job(config=config, paths=paths) as job:
-            manifest_rows = _list_import_manifest_rows(job.store)
+            manifest_rows = list_import_manifest_rows(job.store)
             if not manifest_rows:
                 raise ConfigError(
                     "No completed Twitter/X archive import found. Run "
                     "'tweetnook import x-archive' first."
                 )
-            counts = _aggregate_import_counts(manifest_rows)
+            counts = aggregate_import_counts(manifest_rows)
     except ConfigError as exc:
         if str(exc) == "No local archive found.":
             raise ConfigError(
@@ -772,60 +840,37 @@ async def enrich_imported_archive(
                 "'tweetnook import x-archive' first."
             ) from exc
         raise
-    try:
-        result = await _run_archive_followup(
-            collections=_followup_collections_from_counts(counts),
-            detail_limit=limit,
-            reconcile_live=reconcile_live,
-            config=config,
-            paths=paths,
-            auth_bundle=auth_bundle,
-            transport=transport,
-            console=runner_console,
-            status=status,
-            enrichment_started_at=enrichment_started_at,
-        )
-    except (KeyboardInterrupt, asyncio.CancelledError) as exc:
-        async with locked_archive_job(config=config, paths=paths) as job:
-            remaining = job.store.count_incomplete_initial_enrichment()
-            for manifest_row in _list_import_manifest_rows(job.store):
-                _finalize_import_enrichment_status(
-                    job.store,
-                    manifest_row,
-                    followup_status="enrichment_interrupted",
-                    aborted_reason=str(exc) or exc.__class__.__name__,
-                )
-        raise ArchiveEnrichmentInterrupted(remaining) from exc
-    except Exception as exc:
-        raise_if_storage_exhausted(exc)
-        async with locked_archive_job(config=config, paths=paths) as job:
-            for manifest_row in _list_import_manifest_rows(job.store):
-                _finalize_import_enrichment_status(
-                    job.store,
-                    manifest_row,
-                    followup_status="enrichment_aborted",
-                    aborted_reason=str(exc),
-                )
-        raise
-    else:
-        async with locked_archive_job(config=config, paths=paths) as job:
-            count_updates = {
-                "detail_lookups": result.detail_lookups,
-                "detail_terminal_unavailable": result.detail_terminal_unavailable,
-                "detail_transient_failures": result.detail_transient_failures,
-            }
-            for manifest_row in _list_import_manifest_rows(job.store):
-                _finalize_import_enrichment_status(
-                    job.store,
-                    manifest_row,
-                    followup_status="enrichment_complete",
-                    count_updates=count_updates,
-                )
-        pipeline = current_pipeline()
-        if pipeline is not None:
-            pipeline.final_note(
-                f"Archive enrichment queue: {result.pending_untouched:,} pending untouched · "
-                f"{result.transient_due:,} transient due · "
-                f"{result.transient_delayed:,} transient delayed."
+    result = await run_import_followup(
+        counts=counts,
+        manifest_digest=None,
+        detail_limit=limit,
+        reconcile_live=reconcile_live,
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        transport=transport,
+        console=runner_console,
+        status=status,
+        enrichment_started_at=enrichment_started_at,
+    )
+    async with locked_archive_job(config=config, paths=paths) as job:
+        count_updates = {
+            "detail_lookups": result.detail_lookups,
+            "detail_terminal_unavailable": result.detail_terminal_unavailable,
+            "detail_transient_failures": result.detail_transient_failures,
+        }
+        for manifest_row in list_import_manifest_rows(job.store):
+            finalize_import_enrichment_status(
+                job.store,
+                manifest_row,
+                followup_status="enrichment_complete",
+                count_updates=count_updates,
             )
-        return result
+    pipeline = current_pipeline()
+    if pipeline is not None:
+        pipeline.final_note(
+            f"Archive enrichment queue: {result.pending_untouched:,} pending untouched · "
+            f"{result.transient_due:,} transient due · "
+            f"{result.transient_delayed:,} transient delayed."
+        )
+    return result

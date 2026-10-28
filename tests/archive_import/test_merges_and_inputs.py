@@ -163,14 +163,14 @@ def test_archive_input_closes_zip_when_manifest_load_fails(
             closed.append(str(self.filename))
         original_close(self)
 
-    def raise_bad_manifest(_self: archive_input._ArchiveInput) -> dict[str, object]:
+    def raise_bad_manifest(_self: archive_input.ArchiveInput) -> dict[str, object]:
         raise ConfigError("bad manifest")
 
     monkeypatch.setattr(zipfile.ZipFile, "close", tracking_close)
-    monkeypatch.setattr(archive_input._ArchiveInput, "_load_manifest", raise_bad_manifest)
+    monkeypatch.setattr(archive_input.ArchiveInput, "_load_manifest", raise_bad_manifest)
 
     with pytest.raises(ConfigError, match="bad manifest"):
-        archive_input._ArchiveInput(archive_zip)
+        archive_input.ArchiveInput(archive_zip)
 
     assert closed == [str(archive_zip)]
 

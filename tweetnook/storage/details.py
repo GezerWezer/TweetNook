@@ -12,8 +12,8 @@ from tweetnook.core.extractor import (
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.core.utils import utc_now
 
-from .common import FX_SOURCE, LIVE_SOURCE, SOURCE_RANK, _parse_created_at
-from .records import _PageBuffer
+from .common import FX_SOURCE, LIVE_SOURCE, SOURCE_RANK, parse_created_at
+from .records import PageBuffer
 from .tweets import TweetsMixin
 
 _UNSET = object()
@@ -33,7 +33,7 @@ class DetailsMixin(TweetsMixin):
         enrichment_next_retry_at: str | None | object = _UNSET,
         enrichment_first_unavailable_at: str | None | object = _UNSET,
         enrichment_retry_eligible: bool | int | None | object = _UNSET,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> None:
         changes = {
             "enrichment_state": enrichment_state,
@@ -76,7 +76,7 @@ class DetailsMixin(TweetsMixin):
         self,
         tweet: TimelineTweet,
         *,
-        cursor: _PageBuffer,
+        cursor: PageBuffer,
         source: str = LIVE_SOURCE,
     ) -> None:
         legacy = tweet.raw_json.get("legacy") or {}
@@ -107,8 +107,8 @@ class DetailsMixin(TweetsMixin):
             )
             updated["created_at"] = self._coalesce_value(tweet.created_at, row.get("created_at"))
             updated["created_at_ts"] = (
-                int(_parse_created_at(updated["created_at"]).timestamp())
-                if _parse_created_at(updated["created_at"])
+                int(parse_created_at(updated["created_at"]).timestamp())
+                if parse_created_at(updated["created_at"])
                 else None
             )
             updated["conversation_id"] = self._coalesce_value(
@@ -135,7 +135,7 @@ class DetailsMixin(TweetsMixin):
         self,
         tweets: list[TimelineTweet],
         *,
-        cursor: _PageBuffer,
+        cursor: PageBuffer,
         source: str = LIVE_SOURCE,
     ) -> None:
         for tweet in tweets:
@@ -147,10 +147,10 @@ class DetailsMixin(TweetsMixin):
         tweet: TimelineTweet,
         raw_json: dict[str, Any],
         http_status: int = 200,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> None:
         owns_buffer = cursor is None
-        buffer = cursor or _PageBuffer()
+        buffer = cursor or PageBuffer()
         existing = self._lookup_row(self._row_key_for_tweet_object(tweet.tweet_id), cursor=buffer)
         prior_state = existing.get("enrichment_state") if existing is not None else None
         self.append_raw_capture(
@@ -195,10 +195,10 @@ class DetailsMixin(TweetsMixin):
         tweets: list[TimelineTweet],
         raw_json: dict[str, Any],
         http_status: int = 200,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> None:
         owns_buffer = cursor is None
-        buffer = cursor or _PageBuffer()
+        buffer = cursor or PageBuffer()
         self._refresh_tweet_records_for_details(tweets, cursor=buffer)
         self._buffer_secondary_graph(
             extract_thread_objects([tweet.raw_json for tweet in tweets]),
@@ -233,10 +233,10 @@ class DetailsMixin(TweetsMixin):
         next_retry_at: str | None,
         retry_count: int | None = None,
         checked_at: str | None = None,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> None:
         owns_buffer = cursor is None
-        buffer = cursor or _PageBuffer()
+        buffer = cursor or PageBuffer()
         checked_at = checked_at or utc_now()
         self.append_raw_capture(
             operation,
@@ -289,12 +289,12 @@ class DetailsMixin(TweetsMixin):
         tweet: TimelineTweet,
         payload: Any,
         http_status: int = 200,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> None:
         """Store an FxTwitter lookup as a placeholder that live GraphQL data later replaces."""
 
         owns_buffer = cursor is None
-        buffer = cursor or _PageBuffer()
+        buffer = cursor or PageBuffer()
         existing = self._lookup_row(self._row_key_for_tweet_object(tweet.tweet_id), cursor=buffer)
         prior_state = existing.get("enrichment_state") if existing is not None else None
         self.append_raw_capture(

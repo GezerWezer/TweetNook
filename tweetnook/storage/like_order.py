@@ -13,7 +13,7 @@ from itertools import pairwise
 from typing import Any, TypeVar
 
 from tweetnook.core import fastjson
-from tweetnook.core.timeline_parsing import _extract_tweet_results_from_content
+from tweetnook.core.timeline_parsing import extract_tweet_results_from_content
 
 LIKE_SORTS = frozenset({"liked_latest", "liked_earliest"})
 T = TypeVar("T")
@@ -175,7 +175,7 @@ def page_observations(payload: dict[str, Any]) -> PageObservations:
         seen: set[str] = set()
         for nested, _end in spans[start:end]:
             sort_index = _integer(nested.get("sortIndex"))
-            for result in _extract_tweet_results_from_content(nested.get("content", {})):
+            for result in extract_tweet_results_from_content(nested.get("content", {})):
                 tweet_id = result.get("rest_id")
                 if result.get("__typename") in _UNAVAILABLE_TYPENAMES or not tweet_id:
                     continue

@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 from tweetnook.config import XDGPaths
 from tweetnook.core.utils import utc_now
-from tweetnook.importer.archive_input import _ArchiveInput
+from tweetnook.importer.archive_input import ArchiveInput
 from tweetnook.jobs.context import (
     ArchiveWriteTracker,
 )
@@ -27,7 +27,7 @@ def _url_basename(value: Any) -> str | None:
 
 
 def _copy_file_from_archive(
-    source: _ArchiveInput, relative_path: str, destination: Path
+    source: ArchiveInput, relative_path: str, destination: Path
 ) -> tuple[str, int]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     sha = hashlib.sha256()
@@ -69,8 +69,8 @@ def _media_download_complete(base_dir: Path, row: dict[str, Any]) -> bool:
     return poster_path is not None and poster_path.exists()
 
 
-def _copy_exported_media(
-    source: _ArchiveInput,
+def copy_exported_media(
+    source: ArchiveInput,
     store: ArchiveStore,
     paths: XDGPaths,
     media_directory: str | None,
@@ -84,7 +84,7 @@ def _copy_exported_media(
 ) -> None:
     if not media_directory:
         return
-    files = _slice_for_sample(source.iter_files(media_directory), limit=limit)
+    files = slice_for_sample(source.iter_files(media_directory), limit=limit)
     if not files:
         return
 
@@ -200,7 +200,7 @@ def _copy_exported_media(
         warnings.append(f"{unmatched} archive media files did not match normalized media rows.")
 
 
-def _slice_for_sample(items: list[Any], *, limit: int | None) -> list[Any]:
+def slice_for_sample(items: list[Any], *, limit: int | None) -> list[Any]:
     if limit is None:
         return items
     return items[:limit]

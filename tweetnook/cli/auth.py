@@ -7,7 +7,7 @@ import asyncio
 import typer
 
 from tweetnook.auth import resolve_auth_bundle
-from tweetnook.cli.common import _configure_logging
+from tweetnook.cli.common import configure_logging
 from tweetnook.config import ensure_paths, load_config
 from tweetnook.core.exceptions import ConfigError, TweetNookError
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids
@@ -20,7 +20,7 @@ auth_app = typer.Typer(no_args_is_help=True, help="Check auth and refresh query 
 
 @auth_app.command("check", help="Validate local auth and probe remote timeline readiness.")
 def auth_check() -> None:
-    console = _configure_logging()
+    console = configure_logging()
     config, paths = load_config()
     try:
         auth_bundle = resolve_auth_bundle(config)
@@ -56,7 +56,7 @@ def auth_check() -> None:
     "refresh-ids", help="Force-refresh GraphQL query IDs from Twitter/X's JS bundles."
 )
 def auth_refresh_ids() -> None:
-    console = _configure_logging()
+    console = configure_logging()
     _, paths = load_config()
     ensure_paths(paths)
     store = QueryIdStore(paths)

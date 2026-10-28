@@ -9,7 +9,7 @@ import pytest
 from tests.storage.conftest import _complex_tweet, _counts, _tweet
 from tweetnook.core.exceptions import ArchiveOwnerMismatchError
 from tweetnook.storage import open_archive_store
-from tweetnook.storage.records import _PageBuffer
+from tweetnook.storage.records import PageBuffer
 
 
 def test_store_persist_page_is_atomic(paths, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -180,7 +180,7 @@ def test_prefetch_rows_populates_buffer_cache(paths) -> None:
         backfill_incomplete=True,
     )
 
-    buffer = _PageBuffer()
+    buffer = PageBuffer()
     store.prefetch_rows(
         [
             "tweet:bookmark::100",

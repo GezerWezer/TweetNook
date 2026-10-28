@@ -74,7 +74,7 @@ async def test_replay_can_skip_only_link_previews(
     reporter = PipelineReporter(_console(), "sync", interactive=False)
     with reporter:
         plan_sync_pipeline(reporter, config=config, collections=[], followups=plan, head_only=False)
-        await followups_module._run_auto_followups(
+        await followups_module.run_auto_followups(
             plan=plan,
             config=config,
             paths=paths,
@@ -249,7 +249,7 @@ async def test_sync_collection_runs_followups_when_requested(
     async def fake_followups(**kwargs) -> None:
         calls.append(kwargs["plan"])
 
-    monkeypatch.setattr(sync_module, "_run_auto_followups", fake_followups)
+    monkeypatch.setattr(sync_module, "run_auto_followups", fake_followups)
 
     result = await sync_collection(
         "bookmarks",
@@ -302,7 +302,7 @@ async def test_sync_stage_database_opens_never_run_quick_check(
             assert stage_store is not None
             stage_store.close()
 
-    monkeypatch.setattr(sync_module, "_run_auto_followups", fake_followups)
+    monkeypatch.setattr(sync_module, "run_auto_followups", fake_followups)
 
     result = await sync_collection(
         "bookmarks",
@@ -352,7 +352,7 @@ async def test_followup_outcomes_preserve_success_except_fatal_storage(
     expected = pytest.raises(StorageExhaustedError) if disk_full else nullcontext()
     with expected, reporter:
         plan_sync_pipeline(reporter, config=config, collections=[], followups=plan, head_only=False)
-        await followups_module._run_auto_followups(
+        await followups_module.run_auto_followups(
             plan=plan,
             config=config,
             paths=paths,
@@ -418,7 +418,7 @@ async def test_run_auto_followups_continues_after_task_failure(
     monkeypatch.setattr(followups_module, "_run_followup_media", ok_media)
     monkeypatch.setattr(followups_module, "_run_followup_unfurl", ok_unfurl)
 
-    await followups_module._run_auto_followups(
+    await followups_module.run_auto_followups(
         plan=SyncFollowupPlan(),
         config=config,
         paths=paths,
@@ -452,7 +452,7 @@ async def test_sync_remains_successful_when_automated_tagging_followup_fails(
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, color_system=None)
 
-    await followups_module._run_auto_followups(
+    await followups_module.run_auto_followups(
         plan=SyncFollowupPlan(
             resurrection=False,
             articles=False,
@@ -493,7 +493,7 @@ async def test_run_auto_followups_only_reminds_about_incomplete_initial_enrichme
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, color_system=None)
 
-    await followups_module._run_auto_followups(
+    await followups_module.run_auto_followups(
         plan=SyncFollowupPlan(enabled=False),
         config=config,
         paths=paths,
@@ -518,7 +518,7 @@ async def test_run_auto_followups_does_not_add_archive_queue_note_to_pipeline(
     reporter = PipelineReporter(console, "sync", interactive=False)
 
     with reporter:
-        await followups_module._run_auto_followups(
+        await followups_module.run_auto_followups(
             plan=SyncFollowupPlan(enabled=False),
             config=config,
             paths=paths,

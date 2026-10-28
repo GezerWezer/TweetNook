@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
@@ -19,43 +18,36 @@ from tweetnook.core.exceptions import (
 )
 from tweetnook.core.locking import ProcessLock
 from tweetnook.core.utils import utc_now
-from tweetnook.importer.archive_enrich import (
-    ArchiveEnrichmentInterrupted,
-    _followup_collections_from_counts,
-    _run_archive_followup,
-)
-from tweetnook.importer.archive_input import _archive_identity, _ArchiveInput
+from tweetnook.importer.archive_enrich import run_import_followup
+from tweetnook.importer.archive_input import ArchiveInput, archive_identity
 from tweetnook.importer.archive_manifests import (
-    _finalize_import_enrichment_status,
-    _initial_counts,
-    _manifest_counts,
-    _manifest_generation_date,
-    _manifest_warnings,
-    _record_archive_capture,
-    _remove_archive_owned_files,
+    initial_counts,
+    manifest_counts,
+    manifest_generation_date,
+    manifest_warnings,
+    record_archive_capture,
+    remove_archive_owned_files,
 )
-from tweetnook.importer.archive_media import _copy_exported_media, _slice_for_sample
+from tweetnook.importer.archive_media import copy_exported_media, slice_for_sample
 from tweetnook.importer.archive_progress import (
-    _emit_status,
     _progress_callback,
-    _record_debug_timing,
-    _runner_console,
     _status_printer,
+    record_debug_timing,
+    runner_console_for,
 )
 from tweetnook.importer.archive_rows import (
-    _deleted_headers_map,
-    _import_authored_tweets,
-    _import_likes,
+    deleted_headers_map,
+    import_authored_tweets,
+    import_likes,
 )
 from tweetnook.jobs.context import (
     ArchiveWriteTracker,
     best_effort_interrupt_optimize,
     is_interrupt_exception,
-    locked_archive_job,
     resolve_job_context,
 )
+from tweetnook.jobs.interactive import emit_status
 from tweetnook.jobs.pipeline import current_pipeline
-from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.storage import ArchiveStore, open_archive_store
 
 
@@ -96,13 +88,13 @@ async def import_x_archive(
     console = console or Console(stderr=True)
     pipeline = current_pipeline()
     status = _status_printer(console, "archive import", force=debug)
-    runner_console = _runner_console(console, force=debug)
+    runner_console = runner_console_for(console, force=debug)
     if sample_limit is not None and sample_limit <= 0:
         raise ConfigError("--sample-limit must be greater than zero.")
-    _emit_status(status, f"opening {archive_path}")
+    emit_status(status, f"opening {archive_path}")
     debug_summaries: list[str] = []
-    with _ArchiveInput(archive_path) as source:
-        _emit_status(status, "hashing archive contents for idempotence check...")
+    with ArchiveInput(archive_path) as source:
+        emit_status(status, "hashing archive contents for idempotence check...")
         hash_started = perf_counter()
         digest_total_bytes = (
             source.digest_total_bytes()
@@ -155,7 +147,7 @@ async def import_x_archive(
                 total_bytes=digest_total_bytes,
             )
         if debug:
-            _record_debug_timing(
+            record_debug_timing(
                 status,
                 debug_summaries,
                 "archive hash",
@@ -163,8 +155,8 @@ async def import_x_archive(
                 processed=digest_total_bytes,
                 unit="bytes",
             )
-        generation_date = _manifest_generation_date(source.manifest)
-        counts = _initial_counts()
+        generation_date = manifest_generation_date(source.manifest)
+        counts = initial_counts()
         warnings: list[str] = []
         sampled_import = sample_limit is not None
         final_status = "sampled" if sampled_import else "completed"
@@ -177,11 +169,11 @@ async def import_x_archive(
                 "sampled import still hashes and parses the full archive files before slicing "
                 "imported rows"
             )
-        _emit_status(status, "loading archive account metadata...")
+        emit_status(status, "loading archive account metadata...")
         account_started = perf_counter()
         account_items, account_parts = source.load_dataset("account")
         if debug:
-            _record_debug_timing(
+            record_debug_timing(
                 status,
                 debug_summaries,
                 "archive account metadata load",
@@ -189,7 +181,7 @@ async def import_x_archive(
                 processed=len(account_parts),
                 unit="parts",
             )
-        identity = _archive_identity(source.manifest, account_items)
+        identity = archive_identity(source.manifest, account_items)
         if pipeline is not None:
             owner = f"@{identity.username}" if identity.username else "archive owner resolved"
             pipeline.complete_step(
@@ -238,14 +230,14 @@ async def import_x_archive(
                         regen_step_key,
                         activity="Clearing the previous import owned by this archive",
                     )
-                _emit_status(status, "clearing previously imported archive-owned rows...")
+                emit_status(status, "clearing previously imported archive-owned rows...")
                 regen_started = perf_counter()
                 archive_media_paths = store.list_archive_import_media_paths()
                 cleared_rows = store.clear_archive_import_data()
                 write_tracker.mark_dirty(rows=sum(cleared_rows.values()), batches=1)
-                cleared_files = _remove_archive_owned_files(paths.data_dir, archive_media_paths)
+                cleared_files = remove_archive_owned_files(paths.data_dir, archive_media_paths)
                 existing_manifest = None
-                _emit_status(
+                emit_status(
                     status,
                     f"regen cleared {sum(cleared_rows.values())} rows and {cleared_files} "
                     "managed archive media files",
@@ -257,7 +249,7 @@ async def import_x_archive(
                         f"{cleared_files:,} managed media files removed",
                     )
                 if debug:
-                    _record_debug_timing(
+                    record_debug_timing(
                         status,
                         debug_summaries,
                         "archive-only regen cleanup",
@@ -267,8 +259,8 @@ async def import_x_archive(
                     )
             existing_manifest = store.get_import_manifest(digest)
             if existing_manifest and existing_manifest.get("status") == "completed":
-                counts = _manifest_counts(existing_manifest)
-                warnings = _manifest_warnings(existing_manifest)
+                counts = manifest_counts(existing_manifest)
+                warnings = manifest_warnings(existing_manifest)
                 if pipeline is not None:
                     for step_key in (
                         "archive-source",
@@ -305,7 +297,7 @@ async def import_x_archive(
                     )
             else:
                 import_performed = True
-                _emit_status(status, "loading archive datasets...")
+                emit_status(status, "loading archive datasets...")
                 dataset_started = perf_counter()
                 source_step_key = "archive-source"
                 source_dataset_keys = (
@@ -384,7 +376,7 @@ async def import_x_archive(
                     counts=counts,
                 )
                 write_tracker.mark_dirty()
-                _record_archive_capture(
+                record_archive_capture(
                     store,
                     "XArchiveManifest",
                     "data/manifest.js",
@@ -393,7 +385,7 @@ async def import_x_archive(
                     write_tracker=write_tracker,
                 )
                 for filename, payload in account_parts:
-                    _record_archive_capture(
+                    record_archive_capture(
                         store,
                         "XArchiveAccount",
                         filename,
@@ -419,7 +411,7 @@ async def import_x_archive(
                 tweets, tweet_parts = load_source_dataset("tweets")
                 likes, like_parts = load_source_dataset("like")
                 if debug:
-                    _record_debug_timing(
+                    record_debug_timing(
                         status,
                         debug_summaries,
                         "archive dataset load",
@@ -439,10 +431,10 @@ async def import_x_archive(
                 total_tweets = len(tweets)
                 total_deleted_tweets = len(deleted_tweets)
                 total_likes = len(likes)
-                tweets = _slice_for_sample(tweets, limit=sample_limit)
-                deleted_tweets = _slice_for_sample(deleted_tweets, limit=sample_limit)
-                likes = _slice_for_sample(likes, limit=sample_limit)
-                _emit_status(
+                tweets = slice_for_sample(tweets, limit=sample_limit)
+                deleted_tweets = slice_for_sample(deleted_tweets, limit=sample_limit)
+                likes = slice_for_sample(likes, limit=sample_limit)
+                emit_status(
                     status,
                     (
                         f"loaded {total_tweets} tweets, "
@@ -464,7 +456,7 @@ async def import_x_archive(
                 media_total = 0
                 if isinstance(media_directory, str):
                     media_total = len(
-                        _slice_for_sample(source.iter_files(media_directory), limit=sample_limit)
+                        slice_for_sample(source.iter_files(media_directory), limit=sample_limit)
                     )
                 if pipeline is not None:
                     if not source_part_total:
@@ -556,7 +548,7 @@ async def import_x_archive(
                                 f"{index - 1}/{source_part_total} preserved"
                             ),
                         )
-                    _record_archive_capture(
+                    record_archive_capture(
                         store,
                         operation,
                         filename,
@@ -581,7 +573,7 @@ async def import_x_archive(
                         f"{record_total:,} tweet/like records loaded",
                     )
                 if debug:
-                    _record_debug_timing(
+                    record_debug_timing(
                         status,
                         debug_summaries,
                         "archive raw-capture persist",
@@ -597,8 +589,8 @@ async def import_x_archive(
                         unit="rows",
                     )
 
-                deleted_headers = _deleted_headers_map(deleted_headers_items)
-                _emit_status(status, f"importing {len(tweets)} authored tweets...")
+                deleted_headers = deleted_headers_map(deleted_headers_items)
+                emit_status(status, f"importing {len(tweets)} authored tweets...")
                 authored_started = perf_counter()
                 authored_step_key = "archive-tweets"
                 authored_start_count = counts["authored_tweets"] + counts["deleted_authored_tweets"]
@@ -625,7 +617,7 @@ async def import_x_archive(
                     unit="tweets",
                     leave=debug,
                 ) as authored_progress:
-                    _import_authored_tweets(
+                    import_authored_tweets(
                         store,
                         tweets,
                         identity,
@@ -656,7 +648,7 @@ async def import_x_archive(
                         authored_step_key, f"{imported:,} authored rows imported"
                     )
                 if debug:
-                    _record_debug_timing(
+                    record_debug_timing(
                         status,
                         debug_summaries,
                         "authored tweet import",
@@ -664,7 +656,7 @@ async def import_x_archive(
                         processed=len(tweets),
                         unit="tweets",
                     )
-                _emit_status(status, f"importing {len(deleted_tweets)} deleted authored tweets...")
+                emit_status(status, f"importing {len(deleted_tweets)} deleted authored tweets...")
                 deleted_started = perf_counter()
                 deleted_step_key = "archive-deleted"
                 deleted_start_count = counts["deleted_authored_tweets"]
@@ -689,7 +681,7 @@ async def import_x_archive(
                     unit="tweets",
                     leave=debug,
                 ) as deleted_progress:
-                    _import_authored_tweets(
+                    import_authored_tweets(
                         store,
                         deleted_tweets,
                         identity,
@@ -714,7 +706,7 @@ async def import_x_archive(
                     imported = counts["deleted_authored_tweets"] - deleted_start_count
                     pipeline.complete_step(deleted_step_key, f"{imported:,} deleted rows imported")
                 if debug:
-                    _record_debug_timing(
+                    record_debug_timing(
                         status,
                         debug_summaries,
                         "deleted authored tweet import",
@@ -722,7 +714,7 @@ async def import_x_archive(
                         processed=len(deleted_tweets),
                         unit="tweets",
                     )
-                _emit_status(status, f"importing {len(likes)} likes...")
+                emit_status(status, f"importing {len(likes)} likes...")
                 likes_started = perf_counter()
                 likes_step_key = "archive-likes"
                 likes_start_count = counts["likes"]
@@ -749,7 +741,7 @@ async def import_x_archive(
                     unit="likes",
                     leave=debug,
                 ) as likes_progress:
-                    _import_likes(
+                    import_likes(
                         store,
                         likes,
                         counts=counts,
@@ -771,7 +763,7 @@ async def import_x_archive(
                     imported = counts["likes"] - likes_start_count
                     pipeline.complete_step(likes_step_key, f"{imported:,} likes imported")
                 if debug:
-                    _record_debug_timing(
+                    record_debug_timing(
                         status,
                         debug_summaries,
                         "like import",
@@ -779,7 +771,7 @@ async def import_x_archive(
                         processed=len(likes),
                         unit="likes",
                     )
-                _emit_status(status, "copying exported media files...")
+                emit_status(status, "copying exported media files...")
                 media_started = perf_counter()
                 media_step_key = "archive-media"
                 media_start_count = counts["media_files_copied"]
@@ -805,7 +797,7 @@ async def import_x_archive(
                     unit="files",
                     leave=debug,
                 ) as media_progress:
-                    _copy_exported_media(
+                    copy_exported_media(
                         source,
                         store,
                         paths,
@@ -839,7 +831,7 @@ async def import_x_archive(
                     for warning in warnings[warning_count_before_media:]:
                         pipeline.issue(warning, dedupe_key="archive-media:unmatched")
                 if debug:
-                    _record_debug_timing(
+                    record_debug_timing(
                         status,
                         debug_summaries,
                         "archive media copy",
@@ -906,9 +898,9 @@ async def import_x_archive(
             final_counts = dict(counts)
             final_counts["pending_enrichment"] = pending_after_import
             if debug:
-                _emit_status(status, "debug summary:")
+                emit_status(status, "debug summary:")
                 for summary in debug_summaries:
-                    _emit_status(status, f"  {summary}")
+                    emit_status(status, f"  {summary}")
             if pipeline is not None:
                 pipeline.final_note(
                     f"Sample imported: {counts['authored_tweets']:,} authored · "
@@ -926,51 +918,27 @@ async def import_x_archive(
         # Bulk archive writes are complete at this point. The follow-up sync/enrichment helpers
         # reacquire the same process lock around their own writes, so we intentionally do not hold
         # the outer lock across potentially long network I/O.
-        _emit_status(status, "running follow-up reconciliation and enrichment...")
+        emit_status(status, "running follow-up reconciliation and enrichment...")
         followup_started = perf_counter()
-        try:
-            followup = await _run_archive_followup(
-                collections=_followup_collections_from_counts(counts),
-                detail_limit=(detail_lookups if detail_lookups > 0 else None if enrich else 0),
-                reconcile_live=not defer_followup,
-                config=config,
-                paths=paths,
-                auth_bundle=auth_bundle,
-                transport=transport,
-                console=runner_console,
-                status=status,
-                # Setup leaves rows nobody can enrich yet (no account, and no FxTwitter
-                # under replay) pending for the first sync instead of failing the import.
-                account_optional=defer_followup,
-            )
-        except (KeyboardInterrupt, asyncio.CancelledError) as exc:
-            async with locked_archive_job(config=config, paths=paths) as job:
-                remaining = job.store.count_incomplete_initial_enrichment()
-                manifest_row = job.store.get_import_manifest(digest)
-                if manifest_row is not None:
-                    _finalize_import_enrichment_status(
-                        job.store,
-                        manifest_row,
-                        followup_status="enrichment_interrupted",
-                        aborted_reason=str(exc) or exc.__class__.__name__,
-                    )
-            raise ArchiveEnrichmentInterrupted(remaining) from exc
-        except Exception as exc:
-            raise_if_storage_exhausted(exc)
-            async with locked_archive_job(config=config, paths=paths) as job:
-                manifest_row = job.store.get_import_manifest(digest)
-                if manifest_row is not None:
-                    _finalize_import_enrichment_status(
-                        job.store,
-                        manifest_row,
-                        followup_status="enrichment_aborted",
-                        aborted_reason=str(exc),
-                    )
-            raise
+        followup = await run_import_followup(
+            counts=counts,
+            manifest_digest=digest,
+            detail_limit=(detail_lookups if detail_lookups > 0 else None if enrich else 0),
+            reconcile_live=not defer_followup,
+            config=config,
+            paths=paths,
+            auth_bundle=auth_bundle,
+            transport=transport,
+            console=runner_console,
+            status=status,
+            # Setup leaves rows nobody can enrich yet (no account, and no FxTwitter
+            # under replay) pending for the first sync instead of failing the import.
+            account_optional=defer_followup,
+        )
         followup_performed = True
         warnings.extend(followup.warnings)
         if debug:
-            _record_debug_timing(
+            record_debug_timing(
                 status,
                 debug_summaries,
                 "archive follow-up",
@@ -1010,9 +978,9 @@ async def import_x_archive(
             lock.release()
 
         if debug:
-            _emit_status(status, "debug summary:")
+            emit_status(status, "debug summary:")
             for summary in debug_summaries:
-                _emit_status(status, f"  {summary}")
+                emit_status(status, f"  {summary}")
 
         if pipeline is not None:
             pipeline.final_note(

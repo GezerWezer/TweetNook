@@ -11,7 +11,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | `common.py` | SQL fragment helpers, source names and ranks, shared hidden/uncaptured/note filters. |
 | `db.py` | Query helpers, cache revisions, read warming, close and optimize. |
 | `schema.py` | Table layout, FTS and derived tables, `SCHEMA_VERSION`, upgrades from released schemas. |
-| `records.py` | Row construction, row keys, `_PageBuffer` and source-precedence merging. |
+| `records.py` | Row construction, row keys, `PageBuffer` and source-precedence merging. |
 | `sync_state.py` | Sync cursors, the archive owner and import manifests. |
 | `tweets.py` | Timeline page writes: raw captures, memberships and `persist_page`. |
 | `objects.py` | Canonical tweet objects and their relations, media, URLs and articles. |
@@ -61,7 +61,7 @@ Use the row-key helpers in `ArchiveStore`; don't invent identifiers in callers. 
 
 ## Merge rules
 
-`_PageBuffer` collects related writes and tracks pending rows so a later item in a batch sees earlier writes. Source ranks prefer `live_graphql` over `fxtwitter` over `x_archive`. Merge code preserves better content, timestamps, downloaded files, and provenance when a weaker payload arrives.
+`PageBuffer` collects related writes and tracks pending rows so a later item in a batch sees earlier writes. Source ranks prefer `live_graphql` over `fxtwitter` over `x_archive`. Merge code preserves better content, timestamps, downloaded files, and provenance when a weaker payload arrives.
 
 Raw captures remain evidence of the source response. Normalized tweet text, author fields, media and relation rows can be rebuilt through `rehydrate`, but rebuilding isn't a new remote observation. Test quoted and nested content as well as the focal post when changing extraction.
 

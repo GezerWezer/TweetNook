@@ -9,7 +9,7 @@ from tests.conftest import make_tweet_result
 from tests.storage.conftest import _tweet
 from tests.tweets_api.conftest import _list_tweets
 from tweetnook.core.timeline_parsing import _iter_entries, parse_timeline_response
-from tweetnook.importer.archive_rows import _import_likes
+from tweetnook.importer.archive_rows import import_likes
 from tweetnook.storage import like_order
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.common import ARCHIVE_SOURCE, LIVE_SOURCE
@@ -19,7 +19,7 @@ from tweetnook.storage.like_order import (
     page_observations,
     repair_archive_blocks,
 )
-from tweetnook.storage.records import _PageBuffer
+from tweetnook.storage.records import PageBuffer
 from tweetnook.storage.search_query import SearchQueryError, search_posts
 
 
@@ -33,7 +33,7 @@ def store(tmp_path):
 def membership(store, tweet_id, *, sort_index=None, source=ARCHIVE_SOURCE, text="needle"):
     tweet = _tweet(tweet_id)
     tweet.text = text
-    buffer = _PageBuffer()
+    buffer = PageBuffer()
     store.upsert_tweet(tweet, cursor=buffer)
     store.upsert_membership(tweet_id, "like", source=source, sort_index=sort_index, cursor=buffer)
     store.merge_rows(list(buffer.records.values()))
@@ -123,7 +123,7 @@ def test_anchor_merge_preserves_authoritative_order(preferred, fallback, expecte
 
 def test_archive_import_and_missing_live_index_do_not_erase_live_sort_index(store):
     membership(store, "100", sort_index="999", source=LIVE_SOURCE)
-    _import_likes(store, likes(["100"]), counts={"likes": 0})
+    import_likes(store, likes(["100"]), counts={"likes": 0})
     row = store._get_row(store._row_key_for_tweet("100", "like"))
     assert row["sort_index"] == "999"
     membership(store, "100", source=LIVE_SOURCE)

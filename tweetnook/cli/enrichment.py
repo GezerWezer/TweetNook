@@ -11,8 +11,8 @@ from tweetnook.auth import resolve_auth_bundle
 from tweetnook.cli.common import (
     SYNC_MAX_LINKED_DEPTH_OPTION,
     SYNC_REPLY_LINKED_DEPTH_OPTION,
-    _configure_logging,
-    _web_pipeline,
+    configure_logging,
+    web_pipeline,
 )
 from tweetnook.config import load_config
 from tweetnook.core.exceptions import ConfigError, TweetNookError
@@ -71,10 +71,10 @@ def refresh_archived_articles(
     ] = False,
     limit: ARTICLE_LIMIT_OPTION = None,
 ) -> None:
-    console = _configure_logging()
+    console = configure_logging()
     try:
         config, paths = load_config()
-        with _web_pipeline(console, "tweetnook articles refresh", paths) as pipeline:
+        with web_pipeline(console, "tweetnook articles refresh", paths) as pipeline:
             pipeline.add_step(
                 "articles",
                 "Articles",
@@ -130,10 +130,10 @@ def expand_archive_threads(
     max_linked_depth: SYNC_MAX_LINKED_DEPTH_OPTION = None,
     reply_linked_depth: SYNC_REPLY_LINKED_DEPTH_OPTION = None,
 ) -> None:
-    console = _configure_logging()
+    console = configure_logging()
     try:
         config, paths = load_config()
-        with _web_pipeline(console, "tweetnook threads expand", paths) as pipeline:
+        with web_pipeline(console, "tweetnook threads expand", paths) as pipeline:
             pipeline.add_step(
                 "threads",
                 "Threads",
@@ -213,10 +213,10 @@ def check_command(
 ) -> None:
     from tweetnook.enrichment.check import run_check
 
-    console = _configure_logging()
+    console = configure_logging()
     try:
         config, paths = load_config()
-        with _web_pipeline(console, "tweetnook check", paths) as pipeline:
+        with web_pipeline(console, "tweetnook check", paths) as pipeline:
             result = asyncio.run(
                 run_check(
                     config=config,
@@ -260,10 +260,10 @@ def media_download(
     photos_only: PHOTOS_ONLY_OPTION = False,
     retry_failed: RETRY_FAILED_OPTION = False,
 ) -> None:
-    console = _configure_logging()
+    console = configure_logging()
     try:
         config, paths = load_config()
-        with _web_pipeline(console, "tweetnook media download", paths) as pipeline:
+        with web_pipeline(console, "tweetnook media download", paths) as pipeline:
             pipeline.add_step(
                 "media",
                 "Media",
@@ -303,10 +303,10 @@ def unfurl_archive(
     limit: UNFURL_LIMIT_OPTION = None,
     retry_failed: RETRY_FAILED_OPTION = False,
 ) -> None:
-    console = _configure_logging()
+    console = configure_logging()
     try:
         config, paths = load_config()
-        with _web_pipeline(console, "tweetnook unfurl", paths) as pipeline:
+        with web_pipeline(console, "tweetnook unfurl", paths) as pipeline:
             pipeline.add_step(
                 "urls",
                 "Link previews",
@@ -364,7 +364,7 @@ def tag_archive(
         typer.Option("--model", help="Override the Gemini model specified in config.toml"),
     ] = None,
 ) -> None:
-    console = _configure_logging()
+    console = configure_logging()
     try:
         config, paths = load_config()
         from tweetnook.jobs.context import locked_archive_job
@@ -428,7 +428,7 @@ def tag_archive(
                     dry_run=test,
                 )
 
-        with _web_pipeline(console, "tweetnook tag", paths) as pipeline:
+        with web_pipeline(console, "tweetnook tag", paths) as pipeline:
             pipeline.add_step(
                 "tagging",
                 "Automated tags",

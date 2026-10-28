@@ -8,7 +8,7 @@ from datetime import datetime
 from tweetnook.core.extractor import extract_status_id_from_url
 from tweetnook.core.utils import utc_now
 
-from .common import SEARCH_COLLECTION_ORDER, _parse_created_at
+from .common import SEARCH_COLLECTION_ORDER, parse_created_at
 from .relations import RelationsMixin
 from .sync_state import SyncStateMixin
 
@@ -148,7 +148,7 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
         ) -> None:
             nonlocal oldest_created_dt, newest_created_dt, oldest_created_at, newest_created_at
 
-            created_at = _parse_created_at(raw)
+            created_at = parse_created_at(raw)
             if created_at is None:
                 return
             if oldest_created_dt is None or created_at < oldest_created_dt:
@@ -160,10 +160,10 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
             if collection is None:
                 return
 
-            collection_oldest_dt = _parse_created_at(collection.oldest_created_at)
+            collection_oldest_dt = parse_created_at(collection.oldest_created_at)
             if collection_oldest_dt is None or created_at < collection_oldest_dt:
                 collection.oldest_created_at = raw
-            collection_newest_dt = _parse_created_at(collection.newest_created_at)
+            collection_newest_dt = parse_created_at(collection.newest_created_at)
             if collection_newest_dt is None or created_at > collection_newest_dt:
                 collection.newest_created_at = raw
 

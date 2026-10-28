@@ -35,7 +35,7 @@ from tweetnook.jobs.context import locked_archive_job, resolve_job_context
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 from tweetnook.storage.backend import ArchiveStore
-from tweetnook.storage.records import _PageBuffer
+from tweetnook.storage.records import PageBuffer
 
 DEFAULT_RESURRECTION_BUDGET = 200
 ACCOUNT_PROBE_LIMIT = 5
@@ -96,7 +96,7 @@ def _pipeline_outcomes(result: ResurrectionResult, *, final: bool = False) -> st
     return " · ".join(parts)
 
 
-def _as_utc_datetime(value: str | None = None) -> datetime:
+def as_utc_datetime(value: str | None = None) -> datetime:
     if value:
         try:
             parsed = datetime.fromisoformat(value)
@@ -107,7 +107,7 @@ def _as_utc_datetime(value: str | None = None) -> datetime:
 
 
 def _after(*, now: str | None, days: int = 0, hours: int = 0) -> str:
-    return (_as_utc_datetime(now) + timedelta(days=days, hours=hours)).isoformat()
+    return (as_utc_datetime(now) + timedelta(days=days, hours=hours)).isoformat()
 
 
 def resurrection_retry_schedule(
@@ -208,7 +208,7 @@ def select_weighted_resurrection_candidates(
     return selected[:budget]
 
 
-def _flush_buffer(store: ArchiveStore, buffer: _PageBuffer) -> int:
+def _flush_buffer(store: ArchiveStore, buffer: PageBuffer) -> int:
     if not buffer.records:
         return 0
     count = len(buffer.records)
@@ -304,7 +304,7 @@ async def resurrect_due_tweets(
         boosted_authors: set[str] = set()
         probed_authors: set[str] = set()
         pacer = AdaptiveRequestPacer(config.sync.detail_delay)
-        buffer = _PageBuffer()
+        buffer = PageBuffer()
         buffered_attempts = 0
         consecutive_focal_absences = 0
 

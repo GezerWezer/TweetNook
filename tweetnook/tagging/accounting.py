@@ -136,7 +136,7 @@ def _usage_field_present(usage: Any, *names: str) -> bool:
     return usage is not None and any(_attribute(usage, name, None) is not None for name in names)
 
 
-def _has_usable_interaction_usage(usage: Any) -> bool:
+def has_usable_interaction_usage(usage: Any) -> bool:
     """Return whether Gemini supplied all billed token categories explicitly."""
 
     return (
@@ -262,7 +262,7 @@ def usage_from_interaction(
     usage = _attribute(interaction, "usage")
     actual_model = str(_attribute(interaction, "model", None) or requested_model)
     actual_tier = _service_tier(_attribute(interaction, "service_tier", None) or service_tier)
-    usage_known = _has_usable_interaction_usage(usage)
+    usage_known = has_usable_interaction_usage(usage)
     if usage_known:
         prompt = _usage_value(
             usage,

@@ -5,27 +5,27 @@ from __future__ import annotations
 from datetime import datetime
 
 
-def _folder_key(folder_id: str | None) -> str:
+def folder_key(folder_id: str | None) -> str:
     return folder_id or ""
 
 
-def _expr_quote(value: str) -> str:
+def expr_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def _expr_in(field: str, values: set[str]) -> str:
-    return f"{field} IN ({', '.join(_expr_quote(value) for value in sorted(values))})"
+def expr_in(field: str, values: set[str]) -> str:
+    return f"{field} IN ({', '.join(expr_quote(value) for value in sorted(values))})"
 
 
 def _pending_state_expr(field: str) -> str:
     return f"({field} IS NULL OR {field} = '' OR {field} = 'pending')"
 
 
-def _state_filter_expr(field: str, states: set[str]) -> str:
+def state_filter_expr(field: str, states: set[str]) -> str:
     clauses: list[str] = []
     explicit_states = {state for state in states if state != "pending"}
     if explicit_states:
-        clauses.append(_expr_in(field, explicit_states))
+        clauses.append(expr_in(field, explicit_states))
     if "pending" in states:
         clauses.append(_pending_state_expr(field))
     if not clauses:
@@ -33,11 +33,11 @@ def _state_filter_expr(field: str, states: set[str]) -> str:
     return clauses[0] if len(clauses) == 1 else f"({' OR '.join(clauses)})"
 
 
-def _and_expr(*clauses: str) -> str:
+def and_expr(*clauses: str) -> str:
     return " AND ".join(clause for clause in clauses if clause)
 
 
-def _parse_created_at(raw: str | None) -> datetime | None:
+def parse_created_at(raw: str | None) -> datetime | None:
     if not raw:
         return None
     try:

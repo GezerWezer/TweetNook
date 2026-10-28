@@ -9,7 +9,7 @@ from typing import Annotated, Any
 import typer
 
 from tweetnook.auth import resolve_auth_bundle
-from tweetnook.cli.common import _configure_logging, _web_pipeline
+from tweetnook.cli.common import configure_logging, web_pipeline
 from tweetnook.config import load_config
 from tweetnook.core.exceptions import ConfigError, TweetNookError
 from tweetnook.enrichment.media import download_media
@@ -236,10 +236,10 @@ def import_x_archive_command(
         ),
     ] = False,
 ) -> None:
-    console = _configure_logging()
+    console = configure_logging()
     try:
         config, paths = load_config()
-        with _web_pipeline(console, "tweetnook import x-archive", paths) as pipeline:
+        with web_pipeline(console, "tweetnook import x-archive", paths) as pipeline:
             _plan_archive_import_pipeline(
                 pipeline,
                 regen=regen,
@@ -319,10 +319,10 @@ def import_archive_enrich(
         ),
     ] = None,
 ) -> None:
-    console = _configure_logging()
+    console = configure_logging()
     try:
         config, paths = load_config()
-        with _web_pipeline(console, "tweetnook import enrich", paths) as pipeline:
+        with web_pipeline(console, "tweetnook import enrich", paths) as pipeline:
             pipeline.add_step(
                 "archive-auth",
                 "Authentication",

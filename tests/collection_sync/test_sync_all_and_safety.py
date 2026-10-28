@@ -320,7 +320,7 @@ async def test_storage_exhaustion_stops_followups_before_link_previews(
     monkeypatch.setattr(followups_module, "_run_followup_media", full_media)
     monkeypatch.setattr(followups_module, "_run_followup_unfurl", unfurl)
     with pytest.raises(StorageExhaustedError, match="Free or add disk space"):
-        await followups_module._run_auto_followups(
+        await followups_module.run_auto_followups(
             plan=SyncFollowupPlan(threads=False, resurrection=False, articles=False),
             config=config,
             paths=paths,

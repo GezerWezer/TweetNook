@@ -27,7 +27,7 @@ def test_configure_logging_forces_plain_output_for_systemd(
 ) -> None:
     monkeypatch.setenv("INVOCATION_ID", "service-run-id")
 
-    console = cli_common._configure_logging()
+    console = cli_common.configure_logging()
 
     assert console.is_terminal is False
     assert console.color_system is None

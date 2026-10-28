@@ -7,8 +7,8 @@ from typing import Any
 from tweetnook.core.extractor import ExtractedTweetGraph, extract_secondary_objects
 from tweetnook.core.timeline_parsing import TimelineTweet
 
-from .common import AVAILABLE_SOURCES, LIVE_SOURCE, _parse_created_at
-from .records import RecordsMixin, _PageBuffer
+from .common import AVAILABLE_SOURCES, LIVE_SOURCE, parse_created_at
+from .records import PageBuffer, RecordsMixin
 
 
 class ObjectsMixin(RecordsMixin):
@@ -28,7 +28,7 @@ class ObjectsMixin(RecordsMixin):
         enrichment_first_unavailable_at: str | None = None,
         enrichment_retry_eligible: bool | None = None,
         preserve_lifecycle: bool = False,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> dict[str, Any]:
         """Build a tweet_object row; ``preserve_lifecycle`` keeps an existing row's
         enrichment and deletion fields (replaying an old capture says nothing about now)."""
@@ -127,8 +127,8 @@ class ObjectsMixin(RecordsMixin):
                     prefer_incoming=prefer_incoming,
                 )
             ),
-            created_at_ts=int(_parse_created_at(merged_created_at).timestamp())
-            if _parse_created_at(merged_created_at)
+            created_at_ts=int(parse_created_at(merged_created_at).timestamp())
+            if parse_created_at(merged_created_at)
             else None,
             deleted_at=(
                 self._existing_value(context, "deleted_at")
@@ -188,7 +188,7 @@ class ObjectsMixin(RecordsMixin):
         relation: Any,
         *,
         source: str = LIVE_SOURCE,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> dict[str, Any]:
         row_key = self._row_key_for_tweet_relation(
             relation.source_tweet_id,
@@ -218,7 +218,7 @@ class ObjectsMixin(RecordsMixin):
         media: Any,
         *,
         provenance_source: str = LIVE_SOURCE,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> dict[str, Any]:
         row_key = self._row_key_for_media(media.tweet_id, media.media_key)
         context = self._record_context(row_key, cursor=cursor)
@@ -321,7 +321,7 @@ class ObjectsMixin(RecordsMixin):
         url: Any,
         *,
         source: str = LIVE_SOURCE,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> dict[str, Any]:
         row_key = self._row_key_for_url(url.url_hash)
         context = self._record_context(row_key, cursor=cursor)
@@ -388,7 +388,7 @@ class ObjectsMixin(RecordsMixin):
         url_ref: Any,
         *,
         source: str = LIVE_SOURCE,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> dict[str, Any]:
         row_key = self._row_key_for_url_ref(url_ref.tweet_id, url_ref.position)
         context = self._record_context(row_key, cursor=cursor)
@@ -443,7 +443,7 @@ class ObjectsMixin(RecordsMixin):
         article: Any,
         *,
         source: str = LIVE_SOURCE,
-        cursor: _PageBuffer | None = None,
+        cursor: PageBuffer | None = None,
     ) -> dict[str, Any]:
         row_key = self._row_key_for_article(article.tweet_id)
         context = self._record_context(row_key, cursor=cursor)
@@ -515,7 +515,7 @@ class ObjectsMixin(RecordsMixin):
         *,
         source: str = LIVE_SOURCE,
         preserve_lifecycle: bool = False,
-        cursor: _PageBuffer,
+        cursor: PageBuffer,
     ) -> None:
         keys = [
             self._row_key_for_tweet_object(item.tweet_id) for item in graph.tweet_objects.values()
@@ -571,7 +571,7 @@ class ObjectsMixin(RecordsMixin):
         tweets: list[TimelineTweet],
         *,
         source: str = LIVE_SOURCE,
-        cursor: _PageBuffer,
+        cursor: PageBuffer,
     ) -> None:
         graph = ExtractedTweetGraph()
         for tweet in tweets:

@@ -7,10 +7,10 @@ from typing import Annotated
 import typer
 
 from tweetnook.cli.common import (
-    _configure_logging,
-    _open_store_for_read,
-    _web_pipeline,
-    _with_archive_write_lock,
+    configure_logging,
+    open_store_for_read,
+    web_pipeline,
+    with_archive_write_lock,
 )
 from tweetnook.config import load_config
 from tweetnook.core.exceptions import ConfigError, ProcessLockError, TweetNookError
@@ -21,7 +21,7 @@ db_app = typer.Typer(no_args_is_help=True, help="Inspect the local SQLite archiv
 
 def optimize_archive() -> None:
     """Reclaim SQLite space and optimize query planning and the full-text index."""
-    console = _configure_logging()
+    console = configure_logging()
     config, paths = load_config()
 
     def run() -> None:
@@ -37,7 +37,7 @@ def optimize_archive() -> None:
             store.close()
 
     try:
-        _with_archive_write_lock(paths, run)
+        with_archive_write_lock(paths, run)
     except ProcessLockError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(2) from exc
@@ -93,7 +93,7 @@ def prune_archive(
         plan_prune,
     )
 
-    console = _configure_logging()
+    console = configure_logging()
     config, paths = load_config()
     depth = config.sync.max_linked_depth if max_linked_depth is None else max_linked_depth
     reply_depth = (
@@ -134,7 +134,7 @@ def prune_archive(
 
     try:
         if apply:
-            _with_archive_write_lock(paths, run)
+            with_archive_write_lock(paths, run)
         else:
             run()
     except ProcessLockError as exc:
@@ -152,8 +152,8 @@ def check_database(
         ),
     ] = False,
 ) -> None:
-    console = _configure_logging()
-    store, paths = _open_store_for_read(console)
+    console = configure_logging()
+    store, paths = open_store_for_read(console)
     pragma = "integrity_check" if full else "quick_check"
     try:
         results = store.check_integrity(full=full)
@@ -177,7 +177,7 @@ def rehydrate_archive() -> None:
     """Rebuild normalized tweet fields and secondary rows from stored raw_json."""
     from tqdm import tqdm
 
-    console = _configure_logging()
+    console = configure_logging()
     config, paths = load_config()
 
     def run() -> None:
@@ -202,7 +202,7 @@ def rehydrate_archive() -> None:
             store.close()
 
     try:
-        _with_archive_write_lock(paths, run)
+        with_archive_write_lock(paths, run)
     except ProcessLockError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(2) from exc
@@ -212,10 +212,10 @@ def migrate() -> None:
     """Migrate data from older LanceDB storage to native SQLite storage."""
     from tweetnook.importer.legacy_migration import run_migration
 
-    console = _configure_logging()
+    console = configure_logging()
     try:
         _, paths = load_config()
-        with _web_pipeline(console, "tweetnook migrate", paths):
+        with web_pipeline(console, "tweetnook migrate", paths):
             result = run_migration(console=console)
             if result.status not in {"complete", "partial"}:
                 raise TweetNookError(f"Migration did not complete ({result.status}).")
