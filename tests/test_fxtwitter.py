@@ -619,7 +619,7 @@ def test_sync_retries_unavailable_tweets_only_while_the_check_cannot() -> None:
     from rich.console import Console
 
     from tweetnook.jobs.pipeline import PipelineReporter
-    from tweetnook.sync.collection import (
+    from tweetnook.sync.followups import (
         SyncFollowupPlan,
         check_owns_resurrection,
         plan_sync_pipeline,

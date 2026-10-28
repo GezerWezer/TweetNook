@@ -42,7 +42,8 @@ Some modules sit where their dependencies put them rather than where their name 
 | `client/timelines.py` | X operation variables and timeline/detail requests. |
 | `client/fxtwitter.py` | Cookie-free public lookup. |
 | `query_ids/` | Operation defaults, cache and bundle discovery. |
-| `sync/collection.py` | Collection preflight, resumable pages and follow-up plan. |
+| `sync/collection.py` | Collection preflight and resumable pages. |
+| `sync/followups.py` | The follow-up plan and the work a sync runs after its collections. |
 | `importer/archive.py` | Official export ingest, manifests and sparse completion. |
 | `importer/legacy_migration.py` | Explicit migration of a legacy LanceDB archive. |
 | `enrichment/threads.py`, `enrichment/media.py`, `enrichment/unfurl.py` | Conversation expansion, file downloads and link previews. |

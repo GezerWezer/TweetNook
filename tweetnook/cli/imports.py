@@ -20,11 +20,8 @@ from tweetnook.importer.archive import (
     import_x_archive,
 )
 from tweetnook.jobs.pipeline import PipelineReporter
-from tweetnook.sync.collection import (
-    SyncFollowupPlan,
-    plan_sync_pipeline,
-    sync_all,
-)
+from tweetnook.sync.collection import sync_all
+from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline
 
 import_app = typer.Typer(
     no_args_is_help=True, help="Import and enrich official Twitter/X archives."

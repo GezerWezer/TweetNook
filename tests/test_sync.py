@@ -15,6 +15,7 @@ from rich.console import Console
 
 import tweetnook.storage.backend as storage_backend
 import tweetnook.sync.collection as sync_module
+import tweetnook.sync.followups as followups_module
 from tests.conftest import (
     make_article_result,
     make_bookmarks_response,
@@ -31,13 +32,8 @@ from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.jobs.resource_failure import StorageExhaustedError
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.storage import open_archive_store
-from tweetnook.sync.collection import (
-    RemotePreflightError,
-    SyncFollowupPlan,
-    plan_sync_pipeline,
-    sync_all,
-    sync_collection,
-)
+from tweetnook.sync.collection import RemotePreflightError, sync_all, sync_collection
+from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline
 
 
 def _op_and_variables(request: httpx.Request) -> tuple[str, dict[str, object]]:
@@ -76,7 +72,7 @@ async def test_sync_skips_only_quote_expansion_when_replay_option_is_enabled(
         return SimpleNamespace(processed=1)
 
     monkeypatch.setattr("tweetnook.enrichment.threads.expand_threads", expand)
-    await sync_module._run_followup_threads(
+    await followups_module._run_followup_threads(
         config=config,
         paths=paths,
         auth_bundle=auth_bundle,
@@ -101,14 +97,14 @@ async def test_replay_can_skip_only_link_previews(
         calls.append("previews")
         return SimpleNamespace(processed=1, updated=1, failed=0)
 
-    monkeypatch.setattr(sync_module, "_run_followup_unfurl", previews)
+    monkeypatch.setattr(followups_module, "_run_followup_unfurl", previews)
     plan = SyncFollowupPlan(
         threads=False, resurrection=False, articles=False, media=False, tagging=False
     )
     reporter = PipelineReporter(_console(), "sync", interactive=False)
     with reporter:
         plan_sync_pipeline(reporter, config=config, collections=[], followups=plan, head_only=False)
-        await sync_module._run_auto_followups(
+        await followups_module._run_auto_followups(
             plan=plan,
             config=config,
             paths=paths,
@@ -335,11 +331,11 @@ async def test_sync_collection_runs_followups_when_requested(
         transport=httpx.MockTransport(handler),
         console=_console(),
         sleep=lambda _: asyncio.sleep(0),
-        followups=sync_module.SyncFollowupPlan(),
+        followups=SyncFollowupPlan(),
     )
 
     assert result.pages_fetched == 1
-    assert calls == [sync_module.SyncFollowupPlan()]
+    assert calls == [SyncFollowupPlan()]
 
 
 @pytest.mark.asyncio
@@ -388,7 +384,7 @@ async def test_sync_stage_database_opens_never_run_quick_check(
         transport=httpx.MockTransport(handler),
         console=_console(),
         sleep=lambda _: asyncio.sleep(0),
-        followups=sync_module.SyncFollowupPlan(),
+        followups=SyncFollowupPlan(),
     )
 
     assert result.pages_fetched == 1
@@ -412,7 +408,7 @@ async def test_followup_outcomes_preserve_success_except_fatal_storage(
     if stage == "resurrection":
         monkeypatch.setattr("tweetnook.enrichment.resurrection.resurrect_due_tweets", fail)
     else:
-        monkeypatch.setattr(sync_module, f"_run_followup_{stage}", fail)
+        monkeypatch.setattr(followups_module, f"_run_followup_{stage}", fail)
     config.tagging.enabled = True
     plan = SyncFollowupPlan(
         **{
@@ -425,7 +421,7 @@ async def test_followup_outcomes_preserve_success_except_fatal_storage(
     expected = pytest.raises(StorageExhaustedError) if disk_full else nullcontext()
     with expected, reporter:
         plan_sync_pipeline(reporter, config=config, collections=[], followups=plan, head_only=False)
-        await sync_module._run_auto_followups(
+        await followups_module._run_auto_followups(
             plan=plan,
             config=config,
             paths=paths,
@@ -486,13 +482,13 @@ async def test_run_auto_followups_continues_after_task_failure(
     import tweetnook.enrichment.resurrection as resurrection_module
 
     monkeypatch.setattr(resurrection_module, "resurrect_due_tweets", fail_resurrection)
-    monkeypatch.setattr(sync_module, "_run_followup_threads", ok_threads)
-    monkeypatch.setattr(sync_module, "_run_followup_articles", ok_articles)
-    monkeypatch.setattr(sync_module, "_run_followup_media", ok_media)
-    monkeypatch.setattr(sync_module, "_run_followup_unfurl", ok_unfurl)
+    monkeypatch.setattr(followups_module, "_run_followup_threads", ok_threads)
+    monkeypatch.setattr(followups_module, "_run_followup_articles", ok_articles)
+    monkeypatch.setattr(followups_module, "_run_followup_media", ok_media)
+    monkeypatch.setattr(followups_module, "_run_followup_unfurl", ok_unfurl)
 
-    await sync_module._run_auto_followups(
-        plan=sync_module.SyncFollowupPlan(),
+    await followups_module._run_auto_followups(
+        plan=SyncFollowupPlan(),
         config=config,
         paths=paths,
         auth_bundle=auth_bundle,
@@ -519,14 +515,14 @@ async def test_sync_remains_successful_when_automated_tagging_followup_fails(
     async def fail_tagging(**_kwargs):
         raise RuntimeError("Gemini unavailable")
 
-    monkeypatch.setattr(sync_module, "_run_followup_tagging", fail_tagging)
+    monkeypatch.setattr(followups_module, "_run_followup_tagging", fail_tagging)
     enabled_tagging = config.tagging.model_copy(update={"enabled": True, "api_key": "test-key"})
     active_config = config.model_copy(update={"tagging": enabled_tagging})
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, color_system=None)
 
-    await sync_module._run_auto_followups(
-        plan=sync_module.SyncFollowupPlan(
+    await followups_module._run_auto_followups(
+        plan=SyncFollowupPlan(
             resurrection=False,
             articles=False,
             media=False,
@@ -566,8 +562,8 @@ async def test_run_auto_followups_only_reminds_about_incomplete_initial_enrichme
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, color_system=None)
 
-    await sync_module._run_auto_followups(
-        plan=sync_module.SyncFollowupPlan(enabled=False),
+    await followups_module._run_auto_followups(
+        plan=SyncFollowupPlan(enabled=False),
         config=config,
         paths=paths,
         auth_bundle=auth_bundle,
@@ -591,8 +587,8 @@ async def test_run_auto_followups_does_not_add_archive_queue_note_to_pipeline(
     reporter = PipelineReporter(console, "sync", interactive=False)
 
     with reporter:
-        await sync_module._run_auto_followups(
-            plan=sync_module.SyncFollowupPlan(enabled=False),
+        await followups_module._run_auto_followups(
+            plan=SyncFollowupPlan(enabled=False),
             config=config,
             paths=paths,
             auth_bundle=auth_bundle,
@@ -1808,11 +1804,11 @@ async def test_storage_exhaustion_stops_followups_before_link_previews(
         calls.append("urls")
         pytest.fail("link previews must not run on a full volume")
 
-    monkeypatch.setattr(sync_module, "_run_followup_media", full_media)
-    monkeypatch.setattr(sync_module, "_run_followup_unfurl", unfurl)
+    monkeypatch.setattr(followups_module, "_run_followup_media", full_media)
+    monkeypatch.setattr(followups_module, "_run_followup_unfurl", unfurl)
     with pytest.raises(StorageExhaustedError, match="Free or add disk space"):
-        await sync_module._run_auto_followups(
-            plan=sync_module.SyncFollowupPlan(threads=False, resurrection=False, articles=False),
+        await followups_module._run_auto_followups(
+            plan=SyncFollowupPlan(threads=False, resurrection=False, articles=False),
             config=config,
             paths=paths,
             auth_bundle=auth_bundle,
