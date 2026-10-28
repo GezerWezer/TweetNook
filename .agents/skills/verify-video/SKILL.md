@@ -26,7 +26,9 @@ and their constants are at the top of `tweetnook/web/static/js/media/video.js`. 
 
 ```bash
 node tests/js/test_media_playback.cjs
-node tests/js/test_web_assets.cjs
+node tests/js/test_web_video.cjs
+node tests/js/test_web_mobile_viewer.cjs
+node tests/js/test_web_lightbox.cjs
 uv run pytest tests/web/test_media_playback_assets.py tests/test_web_assets.py
 ```
 

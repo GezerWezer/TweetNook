@@ -21,13 +21,13 @@ Existing failures should be recorded with their command and scope. Targeted test
 
 | Change | Starting tests |
 | --- | --- |
-| CLI/help and selected collections | `tests/test_cli.py`, `tests/test_cli_web.py`, `tests/test_cli_service.py` |
+| CLI/help and selected collections | `tests/cli/`, `tests/test_cli_web.py`, `tests/test_cli_service.py` |
 | Config and paths | `tests/test_config.py`, web configuration routes |
 | Client and sync | Client, query-ID, auth, pagination and sync suites |
 | Import and deferred Setup work | Archive-import, Setup routes and server-first suites |
 | Storage and search | SQLite storage, search, pagination, like order and database-performance suites |
 | Availability and note history | FxTwitter, check, resurrection and web availability suites |
-| Enrichment and local assets | `tests/test_threads.py`, `tests/test_articles.py`, `tests/test_media.py`, `tests/test_unfurl.py`, `tests/test_resource_failure.py` |
+| Enrichment and local assets | `tests/threads/`, `tests/test_articles.py`, `tests/test_media.py`, `tests/test_unfurl.py`, `tests/test_resource_failure.py` |
 | Gemini | Optional tagging, SDK, prompts, media tags, RPD and web tagging suites |
 | Jobs and schedules | Supervisor, pipeline, activity-history, scheduler and jobs-route suites |
 | Browser presentation | Python asset assertions and `tests/js/` harnesses |
@@ -43,15 +43,10 @@ For job and server changes, cover startup without storage, Setup completion, man
 ## Browser assets
 
 ```bash
-node tests/js/test_web_assets.cjs
-node tests/js/test_articles.cjs
-node tests/js/test_media_playback.cjs
-node tests/js/test_activity_stream.cjs
-node tests/js/test_most_likes.cjs
-node tests/js/test_demo_api.cjs
-node tests/js/test_template_names.cjs
-node tests/js/test_html.cjs
+for harness in tests/js/test_*.cjs; do node "$harness"; done
 ```
+
+The `test_web_*.cjs` files cover one feature each (Setup, Jobs, the media viewer, navigation, and so on) and share `web_harness.cjs`: a fake browser context, script loading, Alpine scope merging, a small HTML parser and the test runner. Run the one for the feature you changed while iterating.
 
 `test_html.cjs` loads `core/html.js` on its own and checks its escaping. `test_media_playback.cjs` runs each playback case twice: in the whole app, and against `media/player.js` and `media/video.js` alone with a bare host, so the video module stays loadable without `app.js` (cases that drive the media viewer run only in the app). `test_template_names.cjs` fails when an Alpine expression in the assembled page (`index.html` and `fragments/`) reads a name that its scope (x-for aliases, x-data objects and components, page-script and browser globals) doesn't define.
 

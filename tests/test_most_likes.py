@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_web_tweets_api import _api_client
+from tests.tweets_api.conftest import _api_client
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.search_query import search_posts
 

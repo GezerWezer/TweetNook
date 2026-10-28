@@ -8,10 +8,10 @@ local SQLite database and serves them through a self-hosted web app. It is a Pyt
 
 ```bash
 uv sync --group dev                       # add --extra automated-tagging / legacy-migration when needed
-uv run pytest tests/test_storage.py       # run the suites for what you changed while iterating
+uv run pytest tests/storage/             # run the suites for what you changed while iterating
 uv run pytest                             # full suite (~75s) before committing a cross-cutting change
 uv run ruff check . && uv run ruff format --check .
-node tests/js/test_web_assets.cjs         # browser-asset harnesses; see tests/js/ for the others
+for f in tests/js/test_*.cjs; do node "$f"; done   # browser-asset harnesses
 ```
 
 - Run the app against throwaway data, never the user's archive: set `XDG_DATA_HOME`,

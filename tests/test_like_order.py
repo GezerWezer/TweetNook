@@ -6,8 +6,8 @@ import json
 import pytest
 
 from tests.conftest import make_tweet_result
-from tests.test_storage import _tweet
-from tests.test_web_tweets_api import _list_tweets
+from tests.storage.conftest import _tweet
+from tests.tweets_api.conftest import _list_tweets
 from tweetnook.core.timeline_parsing import _iter_entries, parse_timeline_response
 from tweetnook.importer.archive_rows import _import_likes
 from tweetnook.storage import like_order

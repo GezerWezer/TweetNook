@@ -10,16 +10,17 @@ from tweetnook.web.page import assemble_page
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = ROOT / "tweetnook" / "web"
-NODE_TEST = ROOT / "tests" / "js" / "test_web_assets.cjs"
+NODE_TESTS = sorted((ROOT / "tests" / "js").glob("test_web_*.cjs"))
 
 
-def test_browser_javascript_unit_suite():
+@pytest.mark.parametrize("node_test", NODE_TESTS, ids=lambda path: path.stem)
+def test_browser_javascript_unit_suite(node_test: Path):
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node.js is required for the deterministic browser-asset unit harness")
 
     result = subprocess.run(
-        [node, str(NODE_TEST)],
+        [node, str(node_test)],
         cwd=ROOT,
         check=False,
         capture_output=True,
