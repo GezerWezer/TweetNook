@@ -12,7 +12,7 @@ from tweetnook.cli.common import (
     web_pipeline,
     with_archive_write_lock,
 )
-from tweetnook.config import load_config
+from tweetnook.config import initialize_config as load_config
 from tweetnook.core.exceptions import ConfigError, ProcessLockError, TweetNookError
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.record_types import RecordType

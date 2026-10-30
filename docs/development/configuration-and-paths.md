@@ -4,7 +4,7 @@
 
 ## Load and save
 
-`load_config` creates an auth skeleton when a config doesn't exist, migrates supported old tagging/auth fields, validates the TOML, then applies environment overlays. Empty auth placeholders become `None` for validation. Unknown fields are ignored by the models; they aren't a supported way to add settings.
+`load_config` and `load_config_at` read and validate TOML without creating directories or changing files, then apply environment overlays. CLI entry points use `initialize_config`; server startup uses the same explicit bootstrap. `upgrade_config` creates the auth skeleton, migrates supported old tagging/auth fields and restricts the file to `0600`. A current file isn't touched, and an existing file it can't change still loads, because loading applies the same upgrades in memory; this keeps commands working on a read-only config. Empty auth placeholders become `None` for validation. Unknown fields are ignored by the models; they aren't a supported way to add settings.
 
 `update_config_values` accepts known dotted paths, validates the resulting configuration and omits values equal to their defaults. Auth placeholders stay explicit. Resetting a field therefore often removes its line from TOML rather than writing the default value.
 
@@ -55,9 +55,9 @@ These overrides apply to direct Python/pip processes. The installer's global Lin
 
 ## Applying changes
 
-Successful web saves call `web/runtime_config.py`'s `reload_server_config` with the validated configuration. It updates request handlers, the job supervisor, scheduler, avatar manager, Analytics timer and archive connection tuning. Future private readers use the new database settings. An unchanged sync schedule keeps its chosen next run; dedicated schedule saves request a reset.
+Web editors call `web/runtime_config.py`'s `save_server_config`, which serializes save, reload and application. Snapshots carry a generation so delayed application reloads newer settings instead of restoring an older snapshot. `reload_server_config` applies the validated configuration. It updates request handlers, the job supervisor, scheduler, avatar manager, Analytics timer and archive connection tuning. Future private readers use the new database settings. An unchanged sync schedule keeps its chosen next run; dedicated schedule saves request a reset.
 
-Active worker processes keep their starting configuration, and later workers read the saved file. Host and port changes require restarting the listener. Setup owns password changes and session renewal; `web set-password` writes the file and requires a restart. Direct TOML edits should be made with the server stopped, followed by a restart.
+Active worker processes keep their starting configuration, and later workers read the saved file. Host and port changes require restarting the listener. Passwords use salted scrypt with recorded parameters, and a hash verifies with the parameters saved in it. A successful login with a legacy SHA-256 digest or older parameters replaces the stored hash and renews the current session, invalidating older cookies; if the save fails, the login still succeeds and a later one retries. Setup owns password changes and session renewal; `web set-password` writes the file and requires a restart. Direct TOML edits should be made with the server stopped, followed by a restart.
 
 The UI groups advanced fields with their owning section. Schedule and tagging have dedicated editors, auth is edited through Setup, and password hashes aren't ordinary editable configuration fields. Restore defaults retains auth, password and API key while resetting operational settings.
 
@@ -199,8 +199,8 @@ Paid tagging requires a daily limit or explicit unlimited spending when enabled.
 
 ## Writes and permissions
 
-The TOML writer uses a direct file write, not atomic replacement. Avoid concurrent config writers. Query-ID cache, schedule state and activity snapshots use temporary-file replacement; AI history uses a file lock and append-only ledger with an atomic summary. These formats have different durability properties.
+`update_config_values` serializes read/modify/validate/render/publish across threads and processes with a dedicated config lock, separate from archive locks. `tomli-w` renders the candidate, `tomllib` validates its round trip, and the shared atomic writer publishes at `0600`. A failed save preserves the previous file. Query-ID cache, schedule state and activity snapshots use temporary-file replacement; AI history uses a file lock and append-only ledger with an atomic summary. These formats have different durability properties.
 
-The system installer keeps runtime/launcher ownership separate from its `tweetnook` state account and creates state directories with restricted access. Other file permissions follow the process umask; see [trust and security](architecture.md#trust-and-security). Web responses mask replay passwords, auth cookies, the password hash and Gemini key.
+The system installer keeps runtime/launcher ownership separate from its `tweetnook` state account and creates state directories with restricted access. Configuration files are private (`0600`), and other files published through the shared atomic writer keep its private temporary mode; remaining file permissions follow the process umask; see [trust and security](architecture.md#trust-and-security). Web responses mask replay passwords, auth cookies, the password hash and Gemini key.
 
 Legacy normalization removes browser/profile-selection fields and maps old tagging model/thinking/budget/RPD/batch fields where supported. Removed paid-concurrency values have no replacement. Test conflicting legacy fields and sparse saves rather than inferring migration order from a current model dump.

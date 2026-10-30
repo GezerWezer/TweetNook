@@ -3,7 +3,7 @@
 import hashlib
 import re
 import threading
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager, suppress
 from pathlib import Path
 from typing import Annotated
 
@@ -15,7 +15,7 @@ from rich.console import Console
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from tweetnook.config import AppConfig, XDGPaths
+from tweetnook.config import AppConfig, XDGPaths, upgrade_config
 from tweetnook.jobs.activity_history import cleanup_runs, read_run
 from tweetnook.jobs.reminders import (
     print_archive_migration_report,
@@ -45,6 +45,8 @@ from tweetnook.web.setup_coordinator import SetupCoordinator
 from tweetnook.web.stats_cache import DailyStatsRefresher, web_stats_cache
 from tweetnook.web.warmup import ArchiveWarmer
 
+_worker_timing_lock = threading.Lock()
+
 _DETAIL_DOCUMENT_PATH = re.compile(r"^/post/\d+(?:/quotes)?$")
 
 
@@ -61,18 +63,28 @@ def attach_archive_store() -> bool:
         )
         if store is None:
             return False
-        server_state["store"] = store
-        console = Console(stderr=True)
-        print_archive_migration_report(console, store)
-        print_pending_archive_enrichment_reminder(console, store)
-        warmer = ArchiveWarmer(store)
-        server_state["archive_warmer"] = warmer
-        warmer.request()
-        web_stats_cache.clear()
-        refresher = DailyStatsRefresher(store, server_state["config"].web.analytics_refresh_time)
-        server_state["stats_refresher"] = refresher
-        refresher.start()
+        with ExitStack() as cleanup:
+            cleanup.callback(_quiet_cleanup, store.close)
+            console = Console(stderr=True)
+            print_archive_migration_report(console, store)
+            print_pending_archive_enrichment_reminder(console, store)
+            warmer = ArchiveWarmer(store)
+            cleanup.callback(_quiet_cleanup, warmer.stop)
+            warmer.request()
+            web_stats_cache.clear()
+            refresher = DailyStatsRefresher(
+                store, server_state["config"].web.analytics_refresh_time
+            )
+            cleanup.callback(_quiet_cleanup, refresher.stop)
+            refresher.start()
+            server_state.update(store=store, archive_warmer=warmer, stats_refresher=refresher)
+            cleanup.pop_all()
         return True
+
+
+def _quiet_cleanup(callback) -> None:
+    with suppress(Exception):
+        callback()
 
 
 def start_scheduler_if_ready() -> None:
@@ -129,16 +141,16 @@ def request_archive_warmup() -> None:
 
 
 def detach_archive_store() -> None:
-    with _lifecycle_lock:
-        stop_scheduler()
-        if refresher := server_state.pop("stats_refresher", None):
-            refresher.stop()
-        if warmer := server_state.pop("archive_warmer", None):
-            warmer.stop()
+    with _lifecycle_lock, ExitStack() as cleanup:
         if store := server_state.pop("store", None):
-            web_stats_cache.wait_for_refreshes()
-            web_stats_cache.clear()
-            store.close()
+            cleanup.callback(_quiet_cleanup, store.close)
+            cleanup.callback(_quiet_cleanup, web_stats_cache.clear)
+            cleanup.callback(_quiet_cleanup, web_stats_cache.wait_for_refreshes)
+        if warmer := server_state.pop("archive_warmer", None):
+            cleanup.callback(_quiet_cleanup, warmer.stop)
+        if refresher := server_state.pop("stats_refresher", None):
+            cleanup.callback(_quiet_cleanup, refresher.stop)
+        cleanup.callback(_quiet_cleanup, stop_scheduler)
 
 
 @asynccontextmanager
@@ -160,13 +172,19 @@ async def lifespan(app: FastAPI):
             server_state["avatar_cache_manager"] = avatar_cache_manager
             avatar_cache_manager.start()
 
-            def on_job_start(_run_id: str, _pid: int) -> None:
+            def on_job_start(run_id: str, _pid: int) -> None:
                 import time
 
-                server_state["activity_worker_started_at"] = time.time()
+                with _worker_timing_lock:
+                    if supervisor.active_run_id == run_id:
+                        server_state["activity_worker_run_id"] = run_id
+                        server_state["activity_worker_started_at"] = time.time()
 
             def on_job_complete(run_id: str, exit_code: int) -> None:
-                server_state.pop("activity_worker_started_at", None)
+                with _worker_timing_lock:
+                    if server_state.get("activity_worker_run_id") == run_id:
+                        server_state.pop("activity_worker_started_at", None)
+                        server_state.pop("activity_worker_run_id", None)
                 # Analytics keeps its daily report; Refresh collects one on demand.
                 # Jobs change like-order inputs and churn the page cache.
                 request_archive_warmup()
@@ -214,14 +232,15 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         server_state["shutting_down"] = True
-        if stream := server_state.pop("activity_stream", None):
-            await stream.close()
-        stop_avatar_cache_manager()
-        stop_scheduler()
-        if supervisor := server_state.get("job_supervisor"):
-            supervisor.shutdown()
-        server_state.pop("job_supervisor", None)
-        detach_archive_store()
+        with ExitStack() as cleanup:
+            cleanup.callback(_quiet_cleanup, detach_archive_store)
+            if supervisor := server_state.pop("job_supervisor", None):
+                cleanup.callback(_quiet_cleanup, supervisor.shutdown)
+            cleanup.callback(_quiet_cleanup, stop_scheduler)
+            cleanup.callback(_quiet_cleanup, stop_avatar_cache_manager)
+            if stream := server_state.pop("activity_stream", None):
+                with suppress(Exception):
+                    await stream.close()
 
 
 app = FastAPI(title="TweetNook Web UI", lifespan=lifespan)
@@ -436,6 +455,7 @@ def run_server(
 ) -> None:
     import uvicorn
 
+    upgrade_config(paths)
     server_state["config"] = config
     server_state["paths"] = paths
     server_state["password_hash"] = password_hash

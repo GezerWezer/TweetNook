@@ -1,6 +1,5 @@
 """Web CLI commands for TweetNook."""
 
-import hashlib
 import os
 import signal
 import subprocess
@@ -13,8 +12,10 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from tweetnook.config import load_config, update_config_values
-from tweetnook.jobs.supervisor import WEB_STOP_TIMEOUT
+from tweetnook.config import initialize_config as load_config
+from tweetnook.config import update_config_values
+from tweetnook.core.passwords import hash_password
+from tweetnook.jobs.supervisor import WEB_STOP_TIMEOUT, terminate_owned_process
 from tweetnook.web.address import display_web_url
 
 web_app = typer.Typer(no_args_is_help=True, help="Manage the background web UI server.")
@@ -142,7 +143,7 @@ def start_web(dev_tools: Annotated[bool, DEV_TOOLS_OPTION] = False) -> None:
         pid_file.write_text(str(process.pid), encoding="utf-8")
     except OSError as exc:
         try:
-            os.kill(process.pid, signal.SIGTERM)
+            terminate_owned_process(process)
         except OSError:
             pass
         console.print(f"[red]Failed to record web server PID: {exc}[/red]")
@@ -225,7 +226,7 @@ def set_password() -> None:
         console.print("[red]Password cannot be empty.[/red]")
         raise typer.Exit(1)
 
-    password_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    password_hash = hash_password(password)
     try:
         update_config_values(paths, {"web.password_hash": password_hash})
     except OSError as exc:

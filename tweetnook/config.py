@@ -3,14 +3,32 @@
 from __future__ import annotations
 
 import copy
+import fcntl
 import os
+import stat
+import threading
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+import tomli_w
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
+
+from tweetnook.core.fileio import atomic_write_text
+
+config_lock = threading.RLock()
+_config_generations: dict[str, int] = {}
 
 APP_NAME = "tweetnook"
 API_BASE_URL = "https://x.com/i/api/graphql"
@@ -265,6 +283,9 @@ class ReplayConfig(BaseModel):
 
 
 class AppConfig(BaseModel):
+    _generation: int = PrivateAttr(default=0)
+    _config_path: str | None = PrivateAttr(default=None)
+
     model_config = ConfigDict(extra="ignore")
 
     auth: AuthConfig = Field(default_factory=AuthConfig)
@@ -389,20 +410,64 @@ def ensure_paths(paths: XDGPaths) -> XDGPaths:
 
 
 def _load_config_file(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        raw: dict[str, Any] = {"auth": {key: "" for key in AUTH_PLACEHOLDER_FIELDS}}
-        _write_config_file(path, raw)
-        return raw
+    try:
+        with path.open("rb") as handle:
+            return tomllib.load(handle)
+    except FileNotFoundError:
+        return {}
 
-    with path.open("rb") as handle:
-        loaded = tomllib.load(handle)
-    if not isinstance(loaded, dict):
-        loaded = {}
-    changed = _ensure_auth_skeleton(loaded)
-    changed = _migrate_tagging_config(loaded) or changed
-    if changed:
-        _write_config_file(path, loaded)
-    return loaded
+
+@contextmanager
+def config_writer(paths: XDGPaths) -> Iterator[None]:
+    """Serialize supported writers across threads and processes, separate from archive locks."""
+    with config_lock:
+        paths.config_dir.mkdir(parents=True, exist_ok=True)
+        with (paths.config_dir / "config.lock").open("a+b") as handle:
+            _give_to_directory_owner(paths.config_dir / "config.lock")
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _give_to_directory_owner(path: Path) -> None:
+    # A command run as root must not leave files the account that owns the config can't open.
+    if os.geteuid() == 0:
+        owner = path.parent.stat()
+        os.chown(path, owner.st_uid, owner.st_gid)
+
+
+def _upgraded_config(paths: XDGPaths) -> tuple[dict[str, Any], bool]:
+    raw = _load_config_file(paths.config_file)
+    changed = _ensure_auth_skeleton(raw)
+    changed = _migrate_tagging_config(raw) or changed
+    AppConfig.model_validate(_normalize_auth_placeholders(raw))
+    return raw, changed
+
+
+def upgrade_config(paths: XDGPaths | None = None) -> None:
+    """Bootstrap and upgrade supported file formats explicitly at process startup.
+
+    An already current file is left untouched, so commands still run when the config is
+    mounted read-only or owned by another account.
+    """
+    paths = ensure_paths(paths or resolve_paths())
+    _, changed = _upgraded_config(paths)
+    if not changed:
+        with suppress(OSError):
+            if stat.S_IMODE(paths.config_file.stat().st_mode) != 0o600:
+                paths.config_file.chmod(0o600)
+        return
+    try:
+        with config_writer(paths):
+            raw, changed = _upgraded_config(paths)
+            if changed:
+                _write_config_file(paths.config_file, raw)
+    except OSError:
+        # Loading applies the same upgrades in memory, so only a missing file is fatal.
+        if not paths.config_file.exists():
+            raise
 
 
 def _ensure_auth_skeleton(raw: dict[str, Any]) -> bool:
@@ -475,41 +540,25 @@ def _migrate_tagging_config(raw: dict[str, Any]) -> bool:
     return changed
 
 
-def _format_toml_value(value: Any) -> str:
-    if isinstance(value, list):
-        return "[" + ", ".join(_format_toml_value(item) for item in value) + "]"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int | float):
-        return str(value)
-    escaped = (
-        str(value)
-        .replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\b", "\\b")
-        .replace("\t", "\\t")
-        .replace("\n", "\\n")
-        .replace("\f", "\\f")
-        .replace("\r", "\\r")
-    )
-    return f'"{escaped}"'
-
-
 def _write_config_file(path: Path, raw: Mapping[str, Any]) -> None:
-    lines: list[str] = []
     section_names = [name for name in CONFIG_SECTION_ORDER if name in raw]
     section_names.extend(name for name in raw if name not in CONFIG_SECTION_ORDER)
-    for section in section_names:
-        fields = raw[section]
-        if not isinstance(fields, Mapping) or (section != "auth" and not fields):
-            continue
-        lines.append(f"[{section}]")
-        for key, value in fields.items():
-            if value is not None:
-                lines.append(f"{key} = {_format_toml_value(value)}")
-        lines.append("")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+    document = {
+        section: {key: value for key, value in raw[section].items() if value is not None}
+        for section in section_names
+        if isinstance(raw[section], Mapping) and (section == "auth" or raw[section])
+    }
+    rendered = tomli_w.dumps(document)
+    decoded = tomllib.loads(rendered)
+    if decoded != document:
+        raise ValueError("Configuration did not round-trip through TOML")
+    AppConfig.model_validate(_normalize_auth_placeholders(decoded))
+    # Publish beside the real file so a symlinked config.toml stays a symlink.
+    target = path.resolve()
+    atomic_write_text(target, rendered, mode=0o600)
+    _give_to_directory_owner(target)
+    key = str(target)
+    _config_generations[key] = _config_generations.get(key, 0) + 1
 
 
 def _env_float(env: Mapping[str, str], name: str) -> float | None:
@@ -524,9 +573,22 @@ def _env_int(env: Mapping[str, str], name: str) -> int | None:
 
 def load_config(env: Mapping[str, str] | None = None) -> tuple[AppConfig, XDGPaths]:
     env = os.environ if env is None else env
-    paths = ensure_paths(resolve_paths(env))
-    raw = _load_config_file(paths.config_file)
-    config = AppConfig.model_validate(_normalize_auth_placeholders(raw))
+    config, paths = load_config_at(resolve_paths(env), env)
+    from tweetnook.core.dev_replay import configure_replay
+
+    configure_replay(config.replay)
+    return config, paths
+
+
+def load_config_at(
+    paths: XDGPaths, env: Mapping[str, str] | None = None
+) -> tuple[AppConfig, XDGPaths]:
+    env = os.environ if env is None else env
+    with config_lock:
+        raw = _load_config_file(paths.config_file)
+        config = AppConfig.model_validate(_normalize_auth_placeholders(raw))
+        config._config_path = str(paths.config_file.resolve())
+        config._generation = _config_generations.get(config._config_path, 0)
 
     auth_updates = {
         "auth_token": env.get("TWEETNOOK_AUTH_TOKEN"),
@@ -557,11 +619,6 @@ def load_config(env: Mapping[str, str] | None = None) -> tuple[AppConfig, XDGPat
     api_key = env.get("TWEETNOOK_GEMINI_API_KEY") or env.get("GEMINI_API_KEY")
     if api_key:
         config.tagging = config.tagging.model_copy(update={"api_key": api_key})
-    # Every process that talks to Twitter/X loads its config first, so this is where
-    # a test install's replay source is switched on (or off) for the whole process.
-    from tweetnook.core.dev_replay import configure_replay
-
-    configure_replay(config.replay)
     return config, paths
 
 
@@ -573,8 +630,20 @@ def _valid_config_paths() -> set[str]:
     }
 
 
+def config_snapshot_is_current(config: AppConfig) -> bool:
+    return config._config_path is None or config._generation >= _config_generations.get(
+        config._config_path, 0
+    )
+
+
 def update_config_values(paths: XDGPaths, changes: Mapping[str, Any]) -> None:
+    with config_writer(paths):
+        _update_config_values(paths, changes)
+
+
+def _update_config_values(paths: XDGPaths, changes: Mapping[str, Any]) -> None:
     raw = _load_config_file(paths.config_file)
+    _migrate_tagging_config(raw)
     valid_paths = _valid_config_paths()
     defaults = AppConfig().model_dump()
 
@@ -975,3 +1044,19 @@ def get_config_ui_schema() -> dict[str, Any]:
             "activity.retention_days": "Maximum age of completed command histories.",
         },
     }
+
+
+def config_error_message(error: Exception) -> str:
+    """Describe validation failures without Pydantic's secret-bearing input/context."""
+    if isinstance(error, ValidationError):
+        return "; ".join(
+            f"{'.'.join(map(str, item['loc']))}: {item['msg']}"
+            for item in error.errors(include_input=False, include_context=False, include_url=False)
+        )
+    return str(error)
+
+
+def initialize_config(env: Mapping[str, str] | None = None) -> tuple[AppConfig, XDGPaths]:
+    """Explicit CLI/startup bootstrap followed by a read-only load."""
+    upgrade_config(resolve_paths(env))
+    return load_config(env)

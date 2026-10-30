@@ -475,3 +475,46 @@ def test_text_gzip_compresses_only_text_routes(path: str, compressed: bool) -> N
 
     assert (response.headers.get("content-encoding") == "gzip") is compressed
     assert response.content == b"x" * 4096
+
+
+def test_legacy_password_login_rehashes_and_replaces_session(paths):
+    from tweetnook.config import load_config_at, update_config_values
+    from tweetnook.core.passwords import verify_password
+
+    legacy = hashlib.sha256(b"correct").hexdigest()
+    update_config_values(paths, {"web.password_hash": legacy})
+    server_state.update(paths=paths, password_hash=legacy)
+    old_token = deps.create_session_token(legacy)
+    with TestClient(_auth_app()) as client:
+        failed = client.get("/protected", auth=("user", "wrong"))
+        assert failed.status_code == 401
+        assert load_config_at(paths)[0].web.password_hash == legacy
+        response = client.get("/protected", auth=("user", "correct"))
+        assert response.status_code == 200
+        token = client.cookies[SESSION_COOKIE]
+        assert client.get("/protected").status_code == 200
+    saved = load_config_at(paths)[0].web.password_hash
+    assert saved.startswith("scrypt$")
+    assert verify_password("correct", saved)
+    assert not verify_password("wrong", saved)
+    assert server_state["password_hash"] == saved
+    assert deps.session_age(old_token, saved) is None
+    assert deps.session_age(token, saved) is not None
+
+
+def test_correct_password_still_logs_in_when_the_rehash_cannot_be_saved(paths, monkeypatch):
+    from tweetnook.config import update_config_values
+    from tweetnook.web import runtime_config
+
+    legacy = hashlib.sha256(b"correct").hexdigest()
+    update_config_values(paths, {"web.password_hash": legacy})
+    server_state.update(paths=paths, password_hash=legacy)
+
+    def disk_full(*args, **kwargs):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(runtime_config, "save_server_config", disk_full)
+    with TestClient(_auth_app()) as client:
+        assert client.get("/protected", auth=("user", "wrong")).status_code == 401
+        assert client.get("/protected", auth=("user", "correct")).status_code == 200
+    assert server_state["password_hash"] == legacy

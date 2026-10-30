@@ -69,6 +69,6 @@ TweetNook assumes a trusted local administrator and trusted archive inputs. The 
 
 Filesystem checks depend on the operation. `/media` checks resolved paths for traversal and symlink escapes. Imports, downloads and tagging inputs do not all enforce that containment; extracted imports need trusted, symlink-free files.
 
-Static assets and default FastAPI schema endpoints are public. Archive routes require the configured password when one is set. API secret masking and log-argument filtering cover selected fields; configuration, captures, logs and AI-usage records can still contain private data. File permissions outside installer-managed directories follow the process umask. Keep real account data and credentials out of published fixtures.
+Static assets and default FastAPI schema endpoints are public. Archive routes require the configured password when one is set. API secret masking and log-argument filtering cover selected fields; configuration, captures, logs and AI-usage records can still contain private data. Configuration and owned temporary files are private (`0600`); other file permissions outside installer-managed directories follow the process umask. Keep real account data and credentials out of published fixtures.
 
 There is no active vector/embedding search, browser-profile login adapter, standalone HTML export or JSON restore importer. Legacy compatibility names do not enable these features.

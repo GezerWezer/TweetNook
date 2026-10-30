@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from rich.console import Console
 
-from tweetnook.config import TaggingConfig
+from tweetnook.config import TaggingConfig, config_error_message
 from tweetnook.core.extractor import extract_status_id_from_url
 from tweetnook.storage.record_types import RecordType
 from tweetnook.storage.search_query import SearchQueryError, search_posts
@@ -20,7 +20,7 @@ from tweetnook.tagging.sdk import (
     model_is_compatible,
 )
 from tweetnook.web.deps import require_store, verify_credentials
-from tweetnook.web.runtime_config import reload_server_config
+from tweetnook.web.runtime_config import save_server_config
 
 router = APIRouter()
 MASKED_SECRET = "********"
@@ -68,7 +68,7 @@ def _validated_values(values: dict[str, Any], current: TaggingConfig) -> Tagging
     try:
         return TaggingConfig.model_validate({**current.model_dump(), **submitted})
     except Exception as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        raise HTTPException(status_code=400, detail=config_error_message(error)) from error
 
 
 @router.get("/api/automated-tagging")
@@ -92,21 +92,17 @@ def put_automated_tagging(
     config, paths = _load()
     validated = _validated_values(request.values, config.tagging)
     try:
-        from tweetnook.config import update_config_values
-
-        update_config_values(
+        refreshed = save_server_config(
             paths,
-            {f"tagging.{key}": value for key, value in validated.model_dump().items()},
+            {f"tagging.{key}": getattr(validated, key) for key in request.values},
         )
-        refreshed, _ = _load()
-        reload_server_config(refreshed)
         return {
             "installed": True,
             "values": _public_values(refreshed.tagging),
             "accounting": AIUsageLedger(paths.ai_usage_dir).statistics(),
         }
     except Exception as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        raise HTTPException(status_code=400, detail=config_error_message(error)) from error
 
 
 @router.get("/api/automated-tagging/tweets")
@@ -132,7 +128,7 @@ def get_automated_tagging_tweets(
         try:
             rows = search_posts(store, query or None, page=1, limit=8).rows
         except SearchQueryError as error:
-            raise HTTPException(status_code=400, detail=str(error)) from error
+            raise HTTPException(status_code=400, detail=config_error_message(error)) from error
 
     tweet_ids = [str(row.get("tweet_id")) for row in rows if row.get("tweet_id")]
     media_ids: set[str] = set()

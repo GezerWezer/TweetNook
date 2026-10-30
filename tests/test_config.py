@@ -22,6 +22,7 @@ from tweetnook.config import (
     load_config,
     resolve_paths,
     update_config_values,
+    upgrade_config,
 )
 
 
@@ -72,6 +73,7 @@ def test_ensure_paths_creates_all_application_directories(tmp_path: Path) -> Non
 def test_load_config_creates_auth_skeleton_idempotently(tmp_path: Path) -> None:
     env = _xdg_env(tmp_path)
 
+    upgrade_config(resolve_paths(env))
     first, paths = load_config(env)
     first_text = paths.config_file.read_text(encoding="utf-8")
     second, _ = load_config(env)
@@ -107,6 +109,7 @@ paid_concurrency = 4
         encoding="utf-8",
     )
 
+    upgrade_config(paths)
     config, _ = load_config(env)
     raw = tomllib.loads(paths.config_file.read_text(encoding="utf-8"))
 
@@ -131,6 +134,7 @@ def test_load_config_repairs_only_missing_auth_skeleton(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
+    upgrade_config(paths)
     config, _ = load_config(env)
     repaired = paths.config_file.read_text(encoding="utf-8")
 
@@ -150,6 +154,7 @@ def test_load_config_repairs_missing_auth_keys_and_preserves_values(tmp_path: Pa
         encoding="utf-8",
     )
 
+    upgrade_config(paths)
     config, _ = load_config(env)
 
     assert config.auth.auth_token == "saved"

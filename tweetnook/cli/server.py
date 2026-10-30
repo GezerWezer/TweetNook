@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 
 from tweetnook.cli_service import update_managed_installation
-from tweetnook.config import load_config
+from tweetnook.config import initialize_config as load_config
 from tweetnook.web.address import display_web_url
 
 

@@ -8,7 +8,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from tweetnook.config import load_config
+from tweetnook.config import initialize_config as load_config
 from tweetnook.core.collection_names import normalize_collection_name
 from tweetnook.core.locking import ProcessLock
 from tweetnook.jobs.pipeline import PipelineReporter

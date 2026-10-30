@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from rich.console import Console
 
-from tweetnook.config import XDGPaths
+from tweetnook.config import WebConfig, XDGPaths
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.web.deps import server_state
 from tweetnook.web.routes import activity
@@ -340,3 +340,23 @@ def test_newer_orphaned_run_cannot_be_hidden_by_an_older_success(tmp_path, make_
     assert status["active"] is False
     assert status["last_snapshot"]["run_id"] == "later-unrecorded-run"
     assert status["last_snapshot"]["success"] is None
+
+
+def test_schedule_save_error_does_not_echo_submitted_values(
+    paths: XDGPaths, make_web_client, monkeypatch
+) -> None:
+    class Manager:
+        def status(self):
+            return {}
+
+    server_state.update({"paths": paths, "schedule_manager": Manager()})
+    client = make_web_client(activity.router)
+
+    def invalid(*args, **kwargs):
+        WebConfig.model_validate({"port": "secret-bearing-input"})
+
+    monkeypatch.setattr(activity, "save_server_config", invalid)
+    response = client.put("/api/activity/schedule", json={"enabled": False})
+    assert response.status_code == 400
+    assert "secret-bearing-input" not in response.json()["detail"]
+    assert "port" in response.json()["detail"]

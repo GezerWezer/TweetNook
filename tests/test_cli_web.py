@@ -441,12 +441,15 @@ def test_start_terminates_child_when_pid_file_cannot_be_written(
     config, paths = _configured(tmp_path, archive=True)
     config.web.password_hash = hashlib.sha256(b"secure").hexdigest()
     _stub_start_prerequisites(monkeypatch, config, paths)
-    process = SimpleNamespace(pid=2468)
+    waits = []
+    process = SimpleNamespace(
+        pid=2468, poll=lambda: None, wait=lambda timeout: waits.append(timeout) or -15
+    )
     monkeypatch.setattr(cli_web.subprocess, "Popen", lambda *_args, **_kwargs: process)
     signals: list[tuple[int, int]] = []
     monkeypatch.setattr(
         cli_web.os,
-        "kill",
+        "killpg",
         lambda pid, sig: signals.append((pid, sig)),
     )
     original_write_text = Path.write_text
@@ -462,6 +465,7 @@ def test_start_terminates_child_when_pid_file_cannot_be_written(
 
     assert result.exit_code == 1
     assert signals == [(2468, signal.SIGTERM)]
+    assert waits == [10]
     assert "Failed to record web server PID: read only" in result.stdout
     assert not cli_web._get_pid_file(paths.data_dir).exists()
 
@@ -716,8 +720,12 @@ def test_set_password_hashes_and_persists_value(monkeypatch, tmp_path: Path) -> 
     result = runner.invoke(cli_web.web_app, ["set-password"])
 
     assert result.exit_code == 0
-    expected_hash = hashlib.sha256(b"correct horse").hexdigest()
-    assert saved == [(paths, {"web.password_hash": expected_hash})]
+    from tweetnook.core.passwords import verify_password
+
+    assert len(saved) == 1
+    assert saved[0][0] == paths
+    assert saved[0][1]["web.password_hash"].startswith("scrypt$")
+    assert verify_password("correct horse", saved[0][1]["web.password_hash"])
     assert "Password updated in config.toml." in result.stdout
     assert "must restart" in result.stdout
 
@@ -748,7 +756,10 @@ cache_size_kb = 64
     assert result.exit_code == 0
     raw = tomllib.loads(paths.config_file.read_text(encoding="utf-8"))
     assert raw["database"] == {"cache_size_kb": 64}
-    assert raw["web"] == {"password_hash": hashlib.sha256(b"new secret").hexdigest()}
+    from tweetnook.core.passwords import verify_password
+
+    assert raw["web"]["password_hash"].startswith("scrypt$")
+    assert verify_password("new secret", raw["web"]["password_hash"])
     assert "sync" not in raw
 
 

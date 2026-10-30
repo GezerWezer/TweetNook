@@ -24,8 +24,12 @@ def _env(tmp_path: Path) -> dict[str, str]:
 
 def _use_temp_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     env = _env(tmp_path)
+    from tweetnook.config import ensure_paths, resolve_paths, upgrade_config
+
+    upgrade_config(ensure_paths(resolve_paths(env)))
     config, paths = load_config(env)
     monkeypatch.setattr("tweetnook.config.load_config", lambda: load_config(env))
+    monkeypatch.setattr("tweetnook.web.runtime_config.load_config", lambda: load_config(env))
     return config, paths
 
 
@@ -359,3 +363,33 @@ def test_config_endpoints_require_authentication(make_web_client) -> None:
     client = make_web_client(config_routes.router, password="secret")
     assert client.get("/api/config/defaults").status_code == 401
     assert client.post("/api/config", json={"changes": {"web.port": 8123}}).status_code == 401
+
+
+@pytest.mark.parametrize("endpoint", ["/api/config", "/api/automated-tagging"])
+def test_validation_errors_do_not_echo_saved_secret(
+    monkeypatch, make_web_client, tmp_path, capsys, endpoint
+):
+    from tweetnook.web.routes import automated_tagging
+
+    _, paths = _use_temp_config(monkeypatch, tmp_path)
+    secret = "k123"
+    update_config_values(paths, {"tagging.api_key": secret})
+    monkeypatch.setattr(automated_tagging, "automated_tagging_installed", lambda: True)
+    client = make_web_client(
+        config_routes.router if endpoint == "/api/config" else automated_tagging.router
+    )
+    payload = (
+        {"changes": {"tagging.enabled": True, "tagging.api_mode": "paid"}}
+        if endpoint == "/api/config"
+        else {"values": {"enabled": True, "api_mode": "paid"}}
+    )
+    response = (
+        client.post(endpoint, json=payload)
+        if endpoint == "/api/config"
+        else client.put(endpoint, json=payload)
+    )
+    assert response.status_code == 400
+    assert "daily spending limit" in response.json()["detail"]
+    assert secret not in response.text
+    assert secret not in capsys.readouterr().err
+    assert load_config(_env(tmp_path))[0].tagging.enabled is False

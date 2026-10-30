@@ -10,7 +10,7 @@ import typer
 
 from tweetnook.auth import resolve_auth_bundle
 from tweetnook.cli.common import configure_logging, web_pipeline
-from tweetnook.config import load_config
+from tweetnook.config import initialize_config as load_config
 from tweetnook.core.exceptions import ConfigError, TweetNookError
 from tweetnook.enrichment.media import download_media
 from tweetnook.importer.archive import import_x_archive

@@ -8,7 +8,8 @@ import typer
 
 from tweetnook.auth import resolve_auth_bundle
 from tweetnook.cli.common import configure_logging
-from tweetnook.config import ensure_paths, load_config
+from tweetnook.config import ensure_paths
+from tweetnook.config import initialize_config as load_config
 from tweetnook.core.exceptions import ConfigError, TweetNookError
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids
 from tweetnook.sync.collection import (

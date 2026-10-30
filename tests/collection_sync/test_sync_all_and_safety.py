@@ -251,9 +251,9 @@ def test_first_run_creates_dirs_and_missing_auth_is_actionable(
     monkeypatch.delenv("TWEETNOOK_USER_ID", raising=False)
 
     from tweetnook.auth import resolve_auth_bundle
-    from tweetnook.config import load_config
+    from tweetnook.config import initialize_config
 
-    config, paths = load_config(env)
+    config, paths = initialize_config(env)
     assert paths.config_dir.exists()
     assert paths.data_dir.exists()
     assert paths.cache_dir.exists()

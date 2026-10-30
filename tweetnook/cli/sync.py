@@ -16,7 +16,7 @@ from tweetnook.cli.common import (
     configure_logging,
     web_pipeline,
 )
-from tweetnook.config import load_config
+from tweetnook.config import initialize_config as load_config
 from tweetnook.core.exceptions import ConfigError, TweetNookError
 from tweetnook.sync.collection import sync_all, sync_collection
 from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline

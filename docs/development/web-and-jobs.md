@@ -26,7 +26,7 @@ An unset password permits access. This is a deliberate local-use option, so the 
 
 ## Applying settings
 
-All web-save routes use `reload_server_config` to update the running services from one validated snapshot. The shared lifecycle lock prevents a reload from overlapping archive attachment or teardown. Avatar-limit changes wake cleanup, and Analytics time changes reschedule the existing refresher thread. The active worker and listener stay in place.
+All web-save routes use `save_server_config` to serialize publication and application, then `reload_server_config` to update the running services from one validated snapshot. The shared lifecycle lock prevents a reload from overlapping archive attachment or teardown. Avatar-limit changes wake cleanup, and Analytics time changes reschedule the existing refresher thread. The active worker and listener stay in place.
 
 ## Workers
 
@@ -130,3 +130,5 @@ A run directory can contain `metadata.json`, `events.jsonl`, `output.log`, worke
 Stop sends SIGINT to owned process groups, or the PID of discovered CLI activity. Shutdown waits for cooperative interruption, then escalates to SIGTERM and SIGKILL if needed. Timeout constants in `jobs/supervisor.py` leave the personal server and systemd enough time to finish worker shutdown.
 
 Candidate X credentials are tested through an isolated temporary config with inherited credential overrides removed before real persistence. Upload staging streams to a unique temporary path, enforces raw bytes/nonempty ZIP, then replaces the fixed stage. Setup uses `--defer-followup` to enrich and download media without reconciling live collections; the first sync waits for the Setup gates described above.
+
+Resource acquisition is guarded before startup completes. Reporter entry failure finalizes its history best-effort and releases its context and command lock. Worker launch failure closes its console, finalizes the failed attempt and boundedly stops/reaps only the newly spawned child. Shutdown joins outstanding monitors, including an earlier callback, within its overall monitor deadline. Callback timing belongs to the matching run identity. Archive attachment publishes readiness only after initialization succeeds; rollback and teardown attempt each remaining owner independently.

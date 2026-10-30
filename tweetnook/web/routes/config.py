@@ -5,8 +5,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from tweetnook.config import config_error_message
 from tweetnook.web.deps import verify_credentials
-from tweetnook.web.runtime_config import reload_server_config
+from tweetnook.web.runtime_config import save_server_config
 
 router = APIRouter()
 MASKED_SECRET = "********"
@@ -74,7 +75,6 @@ def api_post_config(
         from tweetnook.config import (
             get_explicit_config_fields,
             load_config,
-            update_config_values,
         )
 
         _, paths = load_config()
@@ -93,15 +93,10 @@ def api_post_config(
                     "Set a Web password before serving this archive as a replay source."
                 )
 
-        update_config_values(paths, req.changes)
-        config, refreshed_paths = load_config()
-        reload_server_config(config)
+        config = save_server_config(paths, req.changes)
         return {
             "values": _mask_secrets(config.model_dump()),
-            "explicit": get_explicit_config_fields(refreshed_paths),
+            "explicit": get_explicit_config_fields(paths),
         }
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=400, detail=config_error_message(e)) from e

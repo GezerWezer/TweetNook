@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sqlite3
@@ -26,6 +25,8 @@ from tweetnook.config import (
     ScheduleConfig,
     SyncCollection,
     XDGPaths,
+    config_error_message,
+    config_lock,
     ensure_paths,
     load_config,
     resolve_paths,
@@ -37,10 +38,12 @@ from tweetnook.core.dev_replay import (
     normalize_replay_url,
 )
 from tweetnook.core.exceptions import ProcessLockError
+from tweetnook.core.fileio import owned_temp, publish_file
+from tweetnook.core.passwords import hash_password
 from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.web.deps import remember_web_session, server_state, verify_credentials
 from tweetnook.web.routes.activity import read_active_snapshot
-from tweetnook.web.runtime_config import reload_server_config
+from tweetnook.web.runtime_config import save_server_config
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
 MASKED_SECRET = "********"
@@ -317,11 +320,9 @@ def _probe_replay_source(url: str, password: str | None) -> dict[str, object]:
 
 def _apply_replay_config(paths: XDGPaths, changes: dict[str, object]) -> AppConfig:
     try:
-        update_config_values(paths, changes)
-        config, _ = load_config()
+        config = save_server_config(paths, changes)
     except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    reload_server_config(config)
+        raise HTTPException(status_code=400, detail=config_error_message(exc)) from exc
     return config
 
 
@@ -337,7 +338,7 @@ def put_replay_source(
     try:
         url = normalize_replay_url(request.url)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=config_error_message(exc)) from exc
     password = request.password.strip() if request.password else None
     if password == MASKED_SECRET or password is None:
         # The saved password is only ever sent back to the source it was saved for.
@@ -458,11 +459,9 @@ def put_auth(
     if candidate.user_id:
         changes["auth.user_id"] = candidate.user_id
     try:
-        update_config_values(paths, changes)
-        config, _ = load_config()
+        config = save_server_config(paths, changes)
     except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    reload_server_config(config)
+        raise HTTPException(status_code=400, detail=config_error_message(exc)) from exc
     coordinator = server_state.get("setup_coordinator")
     if coordinator:
         if current.replay.url:
@@ -489,11 +488,8 @@ async def upload_archive(
         raise HTTPException(status_code=409, detail="Wait for the active command to finish.")
     archive = paths.staged_archive_file
     archive.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary_name = tempfile.mkstemp(prefix=".archive-", suffix=".upload", dir=archive.parent)
-    os.close(fd)
-    temporary = archive.parent / Path(temporary_name).name
     size = 0
-    try:
+    with owned_temp(archive) as temporary:
         with temporary.open("wb") as handle:
             async for chunk in request.stream():
                 size += len(chunk)
@@ -506,9 +502,7 @@ async def upload_archive(
             raise HTTPException(
                 status_code=409, detail="A command started during upload. Retry after it finishes."
             )
-        temporary.replace(archive)
-    finally:
-        temporary.unlink(missing_ok=True)
+        publish_file(temporary, archive)
     return _archive_payload()
 
 
@@ -538,7 +532,7 @@ def _initialize(mode):
             return coordinator.status()
         return coordinator.begin(mode)
     except (JobConflictError, ProcessLockError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=config_error_message(exc)) from exc
     except (OSError, sqlite3.Error) as exc:
         coordinator.notices.add(
             "initialization-start",
@@ -621,11 +615,9 @@ def put_setup_schedule(
     if auth.user_id and not current.auth.user_id:
         changes["auth.user_id"] = auth.user_id
     try:
-        update_config_values(paths, changes)
-        config, _ = load_config()
+        save_server_config(paths, changes, reset_schedule=True)
     except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    reload_server_config(config, reset_schedule=True)
+        raise HTTPException(status_code=400, detail=config_error_message(exc)) from exc
     return _schedule_payload()
 
 
@@ -640,7 +632,7 @@ class CompleteRequest(BaseModel):
 
 def _finish_setup(request: CompleteRequest, http_request: Request):
     coordinator = _coordinator()
-    with coordinator.lock:
+    with coordinator.lock, config_lock:
         initial = not coordinator.state.completed
         if initial and not coordinator.state.initialization_mode:
             raise HTTPException(
@@ -658,7 +650,7 @@ def _finish_setup(request: CompleteRequest, http_request: Request):
         if request.password is not None:
             if not request.password or request.password != request.confirm_password:
                 raise HTTPException(status_code=422, detail="Enter matching, nonempty passwords.")
-            password_hash = hashlib.sha256(request.password.encode("utf-8")).hexdigest()
+            password_hash = hash_password(request.password)
         if request.no_password:
             password_hash = None
         elif not password_hash:
@@ -669,9 +661,7 @@ def _finish_setup(request: CompleteRequest, http_request: Request):
             request.no_password and server_state.get("password_hash")
         )
         if password_changed:
-            update_config_values(coordinator.paths, {"web.password_hash": password_hash})
-            config, _ = load_config()
-            reload_server_config(config)
+            save_server_config(coordinator.paths, {"web.password_hash": password_hash})
         coordinator.complete_walkthrough(skip_auth=request.skip_auth)
         server_state["password_hash"] = password_hash
         coordinator.reconcile()

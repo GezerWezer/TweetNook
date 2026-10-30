@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import threading
@@ -12,8 +13,14 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from tweetnook.config import XDGPaths, config_lock, load_config_at
+from tweetnook.core.passwords import RecentPasswordCheck, hash_password, password_needs_rehash
+
+logger = logging.getLogger(__name__)
+
 server_state: dict[str, Any] = {}
 security = HTTPBasic(auto_error=False)
+_password_check = RecentPasswordCheck()
 
 # A successful password login is remembered in a signed cookie. Home Screen web
 # apps on iOS keep cookies between launches, but not HTTP Basic credentials, so
@@ -79,6 +86,20 @@ def session_age(token: str | None, password_hash: str) -> int | None:
     return age
 
 
+def _rehash_saved_password(paths: XDGPaths, expected_hash: str, password: str) -> None:
+    from tweetnook.web.runtime_config import save_server_config
+
+    try:
+        current, _ = load_config_at(paths)
+        if current.web.password_hash == expected_hash:
+            upgraded = save_server_config(paths, {"web.password_hash": hash_password(password)})
+            server_state["password_hash"] = upgraded.web.password_hash
+    except (OSError, ValueError) as error:
+        # The password was correct. A read-only or full disk only delays the upgrade to a later
+        # login; it must not lock the owner out of their archive.
+        logger.warning("Could not upgrade the saved password hash: %s", error.__class__.__name__)
+
+
 def verify_credentials(
     request: Request,
     credentials: Annotated[HTTPBasicCredentials | None, Depends(security)],
@@ -100,8 +121,7 @@ def verify_credentials(
             headers={"WWW-Authenticate": "Basic"},
         )
 
-    input_hash = hashlib.sha256(credentials.password.encode("utf8")).hexdigest()
-    is_password_correct = secrets.compare_digest(input_hash, expected_hash)
+    is_password_correct = _password_check.verify(credentials.password, expected_hash)
 
     if not is_password_correct:
         raise HTTPException(
@@ -109,6 +129,12 @@ def verify_credentials(
             detail="Incorrect password",
             headers={"WWW-Authenticate": "Basic"},
         )
+    with config_lock:
+        # A password change during the slow check must not authenticate the old password.
+        if server_state.get("password_hash") != expected_hash:
+            raise HTTPException(status_code=401, detail="Incorrect password")
+        if password_needs_rehash(expected_hash) and (paths := server_state.get("paths")):
+            _rehash_saved_password(paths, expected_hash, credentials.password)
     setattr(request.state, _ISSUE_SESSION, True)
     return True
 

@@ -14,7 +14,7 @@ from tweetnook.cli.common import (
     configure_logging,
     web_pipeline,
 )
-from tweetnook.config import load_config
+from tweetnook.config import initialize_config as load_config
 from tweetnook.core.exceptions import ConfigError, TweetNookError
 from tweetnook.core.extractor import extract_status_id_from_url
 from tweetnook.enrichment.articles import refresh_articles

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from tweetnook.config import AppConfig, ScheduleConfig, update_config_values
+from tweetnook.config import ScheduleConfig, config_error_message
 from tweetnook.jobs.activity_history import (
     latest_finished_snapshot,
     list_runs,
@@ -27,7 +27,7 @@ from tweetnook.jobs.activity_history import (
 from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.web.activity_stream import ActivityStream
 from tweetnook.web.deps import server_state, verify_credentials
-from tweetnook.web.runtime_config import reload_server_config
+from tweetnook.web.runtime_config import save_server_config
 
 router = APIRouter(prefix="/api/activity", tags=["activity"])
 # Every job the Web jobs list can run reports through the same pipeline.
@@ -381,12 +381,11 @@ def put_schedule(
     if manager is None or paths is None:
         raise HTTPException(status_code=503, detail="The scheduler is not initialized.")
     try:
-        update_config_values(
+        save_server_config(
             paths,
             {f"schedule.{key}": value for key, value in request.model_dump().items()},
+            reset_schedule=True,
         )
-        config = server_state.get("config") or AppConfig()
-        reload_server_config(config.model_copy(update={"schedule": request}), reset_schedule=True)
     except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=config_error_message(exc)) from exc
     return manager.status()

@@ -32,6 +32,7 @@ dependencies = [
   "typer>=0.12,<1",
   "uvicorn>=0.29,<1",
   "platformdirs>=4.9.4",
+  "tomli-w>=1.2,<2",
 ]
 
 [project.optional-dependencies]
