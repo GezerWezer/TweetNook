@@ -16,6 +16,7 @@ def test_replacement_failure_preserves_destination_and_cleans_temporary(
     if writer == "query_ids":
         store = QueryIdStore(paths)
         path = store.path
+        store.save({})  # The save lock is a lasting sidecar, not a temporary.
 
         def publish():
             return store.save({"TweetDetail": "new"})

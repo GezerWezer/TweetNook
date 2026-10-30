@@ -131,7 +131,7 @@ async def refresh_articles(
         query_ids = await resolve_query_ids(
             query_store,
             ["TweetDetail"],
-            force_refresh=not query_store.is_fresh(),
+            force_refresh=not query_store.is_fresh(operations=["TweetDetail"]),
             transport=transport,
         )
         if pipeline is not None:

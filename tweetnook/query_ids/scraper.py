@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterable, Sequence
 
@@ -13,10 +14,11 @@ from tweetnook.query_ids.constants import (
     BUNDLE_URL_PATTERN,
     CLIENT_WEB_BUNDLE_URL,
     DISCOVERY_PAGE_URLS,
-    FALLBACK_QUERY_IDS,
     TARGET_OPERATIONS,
 )
 from tweetnook.query_ids.store import QueryIdStore
+
+logger = logging.getLogger(__name__)
 
 QUERY_ID_PATTERNS = (
     re.compile(r'queryId:"([A-Za-z0-9_-]{20,})",operationName:"([^"]+)"'),
@@ -115,9 +117,12 @@ async def refresh_query_ids(
         if close_client:
             await client.aclose()
 
-    merged = {**FALLBACK_QUERY_IDS, **discovered}
-    store.save(merged)
-    return {operation: merged[operation] for operation in operation_list if operation in merged}
+    store.save(discovered, checked=operation_list)
+    return {
+        operation: value
+        for operation in operation_list
+        if (value := store.get(operation)) is not None
+    }
 
 
 async def resolve_query_ids(
@@ -128,12 +133,19 @@ async def resolve_query_ids(
     transport: httpx.AsyncBaseTransport | None,
 ) -> dict[str, str]:
     ids = {operation: store.get(operation) for operation in operations}
-    if force_refresh or any(value is None for value in ids.values()):
+    missing = any(value is None for value in ids.values())
+    if force_refresh or missing or not store.is_fresh(operations=operations):
         client = httpx.AsyncClient(
             follow_redirects=True, timeout=20.0, transport=client_transport(transport)
         )
         try:
             await refresh_query_ids(store, operations=operations, client=client)
+        except httpx.HTTPError as error:
+            # Discovery reads X's web bundles, which can fail while the API itself still accepts
+            # the IDs in hand. A rejected ID triggers its own refresh during the request.
+            if missing:
+                raise
+            logger.warning("Query ID refresh failed: %s", error.__class__.__name__)
         finally:
             await client.aclose()
         ids = {operation: store.get(operation) for operation in operations}

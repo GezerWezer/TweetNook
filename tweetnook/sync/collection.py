@@ -159,7 +159,7 @@ async def run_preflight(
     query_ids = query_ids or await resolve_query_ids(
         query_store,
         operation_names,
-        force_refresh=not query_store.is_fresh(),
+        force_refresh=not query_store.is_fresh(operations=operation_names),
         transport=transport,
     )
     if pipeline is not None:

@@ -587,7 +587,7 @@ async def test_account_recovery_boost_stays_inside_global_budget(
         def __init__(self, _paths):
             pass
 
-        def is_fresh(self):
+        def is_fresh(self, **kwargs):
             return True
 
     class FakeClient:

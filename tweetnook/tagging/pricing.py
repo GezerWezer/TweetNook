@@ -91,7 +91,7 @@ def _parse_fetched_at(value: Any) -> datetime:
 def _read_cache_payload(path: Path) -> dict[str, Any] | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError, UnicodeError):
         return None
     return payload if isinstance(payload, dict) else None
 
@@ -102,7 +102,7 @@ def _pricing_from_cache(payload: Any, model_id: str, *, stale: bool) -> OpenRout
     fetched_at = payload.get("fetched_at")
     try:
         _parse_fetched_at(fetched_at)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     models = payload.get("models")
     if not isinstance(models, dict):
@@ -125,7 +125,7 @@ def _pricing_from_cache(payload: Any, model_id: str, *, stale: bool) -> OpenRout
                 or "0"
             ),
         )
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, OverflowError):
         return None
 
 
@@ -153,7 +153,7 @@ def _normalize_pricing(pricing: Any) -> dict[str, str] | None:
         cached_input_price = _parse_decimal(
             pricing.get("input_cache_read") or pricing.get("cache_read") or "0"
         )
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, OverflowError):
         return None
     return {
         "prompt": format(prompt, "f"),
@@ -207,7 +207,7 @@ def load_openrouter_pricing(
     if cache_payload is not None:
         try:
             fetched = _parse_fetched_at(cache_payload.get("fetched_at"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             pass
         if fetched is not None:
             cached = _pricing_from_cache(
@@ -227,7 +227,7 @@ def load_openrouter_pricing(
     if cache_payload is not None:
         try:
             refresh_attempted_at = _parse_fetched_at(cache_payload.get("refresh_attempted_at"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             pass
     if (
         refresh_attempted_at is not None

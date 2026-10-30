@@ -579,7 +579,7 @@ async def expand_threads(
         query_ids = await resolve_query_ids(
             query_store,
             ["TweetDetail"],
-            force_refresh=not query_store.is_fresh(),
+            force_refresh=not query_store.is_fresh(operations=["TweetDetail"]),
             transport=transport,
         )
         attempted_targets: set[str] = set()
