@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ from tweetnook.core.utils import utc_now
 from tweetnook.storage import ArchiveStore
 from tweetnook.storage.common import ARCHIVE_SOURCE
 from tweetnook.storage.record_types import RecordType
+
+logger = logging.getLogger(__name__)
 
 
 def manifest_generation_date(manifest: dict[str, Any]) -> str | None:
@@ -56,12 +59,21 @@ def remove_archive_owned_files(base_dir: Path, relative_paths: list[str]) -> int
         if relative is None or relative.parts[:1] != ("media",):
             continue
         destination = base_dir / relative
+        # The media root itself may be a symlink to a larger disk; that is where the archive's
+        # files live. Only links below it could lead outside the managed tree.
+        components = [
+            base_dir.joinpath(*relative.parts[:index])
+            for index in range(2, len(relative.parts) + 1)
+        ]
+        if any(component.is_symlink() for component in components):
+            logger.warning("Skipped a symlinked path during media cleanup: %s", relative)
+            continue
         if not destination.exists() or not destination.is_file():
             continue
         destination.unlink()
         removed += 1
         parent = destination.parent
-        while parent != base_dir:
+        while parent != base_dir / "media":
             try:
                 parent.rmdir()
             except OSError:

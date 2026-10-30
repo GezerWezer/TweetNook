@@ -22,14 +22,14 @@ Existing failures should be recorded with their command and scope. Targeted test
 | Change | Starting tests |
 | --- | --- |
 | CLI/help and selected collections | `tests/cli/`, `tests/test_cli_web.py`, `tests/test_cli_service.py` |
-| Config and paths | `tests/test_config.py`, web configuration routes |
+| Config and paths | `tests/test_config.py`, `tests/test_config_ownership.py`, `tests/test_passwords.py`, web configuration routes |
 | Client and sync | Client, query-ID, auth, pagination and sync suites |
 | Import and deferred Setup work | Archive-import, Setup routes and server-first suites |
 | Storage and search | SQLite storage, search, pagination, like order and database-performance suites |
 | Availability and note history | FxTwitter, check, resurrection and web availability suites |
 | Enrichment and local assets | `tests/threads/`, `tests/test_articles.py`, `tests/test_media.py`, `tests/test_unfurl.py`, `tests/test_resource_failure.py` |
 | Gemini | Optional tagging, SDK, prompts, media tags, RPD and web tagging suites |
-| Jobs and schedules | Supervisor, pipeline, activity-history, scheduler and jobs-route suites |
+| Jobs and schedules | Supervisor, pipeline, activity-history, scheduler and jobs-route suites; `tests/test_job_resource_ownership.py` |
 | Browser presentation | Python asset assertions and `tests/js/` harnesses |
 | Replay and server lifecycle | `tests/test_dev_replay.py`, `tests/web/test_dev_replay_routes.py`, `tests/web/test_server_first.py`, `tests/web/test_deps_server.py` |
 | Installer or release | Installer/system-install/service, package and demo tests |
@@ -72,3 +72,5 @@ Preserve the browser section/step structure consumed by the Setup-help builder, 
 Use query-plan assertions for indexed ID, relation and filter access. Verify count/index cache invalidation after writes and rollback. Page through data large enough to reveal work proportional to the full archive, and check deep-feed detail navigation separately from the first page.
 
 Tests should establish user-visible behavior or a meaningful safety/performance property. Avoid tests that only reproduce the implementation's internal shape without testing its result.
+
+File-publication regressions inject failures after real writes, on close and on replacement (`tests/test_export.py`, `tests/test_file_publication.py`). Resource-ownership tests use event barriers for cancelled FxTwitter requests, late uploads and outstanding worker callbacks; configuration tests interleave saves and delayed application against temporary files. `tests/test_cache_recovery.py` checks corrupt derived pricing content.
