@@ -13,6 +13,21 @@ from .records import PageBuffer, RecordsMixin
 
 
 class ObjectsMixin(RecordsMixin):
+    def current_objects(
+        self, tweet_ids: list[str], *, cursor: PageBuffer | None = None
+    ) -> dict[str, dict[str, Any]]:
+        """Current canonical objects, including earlier writes staged in this batch."""
+        if cursor is None:
+            rows = self._rows_for_values(RecordType.TWEET_OBJECT, "tweet_id", tweet_ids)
+            return {str(row["tweet_id"]): row for row in rows if row.get("tweet_id")}
+        keys = {tweet_id: self._row_key_for_tweet_object(tweet_id) for tweet_id in tweet_ids}
+        self.prefetch_rows(list(keys.values()), cursor=cursor)
+        return {
+            tweet_id: row
+            for tweet_id, key in keys.items()
+            if (row := self._lookup_row(key, cursor=cursor)) is not None
+        }
+
     def _tweet_object_record(
         self,
         tweet: Any,
@@ -516,31 +531,45 @@ class ObjectsMixin(RecordsMixin):
         *,
         source: str = LIVE_SOURCE,
         preserve_lifecycle: bool = False,
+        deleted_at_by_tweet_id: dict[str, str] | None = None,
+        force_deleted_tweet_id: str | None = None,
         cursor: PageBuffer,
     ) -> None:
-        keys = [
-            self._row_key_for_tweet_object(item.tweet_id) for item in graph.tweet_objects.values()
-        ]
-        keys.extend(
-            self._row_key_for_tweet_relation(
-                item.source_tweet_id, item.relation_type, item.target_tweet_id
-            )
-            for item in graph.relations.values()
+        self.prefetch_rows(self._secondary_graph_keys(graph), cursor=cursor)
+        self._queue_secondary_graph(
+            graph,
+            source=source,
+            preserve_lifecycle=preserve_lifecycle,
+            deleted_at_by_tweet_id=deleted_at_by_tweet_id,
+            force_deleted_tweet_id=force_deleted_tweet_id,
+            cursor=cursor,
         )
-        keys.extend(
-            self._row_key_for_media(item.tweet_id, item.media_key) for item in graph.media.values()
-        )
-        keys.extend(self._row_key_for_url(item.url_hash) for item in graph.urls.values())
-        keys.extend(
-            self._row_key_for_url_ref(item.tweet_id, item.position)
-            for item in graph.url_refs.values()
-        )
-        keys.extend(self._row_key_for_article(item.tweet_id) for item in graph.articles.values())
-        self.prefetch_rows(keys, cursor=cursor)
+
+    def _queue_secondary_graph(
+        self,
+        graph: ExtractedTweetGraph,
+        *,
+        source: str = LIVE_SOURCE,
+        preserve_lifecycle: bool = False,
+        deleted_at_by_tweet_id: dict[str, str] | None = None,
+        force_deleted_tweet_id: str | None = None,
+        cursor: PageBuffer,
+    ) -> None:
+        """Queue a graph whose existing rows are already in the buffer."""
+        deleted_at_by_tweet_id = deleted_at_by_tweet_id or {}
         for item in graph.tweet_objects.values():
+            force_deleted = item.tweet_id == force_deleted_tweet_id
             self._queue_record(
                 self._tweet_object_record(
-                    item, source=source, preserve_lifecycle=preserve_lifecycle, cursor=cursor
+                    item,
+                    source=source,
+                    preserve_lifecycle=preserve_lifecycle,
+                    deleted_at=deleted_at_by_tweet_id.get(item.tweet_id),
+                    enrichment_state="terminal_unavailable" if force_deleted else None,
+                    enrichment_reason="archive_deleted" if force_deleted else None,
+                    enrichment_retry_count=0 if force_deleted else None,
+                    enrichment_retry_eligible=False if force_deleted else None,
+                    cursor=cursor,
                 ),
                 cursor=cursor,
             )
@@ -578,3 +607,24 @@ class ObjectsMixin(RecordsMixin):
         for tweet in tweets:
             graph.merge(extract_secondary_objects(tweet.raw_json))
         self._buffer_secondary_graph(graph, source=source, cursor=cursor)
+
+    def _secondary_graph_keys(self, graph: ExtractedTweetGraph) -> list[str]:
+        keys = [
+            self._row_key_for_tweet_object(item.tweet_id) for item in graph.tweet_objects.values()
+        ]
+        keys.extend(
+            self._row_key_for_tweet_relation(
+                item.source_tweet_id, item.relation_type, item.target_tweet_id
+            )
+            for item in graph.relations.values()
+        )
+        keys.extend(
+            self._row_key_for_media(item.tweet_id, item.media_key) for item in graph.media.values()
+        )
+        keys.extend(self._row_key_for_url(item.url_hash) for item in graph.urls.values())
+        keys.extend(
+            self._row_key_for_url_ref(item.tweet_id, item.position)
+            for item in graph.url_refs.values()
+        )
+        keys.extend(self._row_key_for_article(item.tweet_id) for item in graph.articles.values())
+        return keys

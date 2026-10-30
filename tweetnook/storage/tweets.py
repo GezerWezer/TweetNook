@@ -66,14 +66,6 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
         self._queue_record(record, cursor=cursor)
         return capture_id
 
-    def upsert_tweet(self, tweet: TimelineTweet, *, cursor: PageBuffer | None = None) -> None:
-        if cursor is None:
-            raise RuntimeError(
-                "ArchiveStore.upsert_tweet() is only supported inside page buffering "
-                "for the SQLite backend."
-            )
-        cursor.pending_tweets[tweet.tweet_id] = tweet
-
     def _tweet_record(
         self,
         tweet: TimelineTweet,
@@ -174,7 +166,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
 
     def upsert_membership(
         self,
-        tweet_id: str,
+        tweet: TimelineTweet,
         collection_type: str,
         *,
         source: str = LIVE_SOURCE,
@@ -188,12 +180,6 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
                 "ArchiveStore.upsert_membership() is only supported inside page buffering "
                 "for the SQLite backend."
             )
-        try:
-            tweet = cursor.pending_tweets[tweet_id]
-        except KeyError as exc:
-            raise RuntimeError(
-                f"Missing pending tweet {tweet_id} for collection {collection_type}."
-            ) from exc
         self._queue_record(
             self._tweet_record(
                 tweet,
@@ -232,9 +218,8 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
             cursor=buffer,
         )
         for tweet in tweets:
-            self.upsert_tweet(tweet, cursor=buffer)
             self.upsert_membership(
-                tweet.tweet_id,
+                tweet,
                 collection_type,
                 source=LIVE_SOURCE,
                 sort_index=tweet.sort_index,

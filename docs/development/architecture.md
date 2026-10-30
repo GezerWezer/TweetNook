@@ -43,7 +43,7 @@ Derived data should be rebuildable from saved evidence where the model supports 
 
 ## Concurrency
 
-Archive-changing work uses a process lock. The web supervisor owns at most one active worker and can queue supported jobs. The scheduler submits through the supervisor rather than starting an unrelated write path. Reads continue while jobs work through batches.
+Archive-changing work uses a process lock. The web supervisor owns at most one active worker and can queue supported jobs. The scheduler submits through the supervisor rather than starting an unrelated write path. Reads continue while jobs work through batches. Storage serializes write transactions on its shared connection, nests its own helpers through savepoints and rejects foreign transactions without changing them. Features request named facts and mutations; SQL, record keys, import row construction and batch completion stay in storage. Statistics gather requested database facts on one private read snapshot and release it before filesystem work.
 
 Each worker publishes pipeline state and a durable run log. A successful collection pass remains recorded even if a later optional follow-up fails. Shutdown asks workers to interrupt cooperatively, gives them time to finish, and closes archive readers afterward.
 

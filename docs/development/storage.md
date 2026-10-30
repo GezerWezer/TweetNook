@@ -14,6 +14,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | `schema.py` | Table layout, FTS and derived tables, `SCHEMA_VERSION`, upgrades from released schemas. |
 | `records.py` | Row construction, row keys, `PageBuffer` and source-precedence merging. |
 | `sync_state.py` | Sync cursors, the archive owner and import manifests. |
+| `ingestion.py` | Normalized official-import observations, membership and graph prefetch, placeholder gating and batch completion. |
 | `tweets.py` | Timeline page writes: raw captures, memberships and `persist_page`. |
 | `objects.py` | Canonical tweet objects and their relations, media, URLs and articles. |
 | `details.py` | Tweet detail, thread, unavailable-tweet and FxTwitter writes. |
@@ -74,6 +75,10 @@ Use the row-key helpers in `ArchiveStore`; don't invent identifiers in callers. 
 
 ## Merge rules
 
+`flush(buffer)` owns complete-record persistence and clears the batch only after a successful transaction. A failed flush keeps the batch available for retry; feature code does not merge or clear its dictionaries. The low-level `merge_rows` operation replaces complete records, setting omitted columns to NULL.
+
+`ingest_import_batch(observations, membership=...)` owns import row construction, key prefetch, sparse-like placeholder gating and completion. Importers keep payload adaptation, chunk sizing, counts and progress. `current_objects(ids, cursor=...)` reads canonical state with pending batch visibility; checks and resurrection use storage-owned flushes.
+
 `PageBuffer` collects related writes and tracks pending rows so a later item in a batch sees earlier writes. Source ranks prefer `live_graphql` over `fxtwitter` over `x_archive`. Merge code preserves better content, timestamps, downloaded files, and provenance when a weaker payload arrives.
 
 Raw captures remain evidence of the source response. Normalized tweet text, author fields, media and relation rows can be rebuilt through `rehydrate`, but rebuilding isn't a new remote observation. Test quoted and nested content as well as the focal post when changing extraction.
@@ -112,7 +117,7 @@ Stop writers before copying a whole installation. A live database copy needs SQL
 
 ## Transactions and indexes
 
-`persist_page` buffers raw capture, memberships, the canonical/secondary graph and sync state before one merge transaction. Direct membership helpers require an active page buffer. UPSERT preserves rowids, which matters for the derived full-text documents.
+`persist_page` buffers raw capture, memberships, the canonical/secondary graph and sync state before one merge transaction. Direct membership writes take a `TimelineTweet` and an active page buffer; no separate pending-tweet staging map is needed. UPSERT preserves rowids, which matters for the derived full-text documents.
 
 `store.transaction()` serializes writers on the shared connection across selection, transformation and commit. Store helpers nest through savepoints and never commit the enclosing operation. An unowned transaction is rejected without rolling back its work. Passing `write=False` opens a bounded read snapshot on a private reader. Global tag edits, regeneration cleanup and card restoration each own their complete database mutation; file cleanup stays outside SQL transactions. Only writable stores that completed a write transaction run planner maintenance on close; TEMP read indexes do not make a reader a writer.
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,12 +26,6 @@ UNAVAILABLE_REASON_LABELS = (
     ("deleted_by_author", "Deleted by author"),
     ("archive_deleted", "Deleted in archive"),
 )
-
-
-@contextmanager
-def _collection_store(store: ArchiveStore) -> Iterator[ArchiveStore]:
-    with store.read_snapshot() as reader:
-        yield reader
 
 
 @dataclass(slots=True)
@@ -516,7 +508,7 @@ def build_stats_section(store: ArchiveStore, section_id: str) -> StatsSection:
     spec = next((spec for spec in STATS_SECTION_SPECS if spec.id == section_id), None)
     if spec is None:
         raise KeyError(f"unknown statistics section: {section_id}")
-    with _collection_store(store) as reader:
+    with store.read_snapshot() as reader:
         context = _StatsContext(reader, reader.statistics_facts({section_id}))
     return _collect_registered_section(context, spec)
 
@@ -531,7 +523,7 @@ def build_stats_report(
     unknown = selected - {spec.id for spec in STATS_SECTION_SPECS}
     if unknown:
         raise KeyError(f"unknown statistics sections: {', '.join(sorted(unknown))}")
-    with _collection_store(store) as reader:
+    with store.read_snapshot() as reader:
         context = _StatsContext(reader, reader.statistics_facts(selected))
     sections = [
         _collect_registered_section(context, spec)

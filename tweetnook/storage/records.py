@@ -8,7 +8,6 @@ from typing import Any
 
 from tweetnook.core import fastjson
 from tweetnook.core.extractor import link_card_lacks_image, restore_link_card_image
-from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.core.utils import utc_now
 
 from .common import AVAILABLE_SOURCES, LIVE_SOURCE, SOURCE_RANK, clause_in, folder_key
@@ -20,31 +19,26 @@ from .schema import ARCHIVE_COLUMNS
 @dataclass(slots=True)
 class PageBuffer:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
-    pending_tweets: dict[str, TimelineTweet] = field(default_factory=dict)
     existing_rows: dict[str, dict[str, Any] | None] = field(default_factory=dict)
 
     def checkpoint(
         self,
     ) -> tuple[
         dict[str, dict[str, Any]],
-        dict[str, TimelineTweet],
         dict[str, dict[str, Any] | None],
     ]:
-        return self.records.copy(), self.pending_tweets.copy(), self.existing_rows.copy()
+        return self.records.copy(), self.existing_rows.copy()
 
     def restore(
         self,
         checkpoint: tuple[
             dict[str, dict[str, Any]],
-            dict[str, TimelineTweet],
             dict[str, dict[str, Any] | None],
         ],
     ) -> None:
-        records, pending_tweets, existing_rows = checkpoint
+        records, existing_rows = checkpoint
         self.records.clear()
         self.records.update(records)
-        self.pending_tweets.clear()
-        self.pending_tweets.update(pending_tweets)
         self.existing_rows.clear()
         self.existing_rows.update(existing_rows)
 
@@ -109,7 +103,18 @@ class RecordsMixin(ConnectionMixin):
             self.conn.executemany(sql, params)
 
     def merge_rows(self, rows: list[dict[str, Any]]) -> None:
+        """Replace complete archive records; omitted columns become NULL."""
         self._merge_records(rows)
+
+    def flush(self, buffer: PageBuffer) -> int:
+        """Persist a batch and clear it only after its transaction succeeds."""
+        if not buffer.records:
+            return 0
+        pending = len(buffer.records)
+        self._merge_records(list(buffer.records.values()))
+        buffer.records.clear()
+        buffer.existing_rows.clear()
+        return pending
 
     def _row_key_for_tweet(
         self, tweet_id: str, collection_type: str, folder_id: str | None = None

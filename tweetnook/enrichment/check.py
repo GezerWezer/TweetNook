@@ -140,20 +140,13 @@ class _CheckApplier:
         self.step_buckets: dict[str, Counter[str]] = {}
 
     def flush(self) -> int:
-        written = len(self.buffer.records)
-        if written:
-            self.store.merge_rows(list(self.buffer.records.values()))
-            self.buffer = PageBuffer()
+        written = self.store.flush(self.buffer)
         self.store.record_tweet_checks(self.checks, checked_at=self.now)
         self.checks = []
         return written
 
     def _current_row(self, tweet_id: str) -> dict[str, Any] | None:
-        # Rows written earlier in this buffer (a quote restored with the post quoting it)
-        # are newer than what the database returns.
-        return self.store._lookup_row(
-            self.store._row_key_for_tweet_object(tweet_id), cursor=self.buffer
-        )
+        return self.store.current_objects([tweet_id], cursor=self.buffer).get(tweet_id)
 
     def apply(
         self, lookup: FxLookup, row: dict[str, Any] | None, scope: str, step: str = ""
@@ -161,8 +154,7 @@ class _CheckApplier:
         """Apply one lookup; return its bucket for the step's progress counters."""
 
         self.applied.add(lookup.tweet_id)
-        row_key = self.store._row_key_for_tweet_object(lookup.tweet_id)
-        row = self.buffer.records.get(row_key, row)
+        row = self._current_row(lookup.tweet_id) or row
         state = (row or {}).get("enrichment_state")
         unavailable = state == "terminal_unavailable"
         sparse = state in {"pending", "transient_failure"}

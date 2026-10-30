@@ -209,17 +209,6 @@ def select_weighted_resurrection_candidates(
     return selected[:budget]
 
 
-def _flush_buffer(store: ArchiveStore, buffer: PageBuffer) -> int:
-    if not buffer.records:
-        return 0
-    count = len(buffer.records)
-    store.merge_rows(list(buffer.records.values()))
-    buffer.records.clear()
-    buffer.pending_tweets.clear()
-    buffer.existing_rows.clear()
-    return count
-
-
 async def resurrect_due_tweets(
     *,
     budget: int = DEFAULT_RESURRECTION_BUDGET,
@@ -327,7 +316,7 @@ async def resurrect_due_tweets(
 
         def flush() -> None:
             nonlocal buffered_attempts
-            _flush_buffer(store, buffer)
+            store.flush(buffer)
             buffered_attempts = 0
 
         try:

@@ -5,20 +5,18 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
 from tweetnook.core.exceptions import (
     ConfigError,
 )
-from tweetnook.core.extractor import ExtractedTweetGraph, extract_secondary_objects
+from tweetnook.core.extractor import extract_secondary_objects
 from tweetnook.core.timeline_parsing import (
     TimelineTweet,
 )
 from tweetnook.importer.archive_input import ArchiveIdentity
 from tweetnook.storage import ArchiveStore
-from tweetnook.storage.common import ARCHIVE_SOURCE, LIVE_SOURCE
-from tweetnook.storage.records import PageBuffer
+from tweetnook.storage.ingestion import ImportObservation
 
 _AUTHORED_IMPORT_PREFETCH_CHUNK = 50
 
@@ -27,34 +25,6 @@ _LIKE_IMPORT_PREFETCH_CHUNK = 200
 
 
 _T = TypeVar("_T")
-
-
-@dataclass(slots=True)
-class _PlaceholderTweetObject:
-    tweet_id: str
-    text: str
-    author_id: str | None = None
-    author_username: str | None = None
-    author_display_name: str | None = None
-    created_at: str | None = None
-    conversation_id: str | None = None
-    lang: str | None = None
-    note_tweet_text: str | None = None
-    raw_json: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(slots=True)
-class _PreparedAuthoredImport:
-    timeline_tweet: TimelineTweet
-    deleted_at: str | None
-    graph: ExtractedTweetGraph
-
-
-@dataclass(slots=True)
-class _PreparedLikeImport:
-    tweet_id: str
-    timeline_tweet: TimelineTweet
-    payload: dict[str, Any]
 
 
 def _media_key_for_archive_item(item: dict[str, Any], *, position: int) -> str:
@@ -125,77 +95,6 @@ def _timeline_tweet_from_archive(
     )
 
 
-def _placeholder_tweet_object(like_payload: dict[str, Any]) -> _PlaceholderTweetObject:
-    tweet_id = str(like_payload.get("tweetId") or "").strip()
-    if not tweet_id:
-        raise ConfigError("Archive like row is missing tweetId.")
-    return _PlaceholderTweetObject(
-        tweet_id=tweet_id,
-        text=str(like_payload.get("fullText") or ""),
-        raw_json={"like": like_payload},
-    )
-
-
-def _queue_secondary_graph(
-    store: ArchiveStore,
-    buffer: PageBuffer,
-    graph: ExtractedTweetGraph,
-    *,
-    source: str,
-    deleted_at_by_tweet_id: dict[str, str] | None = None,
-    force_deleted_tweet_id: str | None = None,
-) -> None:
-    deleted_at_by_tweet_id = deleted_at_by_tweet_id or {}
-    for item in graph.tweet_objects.values():
-        force_deleted = item.tweet_id == force_deleted_tweet_id
-        store._queue_record(
-            store._tweet_object_record(
-                item,
-                source=source,
-                deleted_at=deleted_at_by_tweet_id.get(item.tweet_id),
-                enrichment_state="terminal_unavailable" if force_deleted else None,
-                enrichment_reason="archive_deleted" if force_deleted else None,
-                enrichment_retry_count=0 if force_deleted else None,
-                enrichment_retry_eligible=False if force_deleted else None,
-                cursor=buffer,
-            ),
-            cursor=buffer,
-        )
-    for item in graph.relations.values():
-        store._queue_record(
-            store._tweet_relation_record(item, source=source, cursor=buffer),
-            cursor=buffer,
-        )
-    for item in graph.media.values():
-        store._queue_record(
-            store._media_record(item, provenance_source=source, cursor=buffer),
-            cursor=buffer,
-        )
-    for item in graph.urls.values():
-        store._queue_record(store._url_record(item, source=source, cursor=buffer), cursor=buffer)
-    for item in graph.url_refs.values():
-        store._queue_record(
-            store._url_ref_record(item, source=source, cursor=buffer),
-            cursor=buffer,
-        )
-    for item in graph.articles.values():
-        store._queue_record(
-            store._article_record(item, source=source, cursor=buffer),
-            cursor=buffer,
-        )
-
-
-def flush_buffer(store: ArchiveStore, buffer: PageBuffer) -> int:
-    if not buffer.records:
-        return 0
-    pending = len(buffer.records)
-    store.merge_rows(list(buffer.records.values()))
-    buffer.records.clear()
-    buffer.pending_tweets.clear()
-    buffer.existing_rows.clear()
-    return pending
-
-
 def deleted_headers_map(items: list[Any]) -> dict[str, str]:
     result: dict[str, str] = {}
     for item in items:
@@ -213,30 +112,6 @@ def _chunked(items: list[_T], size: int):
         yield items[index : index + size]
 
 
-def _secondary_graph_row_keys(store: ArchiveStore, graph: ExtractedTweetGraph) -> list[str]:
-    row_keys: list[str] = []
-    row_keys.extend(
-        store._row_key_for_tweet_object(item.tweet_id) for item in graph.tweet_objects.values()
-    )
-    row_keys.extend(
-        store._row_key_for_tweet_relation(
-            item.source_tweet_id,
-            item.relation_type,
-            item.target_tweet_id,
-        )
-        for item in graph.relations.values()
-    )
-    row_keys.extend(
-        store._row_key_for_media(item.tweet_id, item.media_key) for item in graph.media.values()
-    )
-    row_keys.extend(store._row_key_for_url(item.url_hash) for item in graph.urls.values())
-    row_keys.extend(
-        store._row_key_for_url_ref(item.tweet_id, item.position) for item in graph.url_refs.values()
-    )
-    row_keys.extend(store._row_key_for_article(item.tweet_id) for item in graph.articles.values())
-    return row_keys
-
-
 def import_authored_tweets(
     store: ArchiveStore,
     tweets: list[Any],
@@ -248,14 +123,13 @@ def import_authored_tweets(
     progress: Callable[[int, int], None] | None = None,
     item_status: Callable[[str, int, int], None] | None = None,
 ) -> None:
-    buffer = PageBuffer()
     valid_items = [
         item for item in tweets if isinstance(item, dict) and isinstance(item.get("tweet"), dict)
     ]
     total = len(valid_items)
     processed = 0
     for chunk_items in _chunked(valid_items, _AUTHORED_IMPORT_PREFETCH_CHUNK):
-        prepared: list[_PreparedAuthoredImport] = []
+        prepared: list[ImportObservation] = []
         for item in chunk_items:
             payload = item["tweet"]
             timeline_tweet = _timeline_tweet_from_archive(
@@ -265,7 +139,7 @@ def import_authored_tweets(
             )
             deleted_at = deleted_headers.get(timeline_tweet.tweet_id) or payload.get("deleted_at")
             prepared.append(
-                _PreparedAuthoredImport(
+                ImportObservation(
                     timeline_tweet=timeline_tweet,
                     deleted_at=deleted_at if isinstance(deleted_at, str) else None,
                     graph=extract_secondary_objects(timeline_tweet.raw_json),
@@ -273,34 +147,13 @@ def import_authored_tweets(
             )
         if not prepared:
             continue
-        row_keys: list[str] = []
-        for item in prepared:
-            row_keys.append(store._row_key_for_tweet(item.timeline_tweet.tweet_id, "tweet"))
-            row_keys.extend(_secondary_graph_row_keys(store, item.graph))
-        store.prefetch_rows(row_keys, cursor=buffer)
-        for item in prepared:
-            timeline_tweet = item.timeline_tweet
+
+        def before(item: ImportObservation) -> None:
             if item_status is not None:
-                item_status(timeline_tweet.tweet_id, processed, total)
-            store.upsert_tweet(timeline_tweet, cursor=buffer)
-            store.upsert_membership(
-                timeline_tweet.tweet_id,
-                "tweet",
-                source=ARCHIVE_SOURCE,
-                deleted_at=item.deleted_at,
-                sort_index=timeline_tweet.sort_index,
-                cursor=buffer,
-            )
-            _queue_secondary_graph(
-                store,
-                buffer,
-                item.graph,
-                source=ARCHIVE_SOURCE,
-                deleted_at_by_tweet_id=(
-                    {timeline_tweet.tweet_id: item.deleted_at} if item.deleted_at else {}
-                ),
-                force_deleted_tweet_id=timeline_tweet.tweet_id if force_deleted else None,
-            )
+                item_status(item.timeline_tweet.tweet_id, processed, total)
+
+        def after(item: ImportObservation) -> None:
+            nonlocal processed
             if force_deleted or item.deleted_at:
                 counts["deleted_authored_tweets"] += 1
             else:
@@ -308,19 +161,14 @@ def import_authored_tweets(
             processed += 1
             if progress:
                 progress(processed, total)
-        flush_buffer(store, buffer)
 
-
-def _should_seed_like_placeholder(store: ArchiveStore, buffer: PageBuffer, tweet_id: str) -> bool:
-    row = store._lookup_row(store._row_key_for_tweet_object(tweet_id), cursor=buffer)
-    if row is None:
-        return True
-    if row.get("source") == LIVE_SOURCE:
-        return False
-    return not any(
-        row.get(field_name)
-        for field_name in ("author_id", "author_username", "created_at", "conversation_id", "lang")
-    )
+        store.ingest_import_batch(
+            prepared,
+            membership="tweet",
+            force_deleted=force_deleted,
+            before_item=before,
+            after_item=after,
+        )
 
 
 def import_likes(
@@ -331,8 +179,7 @@ def import_likes(
     progress: Callable[[int, int], None] | None = None,
     item_status: Callable[[str, int, int], None] | None = None,
 ) -> None:
-    buffer = PageBuffer()
-    prepared: list[_PreparedLikeImport] = []
+    prepared: list[ImportObservation] = []
     for index, item in enumerate(likes, start=1):
         payload = item.get("like") if isinstance(item, dict) else None
         if not isinstance(payload, dict):
@@ -341,8 +188,7 @@ def import_likes(
         if not tweet_id:
             continue
         prepared.append(
-            _PreparedLikeImport(
-                tweet_id=tweet_id,
+            ImportObservation(
                 timeline_tweet=TimelineTweet(
                     tweet_id=tweet_id,
                     text=str(payload.get("fullText") or ""),
@@ -356,40 +202,21 @@ def import_likes(
                     sort_index=str(-index),
                     raw_json={"like": payload},
                 ),
-                payload=payload,
             )
         )
     total = len(prepared)
     processed = 0
     for chunk in _chunked(prepared, _LIKE_IMPORT_PREFETCH_CHUNK):
-        row_keys: list[str] = []
-        for item in chunk:
-            row_keys.append(store._row_key_for_tweet(item.tweet_id, "like"))
-            row_keys.append(store._row_key_for_tweet_object(item.tweet_id))
-        store.prefetch_rows(row_keys, cursor=buffer)
-        for item in chunk:
+
+        def before(item: ImportObservation) -> None:
             if item_status is not None:
-                item_status(item.tweet_id, processed, total)
-            store.upsert_tweet(item.timeline_tweet, cursor=buffer)
-            store.upsert_membership(
-                item.tweet_id,
-                "like",
-                source=ARCHIVE_SOURCE,
-                sort_index=item.timeline_tweet.sort_index,
-                cursor=buffer,
-            )
-            if _should_seed_like_placeholder(store, buffer, item.tweet_id):
-                store._queue_record(
-                    store._tweet_object_record(
-                        _placeholder_tweet_object(item.payload),
-                        source=ARCHIVE_SOURCE,
-                        enrichment_state="pending",
-                        cursor=buffer,
-                    ),
-                    cursor=buffer,
-                )
+                item_status(item.timeline_tweet.tweet_id, processed, total)
+
+        def after(item: ImportObservation) -> None:
+            nonlocal processed
             counts["likes"] += 1
             processed += 1
             if progress:
                 progress(processed, total)
-        flush_buffer(store, buffer)
+
+        store.ingest_import_batch(chunk, membership="like", before_item=before, after_item=after)

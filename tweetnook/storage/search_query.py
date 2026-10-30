@@ -664,9 +664,7 @@ def search_posts(
     ids = [str(hit["tweet_id"]) for hit in page_hits if hit.get("tweet_id")]
     hydrated_by_id = {
         row.get("tweet_id"): row
-        for row in store.fetch_tweets_by_ids(
-            ids, **({"collections": collections} if collections else {})
-        )
+        for row in store.fetch_tweets_by_ids(ids, collections=collections)
         if row.get("tweet_id")
     }
     hydrated = [hydrated_by_id[tweet_id] for tweet_id in ids if tweet_id in hydrated_by_id]

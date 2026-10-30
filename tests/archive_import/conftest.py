@@ -22,7 +22,7 @@ from tweetnook.core.exceptions import (
 )
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.query_ids import QueryIdStore
-from tweetnook.storage import open_archive_store
+from tweetnook.storage import ArchiveStore, open_archive_store
 
 
 def _wrap_ytd(name: str, payload: object) -> str:
@@ -365,7 +365,7 @@ class DetailEnrichment:
         # No retries, so a transport failure is final without fetch_page's real backoff.
         self.config = AppConfig(sync=SyncConfig(detail_delay=0.0, detail_max_retries=0))
         QueryIdStore(paths).save({"TweetDetail": "detail-query-id"})
-        flush = archive_enrich.flush_buffer
+        flush = ArchiveStore.flush
 
         def spy(store, buffer):
             attempts = sum(row["record_type"] == "tweet_object" for row in buffer.records.values())
@@ -373,7 +373,7 @@ class DetailEnrichment:
             self.dirty.append((attempts, 1))
             return result
 
-        monkeypatch.setattr(archive_enrich, "flush_buffer", spy)
+        monkeypatch.setattr(ArchiveStore, "flush", spy)
 
     def transport(self, respond: Callable[[str, httpx.Request], object]) -> httpx.MockTransport:
         """Answer each TweetDetail request with respond(tweet_id, request).

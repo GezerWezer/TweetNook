@@ -19,6 +19,7 @@ from .db import ConnectionMixin
 from .details import DetailsMixin
 from .enrichment import EnrichmentMixin
 from .imports import ImportsMixin
+from .ingestion import IngestionMixin
 from .objects import ObjectsMixin
 from .presentation import PresentationMixin
 from .prune import PruneMixin
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
 # method resolution order: a mixin comes before the mixins it builds on.
 class ArchiveStore(
     DetailsMixin,
+    IngestionMixin,
     ReportFactsMixin,
     TweetsMixin,
     StatsMixin,

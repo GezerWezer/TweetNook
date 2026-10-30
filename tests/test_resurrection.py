@@ -571,8 +571,8 @@ async def test_account_recovery_boost_stays_inside_global_budget(
         def count_due_resurrection_tweets(self):
             return 0
 
-        def merge_rows(self, _rows):
-            return None
+        def flush(self, _buffer):
+            return 0
 
     fake_store = FakeStore()
     job = SimpleNamespace(

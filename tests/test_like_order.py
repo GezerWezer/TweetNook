@@ -34,8 +34,7 @@ def membership(store, tweet_id, *, sort_index=None, source=ARCHIVE_SOURCE, text=
     tweet = _tweet(tweet_id)
     tweet.text = text
     buffer = PageBuffer()
-    store.upsert_tweet(tweet, cursor=buffer)
-    store.upsert_membership(tweet_id, "like", source=source, sort_index=sort_index, cursor=buffer)
+    store.upsert_membership(tweet, "like", source=source, sort_index=sort_index, cursor=buffer)
     store.merge_rows(list(buffer.records.values()))
 
 

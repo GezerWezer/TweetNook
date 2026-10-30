@@ -270,17 +270,9 @@ def test_fx_placeholder_never_replaces_live_data_but_replaces_archive_rows(paths
     store = open_archive_store(paths, create=True)
     assert store is not None
     _seed_live_tweet(store, "1", "live text")
-    buffer = archive_rows.PageBuffer()
-    store._queue_record(
-        store._tweet_object_record(
-            archive_rows._PlaceholderTweetObject(tweet_id="2", text="archive text"),
-            source=ARCHIVE_SOURCE,
-            enrichment_state="pending",
-            cursor=buffer,
-        ),
-        cursor=buffer,
+    archive_rows.import_likes(
+        store, [{"like": {"tweetId": "2", "fullText": "archive text"}}], counts={"likes": 0}
     )
-    archive_rows.flush_buffer(store, buffer)
 
     for tweet_id in ("1", "2"):
         store.persist_fx_status(

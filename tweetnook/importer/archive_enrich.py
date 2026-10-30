@@ -44,7 +44,6 @@ from tweetnook.importer.archive_progress import (
     _status_printer,
     runner_console_for,
 )
-from tweetnook.importer.archive_rows import flush_buffer
 from tweetnook.jobs.context import (
     locked_archive_job,
     resolve_job_context,
@@ -462,7 +461,7 @@ async def _enrich_pending_rows(
             nonlocal buffered_writes
             if buffered_writes <= 0:
                 return
-            flush_buffer(store, write_buffer)
+            store.flush(write_buffer)
             buffered_writes = 0
 
         # Rows finished so far, in whatever order FxTwitter answers, so progress never jumps.

@@ -184,9 +184,9 @@ def test_real_store_pushes_normalized_filters_into_sql(tmp_path) -> None:
     hydrated_ids: list[list[str]] = []
     original_fetch = store.fetch_tweets_by_ids
 
-    def track_fetch(tweet_ids: list[str]) -> list[dict[str, Any]]:
+    def track_fetch(tweet_ids: list[str], **kwargs: Any) -> list[dict[str, Any]]:
         hydrated_ids.append(tweet_ids)
-        return original_fetch(tweet_ids)
+        return original_fetch(tweet_ids, **kwargs)
 
     store.fetch_tweets_by_ids = track_fetch
     popular = search_posts(store, "needle min_faves:10")
@@ -318,9 +318,9 @@ def test_real_store_hydrates_only_the_requested_fts_page(tmp_path) -> None:
     hydrated_ids: list[list[str]] = []
     original_fetch = store.fetch_tweets_by_ids
 
-    def track_fetch(tweet_ids: list[str]) -> list[dict[str, Any]]:
+    def track_fetch(tweet_ids: list[str], **kwargs: Any) -> list[dict[str, Any]]:
         hydrated_ids.append(tweet_ids)
-        return original_fetch(tweet_ids)
+        return original_fetch(tweet_ids, **kwargs)
 
     store.fetch_tweets_by_ids = track_fetch
 
