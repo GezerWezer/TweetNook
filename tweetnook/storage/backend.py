@@ -14,6 +14,7 @@ from tweetnook.config import DatabaseConfig, XDGPaths
 
 from .authors import AuthorsMixin
 from .checks import ChecksMixin
+from .conversations import ConversationsMixin
 from .db import ConnectionMixin
 from .details import DetailsMixin
 from .enrichment import EnrichmentMixin
@@ -56,6 +57,7 @@ class ArchiveStore(
     AuthorsMixin,
     RelationsMixin,
     TagsMixin,
+    ConversationsMixin,
     PruneMixin,
     ConnectionMixin,
 ):

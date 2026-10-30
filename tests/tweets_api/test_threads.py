@@ -10,9 +10,9 @@ fastapi = pytest.importorskip("fastapi")
 from tests.tweets_api.conftest import _decoded  # noqa: E402
 from tweetnook.core import fastjson  # noqa: E402
 from tweetnook.storage.backend import ArchiveStore  # noqa: E402
+from tweetnook.storage.conversations import ConversationsMixin  # noqa: E402
 from tweetnook.web.routes.tweets import (  # noqa: E402
     _is_other_reply,
-    _recursive_reply_rows,
     api_tweet_thread,
 )
 
@@ -70,7 +70,7 @@ def _thread_object(
     }
 
 
-class ThreadStore:
+class ThreadStore(ConversationsMixin):
     def __init__(self) -> None:
         self.relation_call = 0
         self.expressions: list[str] = []
@@ -374,7 +374,7 @@ def test_api_tweet_thread_recursively_loads_and_deduplicates_saved_reply_chain(t
         )
     store._merge_records(records)
 
-    limited_rows, limited = _recursive_reply_rows(store, "100", limit=2)
+    limited_rows, limited = store.reply_subtree("100", limit=2)
     assert [row["tweet_id"] for row in limited_rows] == ["200", "300"]
     assert limited is True
 
@@ -442,7 +442,7 @@ def test_reply_tree_deduplicates_dense_alternate_paths_per_frontier(tmp_path):
 
     traced_sql: list[str] = []
     store.conn.set_trace_callback(traced_sql.append)
-    rows, truncated = _recursive_reply_rows(store, "root")
+    rows, truncated = store.reply_subtree("root")
     store.conn.set_trace_callback(None)
 
     assert truncated is False
@@ -662,7 +662,7 @@ def test_api_tweet_thread_moves_mention_only_replies_to_other_children(tmp_path)
 def test_api_tweet_thread_binds_untrusted_path_id_instead_of_writing_it_into_sql():
     payload = "main' OR 1=1 --"
 
-    class MissingStore:
+    class MissingStore(ConversationsMixin):
         def __init__(self) -> None:
             self.queries: list[tuple[str, tuple[object, ...]]] = []
             self.conn = self
