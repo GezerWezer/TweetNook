@@ -11,6 +11,7 @@ from tests.tweets_api.conftest import _decoded  # noqa: E402
 from tweetnook.core import fastjson  # noqa: E402
 from tweetnook.storage.backend import ArchiveStore  # noqa: E402
 from tweetnook.storage.conversations import ConversationsMixin  # noqa: E402
+from tweetnook.storage.presentation import PresentationMixin  # noqa: E402
 from tweetnook.web.routes.tweets import (  # noqa: E402
     _is_other_reply,
     api_tweet_thread,
@@ -70,7 +71,10 @@ def _thread_object(
     }
 
 
-class ThreadStore(ConversationsMixin):
+class ThreadStore(ConversationsMixin, PresentationMixin):
+    def note_observations(self, tweet_ids):
+        return {}
+
     def __init__(self) -> None:
         self.relation_call = 0
         self.expressions: list[str] = []

@@ -4,6 +4,7 @@ import copy
 import json
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -578,3 +579,59 @@ def test_quotes_page_includes_quoting_tweets_outside_collections(tmp_path) -> No
     assert stranger["availability"]["state"] == "available"
     assert relation_only["tweet_id"] == "303"
     assert relation_only["availability"]["state"] == "not_archived"
+
+
+@pytest.mark.parametrize("current_note", [None, {"text": "New note"}])
+def test_note_observations_reach_nested_quotes_and_retweet_originals(tmp_path, current_note):
+    from tweetnook.core.fxtwitter_payloads import community_note_pivot
+
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    rows = []
+    for tweet_id in ("1", "2", "3", "4"):
+        raw = {"rest_id": tweet_id, "legacy": {"full_text": tweet_id}}
+        if tweet_id == "3":
+            raw["birdwatch_pivot"] = community_note_pivot({"text": "Old note"})
+        rows.append(
+            dict(
+                row_key=f"tweet_object:{tweet_id}",
+                record_type="tweet_object",
+                tweet_id=tweet_id,
+                text=tweet_id,
+                raw_json=json.dumps(raw),
+                enrichment_state="done",
+            )
+        )
+    for source, target, kind in [
+        ("1", "2", "quote_of"),
+        ("2", "3", "quote_of"),
+        ("4", "1", "retweet_of"),
+    ]:
+        rows.append(
+            dict(
+                row_key=f"relation:{source}:{kind}:{target}",
+                record_type="tweet_relation",
+                tweet_id=source,
+                target_tweet_id=target,
+                relation_type=kind,
+            )
+        )
+    store.merge_rows(rows)
+    store.record_community_note("3", {"text": "Old note"}, seen_at="2026-01-01T00:00:00+00:00")
+    store.record_community_note("3", current_note, seen_at="2026-01-02T00:00:00+00:00")
+    try:
+        tweets = store.fetch_tweets_by_ids(["1", "4"], include_objects=True)
+        annotate_web_tweets(store, tweets)
+        nested = [
+            tweets[0]["quoted_tweet"]["quoted_tweet"],
+            tweets[1]["retweeted_tweet"]["quoted_tweet"]["quoted_tweet"],
+        ]
+        for tweet in nested:
+            assert tweet["note_history"] is True
+            pivot = tweet["raw_json"].get("birdwatch_pivot")
+            assert (pivot["subtitle"]["text"] if pivot else None) == (
+                current_note["text"] if current_note else None
+            )
+        saved = json.loads(store.stored_tweet_json("3"))
+        assert saved["birdwatch_pivot"]["subtitle"]["text"] == "Old note"
+    finally:
+        store.close()

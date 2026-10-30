@@ -16,6 +16,9 @@ from .schema import SchemaMixin
 
 class ChecksMixin(SchemaMixin, RecordsMixin):
     def ensure_check_tables(self) -> None:
+        # Called per note during a check; an existing archive must not take the write lock.
+        if self._table_exists("tweet_check_history") and self._table_exists("community_notes"):
+            return
         with self.transaction():
             self.conn.execute(
                 "CREATE TABLE IF NOT EXISTS tweet_checks ("
@@ -276,10 +279,7 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
         text = note.get("text") if isinstance(note, dict) else None
         if baseline is not None:
             base_text, base_at = baseline
-            has_versions = self.conn.execute(
-                "SELECT 1 FROM community_notes WHERE tweet_id = ? LIMIT 1", (tweet_id,)
-            ).fetchone()
-            if has_versions is None:
+            if not self.has_note_versions(tweet_id):
                 with self.transaction():
                     self.conn.execute(
                         "INSERT INTO community_notes (tweet_id, text_hash, text, raw_json, "
@@ -298,10 +298,10 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
             (tweet_id,),
         ).fetchall()
         active_hashes = {row[0] for row in active}
+        if not text and not active_hashes:
+            return None
         with self.transaction():
             if not text:
-                if not active_hashes:
-                    return None
                 self.conn.execute(
                     "UPDATE community_notes SET removed_at = ? "
                     "WHERE tweet_id = ? AND removed_at IS NULL",
@@ -330,6 +330,15 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
                 (tweet_id, text_hash, text, json.dumps(note, sort_keys=True), stamp, stamp),
             )
             return "changed" if active_hashes else "added"
+
+    def has_note_versions(self, tweet_id: str) -> bool:
+        self.ensure_check_tables()
+        return (
+            self.conn.execute(
+                "SELECT 1 FROM community_notes WHERE tweet_id = ? LIMIT 1", (tweet_id,)
+            ).fetchone()
+            is not None
+        )
 
     def stored_community_note(self, tweet_id: str) -> tuple[str | None, str | None]:
         """The note in the tweet's stored X payload, with when that copy was first saved."""

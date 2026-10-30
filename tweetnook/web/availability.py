@@ -8,15 +8,17 @@ from typing import Any
 from tweetnook.core import fastjson
 from tweetnook.core.extractor import (
     classify_tweet_unavailability,
-    extract_author_fields,
-    extract_canonical_text,
     extract_note_tweet_text,
     extract_tweet_unavailability_detail,
     is_placeholder_text,
-    unwrap_tweet_result,
 )
 from tweetnook.core.media_metadata import aspect_ratio_for_media
-from tweetnook.storage.record_types import RecordType
+from tweetnook.core.tweet_presentations import (
+    embedded_result,
+    legacy_target_id,
+    normalized_embedded_tweet,
+    raw_media_payloads,
+)
 
 UNAVAILABLE_MESSAGES = {
     "protected_account": "This tweet is from a protected account.",
@@ -28,21 +30,6 @@ UNAVAILABLE_MESSAGES = {
     "not_found": "This tweet could not be found.",
     "unavailable_unknown": "This tweet is unavailable.",
 }
-
-_OBJECT_COLUMNS = [
-    "tweet_id",
-    "text",
-    "author_id",
-    "author_username",
-    "author_display_name",
-    "created_at",
-    "synced_at",
-    "raw_json",
-    "enrichment_state",
-    "enrichment_checked_at",
-    "enrichment_reason",
-    "enrichment_retry_eligible",
-]
 
 
 def _json_dict(value: Any) -> dict[str, Any] | None:
@@ -220,33 +207,6 @@ def missing_web_tweet(tweet_id: str) -> dict[str, Any]:
     return tweet
 
 
-def _embedded_result(raw: dict[str, Any] | None, relation_type: str) -> dict[str, Any] | None:
-    if not raw:
-        return None
-    if relation_type == "quote_of":
-        # X embeds a quoted tweet's own quote as nested_quoted_tweet_results.
-        result = (
-            raw.get("quoted_status_result") or raw.get("nested_quoted_tweet_results") or {}
-        ).get("result")
-        if result is None:
-            result = raw.get("quoted_status")
-    else:
-        legacy = raw.get("legacy") or {}
-        result = (legacy.get("retweeted_status_result") or {}).get("result")
-        if result is None:
-            result = raw.get("retweeted_status")
-    return unwrap_tweet_result(result) if isinstance(result, dict) else None
-
-
-def _legacy_target_id(raw: dict[str, Any] | None, relation_type: str) -> str | None:
-    if not raw:
-        return None
-    legacy = raw.get("legacy") or {}
-    key = "quoted_status_id_str" if relation_type == "quote_of" else "retweeted_status_id_str"
-    value = legacy.get(key)
-    return str(value) if value else None
-
-
 def _media_payload(row: dict[str, Any], raw_tweet: dict[str, Any] | None = None) -> dict[str, Any]:
     payload = {
         "source": row.get("source"),
@@ -267,55 +227,6 @@ def _media_payload(row: dict[str, Any], raw_tweet: dict[str, Any] | None = None)
     return payload
 
 
-def _raw_media_payloads(raw: dict[str, Any] | None) -> list[dict[str, Any]]:
-    if not raw:
-        return []
-    legacy = raw.get("legacy") or {}
-    extended = legacy.get("extended_entities") or {}
-    entities = legacy.get("entities") or {}
-    raw_media = extended.get("media") or entities.get("media") or []
-    if not isinstance(raw_media, list):
-        return []
-
-    media: list[dict[str, Any]] = []
-    for position, item in enumerate(raw_media):
-        if not isinstance(item, dict):
-            continue
-        original = item.get("original_info") or {}
-        large = (item.get("sizes") or {}).get("large") or {}
-        video_info = item.get("video_info") or {}
-        payload = {
-            "type": item.get("type"),
-            "width": original.get("width") or large.get("w"),
-            "height": original.get("height") or large.get("h"),
-            "duration_millis": video_info.get("duration_millis"),
-            "download": {
-                "local_path": None,
-                "thumbnail_local_path": None,
-            },
-        }
-        aspect_ratio = aspect_ratio_for_media(raw, position, item.get("type"))
-        if aspect_ratio is not None:
-            payload["aspect_ratio"] = aspect_ratio
-        media.append(payload)
-    return media
-
-
-def _normalized_embedded_tweet(raw: dict[str, Any], tweet_id: str | None) -> dict[str, Any]:
-    author_id, username, display_name = extract_author_fields(raw)
-    legacy = raw.get("legacy") or {}
-    return {
-        "tweet_id": tweet_id or raw.get("rest_id"),
-        "text": extract_canonical_text(raw),
-        "author": {"id": author_id, "username": username, "display_name": display_name},
-        "created_at": legacy.get("created_at"),
-        "synced_at": None,
-        "raw_json": raw,
-        "media": _raw_media_payloads(raw),
-        "media_tags": None,
-    }
-
-
 def _normalized_object_tweet(row: dict[str, Any]) -> dict[str, Any]:
     raw = _json_dict(row.get("raw_json"))
     return {
@@ -329,7 +240,7 @@ def _normalized_object_tweet(row: dict[str, Any]) -> dict[str, Any]:
         "created_at": row.get("created_at"),
         "synced_at": row.get("synced_at"),
         "raw_json": raw,
-        "media": _raw_media_payloads(raw),
+        "media": raw_media_payloads(raw),
         "media_tags": None,
     }
 
@@ -356,17 +267,11 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
     from tweetnook.web.cards import annotate_web_link_cards
 
     tweet_ids = [str(tweet["tweet_id"]) for tweet in tweets if tweet.get("tweet_id")]
-    object_rows = store._rows_for_values(
-        RecordType.TWEET_OBJECT, "tweet_id", tweet_ids, columns=_OBJECT_COLUMNS
-    )
-    objects_by_id = {str(row["tweet_id"]): row for row in object_rows if row.get("tweet_id")}
-    hidden_ids = {
-        str(row["tweet_id"])
-        for row in store._rows_for_values(
-            RecordType.TWEET_HIDDEN, "tweet_id", tweet_ids, columns=["tweet_id"]
-        )
-        if row.get("tweet_id")
+    observations = store.post_observations(tweet_ids)
+    objects_by_id = {
+        str(row["tweet_id"]): row for row in observations.objects if row.get("tweet_id")
     }
+    hidden_ids = observations.hidden_ids
 
     for tweet in tweets:
         tweet_id = str(tweet.get("tweet_id") or "")
@@ -390,7 +295,7 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
             tweet["raw_json"] = None
             tweet.pop("article", None)
         elif not tweet.get("media"):
-            tweet["media"] = _raw_media_payloads(_json_dict(tweet.get("raw_json")))
+            tweet["media"] = raw_media_payloads(_json_dict(tweet.get("raw_json")))
 
     _attach_targets(store, tweets, ("quote_of", "retweet_of"))
     # Like X, show one more level: a quote's own quote. A retweet displays its
@@ -400,7 +305,7 @@ def annotate_web_tweets(store: Any, tweets: list[dict[str, Any]]) -> list[dict[s
     quotes = [tweet["quoted_tweet"] for tweet in (*tweets, *originals) if tweet.get("quoted_tweet")]
     _attach_targets(store, quotes, ("quote_of",))
     annotate_web_link_cards(store, tweets)
-    _overlay_community_notes(store, [*tweets, *originals, *quotes])
+    _overlay_community_notes(store, tweets)
     return tweets
 
 
@@ -411,45 +316,40 @@ def _overlay_community_notes(store: Any, tweets: list[dict[str, Any]]) -> None:
     A tweet whose recorded notes were all removed shows none. The stored X payload is
     left unchanged; only the Web copy changes.
     """
-    table_exists = getattr(store, "_table_exists", None)
-    if not tweets or table_exists is None or not table_exists("community_notes"):
+    if not tweets:
         return
     by_id: dict[str, list[dict[str, Any]]] = {}
-    for tweet in tweets:
+    pending = list(tweets)
+    seen: set[int] = set()
+    while pending:
+        tweet = pending.pop()
+        if id(tweet) in seen:
+            continue
+        seen.add(id(tweet))
         if tweet.get("tweet_id") and not tweet.get("availability", {}).get("placeholder"):
             by_id.setdefault(str(tweet["tweet_id"]), []).append(tweet)
+        for field in ("quoted_tweet", "retweeted_tweet"):
+            attached = tweet.get(field)
+            if isinstance(attached, dict):
+                pending.append(attached)
     ids = list(by_id)
     if not ids:
         return
     from tweetnook.core.fxtwitter_payloads import community_note_pivot
 
-    for start in range(0, len(ids), 500):
-        chunk = ids[start : start + 500]
-        placeholders = ", ".join("?" for _ in chunk)
-        rows = store.conn.execute(
-            f"SELECT tweet_id, raw_json, removed_at FROM community_notes "
-            f"WHERE tweet_id IN ({placeholders})",
-            chunk,
-        ).fetchall()
-        current: dict[str, dict[str, Any] | None] = {}
-        for tweet_id, note_json, removed_at in rows:
-            tweet_id = str(tweet_id)
-            current.setdefault(tweet_id, None)
-            if removed_at is None:
-                note = _json_dict(note_json)
-                current[tweet_id] = community_note_pivot(note) if note else None
-        for tweet_id, pivot in current.items():
-            for tweet in by_id.get(tweet_id, []):
-                tweet["note_history"] = True
-                raw = _json_dict(tweet.get("raw_json"))
-                if raw is None:
-                    continue
-                if pivot is not None:
-                    tweet["raw_json"] = {**raw, "birdwatch_pivot": pivot}
-                elif raw.get("birdwatch_pivot"):
-                    tweet["raw_json"] = {
-                        key: value for key, value in raw.items() if key != "birdwatch_pivot"
-                    }
+    for tweet_id, observation in store.note_observations(ids).items():
+        pivot = community_note_pivot(observation.note) if observation.note else None
+        for tweet in by_id.get(tweet_id, []):
+            tweet["note_history"] = True
+            raw = _json_dict(tweet.get("raw_json"))
+            if raw is None:
+                continue
+            if pivot is not None:
+                tweet["raw_json"] = {**raw, "birdwatch_pivot": pivot}
+            elif raw.get("birdwatch_pivot"):
+                tweet["raw_json"] = {
+                    key: value for key, value in raw.items() if key != "birdwatch_pivot"
+                }
     # Notes with recorded versions get a history button in their header.
     for tweets_for_id in by_id.values():
         for tweet in tweets_for_id:
@@ -465,21 +365,7 @@ def _attach_targets(
     """Attach the normalized targets of annotated tweets' relations in bounded batches."""
     sources = [tweet for tweet in tweets if not tweet["availability"]["placeholder"]]
     source_ids = [str(tweet["tweet_id"]) for tweet in sources if tweet.get("tweet_id")]
-    relation_rows = store._rows_for_values(
-        RecordType.TWEET_RELATION,
-        "tweet_id",
-        source_ids,
-        columns=["tweet_id", "target_tweet_id", "relation_type"],
-    )
-    relations: dict[tuple[str, str], str] = {}
-    for row in relation_rows:
-        relation_type = row.get("relation_type")
-        if relation_type not in relation_types:
-            continue
-        source_id = row.get("tweet_id")
-        target_id = row.get("target_tweet_id")
-        if source_id and target_id:
-            relations[(str(source_id), str(relation_type))] = str(target_id)
+    relations = store.presentation_targets(source_ids, relation_types)
 
     attached_specs: dict[tuple[str, str], tuple[str | None, dict[str, Any] | None]] = {}
     attached_ids: list[str] = []
@@ -487,11 +373,11 @@ def _attach_targets(
         source_id = str(tweet.get("tweet_id") or "")
         raw = _json_dict(tweet.get("raw_json"))
         for relation_type in relation_types:
-            embedded = _embedded_result(raw, relation_type)
+            embedded = embedded_result(raw, relation_type)
             legacy = (raw or {}).get("legacy") or {}
             target_id = (
                 relations.get((source_id, relation_type))
-                or _legacy_target_id(raw, relation_type)
+                or legacy_target_id(raw, relation_type)
                 or (str(embedded.get("rest_id")) if embedded and embedded.get("rest_id") else None)
             )
             has_quote_marker = relation_type == "quote_of" and bool(
@@ -502,37 +388,16 @@ def _attach_targets(
             if target_id:
                 attached_ids.append(target_id)
 
-    attached_object_rows = store._rows_for_values(
-        RecordType.TWEET_OBJECT, "tweet_id", attached_ids, columns=_OBJECT_COLUMNS
-    )
+    observations = store.attachment_observations(attached_ids)
     attached_objects = {
-        str(row["tweet_id"]): row for row in attached_object_rows if row.get("tweet_id")
+        str(row["tweet_id"]): row for row in observations.objects if row.get("tweet_id")
     }
-    media_rows = store._rows_for_values(
-        RecordType.MEDIA,
-        "tweet_id",
-        attached_ids,
-        columns=[
-            "tweet_id",
-            "source",
-            "position",
-            "media_type",
-            "media_url",
-            "thumbnail_url",
-            "width",
-            "height",
-            "duration_millis",
-            "local_path",
-            "thumbnail_local_path",
-        ],
-    )
+    media_rows = observations.media
     media_by_id: dict[str, list[dict[str, Any]]] = {}
     for row in media_rows:
         if row.get("tweet_id"):
             media_by_id.setdefault(str(row["tweet_id"]), []).append(row)
-    tag_rows = store._rows_for_values(
-        RecordType.MEDIA_TAG, "tweet_id", attached_ids, columns=["tweet_id", "raw_json"]
-    )
+    tag_rows = observations.tags
     tags_by_id: dict[str, dict[str, Any]] = {}
     for row in tag_rows:
         payload = _json_dict(row.get("raw_json"))
@@ -551,7 +416,7 @@ def _attach_targets(
             target_id, embedded = spec
             target_object = attached_objects.get(target_id or "")
             embedded_tweet = (
-                _normalized_embedded_tweet(embedded, target_id) if embedded is not None else None
+                normalized_embedded_tweet(embedded, target_id) if embedded is not None else None
             )
             if _use_canonical_object_content(target_object, embedded_tweet or {}):
                 attached = _normalized_object_tweet(target_object)

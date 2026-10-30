@@ -8,7 +8,6 @@ from typing import Any
 
 from tweetnook.core.timeline_parsing import FocalResultKind, parse_tweet_detail_response
 from tweetnook.storage.backend import ArchiveStore
-from tweetnook.storage.record_types import RecordType
 from tweetnook.web.availability import UNAVAILABLE_MESSAGES
 
 CHECK_SOURCE = "Availability check"
@@ -126,18 +125,14 @@ def _fx_copy_events(
 
 def _archive_events(store: ArchiveStore, tweet_id: str) -> list[dict[str, Any]]:
     events = []
-    for row in store._rows_for_values(
-        RecordType.TWEET, "tweet_id", [tweet_id], columns=["collection_type", "first_seen_at"]
-    ):
-        collection = COLLECTION_LABELS.get(row.get("collection_type"), row.get("collection_type"))
-        events.append(_event(row.get("first_seen_at"), f"Saved to {collection}", "Archive", "info"))
-    if not events:
-        for row in store._rows_for_values(
-            RecordType.TWEET_OBJECT, "tweet_id", [tweet_id], columns=["first_seen_at"]
-        ):
+    for observation in store.archive_save_observations([tweet_id]).get(tweet_id, []):
+        if observation.related:
             events.append(
-                _event(row.get("first_seen_at"), "Added as a related tweet", "Archive", "info")
+                _event(observation.saved_at, "Added as a related tweet", "Archive", "info")
             )
+        else:
+            collection = COLLECTION_LABELS.get(observation.collection, observation.collection)
+            events.append(_event(observation.saved_at, f"Saved to {collection}", "Archive", "info"))
     return events
 
 

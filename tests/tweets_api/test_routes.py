@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from tests.tweets_api.conftest import ListingStore, _api_client, _decoded  # noqa: E402
 from tweetnook.storage.backend import ArchiveStore  # noqa: E402
 from tweetnook.storage.conversations import ConversationsMixin  # noqa: E402
+from tweetnook.storage.presentation import PresentationMixin  # noqa: E402
 from tweetnook.web.deps import get_store, server_state  # noqa: E402
 from tweetnook.web.routes.tweets import (  # noqa: E402
     api_tweet_quotes,
@@ -35,7 +36,10 @@ class QuotesConnection:
         return (3,)
 
 
-class QuotesStore(ConversationsMixin):
+class QuotesStore(ConversationsMixin, PresentationMixin):
+    def note_observations(self, tweet_ids):
+        return {}
+
     def __init__(self) -> None:
         self.conn = QuotesConnection()
         self.query: dict[str, Any] | None = None

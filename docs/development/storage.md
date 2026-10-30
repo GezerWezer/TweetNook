@@ -20,6 +20,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | `enrichment.py` | Media download, URL unfurl, link card and resurrection queues. |
 | `checks.py` | Availability check results, context checks and Community Notes. |
 | `tags.py` | Media tags, global tag edits, hidden tweets, tagging candidates and retry metadata. |
+| `presentation.py` | Batched saved post/attachment/article/link-card observations, note observation state and archive-save history facts. |
 | `conversations.py` | Directional ancestor/reply traversal, bounded thread observations, quote counts/pages and stored tweet JSON. |
 | `relations.py` | Known-ID, thread-target, URL-reference and quote lookups. |
 | `authors.py` | Avatar URLs, handle resolution, profile snapshots and handle search. |
@@ -86,7 +87,7 @@ Tagging uses storage-owned quote/type classification and `tagging_context(ids)` 
 
 Enrichment states include `pending`, `done`, `transient_failure`, `terminal_unavailable`, and `resurrected`. The unavailable reason, checked time, retry count, retry eligibility, and next retry time are separate fields. A transient transport failure must not turn into proof of deletion. Retry queues, marking, check scope and reports share one eligibility predicate: no saved deletion, an explicit eligible flag, and no permanent deletion reason. A NULL flag is ineligible; a NULL reason does not exclude an explicitly eligible row.
 
-Checks and Community Note changes have dedicated history storage. A post can have saved content and a current unavailable state at the same time. See [availability checks](availability-checks.md) for the transition rules.
+Checks and Community Note changes have dedicated history storage. `note_observations(ids)` distinguishes a missing entry (never observed), an observed absent note and an active note. `archive_save_observations(ids)` supplies membership save times or related-post addition times without exposing record types to event presentation. A post can have saved content and a current unavailable state at the same time. See [availability checks](availability-checks.md) for the transition rules.
 
 ## Search and ordering
 

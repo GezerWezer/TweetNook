@@ -6,35 +6,6 @@ import json
 from typing import Any
 
 from tweetnook.core import fastjson
-from tweetnook.storage.record_types import RecordType
-
-ARTICLE_COLUMNS = [
-    "tweet_id",
-    "article_id",
-    "title",
-    "summary_text",
-    "content_text",
-    "canonical_url",
-    "published_at",
-    "status",
-    "raw_json",
-]
-MEDIA_COLUMNS = [
-    "tweet_id",
-    "media_key",
-    "source",
-    "article_id",
-    "media_type",
-    "media_url",
-    "thumbnail_url",
-    "width",
-    "height",
-    "duration_millis",
-    "local_path",
-    "thumbnail_local_path",
-    "raw_json",
-    "position",
-]
 
 
 def _dict(value: Any) -> dict[str, Any]:
@@ -88,13 +59,11 @@ def annotate_web_articles(store: Any, tweets: list[dict[str, Any]]) -> None:
     ids = list(dict.fromkeys(str(node["tweet_id"]) for node in nodes if node.get("tweet_id")))
     if not ids:
         return
-    rows = store._rows_for_values(RecordType.ARTICLE, "tweet_id", ids, columns=ARTICLE_COLUMNS)
-    articles = {str(row["tweet_id"]): row for row in rows if row.get("tweet_id")}
+    observations = store.article_observations(ids)
+    articles = {str(row["tweet_id"]): row for row in observations.articles if row.get("tweet_id")}
     if not articles:
         return
-    media_rows = store._rows_for_values(
-        RecordType.MEDIA, "tweet_id", list(articles), columns=MEDIA_COLUMNS
-    )
+    media_rows = observations.media
     media_by_id: dict[str, list[dict[str, Any]]] = {}
     for row in sorted(media_rows, key=lambda item: item.get("position") or 0):
         if str(row.get("source") or "").startswith("article_"):
@@ -105,9 +74,7 @@ def annotate_web_articles(store: Any, tweets: list[dict[str, Any]]) -> None:
         if row is None:
             continue
         raw = _dict(row.get("raw_json"))
-        article = {
-            key: row.get(key) for key in ARTICLE_COLUMNS if key not in {"raw_json", "tweet_id"}
-        }
+        article = {key: value for key, value in row.items() if key not in {"raw_json", "tweet_id"}}
         state = raw.get("content_state")
         article["content_state"] = state if isinstance(state, dict) else None
         article["media"] = media_by_id.get(tweet_id, [])

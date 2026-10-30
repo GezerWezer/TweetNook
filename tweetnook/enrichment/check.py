@@ -216,11 +216,11 @@ class _CheckApplier:
     def _record_note(self, lookup: FxLookup) -> None:
         assert lookup.status is not None
         note = lookup.status.get("community_note")
-        # On a tweet's first check, the note saved with it is the version to compare with,
-        # so one removed or replaced before then still shows as removed.
+        # An availability outcome can precede every note observation, so the saved
+        # note seeds history whenever the tweet has no versions yet.
         baseline = (
             None
-            if lookup.tweet_id in self.prior_outcomes
+            if self.store.has_note_versions(lookup.tweet_id)
             else self.store.stored_community_note(lookup.tweet_id)
         )
         change = self.store.record_community_note(

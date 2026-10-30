@@ -552,7 +552,10 @@ def test_fxtwitter_never_moves_the_login_retry_schedule(config, paths) -> None:
     store.close()
 
 
-def test_first_check_compares_with_the_note_saved_with_the_tweet(config, paths) -> None:
+@pytest.mark.parametrize("prior_protected_check", [False, True])
+def test_first_check_compares_with_the_note_saved_with_the_tweet(
+    config, paths, prior_protected_check
+) -> None:
     store = open_archive_store(paths, create=True, config=config)
     assert store is not None
     for tweet_id in ("1", "2"):
@@ -581,6 +584,12 @@ def test_first_check_compares_with_the_note_saved_with_the_tweet(config, paths) 
             backfill_cursor=None,
             backfill_incomplete=False,
         )
+    if prior_protected_check:
+        store.ensure_check_tables()
+        store.record_tweet_checks(
+            [(tweet_id, "protected", 200, "save", "protected_account") for tweet_id in ("1", "2")],
+            checked_at="2000-01-01T00:00:00+00:00",
+        )
     store.close()
     responses = {
         "1": ok(fx_status("1", "noted 1")),
@@ -596,6 +605,15 @@ def test_first_check_compares_with_the_note_saved_with_the_tweet(config, paths) 
     assert [(note["text"], bool(note["removed_at"])) for note in gone] == [("Saved note", True)]
     replaced = {note["text"]: note["removed_at"] for note in store.list_community_notes("2")}
     assert replaced["Saved note"] is not None and replaced["Newer note"] is None
+    from tests.tweets_api.conftest import _api_client
+
+    with _api_client(store) as client:
+        removed = client.get("/api/tweets/1/notes").json()["versions"]
+        assert [(note["text"], note["current"]) for note in removed] == [("Saved note", False)]
+        listed = client.get("/api/tweets").json()["tweets"]
+        by_id = {tweet["tweet_id"]: tweet for tweet in listed}
+        assert "birdwatch_pivot" not in by_id["1"]["raw_json"]
+        assert by_id["2"]["raw_json"]["birdwatch_pivot"]["subtitle"]["text"] == "Newer note"
     store.close()
 
 
@@ -804,3 +822,31 @@ def test_history_api_and_missing_tweets_keep_their_archived_copy(config, paths) 
     assert notes[1]["removed_at"] == "2026-01-02T00:00:00+00:00"
     assert client.get("/api/tweets/1/notes").json()["versions"] == []
     store.close()
+
+
+def test_note_check_reads_the_saved_baseline_only_before_any_version(
+    config, paths, monkeypatch
+) -> None:
+    from types import SimpleNamespace
+
+    from tweetnook.enrichment.check import _CheckApplier
+
+    store = open_archive_store(paths, create=True, config=config)
+    assert store is not None
+    applier = SimpleNamespace(
+        store=store,
+        now="2026-01-02T00:00:00+00:00",
+        result=SimpleNamespace(notes_added=0, notes_changed=0, notes_removed=0),
+    )
+    lookup = SimpleNamespace(tweet_id="1", status={"community_note": {"text": "v1"}})
+    baseline_reads = []
+    monkeypatch.setattr(
+        store, "stored_community_note", lambda tweet_id: (baseline_reads.append(tweet_id), None)[1]
+    )
+    try:
+        _CheckApplier._record_note(applier, lookup)
+        _CheckApplier._record_note(applier, lookup)
+        assert baseline_reads == ["1"]
+        assert applier.result.notes_added == 1
+    finally:
+        store.close()

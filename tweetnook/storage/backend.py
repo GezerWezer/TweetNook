@@ -20,6 +20,7 @@ from .details import DetailsMixin
 from .enrichment import EnrichmentMixin
 from .imports import ImportsMixin
 from .objects import ObjectsMixin
+from .presentation import PresentationMixin
 from .prune import PruneMixin
 from .reads import ReadsMixin
 from .records import RecordsMixin
@@ -46,6 +47,7 @@ class ArchiveStore(
     TweetsMixin,
     StatsMixin,
     SearchMixin,
+    PresentationMixin,
     EnrichmentMixin,
     ChecksMixin,
     SyncStateMixin,

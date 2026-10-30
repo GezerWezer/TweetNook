@@ -36,6 +36,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `core/extractor.py`, `core/media_metadata.py` | Canonical fields, relations, Article structures and media geometry. |
 | `core/timeline_parsing.py` | Timeline/detail parsing and focal-result classification. |
 | `core/fxtwitter_payloads.py` | FxTwitter payload adaptation to the GraphQL tweet shape. |
+| `core/tweet_presentations.py` | Pure embedded/legacy tweet and media adaptation for normalized presentation. |
 | `storage/` | SQLite archive: `ArchiveStore` in `backend.py`, one module per storage concern (see [storage](storage.md#layout)), shared search query parsing and sorts (`search_query.py`), and rebuildable like order (`like_order.py`). |
 | `auth/cookies.py` | Explicit session credentials and per-collection requirements. |
 | `client/base.py`, `client/features.py` | HTTP setup, pacing, headers, feature flags and transport errors. |

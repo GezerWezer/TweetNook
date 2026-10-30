@@ -12,6 +12,7 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from tweetnook.storage.presentation import PresentationMixin  # noqa: E402
 from tweetnook.web.deps import get_store, verify_credentials  # noqa: E402
 from tweetnook.web.routes.tweets import (  # noqa: E402
     api_tweets,
@@ -19,7 +20,10 @@ from tweetnook.web.routes.tweets import (  # noqa: E402
 )
 
 
-class ListingStore:
+class ListingStore(PresentationMixin):
+    def note_observations(self, tweet_ids):
+        return {}
+
     def __init__(
         self,
         rows: list[dict[str, Any]],
