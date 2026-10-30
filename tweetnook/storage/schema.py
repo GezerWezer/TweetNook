@@ -260,7 +260,7 @@ class SchemaMixin(ConnectionMixin):
 
     def _create_latest_schema(self) -> None:
         col_def = ", ".join(f"{name} {COLUMN_TYPES[name]}" for name in ARCHIVE_COLUMNS)
-        with self.conn:
+        with self.transaction():
             self.conn.execute(f"CREATE TABLE archive ({col_def})")
             self._create_fts_schema()
             self._create_archive_indexes()
@@ -269,8 +269,7 @@ class SchemaMixin(ConnectionMixin):
 
     def _migrate_search_index(self, current_version: int) -> None:
         """Repair derived FTS documents/triggers without copying canonical archive data."""
-        with self.conn:
-            self.conn.execute("BEGIN IMMEDIATE")
+        with self.transaction():
             self._rebuild_fts_schema()
             self._create_archive_indexes()
             expected = self.conn.execute(
@@ -295,8 +294,7 @@ class SchemaMixin(ConnectionMixin):
         v10 lacks the content/note flags used to filter uncaptured tweets and notes;
         v11 computed those flags from an incomplete list of placeholder texts.
         """
-        with self.conn:
-            self.conn.execute("BEGIN IMMEDIATE")
+        with self.transaction():
             self._create_archive_indexes()
             expected = self.conn.execute(
                 f"SELECT COUNT(*) FROM archive WHERE record_type = '{RecordType.TWEET}' AND "
@@ -689,6 +687,6 @@ class SchemaMixin(ConnectionMixin):
 
     def rebuild_search_index(self) -> None:
         """Finalize timestamp and full-text indexes after an explicit bulk import."""
-        with self.conn:
+        with self.transaction():
             self._backfill_created_at_timestamps()
             self._rebuild_fts_schema()

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
@@ -623,15 +622,6 @@ class SearchMixin(ReadsMixin, TagsMixin):
         elif sort == "random":
             seed = int(random_seed or 0)
 
-            def stable_random_key(tweet_id: Any, supplied_seed: Any) -> int:
-                digest = hashlib.blake2b(
-                    f"{int(supplied_seed)}:{tweet_id}".encode(), digest_size=8
-                ).digest()
-                return int.from_bytes(digest, "big") & ((1 << 63) - 1)
-
-            self.conn.create_function(
-                "tweetnook_random_key", 2, stable_random_key, deterministic=True
-            )
             order_by = "tweetnook_random_key(matches.tweet_id, ?), matches.tweet_id"
             page_params.append(seed)
         else:

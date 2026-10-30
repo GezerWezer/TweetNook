@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager, suppress
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
@@ -43,8 +44,51 @@ class ConnectionMixin:
     _closed: bool
     _warm_cancelled: bool
     _like_order_lock: threading.RLock
+    _transaction_lock: threading.RLock
+    _transaction_depth: int
+    _read_only: bool
+    _has_written: bool
     _count_cache: dict[str, tuple[int, int]]
     _search_count_cache: dict[tuple, tuple[tuple[int, int], int]]
+
+    @contextmanager
+    def transaction(self, *, write: bool = True) -> Iterator[None]:
+        """Own one serialized transaction, nesting store helpers by savepoint.
+
+        A foreign transaction belongs to its caller: refusing it must never commit
+        or roll back that caller's pending work.
+        """
+        with self._transaction_lock:
+            nested = self._transaction_depth > 0
+            if not nested and self.conn.in_transaction:
+                raise RuntimeError("Cannot enter a foreign transaction")
+            if write and self._read_only:
+                raise RuntimeError("Cannot write through a read-only store")
+            savepoint = f"store_{self._transaction_depth}"
+            self.conn.execute(
+                f"SAVEPOINT {savepoint}" if nested else "BEGIN IMMEDIATE" if write else "BEGIN"
+            )
+            before = self.conn.total_changes
+            self._transaction_depth += 1
+            try:
+                yield
+                if nested:
+                    self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                else:
+                    self.conn.commit()
+                    if write and self.conn.total_changes != before:
+                        self._has_written = True
+            except BaseException:
+                if self.conn.in_transaction:
+                    with suppress(sqlite3.Error):
+                        if nested:
+                            self.conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                            self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                        else:
+                            self.conn.rollback()
+                raise
+            finally:
+                self._transaction_depth -= 1
 
     def cache_revision(self, scope: str) -> int:
         return int(
@@ -105,7 +149,7 @@ class ConnectionMixin:
         ).fetchone()[0]
 
     def _delete(self, filter_expr: str, params: Sequence[Any] = ()) -> None:
-        with self.conn:
+        with self.transaction():
             self.conn.execute(f"DELETE FROM archive WHERE {filter_expr}", params)
 
     def close(self) -> None:
@@ -115,7 +159,7 @@ class ConnectionMixin:
         try:
             # Read-only/current-schema opens stay cheap. Writers refresh planner
             # statistics at the end of their job, including direct SQL tag writes.
-            if self.conn.total_changes and not self.conn.in_transaction:
+            if not self._read_only and self._has_written and not self.conn.in_transaction:
                 self.conn.execute("PRAGMA optimize")
         finally:
             self._closed = True
@@ -155,7 +199,7 @@ class ConnectionMixin:
     def optimize(self) -> None:
         self.conn.execute("VACUUM")
         self.conn.execute("PRAGMA optimize=0x10002")
-        with self.conn:
+        with self.transaction():
             self.conn.execute("INSERT INTO archive_fts(archive_fts) VALUES ('optimize')")
             self.conn.execute(
                 "INSERT INTO archive_description_fts(archive_description_fts) VALUES ('optimize')"

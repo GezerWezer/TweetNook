@@ -13,7 +13,6 @@ from .common import (
     HIDDEN_TWEET_IDS_SQL,
     SEARCH_COLLECTION_ORDER,
     UNCAPTURED_TWEET_IDS_SQL,
-    parse_created_at,
 )
 from .record_types import RecordType
 from .records import RecordsMixin
@@ -590,30 +589,6 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         # Rank lightweight membership keys in SQLite; materialize text, JSON, and
         # secondary objects only for the selected logical tweets. Legacy dates
         # without a timestamp retain the export parser's unknown-last semantics.
-        def legacy_timestamp(value):
-            parsed = parse_created_at(value)
-            return parsed.timestamp() if parsed is not None else None
-
-        def export_integer_key(value):
-            # Keep Python int() semantics (invalid values become zero), including
-            # indices beyond SQLite's signed integer range. Length-prefixed digits
-            # sort lexically as integers; complement negative keys to reverse them.
-            try:
-                number = int(value or 0)
-            except (TypeError, ValueError):
-                number = 0
-            digits = str(abs(number))
-            key = f"{len(digits):020d}{digits}"
-            if number < 0:
-                return "0" + key.translate(str.maketrans("0123456789", "9876543210"))
-            return "1" + key
-
-        self.conn.create_function(
-            "tweetnook_export_timestamp", 1, legacy_timestamp, deterministic=True
-        )
-        self.conn.create_function(
-            "tweetnook_export_integer", 1, export_integer_key, deterministic=True
-        )
         direction = "ASC" if sort == "oldest" else "DESC"
         order = (
             f"export_timestamp IS NULL, export_timestamp {direction}, "

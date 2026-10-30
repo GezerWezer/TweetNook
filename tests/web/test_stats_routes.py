@@ -98,6 +98,7 @@ def test_summary_reports_counts_ranges_owner_and_latest_sync(tmp_path, make_web_
             ("tweet_object", "t2", "terminal_unavailable"),
         ],
     )
+    store.conn.commit()
     store.set_archive_owner_id("owner-42")
     store.conn.execute(
         "UPDATE archive SET collection_type = 'bookmark' WHERE record_type = 'sync_state'"

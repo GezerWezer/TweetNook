@@ -534,3 +534,34 @@ def test_stripped_link_cards_are_restored_once_from_saved_captures(paths, operat
         assert store.restore_link_card_images() == 0
     finally:
         store.close()
+
+
+def test_card_restore_retries_media_after_insert_failure(paths):
+    import sqlite3
+
+    store = open_archive_store(paths, create=True)
+    card_image = "https://pbs.twimg.com/card_img/story.jpg"
+    try:
+        assert store.backfill_link_card_media() == 0
+        _persist_likes(store, _card_tweet("500", _stripped_card()))
+        full = make_tweet_result("500", "a linked story")
+        full["card"] = make_link_card(card_image)
+        store.append_raw_capture("TweetDetail", "500", None, 200, {"data": {"tweet": full}})
+        store.conn.execute(
+            "CREATE TEMP TRIGGER reject_card_media BEFORE INSERT ON archive "
+            "WHEN new.record_type = 'media' BEGIN SELECT RAISE(ABORT, 'media insert'); END"
+        )
+        with pytest.raises(sqlite3.IntegrityError, match="media insert"):
+            store.restore_link_card_images()
+    finally:
+        store.close()
+    store = open_archive_store(paths, create=False)
+    try:
+        assert _card_image(store, "tweet_object:500") is None
+        assert store.restore_link_card_images() == 1
+        assert _card_image(store, "tweet_object:500") == card_image
+        assert [(row["tweet_id"], row["media_url"]) for row in store.list_media_rows()] == [
+            ("500", card_image)
+        ]
+    finally:
+        store.close()

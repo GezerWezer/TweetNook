@@ -105,7 +105,7 @@ class RecordsMixin(ConnectionMixin):
             for col in cols:
                 row.append(record.get(col))
             params.append(row)
-        with self.conn:
+        with self.transaction():
             self.conn.executemany(sql, params)
 
     def merge_rows(self, rows: list[dict[str, Any]]) -> None:

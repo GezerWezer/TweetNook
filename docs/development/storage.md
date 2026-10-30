@@ -10,7 +10,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | --- | --- |
 | `record_types.py` | `RecordType`, the names of the record types below. |
 | `common.py` | SQL fragment helpers, source names and ranks, shared hidden/uncaptured/note filters. |
-| `db.py` | Query helpers, cache revisions, read warming, close and optimize. |
+| `db.py` | Serialized transactions, query helpers, cache revisions, read warming, close and optimize. |
 | `schema.py` | Table layout, FTS and derived tables, `SCHEMA_VERSION`, upgrades from released schemas. |
 | `records.py` | Row construction, row keys, `PageBuffer` and source-precedence merging. |
 | `sync_state.py` | Sync cursors, the archive owner and import manifests. |
@@ -36,6 +36,8 @@ Put a new storage operation in the module for its concern, and add a mixin base 
 `open_archive_store` in `storage/backend.py` opens SQLite archives. With `create=False`, a missing archive stays missing, which lets the web server offer Setup without creating an empty database as a side effect. Legacy LanceDB content requires an explicit migration.
 
 Writable connections use WAL and recursive triggers. Database configuration sets the page-cache and memory-mapping allowances. Shared web connections disable CPython's prepared-statement cache; private read-only connections serve work that needs a reader confined to one thread. Close connections through the store lifecycle.
+
+Random-search and legacy-export SQL callbacks register once at connection creation, before the store is shared. Reads never replace functions while another cursor is active.
 
 The schema maintains content and Community Note flags used by search, including uncaptured placeholders and note history. Migrations backfill derived data transactionally while preserving saved content.
 
@@ -91,6 +93,8 @@ Stop writers before copying a whole installation. A live database copy needs SQL
 ## Transactions and indexes
 
 `persist_page` buffers raw capture, memberships, the canonical/secondary graph and sync state before one merge transaction. Direct membership helpers require an active page buffer. UPSERT preserves rowids, which matters for the derived full-text documents.
+
+`store.transaction()` serializes writers on the shared connection across selection, transformation and commit. Store helpers nest through savepoints and never commit the enclosing operation. An unowned transaction is rejected without rolling back its work. Passing `write=False` opens a bounded read snapshot on a private reader. Global tag edits, regeneration cleanup and card restoration each own their complete database mutation; file cleanup stays outside SQL transactions. Only writable stores that completed a write transaction run planner maintenance on close; TEMP read indexes do not make a reader a writer.
 
 `archive_fts` is contentless FTS5 with author username, display name, text and Note Tweet text. Triggers index membership rows, not every context object. `archive_tweet_facts` is keyed by membership row key and holds structured fields extracted from raw JSON; triggers keep it aligned even for direct SQL writes. Malformed JSON yields absent facts rather than a failed write.
 

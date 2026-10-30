@@ -66,11 +66,12 @@ class ImportsMixin(ObjectsMixin):
             "articles": f"record_type = '{RecordType.ARTICLE}' AND source = 'x_archive'",
             "import_manifests": f"record_type = '{RecordType.IMPORT_MANIFEST}'",
         }
-        for key, expr in filters.items():
-            count = self._count(expr)
-            if count:
-                self._delete(expr)
-            deletions[key] = count
+        with self.transaction():
+            for key, expr in filters.items():
+                count = self._count(expr)
+                if count:
+                    self._delete(expr)
+                deletions[key] = count
         return deletions
 
     def _flush_rehydrate_buffer(self, buffer: PageBuffer) -> int:

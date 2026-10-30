@@ -67,6 +67,22 @@ def test_concurrent_readers_preserve_complete_independent_results(tmp_path):
         store.close()
 
 
+def test_random_search_and_export_do_not_replace_functions_with_an_active_cursor(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    _seed_memberships(store, count=8)
+    cursor = store.conn.execute("SELECT tweet_id FROM archive WHERE record_type = 'tweet'")
+    try:
+        assert cursor.fetchone() is not None
+        first = search_posts(store, "common", sort="random", random_seed=37, limit=20)
+        second = search_posts(store, "common", sort="random", random_seed=37, limit=20)
+        assert len(first.rows) == 8
+        assert [row["tweet_id"] for row in first.rows] == [row["tweet_id"] for row in second.rows]
+        assert len(store.export_rows("all")) == 8
+    finally:
+        cursor.close()
+        store.close()
+
+
 def test_export_counts_use_membership_index(tmp_path):
     store = ArchiveStore(tmp_path / "archive.db", create=True)
     _seed_memberships(store)
@@ -165,6 +181,23 @@ def test_writer_close_maintains_stats_but_read_close_does_not(tmp_path):
     reader.conn.set_trace_callback(statements.append)
     reader.close()
     assert not statements
+
+
+def test_temp_like_index_does_not_trigger_close_time_writes(tmp_path):
+    path = tmp_path / "archive.db"
+    writer = ArchiveStore(path, create=True)
+    _seed_memberships(writer)
+    writer.close()
+    for store in (
+        ArchiveStore(path, create=False),
+        ArchiveStore(path, create=False, read_only=True),
+    ):
+        statements = []
+        store.conn.set_trace_callback(statements.append)
+        store.warm_like_order()
+        assert store.conn.total_changes > 0
+        store.close()
+        assert "PRAGMA optimize" not in statements
 
 
 def test_membership_counts_are_reused_and_invalidate_on_external_changes(tmp_path):

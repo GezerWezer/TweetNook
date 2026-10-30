@@ -58,7 +58,7 @@ class DetailsMixin(TweetsMixin):
             changes[field_name] = value
         row_key = self._row_key_for_tweet_object(tweet_id)
         if cursor is None:
-            with self.conn:
+            with self.transaction():
                 result = self.conn.execute(
                     f"UPDATE archive SET {', '.join(f'{field} = ?' for field in changes)} "
                     "WHERE row_key = ?",

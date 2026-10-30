@@ -331,24 +331,21 @@ def _interaction_thinking_level(level: str) -> str:
 
 
 def _mark_failed(store: ArchiveStore, tweet_ids: list[str]) -> None:
-    for tweet_id in tweet_ids:
-        store.conn.execute(
-            "INSERT OR REPLACE INTO archive "
-            "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                f"media_tag:{tweet_id}",
-                "media_tag",
-                tweet_id,
-                "{}",
-                "failed",
-                str(time.time()),
-            ),
-        )
-    # Failed attempts are diagnostic records, but they must be durable so the
-    # next sync/tagging run can see them as retryable rather than relying on an
-    # uncommitted transaction in the current connection.
-    store.conn.commit()
+    with store.transaction():
+        for tweet_id in tweet_ids:
+            store.conn.execute(
+                "INSERT OR REPLACE INTO archive "
+                "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    f"media_tag:{tweet_id}",
+                    "media_tag",
+                    tweet_id,
+                    "{}",
+                    "failed",
+                    str(time.time()),
+                ),
+            )
 
 
 def _print_rpd_exhausted(console: Console, status: RpdStatus, model: str) -> None:
@@ -1556,59 +1553,60 @@ async def tag_media_tweets(
             if content_type == "media":
                 eligible &= {tweet_id for tweet_id, count in active_media_by_tweet.items() if count}
             tagged_count = 0
-            for tweet_id, result in parsed:
-                if tweet_id not in eligible:
-                    continue
-                normalized_tags = _normalized_tags(result.tags, existing_tags)
-                if not 2 <= len(normalized_tags) <= 5:
-                    if not dry_run and tag_config.api_mode == "paid":
-                        store.defer_tagging_failure([tweet_id])
-                    continue
-                description = getattr(result, "description", None)
-                if dry_run:
-                    context = tweet_contexts[tweet_id]
-                    if preview_results is not None:
-                        preview_results.append(
-                            TaggingPreview(
-                                id=tweet_id,
-                                content_type=content_type,
-                                model=model_name,
-                                tweet_type=context.tweet_type,
-                                author_display_name=context.author_display_name,
-                                author_username=context.author_username,
-                                text=context.text,
-                                description=description,
-                                tags=normalized_tags,
+            with store.transaction():
+                for tweet_id, result in parsed:
+                    if tweet_id not in eligible:
+                        continue
+                    normalized_tags = _normalized_tags(result.tags, existing_tags)
+                    if not 2 <= len(normalized_tags) <= 5:
+                        if not dry_run and tag_config.api_mode == "paid":
+                            store.defer_tagging_failure([tweet_id])
+                        continue
+                    description = getattr(result, "description", None)
+                    if dry_run:
+                        context = tweet_contexts[tweet_id]
+                        if preview_results is not None:
+                            preview_results.append(
+                                TaggingPreview(
+                                    id=tweet_id,
+                                    content_type=content_type,
+                                    model=model_name,
+                                    tweet_type=context.tweet_type,
+                                    author_display_name=context.author_display_name,
+                                    author_username=context.author_username,
+                                    text=context.text,
+                                    description=description,
+                                    tags=normalized_tags,
+                                )
                             )
+                        _print_tag_preview(
+                            console,
+                            context,
+                            description=description,
+                            tags=normalized_tags,
                         )
-                    _print_tag_preview(
-                        console,
-                        context,
-                        description=description,
-                        tags=normalized_tags,
+                        tagged_count += 1
+                        continue
+                    payload: dict[str, Any] = {"tags": normalized_tags}
+                    if description:
+                        payload["description"] = description
+                    store.conn.execute(
+                        "INSERT OR REPLACE INTO archive "
+                        "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (
+                            f"media_tag:{tweet_id}",
+                            "media_tag",
+                            tweet_id,
+                            json.dumps(payload),
+                            "done",
+                            str(time.time()),
+                        ),
+                    )
+                    store.conn.execute(
+                        "DELETE FROM archive WHERE row_key = ?", (f"tagging_retry:{tweet_id}",)
                     )
                     tagged_count += 1
-                    continue
-                payload: dict[str, Any] = {"tags": normalized_tags}
-                if description:
-                    payload["description"] = description
-                store.conn.execute(
-                    "INSERT OR REPLACE INTO archive "
-                    "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (
-                        f"media_tag:{tweet_id}",
-                        "media_tag",
-                        tweet_id,
-                        json.dumps(payload),
-                        "done",
-                        str(time.time()),
-                    ),
-                )
-                store.conn.execute(
-                    "DELETE FROM archive WHERE row_key = ?", (f"tagging_retry:{tweet_id}",)
-                )
-                tagged_count += 1
 
             if dry_run:
                 console.print(
@@ -1616,14 +1614,9 @@ async def tag_media_tweets(
                     f"{'s' if tagged_count != 1 else ''} in test mode; no tags were saved.[/green]"
                 )
             else:
-                store.conn.commit()
                 console.print(f"[green]Successfully tagged {tagged_count} tweets![/green]")
             return tagged_count
         except Exception as error:
-            try:
-                store.conn.rollback()
-            except Exception:
-                pass
             console.print(
                 f"[red]Gemini Tagging Failed: {_safe_error(error, tag_config.api_key)}[/red]"
             )

@@ -278,37 +278,38 @@ class TagsMixin(ConnectionMixin):
 
     def defer_tagging_failure(self, tweet_ids: list[str]) -> None:
         """Persist backoff separately so explicit retries preserve existing tags."""
-        now = time.time()
-        for tweet_id in tweet_ids:
-            key = f"tagging_retry:{tweet_id}"
-            row = self.conn.execute(
-                "SELECT value FROM archive WHERE row_key = ?", (key,)
-            ).fetchone()
-            try:
-                previous = json.loads(row[0]) if row else {}
-                attempts = max(int(previous.get("attempts", 0)), 0) + 1
-            except (TypeError, ValueError, AttributeError):
-                attempts = 1
-            delay = min(3600 * 2 ** min(attempts - 1, 8), 7 * 86400)
-            self.conn.execute(
-                "INSERT OR REPLACE INTO archive "
-                "(row_key, record_type, key, value, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (
-                    key,
-                    RecordType.METADATA,
-                    key,
-                    json.dumps({"attempts": attempts, "next_retry_at": now + delay}),
-                    str(now),
-                ),
-            )
-        self.conn.commit()
+        with self.transaction():
+            now = time.time()
+            for tweet_id in tweet_ids:
+                key = f"tagging_retry:{tweet_id}"
+                row = self.conn.execute(
+                    "SELECT value FROM archive WHERE row_key = ?", (key,)
+                ).fetchone()
+                try:
+                    previous = json.loads(row[0]) if row else {}
+                    attempts = max(int(previous.get("attempts", 0)), 0) + 1
+                except (TypeError, ValueError, AttributeError):
+                    attempts = 1
+                delay = min(3600 * 2 ** min(attempts - 1, 8), 7 * 86400)
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO archive "
+                    "(row_key, record_type, key, value, updated_at) VALUES (?, ?, ?, ?, ?)",
+                    (
+                        key,
+                        RecordType.METADATA,
+                        key,
+                        json.dumps({"attempts": attempts, "next_retry_at": now + delay}),
+                        str(now),
+                    ),
+                )
 
     def delete_media_tag(self, tweet_id: str) -> None:
-        self.conn.execute(
-            f"DELETE FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' AND tweet_id = ?",
-            (tweet_id,),
-        )
-        self.conn.commit()
+        with self.transaction():
+            self.conn.execute(
+                f"DELETE FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' "
+                "AND tweet_id = ?",
+                (tweet_id,),
+            )
 
     def update_media_tags(
         self,
@@ -318,67 +319,72 @@ class TagsMixin(ConnectionMixin):
         description: str | None = None,
     ) -> None:
         """Overwrite tags and optionally the description for a specific tweet."""
-        normalized_tags: list[str] = []
-        seen: set[str] = set()
-        for tag in tags:
-            cleaned = tag.strip()
-            folded = cleaned.casefold()
-            if not cleaned or folded in seen:
-                continue
-            seen.add(folded)
-            normalized_tags.append(cleaned)
+        with self.transaction():
+            normalized_tags: list[str] = []
+            seen: set[str] = set()
+            for tag in tags:
+                cleaned = tag.strip()
+                folded = cleaned.casefold()
+                if not cleaned or folded in seen:
+                    continue
+                seen.add(folded)
+                normalized_tags.append(cleaned)
 
-        row = self.conn.execute(
-            f"SELECT raw_json FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' AND "
-            "tweet_id = ?",
-            (tweet_id,),
-        ).fetchone()
+            row = self.conn.execute(
+                f"SELECT raw_json FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' AND "
+                "tweet_id = ?",
+                (tweet_id,),
+            ).fetchone()
 
-        cleaned_description = description.strip() if description is not None else None
-        if not normalized_tags and (description is None or not cleaned_description):
-            self.delete_media_tag(tweet_id)
-            return
+            cleaned_description = description.strip() if description is not None else None
+            if not normalized_tags and (description is None or not cleaned_description):
+                self.delete_media_tag(tweet_id)
+                return
 
-        now_ts = str(time.time())
-        if row and row["raw_json"]:
-            try:
-                data = json.loads(row["raw_json"])
-            except json.JSONDecodeError:
-                data = {}
-            if not isinstance(data, dict):
-                data = {}
-            data["tags"] = normalized_tags
-        else:
-            data = {"description": "", "tags": normalized_tags}
+            now_ts = str(time.time())
+            if row and row["raw_json"]:
+                try:
+                    data = json.loads(row["raw_json"])
+                except json.JSONDecodeError:
+                    data = {}
+                if not isinstance(data, dict):
+                    data = {}
+                data["tags"] = normalized_tags
+            else:
+                data = {"description": "", "tags": normalized_tags}
 
-        if cleaned_description is not None:
-            data["description"] = cleaned_description
+            if cleaned_description is not None:
+                data["description"] = cleaned_description
 
-        payload = json.dumps(data)
+            payload = json.dumps(data)
 
-        self.conn.execute(
-            "INSERT OR REPLACE INTO archive "
-            "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (f"media_tag:{tweet_id}", "media_tag", tweet_id, payload, "done", now_ts),
-        )
-        self.conn.commit()
+            self.conn.execute(
+                "INSERT OR REPLACE INTO archive "
+                "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (f"media_tag:{tweet_id}", "media_tag", tweet_id, payload, "done", now_ts),
+            )
 
     def set_tweet_hidden(self, tweet_id: str, hidden: bool) -> None:
         """Hide a tweet from lists and searches, or show it again."""
-        if hidden:
-            self.conn.execute(
-                "INSERT OR IGNORE INTO archive (row_key, record_type, tweet_id, updated_at) "
-                "VALUES (?, ?, ?, ?)",
-                (f"tweet_hidden:{tweet_id}", RecordType.TWEET_HIDDEN, tweet_id, str(time.time())),
-            )
-        else:
-            self.conn.execute(
-                f"DELETE FROM archive WHERE record_type = '{RecordType.TWEET_HIDDEN}' AND "
-                "tweet_id = ?",
-                (tweet_id,),
-            )
-        self.conn.commit()
+        with self.transaction():
+            if hidden:
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO archive (row_key, record_type, tweet_id, updated_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (
+                        f"tweet_hidden:{tweet_id}",
+                        RecordType.TWEET_HIDDEN,
+                        tweet_id,
+                        str(time.time()),
+                    ),
+                )
+            else:
+                self.conn.execute(
+                    f"DELETE FROM archive WHERE record_type = '{RecordType.TWEET_HIDDEN}' AND "
+                    "tweet_id = ?",
+                    (tweet_id,),
+                )
 
     def _excluded_member_count(self, collection: str, excluded_ids: str) -> int:
         """Count excluded IDs that belong to this collection, deduplicating overlap."""
@@ -400,109 +406,109 @@ class TagsMixin(ConnectionMixin):
 
     def delete_global_tag(self, tag: str) -> None:
         """Delete a tag globally across all tweets."""
-        sql = f"""
-        SELECT a.tweet_id, a.raw_json
-        FROM archive a,
-             json_each(
-               CASE WHEN json_valid(a.raw_json) THEN a.raw_json ELSE '{{"tags":[]}}' END,
-               '$.tags'
-             ) as t
-        WHERE a.record_type = '{RecordType.MEDIA_TAG}' AND LOWER(t.value) = LOWER(?)
-        """
-        rows = self.conn.execute(sql, (tag,)).fetchall()
+        with self.transaction():
+            sql = f"""
+            SELECT a.tweet_id, a.raw_json
+            FROM archive a,
+                 json_each(
+                   CASE WHEN json_valid(a.raw_json) THEN a.raw_json ELSE '{{"tags":[]}}' END,
+                   '$.tags'
+                 ) as t
+            WHERE a.record_type = '{RecordType.MEDIA_TAG}' AND LOWER(t.value) = LOWER(?)
+            """
+            rows = self.conn.execute(sql, (tag,)).fetchall()
 
-        now_ts = str(time.time())
-        for row in rows:
-            tid = row["tweet_id"]
-            if not row["raw_json"]:
-                continue
-            try:
-                data = json.loads(row["raw_json"])
-                if "tags" in data:
-                    data["tags"] = [t for t in data["tags"] if t.lower() != tag.lower()]
-                    if not data["tags"]:
-                        self.conn.execute(
-                            f"DELETE FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' "
-                            "AND tweet_id = ?",
-                            (tid,),
-                        )
-                    else:
+            now_ts = str(time.time())
+            for row in rows:
+                tid = row["tweet_id"]
+                if not row["raw_json"]:
+                    continue
+                try:
+                    data = json.loads(row["raw_json"])
+                    if "tags" in data:
+                        data["tags"] = [t for t in data["tags"] if t.lower() != tag.lower()]
+                        if not data["tags"]:
+                            self.conn.execute(
+                                f"DELETE FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' "
+                                "AND tweet_id = ?",
+                                (tid,),
+                            )
+                        else:
+                            self.conn.execute(
+                                "UPDATE archive SET raw_json = ?, updated_at = ? "
+                                f"WHERE record_type = '{RecordType.MEDIA_TAG}' AND tweet_id = ?",
+                                (json.dumps(data), now_ts, tid),
+                            )
+                except json.JSONDecodeError:
+                    pass
+
+    def merge_global_tags(self, primary_tag: str, merge_tags: list[str]) -> None:
+        """Merge a list of tags into a primary tag globally."""
+        with self.transaction():
+            primary_tag = primary_tag.strip()
+            normalized_merge_tags = list(
+                dict.fromkeys(
+                    tag.strip().casefold()
+                    for tag in merge_tags
+                    if tag.strip() and tag.strip().casefold() != primary_tag.casefold()
+                )
+            )
+            if not primary_tag or not normalized_merge_tags:
+                return
+
+            merge_tags_lower = set(normalized_merge_tags)
+            placeholders = ",".join("?" for _ in normalized_merge_tags)
+
+            sql = f"""
+            SELECT DISTINCT a.tweet_id, a.raw_json
+            FROM archive a,
+                 json_each(
+                   CASE WHEN json_valid(a.raw_json) THEN a.raw_json ELSE '{{"tags":[]}}' END,
+                   '$.tags'
+                 ) as t
+            WHERE a.record_type = '{RecordType.MEDIA_TAG}' AND LOWER(t.value) IN ({placeholders})
+            """
+
+            rows = self.conn.execute(sql, tuple(normalized_merge_tags)).fetchall()
+            now_ts = str(time.time())
+
+            for row in rows:
+                tid = row["tweet_id"]
+                if not row["raw_json"]:
+                    continue
+                try:
+                    data = json.loads(row["raw_json"])
+                    if "tags" in data:
+                        existing_tags = data["tags"]
+                        new_tags: list[str] = []
+                        seen_tags: set[str] = set()
+                        has_primary = False
+
+                        for t in existing_tags:
+                            if not isinstance(t, str):
+                                continue
+                            t_low = t.casefold()
+                            if t_low == primary_tag.casefold():
+                                has_primary = True
+                                if t_low not in seen_tags:
+                                    new_tags.append(t)
+                                    seen_tags.add(t_low)
+                            elif t_low not in merge_tags_lower and t_low not in seen_tags:
+                                new_tags.append(t)
+                                seen_tags.add(t_low)
+
+                        if not has_primary:
+                            new_tags.append(primary_tag)
+
+                        data["tags"] = new_tags
+
                         self.conn.execute(
                             "UPDATE archive SET raw_json = ?, updated_at = ? "
                             f"WHERE record_type = '{RecordType.MEDIA_TAG}' AND tweet_id = ?",
                             (json.dumps(data), now_ts, tid),
                         )
-            except json.JSONDecodeError:
-                pass
-        self.conn.commit()
-
-    def merge_global_tags(self, primary_tag: str, merge_tags: list[str]) -> None:
-        """Merge a list of tags into a primary tag globally."""
-        primary_tag = primary_tag.strip()
-        normalized_merge_tags = list(
-            dict.fromkeys(
-                tag.strip().casefold()
-                for tag in merge_tags
-                if tag.strip() and tag.strip().casefold() != primary_tag.casefold()
-            )
-        )
-        if not primary_tag or not normalized_merge_tags:
-            return
-
-        merge_tags_lower = set(normalized_merge_tags)
-        placeholders = ",".join("?" for _ in normalized_merge_tags)
-
-        sql = f"""
-        SELECT DISTINCT a.tweet_id, a.raw_json
-        FROM archive a,
-             json_each(
-               CASE WHEN json_valid(a.raw_json) THEN a.raw_json ELSE '{{"tags":[]}}' END,
-               '$.tags'
-             ) as t
-        WHERE a.record_type = '{RecordType.MEDIA_TAG}' AND LOWER(t.value) IN ({placeholders})
-        """
-
-        rows = self.conn.execute(sql, tuple(normalized_merge_tags)).fetchall()
-        now_ts = str(time.time())
-
-        for row in rows:
-            tid = row["tweet_id"]
-            if not row["raw_json"]:
-                continue
-            try:
-                data = json.loads(row["raw_json"])
-                if "tags" in data:
-                    existing_tags = data["tags"]
-                    new_tags: list[str] = []
-                    seen_tags: set[str] = set()
-                    has_primary = False
-
-                    for t in existing_tags:
-                        if not isinstance(t, str):
-                            continue
-                        t_low = t.casefold()
-                        if t_low == primary_tag.casefold():
-                            has_primary = True
-                            if t_low not in seen_tags:
-                                new_tags.append(t)
-                                seen_tags.add(t_low)
-                        elif t_low not in merge_tags_lower and t_low not in seen_tags:
-                            new_tags.append(t)
-                            seen_tags.add(t_low)
-
-                    if not has_primary:
-                        new_tags.append(primary_tag)
-
-                    data["tags"] = new_tags
-
-                    self.conn.execute(
-                        "UPDATE archive SET raw_json = ?, updated_at = ? "
-                        f"WHERE record_type = '{RecordType.MEDIA_TAG}' AND tweet_id = ?",
-                        (json.dumps(data), now_ts, tid),
-                    )
-            except json.JSONDecodeError:
-                pass
-        self.conn.commit()
+                except json.JSONDecodeError:
+                    pass
 
     def get_tag_counts(self, query: str = "", limit: int = 50) -> list[dict[str, Any]]:
         sql = f"""

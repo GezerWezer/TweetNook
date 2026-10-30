@@ -15,7 +15,7 @@ from .schema import SchemaMixin
 
 class ChecksMixin(SchemaMixin, RecordsMixin):
     def ensure_check_tables(self) -> None:
-        with self.conn:
+        with self.transaction():
             self.conn.execute(
                 "CREATE TABLE IF NOT EXISTS tweet_checks ("
                 "tweet_id TEXT PRIMARY KEY, checked_at TEXT NOT NULL, "
@@ -93,7 +93,7 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
             if changed:
                 history.append((tweet_id, stamp, outcome, http_status, scope, reason))
             previous[tweet_id] = (outcome, reason)
-        with self.conn:
+        with self.transaction():
             self.conn.executemany(
                 "INSERT INTO tweet_checks "
                 "(tweet_id, checked_at, outcome, http_status, scope, reason) "
@@ -280,7 +280,7 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
                 "SELECT 1 FROM community_notes WHERE tweet_id = ? LIMIT 1", (tweet_id,)
             ).fetchone()
             if has_versions is None:
-                with self.conn:
+                with self.transaction():
                     self.conn.execute(
                         "INSERT INTO community_notes (tweet_id, text_hash, text, raw_json, "
                         "first_seen_at, last_seen_at, removed_at) VALUES (?, ?, ?, ?, ?, ?, NULL)",
@@ -298,7 +298,7 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
             (tweet_id,),
         ).fetchall()
         active_hashes = {row[0] for row in active}
-        with self.conn:
+        with self.transaction():
             if not text:
                 if not active_hashes:
                     return None

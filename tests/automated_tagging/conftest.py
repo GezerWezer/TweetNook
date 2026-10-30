@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sqlite3
 from datetime import UTC, datetime
 from decimal import Decimal
 from io import StringIO
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, ClassVar
 
@@ -15,7 +15,7 @@ import httpx
 from rich.console import Console
 
 from tweetnook.config import AppConfig, TaggingConfig
-from tweetnook.storage.tags import TagsMixin
+from tweetnook.storage.backend import ArchiveStore
 from tweetnook.tagging import tagger as tagging
 from tweetnook.tagging.accounting import (
     AIUsageLedger,
@@ -23,22 +23,9 @@ from tweetnook.tagging.accounting import (
 from tweetnook.tagging.pricing import OpenRouterPricing
 
 
-class Store:
+class Store(ArchiveStore):
     def __init__(self) -> None:
-        self.conn = sqlite3.connect(":memory:", check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.execute(
-            """
-            CREATE TABLE archive (
-                row_key TEXT PRIMARY KEY, record_type TEXT NOT NULL, tweet_id TEXT,
-                media_key TEXT, media_type TEXT, local_path TEXT, raw_json TEXT, source TEXT,
-                author_display_name TEXT, author_username TEXT, text TEXT,
-                relation_type TEXT, target_tweet_id TEXT, enrichment_state TEXT,
-                updated_at TEXT, key TEXT, value TEXT
-            )
-            """
-        )
-        self.conn.execute("CREATE INDEX idx_archive_tweet_id ON archive(tweet_id)")
+        super().__init__(Path(":memory:"), create=True)
 
     def add_tweet(self, tweet_id: str, *, text: str = "A post", media: bool = False) -> None:
         self.conn.execute(
@@ -64,9 +51,6 @@ class Store:
             "SELECT raw_json FROM archive WHERE record_type = 'media_tag' AND tweet_id = ?",
             (tweet_id,),
         ).fetchone()
-
-    def defer_tagging_failure(self, tweet_ids: list[str]) -> None:
-        TagsMixin.defer_tagging_failure(self, tweet_ids)
 
 
 class QueueStore:

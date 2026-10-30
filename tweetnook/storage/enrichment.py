@@ -152,7 +152,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         queued = 0
         stamp = utc_now()
         buffer = PageBuffer()
-        with self.conn:
+        with self.transaction():
             for tweet_id, donor in donors.items():
                 rows = self.conn.execute(
                     "SELECT row_key, raw_json, source FROM archive "
@@ -186,16 +186,16 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
                             cursor=buffer,
                         )
                         queued += 1
-        self._merge_records(list(buffer.records.values()))
-        self._queue_record(
-            self._record(
-                row_key=marker,
-                record_type=RecordType.METADATA,
-                key=key,
-                value="done",
-                updated_at=utc_now(),
+            self._merge_records(list(buffer.records.values()))
+            self._queue_record(
+                self._record(
+                    row_key=marker,
+                    record_type=RecordType.METADATA,
+                    key=key,
+                    value="done",
+                    updated_at=utc_now(),
+                )
             )
-        )
         return queued
 
     def list_media_rows(
@@ -555,7 +555,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         if exclude_tweet_ids:
             clauses.append(clause_in("tweet_id", exclude_tweet_ids, negate=True))
         where = and_clauses(*clauses)
-        with self.conn:
+        with self.transaction():
             cursor = self.conn.execute(
                 "UPDATE archive SET enrichment_next_retry_at = ?, updated_at = ? "
                 f"WHERE {where.sql}",
@@ -581,7 +581,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             clause_in("tweet_id", tweet_ids),
         ]
         where = and_clauses(*clauses)
-        with self.conn:
+        with self.transaction():
             cursor = self.conn.execute(
                 "UPDATE archive SET enrichment_next_retry_at = ?, updated_at = ? "
                 f"WHERE {where.sql}",

@@ -23,6 +23,7 @@ from .records import RecordsMixin
 from .relations import RelationsMixin
 from .schema import SCHEMA_VERSION, MigrationReport, SchemaMixin
 from .search import SearchMixin
+from .sql_functions import register_export_functions, register_random_function
 from .stats import StatsMixin
 from .sync_state import SyncStateMixin
 from .tags import TagsMixin
@@ -67,6 +68,10 @@ class ArchiveStore(
         self.config = config
         self._closed = False
         self._like_order_lock = threading.RLock()
+        self._transaction_lock = threading.RLock()
+        self._transaction_depth = 0
+        self._read_only = read_only
+        self._has_written = False
         self._warm_cancelled = False
         self._count_cache: dict[str, tuple[int, int]] = {}
         self._search_count_cache: dict[tuple, tuple[tuple[int, int], int]] = {}
@@ -86,6 +91,8 @@ class ArchiveStore(
             self.conn = sqlite3.connect(db_file, check_same_thread=False, cached_statements=0)
         try:
             self.conn.row_factory = sqlite3.Row
+            register_export_functions(self.conn)
+            register_random_function(self.conn)
             if not read_only:
                 self.conn.execute("PRAGMA journal_mode=WAL")
                 self.conn.execute("PRAGMA recursive_triggers=ON")
