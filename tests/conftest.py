@@ -77,6 +77,21 @@ def patch_cli(monkeypatch: pytest.MonkeyPatch, name: str, value: object) -> None
         monkeypatch.setattr(module, name, value)
 
 
+def spy_lock_acquires(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """Record each lock file taken from here on, while still really taking it."""
+    from tweetnook.core.locking import ProcessLock
+
+    acquired: list[Path] = []
+    original = ProcessLock.acquire
+
+    def acquire(self: ProcessLock, **kwargs) -> None:
+        acquired.append(self.path)
+        original(self, **kwargs)
+
+    monkeypatch.setattr(ProcessLock, "acquire", acquire)
+    return acquired
+
+
 def make_url_entity(
     short_url: str,
     expanded_url: str,

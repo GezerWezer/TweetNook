@@ -7,10 +7,10 @@ from rich.console import Console
 from tweetnook.storage import ArchiveStore
 
 
-def print_archive_migration_report(console: Console, store: ArchiveStore) -> bool:
-    report = getattr(store, "migration_report", None)
+def print_archive_migration_report(console: Console, store: ArchiveStore) -> None:
+    report = store.migration_report
     if report is None:
-        return False
+        return
     console.print(
         f"Archive schema migrated from v{report.from_version} to v{report.to_version}.",
         highlight=False,
@@ -20,17 +20,15 @@ def print_archive_migration_report(console: Console, store: ArchiveStore) -> boo
         "canonical archive rows were unchanged.",
         highlight=False,
     )
-    return True
 
 
 def print_pending_archive_enrichment_reminder(
     console: Console,
     store: ArchiveStore,
-) -> bool:
+) -> None:
     incomplete = store.count_incomplete_initial_enrichment()
     if incomplete <= 0:
-        return False
+        return
     remainder = "tweet remains" if incomplete == 1 else "tweets remain"
     console.print(f"Archive enrichment is incomplete: {incomplete:,} {remainder}.", highlight=False)
     console.print("Run `tweetnook import enrich` to continue.", highlight=False)
-    return True

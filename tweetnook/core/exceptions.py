@@ -15,6 +15,10 @@ class ConfigError(TweetNookError):
     """Raised for local configuration issues."""
 
 
+class ArchiveNotFoundError(ConfigError):
+    """Raised when a job needs an archive and none exists yet."""
+
+
 class AuthResolutionError(ConfigError):
     """Raised when local auth inputs cannot be resolved."""
 

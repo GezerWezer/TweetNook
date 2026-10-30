@@ -10,9 +10,8 @@ from rich.console import Console
 
 from tweetnook.config import initialize_config as load_config
 from tweetnook.core.collection_names import normalize_collection_name
-from tweetnook.core.locking import ProcessLock
+from tweetnook.jobs.context import open_job_store
 from tweetnook.jobs.pipeline import PipelineReporter
-from tweetnook.storage import open_archive_store
 
 
 def web_pipeline(console: Console, title: str, paths) -> PipelineReporter:
@@ -67,21 +66,9 @@ def normalize_collection_or_exit(collection: str, console: Console) -> str:
 
 
 def open_store_for_read(console: Console):
-    from tweetnook.jobs.reminders import print_archive_migration_report
-
     config, paths = load_config()
-    store = open_archive_store(paths, create=False, config=config)
+    store = open_job_store(paths, create=False, config=config, console=console)
     if store is None:
         console.print("[red]No local archive found.[/red]")
         raise typer.Exit(1)
-    print_archive_migration_report(console, store)
     return store, paths
-
-
-def with_archive_write_lock(paths, fn):
-    lock = ProcessLock(paths.lock_file)
-    lock.acquire()
-    try:
-        return fn()
-    finally:
-        lock.release()

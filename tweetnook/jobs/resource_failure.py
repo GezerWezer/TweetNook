@@ -18,6 +18,9 @@ class StorageExhaustedError(TweetNookError):
 
 
 def is_storage_exhausted(error: BaseException) -> bool:
+    # An interrupt stays an interrupt, even when it arrived while handling a full disk.
+    if not isinstance(error, Exception):
+        return False
     seen: set[int] = set()
     current: BaseException | None = error
     while current is not None and id(current) not in seen:
@@ -35,8 +38,8 @@ def is_storage_exhausted(error: BaseException) -> bool:
     return False
 
 
-def raise_if_storage_exhausted(error: BaseException) -> None:
+def raise_if_storage_exhausted(error: BaseException, *, recovery: str = STORAGE_RECOVERY) -> None:
     if isinstance(error, StorageExhaustedError):
         raise error
     if is_storage_exhausted(error):
-        raise StorageExhaustedError(STORAGE_RECOVERY) from error
+        raise StorageExhaustedError(recovery) from error

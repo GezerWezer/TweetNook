@@ -22,17 +22,16 @@ from tweetnook.client.timelines import (
 from tweetnook.config import AppConfig, XDGPaths, ensure_paths, load_config
 from tweetnook.core.exceptions import (
     APIResponseError,
-    ArchiveOwnerMismatchError,
     AuthResolutionError,
     ConfigError,
     TweetNookError,
 )
-from tweetnook.core.locking import ProcessLock
 from tweetnook.core.timeline_parsing import TimelineTweet, parse_timeline_response
+from tweetnook.jobs.context import locked_archive_job, open_job_store
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
-from tweetnook.storage import ArchiveStore, SyncState, open_archive_store
+from tweetnook.storage import ArchiveStore, SyncState
 from tweetnook.sync.followups import SyncFollowupPlan, run_auto_followups
 
 COLLECTION_TO_OPERATION = {
@@ -114,6 +113,7 @@ async def run_preflight(
     auth_bundle: ResolvedAuthBundle | None = None,
     query_ids: dict[str, str] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    console: Console | None = None,
 ) -> PreflightResult:
     pipeline = current_pipeline()
     step_key = "preflight:" + ",".join(collections)
@@ -127,122 +127,142 @@ async def run_preflight(
             rate_unit="checks/s",
         )
         pipeline.start_step(step_key, activity="Connecting to Twitter/X")
-    auth_bundle = auth_bundle or resolve_auth_bundle(config)
-    if pipeline is not None:
-        pipeline.update_step(
-            step_key,
-            completed=1,
-            activity="Checking archive ownership",
-            counters="Signed in",
-        )
-    existing_store = open_archive_store(paths, create=False, config=config)
-    if existing_store is not None:
-        try:
-            existing_owner = existing_store.get_archive_owner_id()
-            if existing_owner and auth_bundle.user_id and existing_owner != auth_bundle.user_id:
-                raise LocalPreflightError(
-                    f"Local archive belongs to Twitter/X user {existing_owner}, but current "
-                    "auth resolved "
-                    f"{auth_bundle.user_id}."
-                )
-        finally:
-            existing_store.close()
-    if pipeline is not None:
-        pipeline.update_step(
-            step_key,
-            completed=2,
-            activity="Preparing Twitter/X requests",
-            counters="Signed in · archive owner confirmed",
-        )
-    operation_names = [COLLECTION_TO_OPERATION[collection] for collection in collections]
-    query_store = QueryIdStore(paths)
-    query_ids = query_ids or await resolve_query_ids(
-        query_store,
-        operation_names,
-        force_refresh=not query_store.is_fresh(operations=operation_names),
-        transport=transport,
-    )
-    if pipeline is not None:
-        pipeline.update_step(
-            step_key,
-            completed=3,
-            activity=f"Checking {collections[0].title()}",
-            counters=f"{len(query_ids)} request types ready",
-        )
-    probes: dict[str, ProbeResult] = {}
-    client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
+    console = console or Console(stderr=True)
     try:
-        for collection in collections:
-            operation = COLLECTION_TO_OPERATION[collection]
+        auth_bundle = auth_bundle or resolve_auth_bundle(config)
+        if pipeline is not None:
+            pipeline.update_step(
+                step_key,
+                completed=1,
+                activity="Checking archive ownership",
+                counters="Signed in",
+            )
+        existing_store = open_job_store(paths, create=False, config=config, console=console)
+        if existing_store is not None:
             try:
-                auth_bundle.validate_for_collection(collection)
-            except AuthResolutionError as exc:
+                existing_owner = existing_store.get_archive_owner_id()
+                if existing_owner and auth_bundle.user_id and existing_owner != auth_bundle.user_id:
+                    raise LocalPreflightError(
+                        f"Local archive belongs to Twitter/X user {existing_owner}, but current "
+                        "auth resolved "
+                        f"{auth_bundle.user_id}."
+                    )
+            finally:
+                existing_store.close()
+        if pipeline is not None:
+            pipeline.update_step(
+                step_key,
+                completed=2,
+                activity="Preparing Twitter/X requests",
+                counters="Signed in · archive owner confirmed",
+            )
+        operation_names = [COLLECTION_TO_OPERATION[collection] for collection in collections]
+        query_store = QueryIdStore(paths)
+        # Copied, because a refresh below writes into it and the dict belongs to the caller.
+        query_ids = (
+            dict(query_ids)
+            if query_ids
+            else await resolve_query_ids(
+                query_store,
+                operation_names,
+                force_refresh=not query_store.is_fresh(operations=operation_names),
+                transport=transport,
+            )
+        )
+        if pipeline is not None:
+            pipeline.update_step(
+                step_key,
+                completed=3,
+                activity=f"Checking {collections[0].title()}",
+                counters=f"{len(query_ids)} request types ready",
+            )
+        probes: dict[str, ProbeResult] = {}
+        client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
+        try:
+            for collection in collections:
+                operation = COLLECTION_TO_OPERATION[collection]
+                try:
+                    auth_bundle.validate_for_collection(collection)
+                except AuthResolutionError as exc:
+                    probes[collection] = ProbeResult(
+                        collection=collection,
+                        ready=False,
+                        detail=str(exc),
+                        local_error=True,
+                    )
+                    continue
+
+                async def refresh_once(
+                    operation_name: str = operation,
+                    collection_name: str = collection,
+                ) -> str:
+                    refreshed = await refresh_query_ids(
+                        query_store,
+                        operations=[operation_name],
+                        client=client,
+                    )
+                    query_ids.update(refreshed)
+                    return _build_url(
+                        collection_name,
+                        query_ids[operation_name],
+                        auth_bundle,
+                        None,
+                        1,
+                    )
+
+                try:
+                    if pipeline is not None:
+                        pipeline.status(step_key, f"Checking {collection.title()}")
+                    await fetch_page(
+                        client,
+                        _build_url(collection, query_ids[operation], auth_bundle, None, 1),
+                        config.sync,
+                        refresh_once=refresh_once,
+                    )
+                except APIResponseError as exc:
+                    probes[collection] = ProbeResult(
+                        collection=collection, ready=False, detail=str(exc)
+                    )
+                    continue
+                except httpx.TransportError as exc:
+                    probes[collection] = ProbeResult(
+                        collection=collection,
+                        ready=False,
+                        detail=f"{type(exc).__name__}: {exc}",
+                    )
+                    continue
+
                 probes[collection] = ProbeResult(
-                    collection=collection,
-                    ready=False,
-                    detail=str(exc),
-                    local_error=True,
+                    collection=collection, ready=True, detail="Remote probe succeeded."
                 )
-                continue
-
-            async def refresh_once(
-                operation_name: str = operation,
-                collection_name: str = collection,
-            ) -> str:
-                refreshed = await refresh_query_ids(
-                    query_store,
-                    operations=[operation_name],
-                    client=client,
-                )
-                query_ids.update(refreshed)
-                return _build_url(
-                    collection_name,
-                    query_ids[operation_name],
-                    auth_bundle,
-                    None,
-                    1,
-                )
-
-            try:
                 if pipeline is not None:
-                    pipeline.status(step_key, f"Checking {collection.title()}")
-                await fetch_page(
-                    client,
-                    _build_url(collection, query_ids[operation], auth_bundle, None, 1),
-                    config.sync,
-                    refresh_once=refresh_once,
-                )
-            except APIResponseError as exc:
-                probes[collection] = ProbeResult(
-                    collection=collection, ready=False, detail=str(exc)
-                )
-                continue
-
-            probes[collection] = ProbeResult(
-                collection=collection, ready=True, detail="Remote probe succeeded."
-            )
-            if pipeline is not None:
-                ready_count = sum(probe.ready for probe in probes.values())
-                pipeline.update_step(
+                    ready_count = sum(probe.ready for probe in probes.values())
+                    pipeline.update_step(
+                        step_key,
+                        completed=3 + len(probes),
+                        counters=f"{ready_count}/{len(collections)} collections ready",
+                    )
+        finally:
+            await client.aclose()
+        if pipeline is not None:
+            ready_count = sum(probe.ready for probe in probes.values())
+            if ready_count == len(collections):
+                pipeline.complete_step(
                     step_key,
-                    completed=3 + len(probes),
-                    counters=f"{ready_count}/{len(collections)} collections ready",
+                    f"Connected · {ready_count}/{len(collections)} collections ready",
                 )
-    finally:
-        await client.aclose()
-    if pipeline is not None:
-        ready_count = sum(probe.ready for probe in probes.values())
-        if ready_count == len(collections):
-            pipeline.complete_step(
-                step_key,
-                f"Connected · {ready_count}/{len(collections)} collections ready",
-            )
-        else:
-            pipeline.fail_step(
-                step_key,
-                f"{ready_count}/{len(collections)} collections ready",
-            )
-    return PreflightResult(auth=auth_bundle, query_ids=query_ids, probes=probes)
+            else:
+                pipeline.fail_step(
+                    step_key,
+                    f"{ready_count}/{len(collections)} collections ready",
+                )
+        return PreflightResult(auth=auth_bundle, query_ids=query_ids, probes=probes)
+    except Exception as exc:
+        # Left active, this step would refuse the next collection's Prepare step and hide
+        # the real failure behind that complaint. An interrupt is the reporter's to resolve.
+        if pipeline is not None:
+            pipeline.fail_step(step_key, str(exc) or type(exc).__name__)
+        raise
 
 
 async def _fetch_and_parse_page(
@@ -515,6 +535,7 @@ async def sync_collection(
         auth_bundle=auth_bundle,
         query_ids=query_ids,
         transport=transport,
+        console=console,
     )
     result = await _sync_collection_ready(
         collection=collection,
@@ -565,19 +586,9 @@ async def _sync_collection_ready(
             raise LocalPreflightError(probe.detail)
         raise RemotePreflightError(probe.detail)
 
-    lock = ProcessLock(paths.lock_file)
-    lock.acquire()
-    try:
-        store = open_archive_store(paths, create=True, config=config)
-        assert store is not None
-        from tweetnook.jobs.reminders import print_archive_migration_report
-
-        print_archive_migration_report(console, store)
-        try:
-            store.ensure_archive_owner_id(preflight.auth.user_id)
-        except ArchiveOwnerMismatchError:
-            store.close()
-            raise
+    async with locked_archive_job(config=config, paths=paths, console=console, create=True) as job:
+        store = job.store
+        store.ensure_archive_owner_id(preflight.auth.user_id)
         initial_collection_count = store.count_export_rows(COLLECTION_TO_STORAGE[collection])
 
         if head_only and (full or backfill):
@@ -608,197 +619,181 @@ async def _sync_collection_ready(
             preflight.auth, timeout=config.sync.timeout, transport=transport
         )
         try:
-            try:
-                head_step_key = f"sync:{collection}:head"
-                combine_pipeline_passes = pipeline is not None and collection in {
-                    "bookmarks",
-                    "likes",
-                }
+            head_step_key = f"sync:{collection}:head"
+            combine_pipeline_passes = pipeline is not None and collection in {
+                "bookmarks",
+                "likes",
+            }
+            if pipeline is not None:
+                stop_policy = (
+                    "continue through saved duplicates"
+                    if full or backfill
+                    else "stop at saved archive history"
+                )
+                pipeline.add_step(
+                    head_step_key,
+                    collection.title(),
+                    total=1,
+                    unit="current page",
+                    detail=f"head pass · {stop_policy}",
+                    show_rate=False,
+                    show_eta=False,
+                    show_progress=False,
+                )
+                pipeline.start_step(
+                    head_step_key,
+                    activity="Fetching page 1",
+                    counters="0 pages · 0 tweets saved",
+                )
+            else:
+                console.print(f"{collection}: starting head pass", highlight=False)
+            head_pages, head_tweets, head_reason = await _run_pass(
+                collection=collection,
+                start_cursor=None,
+                config=config,
+                auth=preflight.auth,
+                query_store=QueryIdStore(paths),
+                query_ids=dict(preflight.query_ids),
+                store=store,
+                count_limit=limit,
+                stop_on_duplicate=stop_on_dup,
+                previous_state=previous_state,
+                prior_backfill_cursor=prior_backfill_cursor,
+                prior_backfill_incomplete=prior_backfill_incomplete,
+                initial_seen_ids=seen_ids,
+                is_head_pass=True,
+                console=console,
+                sleep=sleep,
+                client=client,
+                pipeline_step_key=head_step_key,
+            )
+            if pipeline is not None and not combine_pipeline_passes:
+                pipeline.complete_step(
+                    head_step_key,
+                    f"{head_pages:,} pages · {head_tweets:,} tweets · {_stop_summary(head_reason)}",
+                )
+            pages_total = head_pages
+            tweets_total = head_tweets
+            stop_reason = head_reason
+            remaining = None if limit is None else max(limit - head_pages, 0)
+
+            if head_only:
+                refreshed_state = store.get_sync_state(COLLECTION_TO_STORAGE[collection])
+                store.set_sync_state(
+                    COLLECTION_TO_STORAGE[collection],
+                    last_head_tweet_id=refreshed_state.last_head_tweet_id
+                    or previous_state.last_head_tweet_id,
+                    backfill_cursor=None,
+                    backfill_incomplete=False,
+                )
+
+            resume_saved_backfill = (
+                resume_backfill and not head_only and prior_backfill_incomplete and remaining != 0
+            )
+            if resume_saved_backfill:
                 if pipeline is not None:
-                    stop_policy = (
-                        "continue through saved duplicates"
-                        if full or backfill
-                        else "stop at saved archive history"
-                    )
-                    pipeline.add_step(
-                        head_step_key,
-                        collection.title(),
-                        total=1,
-                        unit="current page",
-                        detail=f"head pass · {stop_policy}",
-                        show_rate=False,
-                        show_eta=False,
-                        show_progress=False,
-                    )
-                    pipeline.start_step(
-                        head_step_key,
-                        activity="Fetching page 1",
-                        counters="0 pages · 0 tweets saved",
-                    )
+                    if combine_pipeline_passes:
+                        pipeline.update_step(
+                            head_step_key,
+                            completed=0,
+                            total=1,
+                            activity="Fetching older page 1",
+                            counters="0 pages · 0 tweets saved",
+                            detail=(
+                                "older-history pass · each page is committed with its resume cursor"
+                            ),
+                            important=True,
+                        )
+                        backfill_step_key = head_step_key
+                    else:
+                        backfill_step_key = f"sync:{collection}:backfill"
+                        pipeline.add_step(
+                            backfill_step_key,
+                            f"{collection.title()} history",
+                            total=1,
+                            unit="current page",
+                            detail="saved backfill cursor · older archive history",
+                            show_rate=False,
+                            show_eta=False,
+                            show_progress=False,
+                        )
+                        pipeline.start_step(
+                            backfill_step_key,
+                            activity="Fetching older page 1",
+                            counters="0 pages · 0 tweets saved",
+                        )
                 else:
-                    console.print(f"{collection}: starting head pass", highlight=False)
-                head_pages, head_tweets, head_reason = await _run_pass(
+                    backfill_step_key = None
+                    console.print(f"{collection}: resuming saved backfill pass", highlight=False)
+                refreshed_state = store.get_sync_state(COLLECTION_TO_STORAGE[collection])
+                backfill_pages, backfill_tweets, backfill_reason = await _run_pass(
                     collection=collection,
-                    start_cursor=None,
+                    start_cursor=prior_backfill_cursor,
                     config=config,
                     auth=preflight.auth,
                     query_store=QueryIdStore(paths),
                     query_ids=dict(preflight.query_ids),
                     store=store,
-                    count_limit=limit,
-                    stop_on_duplicate=stop_on_dup,
-                    previous_state=previous_state,
+                    count_limit=remaining,
+                    stop_on_duplicate=False,
+                    previous_state=refreshed_state,
                     prior_backfill_cursor=prior_backfill_cursor,
                     prior_backfill_incomplete=prior_backfill_incomplete,
                     initial_seen_ids=seen_ids,
-                    is_head_pass=True,
+                    is_head_pass=False,
                     console=console,
                     sleep=sleep,
                     client=client,
-                    pipeline_step_key=head_step_key,
+                    pipeline_step_key=backfill_step_key if pipeline is not None else None,
                 )
+                pages_total += backfill_pages
+                tweets_total += backfill_tweets
+                stop_reason = backfill_reason
                 if pipeline is not None and not combine_pipeline_passes:
+                    pipeline.complete_step(
+                        backfill_step_key,
+                        f"{backfill_pages:,} pages · {backfill_tweets:,} tweets · "
+                        f"{_stop_summary(backfill_reason)}",
+                    )
+            if pipeline is not None and combine_pipeline_passes:
+                metrics = {
+                    "new_tweets": max(
+                        store.count_export_rows(COLLECTION_TO_STORAGE[collection])
+                        - initial_collection_count,
+                        0,
+                    ),
+                    "tweets_seen": tweets_total,
+                    "pages": pages_total,
+                }
+                if resume_saved_backfill:
+                    pipeline.complete_step(
+                        head_step_key,
+                        f"{head_pages:,} head pages · {head_tweets:,} tweets · "
+                        f"{backfill_pages:,} older pages · {backfill_tweets:,} tweets · "
+                        f"{_stop_summary(backfill_reason)}",
+                        metrics=metrics,
+                    )
+                else:
                     pipeline.complete_step(
                         head_step_key,
                         f"{head_pages:,} pages · {head_tweets:,} tweets · "
                         f"{_stop_summary(head_reason)}",
+                        metrics=metrics,
                     )
-                pages_total = head_pages
-                tweets_total = head_tweets
-                stop_reason = head_reason
-                remaining = None if limit is None else max(limit - head_pages, 0)
-
-                if head_only:
-                    refreshed_state = store.get_sync_state(COLLECTION_TO_STORAGE[collection])
-                    store.set_sync_state(
-                        COLLECTION_TO_STORAGE[collection],
-                        last_head_tweet_id=refreshed_state.last_head_tweet_id
-                        or previous_state.last_head_tweet_id,
-                        backfill_cursor=None,
-                        backfill_incomplete=False,
-                    )
-
-                resume_saved_backfill = (
-                    resume_backfill
-                    and not head_only
-                    and prior_backfill_incomplete
-                    and remaining != 0
-                )
-                if resume_saved_backfill:
-                    if pipeline is not None:
-                        if combine_pipeline_passes:
-                            pipeline.update_step(
-                                head_step_key,
-                                completed=0,
-                                total=1,
-                                activity="Fetching older page 1",
-                                counters="0 pages · 0 tweets saved",
-                                detail=(
-                                    "older-history pass · each page is committed with its "
-                                    "resume cursor"
-                                ),
-                                important=True,
-                            )
-                            backfill_step_key = head_step_key
-                        else:
-                            backfill_step_key = f"sync:{collection}:backfill"
-                            pipeline.add_step(
-                                backfill_step_key,
-                                f"{collection.title()} history",
-                                total=1,
-                                unit="current page",
-                                detail="saved backfill cursor · older archive history",
-                                show_rate=False,
-                                show_eta=False,
-                                show_progress=False,
-                            )
-                            pipeline.start_step(
-                                backfill_step_key,
-                                activity="Fetching older page 1",
-                                counters="0 pages · 0 tweets saved",
-                            )
-                    else:
-                        backfill_step_key = None
-                        console.print(
-                            f"{collection}: resuming saved backfill pass", highlight=False
-                        )
-                    refreshed_state = store.get_sync_state(COLLECTION_TO_STORAGE[collection])
-                    backfill_pages, backfill_tweets, backfill_reason = await _run_pass(
-                        collection=collection,
-                        start_cursor=prior_backfill_cursor,
-                        config=config,
-                        auth=preflight.auth,
-                        query_store=QueryIdStore(paths),
-                        query_ids=dict(preflight.query_ids),
-                        store=store,
-                        count_limit=remaining,
-                        stop_on_duplicate=False,
-                        previous_state=refreshed_state,
-                        prior_backfill_cursor=prior_backfill_cursor,
-                        prior_backfill_incomplete=prior_backfill_incomplete,
-                        initial_seen_ids=seen_ids,
-                        is_head_pass=False,
-                        console=console,
-                        sleep=sleep,
-                        client=client,
-                        pipeline_step_key=backfill_step_key if pipeline is not None else None,
-                    )
-                    pages_total += backfill_pages
-                    tweets_total += backfill_tweets
-                    stop_reason = backfill_reason
-                    if pipeline is not None and not combine_pipeline_passes:
-                        pipeline.complete_step(
-                            backfill_step_key,
-                            f"{backfill_pages:,} pages · {backfill_tweets:,} tweets · "
-                            f"{_stop_summary(backfill_reason)}",
-                        )
-                if pipeline is not None and combine_pipeline_passes:
-                    metrics = {
-                        "new_tweets": max(
-                            store.count_export_rows(COLLECTION_TO_STORAGE[collection])
-                            - initial_collection_count,
-                            0,
-                        ),
-                        "tweets_seen": tweets_total,
-                        "pages": pages_total,
-                    }
-                    if resume_saved_backfill:
-                        pipeline.complete_step(
-                            head_step_key,
-                            f"{head_pages:,} head pages · {head_tweets:,} tweets · "
-                            f"{backfill_pages:,} older pages · {backfill_tweets:,} tweets · "
-                            f"{_stop_summary(backfill_reason)}",
-                            metrics=metrics,
-                        )
-                    else:
-                        pipeline.complete_step(
-                            head_step_key,
-                            f"{head_pages:,} pages · {head_tweets:,} tweets · "
-                            f"{_stop_summary(head_reason)}",
-                            metrics=metrics,
-                        )
-                elif (
-                    pipeline is not None
-                    and pipeline.has_step(f"sync:{collection}:backfill")
-                    and not resume_saved_backfill
-                ):
-                    if not prior_backfill_incomplete:
-                        reason = "no saved older-history cursor"
-                    elif remaining == 0:
-                        reason = "the page limit being consumed by the head pass"
-                    else:
-                        reason = "older-history resume being disabled for this run"
-                    pipeline.skip_step(f"sync:{collection}:backfill", reason)
-            except BaseException as exc:
-                raise_if_storage_exhausted(exc)
-                raise
+            elif (
+                pipeline is not None
+                and pipeline.has_step(f"sync:{collection}:backfill")
+                and not resume_saved_backfill
+            ):
+                if not prior_backfill_incomplete:
+                    reason = "no saved older-history cursor"
+                elif remaining == 0:
+                    reason = "the page limit being consumed by the head pass"
+                else:
+                    reason = "older-history resume being disabled for this run"
+                pipeline.skip_step(f"sync:{collection}:backfill", reason)
         finally:
-            try:
-                await client.aclose()
-            finally:
-                store.close()
-    finally:
-        lock.release()
+            await client.aclose()
 
     return SyncResult(
         collection=collection,
@@ -835,6 +830,7 @@ async def sync_all(
         collections=selected,
         auth_bundle=auth_bundle,
         transport=transport,
+        console=console,
     )
     if not preflight.is_ready_for(selected):
         if preflight.has_local_error:

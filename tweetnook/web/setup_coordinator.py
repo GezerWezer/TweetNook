@@ -10,8 +10,11 @@ from pydantic import BaseModel, ValidationError
 
 from tweetnook.core.fileio import atomic_write_json
 from tweetnook.jobs.activity_history import latest_finished_snapshot, new_run_id, read_run
+from tweetnook.jobs.context import archive_job
 from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.storage import open_archive_store
+
+logger = logging.getLogger(__name__)
 
 
 class SetupState(BaseModel):
@@ -78,6 +81,22 @@ class SetupCoordinator:
     def save(self):
         atomic_write_json(self.paths.setup_state_file, self.state.model_dump())
 
+    def _commit(self, **changes):
+        """Record a decision only if it reaches disk, so memory never outlives a failed write."""
+        updated = self.state.model_copy(update=changes)
+        atomic_write_json(self.paths.setup_state_file, updated.model_dump())
+        self.state = updated
+
+    def _save_derived(self):
+        """Save state reconciliation worked out from a run; the next start derives it again.
+
+        A status read or a finished job must still report what happened when the disk is full.
+        """
+        try:
+            self.save()
+        except OSError:
+            logger.exception("Could not save Setup state")
+
     def _run(self, run_id):
         try:
             return read_run(self.paths.data_dir, run_id) if run_id else None
@@ -117,16 +136,17 @@ class SetupCoordinator:
                 else ["migrate"]
             )
             # Persist intent and the exact run ID before spawning; restart cannot lose the chain.
-            previous = self.state.model_copy()
+            previous = self.state
             run_id = new_run_id()
-            self.state.initialization_mode = mode
-            self.state.archive_previously_ready = self.server.get("store") is not None
-            self.state.archive_init_run_id = run_id
-            self.state.initialization_result = None
-            self.state.media_run_id = None
-            self.state.auto_enrich_requested = mode == "import"
-            self.state.auto_enrich_run_id = None
-            self.save()
+            self._commit(
+                initialization_mode=mode,
+                archive_previously_ready=self.server.get("store") is not None,
+                archive_init_run_id=run_id,
+                initialization_result=None,
+                media_run_id=None,
+                auto_enrich_requested=mode == "import",
+                auto_enrich_run_id=None,
+            )
             try:
                 return supervisor.start(
                     kind=mode,
@@ -137,7 +157,9 @@ class SetupCoordinator:
                 )
             except (JobConflictError, OSError):
                 self.state = previous
-                self.save()
+                # The start failure is what the caller needs; a failed rollback only leaves a
+                # saved run ID that the next start reads as an interrupted initialization.
+                self._save_derived()
                 raise
 
     def create_empty_archive(self):
@@ -153,23 +175,22 @@ class SetupCoordinator:
                     raise JobConflictError(
                         "An archive already exists; keep it or retry its import."
                     )
-                store = open_archive_store(self.paths, create=True, config=self.server["config"])
-                store.close()
-                self.state.initialization_mode = "empty"
-                self.state.initialization_result = "complete"
-                self.state.archive_init_run_id = None
-                self.state.media_run_id = None
-                self.state.auto_enrich_requested = False
-                self.save()
+                with archive_job(config=self.server["config"], paths=self.paths, create=True):
+                    pass
+                self._commit(
+                    initialization_mode="empty",
+                    initialization_result="complete",
+                    archive_init_run_id=None,
+                    media_run_id=None,
+                    auto_enrich_requested=False,
+                )
             finally:
                 probe.release()
             self.reconcile()
 
     def auth_was_verified(self):
         with self.lock:
-            self.state.auth_verified = True
-            self.state.auth_skipped = False
-            self.save()
+            self._commit(auth_verified=True, auth_skipped=False)
             self.reconcile()
 
     def job_completed(self, run_id, exit_code):
@@ -188,7 +209,7 @@ class SetupCoordinator:
             self.state.media_run_id = self.state.archive_init_run_id
         if not clean:
             self.state.auto_enrich_requested = False
-        self.save()
+        self._save_derived()
 
     def _initial_followup_failed(self, run):
         return bool(
@@ -197,6 +218,33 @@ class SetupCoordinator:
             and run
             and run.get("status") in {"failed", "interrupted", "stopped"}
         )
+
+    def _start_first_sync(self, supervisor):
+        run_id = new_run_id()
+        try:
+            self._commit(auto_enrich_requested=False, auto_enrich_run_id=run_id)
+        except OSError:
+            # Still requested, so the next reconciliation tries again once the disk has room.
+            logger.exception("Could not record the first sync")
+            return
+        try:
+            supervisor.start(
+                kind="enrich",
+                cli_args=["import", "enrich"],
+                origin="web",
+                title="tweetnook import enrich",
+                run_id=run_id,
+            )
+        except JobConflictError:
+            self.state.auto_enrich_requested = True
+            self.state.auto_enrich_run_id = None
+            self._save_derived()
+        except OSError:
+            self.notices.add(
+                f"enrich-{run_id}",
+                "Enrichment could not start",
+                "Retry enrichment from Activity.",
+            )
 
     def reconcile(self):
         with self.lock:
@@ -210,7 +258,7 @@ class SetupCoordinator:
                 if self.state.auth_verified != connected:
                     self.state.auth_verified = connected
                     self.state.auth_skipped = not connected
-                    self.save()
+                    self._save_derived()
             supervisor = self.server["job_supervisor"]
             run = self._run(self.state.archive_init_run_id)
             init_running = bool(
@@ -249,14 +297,14 @@ class SetupCoordinator:
                                 candidate.close()
                         if not valid:
                             self.state.initialization_result = "failed"
-                            self.save()
+                            self._save_derived()
                     if (
                         self.state.initialization_result != "failed"
                         or self.state.archive_previously_ready
                     ):
                         self.attach()
                 except Exception:
-                    logging.getLogger(__name__).exception("Could not attach archive storage")
+                    logger.exception("Could not attach archive storage")
                     self.notices.add(
                         "archive-open",
                         "Archive needs attention",
@@ -271,7 +319,7 @@ class SetupCoordinator:
             ):
                 if store is None or not store.has_completed_archive_import():
                     self.state.initialization_result = "failed"
-                    self.save()
+                    self._save_derived()
             if self.state.initialization_result in {"failed", "interrupted"}:
                 if not run or run.get("status") != "stopped":
                     self.notices.add(
@@ -291,7 +339,7 @@ class SetupCoordinator:
                 # Also cancel first-sync intent persisted by older versions after failure.
                 if self.state.auto_enrich_requested:
                     self.state.auto_enrich_requested = False
-                    self.save()
+                    self._save_derived()
                 if run.get("status") != "stopped":
                     self.notices.add(
                         f"import-followup-{self.state.archive_init_run_id}",
@@ -325,28 +373,7 @@ class SetupCoordinator:
                     and config.auth.ct0
                     and not supervisor.active
                 ):
-                    run_id = new_run_id()
-                    self.state.auto_enrich_requested = False
-                    self.state.auto_enrich_run_id = run_id
-                    self.save()
-                    try:
-                        supervisor.start(
-                            kind="enrich",
-                            cli_args=["import", "enrich"],
-                            origin="web",
-                            title="tweetnook import enrich",
-                            run_id=run_id,
-                        )
-                    except JobConflictError:
-                        self.state.auto_enrich_requested = True
-                        self.state.auto_enrich_run_id = None
-                        self.save()
-                    except OSError:
-                        self.notices.add(
-                            f"enrich-{run_id}",
-                            "Enrichment could not start",
-                            "Retry enrichment from Activity.",
-                        )
+                    self._start_first_sync(supervisor)
             enrich_run = self._followup_result()
             enrich_finishing = bool(
                 self.state.auto_enrich_run_id
@@ -356,12 +383,17 @@ class SetupCoordinator:
                 self.state.auto_enrich_run_id
                 and not supervisor.active
                 and not enrich_finishing
-                and (not enrich_run or enrich_run.get("status") not in {"completed", "stopped"})
+                # A run still marked live can be a worker that outlived a server restart.
+                and (
+                    not enrich_run
+                    or enrich_run.get("status")
+                    not in {"completed", "stopped", "starting", "running"}
+                )
             ):
                 self.notices.add(
                     f"enrich-{self.state.auto_enrich_run_id}",
                     "Enrichment task needs attention",
-                    (enrich_run or {}).get("snapshot", {}).get("summary")
+                    ((enrich_run or {}).get("snapshot") or {}).get("summary")
                     or "Enrichment or its automatic sync did not finish. "
                     "Saved progress is preserved. Check disk space and open Activity to resume.",
                     run_id=self.state.auto_enrich_run_id,
@@ -380,9 +412,7 @@ class SetupCoordinator:
                     raise ValueError("Choose an archive initialization option first.")
                 if not self.state.auth_verified and not skip_auth:
                     raise ValueError("Connect Twitter/X or explicitly continue without connecting.")
-            self.state.auth_skipped = skip_auth and not self.state.auth_verified
-            self.state.completed = True
-            self.save()
+            self._commit(auth_skipped=skip_auth and not self.state.auth_verified, completed=True)
 
     def pending_jobs(self):
         """Job keys Setup will start on its own, in order, for the Web jobs list."""
@@ -527,7 +557,9 @@ class SetupCoordinator:
                         self.paths.data_dir / "archive.lancedb"
                     ).exists(),
                     "warnings": [
-                        (followup_run or initialization or {}).get("snapshot", {}).get("summary")
+                        ((followup_run or initialization or {}).get("snapshot") or {}).get(
+                            "summary"
+                        )
                         or "Archive preparation did not finish. Open Activity to review and resume."
                     ]
                     if followup_failed

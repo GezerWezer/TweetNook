@@ -7,6 +7,8 @@ from tweetnook.core.exceptions import ConfigError
 
 
 class _FakeStore:
+    migration_report = None
+
     def __init__(self) -> None:
         self.optimize_calls = 0
         self.closed = False

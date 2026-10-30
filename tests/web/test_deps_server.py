@@ -184,6 +184,8 @@ def test_lifespan_opens_and_closes_store(monkeypatch, tmp_path: Path) -> None:
     events: list[str] = []
 
     class Store:
+        migration_report = None
+
         def count_incomplete_initial_enrichment(self):
             return 0
 
@@ -286,6 +288,8 @@ async def test_lifespan_closes_store_when_context_exits_with_error(
     events: list[str] = []
 
     class Store:
+        migration_report = None
+
         def count_incomplete_initial_enrichment(self):
             return 0
 

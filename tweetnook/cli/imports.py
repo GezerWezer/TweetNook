@@ -18,6 +18,7 @@ from tweetnook.importer.archive_enrich import (
     ArchiveEnrichmentAborted,
     ArchiveEnrichmentInterrupted,
     enrich_imported_archive,
+    remaining_enrichment_text,
 )
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.sync.collection import sync_all
@@ -279,7 +280,7 @@ def import_x_archive_command(
         console.print("Archive import is complete.", highlight=False)
         console.print("\nArchive enrichment was interrupted.", highlight=False)
         console.print(
-            f"{exc.remaining:,} sparse archive tweets remain incomplete.",
+            remaining_enrichment_text(exc.remaining, "sparse archive tweets"),
             highlight=False,
         )
         console.print("\nContinue later with:\n  tweetnook import enrich", highlight=False)
@@ -288,7 +289,7 @@ def import_x_archive_command(
         console.print("Archive import is complete.", highlight=False)
         console.print("\nAutomatic archive enrichment stopped:", highlight=False)
         console.print(f"[red]{exc.cause}[/red]")
-        console.print(f"{exc.remaining:,} sparse archive tweets remain incomplete.")
+        console.print(remaining_enrichment_text(exc.remaining, "sparse archive tweets"))
         console.print("\nContinue later with:\n  tweetnook import enrich", highlight=False)
         raise typer.Exit(2) from exc
     except ConfigError as exc:
@@ -395,12 +396,12 @@ def import_archive_enrich(
             raise typer.Exit(synced.exit_code)
     except ArchiveEnrichmentInterrupted as exc:
         console.print("Archive enrichment was interrupted.", highlight=False)
-        console.print(f"{exc.remaining:,} tweets remain incomplete.", highlight=False)
+        console.print(remaining_enrichment_text(exc.remaining, "tweets"), highlight=False)
         console.print("Run `tweetnook import enrich` to continue.", highlight=False)
         raise typer.Exit(130) from exc
     except ArchiveEnrichmentAborted as exc:
         console.print(f"[red]{exc}[/red]")
-        console.print(f"{exc.remaining:,} tweets remain incomplete.", highlight=False)
+        console.print(remaining_enrichment_text(exc.remaining, "tweets"), highlight=False)
         console.print("Run `tweetnook import enrich` to continue.", highlight=False)
         raise typer.Exit(2) from exc
     except ConfigError as exc:

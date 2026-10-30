@@ -10,8 +10,10 @@ from typing import Any
 from rich.console import Console
 
 from tweetnook.config import load_config
+from tweetnook.core.exceptions import ProcessLockError
+from tweetnook.jobs.context import archive_job
 from tweetnook.jobs.pipeline import current_pipeline
-from tweetnook.storage import open_archive_store
+from tweetnook.storage import ArchiveStore
 
 WORKER_END_OF_TABLE = 42
 WORKER_SOURCE_READ_FAILED = 43
@@ -198,7 +200,7 @@ def _copy_batches(
                 range_size,
                 range_offset,
             )
-        except Exception as error:
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
             result.worker_calls += 1
             result.status = "aborted"
             _progress_warning(
@@ -266,7 +268,7 @@ def _copy_batches(
             result.worker_calls += 1
             try:
                 worker_result = _run_worker(lance_path, database_path, batch_size, offset)
-            except Exception as error:
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
                 result.status = "aborted"
                 _progress_warning(
                     progress,
@@ -289,30 +291,12 @@ def _copy_batches(
     return result
 
 
-def _rebuild_fts(config: Any, paths: Any, *, console: Console | None = None) -> bool:
+def _rebuild_fts(store: ArchiveStore) -> bool:
     pipeline = current_pipeline()
     if pipeline is not None:
         pipeline.status("migration-index", "Rebuilding the SQLite full-text search index")
     else:
         print("Rebuilding Full-Text Search index (this may take a few moments)...")
-    try:
-        store = open_archive_store(paths, create=True, config=config)
-    except Exception as error:
-        message = f"Failed to open SQLite store for FTS rebuild: {error}"
-        if pipeline is not None:
-            pipeline.issue(message, level="error", dedupe_key="migration:index-open")
-        elif console is not None:
-            console.print(f"Warning: {message}")
-        else:
-            print(f"Warning: {message}")
-        return False
-    if store is None:
-        message = "Failed to open SQLite store for FTS rebuild."
-        if pipeline is not None:
-            pipeline.issue(message, level="error", dedupe_key="migration:index-open")
-        else:
-            print(f"Warning: {message}")
-        return False
     try:
         store.rebuild_search_index()
         return True
@@ -323,8 +307,6 @@ def _rebuild_fts(config: Any, paths: Any, *, console: Console | None = None) -> 
         else:
             print(f"Warning: {message}")
         return False
-    finally:
-        store.close()
 
 
 def run_migration(
@@ -430,24 +412,44 @@ def run_migration(
     else:
         print(f"Inserting into native SQLite database at {database_path}...")
 
+    # Held from creating the destination until its index is rebuilt: the workers write to the
+    # archive from their own processes, so nothing else may be writing to it meanwhile.
+    opened = False
     try:
-        store = open_archive_store(paths, create=True, config=config)
+        with archive_job(config=config, paths=paths, console=console, create=True) as job:
+            opened = True
+            return _migrate_rows(
+                job.store,
+                lance_path=lance_path,
+                database_path=database_path,
+                total_rows=total_rows,
+                batch_size=batch_size,
+            )
+    except ProcessLockError:
+        if pipeline is not None:
+            pipeline.fail_step("migration-copy", "Another archive job is running")
+            pipeline.skip_step("migration-index", "another archive job holding the archive")
+        raise
     except Exception as error:
+        if opened:
+            raise
         if pipeline is not None:
             pipeline.fail_step("migration-copy", f"Failed to initialize SQLite: {error}")
             pipeline.skip_step("migration-index", "the SQLite destination failing to initialize")
         else:
             print(f"Failed to initialize SQLite store: {error}")
         return MigrationResult(status="destination_failed", total_rows=total_rows)
-    if store is None:
-        if pipeline is not None:
-            pipeline.fail_step("migration-copy", "Failed to open the SQLite destination")
-            pipeline.skip_step("migration-index", "the SQLite destination failing to initialize")
-        else:
-            print("Failed to open SQLite store.")
-        return MigrationResult(status="destination_failed", total_rows=total_rows)
-    store.close()
 
+
+def _migrate_rows(
+    store: ArchiveStore,
+    *,
+    lance_path: Path,
+    database_path: Path,
+    total_rows: int,
+    batch_size: int,
+) -> MigrationResult:
+    pipeline = current_pipeline()
     progress = _create_progress(total_rows)
     try:
         result = _copy_batches(
@@ -482,7 +484,7 @@ def run_migration(
             "migration-index",
             activity="Rebuilding the SQLite full-text search index",
         )
-    result.fts_rebuilt = _rebuild_fts(config, paths, console=console)
+    result.fts_rebuilt = _rebuild_fts(store)
     skipped_unit = "row" if result.skipped_rows == 1 else "rows"
     if pipeline is not None:
         if result.fts_rebuilt:

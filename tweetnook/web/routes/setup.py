@@ -41,6 +41,7 @@ from tweetnook.core.dev_replay import (
 from tweetnook.core.exceptions import ProcessLockError
 from tweetnook.core.fileio import owned_temp, publish_file
 from tweetnook.core.passwords import hash_password
+from tweetnook.jobs.resource_failure import StorageExhaustedError
 from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.web.deps import remember_web_session, server_state, verify_credentials
 from tweetnook.web.routes.activity import read_active_snapshot
@@ -468,7 +469,14 @@ def put_auth(
         if current.replay.url:
             coordinator.reconcile()
         else:
-            coordinator.auth_was_verified()
+            try:
+                coordinator.auth_was_verified()
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="The connection was saved, but Setup could not record it. "
+                    "Check available storage and retry.",
+                ) from exc
     return _auth_payload(
         config.auth,
         verified=connected
@@ -488,23 +496,34 @@ async def upload_archive(
     if read_active_snapshot() is not None:
         raise HTTPException(status_code=409, detail="Wait for the active command to finish.")
     archive = paths.staged_archive_file
-    archive.parent.mkdir(parents=True, exist_ok=True)
     size = 0
-    with owned_temp(archive) as temporary:
-        with temporary.open("wb") as handle:
-            async for chunk in request.stream():
-                size += len(chunk)
-                if size > MAX_ARCHIVE_BYTES:
-                    raise HTTPException(status_code=413, detail="Archive exceeds the 50 GiB limit.")
-                handle.write(chunk)
-        if size == 0 or not zipfile.is_zipfile(temporary):
-            raise HTTPException(status_code=422, detail="Upload must be a valid archive.zip file.")
-        if read_active_snapshot() is not None:
-            raise HTTPException(
-                status_code=409, detail="A command started during upload. Retry after it finishes."
-            )
-        # The flush can take as long as the whole upload took to write; other requests keep going.
-        await asyncio.to_thread(publish_file, temporary, archive)
+    try:
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        with owned_temp(archive) as temporary:
+            with temporary.open("wb") as handle:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > MAX_ARCHIVE_BYTES:
+                        raise HTTPException(
+                            status_code=413, detail="Archive exceeds the 50 GiB limit."
+                        )
+                    handle.write(chunk)
+            if size == 0 or not zipfile.is_zipfile(temporary):
+                raise HTTPException(
+                    status_code=422, detail="Upload must be a valid archive.zip file."
+                )
+            if read_active_snapshot() is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A command started during upload. Retry after it finishes.",
+                )
+            # The flush can take as long as the whole upload took to write; other requests keep
+            # going.
+            await asyncio.to_thread(publish_file, temporary, archive)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503, detail="Could not save the archive. Check available storage and retry."
+        ) from exc
     return _archive_payload()
 
 
@@ -535,7 +554,7 @@ def _initialize(mode):
         return coordinator.begin(mode)
     except (JobConflictError, ProcessLockError) as exc:
         raise HTTPException(status_code=409, detail=config_error_message(exc)) from exc
-    except (OSError, sqlite3.Error) as exc:
+    except (OSError, sqlite3.Error, StorageExhaustedError) as exc:
         coordinator.notices.add(
             "initialization-start",
             "Archive could not be initialized",
@@ -662,13 +681,21 @@ def _finish_setup(request: CompleteRequest, http_request: Request):
         password_changed = request.password is not None or (
             request.no_password and server_state.get("password_hash")
         )
-        if password_changed:
-            save_server_config(coordinator.paths, {"web.password_hash": password_hash})
-        coordinator.complete_walkthrough(skip_auth=request.skip_auth)
-        server_state["password_hash"] = password_hash
+        try:
+            if password_changed:
+                save_server_config(coordinator.paths, {"web.password_hash": password_hash})
+            # Saved means current: a later failure can't leave the server on the old password
+            # while the file holds the new one, or sign this browser out of its own change.
+            server_state["password_hash"] = password_hash
+            if request.password is not None:
+                remember_web_session(http_request)
+            coordinator.complete_walkthrough(skip_auth=request.skip_auth)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Setup could not be saved. Check available storage and retry.",
+            ) from exc
         coordinator.reconcile()
-        if request.password is not None:
-            remember_web_session(http_request)
     return {"completed": True, "reload": False}
 
 

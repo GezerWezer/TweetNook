@@ -12,12 +12,14 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 from tests.conftest import patch_cli
+from tests.test_process_lock_os import holding_lock_in_another_process, other_process_sees
 from tweetnook import cli
 from tweetnook.config import AppConfig
+from tweetnook.core.exceptions import ProcessLockError
 from tweetnook.importer import legacy_migration as migrate
+from tweetnook.jobs import context as job_context
 from tweetnook.jobs.pipeline import PipelineReporter, current_pipeline
-from tweetnook.storage import open_archive_store
-from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage import ArchiveStore, open_archive_store
 from tweetnook.storage.schema import SCHEMA_VERSION
 
 
@@ -115,6 +117,8 @@ class FakeConnection:
 
 
 class FakeStore:
+    migration_report = None
+
     def __init__(
         self,
         events: list[object],
@@ -186,13 +190,12 @@ def install_fake_stores(
     def fake_open(paths, *, create: bool, config) -> FakeStore:
         calls.append((create, paths, config))
         label = "schema" if not stores else "fts"
-        connection = final_connection if stores and final_connection else FakeConnection()
-        store = FakeStore(events, connection=connection, label=label)
+        store = FakeStore(events, connection=final_connection or FakeConnection(), label=label)
         stores.append(store)
         events.append(("open", label, create))
         return store
 
-    monkeypatch.setattr(migrate, "open_archive_store", fake_open)
+    monkeypatch.setattr(job_context, "open_archive_store", fake_open)
     return calls, stores
 
 
@@ -467,7 +470,7 @@ def test_missing_optional_dependency_returns_result_instead_of_exiting(
     monkeypatch.setattr(migrate, "load_config", lambda: (config, paths))
     monkeypatch.setattr(migrate, "_import_lancedb", lambda: None)
     monkeypatch.setattr(
-        migrate,
+        job_context,
         "open_archive_store",
         lambda *args, **kwargs: pytest.fail("destination opened without lancedb"),
     )
@@ -499,7 +502,7 @@ def test_missing_or_unreadable_archive_table_is_nonfatal(
     monkeypatch.setattr(migrate, "load_config", lambda: (AppConfig(), paths))
     monkeypatch.setattr(migrate, "_import_lancedb", lambda: legacy)
     monkeypatch.setattr(
-        migrate,
+        job_context,
         "open_archive_store",
         lambda *args, **kwargs: pytest.fail("destination opened without a legacy table"),
     )
@@ -510,7 +513,7 @@ def test_missing_or_unreadable_archive_table_is_nonfatal(
     assert "not found or unreadable" in capsys.readouterr().out
 
 
-def test_destination_schema_is_created_and_closed_before_first_worker(
+def test_destination_schema_is_created_before_first_worker(
     monkeypatch: pytest.MonkeyPatch,
     paths,
 ) -> None:
@@ -527,9 +530,8 @@ def test_destination_schema_is_created_and_closed_before_first_worker(
     result = migrate.run_migration()
 
     assert result.status == "complete"
-    assert events[:3] == [
+    assert events[:2] == [
         ("open", "schema", True),
-        ("close", "schema"),
         ("worker", 0),
     ]
     assert store_calls[0] == (True, paths, config)
@@ -780,7 +782,7 @@ def test_destination_initialization_failure_prevents_workers(
             raise sqlite3.OperationalError("disk full")
         return None
 
-    monkeypatch.setattr(migrate, "open_archive_store", failed_open)
+    monkeypatch.setattr(job_context, "open_archive_store", failed_open)
     monkeypatch.setattr(
         migrate,
         "_run_worker",
@@ -918,3 +920,45 @@ def test_realistic_rerun_preserves_existing_rows_and_rebuilds_tweet_only_search(
         assert [row["row_key"] for row in fts_matches] == []
     finally:
         final_store.close()
+
+
+def test_migration_holds_the_archive_lock_through_workers_and_index(
+    monkeypatch: pytest.MonkeyPatch,
+    paths,
+) -> None:
+    install_legacy_source(monkeypatch, paths, total_rows=1)
+    seen: list[str] = []
+
+    def worker(_lance_path, _database_path, _batch_size, offset) -> SimpleNamespace:
+        seen.append(other_process_sees(paths.lock_file))
+        return worker_result(0 if offset == 0 else migrate.WORKER_END_OF_TABLE)
+
+    monkeypatch.setattr(migrate, "_run_worker", worker)
+    monkeypatch.setattr(migrate, "_create_progress", lambda total: None)
+    rebuild = ArchiveStore.rebuild_search_index
+
+    def checked_rebuild(self) -> None:
+        seen.append(other_process_sees(paths.lock_file))
+        rebuild(self)
+
+    monkeypatch.setattr(ArchiveStore, "rebuild_search_index", checked_rebuild)
+
+    result = migrate.run_migration()
+
+    assert result.fts_rebuilt is True
+    assert seen == ["held", "held", "held"]
+    assert other_process_sees(paths.lock_file) == "free"
+
+
+def test_migration_refuses_an_archive_another_process_is_writing(
+    monkeypatch: pytest.MonkeyPatch,
+    paths,
+) -> None:
+    install_legacy_source(monkeypatch, paths, total_rows=1)
+    monkeypatch.setattr(
+        migrate, "_run_worker", lambda *args: pytest.fail("worker ran without the lock")
+    )
+    with holding_lock_in_another_process(paths.lock_file):
+        with pytest.raises(ProcessLockError):
+            migrate.run_migration()
+    assert not paths.database_path.exists()

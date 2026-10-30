@@ -10,6 +10,8 @@ from __future__ import annotations
 import sqlite3
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -31,6 +33,32 @@ with open(sys.argv[1], "a+") as handle:
     else:
         print("free")
 """
+
+
+# Takes the lock, says so, and holds it until told to stop.
+_HOLDER = """
+import fcntl, sys
+with open(sys.argv[1], "a+") as handle:
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    print("holding", flush=True)
+    sys.stdin.read()
+"""
+
+
+@contextmanager
+def holding_lock_in_another_process(path: Path) -> Iterator[None]:
+    holder = subprocess.Popen(
+        [sys.executable, "-I", "-c", _HOLDER, str(path)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "holding"
+        yield
+    finally:
+        holder.communicate(timeout=10)
 
 
 def other_process_sees(path: Path) -> str:

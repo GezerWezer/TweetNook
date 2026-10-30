@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import errno
+import io
 import json
 import time
+import zipfile
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 from tweetnook.config import AppConfig, ensure_paths, resolve_paths
+from tweetnook.core.locking import ProcessLock
 from tweetnook.jobs.activity_history import mark_run_process_result, new_run_id, reserve_run
 from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.storage import open_archive_store
-from tweetnook.web import server
+from tweetnook.web import server, setup_coordinator
 from tweetnook.web.deps import SESSION_COOKIE, server_state
 from tweetnook.web.notices import NoticeStore
 from tweetnook.web.setup_coordinator import SetupCoordinator
@@ -825,3 +829,158 @@ def test_jobs_list_shows_what_setup_starts_next(coordinator, monkeypatch):
     assert by_key["enrich"]["state"] == "queued"
     assert by_key["enrich"]["queue"]["removable"] is False
     assert by_key["media"]["state"] != "queued"
+
+
+def _full_disk(*_args, **_kwargs):
+    raise OSError(errno.ENOSPC, "No space left on device")
+
+
+def test_failed_setup_state_write_keeps_the_finished_archive(coordinator, monkeypatch):
+    coord, jobs, _ = coordinator
+    coord.begin("import")
+    finished = jobs.active_run_id
+    coord.paths.database_path.touch()
+    jobs.finish()
+    saved = coord.paths.setup_state_file.read_bytes()
+
+    with monkeypatch.context() as full:
+        full.setattr(setup_coordinator, "atomic_write_json", _full_disk)
+        with pytest.raises(OSError):
+            coord.begin("import")
+
+    assert len(jobs.calls) == 1
+    assert coord.paths.setup_state_file.read_bytes() == saved
+    assert coord.state.archive_init_run_id == finished
+    coord.reconcile()
+    assert coord.state.initialization_result == "complete"
+    assert coord.notices.list() == []
+
+
+def test_failed_rollback_does_not_replace_the_start_conflict(coordinator, monkeypatch):
+    coord, jobs, _ = coordinator
+    writes = []
+    real_write = setup_coordinator.atomic_write_json
+
+    def first_write_only(*args, **kwargs):
+        writes.append(args)
+        if len(writes) > 1:
+            _full_disk()
+        real_write(*args, **kwargs)
+
+    def busy(**_kwargs):
+        raise JobConflictError("Another command is running.")
+
+    monkeypatch.setattr(setup_coordinator, "atomic_write_json", first_write_only)
+    monkeypatch.setattr(jobs, "start", busy)
+    with pytest.raises(JobConflictError):
+        coord.begin("import")
+    assert coord.state.archive_init_run_id is None
+    assert len(writes) == 2
+
+
+def test_finished_job_is_recorded_when_setup_state_cannot_be_saved(coordinator, monkeypatch):
+    coord, jobs, _ = coordinator
+    coord.begin("migration")
+    coord.paths.database_path.touch()
+    monkeypatch.setattr(setup_coordinator, "atomic_write_json", _full_disk)
+    jobs.finish()
+    assert coord.state.initialization_result == "complete"
+    assert server_state["store"] is not None
+    assert coord.status()["archive"]["initialization_state"] == "complete"
+
+
+def test_first_sync_stays_pending_when_its_intent_cannot_be_saved(coordinator, monkeypatch):
+    coord, jobs, _ = coordinator
+    coord.begin("import")
+    coord.paths.database_path.touch()
+    server_state["config"].auth.auth_token = "synthetic"
+    server_state["config"].auth.ct0 = "synthetic"
+    coord.auth_was_verified()
+    coord.complete_walkthrough()
+    with monkeypatch.context() as full:
+        full.setattr(setup_coordinator, "atomic_write_json", _full_disk)
+        jobs.finish()
+        coord.reconcile()
+        assert coord.state.auto_enrich_requested is True
+        assert len(jobs.calls) == 1
+        assert coord.notices.list() == []
+    coord.reconcile()
+    assert jobs.calls[-1]["kind"] == "enrich"
+
+
+@pytest.mark.parametrize("worker_alive", [True, False])
+def test_followup_run_with_no_snapshot_does_not_break_setup_status(coordinator, worker_alive):
+    coord, jobs, _ = coordinator
+    jobs.start(
+        kind="enrich", cli_args=["import", "enrich"], origin="web", title="tweetnook import enrich"
+    )
+    run_id = jobs.active_run_id
+    coord.state.auto_enrich_run_id = run_id
+    # A restarted server owns no process; the worker hasn't published anything yet.
+    jobs.active = False
+    jobs.active_run_id = None
+    metadata_file = coord.paths.activity_runs_dir / run_id / "metadata.json"
+    if not worker_alive:
+        metadata = json.loads(metadata_file.read_text())
+        metadata["status"] = "failed"
+        metadata_file.write_text(json.dumps(metadata))
+
+    coord.reconcile()
+
+    notices = coord.notices.list()
+    if worker_alive:
+        assert notices == []
+    else:
+        assert [notice["id"] for notice in notices] == [f"enrich-{run_id}"]
+    assert isinstance(coord.status()["archive"]["warnings"], list)
+
+
+def test_empty_archive_waits_for_the_archive_lock(first_run):
+    held = ProcessLock(first_run.lock_file)
+    held.acquire()
+    try:
+        with TestClient(server.app) as client:
+            response = client.post("/api/setup/archive/empty")
+            assert response.status_code == 409
+            assert server_state["setup_coordinator"].state.initialization_mode is None
+    finally:
+        held.release()
+    assert not first_run.database_path.exists()
+
+
+def test_empty_archive_reports_a_full_disk(first_run, monkeypatch):
+    monkeypatch.setattr("tweetnook.jobs.context.open_archive_store", _full_disk)
+    with TestClient(server.app) as client:
+        response = client.post("/api/setup/archive/empty")
+        assert response.status_code == 503
+        coordinator = server_state["setup_coordinator"]
+        assert coordinator.state.initialization_mode is None
+        assert [n["id"] for n in coordinator.notices.list()] == ["initialization-start"]
+
+
+def test_password_change_stays_current_when_setup_state_cannot_be_saved(first_run, monkeypatch):
+    with TestClient(server.app, raise_server_exceptions=False) as client:
+        assert client.post("/api/setup/archive/empty").status_code == 200
+        monkeypatch.setattr(setup_coordinator, "atomic_write_json", _full_disk)
+        response = client.post(
+            "/api/setup/complete",
+            json={"skip_auth": True, "password": "test-secret", "confirm_password": "test-secret"},
+        )
+        assert response.status_code == 503
+        assert "password_hash" in first_run.config_file.read_text(encoding="utf-8")
+        assert server_state["setup_coordinator"].state.completed is False
+        client.cookies.clear()
+        assert client.get("/api/setup").status_code == 401
+        assert client.get("/api/setup", auth=("any", "test-secret")).status_code == 200
+
+
+def test_archive_upload_reports_a_full_disk(first_run, monkeypatch):
+    monkeypatch.setattr("tweetnook.web.routes.setup.publish_file", _full_disk)
+    with TestClient(server.app) as client:
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("data/manifest.js", "window.__THAR_CONFIG = {};\n")
+        response = client.put("/api/setup/archive", content=output.getvalue())
+        assert response.status_code == 503
+        assert "storage" in response.json()["detail"]
+        assert not first_run.staged_archive_file.exists()

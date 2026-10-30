@@ -2,45 +2,63 @@
 
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Annotated
 
 import typer
+from rich.console import Console
 
 from tweetnook.cli.common import (
     configure_logging,
     open_store_for_read,
     web_pipeline,
-    with_archive_write_lock,
 )
 from tweetnook.config import initialize_config as load_config
-from tweetnook.core.exceptions import ConfigError, ProcessLockError, TweetNookError
-from tweetnook.storage import open_archive_store
+from tweetnook.core.exceptions import ConfigError, TweetNookError
+from tweetnook.jobs.context import archive_job
+from tweetnook.storage import ArchiveStore
 
 db_app = typer.Typer(no_args_is_help=True, help="Inspect the local SQLite archive database.")
+
+# These commands can stop after destructive work has already committed, so the generic promise
+# that saved data is untouched and Sync resumes everything doesn't hold for them.
+MAINTENANCE_STORAGE_RECOVERY = (
+    "Storage is full. Free or add disk space, then run `tweetnook db check` and rerun this "
+    "command. It may have finished part of its work before stopping."
+)
+
+
+@contextmanager
+def _maintenance_store(
+    console: Console, config, paths, *, hold_lock: bool = True
+) -> Iterator[ArchiveStore]:
+    try:
+        with archive_job(
+            config=config,
+            paths=paths,
+            console=console,
+            hold_lock=hold_lock,
+            storage_recovery=MAINTENANCE_STORAGE_RECOVERY,
+        ) as job:
+            yield job.store
+    except ConfigError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+    except TweetNookError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from exc
 
 
 def optimize_archive() -> None:
     """Reclaim SQLite space and optimize query planning and the full-text index."""
     console = configure_logging()
     config, paths = load_config()
-
-    def run() -> None:
-        store = open_archive_store(paths, create=False, config=config)
-        if store is None:
-            console.print("[red]No local archive found.[/red]")
-            raise typer.Exit(1)
-        try:
-            console.print("optimizing database and search index...")
-            store.optimize()
-            console.print("database optimization complete.")
-        finally:
-            store.close()
-
-    try:
-        with_archive_write_lock(paths, run)
-    except ProcessLockError as exc:
-        console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(2) from exc
+    with _maintenance_store(console, config, paths) as store:
+        console.print("optimizing database and search index...")
+        store.optimize()
+        console.print("database optimization complete.")
 
 
 def prune_archive(
@@ -103,48 +121,29 @@ def prune_archive(
     def log(message: str) -> None:
         console.print(f"prune: {message}", highlight=False)
 
-    def run() -> None:
-        store = open_archive_store(paths, create=False, config=config)
-        if store is None:
-            console.print("[red]No local archive found.[/red]")
-            raise typer.Exit(1)
-        try:
-            plan = plan_prune(
-                store,
-                paths.data_dir,
-                max_linked_depth=depth,
-                reply_linked_depth=reply_depth,
-                log=log,
+    with _maintenance_store(console, config, paths, hold_lock=apply) as store:
+        plan = plan_prune(
+            store,
+            paths.data_dir,
+            max_linked_depth=depth,
+            reply_linked_depth=reply_depth,
+            log=log,
+        )
+        for line in describe_prune_plan(plan):
+            console.print(line, highlight=False)
+        if not plan.row_total and not plan.media_files and not plan.cleanup_pending:
+            return
+        if not apply:
+            console.print(
+                "Dry run: nothing was deleted. Back up archive.db, then re-run with --apply.",
+                highlight=False,
             )
-            for line in describe_prune_plan(plan):
-                console.print(line, highlight=False)
-            if not plan.row_total and not plan.media_files and not plan.cleanup_pending:
-                return
-            if not apply:
-                console.print(
-                    "Dry run: nothing was deleted. Back up archive.db, then re-run with --apply.",
-                    highlight=False,
-                )
-                return
-            result = apply_prune(store, plan, paths.data_dir, paths.database_path, log=log)
-            for line in describe_prune_result(result):
-                console.print(line, highlight=False)
-            if result.files_pending:
-                raise typer.Exit(1)
-        finally:
-            store.close()
-
-    try:
-        if apply:
-            with_archive_write_lock(paths, run)
-        else:
-            run()
-    except ConfigError as exc:
-        console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(1) from exc
-    except ProcessLockError as exc:
-        console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(2) from exc
+            return
+        result = apply_prune(store, plan, paths.data_dir, paths.database_path, log=log)
+        for line in describe_prune_result(result):
+            console.print(line, highlight=False)
+        if result.files_pending:
+            raise typer.Exit(1)
 
 
 @db_app.command("check", help="Run an explicit SQLite database integrity check.")
@@ -162,7 +161,7 @@ def check_database(
     pragma = "integrity_check" if full else "quick_check"
     try:
         results = store.check_integrity(full=full)
-    except Exception as exc:
+    except (sqlite3.Error, OSError) as exc:
         console.print(f"[red]database {pragma} failed: {exc}[/red]")
         raise typer.Exit(2) from exc
     finally:
@@ -184,31 +183,17 @@ def rehydrate_archive() -> None:
 
     console = configure_logging()
     config, paths = load_config()
-
-    def run() -> None:
-        store = open_archive_store(paths, create=False, config=config)
-        if store is None:
-            console.print("[red]No local archive found.[/red]")
-            raise typer.Exit(1)
-        try:
-            total = store.rehydration_work_total()
-            if total == 0:
-                console.print("archive has no tweet rows")
-                return
-            with tqdm(total=total, desc="rehydrating", unit="tweets") as pbar:
-                result = store.rehydrate_from_raw_json(progress=pbar.update)
-            console.print(
-                f"rehydrated {result.tweets_updated} tweet rows and rebuilt "
-                f"{result.secondary_records} secondary rows"
-            )
-        finally:
-            store.close()
-
-    try:
-        with_archive_write_lock(paths, run)
-    except ProcessLockError as exc:
-        console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(2) from exc
+    with _maintenance_store(console, config, paths) as store:
+        total = store.rehydration_work_total()
+        if total == 0:
+            console.print("archive has no tweet rows")
+            return
+        with tqdm(total=total, desc="rehydrating", unit="tweets") as pbar:
+            result = store.rehydrate_from_raw_json(progress=pbar.update)
+        console.print(
+            f"rehydrated {result.tweets_updated} tweet rows and rebuilt "
+            f"{result.secondary_records} secondary rows"
+        )
 
 
 def migrate() -> None:

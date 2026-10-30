@@ -490,9 +490,8 @@ def test_foreground_serve_without_archive(monkeypatch, tmp_path: Path) -> None:
     config, paths = _configured(tmp_path)
     calls = []
     patch_cli(monkeypatch, "load_config", lambda: (config, paths))
-    patch_cli(
-        monkeypatch,
-        "open_archive_store",
+    monkeypatch.setattr(
+        "tweetnook.jobs.context.open_archive_store",
         lambda *_a, **_k: pytest.fail("CLI must not open storage"),
     )
     monkeypatch.setattr("tweetnook.web.server.run_server", lambda *args: calls.append(args))

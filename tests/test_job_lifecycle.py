@@ -1,0 +1,486 @@
+"""locked_archive_job owns the lock, open, notice, body and close, and their failures."""
+
+from __future__ import annotations
+
+import errno
+import sqlite3
+from io import StringIO
+
+import httpx
+import pytest
+from rich.console import Console
+from typer.testing import CliRunner
+
+import tweetnook.cli as cli
+import tweetnook.importer.archive as archive_import
+import tweetnook.importer.archive_enrich as archive_enrich
+from tests.archive_import.conftest import _write_archive_dir
+from tests.collection_sync.conftest import _bookmarks_response_from_results, _save_query_ids
+from tests.conftest import patch_cli
+from tests.test_process_lock_os import other_process_sees
+from tweetnook.config import AppConfig
+from tweetnook.core.exceptions import ArchiveNotFoundError, ConfigError, StaleQueryIdError
+from tweetnook.jobs import context as job_context
+from tweetnook.jobs.pipeline import PipelineReporter
+from tweetnook.jobs.resource_failure import STORAGE_RECOVERY, StorageExhaustedError
+from tweetnook.storage import ArchiveStore, open_archive_store
+from tweetnook.sync.collection import RemotePreflightError, run_preflight, sync_collection
+
+FULL_DISK = OSError(errno.ENOSPC, "No space left on device")
+FULL_DATABASE = sqlite3.OperationalError("database or disk is full")
+
+
+@pytest.fixture
+def archive(paths, config):
+    open_archive_store(paths, create=True, config=config).close()
+    return paths
+
+
+@pytest.fixture
+def opened(monkeypatch):
+    """Keep every store the job opens, so a test can see whether it was closed."""
+    stores: list[ArchiveStore] = []
+    original = job_context.open_archive_store
+
+    def open_store(*args, **kwargs):
+        store = original(*args, **kwargs)
+        stores.append(store)
+        return store
+
+    monkeypatch.setattr(job_context, "open_archive_store", open_store)
+    return stores
+
+
+def _is_closed(store: ArchiveStore) -> bool:
+    try:
+        store.conn.execute("SELECT 1")
+    except sqlite3.ProgrammingError:
+        return True
+    return False
+
+
+def _fail_close(monkeypatch, error: BaseException) -> None:
+    original = ArchiveStore.close
+
+    def close(self) -> None:
+        original(self)
+        raise error
+
+    monkeypatch.setattr(ArchiveStore, "close", close)
+
+
+@pytest.mark.asyncio
+async def test_notice_failure_closes_the_store_and_reports_storage_full(
+    archive, config, opened, monkeypatch
+):
+    def fail(_console, _store):
+        raise FULL_DISK
+
+    monkeypatch.setattr(job_context, "print_archive_migration_report", fail)
+    with pytest.raises(StorageExhaustedError, match="Free or add disk space"):
+        async with job_context.locked_archive_job(config=config, paths=archive):
+            pytest.fail("the body must not run")
+    assert _is_closed(opened[0])
+    assert other_process_sees(archive.lock_file) == "free"
+
+
+@pytest.mark.asyncio
+async def test_open_failure_reports_storage_full_and_releases_the_lock(
+    archive, config, monkeypatch
+):
+    def fail(*_args, **_kwargs):
+        raise FULL_DATABASE
+
+    monkeypatch.setattr(job_context, "open_archive_store", fail)
+    with pytest.raises(StorageExhaustedError):
+        async with job_context.locked_archive_job(config=config, paths=archive):
+            pytest.fail("the body must not run")
+    assert other_process_sees(archive.lock_file) == "free"
+
+
+@pytest.mark.asyncio
+async def test_close_failure_after_a_clean_body_is_reported(archive, config, monkeypatch):
+    _fail_close(monkeypatch, FULL_DISK)
+    with pytest.raises(StorageExhaustedError):
+        async with job_context.locked_archive_job(config=config, paths=archive):
+            pass
+    assert other_process_sees(archive.lock_file) == "free"
+
+
+@pytest.mark.parametrize(
+    ("primary", "expected"),
+    [
+        (KeyboardInterrupt(), KeyboardInterrupt),
+        (ConfigError("the real problem"), ConfigError),
+    ],
+)
+@pytest.mark.asyncio
+async def test_close_failure_never_replaces_the_primary_error(
+    archive, config, monkeypatch, primary, expected
+):
+    _fail_close(monkeypatch, FULL_DISK)
+    with pytest.raises(expected) as caught:
+        async with job_context.locked_archive_job(config=config, paths=archive):
+            raise primary
+    assert caught.value is primary
+    assert other_process_sees(archive.lock_file) == "free"
+
+
+@pytest.mark.asyncio
+async def test_lock_is_held_for_the_close(archive, config, monkeypatch):
+    seen: list[str] = []
+    original = ArchiveStore.close
+
+    def close(self) -> None:
+        seen.append(other_process_sees(archive.lock_file))
+        original(self)
+
+    monkeypatch.setattr(ArchiveStore, "close", close)
+    async with job_context.locked_archive_job(config=config, paths=archive):
+        pass
+    assert seen == ["held"]
+
+
+@pytest.mark.asyncio
+async def test_interrupt_during_a_full_disk_stays_an_interrupt(archive, config):
+    with pytest.raises(KeyboardInterrupt):
+        async with job_context.locked_archive_job(config=config, paths=archive):
+            try:
+                raise FULL_DISK
+            except OSError as exc:
+                raise KeyboardInterrupt() from exc
+
+
+@pytest.mark.asyncio
+async def test_create_opens_a_new_archive_and_the_default_requires_one(paths, config):
+    with pytest.raises(ArchiveNotFoundError):
+        async with job_context.locked_archive_job(config=config, paths=paths):
+            pytest.fail("the body must not run")
+    assert not paths.database_path.exists()
+    async with job_context.locked_archive_job(config=config, paths=paths, create=True):
+        pass
+    assert paths.database_path.exists()
+
+
+def _downgrade(paths) -> None:
+    with sqlite3.connect(paths.database_path) as connection:
+        connection.execute("PRAGMA user_version = 5")
+
+
+@pytest.mark.asyncio
+async def test_job_reports_an_upgrade_it_performed(archive, config):
+    _downgrade(archive)
+    output = StringIO()
+    console = Console(file=output, width=200)
+    async with job_context.locked_archive_job(config=config, paths=archive, console=console):
+        pass
+    assert "Archive schema migrated from v5" in output.getvalue()
+
+
+@pytest.mark.parametrize(
+    "args",
+    [["optimize"], ["rehydrate"], ["prune"], ["prune", "--apply"]],
+)
+def test_maintenance_reports_full_disk_with_its_own_recovery(archive, config, monkeypatch, args):
+    import tweetnook.enrichment.prune as prune
+
+    def fail(*_args, **_kwargs):
+        raise FULL_DATABASE
+
+    buffer = StringIO()
+    patch_cli(
+        monkeypatch,
+        "configure_logging",
+        lambda: Console(file=buffer, force_terminal=False, color_system=None, width=400),
+    )
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), archive))
+    monkeypatch.setattr(ArchiveStore, "optimize", fail)
+    monkeypatch.setattr(ArchiveStore, "rehydration_work_total", fail)
+    monkeypatch.setattr(prune, "plan_prune", fail)
+
+    result = CliRunner().invoke(cli.app, args)
+
+    assert result.exit_code == 2, result.output
+    output = buffer.getvalue()
+    assert "may have finished part of its work" in output
+    assert STORAGE_RECOVERY not in output
+    assert other_process_sees(archive.lock_file) == "free"
+
+
+@pytest.mark.parametrize("command", [["optimize"], ["rehydrate"], ["prune"]])
+def test_maintenance_reports_the_upgrade_it_performed(archive, monkeypatch, command):
+    _downgrade(archive)
+    buffer = StringIO()
+    patch_cli(
+        monkeypatch,
+        "configure_logging",
+        lambda: Console(file=buffer, force_terminal=False, color_system=None, width=400),
+    )
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), archive))
+
+    CliRunner().invoke(cli.app, command)
+
+    assert buffer.getvalue().count("Archive schema migrated from v5") == 1
+
+
+def test_maintenance_without_an_archive_exits_one(paths, monkeypatch):
+    buffer = StringIO()
+    patch_cli(
+        monkeypatch,
+        "configure_logging",
+        lambda: Console(file=buffer, force_terminal=False, color_system=None, width=400),
+    )
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+
+    result = CliRunner().invoke(cli.app, ["optimize"])
+
+    assert result.exit_code == 1
+    assert "No local archive found." in buffer.getvalue()
+
+
+# ---- import ----
+
+
+def _capture_cli(monkeypatch, paths, config) -> StringIO:
+    buffer = StringIO()
+    patch_cli(
+        monkeypatch,
+        "configure_logging",
+        lambda: Console(file=buffer, force_terminal=False, color_system=None, width=400),
+    )
+    patch_cli(monkeypatch, "load_config", lambda: (config, paths))
+    return buffer
+
+
+def _manifest_statuses(paths, config) -> list[str]:
+    with sqlite3.connect(paths.database_path) as connection:
+        rows = connection.execute(
+            "SELECT status FROM archive WHERE record_type = 'import_manifest'"
+        ).fetchall()
+    return [row[0] for row in rows]
+
+
+def test_full_disk_during_import_reaches_the_cli_as_storage_full(
+    paths, config, tmp_path, monkeypatch
+):
+    original = archive_import.record_archive_capture
+    calls = 0
+
+    def fail_after_first(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        original(*args, **kwargs)
+        if calls == 1:
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(archive_import, "record_archive_capture", fail_after_first)
+    buffer = _capture_cli(monkeypatch, paths, config)
+    archive_dir = _write_archive_dir(tmp_path)
+
+    result = CliRunner().invoke(cli.app, ["import", "x-archive", str(archive_dir), "--offline"])
+
+    assert result.exit_code == 2, result.output
+    assert not isinstance(result.exception, OSError)
+    assert "Free or add disk space" in buffer.getvalue()
+    assert _manifest_statuses(paths, config) == ["failed"]
+    assert other_process_sees(paths.lock_file) == "free"
+
+
+@pytest.mark.parametrize(
+    ("raised", "expected"),
+    [
+        (KeyboardInterrupt(), KeyboardInterrupt),
+        (ValueError("bad row"), ValueError),
+    ],
+)
+@pytest.mark.asyncio
+async def test_failed_manifest_write_never_replaces_the_import_error(
+    paths, config, tmp_path, monkeypatch, raised, expected
+):
+    def fail_import(*_args, **_kwargs):
+        raise raised
+
+    monkeypatch.setattr(archive_import, "import_likes", fail_import)
+    original = ArchiveStore.set_import_manifest
+
+    def fail_failed_write(self, digest, **kwargs):
+        if kwargs.get("status") == "failed":
+            raise sqlite3.OperationalError("database or disk is full")
+        original(self, digest, **kwargs)
+
+    monkeypatch.setattr(ArchiveStore, "set_import_manifest", fail_failed_write)
+
+    with pytest.raises(expected) as caught:
+        await archive_import.import_x_archive(
+            _write_archive_dir(tmp_path),
+            offline=True,
+            config=config,
+            paths=paths,
+            console=Console(file=StringIO()),
+        )
+
+    assert caught.value is raised
+    assert _manifest_statuses(paths, config) == ["in_progress"]
+    assert other_process_sees(paths.lock_file) == "free"
+
+
+# ---- enrichment follow-up ----
+
+
+def _full_status_write(*_args, **_kwargs):
+    raise sqlite3.OperationalError("database or disk is full")
+
+
+@pytest.mark.asyncio
+async def test_interrupted_followup_survives_its_status_write_failing(paths, config, monkeypatch):
+    open_archive_store(paths, create=True, config=config).close()
+
+    async def interrupted(**_kwargs):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(archive_enrich, "_run_archive_followup", interrupted)
+    monkeypatch.setattr(archive_enrich, "_followup_manifest_rows", lambda *_: [{}])
+    monkeypatch.setattr(archive_enrich, "finalize_import_enrichment_status", _full_status_write)
+
+    with pytest.raises(archive_enrich.ArchiveEnrichmentInterrupted) as caught:
+        await archive_enrich.run_import_followup(
+            counts={},
+            manifest_digest="digest",
+            detail_limit=None,
+            reconcile_live=False,
+            config=config,
+            paths=paths,
+            auth_bundle=None,
+            transport=None,
+            console=Console(file=StringIO()),
+        )
+    assert caught.value.remaining == 0
+    assert other_process_sees(paths.lock_file) == "free"
+
+
+@pytest.mark.asyncio
+async def test_aborted_followup_survives_its_status_write_failing(paths, config, monkeypatch):
+    open_archive_store(paths, create=True, config=config).close()
+    cause = StaleQueryIdError("query id went stale", status_code=404)
+
+    async def aborted(**_kwargs):
+        raise cause
+
+    monkeypatch.setattr(archive_enrich, "_run_archive_followup", aborted)
+    monkeypatch.setattr(archive_enrich, "_followup_manifest_rows", lambda *_: [{}])
+    monkeypatch.setattr(archive_enrich, "finalize_import_enrichment_status", _full_status_write)
+
+    with pytest.raises(archive_enrich.ArchiveEnrichmentAborted) as caught:
+        await archive_enrich.run_import_followup(
+            counts={},
+            manifest_digest="digest",
+            detail_limit=None,
+            reconcile_live=False,
+            config=config,
+            paths=paths,
+            auth_bundle=None,
+            transport=None,
+            console=Console(file=StringIO()),
+        )
+    assert caught.value.cause is cause
+
+
+def test_remaining_text_admits_an_unreadable_count():
+    assert archive_enrich.remaining_enrichment_text(None, "tweets") == (
+        "Some tweets may remain incomplete."
+    )
+    assert archive_enrich.remaining_enrichment_text(1200, "tweets") == (
+        "1,200 tweets remain incomplete."
+    )
+
+
+# ---- sync ----
+
+
+def _empty_timeline(_request: httpx.Request) -> httpx.Response:
+    return httpx.Response(200, json=_bookmarks_response_from_results([]))
+
+
+@pytest.mark.asyncio
+async def test_full_disk_in_sync_setup_is_classified_and_closes_the_store(
+    archive, config, auth_bundle, opened, monkeypatch
+):
+    _save_query_ids(archive)
+    monkeypatch.setattr(ArchiveStore, "reset_sync_state", _full_status_write)
+
+    with pytest.raises(StorageExhaustedError):
+        await sync_collection(
+            "bookmarks",
+            full=True,
+            config=config,
+            paths=archive,
+            auth_bundle=auth_bundle,
+            transport=httpx.MockTransport(_empty_timeline),
+            console=Console(file=StringIO()),
+        )
+    assert all(_is_closed(store) for store in opened)
+    assert other_process_sees(archive.lock_file) == "free"
+
+
+@pytest.mark.asyncio
+async def test_sync_reports_an_upgrade_exactly_once(archive, config, auth_bundle):
+    _save_query_ids(archive)
+    _downgrade(archive)
+    output = StringIO()
+
+    await sync_collection(
+        "bookmarks",
+        full=False,
+        config=config,
+        paths=archive,
+        auth_bundle=auth_bundle,
+        transport=httpx.MockTransport(_empty_timeline),
+        console=Console(file=output, width=200),
+    )
+
+    assert output.getvalue().count("Archive schema migrated from v5") == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_preflight_resolves_its_step_for_the_next_collection(
+    paths, config, auth_bundle
+):
+    _save_query_ids(paths)
+
+    def offline(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    errors: list[str] = []
+    with PipelineReporter(Console(file=StringIO()), "sync", interactive=False) as pipeline:
+        for collection in ("bookmarks", "likes"):
+            with pytest.raises(RemotePreflightError) as caught:
+                await sync_collection(
+                    collection,
+                    full=False,
+                    config=config,
+                    paths=paths,
+                    auth_bundle=auth_bundle,
+                    transport=httpx.MockTransport(offline),
+                    console=Console(file=StringIO()),
+                )
+            errors.append(str(caught.value))
+        states = {step.key: step.state for step in pipeline.steps}
+        pipeline.finish("done", success=False)
+
+    assert errors == ["ConnectError: offline", "ConnectError: offline"]
+    assert states == {"preflight:bookmarks": "failed", "preflight:likes": "failed"}
+
+
+@pytest.mark.asyncio
+async def test_preflight_keeps_the_callers_query_ids_unchanged(paths, config, auth_bundle):
+    given = {"Bookmarks": "qid"}
+    await run_preflight(
+        config=config,
+        paths=paths,
+        collections=["bookmarks"],
+        auth_bundle=auth_bundle,
+        query_ids=given,
+        transport=httpx.MockTransport(_empty_timeline),
+        console=Console(file=StringIO()),
+    )
+    assert given == {"Bookmarks": "qid"}

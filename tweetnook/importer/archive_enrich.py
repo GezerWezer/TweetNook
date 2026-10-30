@@ -4,6 +4,7 @@ enrichment through X or FxTwitter, for a new import or one already in the archiv
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,6 +19,7 @@ from tweetnook.client.timelines import build_tweet_detail_url, fetch_page
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.exceptions import (
     APIResponseError,
+    ArchiveNotFoundError,
     AuthExpiredError,
     ConfigError,
     FeatureFlagDriftError,
@@ -40,21 +42,22 @@ from tweetnook.importer.archive_manifests import (
     finalize_import_enrichment_status,
 )
 from tweetnook.importer.archive_progress import (
-    _progress_callback,
-    _status_printer,
+    archive_status_printer,
     runner_console_for,
 )
 from tweetnook.jobs.context import (
     locked_archive_job,
     resolve_job_context,
 )
-from tweetnook.jobs.interactive import emit_status
+from tweetnook.jobs.interactive import emit_status, progress_callback
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 from tweetnook.storage import ArchiveStore
 from tweetnook.storage.records import PageBuffer
 from tweetnook.sync.collection import sync_collection
+
+logger = logging.getLogger(__name__)
 
 _DETAIL_ENRICH_WRITE_BATCH = 100
 
@@ -75,15 +78,26 @@ class ArchiveEnrichResult:
     transient_delayed: int = 0
 
 
+def remaining_enrichment_text(remaining: int | None, noun: str) -> str:
+    """Say how much is left, or that the count couldn't be read when the stop was recorded."""
+    if remaining is None:
+        return f"Some {noun} may remain incomplete."
+    return f"{remaining:,} {noun} remain incomplete."
+
+
 class ArchiveEnrichmentInterrupted(KeyboardInterrupt):
-    def __init__(self, remaining: int):
+    def __init__(self, remaining: int | None):
         super().__init__("Archive enrichment interrupted.")
         self.remaining = remaining
 
 
+def _abort_message(cause: Exception) -> str:
+    return f"Archive enrichment stopped after {cause.__class__.__name__}: {cause}"
+
+
 class ArchiveEnrichmentAborted(TweetNookError):
-    def __init__(self, remaining: int, cause: Exception):
-        super().__init__(f"Archive enrichment stopped after {cause.__class__.__name__}: {cause}")
+    def __init__(self, remaining: int | None, cause: Exception):
+        super().__init__(_abort_message(cause))
         self.remaining = remaining
         self.cause = cause
 
@@ -121,6 +135,12 @@ def _resolve_archive_followup_auth(
 ) -> ResolvedAuthBundle | None:
     pipeline = current_pipeline()
     step_key = "archive-auth"
+    if (
+        auth_bundle is not None
+        and pipeline is not None
+        and pipeline.step_state(step_key) == "complete"
+    ):
+        return auth_bundle
     if pipeline is not None:
         pipeline.add_step(
             step_key,
@@ -256,24 +276,18 @@ async def _run_archive_followup(
         )
     enrichment_result = ArchiveEnrichResult()
     if resolved_auth is not None or fxtwitter.fx_enabled(config):
-        try:
-            absence_tracker = _FocalAbsenceTracker()
-            enrichment_result = await _enrich_pending_rows(
-                limit=detail_limit,
-                config=config,
-                paths=paths,
-                auth_bundle=resolved_auth,
-                transport=transport,
-                console=console,
-                status=status,
-                absence_tracker=absence_tracker,
-                started_at=enrichment_started_at,
-            )
-        except Exception as exc:
-            raise_if_storage_exhausted(exc)
-            async with locked_archive_job(config=config, paths=paths) as job:
-                remaining = job.store.count_incomplete_initial_enrichment()
-            raise ArchiveEnrichmentAborted(remaining, exc) from exc
+        absence_tracker = _FocalAbsenceTracker()
+        enrichment_result = await _enrich_pending_rows(
+            limit=detail_limit,
+            config=config,
+            paths=paths,
+            auth_bundle=resolved_auth,
+            transport=transport,
+            console=console,
+            status=status,
+            absence_tracker=absence_tracker,
+            started_at=enrichment_started_at,
+        )
     else:
         async with locked_archive_job(config=config, paths=paths) as job:
             enrichment_result = _archive_enrich_counts(job.store)
@@ -317,10 +331,27 @@ async def run_import_followup(
     """Reconcile and enrich the collections an import's counts cover.
 
     An interrupted or failed follow-up is recorded on the import manifest it belongs to
-    (manifest_digest, or every completed import when None) before the error propagates, so
-    the next run and the UI know enrichment stopped part way. Recording success is left to
-    the caller, which knows what counts to write.
+    (manifest_digest, or every completed import when None) before the error propagates.
+    Recording success is left to the caller, which knows what counts to write.
     """
+
+    async def record_stop(followup_status: str, reason: str) -> int | None:
+        # The disk may be why the run stopped, so this write must not replace that error.
+        remaining: int | None = None
+        try:
+            async with locked_archive_job(config=config, paths=paths) as job:
+                remaining = job.store.count_incomplete_initial_enrichment()
+                for manifest_row in _followup_manifest_rows(job.store, manifest_digest):
+                    finalize_import_enrichment_status(
+                        job.store,
+                        manifest_row,
+                        followup_status=followup_status,
+                        aborted_reason=reason,
+                    )
+        except Exception:
+            logger.exception("Could not record the archive follow-up's stop")
+        return remaining
+
     try:
         return await _run_archive_followup(
             collections=_followup_collections_from_counts(counts),
@@ -336,27 +367,12 @@ async def run_import_followup(
             account_optional=account_optional,
         )
     except (KeyboardInterrupt, asyncio.CancelledError) as exc:
-        async with locked_archive_job(config=config, paths=paths) as job:
-            remaining = job.store.count_incomplete_initial_enrichment()
-            for manifest_row in _followup_manifest_rows(job.store, manifest_digest):
-                finalize_import_enrichment_status(
-                    job.store,
-                    manifest_row,
-                    followup_status="enrichment_interrupted",
-                    aborted_reason=str(exc) or exc.__class__.__name__,
-                )
+        remaining = await record_stop("enrichment_interrupted", str(exc) or type(exc).__name__)
         raise ArchiveEnrichmentInterrupted(remaining) from exc
     except Exception as exc:
         raise_if_storage_exhausted(exc)
-        async with locked_archive_job(config=config, paths=paths) as job:
-            for manifest_row in _followup_manifest_rows(job.store, manifest_digest):
-                finalize_import_enrichment_status(
-                    job.store,
-                    manifest_row,
-                    followup_status="enrichment_aborted",
-                    aborted_reason=str(exc),
-                )
-        raise
+        remaining = await record_stop("enrichment_aborted", _abort_message(exc))
+        raise ArchiveEnrichmentAborted(remaining, exc) from exc
 
 
 def _archive_enrich_counts(store: ArchiveStore, *, now: str | None = None) -> ArchiveEnrichResult:
@@ -506,7 +522,7 @@ async def _enrich_pending_rows(
             report_progress()
 
         try:
-            with _progress_callback(
+            with progress_callback(
                 console,
                 label="archive enrich detail",
                 total=len(rows),
@@ -792,7 +808,7 @@ async def enrich_imported_archive(
     config, paths = resolve_job_context(config=config, paths=paths)
     enrichment_started_at = utc_now()
     console = console or Console(stderr=True)
-    status = _status_printer(console, "archive enrich")
+    status = archive_status_printer(console, "archive enrich")
     runner_console = runner_console_for(console)
     emit_status(status, "loading completed archive imports...")
     try:
@@ -804,13 +820,10 @@ async def enrich_imported_archive(
                     "'tweetnook import x-archive' first."
                 )
             counts = aggregate_import_counts(manifest_rows)
-    except ConfigError as exc:
-        if str(exc) == "No local archive found.":
-            raise ConfigError(
-                "No completed Twitter/X archive import found. Run "
-                "'tweetnook import x-archive' first."
-            ) from exc
-        raise
+    except ArchiveNotFoundError as exc:
+        raise ConfigError(
+            "No completed Twitter/X archive import found. Run 'tweetnook import x-archive' first."
+        ) from exc
     result = await run_import_followup(
         counts=counts,
         manifest_digest=None,

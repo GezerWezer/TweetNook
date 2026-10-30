@@ -10,10 +10,11 @@ import typer
 
 import tweetnook.cli as cli
 from tests.cli.conftest import _capture_console, _seed_archive, runner
-from tests.conftest import patch_cli
+from tests.conftest import patch_cli, spy_lock_acquires
 from tweetnook.cli import enrichment as cli_enrichment
 from tweetnook.cli import maintenance as cli_maintenance
 from tweetnook.config import AppConfig
+from tweetnook.jobs import context as job_context
 
 
 def test_expand_archive_threads_refresh_requires_targets(paths, monkeypatch) -> None:
@@ -37,9 +38,10 @@ def test_optimize_archive_uses_write_lock(paths, monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
     patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
-    lock_calls: list[Path] = []
 
     class FakeStore:
+        migration_report = None
+
         def __init__(self) -> None:
             self.optimized = False
             self.closed = False
@@ -51,12 +53,10 @@ def test_optimize_archive_uses_write_lock(paths, monkeypatch) -> None:
             self.closed = True
 
     store = FakeStore()
-    patch_cli(monkeypatch, "open_archive_store", lambda _paths, create=False, config=None: store)
-    patch_cli(
-        monkeypatch,
-        "with_archive_write_lock",
-        lambda lock_paths, fn: (lock_calls.append(lock_paths.lock_file), fn())[1],
+    monkeypatch.setattr(
+        job_context, "open_archive_store", lambda _paths, create=False, config=None: store
     )
+    lock_calls = spy_lock_acquires(monkeypatch)
 
     cli.optimize_archive()
 
@@ -255,6 +255,8 @@ def test_rehydrate_archive_uses_write_lock(paths, monkeypatch) -> None:
             self.updates.append(count)
 
     class FakeStore:
+        migration_report = None
+
         def __init__(self) -> None:
             self.closed = False
 
@@ -270,12 +272,10 @@ def test_rehydrate_archive_uses_write_lock(paths, monkeypatch) -> None:
             self.closed = True
 
     store = FakeStore()
-    patch_cli(monkeypatch, "open_archive_store", lambda _paths, create=False, config=None: store)
-    patch_cli(
-        monkeypatch,
-        "with_archive_write_lock",
-        lambda lock_paths, fn: (lock_calls.append(lock_paths.lock_file), fn())[1],
+    monkeypatch.setattr(
+        job_context, "open_archive_store", lambda _paths, create=False, config=None: store
     )
+    lock_calls = spy_lock_acquires(monkeypatch)
     monkeypatch.setitem(sys.modules, "tqdm", SimpleNamespace(tqdm=FakeTqdm))
 
     cli.rehydrate_archive()

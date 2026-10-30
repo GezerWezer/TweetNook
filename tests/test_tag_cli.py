@@ -468,9 +468,8 @@ def test_hidden_serve_daemon_defers_archive_lifecycle_to_server(
         events.append(("run_server", args))
 
     patch_cli(monkeypatch, "load_config", lambda: (config, paths))
-    patch_cli(
-        monkeypatch,
-        "open_archive_store",
+    monkeypatch.setattr(
+        "tweetnook.jobs.context.open_archive_store",
         lambda loaded_paths, *, create, config: (
             events.append(("open", loaded_paths, create, config)) or FakeArchive()
         ),

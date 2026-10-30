@@ -40,7 +40,7 @@ def test_enrich_pending_rows_uses_full_snapshot_or_explicit_limit(
         progress_totals.append(total)
         yield lambda current, callback_total: progress_updates.append((current, callback_total))
 
-    monkeypatch.setattr(archive_enrich, "_progress_callback", fake_progress_callback)
+    monkeypatch.setattr(archive_enrich, "progress_callback", fake_progress_callback)
 
     result = detail_enrichment.run(
         lambda tweet_id, _request: _available(tweet_id, f"enriched {tweet_id}"), limit=limit
