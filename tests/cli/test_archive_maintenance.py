@@ -258,7 +258,7 @@ def test_rehydrate_archive_uses_write_lock(paths, monkeypatch) -> None:
         def __init__(self) -> None:
             self.closed = False
 
-        def _count(self, filter_expr: str | None = None) -> int:
+        def rehydration_work_total(self) -> int:
             return 2
 
         def rehydrate_from_raw_json(self, *, progress=None):

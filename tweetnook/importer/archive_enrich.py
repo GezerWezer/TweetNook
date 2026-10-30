@@ -38,7 +38,6 @@ from tweetnook.enrichment.resurrection import resurrection_retry_schedule, trans
 from tweetnook.importer.archive_manifests import (
     aggregate_import_counts,
     finalize_import_enrichment_status,
-    list_import_manifest_rows,
 )
 from tweetnook.importer.archive_progress import (
     _progress_callback,
@@ -296,7 +295,7 @@ async def _run_archive_followup(
 
 def _followup_manifest_rows(store: ArchiveStore, digest: str | None) -> list[dict[str, Any]]:
     if digest is None:
-        return list_import_manifest_rows(store)
+        return store.completed_manifests()
     manifest_row = store.get_import_manifest(digest)
     return [manifest_row] if manifest_row is not None else []
 
@@ -799,7 +798,7 @@ async def enrich_imported_archive(
     emit_status(status, "loading completed archive imports...")
     try:
         async with locked_archive_job(config=config, paths=paths) as job:
-            manifest_rows = list_import_manifest_rows(job.store)
+            manifest_rows = job.store.completed_manifests()
             if not manifest_rows:
                 raise ConfigError(
                     "No completed Twitter/X archive import found. Run "
@@ -832,7 +831,7 @@ async def enrich_imported_archive(
             "detail_terminal_unavailable": result.detail_terminal_unavailable,
             "detail_transient_failures": result.detail_transient_failures,
         }
-        for manifest_row in list_import_manifest_rows(job.store):
+        for manifest_row in job.store.completed_manifests():
             finalize_import_enrichment_status(
                 job.store,
                 manifest_row,

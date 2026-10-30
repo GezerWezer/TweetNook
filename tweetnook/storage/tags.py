@@ -9,6 +9,7 @@ from collections import defaultdict
 from collections.abc import Iterator
 from typing import Any, Literal, TypedDict
 
+from .common import clause_in
 from .db import ConnectionMixin
 from .record_types import RecordType
 
@@ -635,3 +636,26 @@ class TagsMixin(ConnectionMixin):
             self.conn.execute(
                 "DELETE FROM archive WHERE row_key = ?", (f"tagging_retry:{tweet_id}",)
             )
+
+    def tagging_choice(self, tweet_id: str) -> dict[str, Any] | None:
+        rows = self._query(
+            f"record_type = '{RecordType.TWEET_OBJECT}' AND tweet_id = ?",
+            (tweet_id,),
+            cols=["tweet_id", "author_display_name", "author_username", "text"],
+            limit=1,
+            indexed_by="idx_archive_tweet_id",
+        )
+        return rows[0] if rows else None
+
+    def media_tweet_ids(self, tweet_ids: list[str]) -> set[str]:
+        """Posts with any saved media; distinct from taggable media classification."""
+        if not tweet_ids:
+            return set()
+        ids = clause_in("tweet_id", tweet_ids)
+        rows = self._query(
+            f"record_type = '{RecordType.MEDIA}' AND {ids.sql}",
+            ids.params,
+            cols=["DISTINCT tweet_id"],
+            indexed_by="idx_archive_tweet_id",
+        )
+        return {str(row["tweet_id"]) for row in rows if row.get("tweet_id")}

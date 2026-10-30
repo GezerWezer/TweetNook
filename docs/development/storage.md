@@ -95,6 +95,8 @@ Scalar indexes cover membership, ID, relation, media and queue reads. FTS5 index
 
 Like order derives from immutable live/archive observations rather than invented timestamps. `storage/like_order.py` uses anchors shared between captures, preserves preferred observations, and places disconnected history deterministically. Its archive block repair is empirical and chooses the candidate with fewer ordering disagreements against live anchors. Rebuilding is possible without changing the captured evidence.
 
+`completed_manifests()` selects completed imports for deferred enrichment. Rehydration exposes its membership work total through `rehydration_work_total()`; callers do not choose record predicates or count detail captures as membership progress.
+
 ## Maintenance
 
 `db check` uses SQLite's quick check; `db check --full` uses its integrity check. `optimize` handles SQLite space/query/index maintenance. Jobs do not perform automatic mid-run or interrupt compaction. Explicit optimization and close-time planner maintenance are separate from job progress.

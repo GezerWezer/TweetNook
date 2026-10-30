@@ -12,7 +12,6 @@ from typing import Any
 from tweetnook.core.utils import utc_now
 from tweetnook.storage import ArchiveStore
 from tweetnook.storage.common import ARCHIVE_SOURCE
-from tweetnook.storage.record_types import RecordType
 
 logger = logging.getLogger(__name__)
 
@@ -137,10 +136,6 @@ def manifest_warnings(manifest_row: dict[str, Any] | None) -> list[str]:
     if not isinstance(parsed, list):
         return []
     return [item for item in parsed if isinstance(item, str) and item]
-
-
-def list_import_manifest_rows(store: ArchiveStore) -> list[dict[str, Any]]:
-    return store._query(f"record_type = '{RecordType.IMPORT_MANIFEST}' AND status = 'completed'")
 
 
 def finalize_import_enrichment_status(

@@ -11,7 +11,6 @@ from rich.console import Console
 
 from tweetnook.config import TaggingConfig, config_error_message
 from tweetnook.core.extractor import extract_status_id_from_url
-from tweetnook.storage.record_types import RecordType
 from tweetnook.storage.search_query import SearchQueryError, search_posts
 from tweetnook.tagging.accounting import AIUsageLedger
 from tweetnook.tagging.sdk import (
@@ -117,13 +116,8 @@ def get_automated_tagging_tweets(
     query = q.strip()
     target_id = extract_status_id_from_url(query) or (query if query.isdigit() else None)
     if target_id:
-        row = store.conn.execute(
-            "SELECT tweet_id, author_display_name, author_username, text "
-            "FROM archive INDEXED BY idx_archive_tweet_id "
-            f"WHERE record_type = '{RecordType.TWEET_OBJECT}' AND tweet_id = ? LIMIT 1",
-            (target_id,),
-        ).fetchone()
-        rows = [dict(row)] if row is not None else []
+        row = store.tagging_choice(target_id)
+        rows = [row] if row is not None else []
     else:
         try:
             rows = search_posts(store, query or None, page=1, limit=8).rows
@@ -131,17 +125,7 @@ def get_automated_tagging_tweets(
             raise HTTPException(status_code=400, detail=config_error_message(error)) from error
 
     tweet_ids = [str(row.get("tweet_id")) for row in rows if row.get("tweet_id")]
-    media_ids: set[str] = set()
-    if tweet_ids:
-        placeholders = ", ".join("?" for _tweet_id in tweet_ids)
-        media_ids = {
-            str(row["tweet_id"])
-            for row in store.conn.execute(
-                f"SELECT DISTINCT tweet_id FROM archive INDEXED BY idx_archive_tweet_id "
-                f"WHERE record_type = '{RecordType.MEDIA}' AND tweet_id IN ({placeholders})",
-                tweet_ids,
-            ).fetchall()
-        }
+    media_ids = store.media_tweet_ids(tweet_ids)
     return {
         "tweets": [
             {

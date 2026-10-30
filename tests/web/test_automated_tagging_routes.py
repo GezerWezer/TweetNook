@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from types import SimpleNamespace
 
 from tweetnook.config import AppConfig, TaggingConfig
@@ -116,37 +115,41 @@ def test_page_is_not_available_when_extra_is_missing(monkeypatch, make_web_clien
     assert response.status_code == 404
 
 
-def test_tweet_picker_finds_exact_status_url_and_reports_media(make_web_client) -> None:
-    store = SimpleNamespace(conn=sqlite3.connect(":memory:", check_same_thread=False))
-    store.conn.row_factory = sqlite3.Row
-    store.conn.execute(
-        "CREATE TABLE archive (record_type TEXT, tweet_id TEXT, author_display_name TEXT, "
-        "author_username TEXT, text TEXT)"
-    )
-    store.conn.execute("CREATE INDEX idx_archive_tweet_id ON archive(tweet_id)")
-    store.conn.execute(
-        "INSERT INTO archive VALUES ('tweet_object', '42', 'Alice', 'alice', 'A test tweet')"
-    )
-    store.conn.execute("INSERT INTO archive (record_type, tweet_id) VALUES ('media', '42')")
-    client = make_web_client(routes.router, store=store)
+def test_tweet_picker_finds_exact_status_url_and_reports_media(make_web_client, tmp_path) -> None:
+    from contextlib import closing
 
-    response = client.get(
-        "/api/automated-tagging/tweets",
-        params={"q": "https://x.com/alice/status/42"},
-    )
+    from tweetnook.storage import ArchiveStore
 
-    assert response.status_code == 200
-    assert response.json() == {
-        "tweets": [
-            {
-                "tweet_id": "42",
-                "author_display_name": "Alice",
-                "author_username": "alice",
-                "text": "A test tweet",
-                "has_media": True,
-            }
-        ]
-    }
+    with closing(ArchiveStore(tmp_path / "archive.db", create=True)) as store:
+        store.merge_rows(
+            [
+                {
+                    "row_key": "tweet_object:42",
+                    "record_type": "tweet_object",
+                    "tweet_id": "42",
+                    "author_display_name": "Alice",
+                    "author_username": "alice",
+                    "text": "A test tweet",
+                },
+                {"row_key": "media:42:photo", "record_type": "media", "tweet_id": "42"},
+            ]
+        )
+        client = make_web_client(routes.router, store=store)
+        response = client.get(
+            "/api/automated-tagging/tweets", params={"q": "https://x.com/alice/status/42"}
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "tweets": [
+                {
+                    "tweet_id": "42",
+                    "author_display_name": "Alice",
+                    "author_username": "alice",
+                    "text": "A test tweet",
+                    "has_media": True,
+                }
+            ]
+        }
 
 
 def test_test_run_uses_unsaved_settings_and_returns_preview(

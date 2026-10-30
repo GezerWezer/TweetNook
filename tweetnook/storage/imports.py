@@ -38,6 +38,10 @@ SECONDARY_RECORD_TYPES = (
 
 
 class ImportsMixin(ObjectsMixin):
+    def rehydration_work_total(self) -> int:
+        """Membership rows to replay before saved detail captures."""
+        return self._count(f"record_type = '{RecordType.TWEET}'")
+
     def list_archive_import_media_paths(self) -> list[str]:
         rows = self._query(
             expr=f"record_type = '{RecordType.MEDIA}' AND provenance_source = 'x_archive'",
