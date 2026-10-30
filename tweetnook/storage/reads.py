@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from tweetnook.core import fastjson
 from tweetnook.core.media_metadata import aspect_ratio_for_media
@@ -17,6 +17,9 @@ from .common import (
 from .record_types import RecordType
 from .records import RecordsMixin
 from .relations import RelationsMixin
+
+if TYPE_CHECKING:
+    from .like_order import LikeOrder
 
 
 class ReadsMixin(RecordsMixin, RelationsMixin):
@@ -105,7 +108,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             self._count_cache.clear()
         return count
 
-    def get_like_order(self):
+    def get_like_order(self) -> LikeOrder:
         """Return the derived order independently of tweet content/source updates."""
         from tweetnook.storage.like_order import load_like_order
 
@@ -124,7 +127,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         temporary rows never become part of the on-disk archive or backups.
         """
         order = self.get_like_order()
-        if getattr(self, "_indexed_like_order", None) is order and not self.conn.in_transaction:
+        if self._indexed_like_order is order and not self.conn.in_transaction:
             return
         self.conn.execute("SAVEPOINT like_order_index")
         try:

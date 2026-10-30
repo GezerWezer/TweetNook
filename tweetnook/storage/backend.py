@@ -76,8 +76,12 @@ class ArchiveStore(
         self.db_path = db_path
         self.config = config
         self._closed = False
-        self._like_order_lock = threading.RLock()
         self._transaction_lock = threading.RLock()
+        # TEMP like paging shares transaction state with archive mutations.
+        self._like_order_lock = self._transaction_lock
+        self._like_order_cache = None
+        self._like_capture_pages = {}
+        self._indexed_like_order = None
         self._transaction_depth = 0
         self._read_only = read_only
         self._has_written = False

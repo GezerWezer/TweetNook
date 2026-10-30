@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
     from tweetnook.config import AppConfig
 
+    from .like_order import LikeOrder, PageObservations
     from .schema import MigrationReport
 
 
@@ -45,6 +46,9 @@ class ConnectionMixin:
     _warm_cancelled: bool
     _like_order_lock: threading.RLock
     _transaction_lock: threading.RLock
+    _like_order_cache: tuple[int, LikeOrder] | None
+    _like_capture_pages: dict[tuple[str, str | None], PageObservations | None]
+    _indexed_like_order: LikeOrder | None
     _transaction_depth: int
     _read_only: bool
     _has_written: bool

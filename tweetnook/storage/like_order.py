@@ -10,12 +10,15 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from itertools import pairwise
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from tweetnook.core import fastjson
 from tweetnook.core.timeline_parsing import extract_tweet_results_from_content
 
 from .record_types import RecordType
+
+if TYPE_CHECKING:
+    from .backend import ArchiveStore
 
 LIKE_SORTS = frozenset({"liked_latest", "liked_earliest"})
 T = TypeVar("T")
@@ -219,14 +222,14 @@ class LikeOrder:
 
 
 def _capture_pages(
-    store: Any, captures: list[Any]
+    store: ArchiveStore, captures: list[Any]
 ) -> dict[tuple[str, str | None], PageObservations | None]:
     """Parse only captures not seen by an earlier rebuild on this store.
 
     Live captures are append-only observations with unique keys. Keying by the
     capture timestamp as well reparses a capture if a row is ever replaced.
     """
-    cached = dict(getattr(store, "_like_capture_pages", None) or {})
+    cached = dict(store._like_capture_pages)
     keys = [(row["row_key"], row["captured_at"]) for row in captures]
     missing = {row_key for row_key, captured_at in keys if (row_key, captured_at) not in cached}
     if missing:
@@ -247,10 +250,10 @@ def _capture_pages(
     return pages
 
 
-def load_like_order(store: Any) -> LikeOrder:
+def load_like_order(store: ArchiveStore) -> LikeOrder:
     """Recover captures only when like-order inputs change, including external writes."""
     signature = store.cache_revision("like_order")
-    cached = getattr(store, "_like_order_cache", None)
+    cached = store._like_order_cache
     if not store.conn.in_transaction and cached is not None and cached[0] == signature:
         return cached[1]
 

@@ -93,6 +93,8 @@ Checks and Community Note changes have dedicated history storage. `note_observat
 
 Scalar indexes cover membership, ID, relation, media and queue reads. FTS5 indexes support saved post text and local descriptions. Article text is matched in Python using the shared query parser. Trigger-maintained tweet facts extract common raw-payload filters once when data changes. Cache revisions invalidate derived totals and search pages after relevant writes.
 
+Like-order result, capture-page and TEMP-index caches are declared store state. TEMP paging and archive mutations use the same connection lock, while paging savepoints preserve an enclosing transaction.
+
 Like order derives from immutable live/archive observations rather than invented timestamps. `storage/like_order.py` uses anchors shared between captures, preserves preferred observations, and places disconnected history deterministically. Its archive block repair is empirical and chooses the candidate with fewer ordering disagreements against live anchors. Rebuilding is possible without changing the captured evidence.
 
 `completed_manifests()` selects completed imports for deferred enrichment. Rehydration exposes its membership work total through `rehydration_work_total()`; callers do not choose record predicates or count detail captures as membership progress.

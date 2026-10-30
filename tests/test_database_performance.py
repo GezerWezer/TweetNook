@@ -1,7 +1,7 @@
 """Regress actual query shapes and bounded reads without machine-dependent timers."""
 
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
+from threading import Barrier, Event
 
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.search_query import search_posts
@@ -330,3 +330,43 @@ def test_live_graph_prefetch_batches_existing_secondary_rows(tmp_path):
         assert len(buffer.records) > 5
         store.merge_rows(list(buffer.records.values()))
     store.close()
+
+
+def test_like_temp_transaction_serializes_with_archive_mutations(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    _seed_memberships(store, count=8)
+    connection = store.conn
+    indexed, release, writer_started = Event(), Event(), Event()
+
+    class Connection:
+        def __getattr__(self, name):
+            return getattr(connection, name)
+
+        def executemany(self, sql, params):
+            result = connection.executemany(sql, params)
+            if "INSERT INTO temp.tweetnook_like_order" in sql:
+                indexed.set()
+                assert release.wait(5)
+            return result
+
+    def edit():
+        writer_started.set()
+        store.set_tweet_hidden("unrelated", True)
+
+    store.conn = Connection()
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            warm = pool.submit(store.warm_like_order)
+            try:
+                assert indexed.wait(5)
+                write = pool.submit(edit)
+                assert writer_started.wait(5)
+                assert not write.done()
+            finally:
+                release.set()
+            warm.result(timeout=5)
+            write.result(timeout=5)
+        assert not store.conn.in_transaction
+    finally:
+        release.set()
+        store.close()
