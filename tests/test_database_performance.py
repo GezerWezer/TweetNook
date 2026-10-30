@@ -370,3 +370,56 @@ def test_like_temp_transaction_serializes_with_archive_mutations(tmp_path):
     finally:
         release.set()
         store.close()
+
+
+def test_retry_predicates_seek_eligibility_and_classify_unknown_as_permanent(tmp_path):
+    from tweetnook.storage.common import RESURRECTION_ELIGIBLE_SQL, RESURRECTION_PERMANENT_SQL
+
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    try:
+        base = "record_type = 'tweet_object' AND enrichment_state = 'terminal_unavailable'"
+        plan = _plan(
+            store, f"SELECT count(*) FROM archive WHERE {base} AND {RESURRECTION_ELIGIBLE_SQL}"
+        )
+        assert "enrichment_retry_eligible=?" in plan
+        store.merge_rows(
+            [
+                {
+                    "row_key": f"tweet_object:{tweet_id}",
+                    "record_type": "tweet_object",
+                    "tweet_id": tweet_id,
+                    "enrichment_state": "terminal_unavailable",
+                    "enrichment_retry_eligible": eligible,
+                    "enrichment_reason": reason,
+                }
+                for tweet_id, eligible, reason in (
+                    ("retry", 1, "not_found"),
+                    ("no-reason", 1, None),
+                    ("unknown", None, "not_found"),
+                    ("ineligible", 0, "not_found"),
+                    ("deleted", 1, "deleted_by_author"),
+                )
+            ]
+        )
+
+        def ids(predicate):
+            sql = f"SELECT tweet_id FROM archive WHERE {base} AND {predicate}"
+            return {row[0] for row in store.conn.execute(sql)}
+
+        assert ids(RESURRECTION_ELIGIBLE_SQL) == {"retry", "no-reason"}
+        assert ids(RESURRECTION_PERMANENT_SQL) == {"unknown", "ineligible", "deleted"}
+    finally:
+        store.close()
+
+
+def test_note_checks_do_not_take_the_write_lock_for_no_ops(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    try:
+        store.ensure_check_tables()
+        statements = []
+        store.conn.set_trace_callback(statements.append)
+        assert store.record_community_note("1", None) is None
+        store.conn.set_trace_callback(None)
+        assert not any(sql.startswith("BEGIN") for sql in statements)
+    finally:
+        store.close()

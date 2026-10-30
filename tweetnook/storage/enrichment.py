@@ -14,7 +14,14 @@ from tweetnook.core.extractor import (
 from tweetnook.core.utils import utc_now
 
 from .checks import ChecksMixin
-from .common import RESURRECTION_ELIGIBLE_SQL, Clause, and_clauses, clause_in, state_filter
+from .common import (
+    RESURRECTION_ELIGIBLE_SQL,
+    RESURRECTION_PERMANENT_SQL,
+    Clause,
+    and_clauses,
+    clause_in,
+    state_filter,
+)
 from .objects import ObjectsMixin
 from .record_types import RecordType
 from .records import PageBuffer
@@ -442,7 +449,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             "permanent_unavailable": self._count(
                 f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = "
                 "'terminal_unavailable' "
-                f"AND NOT {RESURRECTION_ELIGIBLE_SQL}"
+                f"AND {RESURRECTION_PERMANENT_SQL}"
             ),
             "done": self._count(
                 f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = 'done'"

@@ -405,3 +405,41 @@ def test_archive_stats_bfs_depth_combines_quote_and_url_edges(paths) -> None:
     assert store.archive_stats(max_linked_depth=3).pending_thread_linked_status_count == 3
 
     store.close()
+
+
+def test_archive_stats_parses_each_date_once_and_only_when_requested(paths, monkeypatch) -> None:
+    import tweetnook.storage.stats as stats_module
+
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    store.merge_rows(
+        [
+            {
+                "row_key": f"tweet:like:_:{tweet_id}",
+                "record_type": "tweet",
+                "tweet_id": tweet_id,
+                "collection_type": "like",
+                "created_at": created_at,
+            }
+            for tweet_id, created_at in (
+                ("1", "Tue Oct 09 21:39:26 +0000 2012"),
+                ("2", "Sat Mar 14 00:00:00 +0000 2026"),
+            )
+        ]
+    )
+    calls = []
+    parse = stats_module.parse_created_at
+    monkeypatch.setattr(
+        stats_module, "parse_created_at", lambda raw: (calls.append(raw), parse(raw))[1]
+    )
+    try:
+        stats = store.archive_stats()
+        assert len(calls) == 2
+        assert stats.oldest_created_at == "Tue Oct 09 21:39:26 +0000 2012"
+        assert stats.newest_created_at == "Sat Mar 14 00:00:00 +0000 2026"
+
+        calls.clear()
+        assert store.archive_stats(include_dates=False).oldest_created_at is None
+        assert calls == []
+    finally:
+        store.close()

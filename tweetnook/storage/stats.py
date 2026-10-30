@@ -7,7 +7,12 @@ from dataclasses import dataclass, field
 from tweetnook.core.extractor import extract_status_id_from_url
 from tweetnook.core.utils import utc_now
 
-from .common import RESURRECTION_ELIGIBLE_SQL, SEARCH_COLLECTION_ORDER, valid_date_bounds
+from .common import (
+    RESURRECTION_ELIGIBLE_SQL,
+    SEARCH_COLLECTION_ORDER,
+    DateBounds,
+    parse_created_at,
+)
 from .record_types import RecordType
 from .relations import RelationsMixin
 from .sync_state import SyncStateMixin
@@ -72,7 +77,9 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
             "sync_state": self._count(f"record_type = '{RecordType.SYNC_STATE}'"),
         }
 
-    def archive_stats(self, max_linked_depth: int = 1) -> ArchiveStats:
+    def archive_stats(
+        self, max_linked_depth: int = 1, *, include_dates: bool = True
+    ) -> ArchiveStats:
         counts = self.counts()
         tweet_rows = [
             dict(row)
@@ -130,30 +137,14 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
             ).fetchall()
         ]
 
-        oldest_created_at: str | None = None
-        newest_created_at: str | None = None
+        overall_dates = DateBounds()
+        collection_dates: dict[str, DateBounds] = {}
         unique_post_ids: set[str] = set()
         expanded_thread_targets = set(self.list_expanded_thread_target_ids())
         collection_stats = {
             collection: ArchiveCollectionStats(collection_type=collection)
             for collection in SEARCH_COLLECTION_ORDER
         }
-
-        def update_created_bounds(
-            raw: str | None,
-            *,
-            collection: ArchiveCollectionStats | None = None,
-        ) -> None:
-            nonlocal oldest_created_at, newest_created_at
-            oldest_created_at, _ = valid_date_bounds((oldest_created_at, raw))
-            _, newest_created_at = valid_date_bounds((newest_created_at, raw))
-            if collection is not None:
-                collection.oldest_created_at, _ = valid_date_bounds(
-                    (collection.oldest_created_at, raw)
-                )
-                _, collection.newest_created_at = valid_date_bounds(
-                    (collection.newest_created_at, raw)
-                )
 
         for row in tweet_rows:
             tweet_id = row.get("tweet_id")
@@ -167,7 +158,20 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
                     ArchiveCollectionStats(collection_type=collection_type),
                 )
                 collection.post_count += 1
-            update_created_bounds(row.get("created_at"), collection=collection)
+            if not include_dates:
+                continue
+            raw_created_at = row.get("created_at")
+            parsed_created_at = parse_created_at(raw_created_at)
+            if parsed_created_at is None:
+                continue
+            overall_dates.add(raw_created_at, parsed_created_at)
+            if collection is not None:
+                collection_dates.setdefault(collection_type, DateBounds()).add(
+                    raw_created_at, parsed_created_at
+                )
+        for collection_type, dates in collection_dates.items():
+            collection_stats[collection_type].oldest_created_at = dates.oldest
+            collection_stats[collection_type].newest_created_at = dates.newest
 
         pending_enrichment_count = enrichment_counts.get("pending", 0)
         transient_enrichment_failure_count = enrichment_counts.get("transient_failure", 0)
@@ -361,8 +365,8 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
             raw_capture_count=counts["raw_captures"],
             media_count=counts["media"],
             url_count=counts["urls"],
-            oldest_created_at=oldest_created_at,
-            newest_created_at=newest_created_at,
+            oldest_created_at=overall_dates.oldest,
+            newest_created_at=overall_dates.newest,
             latest_capture_at=latest_capture_at,
             latest_sync_at=latest_sync_at,
             collections=ordered_collections,

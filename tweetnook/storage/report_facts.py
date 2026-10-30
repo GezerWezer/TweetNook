@@ -6,7 +6,12 @@ from dataclasses import dataclass, fields
 from datetime import UTC, datetime
 from typing import Any
 
-from .common import RESURRECTION_ELIGIBLE_SQL, SEARCH_COLLECTION_ORDER, valid_date_bounds
+from .common import (
+    RESURRECTION_ELIGIBLE_SQL,
+    RESURRECTION_PERMANENT_SQL,
+    SEARCH_COLLECTION_ORDER,
+    valid_date_bounds,
+)
 from .record_types import RecordType
 from .stats import ArchiveCollectionStats, StatsMixin
 from .tags import TagsMixin
@@ -222,7 +227,7 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
             SELECT
                 COALESCE(NULLIF(enrichment_reason, ''), 'unavailable_unknown') AS reason,
                 count(*) AS count,
-                sum(CASE WHEN NOT {RESURRECTION_ELIGIBLE_SQL} THEN 1 ELSE 0 END) AS permanent,
+                sum(CASE WHEN {RESURRECTION_PERMANENT_SQL} THEN 1 ELSE 0 END) AS permanent,
                 sum(CASE WHEN {RESURRECTION_ELIGIBLE_SQL} THEN 1 ELSE 0 END) AS retryable,
                 sum(CASE WHEN {RESURRECTION_ELIGIBLE_SQL}
                     AND (enrichment_next_retry_at IS NULL OR enrichment_next_retry_at <= ?)
@@ -247,7 +252,7 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
             for row in rows
         }
         archive_total, unavailable_total = self.availability_counts()
-        stats = self.archive_stats()
+        stats = self.archive_stats(include_dates=False)
         return HealthFacts(
             HealthCounts(
                 **{field.name: getattr(stats, field.name) for field in fields(HealthCounts)}

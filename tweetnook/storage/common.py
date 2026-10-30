@@ -79,18 +79,31 @@ def parse_created_at(raw: str | None) -> datetime | None:
         return None
 
 
+class DateBounds:
+    """Oldest and newest raw dates, keeping parsed values so each date parses only once."""
+
+    __slots__ = ("_newest_dt", "_oldest_dt", "newest", "oldest")
+
+    def __init__(self) -> None:
+        self.oldest: str | None = None
+        self.newest: str | None = None
+        self._oldest_dt: datetime | None = None
+        self._newest_dt: datetime | None = None
+
+    def add(self, raw: str | None, parsed: datetime) -> None:
+        if self._oldest_dt is None or parsed < self._oldest_dt:
+            self.oldest, self._oldest_dt = raw, parsed
+        if self._newest_dt is None or parsed > self._newest_dt:
+            self.newest, self._newest_dt = raw, parsed
+
+
 def valid_date_bounds(values: Iterable[str | None]) -> tuple[str | None, str | None]:
-    oldest = newest = None
-    oldest_dt = newest_dt = None
+    bounds = DateBounds()
     for raw in values:
         parsed = parse_created_at(raw)
-        if parsed is None:
-            continue
-        if oldest_dt is None or parsed < oldest_dt:
-            oldest, oldest_dt = raw, parsed
-        if newest_dt is None or parsed > newest_dt:
-            newest, newest_dt = raw, parsed
-    return oldest, newest
+        if parsed is not None:
+            bounds.add(raw, parsed)
+    return bounds.oldest, bounds.newest
 
 
 LIVE_SOURCE = "live_graphql"
@@ -130,7 +143,10 @@ COMMUNITY_NOTE_TWEET_IDS_SQL = (
 
 # NULL retry eligibility is conservative; a missing reason does not exclude an
 # otherwise explicitly retryable observation. Every queue/count uses this predicate.
+# The bare eligibility comparison keeps the enrichment indexes seekable, but makes the
+# predicate NULL for unknown eligibility, so its complement must be IS NOT TRUE.
 RESURRECTION_ELIGIBLE_SQL = (
-    "(deleted_at IS NULL AND COALESCE(enrichment_retry_eligible, 0) = 1 "
+    "(deleted_at IS NULL AND enrichment_retry_eligible = 1 "
     "AND COALESCE(enrichment_reason, '') NOT IN ('archive_deleted', 'deleted_by_author'))"
 )
+RESURRECTION_PERMANENT_SQL = f"({RESURRECTION_ELIGIBLE_SQL} IS NOT TRUE)"
