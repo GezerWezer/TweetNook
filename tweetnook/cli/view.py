@@ -25,7 +25,6 @@ from tweetnook.export.common import default_export_path
 from tweetnook.stats import build_stats_report
 from tweetnook.stats.render_cli import render_stats_report
 from tweetnook.storage.search_query import SearchQueryError, parse_search_query, search_posts
-from tweetnook.storage.search_query import sort_search_results as _sort_search_results
 
 export_app = typer.Typer(no_args_is_help=True, help="Export the local archive.")
 view_app = typer.Typer(no_args_is_help=True, help="Render archived tweets in the terminal.")
@@ -315,56 +314,34 @@ def search_archive(
         search_collections = _parse_search_collections(collection_filter, console)
         parsed_query = parse_search_query(query)
 
-        def run_search(search_store):
-            combined: list[dict[str, Any]] = []
-            post_page = None
-            if "post" in search_types:
-                post_page = search_posts(
-                    search_store,
-                    query,
-                    collections=search_collections,
-                    sort=sort,
-                    limit=limit,
+        post_page = None
+        if search_types == {"post"}:
+            post_page = search_posts(
+                store, query, collections=search_collections, sort=sort, limit=limit
+            )
+            results: list[dict[str, Any]] = []
+            for row in post_page.rows:
+                author = row.get("author") or {}
+                collections = row.get("collections") or []
+                if not collections:
+                    collection = (row.get("collection") or {}).get("type")
+                    collections = [collection] if collection else []
+                results.append(
+                    {
+                        "tweet_id": row.get("tweet_id"),
+                        "type": "post",
+                        "collections": collections,
+                        "author_id": author.get("id"),
+                        "author_username": author.get("username"),
+                        "created_at": row.get("created_at"),
+                        "text": row.get("text"),
+                        "match_score": row.get("match_score"),
+                    }
                 )
-                for row in post_page.rows:
-                    author = row.get("author") or {}
-                    collections = row.get("collections") or []
-                    if not collections:
-                        collection = (row.get("collection") or {}).get("type")
-                        collections = [collection] if collection else []
-                    combined.append(
-                        {
-                            "tweet_id": row.get("tweet_id"),
-                            "type": "post",
-                            "collections": collections,
-                            "author_id": author.get("id"),
-                            "author_username": author.get("username"),
-                            "created_at": row.get("created_at"),
-                            "text": row.get("text"),
-                            "match_score": row.get("match_score"),
-                        }
-                    )
-            if "article" in search_types:
-                if any(
-                    clause.kind == "filter" for group in parsed_query.groups for clause in group
-                ):
-                    raise SearchQueryError(
-                        "Structured filters apply to tweets; use filter:articles to find tweets "
-                        "with attached articles."
-                    )
-                combined.extend(
-                    search_store.search_fts(
-                        query,
-                        limit=limit,
-                        types={"article"},
-                        collections=search_collections,
-                        sort=sort,
-                    )
-                )
-            return combined, post_page
-
-        results, post_page = run_search(store)
-        results = _sort_search_results(results, sort=sort)[:limit]
+        else:
+            results = store.search_fts(
+                query, limit=limit, types=search_types, collections=search_collections, sort=sort
+            )
         if not results:
             console.print("[yellow]No results found.[/yellow]")
             return

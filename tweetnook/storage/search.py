@@ -15,6 +15,7 @@ from .common import (
     clause_in,
     join_clauses,
 )
+from .ordering import chronological_order, representative_membership, sort_chronologically
 from .record_types import RecordType
 
 if TYPE_CHECKING:
@@ -27,6 +28,27 @@ SEARCH_KIND_ARTICLE = "article"
 
 
 class SearchMixin(ReadsMixin, TagsMixin):
+    def order_search_results(
+        self, rows: list[dict[str, Any]], *, sort: str, collections: set[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Merge chronological results using the same logical keys as SQL pages."""
+        if sort == "relevance":
+            return rows
+        ids = {row["tweet_id"] for row in rows}
+        if not ids:
+            return rows
+        representative = representative_membership("saved.tweet_id", collections)
+        selected = clause_in("saved.tweet_id", ids)
+        keys = self.conn.execute(
+            "SELECT saved.tweet_id, saved.created_at_ts, "
+            "CAST(saved.sort_index AS INTEGER) AS sort_index "
+            f"FROM archive AS saved WHERE {selected.sql} AND ("
+            f"saved.row_key = {representative.sql} OR (saved.record_type = 'tweet_object' "
+            f"AND {representative.sql} IS NULL))",
+            (*selected.params, *representative.params, *representative.params),
+        ).fetchall()
+        return sort_chronologically(rows, {row["tweet_id"]: dict(row) for row in keys}, sort=sort)
+
     def _dedupe_search_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         deduped: list[dict[str, Any]] = []
         seen_tweet_ids: set[str] = set()
@@ -303,7 +325,6 @@ class SearchMixin(ReadsMixin, TagsMixin):
             SearchQueryError,
             parse_search_query,
             search_posts,
-            sort_search_results,
         )
 
         if sort not in {"relevance", "newest", "oldest"}:
@@ -330,7 +351,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
             )
             results.extend(self._project_article_search_results(articles, collections=collections))
         results.sort(key=self._search_score, reverse=True)
-        return sort_search_results(results, sort=sort)[:limit]
+        return self.order_search_results(results, sort=sort, collections=collections)[:limit]
 
     def search_tweet_ids(
         self,
@@ -593,6 +614,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
         page_params = list(params)
         page_where = ""
         page_extra = ""
+        ordering_columns = "matches.created_at_ts, matches.sort_index"
         if sort in {"liked_latest", "liked_earliest"}:
             position = "earliest_position" if sort == "liked_earliest" else "latest_position"
             page_from = (
@@ -604,16 +626,16 @@ class SearchMixin(ReadsMixin, TagsMixin):
             if after:
                 page_where = f"WHERE like_order.{position} > ?"
                 page_params.append(after["like_position"])
-        elif sort == "oldest":
-            order_by = (
-                "matches.created_at_ts IS NULL, matches.created_at_ts ASC, "
-                "matches.sort_index ASC, matches.tweet_id ASC"
+        elif sort in {"oldest", "newest"}:
+            representative = representative_membership("matches.tweet_id", collections)
+            page_from = (
+                f"matches JOIN archive AS ordering ON ordering.row_key = {representative.sql}"
             )
-        elif sort == "newest":
-            order_by = (
-                "matches.created_at_ts IS NULL, matches.created_at_ts DESC, "
-                "matches.sort_index DESC, matches.tweet_id DESC"
+            page_params.extend(representative.params)
+            ordering_columns = (
+                "ordering.created_at_ts, CAST(ordering.sort_index AS INTEGER) AS sort_index"
             )
+            order_by = chronological_order("ordering", sort)
         elif sort == "most_likes":
             order_by = (
                 "matches.favorite_count DESC, matches.created_at_ts DESC, "
@@ -629,7 +651,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
 
         page_sql = (
             f"{with_sql} SELECT matches.tweet_id, matches.match_score, "
-            f"matches.created_at_ts, matches.sort_index{page_extra} "
+            f"{ordering_columns}{page_extra} "
             f"FROM {page_from} {page_where} ORDER BY {order_by} LIMIT ? OFFSET ?"
         )
         page_params.extend([limit + 1, offset])

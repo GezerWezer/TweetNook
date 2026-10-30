@@ -30,6 +30,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | `imports.py` | Official-archive import cleanup and rehydration from raw captures. |
 | `search.py` | Full-text and structured search. |
 | `search_query.py` | Search query parsing, filter predicates, sorts and cursors, shared by CLI search and web feeds. |
+| `ordering.py` | Logical-post membership keys and shared chronological ordering for feeds and mixed search. |
 | `like_order.py` | Like order rebuilt from captured observations. |
 
 Put a new storage operation in the module for its concern, and add a mixin base only when it calls into another group. Bases follow the order in `ArchiveStore`'s header, which keeps Python's method resolution order consistent.
@@ -92,6 +93,8 @@ Checks and Community Note changes have dedicated history storage. `note_observat
 ## Search and ordering
 
 Scalar indexes cover membership, ID, relation, media and queue reads. FTS5 indexes support saved post text and local descriptions. Article text is matched in Python using the shared query parser. Trigger-maintained tweet facts extract common raw-payload filters once when data changes. Cache revisions invalidate derived totals and search pages after relevant writes.
+
+Chronological feed, filtered post search and mixed post/Article results use `storage/ordering.py`: the lowest membership row key within the requested collections supplies the normalized timestamp and numeric timeline key. Undated posts follow dated posts in both directions; timeline keys and text IDs follow the requested direction, with SQLite's native NULL order for timeline keys. Page hydration selects that same membership. Fast continuations seek indexed ranges, including a separate undated tail for oldest order. Export retains its independent legacy-date and integer-key ordering.
 
 Like-order result, capture-page and TEMP-index caches are declared store state. TEMP paging and archive mutations use the same connection lock, while paging savepoints preserve an enclosing transaction.
 

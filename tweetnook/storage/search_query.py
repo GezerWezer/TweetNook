@@ -17,7 +17,6 @@ from tweetnook.storage.common import (
     HIDDEN_TWEET_IDS_SQL,
     UNCAPTURED_TWEET_IDS_SQL,
     Clause,
-    parse_created_at,
 )
 from tweetnook.storage.like_order import LIKE_SORTS
 
@@ -505,32 +504,6 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> C
     return _negate(expression) if negated else expression
 
 
-def _search_result_score(row: dict[str, Any]) -> float:
-    score = row.get("match_score")
-    try:
-        return float(score)
-    except (TypeError, ValueError):
-        return float("-inf")
-
-
-def sort_search_results(rows: list[dict[str, Any]], *, sort: str) -> list[dict[str, Any]]:
-    if sort == "relevance":
-        return rows
-
-    def sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
-        created_at = parse_created_at(row.get("created_at"))
-        score_key = -_search_result_score(row)
-        tweet_id = str(row.get("tweet_id") or "")
-        if created_at is None:
-            return (1, 0.0, score_key, tweet_id)
-        timestamp = created_at.timestamp()
-        if sort == "oldest":
-            return (0, timestamp, score_key, tweet_id)
-        return (0, -timestamp, score_key, tweet_id)
-
-    return sorted(rows, key=sort_key)
-
-
 def _effective_sort(sort: str, *, has_positive_text: bool) -> str:
     if sort in LIKE_SORTS:
         return sort
@@ -690,7 +663,11 @@ def search_posts(
     page_hits = hits[:limit]
     ids = [str(hit["tweet_id"]) for hit in page_hits if hit.get("tweet_id")]
     hydrated_by_id = {
-        row.get("tweet_id"): row for row in store.fetch_tweets_by_ids(ids) if row.get("tweet_id")
+        row.get("tweet_id"): row
+        for row in store.fetch_tweets_by_ids(
+            ids, **({"collections": collections} if collections else {})
+        )
+        if row.get("tweet_id")
     }
     hydrated = [hydrated_by_id[tweet_id] for tweet_id in ids if tweet_id in hydrated_by_id]
     hydrated = _hydrate_metadata(hydrated, page_hits)

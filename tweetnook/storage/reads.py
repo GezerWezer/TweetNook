@@ -11,9 +11,9 @@ from tweetnook.core.media_metadata import aspect_ratio_for_media
 
 from .common import (
     HIDDEN_TWEET_IDS_SQL,
-    SEARCH_COLLECTION_ORDER,
     UNCAPTURED_TWEET_IDS_SQL,
 )
+from .ordering import chronological_columns, chronological_order
 from .record_types import RecordType
 from .records import RecordsMixin
 from .relations import RelationsMixin
@@ -214,27 +214,26 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             where.append(f"candidate.tweet_id NOT IN ({UNCAPTURED_TWEET_IDS_SQL})")
 
         order_by = (
-            "candidate.created_at_ts DESC, "
-            "CAST(candidate.sort_index AS INTEGER) DESC, candidate.tweet_id DESC"
+            "RANDOM()"
+            if sort == "random"
+            else chronological_order("candidate", sort, unknown_last=False)
         )
-        if sort == "oldest":
-            order_by = (
-                "candidate.created_at_ts ASC, "
-                "CAST(candidate.sort_index AS INTEGER) ASC, candidate.tweet_id ASC"
-            )
-        elif sort == "random":
-            order_by = "RANDOM()"
 
-        sql = (
-            "SELECT candidate.tweet_id, candidate.created_at_ts, "
-            "CAST(candidate.sort_index AS INTEGER) AS sort_index FROM archive AS candidate "
+        source_sql = (
+            "FROM archive AS candidate "
             f"WHERE {' AND '.join(where)} "
             "AND NOT EXISTS ("
             "SELECT 1 FROM archive AS duplicate INDEXED BY idx_archive_membership "
             f"WHERE {' AND '.join(duplicate_where)}"
             ") "
         )
+        sql = (
+            "SELECT candidate.tweet_id, candidate.created_at_ts, "
+            f"CAST(candidate.sort_index AS INTEGER) AS sort_index {source_sql}"
+        )
         if after is None:
+            if sort == "oldest":
+                return self._oldest_offset_page(source_sql, params, limit, offset)
             return [
                 dict(row)
                 for row in self.conn.execute(
@@ -245,17 +244,27 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         # Disjoint, ordered ranges preserve SQLite's NULL/tie semantics and let
         # every continuation seek into the composite index. A single OR across
         # nullable keys can instead scan all preceding pages.
-        columns = [
-            "candidate.created_at_ts",
-            "CAST(candidate.sort_index AS INTEGER)",
-            "candidate.tweet_id",
-        ]
+        columns = chronological_columns("candidate")
         values = [after["created_at_ts"], after["sort_index"], after["tweet_id"]]
         result = []
         direction = "DESC" if sort == "newest" else "ASC"
-        for condition, bounds, order_start in self._page_cursor_ranges(
-            columns, values, sort == "newest"
-        ):
+        if sort == "oldest":
+            ranges = [
+                (f"{columns[0]} IS ? AND ({condition})", [values[0], *bounds], start + 1)
+                for condition, bounds, start in self._page_cursor_ranges(
+                    columns[1:], values[1:], False
+                )
+            ]
+            if values[0] is not None:
+                ranges.extend(
+                    [
+                        (f"{columns[0]} > ?", [values[0]], 0),
+                        (f"{columns[0]} IS NULL", [], 1),
+                    ]
+                )
+        else:
+            ranges = self._page_cursor_ranges(columns, values, True)
+        for condition, bounds, order_start in ranges:
             range_order = ", ".join(f"{column} {direction}" for column in columns[order_start:])
             result.extend(
                 dict(row)
@@ -268,6 +277,38 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             if len(result) >= limit:
                 break
         return result
+
+    def _oldest_offset_page(self, source_sql, params, limit, offset):
+        order_by = chronological_order("candidate", "oldest", unknown_last=False)
+        sql = (
+            "SELECT candidate.tweet_id, candidate.created_at_ts, "
+            f"CAST(candidate.sort_index AS INTEGER) AS sort_index {source_sql}"
+        )
+        rows = [
+            dict(row)
+            for row in self.conn.execute(
+                f"{sql} AND candidate.created_at_ts IS NOT NULL "
+                f"ORDER BY {order_by} LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            )
+        ]
+        if len(rows) == limit:
+            return rows
+        # Keep both partitions index ordered instead of sorting the whole
+        # archive just to move unknown timestamps behind dated posts.
+        dated_count = int(
+            self.conn.execute(
+                f"SELECT COUNT(*) {source_sql} AND candidate.created_at_ts IS NOT NULL", params
+            ).fetchone()[0]
+        )
+        rows.extend(
+            dict(row)
+            for row in self.conn.execute(
+                f"{sql} AND candidate.created_at_ts IS NULL ORDER BY {order_by} LIMIT ? OFFSET ?",
+                [*params, limit - len(rows), max(0, offset - dated_count)],
+            )
+        )
+        return rows
 
     @staticmethod
     def _page_cursor_ranges(columns, values, descending):
@@ -484,7 +525,11 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         return exported
 
     def fetch_tweets_by_ids(
-        self, tweet_ids: list[str], *, include_objects: bool = False
+        self,
+        tweet_ids: list[str],
+        *,
+        include_objects: bool = False,
+        collections: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Hydrate collection tweets in the requested order, skipping unknown IDs.
 
@@ -496,6 +541,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             return []
 
         tweet_columns = [
+            "row_key",
             "tweet_id",
             "text",
             "author_id",
@@ -511,6 +557,8 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         ]
 
         rows = self._rows_for_values(RecordType.TWEET, "tweet_id", tweet_ids, columns=tweet_columns)
+        if collections:
+            rows = [row for row in rows if row.get("collection_type") in collections]
         object_ids: set[str] = set()
         if include_objects:
             member_ids = {row.get("tweet_id") for row in rows}
@@ -527,10 +575,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         rows.sort(
             key=lambda row: (
                 id_order.get(row.get("tweet_id"), 999999),
-                SEARCH_COLLECTION_ORDER.index(row["collection_type"])
-                if row.get("collection_type") in SEARCH_COLLECTION_ORDER
-                else len(SEARCH_COLLECTION_ORDER),
-                row.get("folder_id") or "",
+                row["row_key"],
             )
         )
         unique_rows: list[dict[str, Any]] = []

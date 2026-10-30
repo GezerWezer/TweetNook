@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -147,7 +148,10 @@ def test_article_cli_uses_shared_query_and_hides_saved_posts(paths, monkeypatch,
 
 
 @pytest.mark.parametrize("types", ["article", "post,article"])
-@pytest.mark.parametrize(("sort", "expected"), [("oldest", "910001"), ("newest", "910003")])
+@pytest.mark.parametrize(
+    ("sort", "expected"),
+    [("oldest", "910001"), ("newest", "910003"), ("relevance", "910004")],
+)
 def test_article_cli_sorts_all_matches_before_limiting(paths, monkeypatch, types, sort, expected):
     store = open_archive_store(paths, create=True)
     rows = []
@@ -164,8 +168,11 @@ def test_article_cli_sorts_all_matches_before_limiting(paths, monkeypatch, types
                     record_type="tweet",
                     tweet_id=tweet_id,
                     collection_type="bookmark",
-                    text="saved post",
+                    text="coffee saved post",
                     created_at=f"Sat Mar 14 00:00:00 +0000 {year}" if year else None,
+                    created_at_ts=int(datetime(year, 3, 14, tzinfo=UTC).timestamp())
+                    if year
+                    else None,
                 ),
                 store._record(
                     row_key=f"article:{tweet_id}",
@@ -176,42 +183,19 @@ def test_article_cli_sorts_all_matches_before_limiting(paths, monkeypatch, types
             ]
         )
     store.merge_rows(rows)
+    shared = store.search_fts("coffee", types=set(types.split(",")), sort=sort, limit=1)
+    assert [(row["tweet_id"], row["type"]) for row in shared] == [(expected, "article")]
     patch_cli(monkeypatch, "open_store_for_read", lambda console: (store, paths))
+    captured = {}
+    patch_cli(monkeypatch, "_render_tweet_list", lambda console, **kwargs: captured.update(kwargs))
 
     result = runner.invoke(
         cli.app, ["search", "coffee", "--type", types, "--sort", sort, "--limit", "1"]
     )
 
     assert result.exit_code == 0, result.output
-    assert expected in result.output
-    for tweet_id in {"910001", "910002", "910003", "910004"} - {expected}:
-        assert tweet_id not in result.output
-
-
-def test_sort_search_results_reorders_newest_then_oldest() -> None:
-    rows = [
-        {
-            "tweet_id": "1",
-            "created_at": "Tue Oct 09 21:39:26 +0000 2012",
-            "match_score": 0.95,
-        },
-        {
-            "tweet_id": "2",
-            "created_at": "Thu Apr 11 03:55:13 +0000 2024",
-            "match_score": 0.90,
-        },
-        {
-            "tweet_id": "3",
-            "created_at": None,
-            "match_score": 1.0,
-        },
-    ]
-
-    newest = cli_view._sort_search_results(rows, sort="newest")
-    oldest = cli_view._sort_search_results(rows, sort="oldest")
-
-    assert [row["tweet_id"] for row in newest] == ["2", "1", "3"]
-    assert [row["tweet_id"] for row in oldest] == ["1", "2", "3"]
+    assert [row.tweet_id for row in captured["rows"]] == [expected]
+    assert captured["rows"][0].match.startswith("article · bookmark")
 
 
 def test_export_json_accepts_plural_collection_name(paths, monkeypatch, tmp_path: Path) -> None:

@@ -37,7 +37,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `core/timeline_parsing.py` | Timeline/detail parsing and focal-result classification. |
 | `core/fxtwitter_payloads.py` | FxTwitter payload adaptation to the GraphQL tweet shape. |
 | `core/tweet_presentations.py` | Pure embedded/legacy tweet and media adaptation for normalized presentation. |
-| `storage/` | SQLite archive: `ArchiveStore` in `backend.py`, one module per storage concern (see [storage](storage.md#layout)), shared search query parsing and sorts (`search_query.py`), and rebuildable like order (`like_order.py`). |
+| `storage/` | SQLite archive: `ArchiveStore` in `backend.py`, one module per storage concern (see [storage](storage.md#layout)), shared search query parsing (`search_query.py`), chronological keys (`ordering.py`), and rebuildable like order (`like_order.py`). |
 | `auth/cookies.py` | Explicit session credentials and per-collection requirements. |
 | `client/base.py`, `client/features.py` | HTTP setup, pacing, headers, feature flags and transport errors. |
 | `client/timelines.py` | X operation variables and timeline/detail requests. |
@@ -46,7 +46,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `sync/collection.py` | Collection preflight and resumable pages. |
 | `sync/followups.py` | The follow-up plan and the work a sync runs after its collections. |
 | `importer/archive.py` | Official export ingest: one import run from reading the export to its follow-up. |
-| `importer/archive_input.py`, `importer/archive_rows.py`, `importer/archive_media.py` | Reading the export, the rows it becomes and its copied media files. |
+| `importer/archive_input.py`, `importer/archive_rows.py`, `importer/archive_media.py` | Reading the export, adapting observations into storage ingestion batches, and copying media files. |
 | `importer/archive_manifests.py` | Import manifests, their counts and warnings, and the files an import owns. |
 | `importer/archive_enrich.py` | Live reconciliation and sparse completion, after an import or for one already saved. |
 | `importer/archive_progress.py` | Status lines and progress shared by import and enrichment. |

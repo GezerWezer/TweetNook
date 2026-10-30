@@ -18,6 +18,10 @@ Posts without captured content are excluded from list/count results unless any c
 
 Search can return posts and Articles, with collection filtering and relevance/newest/oldest CLI sorts. Web feeds also support random, most-liked and liked-order modes. Post results deduplicate membership observations at the post boundary; collection filters still refer to actual memberships.
 
+Chronological results use the normalized timestamp and numeric timeline key from the lowest membership row key in the selected collections. Unknown timestamps come last in both directions; timeline keys and text IDs break ties in the requested direction. Hydration preserves this order and uses the same membership. Mixed post/Article search uses these same keys. Export has its own legacy-date ordering contract.
+
+`search_fts()` owns mixed post/Article projection and merging for read consumers, including the CLI. Relevance combines both kinds by their existing approximate scores before applying the final limit. Post-only CLI search preserves the shared post page's SQL order and total rather than sorting its hydrated rows again. Structured post filters remain unavailable when Article results are requested.
+
 Indexes and derived facts support normal reads without reparsing each raw payload. Count work can be requested independently from the first result page. Keep exact totals distinct from absent/deferred totals; `has_more` and `next_cursor` let a client continue without inventing a page count.
 
 Cursors bind query context, ordering mode and position. Like-order cursors also carry a derived revision so a changed order can return an explicit expired-cursor error instead of silently skipping posts. Invalid search/cursor inputs return 400; an order revision conflict returns 409.
