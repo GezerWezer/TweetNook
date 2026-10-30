@@ -45,15 +45,6 @@ from tweetnook.web.setup_coordinator import SetupCoordinator
 from tweetnook.web.stats_cache import DailyStatsRefresher, web_stats_cache
 from tweetnook.web.warmup import ArchiveWarmer
 
-
-def _build_fts_in_background(store) -> None:
-    """Build the FTS index in a daemon thread so the server can start immediately."""
-    try:
-        store.ensure_fts_index()
-    except Exception:
-        pass  # FTS is optional; search degrades gracefully without it
-
-
 _DETAIL_DOCUMENT_PATH = re.compile(r"^/post/\d+(?:/quotes)?$")
 
 
@@ -70,18 +61,10 @@ def attach_archive_store() -> bool:
         )
         if store is None:
             return False
-        try:
-            store.ensure_scalar_indexes()
-        except Exception:
-            store.close()
-            raise
         server_state["store"] = store
         console = Console(stderr=True)
         print_archive_migration_report(console, store)
         print_pending_archive_enrichment_reminder(console, store)
-        thread = threading.Thread(target=_build_fts_in_background, args=(store,), daemon=True)
-        server_state["fts_thread"] = thread
-        thread.start()
         warmer = ArchiveWarmer(store)
         server_state["archive_warmer"] = warmer
         warmer.request()
@@ -152,9 +135,6 @@ def detach_archive_store() -> None:
             refresher.stop()
         if warmer := server_state.pop("archive_warmer", None):
             warmer.stop()
-        if thread := server_state.pop("fts_thread", None):
-            if hasattr(thread, "join"):
-                thread.join()
         if store := server_state.pop("store", None):
             web_stats_cache.wait_for_refreshes()
             web_stats_cache.clear()

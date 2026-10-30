@@ -28,6 +28,7 @@ from tweetnook.core.exceptions import (
 )
 from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
 from tweetnook.core.timeline_parsing import (
+    FOCAL_ABSENCE_DETAIL,
     MAX_CONSECUTIVE_FOCAL_ABSENCES,
     FocalResultKind,
     parse_tweet_detail_response,
@@ -71,19 +72,9 @@ class ArchiveEnrichResult:
     detail_terminal_unavailable: int = 0
     detail_transient_failures: int = 0
     pending_enrichment: int = 0
-    selected: int = 0
-    completed: int = 0
-    classified_unavailable: int = 0
-    transient_failures: int = 0
     pending_untouched: int = 0
     transient_due: int = 0
     transient_delayed: int = 0
-
-    def __iter__(self):
-        yield self.detail_lookups
-        yield self.detail_terminal_unavailable
-        yield self.detail_transient_failures
-        yield self.pending_enrichment
 
 
 class ArchiveEnrichmentInterrupted(KeyboardInterrupt):
@@ -280,19 +271,6 @@ async def _run_archive_followup(
                 absence_tracker=absence_tracker,
                 started_at=enrichment_started_at,
             )
-            if isinstance(enrichment_result, tuple):
-                completed, unavailable, transient, remaining = enrichment_result
-                enrichment_result = ArchiveEnrichResult(
-                    detail_lookups=completed,
-                    detail_terminal_unavailable=unavailable,
-                    detail_transient_failures=transient,
-                    pending_enrichment=remaining,
-                    selected=completed + unavailable + transient,
-                    completed=completed,
-                    classified_unavailable=unavailable,
-                    transient_failures=transient,
-                    pending_untouched=remaining,
-                )
         except Exception as exc:
             raise_if_storage_exhausted(exc)
             async with locked_archive_job(config=config, paths=paths) as job:
@@ -486,7 +464,6 @@ async def _enrich_pending_rows(
             if buffered_writes <= 0:
                 return
             flush_buffer(store, write_buffer)
-            job.mark_dirty(rows=buffered_writes, batches=1)
             buffered_writes = 0
 
         # Rows finished so far, in whatever order FxTwitter answers, so progress never jumps.
@@ -637,7 +614,8 @@ async def _enrich_pending_rows(
                         )
                         payload = response.json()
                         focal = parse_tweet_detail_response(payload, tweet_id)
-                        if focal.kind == FocalResultKind.AVAILABLE and focal.tweet is not None:
+                        if focal.kind == FocalResultKind.AVAILABLE:
+                            assert focal.tweet is not None
                             absence_tracker.observe(focal.kind, tweet_id)
                             store.persist_tweet_detail(
                                 tweet=focal.tweet,
@@ -667,7 +645,6 @@ async def _enrich_pending_rows(
                             terminal += 1
                         else:
                             assert focal.kind == FocalResultKind.ABSENT
-                            assert focal.unavailable is not None
                             write_buffer.restore(write_checkpoint)
                             retry_count = int(row.get("enrichment_retry_count") or 0) + 1
                             store.update_tweet_object_enrichment(
@@ -676,7 +653,7 @@ async def _enrich_pending_rows(
                                 enrichment_checked_at=utc_now(),
                                 enrichment_http_status=response.status_code,
                                 enrichment_reason="focal_tweet_absent",
-                                enrichment_detail=focal.unavailable.detail,
+                                enrichment_detail=FOCAL_ABSENCE_DETAIL,
                                 enrichment_retry_count=retry_count,
                                 enrichment_next_retry_at=transient_retry_at(retry_count),
                                 enrichment_retry_eligible=None,
@@ -789,10 +766,6 @@ async def _enrich_pending_rows(
             finally:
                 flush_detail_writes()
         result = _archive_enrich_counts(store)
-        result.selected = len(rows)
-        result.completed = succeeded
-        result.classified_unavailable = terminal
-        result.transient_failures = transient
         result.detail_lookups = succeeded
         result.detail_terminal_unavailable = terminal
         result.detail_transient_failures = transient

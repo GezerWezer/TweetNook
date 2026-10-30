@@ -64,8 +64,6 @@ class ConnectionMixin:
         params: Sequence[Any] = (),
         cols: list[str] | None = None,
         limit: int | None = None,
-        is_fts: bool = False,
-        query: str | None = None,
         order_by: str | None = None,
         offset: int | None = None,
         indexed_by: str | None = None,
@@ -76,8 +74,6 @@ class ConnectionMixin:
         }
         if indexed_by is not None and indexed_by not in allowed_indexes:
             raise ValueError(f"Unsupported archive query index: {indexed_by}")
-        if indexed_by is not None and is_fts:
-            raise ValueError("Archive index hints cannot be combined with FTS queries")
 
         c = ", ".join(cols) if cols else "*"
         archive_source = "archive"
@@ -85,28 +81,11 @@ class ConnectionMixin:
             archive_source += f" INDEXED BY {indexed_by}"
         q = f"SELECT {c} FROM {archive_source}"
         bound: list[Any] = []
-        if is_fts and query:
-            if c != "*":
-                c += ", archive_fts.rank AS rank"
-            else:
-                c = "*, archive_fts.rank AS rank"
-            q = (
-                f"SELECT {c} FROM archive "
-                "JOIN archive_fts ON archive.rowid = archive_fts.rowid "
-                "WHERE archive_fts MATCH ?"
-            )
-            bound.append(query)
-
         if expr:
-            if "WHERE" in q:
-                q += f" AND ({expr})"
-            else:
-                q += f" WHERE {expr}"
+            q += f" WHERE {expr}"
             bound.extend(params)
 
-        if is_fts and query:
-            q += " ORDER BY archive_fts.rank"
-        elif order_by:
+        if order_by:
             q += f" ORDER BY {order_by}"
 
         if limit is not None:
@@ -173,10 +152,7 @@ class ConnectionMixin:
         """Stop current and future warm_read_cache() and open_reader() queries promptly."""
         self._warm_cancelled = True
 
-    def version_count(self) -> int:
-        return 1
-
-    def optimize(self, *, cleanup: bool = True) -> None:
+    def optimize(self) -> None:
         self.conn.execute("VACUUM")
         self.conn.execute("PRAGMA optimize=0x10002")
         with self.conn:

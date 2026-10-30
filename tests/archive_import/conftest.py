@@ -21,7 +21,6 @@ from tweetnook.core.exceptions import (
     ConfigError,
 )
 from tweetnook.core.timeline_parsing import TimelineTweet
-from tweetnook.jobs.context import LockedArchiveJob
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.storage import open_archive_store
 
@@ -366,13 +365,15 @@ class DetailEnrichment:
         # No retries, so a transport failure is final without fetch_page's real backoff.
         self.config = AppConfig(sync=SyncConfig(detail_delay=0.0, detail_max_retries=0))
         QueryIdStore(paths).save({"TweetDetail": "detail-query-id"})
-        mark_dirty = LockedArchiveJob.mark_dirty
+        flush = archive_enrich.flush_buffer
 
-        def spy(job: LockedArchiveJob, rows: int = 1, batches: int = 1) -> None:
-            self.dirty.append((rows, batches))
-            mark_dirty(job, rows=rows, batches=batches)
+        def spy(store, buffer):
+            attempts = sum(row["record_type"] == "tweet_object" for row in buffer.records.values())
+            result = flush(store, buffer)
+            self.dirty.append((attempts, 1))
+            return result
 
-        monkeypatch.setattr(LockedArchiveJob, "mark_dirty", spy)
+        monkeypatch.setattr(archive_enrich, "flush_buffer", spy)
 
     def transport(self, respond: Callable[[str, httpx.Request], object]) -> httpx.MockTransport:
         """Answer each TweetDetail request with respond(tweet_id, request).

@@ -82,7 +82,7 @@ Like order derives from immutable live/archive observations rather than invented
 
 ## Maintenance
 
-`db check` uses SQLite's quick check; `db check --full` uses its integrity check. `optimize` handles SQLite space/query/index maintenance. Old fragment-compaction hooks remain compatibility no-ops for this backend and shouldn't be described as active maintenance work.
+`db check` uses SQLite's quick check; `db check --full` uses its integrity check. `optimize` handles SQLite space/query/index maintenance. Jobs do not perform automatic mid-run or interrupt compaction. Explicit optimization and close-time planner maintenance are separate from job progress.
 
 Prune computes a reachable context graph from saved memberships and current depth settings. It can remove manually expanded context outside that graph. Planning is read-only by default; applying takes the write lock, removes scoped rows/files, and vacuums. Test the graph and file boundaries before changing it.
 
@@ -98,7 +98,7 @@ Stop writers before copying a whole installation. A live database copy needs SQL
 
 `archive_description_fts` stores nonempty string descriptions from `media_tag` rows. Its update/delete path removes old entries by rowid. Keep description matching separate from ordinary post-text clauses.
 
-`ensure_scalar_indexes` and `ensure_fts_index` are currently no-ops. Startup invokes them, but creation/migration is what establishes those structures. `rebuild_search_index` is the explicit rebuild path. Opening a current-schema archive does not repair missing indexes or run an integrity check.
+Creation and migration establish the scalar and full-text indexes. `rebuild_search_index` is the explicit rebuild path. Opening a current-schema archive does not repair missing indexes or run an integrity check.
 
 Bounded caches use persisted revisions and bypass ordinary reuse inside an uncommitted transaction, so a rolled-back write doesn't poison later results. Like-order input revisions are narrower than general content changes. Export ranks/deduplicates membership keys before hydrating full payloads, but an unlimited export still materializes the complete result.
 

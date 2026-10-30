@@ -290,18 +290,8 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         self,
         sorted_rows: list[dict[str, Any]],
         include_raw_json: bool,
-        defer_raw_json: bool,
     ) -> list[dict[str, Any]]:
         tweet_ids = [row["tweet_id"] for row in sorted_rows if row.get("tweet_id")]
-
-        if defer_raw_json and tweet_ids:
-            raw_rows = self._rows_for_values(
-                RecordType.TWEET, "tweet_id", tweet_ids, columns=["tweet_id", "raw_json"]
-            )
-            raw_map = {r.get("tweet_id"): r.get("raw_json") for r in raw_rows}
-            for row in sorted_rows:
-                if row.get("tweet_id") in raw_map:
-                    row["raw_json"] = raw_map[row["tweet_id"]]
 
         media_cols = [
             "tweet_id",
@@ -553,7 +543,6 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         tweets = self._hydrate_exported_rows(
             unique_rows,
             include_raw_json=True,
-            defer_raw_json=False,
         )
         for tweet in tweets:
             if tweet["tweet_id"] in object_ids:
@@ -650,4 +639,4 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         )
         by_key = {row["row_key"]: row for row in selected}
         sorted_rows = [by_key[row["row_key"]] for row in keys if row["row_key"] in by_key]
-        return self._hydrate_exported_rows(sorted_rows, include_raw_json, False)
+        return self._hydrate_exported_rows(sorted_rows, include_raw_json)

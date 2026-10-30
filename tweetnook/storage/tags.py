@@ -6,12 +6,19 @@ import json
 import sqlite3
 import time
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Literal, TypedDict, cast
 
 from .db import ConnectionMixin
 from .record_types import RecordType
 
 AVAILABLE_ENRICHMENT_STATES = ("done", "resurrected")
+
+
+class TaggingCandidate(TypedDict):
+    tweet_id: str
+    quoted_tweet_id: str | None
+    content_type: Literal["media", "text"]
+    sort_ts: int
 
 
 class TagsMixin(ConnectionMixin):
@@ -20,7 +27,7 @@ class TagsMixin(ConnectionMixin):
         *,
         limit: int = 20,
         exclude_tweet_ids: set[str] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[TaggingCandidate]:
         """Return one homogeneous batch of untagged saved or directly quoted tweets.
 
         Keep candidate discovery streaming.  A materialized CTE for the complete
@@ -134,7 +141,7 @@ class TagsMixin(ConnectionMixin):
         excluded = exclude_tweet_ids or set()
         seen: set[str] = set()
         selected_type: str | None = None
-        selected: list[dict[str, Any]] = []
+        selected: list[TaggingCandidate] = []
 
         def ordered_unique_rows(rows: sqlite3.Cursor) -> Iterator[sqlite3.Row]:
             """Restore tweet-ID tie ordering without an SQLite temp sort."""
@@ -191,7 +198,7 @@ class TagsMixin(ConnectionMixin):
                 ).fetchone()
                 if classification is None:
                     continue
-                content_type = str(classification["content_type"])
+                content_type = cast(Literal["media", "text"], classification["content_type"])
                 if selected_type is None:
                     selected_type = content_type
                 if content_type != selected_type:
@@ -210,10 +217,6 @@ class TagsMixin(ConnectionMixin):
             saved_rows.close()
             quoted_rows.close()
         return selected
-
-    def get_eligible_tweets_for_tagging(self, *, limit: int = 20) -> list[str]:
-        """Compatibility wrapper returning IDs from the next homogeneous tag batch."""
-        return [row["tweet_id"] for row in self.get_eligible_tagging_candidates(limit=limit)]
 
     def get_tagging_coverage_counts(self) -> tuple[int, int]:
         """Return eligible and validly tagged tweet counts for coverage reporting."""

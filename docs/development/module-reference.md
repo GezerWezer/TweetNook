@@ -55,7 +55,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `enrichment/resurrection.py`, `enrichment/check.py` | Authenticated retry policy and public availability checks. |
 | `enrichment/prune.py` | Reachability planning and scoped context/file cleanup. |
 | `export/` | JSON output and export file names. |
-| `stats/` | Structured reports shared by CLI and web consumers. |
+| `stats/` | Ordered data sections shared by CLI and web consumers; each surface owns its presentation. |
 | `tagging/tagger.py`, `tagging/prompts.py` | Gemini request planning, evidence, validation and generated tags. |
 | `tagging/sdk.py` | Optional dependency checks and model catalog. |
 | `tagging/accounting.py`, `tagging/pricing.py`, `tagging/rpd.py` | Local spend, Search usage and request allowances. |

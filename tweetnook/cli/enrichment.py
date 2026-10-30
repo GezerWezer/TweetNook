@@ -288,7 +288,6 @@ def media_download(
                     prefix + "media: "
                     f"{result.processed} processed, "
                     f"{result.downloaded} downloaded, "
-                    f"{result.skipped} skipped, "
                     f"{result.failed} failed"
                 )
     except ConfigError as exc:

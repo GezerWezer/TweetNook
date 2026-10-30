@@ -256,8 +256,6 @@ def test_rehydrate_archive_uses_write_lock(paths, monkeypatch) -> None:
 
     class FakeStore:
         def __init__(self) -> None:
-            self.table = SimpleNamespace(count_rows=lambda expr: 2)
-            self.optimized = False
             self.closed = False
 
         def _count(self, filter_expr: str | None = None) -> int:
@@ -267,9 +265,6 @@ def test_rehydrate_archive_uses_write_lock(paths, monkeypatch) -> None:
             if progress is not None:
                 progress(2)
             return SimpleNamespace(tweets_updated=2, secondary_records=5)
-
-        def optimize(self) -> None:
-            self.optimized = True
 
         def close(self) -> None:
             self.closed = True

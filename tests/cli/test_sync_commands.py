@@ -4,7 +4,6 @@ from io import StringIO
 from types import SimpleNamespace
 
 import pytest
-import typer
 
 import tweetnook.cli as cli
 from tests.cli.conftest import _capture_console, runner
@@ -30,7 +29,7 @@ def test_auth_check_uses_explicit_credentials(paths, monkeypatch) -> None:
     patch_cli(
         monkeypatch,
         "resolve_auth_bundle",
-        lambda config, env=None, status=None: SimpleNamespace(
+        lambda config, env=None: SimpleNamespace(
             auth_token="config-token",
             ct0="config-ct0",
             user_id="42",
@@ -83,7 +82,6 @@ def test_sync_collection_commands_forward_article_backfill(
         *,
         full,
         backfill=False,
-        article_backfill=False,
         head_only=False,
         limit=None,
         config=None,
@@ -96,7 +94,6 @@ def test_sync_collection_commands_forward_article_backfill(
                 "collection": collection,
                 "full": full,
                 "backfill": backfill,
-                "article_backfill": article_backfill,
                 "head_only": head_only,
                 "limit": limit,
                 "followups": followups,
@@ -106,13 +103,13 @@ def test_sync_collection_commands_forward_article_backfill(
 
     patch_cli(monkeypatch, "sync_collection", fake_sync_collection)
 
-    getattr(cli_sync, f"sync_{collection_name}")(article_backfill=True)
+    result = runner.invoke(cli.app, ["sync", collection_name, "--article-backfill"])
+    assert result.exit_code == 0, result.output
 
     assert forwarded == {
         "collection": collection_name,
         "full": False,
-        "backfill": False,
-        "article_backfill": True,
+        "backfill": True,
         "head_only": False,
         "limit": None,
         "followups": cli_imports.SyncFollowupPlan(),
@@ -120,7 +117,8 @@ def test_sync_collection_commands_forward_article_backfill(
     assert f"{collection_name}: 2 pages, 3 tweets, empty" in buffer.getvalue()
 
 
-def test_sync_all_forwards_article_backfill(paths, monkeypatch) -> None:
+@pytest.mark.parametrize("subcommand", [[], ["all"]])
+def test_sync_all_forwards_article_backfill(paths, monkeypatch, subcommand) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
     patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
@@ -135,7 +133,6 @@ def test_sync_all_forwards_article_backfill(paths, monkeypatch) -> None:
         *,
         full,
         backfill=False,
-        article_backfill=False,
         head_only=False,
         limit=None,
         config=None,
@@ -147,7 +144,6 @@ def test_sync_all_forwards_article_backfill(paths, monkeypatch) -> None:
             {
                 "full": full,
                 "backfill": backfill,
-                "article_backfill": article_backfill,
                 "head_only": head_only,
                 "limit": limit,
                 "followups": followups,
@@ -161,14 +157,12 @@ def test_sync_all_forwards_article_backfill(paths, monkeypatch) -> None:
 
     patch_cli(monkeypatch, "sync_all", fake_sync_all)
 
-    with pytest.raises(typer.Exit) as excinfo:
-        cli_sync.sync_everything(article_backfill=True)
+    result = runner.invoke(cli.app, ["sync", *subcommand, "--article-backfill"])
 
-    assert excinfo.value.exit_code == 2
+    assert result.exit_code == 2, result.output
     assert forwarded == {
         "full": False,
-        "backfill": False,
-        "article_backfill": True,
+        "backfill": True,
         "head_only": False,
         "limit": None,
         "followups": cli_imports.SyncFollowupPlan(),
@@ -193,7 +187,6 @@ def test_sync_default_runs_sync_all_with_full_followups(paths, monkeypatch) -> N
         *,
         full,
         backfill=False,
-        article_backfill=False,
         head_only=False,
         limit=None,
         config=None,
@@ -205,7 +198,6 @@ def test_sync_default_runs_sync_all_with_full_followups(paths, monkeypatch) -> N
             {
                 "full": full,
                 "backfill": backfill,
-                "article_backfill": article_backfill,
                 "head_only": head_only,
                 "limit": limit,
                 "followups": followups,
@@ -228,7 +220,6 @@ def test_sync_default_runs_sync_all_with_full_followups(paths, monkeypatch) -> N
     assert forwarded == {
         "full": False,
         "backfill": False,
-        "article_backfill": False,
         "head_only": False,
         "limit": None,
         "followups": cli_imports.SyncFollowupPlan(),
@@ -253,7 +244,6 @@ def test_sync_default_skip_flags_disable_selected_followups(paths, monkeypatch) 
         *,
         full,
         backfill=False,
-        article_backfill=False,
         head_only=False,
         limit=None,
         config=None,
@@ -294,7 +284,6 @@ def test_sync_likes_forwards_head_only(paths, monkeypatch) -> None:
         *,
         full,
         backfill=False,
-        article_backfill=False,
         head_only=False,
         limit=None,
         config=None,
@@ -307,7 +296,6 @@ def test_sync_likes_forwards_head_only(paths, monkeypatch) -> None:
                 "collection": collection,
                 "full": full,
                 "backfill": backfill,
-                "article_backfill": article_backfill,
                 "head_only": head_only,
                 "limit": limit,
                 "followups": followups,
@@ -323,9 +311,16 @@ def test_sync_likes_forwards_head_only(paths, monkeypatch) -> None:
         "collection": "likes",
         "full": False,
         "backfill": False,
-        "article_backfill": False,
         "head_only": True,
         "limit": None,
         "followups": cli_imports.SyncFollowupPlan(),
     }
     assert "likes: 1 pages, 20 tweets, duplicate" in buffer.getvalue()
+
+
+@pytest.mark.parametrize("subcommand", [[], ["all"], ["bookmarks"], ["likes"], ["tweets"]])
+def test_article_backfill_alias_is_hidden_from_help(subcommand):
+    result = runner.invoke(cli.app, ["sync", *subcommand, "--help"])
+    assert result.exit_code == 0
+    assert "--backfill" in result.output
+    assert "--article-backfill" not in result.output

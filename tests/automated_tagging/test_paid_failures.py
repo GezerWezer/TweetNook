@@ -234,7 +234,9 @@ async def test_search_tolerates_only_configured_number_of_unknown_attempts(monke
 async def test_paid_queue_pause_records_dispatched_attempt_in_pipeline(monkeypatch, paths):
     store = Store()
     store.add_tweet("1")
-    store.get_eligible_tagging_candidates = lambda **_: [{"tweet_id": "1", "content_type": "text"}]
+    store.get_eligible_tagging_candidates = lambda **_: [
+        {"tweet_id": "1", "content_type": "text", "quoted_tweet_id": None, "sort_ts": 0}
+    ]
     interactions = FakeInteractions([TimeoutError("timed out")])
     install_fake_client(monkeypatch, models=FakeModels([]), interactions=interactions)
     install_paid_pricing(monkeypatch)
@@ -292,7 +294,12 @@ async def test_paid_queue_continues_after_a_rejected_tweet(monkeypatch, paths):
     store = Store()
     store.add_tweet("1")
     store.add_tweet("2")
-    queue = QueueStore([{"tweet_id": str(i), "content_type": "text"} for i in [1, 2]])
+    queue = QueueStore(
+        [
+            {"tweet_id": str(i), "content_type": "text", "quoted_tweet_id": None, "sort_ts": 0}
+            for i in [1, 2]
+        ]
+    )
     store.get_eligible_tagging_candidates = queue.get_eligible_tagging_candidates
     error = RuntimeError("Invalid media")
     error.status_code = 400

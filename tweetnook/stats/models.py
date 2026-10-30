@@ -5,31 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-StatFormat = Literal["integer", "decimal", "percent", "bytes", "date", "datetime", "text"]
-SectionKind = Literal["cards", "table", "archive_status", "storage", "tags", "status"]
+ColumnFormat = Literal["integer", "datetime", "text"]
 StatValue = str | int | float | bool | None
-
-
-@dataclass(frozen=True, slots=True)
-class StatItem:
-    """One labeled value that each surface can format natively."""
-
-    id: str
-    label: str
-    value: StatValue
-    format: StatFormat = "integer"
-    subtitle: str | None = None
-    description: str | None = None
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "label": self.label,
-            "value": self.value,
-            "format": self.format,
-            "subtitle": self.subtitle,
-            "description": self.description,
-        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +15,7 @@ class TableColumn:
 
     key: str
     label: str
-    format: StatFormat = "text"
+    format: ColumnFormat = "text"
     align: Literal["left", "right"] = "left"
 
     def as_dict(self) -> dict[str, str]:
@@ -52,13 +29,10 @@ class TableColumn:
 
 @dataclass(slots=True)
 class StatsSection:
-    """A report section with generic content and optional specialized data."""
+    """A report section with data and optional table columns and rows."""
 
     id: str
     title: str
-    kind: SectionKind
-    description: str | None = None
-    items: list[StatItem] = field(default_factory=list)
     columns: list[TableColumn] = field(default_factory=list)
     rows: list[dict[str, StatValue]] = field(default_factory=list)
     data: dict[str, Any] = field(default_factory=dict)
@@ -67,9 +41,6 @@ class StatsSection:
         return {
             "id": self.id,
             "title": self.title,
-            "kind": self.kind,
-            "description": self.description,
-            "items": [item.as_dict() for item in self.items],
             "columns": [column.as_dict() for column in self.columns],
             "rows": self.rows,
             "data": self.data,
@@ -82,7 +53,6 @@ class StatsSectionSpec:
 
     id: str
     title: str
-    kind: SectionKind
 
 
 @dataclass(slots=True)

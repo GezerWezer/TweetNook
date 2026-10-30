@@ -41,9 +41,6 @@ from tweetnook.importer.archive_rows import (
     import_likes,
 )
 from tweetnook.jobs.context import (
-    ArchiveWriteTracker,
-    best_effort_interrupt_optimize,
-    is_interrupt_exception,
     resolve_job_context,
 )
 from tweetnook.jobs.interactive import emit_status
@@ -190,7 +187,6 @@ async def import_x_archive(
             )
         existing_manifest: dict[str, Any] | None = None
         store: ArchiveStore | None = None
-        write_tracker: ArchiveWriteTracker | None = None
         import_started_at = utc_now()
         followup_requested = not offline and (enrich or detail_lookups > 0)
         local_only = offline or (defer_followup and not followup_requested)
@@ -206,7 +202,6 @@ async def import_x_archive(
             from tweetnook.jobs.reminders import print_archive_migration_report
 
             print_archive_migration_report(console, store)
-            write_tracker = ArchiveWriteTracker(store)
             existing_owner = store.get_archive_owner_id()
             if identity.account_id is None and existing_owner is not None:
                 raise ArchiveOwnerMismatchError(
@@ -234,7 +229,6 @@ async def import_x_archive(
                 regen_started = perf_counter()
                 archive_media_paths = store.list_archive_import_media_paths()
                 cleared_rows = store.clear_archive_import_data()
-                write_tracker.mark_dirty(rows=sum(cleared_rows.values()), batches=1)
                 cleared_files = remove_archive_owned_files(paths.data_dir, archive_media_paths)
                 existing_manifest = None
                 emit_status(
@@ -375,14 +369,12 @@ async def import_x_archive(
                     warnings=warnings,
                     counts=counts,
                 )
-                write_tracker.mark_dirty()
                 record_archive_capture(
                     store,
                     "XArchiveManifest",
                     "data/manifest.js",
                     source.manifest,
                     archive_digest=digest,
-                    write_tracker=write_tracker,
                 )
                 for filename, payload in account_parts:
                     record_archive_capture(
@@ -391,7 +383,6 @@ async def import_x_archive(
                         filename,
                         payload,
                         archive_digest=digest,
-                        write_tracker=write_tracker,
                     )
 
                 tweets_info = ((source.manifest.get("dataTypes") or {}).get("tweets")) or {}
@@ -554,7 +545,6 @@ async def import_x_archive(
                         filename,
                         payload,
                         archive_digest=digest,
-                        write_tracker=write_tracker,
                     )
                     if pipeline is not None and source_part_total:
                         pipeline.update_step(
@@ -636,7 +626,6 @@ async def import_x_archive(
                             if pipeline is not None
                             else None
                         ),
-                        write_tracker=write_tracker,
                     )
                 if pipeline is not None and tweets:
                     imported = (
@@ -700,7 +689,6 @@ async def import_x_archive(
                             if pipeline is not None
                             else None
                         ),
-                        write_tracker=write_tracker,
                     )
                 if pipeline is not None and deleted_tweets:
                     imported = counts["deleted_authored_tweets"] - deleted_start_count
@@ -757,7 +745,6 @@ async def import_x_archive(
                             if pipeline is not None
                             else None
                         ),
-                        write_tracker=write_tracker,
                     )
                 if pipeline is not None and likes:
                     imported = counts["likes"] - likes_start_count
@@ -820,7 +807,6 @@ async def import_x_archive(
                             else None
                         ),
                         limit=sample_limit,
-                        write_tracker=write_tracker,
                     )
                 if pipeline is not None and media_total:
                     copied = counts["media_files_copied"] - media_start_count
@@ -849,9 +835,8 @@ async def import_x_archive(
                     warnings=warnings,
                     counts=counts,
                 )
-                write_tracker.mark_dirty()
             store.close()
-        except BaseException as exc:
+        except BaseException:
             try:
                 if store is not None and import_performed:
                     store.set_import_manifest(
@@ -863,10 +848,6 @@ async def import_x_archive(
                         warnings=warnings,
                         counts=counts,
                     )
-                    if write_tracker is not None:
-                        write_tracker.mark_dirty()
-                if store is not None and write_tracker is not None and is_interrupt_exception(exc):
-                    best_effort_interrupt_optimize(store, write_tracker, console=runner_console)
             finally:
                 if store is not None:
                     store.close()

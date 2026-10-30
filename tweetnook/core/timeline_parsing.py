@@ -43,6 +43,7 @@ class FocalResultKind(StrEnum):
 
 
 MAX_CONSECUTIVE_FOCAL_ABSENCES = 3
+FOCAL_ABSENCE_DETAIL = "TweetDetail response did not contain an identifiable focal result."
 
 
 @dataclass(slots=True)
@@ -51,31 +52,15 @@ class FocalTweetDetailResult:
     tweet: TimelineTweet | None = None
     unavailable: TweetUnavailableInfo | None = None
 
+    def __post_init__(self) -> None:
+        if (self.kind == FocalResultKind.AVAILABLE) != (self.tweet is not None) or (
+            self.kind == FocalResultKind.EXPLICIT_UNAVAILABLE
+        ) != (self.unavailable is not None):
+            raise ValueError("Focal result payload does not match its kind")
+
     @property
     def is_available(self) -> bool:
         return self.kind == FocalResultKind.AVAILABLE
-
-    @property
-    def is_explicitly_unavailable(self) -> bool:
-        return self.kind == FocalResultKind.EXPLICIT_UNAVAILABLE
-
-    @property
-    def is_absent(self) -> bool:
-        return self.kind == FocalResultKind.ABSENT
-
-    @property
-    def tweet_id(self) -> str:
-        if self.tweet is not None:
-            return self.tweet.tweet_id
-        assert self.unavailable is not None
-        return self.unavailable.tweet_id
-
-    @property
-    def raw_json(self) -> dict[str, Any]:
-        if self.tweet is not None:
-            return self.tweet.raw_json
-        assert self.unavailable is not None
-        return self.unavailable.raw_result
 
 
 def _extract_tweet_result_slots(
@@ -185,9 +170,7 @@ def _tweet_from_result(result: dict[str, Any], *, sort_index: str | None) -> Tim
     )
 
 
-def parse_timeline_response(
-    data: dict[str, Any], operation: str
-) -> tuple[list[TimelineTweet], str | None]:
+def parse_timeline_response(data: dict[str, Any]) -> tuple[list[TimelineTweet], str | None]:
     tweets: list[TimelineTweet] = []
     seen_ids: set[str] = set()
     bottom_cursor: str | None = None
@@ -201,8 +184,6 @@ def parse_timeline_response(
                 seen_ids.add(tweet.tweet_id)
                 tweets.append(tweet)
 
-    if operation not in {"Bookmarks", "Likes", "UserTweets"}:
-        raise ValueError(f"Unsupported timeline operation: {operation}")
     return tweets, bottom_cursor
 
 
@@ -250,9 +231,7 @@ def parse_tweet_detail_response(
                         tweet=tweet,
                     )
                 continue
-            typename = str(result.get("__typename") or raw_result.get("__typename") or "")
-            if typename not in {"TweetTombstone", "TweetUnavailable"}:
-                continue
+            typename = str(result["__typename"])
             detail = extract_tweet_unavailability_detail(result)
             unavailable = TweetUnavailableInfo(
                 tweet_id=focal_tweet_id,
@@ -282,13 +261,4 @@ def parse_tweet_detail_response(
                 raw_result=empty_focal_result,
             ),
         )
-    return FocalTweetDetailResult(
-        kind=FocalResultKind.ABSENT,
-        unavailable=TweetUnavailableInfo(
-            tweet_id=focal_tweet_id,
-            typename="FocalTweetAbsent",
-            reason="unavailable_unknown",
-            detail="TweetDetail response did not contain an identifiable focal result.",
-            raw_result={},
-        ),
-    )
+    return FocalTweetDetailResult(kind=FocalResultKind.ABSENT)

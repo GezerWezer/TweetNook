@@ -81,13 +81,6 @@ def test_archive_queries_can_force_safe_id_indexes(paths) -> None:
     assert any("INDEXED BY idx_archive_tweet_id" in statement for statement in statements)
     with pytest.raises(ValueError, match="Unsupported archive query index"):
         store._query("tweet_id = '1'", indexed_by="idx_archive_record_page")
-    with pytest.raises(ValueError, match="cannot be combined with FTS"):
-        store._query(
-            "record_type = 'tweet'",
-            is_fts=True,
-            query="indexed",
-            indexed_by="idx_archive_tweet_id",
-        )
     store.close()
 
 

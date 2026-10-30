@@ -171,7 +171,7 @@ async function nookSaveConfig(app) {
   app.nookConfigResets = [];
   if (await app.submitConfigChanges(changes)) app.nookConfigSaved = true;
 }
-// Same scope as restoreConfigDefaults(): every explicit value except credentials and keys.
+// Restore every explicit value except credentials and keys.
 function nookConfigResettable(app) {
   const preserved = new Set(['tagging.api_key', 'web.password_hash']);
   return (app.configExplicit || []).filter(path => !path.startsWith('auth.') && !preserved.has(path));

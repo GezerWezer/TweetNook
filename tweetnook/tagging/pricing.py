@@ -11,18 +11,24 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO, Protocol
 from urllib import request
 
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 PRICING_CACHE_FILENAME = "openrouter-pricing.json"
 PRICING_CACHE_TTL = timedelta(hours=24)
 _ZERO = Decimal("0")
+
+
+class PricingOpener(Protocol):
+    def __call__(
+        self, req: request.Request, *, timeout: float
+    ) -> AbstractContextManager[BinaryIO]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +131,7 @@ def _pricing_from_cache(payload: Any, model_id: str, *, stale: bool) -> OpenRout
 
 def _fetch_models(
     *,
-    opener: Callable[..., Any] | None = None,
+    opener: PricingOpener | None = None,
     timeout: float = 10.0,
 ) -> Any:
     opener = opener or request.urlopen
@@ -133,28 +139,8 @@ def _fetch_models(
         OPENROUTER_MODELS_URL,
         headers={"Accept": "application/json", "User-Agent": "TweetNook"},
     )
-    try:
-        response = opener(req, timeout=timeout)
-    except TypeError:
-        # Small test/fallback fetchers often accept a URL rather than a
-        # urllib Request; keep the production request headers above while
-        # accommodating that simple callable shape.
-        try:
-            response = opener(OPENROUTER_MODELS_URL, timeout=timeout)
-        except TypeError:
-            response = opener(OPENROUTER_MODELS_URL)
-    if isinstance(response, dict | list):
-        return response
-    if isinstance(response, bytes):
-        return json.loads(response.decode("utf-8"))
-    if isinstance(response, str):
-        return json.loads(response)
-    if hasattr(response, "__enter__"):
-        with response as handle:
-            raw = handle.read()
-            return json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
-    raw = response.read()
-    return json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+    with opener(req, timeout=timeout) as handle:
+        return json.loads(handle.read().decode("utf-8"))
 
 
 def _normalize_pricing(pricing: Any) -> dict[str, str] | None:
@@ -214,7 +200,7 @@ def load_openrouter_pricing(
     model: str,
     *,
     now: datetime | None = None,
-    opener: Callable[..., Any] | None = None,
+    opener: PricingOpener | None = None,
     timeout: float = 10.0,
 ) -> OpenRouterPricing | None:
     """Load a fresh cached price, refreshing the catalogue when necessary.

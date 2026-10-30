@@ -577,7 +577,6 @@ async def test_account_recovery_boost_stays_inside_global_budget(
     fake_store = FakeStore()
     job = SimpleNamespace(
         store=fake_store,
-        mark_dirty=lambda **_kwargs: None,
     )
 
     @asynccontextmanager

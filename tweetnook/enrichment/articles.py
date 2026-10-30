@@ -210,14 +210,14 @@ async def refresh_articles(
                         )
                         payload = response.json()
                         focal = parse_tweet_detail_response(payload, tweet_id)
-                        if not focal.is_available or focal.tweet is None:
+                        if not focal.is_available:
                             raise ValueError(f"TweetDetail did not include focal tweet {tweet_id}.")
+                        assert focal.tweet is not None
                         store.persist_tweet_detail(
                             tweet=focal.tweet,
                             raw_json=payload,
                             http_status=response.status_code,
                         )
-                        job.mark_dirty()
                         result.updated += 1
                     except Exception as exc:
                         raise_if_storage_exhausted(exc)

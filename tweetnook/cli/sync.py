@@ -37,10 +37,7 @@ sync_app = typer.Typer(
     invoke_without_command=True,
     help=SYNC_GROUP_HELP,
 )
-ARTICLE_BACKFILL_HELP = (
-    "Rewalk existing timeline pages without resetting sync state so older items can pick up "
-    "new article fields."
-)
+ARTICLE_BACKFILL_HELP = "Hidden alias for --backfill."
 SYNC_FULL_HELP = "Reset saved sync state for the targeted collection before syncing."
 SYNC_BACKFILL_HELP = "Continue older history past duplicates without resetting sync state."
 HEAD_ONLY_HELP = (
@@ -57,7 +54,7 @@ SYNC_SKIP_MEDIA_HELP = "Skip automatic media downloads after sync."
 SYNC_SKIP_UNFURL_HELP = "Skip automatic URL unfurls after sync."
 SYNC_ARTICLE_BACKFILL_OPTION = Annotated[
     bool,
-    typer.Option("--article-backfill", help=ARTICLE_BACKFILL_HELP),
+    typer.Option("--article-backfill", hidden=True, help=ARTICLE_BACKFILL_HELP),
 ]
 SYNC_HEAD_ONLY_OPTION = Annotated[
     bool,
@@ -153,7 +150,6 @@ def _run_sync_all_command(
     *,
     full: bool,
     backfill: bool,
-    article_backfill: bool,
     head_only: bool,
     limit: int | None,
     skip_resurrection: bool,
@@ -183,7 +179,6 @@ def _run_sync_all_command(
             reply_linked_depth,
             full,
             backfill,
-            article_backfill,
             head_only,
             limit,
             followups,
@@ -204,7 +199,6 @@ def _run_with_depth(
     reply_linked_depth,
     full,
     backfill,
-    article_backfill,
     head_only,
     limit,
     followups,
@@ -216,7 +210,6 @@ def _run_with_depth(
     return sync_all(
         full=full,
         backfill=backfill,
-        article_backfill=article_backfill,
         head_only=head_only,
         limit=limit,
         config=config,
@@ -249,8 +242,7 @@ def sync_default(
         return
     _run_sync_all_command(
         full=full,
-        backfill=backfill,
-        article_backfill=article_backfill,
+        backfill=backfill or article_backfill,
         head_only=head_only,
         limit=limit,
         skip_resurrection=skip_resurrection,
@@ -299,8 +291,7 @@ def _register_sync_collection_command(collection: str):
             runner=lambda config, auth_bundle, runner_console: sync_collection(
                 collection,
                 full=full,
-                backfill=backfill,
-                article_backfill=article_backfill,
+                backfill=backfill or article_backfill,
                 head_only=head_only,
                 limit=limit,
                 config=config,
@@ -343,8 +334,7 @@ def sync_everything(
 ) -> None:
     _run_sync_all_command(
         full=full,
-        backfill=backfill,
-        article_backfill=article_backfill,
+        backfill=backfill or article_backfill,
         head_only=head_only,
         limit=limit,
         skip_resurrection=skip_resurrection,

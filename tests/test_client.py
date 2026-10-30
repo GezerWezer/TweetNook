@@ -34,6 +34,8 @@ from tweetnook.client.timelines import (
 from tweetnook.config import SyncConfig
 from tweetnook.core.timeline_parsing import (
     FocalResultKind,
+    FocalTweetDetailResult,
+    TweetUnavailableInfo,
     _entry_id_targets_tweet,
     parse_timeline_response,
     parse_tweet_detail_response,
@@ -163,7 +165,7 @@ def test_parse_tweet_detail_response_preserves_unavailable_focal_payload() -> No
     focal = parse_tweet_detail_response(payload, "900")
 
     assert not focal.is_available
-    assert focal.is_explicitly_unavailable
+    assert focal.kind == FocalResultKind.EXPLICIT_UNAVAILABLE
     assert focal.unavailable is not None
     assert focal.unavailable.reason == "protected_account"
     assert focal.unavailable.detail == "These posts are protected."
@@ -193,11 +195,8 @@ def test_parse_tweet_detail_does_not_assign_unrelated_tombstone_to_focal(
     )
 
     assert not focal.is_available
-    assert focal.is_absent
-    assert focal.unavailable is not None
-    assert focal.unavailable.typename == "FocalTweetAbsent"
-    assert focal.unavailable.reason == "unavailable_unknown"
-    assert focal.unavailable.raw_result == {}
+    assert focal.kind == FocalResultKind.ABSENT
+    assert focal.unavailable is None
 
 
 def test_parse_tweet_detail_matches_focal_tombstone_by_exact_entry_id() -> None:
@@ -212,7 +211,7 @@ def test_parse_tweet_detail_matches_focal_tombstone_by_exact_entry_id() -> None:
     )
 
     assert focal.unavailable is not None
-    assert focal.is_explicitly_unavailable
+    assert focal.kind == FocalResultKind.EXPLICIT_UNAVAILABLE
     assert focal.unavailable.reason == "suspended_account"
     assert focal.unavailable.raw_result is unavailable
 
@@ -450,15 +449,12 @@ def test_parse_tweet_detail_multiple_unmatched_tombstones_remain_unknown() -> No
 
     focal = parse_tweet_detail_response(_detail_payload(entries), "123")
 
-    assert focal.unavailable is not None
-    assert focal.unavailable.typename == "FocalTweetAbsent"
-    assert focal.unavailable.reason == "unavailable_unknown"
+    assert focal.kind == FocalResultKind.ABSENT
+    assert focal.unavailable is None
 
 
 def test_parse_timeline_response_bookmarks_shape() -> None:
-    tweets, cursor = parse_timeline_response(
-        make_bookmarks_response(["1", "2"], cursor="next"), "Bookmarks"
-    )
+    tweets, cursor = parse_timeline_response(make_bookmarks_response(["1", "2"], cursor="next"))
     assert [tweet.tweet_id for tweet in tweets] == ["1", "2"]
     assert cursor == "next"
 
@@ -466,7 +462,6 @@ def test_parse_timeline_response_bookmarks_shape() -> None:
 def test_parse_timeline_response_likes_module_shape() -> None:
     tweets, cursor = parse_timeline_response(
         make_likes_response(["10", "11"], cursor="older", module=True),
-        "Likes",
     )
     assert [tweet.tweet_id for tweet in tweets] == ["10", "11"]
     assert cursor == "older"
@@ -475,7 +470,6 @@ def test_parse_timeline_response_likes_module_shape() -> None:
 def test_parse_timeline_response_user_tweets_shape() -> None:
     tweets, cursor = parse_timeline_response(
         make_user_tweets_response(["20", "21"], cursor="later"),
-        "UserTweets",
     )
     assert [tweet.tweet_id for tweet in tweets] == ["20", "21"]
     assert cursor == "later"
@@ -637,3 +631,17 @@ async def test_fetch_page_honors_retry_after_header() -> None:
     assert response.status_code == 200
     assert delays == [7.0]
     assert messages == ["rate limited (HTTP 429), waiting 7.0s before retry (retry-after 7.0s)"]
+
+
+@pytest.mark.parametrize("kind", [FocalResultKind.AVAILABLE, FocalResultKind.EXPLICIT_UNAVAILABLE])
+def test_focal_results_require_the_payload_their_kind_describes(kind):
+    with pytest.raises(ValueError, match="payload does not match its kind"):
+        FocalTweetDetailResult(kind=kind)
+
+
+def test_absent_focal_result_cannot_carry_an_unavailability_observation():
+    with pytest.raises(ValueError, match="payload does not match its kind"):
+        FocalTweetDetailResult(
+            kind=FocalResultKind.ABSENT,
+            unavailable=TweetUnavailableInfo("1", "TweetUnavailable", "not_found", None, {}),
+        )

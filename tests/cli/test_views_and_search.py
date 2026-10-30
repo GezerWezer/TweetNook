@@ -63,7 +63,6 @@ def test_search_uses_shared_tweet_list_rendering(monkeypatch) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
     patch_cli(monkeypatch, "_format_created_at", lambda raw: "LOCAL-TIME")
-    patch_cli(monkeypatch, "with_auto_optimize", lambda store, paths, console, fn: fn(store))
 
     class _FakeStore:
         def close(self) -> None:
@@ -137,7 +136,6 @@ def test_article_cli_uses_shared_query_and_hides_saved_posts(paths, monkeypatch,
     store.merge_rows(rows)
     store.set_tweet_hidden("900003", True)
     patch_cli(monkeypatch, "open_store_for_read", lambda console: (store, paths))
-    patch_cli(monkeypatch, "with_auto_optimize", lambda store, paths, console, fn: fn(store))
 
     result = runner.invoke(cli.app, ["search", query, "--type", types])
 
@@ -179,7 +177,6 @@ def test_article_cli_sorts_all_matches_before_limiting(paths, monkeypatch, types
         )
     store.merge_rows(rows)
     patch_cli(monkeypatch, "open_store_for_read", lambda console: (store, paths))
-    patch_cli(monkeypatch, "with_auto_optimize", lambda store, paths, console, fn: fn(store))
 
     result = runner.invoke(
         cli.app, ["search", "coffee", "--type", types, "--sort", sort, "--limit", "1"]

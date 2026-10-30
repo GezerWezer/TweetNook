@@ -9,11 +9,6 @@ import pytest
 from rich.console import Console
 
 from tweetnook.stats import (
-    STATS_SECTION_SPECS,
-    StatItem,
-    StatsReport,
-    StatsSection,
-    TableColumn,
     build_stats_report,
     build_stats_section,
     get_enrichment_incomplete_count,
@@ -87,8 +82,14 @@ def test_report_follows_registry_and_serializes_all_sections(tmp_path) -> None:
 
     report = build_stats_report(store)
 
-    expected = [(spec.id, spec.title, spec.kind) for spec in STATS_SECTION_SPECS]
-    actual = [(section.id, section.title, section.kind) for section in report.sections]
+    expected = [
+        ("overview", "Overview"),
+        ("collections", "Collections"),
+        ("archive_status", "Archive status"),
+        ("storage", "Storage"),
+        ("tagging", "Tagging & search"),
+    ]
+    actual = [(section.id, section.title) for section in report.sections]
     assert actual == expected
     assert report.owner == "owner-1"
     assert report.section("overview").data["unique_posts"] == 1
@@ -100,7 +101,13 @@ def test_report_follows_registry_and_serializes_all_sections(tmp_path) -> None:
         {"tag": "sky", "count": 1},
     ]
     assert "follow_up" not in {section.id for section in report.sections}
-    json.dumps(report.as_dict())
+    payload = report.as_dict()
+    assert all(
+        set(section) == {"id", "title", "columns", "rows", "data"}
+        for section in payload["sections"]
+    )
+    assert report.section("collections").data == {}
+    json.dumps(payload)
     store.close()
 
 
@@ -127,11 +134,11 @@ def test_collection_leaves_the_shared_connection_free_for_other_requests(
     release = threading.Event()
     collected_on = []
 
-    def blocking_collector(context):
+    def blocking_collector(context, spec):
         collected_on.append(context.store)
         entered.set()
         assert release.wait(5)
-        return original(context)
+        return original(context, spec)
 
     latest_sync = get_latest_sync_at(store)
     monkeypatch.setitem(stats_service._COLLECTORS, "overview", blocking_collector)
@@ -163,41 +170,6 @@ def test_collection_with_uncommitted_writes_reads_the_callers_connection(tmp_pat
     assert build_stats_section(store, "overview").data["unique_posts"] == 2
     store.conn.rollback()
     store.close()
-
-
-def test_cli_renderer_handles_new_generic_sections_without_command_changes() -> None:
-    report = StatsReport(
-        archive_path="/tmp/archive.db",
-        owner="owner-1",
-        generated_at="2026-08-09T00:00:00+00:00",
-        sections=[
-            StatsSection(
-                id="new_cards",
-                title="New cards",
-                kind="cards",
-                items=[StatItem("items", "Items", 1234)],
-            ),
-            StatsSection(
-                id="new_status",
-                title="New status",
-                kind="status",
-                columns=[TableColumn("task", "Task"), TableColumn("status", "Status")],
-                rows=[{"task": "Index", "status": "ready"}],
-            ),
-        ],
-    )
-    buffer = StringIO()
-
-    render_stats_report(Console(file=buffer, force_terminal=False), report)
-
-    rendered = buffer.getvalue()
-    output = " ".join(rendered.split())
-    assert "New cards" in output
-    assert "Items" in output
-    assert "1,234" in output
-    assert "New status" in output
-    assert "Index" in output
-    assert "ready" in output
 
 
 def test_cli_renderer_uses_the_terminal_summary_without_follow_up(tmp_path) -> None:

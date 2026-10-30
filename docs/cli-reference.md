@@ -31,12 +31,13 @@ Many commands accept `--limit`, but its unit depends on the task. Sync counts pa
 
 These apply to `sync`, `sync all`, and the named collection subcommands. `--head-only` cannot be combined with `--full`, `--backfill`, or `--article-backfill`.
 
+`--article-backfill` is a hidden alias for `--backfill`; both use the same older-history pass.
+
 | Option | Use |
 | --- | --- |
 | `--full` | Restart the targeted collections' saved sync progress, keeping archived posts. |
 | `--backfill` | Continue through known posts to fill gaps and older history. |
 | `--head-only` | Fetch recent posts only and clear the saved older-history position. |
-| `--article-backfill` | Revisit pages for Article information. |
 | `--limit N` | Fetch at most N timeline pages per collection. |
 | `--skip-threads` | Leave conversation expansion for later. |
 | `--skip-resurrection` | Leave unavailable-post rechecks out of this sync. |

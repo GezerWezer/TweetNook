@@ -1,6 +1,6 @@
 /**
  * Settings → Configuration: loading the server's settings and their schema, which
- * fields show, and saving, resetting and restoring them.
+ * field types, changed values, and the shared save request.
  */
 
 function configMethods() {
@@ -36,13 +36,6 @@ function configMethods() {
             }
         },
 
-        isFieldVisible(section, key) {
-            const fullKey = `${section}.${key}`;
-            if (!this.configSchema || !this.configData) return false;
-            if (this.configSchema.blacklist.includes(fullKey)) return false;
-            if (this.configSchema.whitelist.includes(fullKey)) return true;
-            return this.showAdvancedConfig;
-        },
         
         getFieldType(section, key) {
             if (!this.configSchema || !this.configData) return 'text';
@@ -55,15 +48,7 @@ function configMethods() {
             return 'text';
         },
         
-        isFieldFullWidth(section, key) {
-            const fullKey = `${section}.${key}`;
-            if (this.configSchema && this.configSchema.full_width && this.configSchema.full_width.includes(fullKey)) return true;
-            return false;
-        },
 
-        isConfigExplicit(section, key) {
-            return this.configExplicit.includes(`${section}.${key}`);
-        },
 
         changedConfigValues() {
             const changes = {};
@@ -110,35 +95,7 @@ function configMethods() {
             }
         },
         
-        async saveConfig() {
-            const changes = this.changedConfigValues();
-            if (Object.keys(changes).length === 0) return;
-            if (await this.submitConfigChanges(changes)) {
-                const btn = document.getElementById('save-config-btn');
-                if (btn) {
-                    const old = btn.innerHTML;
-                    btn.innerHTML = "Saved!";
-                    btn.classList.replace('bg-[var(--accent-color)]', 'bg-green-600');
-                    setTimeout(() => {
-                        btn.innerHTML = old;
-                        btn.classList.replace('bg-green-600', 'bg-[var(--accent-color)]');
-                    }, 2000);
-                }
-            }
-        },
 
-        async resetConfigField(section, key) {
-            await this.submitConfigChanges({ [`${section}.${key}`]: null });
-        },
 
-        async restoreConfigDefaults() {
-            if(!confirm("Are you sure you want to restore default configuration settings? Your credentials and keys will be preserved.")) return;
-            const preserved = new Set(['tagging.api_key', 'web.password_hash']);
-            const resettable = this.configExplicit.filter(path => (
-                !path.startsWith('auth.') && !preserved.has(path)
-            ));
-            const changes = Object.fromEntries(resettable.map(path => [path, null]));
-            await this.submitConfigChanges(changes);
-        },
     };
 }

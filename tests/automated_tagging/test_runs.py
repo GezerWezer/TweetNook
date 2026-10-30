@@ -37,7 +37,12 @@ async def test_missing_optional_extra_is_a_recoverable_noop(monkeypatch, paths) 
     monkeypatch.setattr(tagging, "_ensure_optional_dependencies", lambda: False)
     out, stream = console()
     result = await tagging.tag_pending_media_tweets(
-        QueueStore([{"tweet_id": "1", "content_type": "text"}]), config(), paths, out
+        QueueStore(
+            [{"tweet_id": "1", "content_type": "text", "quoted_tweet_id": None, "sort_ts": 0}]
+        ),
+        config(),
+        paths,
+        out,
     )
     assert result == tagging.TaggingRunResult()
     assert "not installed" in stream.getvalue()
@@ -93,7 +98,8 @@ async def test_free_refreshes_existing_tags_between_batches(monkeypatch, paths) 
     for tweet_id in ("1", "2", "3", "4"):
         store.add_tweet(tweet_id)
     candidates = [
-        {"tweet_id": tweet_id, "content_type": "text"} for tweet_id in ("1", "2", "3", "4")
+        {"tweet_id": tweet_id, "content_type": "text", "quoted_tweet_id": None, "sort_ts": 0}
+        for tweet_id in ("1", "2", "3", "4")
     ]
 
     def select_candidates(*, limit: int, exclude_tweet_ids: set[str]):
@@ -152,7 +158,8 @@ async def test_paid_refreshes_existing_tags_once_per_concurrency_wave(monkeypatc
     for tweet_id in ("A", "B", "C", "D"):
         store.add_tweet(tweet_id)
     candidates = [
-        {"tweet_id": tweet_id, "content_type": "text"} for tweet_id in ("A", "B", "C", "D")
+        {"tweet_id": tweet_id, "content_type": "text", "quoted_tweet_id": None, "sort_ts": 0}
+        for tweet_id in ("A", "B", "C", "D")
     ]
 
     def select_candidates(*, limit: int, exclude_tweet_ids: set[str]):
@@ -224,7 +231,7 @@ async def test_failed_automated_tag_remains_retryable_until_success(monkeypatch,
             ).fetchone()[0]
             if state == "done" and json.loads(row["raw_json"]).get("tags"):
                 return []
-        return [{"tweet_id": "1", "content_type": "text"}]
+        return [{"tweet_id": "1", "content_type": "text", "quoted_tweet_id": None, "sort_ts": 0}]
 
     store.get_eligible_tagging_candidates = select_candidates  # type: ignore[method-assign]
     models = FakeModels(
@@ -332,7 +339,12 @@ async def test_paid_uses_one_independent_interaction_per_tweet_sequentially(
         return 1
 
     monkeypatch.setattr(tagging, "tag_media_tweets", fake_tag)
-    store = QueueStore([{"tweet_id": str(index), "content_type": "text"} for index in range(4)])
+    store = QueueStore(
+        [
+            {"tweet_id": str(index), "content_type": "text", "quoted_tweet_id": None, "sort_ts": 0}
+            for index in range(4)
+        ]
+    )
     result = await tagging.tag_pending_media_tweets(
         store,
         config(api_mode="paid", unlimited_spend=True),

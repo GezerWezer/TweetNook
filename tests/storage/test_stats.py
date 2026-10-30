@@ -73,7 +73,6 @@ def test_archive_stats_summarizes_collections_and_bounds(paths) -> None:
     assert stats.newest_created_at == "Sat Mar 14 00:00:00 +0000 2026"
     assert stats.latest_capture_at is not None
     assert stats.latest_sync_at is not None
-    assert stats.version_count == store.version_count()
 
     assert collections["bookmark"].post_count == 1
     assert collections["bookmark"].oldest_created_at == "Sat Mar 14 00:00:00 +0000 2026"

@@ -38,7 +38,6 @@ class ArchiveStats:
     newest_created_at: str | None = None
     latest_capture_at: str | None = None
     latest_sync_at: str | None = None
-    version_count: int = 0
     collections: list[ArchiveCollectionStats] = field(default_factory=list)
     pending_enrichment_count: int = 0
     transient_enrichment_failure_count: int = 0
@@ -389,7 +388,6 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
             newest_created_at=newest_created_at,
             latest_capture_at=latest_capture_at,
             latest_sync_at=latest_sync_at,
-            version_count=self.version_count(),
             collections=ordered_collections,
             pending_enrichment_count=pending_enrichment_count,
             transient_enrichment_failure_count=transient_enrichment_failure_count,

@@ -13,7 +13,7 @@ from rich.progress import BarColumn, Progress, TextColumn
 from rich.table import Table
 from rich.text import Text
 
-from tweetnook.stats.models import StatFormat, StatsReport, StatsSection
+from tweetnook.stats.models import ColumnFormat, StatsReport, StatsSection
 from tweetnook.stats.service import format_bytes
 
 ACCENT = "#1d9bf0"
@@ -40,24 +40,16 @@ def _parse_datetime(value: Any) -> datetime | None:
         return None
 
 
-def format_stat_value(value: Any, value_format: StatFormat = "text") -> str:
+def format_stat_value(value: Any, value_format: ColumnFormat = "text") -> str:
     """Format a presentation-neutral statistic for terminal display."""
     if value is None or value == "":
         return "—"
     if value_format == "integer":
         return f"{int(value):,}"
-    if value_format == "decimal":
-        return f"{float(value):,.1f}"
-    if value_format == "percent":
-        return f"{float(value):,.1f}%"
-    if value_format == "bytes":
-        return format_bytes(float(value))
-    if value_format in {"date", "datetime"}:
+    if value_format == "datetime":
         parsed = _parse_datetime(value)
         if parsed is None:
             return str(value)
-        if value_format == "date":
-            return parsed.strftime("%b %-d, %Y")
         return parsed.strftime("%b %-d, %Y · %-I:%M %p")
     return str(value)
 
@@ -502,33 +494,6 @@ def _tags_tile(section: StatsSection, *, detailed: bool) -> Panel:
     )
 
 
-def _generic_tile(section: StatsSection) -> Panel:
-    content: list[RenderableType] = []
-    if section.items:
-        content.append(
-            _metric_grid(
-                [(item.label, format_stat_value(item.value, item.format)) for item in section.items]
-            )
-        )
-    if section.columns:
-        table = Table(
-            box=box.SIMPLE_HEAVY,
-            header_style=f"bold {ACCENT_SOFT}",
-            expand=True,
-        )
-        for column in section.columns:
-            table.add_column(column.label, justify=column.align)
-        for row in section.rows:
-            table.add_row(
-                *[
-                    format_stat_value(row.get(column.key), column.format)
-                    for column in section.columns
-                ]
-            )
-        content.append(table)
-    return _tile(section.title, Group(*content), subtitle=section.description)
-
-
 def render_stats_report(
     console: Console,
     report: StatsReport,
@@ -540,7 +505,6 @@ def render_stats_report(
     console.print()
 
     sections = {section.id: section for section in report.sections}
-    rendered = {"overview", "collections", "archive_status", "storage", "tagging"}
     overview = sections.get("overview")
     archive_status = sections.get("archive_status")
     unavailable_detail = None
@@ -583,7 +547,3 @@ def render_stats_report(
         _print_tiles(console, [(_storage_tile(storage, detailed=detailed), 1)])
     if tagging and show_tagging:
         _print_tiles(console, [(_tags_tile(tagging, detailed=detailed), 1)])
-
-    for section in report.sections:
-        if section.id not in rendered:
-            _print_tiles(console, [(_generic_tile(section), 1)])

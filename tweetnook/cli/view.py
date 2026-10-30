@@ -18,7 +18,6 @@ from tweetnook.cli.common import (
     configure_logging,
     normalize_collection_or_exit,
     open_store_for_read,
-    with_auto_optimize,
 )
 from tweetnook.core.collection_names import display_collection_name, normalize_collection_name
 from tweetnook.export import export_json_archive
@@ -191,16 +190,11 @@ def _render_archive_view(
     store, paths = open_store_for_read(console)
     try:
         total_rows = store.count_export_rows(normalized)
-        rows = with_auto_optimize(
-            store,
-            paths,
-            console,
-            lambda s: s.export_rows(
-                normalized,
-                sort=sort,
-                limit=limit,
-                include_raw_json=False,
-            ),
+        rows = store.export_rows(
+            normalized,
+            sort=sort,
+            limit=limit,
+            include_raw_json=False,
         )
     finally:
         store.close()
@@ -277,12 +271,7 @@ def export_json(
             normalized,
             extension="json",
         )
-        with_auto_optimize(
-            store,
-            paths,
-            console,
-            lambda s: export_json_archive(s, collection=normalized, out_path=out_path),
-        )
+        export_json_archive(store, collection=normalized, out_path=out_path)
     finally:
         store.close()
     console.print(f"exported {display_collection_name(normalized)} archive to {out_path}")
@@ -374,7 +363,7 @@ def search_archive(
                 )
             return combined, post_page
 
-        results, post_page = with_auto_optimize(store, paths, console, run_search)
+        results, post_page = run_search(store)
         results = _sort_search_results(results, sort=sort)[:limit]
         if not results:
             console.print("[yellow]No results found.[/yellow]")

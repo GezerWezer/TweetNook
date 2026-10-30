@@ -16,9 +16,6 @@ from tweetnook.core.timeline_parsing import (
     TimelineTweet,
 )
 from tweetnook.importer.archive_input import ArchiveIdentity
-from tweetnook.jobs.context import (
-    ArchiveWriteTracker,
-)
 from tweetnook.storage import ArchiveStore
 from tweetnook.storage.common import ARCHIVE_SOURCE, LIVE_SOURCE
 from tweetnook.storage.records import PageBuffer
@@ -250,7 +247,6 @@ def import_authored_tweets(
     force_deleted: bool = False,
     progress: Callable[[int, int], None] | None = None,
     item_status: Callable[[str, int, int], None] | None = None,
-    write_tracker: ArchiveWriteTracker | None = None,
 ) -> None:
     buffer = PageBuffer()
     valid_items = [
@@ -312,9 +308,7 @@ def import_authored_tweets(
             processed += 1
             if progress:
                 progress(processed, total)
-        flushed = flush_buffer(store, buffer)
-        if write_tracker is not None and flushed > 0:
-            write_tracker.mark_dirty(rows=flushed, batches=1)
+        flush_buffer(store, buffer)
 
 
 def _should_seed_like_placeholder(store: ArchiveStore, buffer: PageBuffer, tweet_id: str) -> bool:
@@ -336,7 +330,6 @@ def import_likes(
     counts: dict[str, int],
     progress: Callable[[int, int], None] | None = None,
     item_status: Callable[[str, int, int], None] | None = None,
-    write_tracker: ArchiveWriteTracker | None = None,
 ) -> None:
     buffer = PageBuffer()
     prepared: list[_PreparedLikeImport] = []
@@ -399,6 +392,4 @@ def import_likes(
             processed += 1
             if progress:
                 progress(processed, total)
-        flushed = flush_buffer(store, buffer)
-        if write_tracker is not None and flushed > 0:
-            write_tracker.mark_dirty(rows=flushed, batches=1)
+        flush_buffer(store, buffer)

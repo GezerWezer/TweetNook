@@ -131,8 +131,8 @@ def fx_status_to_graphql(status: dict[str, Any]) -> dict[str, Any]:
     """Rebuild the GraphQL tweet-result fields the extractor and Web UI read.
 
     FxTwitter has no conversation id, edit history, client source, or viewer state
-    (favorited/bookmarked), so those stay absent; the original FxTwitter JSON is kept
-    under ``fxtwitter`` and in the raw capture.
+    (favorited/bookmarked), so those stay absent. The original FxTwitter JSON is kept
+    in the FxTwitterStatus raw capture; record source fields carry provenance.
     """
 
     raw_text = status.get("raw_text") or {}
@@ -209,7 +209,6 @@ def fx_status_to_graphql(status: dict[str, Any]) -> dict[str, Any]:
             if status.get("views") is not None
             else {"state": "Enabled"}
         ),
-        "fxtwitter": {"source": "fxtwitter", "url": status.get("url")},
     }
     if status.get("is_note_tweet"):
         result["note_tweet"] = {

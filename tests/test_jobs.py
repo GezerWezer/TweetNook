@@ -11,9 +11,6 @@ class _FakeStore:
         self.optimize_calls = 0
         self.closed = False
 
-    def version_count(self) -> int:
-        return 0
-
     def optimize(self) -> None:
         self.optimize_calls += 1
 
@@ -21,13 +18,11 @@ class _FakeStore:
         self.closed = True
 
 
-@pytest.mark.parametrize("mark_dirty", [False, True])
 @pytest.mark.asyncio
 async def test_locked_archive_job_never_auto_optimizes(
     paths,
     config,
     monkeypatch: pytest.MonkeyPatch,
-    mark_dirty: bool,
 ) -> None:
     store = _FakeStore()
     monkeypatch.setattr(jobs, "open_archive_store", lambda _paths, create=False, config=None: store)
@@ -36,8 +31,6 @@ async def test_locked_archive_job_never_auto_optimizes(
         assert job.config == config
         assert job.paths == paths
         assert job.store is store
-        if mark_dirty:
-            job.mark_dirty()
 
     assert store.optimize_calls == 0
     assert store.closed is True
@@ -53,8 +46,7 @@ async def test_locked_archive_job_interrupt_closes_without_optimizing(
     monkeypatch.setattr(jobs, "open_archive_store", lambda _paths, create=False, config=None: store)
 
     with pytest.raises(KeyboardInterrupt):
-        async with jobs.locked_archive_job(config=config, paths=paths) as job:
-            job.mark_dirty()
+        async with jobs.locked_archive_job(config=config, paths=paths):
             raise KeyboardInterrupt()
 
     assert store.optimize_calls == 0

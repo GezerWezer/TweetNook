@@ -47,8 +47,7 @@ def test_enrich_pending_rows_uses_full_snapshot_or_explicit_limit(
     )
 
     attempts = detail_enrichment.requested
-    assert result.selected == expected_attempts
-    assert result.completed == expected_attempts
+    assert result.detail_lookups == expected_attempts
     assert len(attempts) == expected_attempts
     assert len(set(attempts)) == expected_attempts
     assert progress_totals == [expected_attempts]
@@ -91,7 +90,7 @@ def test_enrich_pending_rows_uses_command_start_time_for_stable_snapshot(
         lambda tweet_id, _request: _available(tweet_id, "available"), started_at=started_at
     )
 
-    assert result.selected == 1
+    assert result.detail_lookups == 1
     assert detail_enrichment.requested == ["1"]
     assert selection_calls == [(None, started_at)]
     rows = tweet_object_rows(paths)
@@ -108,11 +107,16 @@ def test_enrich_pending_rows_batches_detail_writes(
     )
     monkeypatch.setattr(archive_enrich, "_DETAIL_ENRICH_WRITE_BATCH", 5)
 
-    refreshed, terminal, transient, pending = detail_enrichment.run(
+    result = detail_enrichment.run(
         lambda tweet_id, _request: _available(tweet_id, f"enriched {tweet_id}")
     )
 
-    assert (refreshed, terminal, transient, pending) == (12, 0, 0, 0)
+    assert (
+        result.detail_lookups,
+        result.detail_terminal_unavailable,
+        result.detail_transient_failures,
+        result.pending_enrichment,
+    ) == (12, 0, 0, 0)
     assert detail_enrichment.dirty == [(5, 1), (5, 1), (2, 1)]
     assert {row["enrichment_state"] for row in tweet_object_rows(paths).values()} == {"done"}
 
@@ -166,8 +170,7 @@ def test_enrich_pending_rows_classifies_explicit_unavailable_shapes(
 
     result = detail_enrichment.run(respond)
 
-    assert result.selected == 1
-    assert result.classified_unavailable == 1
+    assert result.detail_terminal_unavailable == 1
     assert result.pending_enrichment == 0
     row = tweet_object_rows(paths)["900"]
     assert row["enrichment_state"] == "terminal_unavailable"
@@ -185,8 +188,8 @@ def test_enrich_pending_rows_defers_one_ambiguous_focal_absence(paths, detail_en
         )
     )
 
-    assert result.transient_failures == 1
-    assert result.classified_unavailable == 0
+    assert result.detail_transient_failures == 1
+    assert result.detail_terminal_unavailable == 0
     row = tweet_object_rows(paths)["1"]
     assert row["enrichment_state"] == "transient_failure"
     assert row["enrichment_reason"] == "focal_tweet_absent"

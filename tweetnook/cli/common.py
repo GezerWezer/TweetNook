@@ -85,8 +85,3 @@ def with_archive_write_lock(paths, fn):
         return fn()
     finally:
         lock.release()
-
-
-def with_auto_optimize(store, paths, console: Console, fn):
-    """Run a storage operation through the shared read/write wrapper."""
-    return fn(store)

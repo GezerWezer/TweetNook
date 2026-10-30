@@ -25,16 +25,9 @@ from .tags import TagsMixin
 
 SEARCH_KIND_POST = "post"
 SEARCH_KIND_ARTICLE = "article"
-SEARCH_TEXT_FIELD = "text"
 
 
 class SearchMixin(ReadsMixin, TagsMixin):
-    def ensure_scalar_indexes(self) -> None:
-        pass
-
-    def ensure_fts_index(self) -> None:
-        pass
-
     def _dedupe_search_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         deduped: list[dict[str, Any]] = []
         seen_tweet_ids: set[str] = set()
@@ -316,7 +309,6 @@ class SearchMixin(ReadsMixin, TagsMixin):
 
         if sort not in {"relevance", "newest", "oldest"}:
             raise ValueError(f"Unsupported sort order: {sort}")
-        self.ensure_fts_index()
         parsed = parse_search_query(query)
         if not parsed.groups:
             return []
@@ -374,7 +366,6 @@ class SearchMixin(ReadsMixin, TagsMixin):
         excluded_sql = " UNION ".join(excluded_ids)
         excluded_expr = f"archive.tweet_id NOT IN ({excluded_sql})" if excluded_sql else ""
 
-        self.ensure_fts_index()
         if limit < 1:
             raise ValueError("limit must be at least 1")
         if offset < 0:

@@ -190,12 +190,12 @@ def test_bookmarks_chain_by_cursor_and_end_with_empty_page(monkeypatch, source_p
     first = client.get(f"{GRAPHQL}/Bookmarks", params=_variables(count=20), auth=AUTH)
     assert first.status_code == 200
     assert first.headers[RESULT_HEADER] == "hit"
-    tweets, cursor = parse_timeline_response(first.json(), "Bookmarks")
+    tweets, cursor = parse_timeline_response(first.json())
     assert [tweet.tweet_id for tweet in tweets] == ["11", "12"]
     assert cursor == "c1"
 
     second = client.get(f"{GRAPHQL}/Bookmarks", params=_variables(cursor="c1"), auth=AUTH)
-    tweets, cursor = parse_timeline_response(second.json(), "Bookmarks")
+    tweets, cursor = parse_timeline_response(second.json())
     assert [tweet.tweet_id for tweet in tweets] == ["13"]
     assert cursor == "c2"
 
@@ -204,12 +204,12 @@ def test_bookmarks_chain_by_cursor_and_end_with_empty_page(monkeypatch, source_p
     assert end.headers[RESULT_HEADER] == "empty"
     payload = end.json()
     assert "bookmark_timeline_v2" in payload["data"]
-    assert parse_timeline_response(payload, "Bookmarks") == ([], None)
+    assert parse_timeline_response(payload) == ([], None)
 
     likes = client.get(f"{GRAPHQL}/Likes", params=_variables(userId="1"), auth=AUTH)
-    assert parse_timeline_response(likes.json(), "Likes") == ([], None)
+    assert parse_timeline_response(likes.json()) == ([], None)
     user_tweets = client.get(f"{GRAPHQL}/UserTweets", auth=AUTH)
-    assert parse_timeline_response(user_tweets.json(), "UserTweets") == ([], None)
+    assert parse_timeline_response(user_tweets.json()) == ([], None)
 
 
 def test_tweet_detail_found_in_thread_capture_or_unavailable(monkeypatch, source_paths) -> None:

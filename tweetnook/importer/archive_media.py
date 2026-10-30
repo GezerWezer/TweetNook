@@ -13,9 +13,6 @@ from urllib.parse import urlsplit
 from tweetnook.config import XDGPaths
 from tweetnook.core.utils import utc_now
 from tweetnook.importer.archive_input import ArchiveInput
-from tweetnook.jobs.context import (
-    ArchiveWriteTracker,
-)
 from tweetnook.storage import ArchiveStore
 
 
@@ -80,7 +77,6 @@ def copy_exported_media(
     progress: Callable[[int, int], None] | None = None,
     item_status: Callable[[str, int, int], None] | None = None,
     limit: int | None = None,
-    write_tracker: ArchiveWriteTracker | None = None,
 ) -> None:
     if not media_directory:
         return
@@ -186,16 +182,12 @@ def copy_exported_media(
         if len(pending_updates) >= 100:
             updates = list(pending_updates.values())
             store.merge_rows(updates)
-            if write_tracker is not None:
-                write_tracker.mark_dirty(rows=len(updates), batches=1)
             pending_updates.clear()
         if progress:
             progress(index, total)
     if pending_updates:
         updates = list(pending_updates.values())
         store.merge_rows(updates)
-        if write_tracker is not None:
-            write_tracker.mark_dirty(rows=len(updates), batches=1)
     if unmatched:
         warnings.append(f"{unmatched} archive media files did not match normalized media rows.")
 

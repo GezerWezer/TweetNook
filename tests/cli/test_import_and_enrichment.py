@@ -21,8 +21,8 @@ from tweetnook.config import AppConfig
             "download_media",
             "media_download",
             {"limit": 5, "photos_only": True, "retry_failed": True},
-            {"processed": 3, "downloaded": 2, "skipped": 1, "failed": 0},
-            "media: 3 processed, 2 downloaded, 1 skipped, 0 failed",
+            {"processed": 3, "downloaded": 2, "failed": 1},
+            "media: 3 processed, 2 downloaded, 1 failed",
         ),
         (
             "unfurl_urls",
@@ -259,7 +259,6 @@ def test_import_x_archive_interrupt_reports_completed_import_and_continuation(
 def test_archive_followup_explains_when_only_delayed_transient_rows_remain() -> None:
     result = SimpleNamespace(
         reconciled_collections=[],
-        selected=0,
         detail_lookups=0,
         detail_terminal_unavailable=0,
         detail_transient_failures=0,

@@ -403,7 +403,7 @@ def _reference_page_ids(payload, members):
     """The full per-entry timeline parse that page_observations must reproduce."""
     observations = {}
     for entry in _iter_entries(payload):
-        tweets, _ = parse_timeline_response(entry, "Likes")
+        tweets, _ = parse_timeline_response(entry)
         for tweet in tweets:
             observations.setdefault(tweet.tweet_id, _integer(tweet.sort_index))
         entry_id = str(entry.get("entryId") or "")

@@ -9,9 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from tweetnook.core.utils import utc_now
-from tweetnook.jobs.context import (
-    ArchiveWriteTracker,
-)
 from tweetnook.storage import ArchiveStore
 from tweetnook.storage.common import ARCHIVE_SOURCE
 from tweetnook.storage.record_types import RecordType
@@ -30,7 +27,6 @@ def record_archive_capture(
     payload: Any,
     *,
     archive_digest: str,
-    write_tracker: ArchiveWriteTracker | None = None,
 ) -> None:
     capture_key = hashlib.sha256(f"{archive_digest}\0{operation}\0{filename}".encode()).hexdigest()
     store.append_raw_capture(
@@ -42,8 +38,6 @@ def record_archive_capture(
         source=ARCHIVE_SOURCE,
         capture_key=capture_key,
     )
-    if write_tracker is not None:
-        write_tracker.mark_dirty()
 
 
 def _safe_relative_data_path(relative_path: str) -> Path | None:

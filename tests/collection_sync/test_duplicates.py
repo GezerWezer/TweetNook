@@ -359,7 +359,7 @@ async def test_backfill_flag_skips_duplicate_stop(paths, config: AppConfig, auth
 
 
 @pytest.mark.asyncio
-async def test_article_backfill_refreshes_older_duplicate_pages(
+async def test_backfill_refreshes_older_article_pages(
     paths, config: AppConfig, auth_bundle
 ) -> None:
     _save_query_ids(paths)
@@ -443,7 +443,7 @@ async def test_article_backfill_refreshes_older_duplicate_pages(
     result = await sync_collection(
         "bookmarks",
         full=False,
-        article_backfill=True,
+        backfill=True,
         limit=None,
         config=config,
         paths=paths,

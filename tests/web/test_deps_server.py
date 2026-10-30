@@ -180,39 +180,15 @@ def test_state_dependencies_return_shared_objects() -> None:
     assert get_server_state() is server_state
 
 
-def test_build_fts_background_suppresses_optional_index_failure() -> None:
-    class Store:
-        def ensure_fts_index(self):
-            raise RuntimeError("FTS unavailable")
-
-    server._build_fts_in_background(Store())
-
-
-def test_lifespan_opens_indexes_and_closes_store(monkeypatch, tmp_path: Path) -> None:
+def test_lifespan_opens_and_closes_store(monkeypatch, tmp_path: Path) -> None:
     events: list[str] = []
 
     class Store:
         def count_incomplete_initial_enrichment(self):
             return 0
 
-        def ensure_scalar_indexes(self):
-            events.append("scalar")
-
-        def ensure_fts_index(self):
-            events.append("fts")
-
         def close(self):
             events.append("close")
-
-    class ImmediateThread:
-        def __init__(self, *, target, args, daemon):
-            assert daemon is True
-            self.target = target
-            self.args = args
-            events.append("thread")
-
-        def start(self):
-            self.target(*self.args)
 
     store = Store()
     paths = _paths(tmp_path)
@@ -230,19 +206,15 @@ def test_lifespan_opens_indexes_and_closes_store(monkeypatch, tmp_path: Path) ->
         "open_archive_store",
         open_store,
     )
-    monkeypatch.setattr(server.threading, "Thread", ImmediateThread)
     monkeypatch.setattr(server, "ArchiveWarmer", _recording_warmer(events))
     monkeypatch.setattr(server, "DailyStatsRefresher", _recording_refresher(events))
     app = FastAPI(lifespan=server.lifespan)
 
     with TestClient(app):
         assert server_state["store"] is store
-        assert events == ["scalar", "thread", "fts", "warm", "stats"]
+        assert events == ["warm", "stats"]
 
     assert events == [
-        "scalar",
-        "thread",
-        "fts",
         "warm",
         "stats",
         "stats-stop",
@@ -317,27 +289,12 @@ async def test_lifespan_closes_store_when_context_exits_with_error(
         def count_incomplete_initial_enrichment(self):
             return 0
 
-        def ensure_scalar_indexes(self):
-            events.append("scalar")
-
-        def ensure_fts_index(self):
-            events.append("fts")
-
         def close(self):
             events.append("close")
-
-    class ImmediateThread:
-        def __init__(self, *, target, args, daemon):
-            self.target = target
-            self.args = args
-
-        def start(self):
-            self.target(*self.args)
 
     store = Store()
     server_state["paths"] = _paths(tmp_path)
     monkeypatch.setattr(server, "open_archive_store", lambda *_args, **_kwargs: store)
-    monkeypatch.setattr(server.threading, "Thread", ImmediateThread)
     monkeypatch.setattr(server, "ArchiveWarmer", _recording_warmer(events))
     monkeypatch.setattr(server, "DailyStatsRefresher", _recording_refresher(events))
 
@@ -345,7 +302,7 @@ async def test_lifespan_closes_store_when_context_exits_with_error(
         async with server.lifespan(FastAPI()):
             raise RuntimeError("application failed")
 
-    assert events == ["scalar", "fts", "warm", "stats", "stats-stop", "warm-stop", "close"]
+    assert events == ["warm", "stats", "stats-stop", "warm-stop", "close"]
 
 
 def test_packaged_root_and_static_assets_are_served() -> None:

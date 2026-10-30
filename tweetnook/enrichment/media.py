@@ -36,7 +36,6 @@ _UPDATE_BATCH_SIZE = 100
 class MediaDownloadResult:
     processed: int = 0
     downloaded: int = 0
-    skipped: int = 0
     failed: int = 0
     downloaded_bytes: int = 0
 
@@ -45,8 +44,6 @@ def _pipeline_outcomes(result: MediaDownloadResult, *, final: bool = False) -> s
     parts: list[str] = []
     if final or result.downloaded:
         parts.append(f"{result.downloaded} downloaded")
-    if result.skipped:
-        parts.append(f"{result.skipped} already saved")
     if result.failed:
         parts.append(f"{result.failed} failed")
     if result.downloaded_bytes:
@@ -101,24 +98,6 @@ def _poster_url(row: dict[str, object]) -> str | None:
         return None
     thumbnail_url = row.get("thumbnail_url")
     return thumbnail_url if isinstance(thumbnail_url, str) and thumbnail_url else None
-
-
-def _resolve_path(base_dir: Path, relative_path: str | None) -> Path | None:
-    if not relative_path:
-        return None
-    return base_dir / relative_path
-
-
-def _download_complete(row: dict[str, object], base_dir: Path) -> bool:
-    if row.get("download_state") != "done":
-        return False
-    local_path = _resolve_path(base_dir, row.get("local_path"))
-    if local_path is None or not local_path.exists():
-        return False
-    if row.get("media_type") not in {"video", "animated_gif"}:
-        return True
-    poster_path = _resolve_path(base_dir, row.get("thumbnail_local_path"))
-    return poster_path is not None and poster_path.exists()
 
 
 def _target_path(
@@ -205,7 +184,6 @@ async def download_media(
         emit_status(status, "checking saved link-card images")
         queued = store.restore_link_card_images() + store.backfill_link_card_media()
         if queued:
-            job.mark_dirty(rows=queued, batches=1)
             emit_status(status, f"queued {queued} saved link-card images")
         states = {"pending"}
         if retry_failed:
@@ -257,7 +235,6 @@ async def download_media(
                     return
                 updates = pending_updates.copy()
                 store.merge_rows(updates)
-                job.mark_dirty(rows=len(updates), batches=1)
                 pending_updates.clear()
 
             with progress_callback(
@@ -276,10 +253,6 @@ async def download_media(
                                 activity=_media_activity(row),
                                 counters=_pipeline_outcomes(result),
                             )
-                        if _download_complete(row, paths.data_dir):
-                            result.skipped += 1
-                            continue
-
                         state = {
                             "local_path": row.get("local_path"),
                             "sha256": row.get("sha256"),
@@ -412,7 +385,6 @@ async def download_media(
                 metrics={
                     "downloaded": result.downloaded,
                     "downloaded_bytes": result.downloaded_bytes,
-                    "already_saved": result.skipped,
                     "failed": result.failed,
                 },
             )

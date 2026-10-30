@@ -156,7 +156,6 @@ async def unfurl_urls(
                     return
                 updates = pending_updates.copy()
                 store.merge_rows(updates)
-                job.mark_dirty(rows=len(updates), batches=1)
                 pending_updates.clear()
 
             with progress_callback(

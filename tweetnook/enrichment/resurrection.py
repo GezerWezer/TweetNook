@@ -25,6 +25,7 @@ from tweetnook.core.exceptions import (
     StaleQueryIdError,
 )
 from tweetnook.core.timeline_parsing import (
+    FOCAL_ABSENCE_DETAIL,
     MAX_CONSECUTIVE_FOCAL_ABSENCES,
     FocalResultKind,
     parse_tweet_detail_response,
@@ -326,9 +327,7 @@ async def resurrect_due_tweets(
 
         def flush() -> None:
             nonlocal buffered_attempts
-            written = _flush_buffer(store, buffer)
-            if written:
-                job.mark_dirty(rows=written, batches=1)
+            _flush_buffer(store, buffer)
             buffered_attempts = 0
 
         try:
@@ -406,12 +405,11 @@ async def resurrect_due_tweets(
                     )
                     payload = response.json()
                     focal = parse_tweet_detail_response(payload, tweet_id)
-                    if focal.kind == FocalResultKind.AVAILABLE and focal.tweet is not None:
+                    if focal.kind == FocalResultKind.AVAILABLE:
+                        assert focal.tweet is not None
                         consecutive_focal_absences = 0
                         available_author_id = focal.tweet.author_id
                         thread_tweets = parse_tweet_detail_tweets(payload)
-                        if all(tweet.tweet_id != tweet_id for tweet in thread_tweets):
-                            thread_tweets.insert(0, focal.tweet)
                         store.persist_thread_detail(
                             focal_tweet_id=tweet_id,
                             tweets=thread_tweets,
@@ -447,7 +445,6 @@ async def resurrect_due_tweets(
                         result.still_unavailable += 1
                     else:
                         assert focal.kind == FocalResultKind.ABSENT
-                        assert focal.unavailable is not None
                         buffer.restore(write_checkpoint)
                         store.append_raw_capture(
                             "TweetDetailResurrection",
@@ -465,7 +462,7 @@ async def resurrect_due_tweets(
                             enrichment_reason=previous_reason,
                             enrichment_detail=_append_absence_diagnostic(
                                 previous_detail,
-                                focal.unavailable.detail,
+                                FOCAL_ABSENCE_DETAIL,
                             ),
                             enrichment_retry_count=previous_retry_count,
                             enrichment_next_retry_at=transient_retry_at(1),
@@ -586,8 +583,6 @@ async def resurrect_due_tweets(
                             probe_author,
                             exclude_tweet_ids=processed_ids,
                         )
-                        if persisted_due:
-                            job.mark_dirty(rows=persisted_due, batches=1)
                         if added or persisted_due:
                             result.account_boosts += 1
                         result.account_rows_prioritized += len(added)
@@ -613,9 +608,7 @@ async def resurrect_due_tweets(
                     )
                     added = prepend(probes)
                     probe_ids[available_author_id] = set(added)
-                    probes_marked_due = store.mark_tweets_resurrection_due(set(added))
-                    if probes_marked_due:
-                        job.mark_dirty(rows=probes_marked_due, batches=1)
+                    store.mark_tweets_resurrection_due(set(added))
                     result.account_probes += len(added)
 
                 if pipeline is not None:

@@ -363,15 +363,7 @@ test('config and stats requests update their matching UI state', async () => {
     assert.equal(app.configOriginal.web.port, 8000);
     assert.equal(app.configDefaults.web.port, 8000);
     assert.deepEqual(Array.from(app.configExplicit), ['web.host']);
-    assert.equal(app.isFieldVisible('web', 'host'), true);
-    assert.equal(app.isFieldVisible('auth', 'auth_token'), false);
-    assert.equal(app.isFieldVisible('sync', 'page_delay'), false);
-    app.showAdvancedConfig = true;
-    assert.equal(app.isFieldVisible('sync', 'page_delay'), true);
-    assert.equal(app.isFieldVisible('auth', 'auth_token'), false);
     assert.equal(app.getFieldType('web', 'port'), 'number');
-    assert.equal(app.isFieldFullWidth('web', 'host'), true);
-    assert.equal(app.isConfigExplicit('web', 'host'), true);
 
     await app.fetchStats();
     assert.equal(app.lastSyncFormatted, '2026-07-30T00:00:00Z');
@@ -386,13 +378,15 @@ test('config saves only diffs and resets only eligible explicit fields', async (
         auth: { auth_token: '********', ct0: null, user_id: '123' },
         sync: { page_delay: 2 },
         web: { host: '127.0.0.1', port: 8000, fetch_avatars: true },
-        database: { cache_size_kb: 524288, mmap_size_bytes: 1073741824 },
+        database: { cache_size_kb: 786432, mmap_size_bytes: 1073741824 },
         tagging: { api_key: '********', enabled: false },
     };
+    const defaults = plain(effective);
+    defaults.database.cache_size_kb = 524288;
     let explicit = ['auth.auth_token', 'sync.page_delay', 'database.cache_size_kb', 'tagging.api_key'];
     context.fetch = async (url, options = {}) => {
         if (url === '/api/config/schema') return { ok: true, async json() { return { whitelist: [], blacklist: [], full_width: [], types: {} }; } };
-        if (url === '/api/config/defaults') return { ok: true, async json() { return JSON.parse(JSON.stringify(effective)); } };
+        if (url === '/api/config/defaults') return { ok: true, async json() { return plain(defaults); } };
         if (url === '/api/config' && !options.method) {
             return { ok: true, async json() { return { values: effective, explicit }; } };
         }
@@ -405,6 +399,7 @@ test('config saves only diffs and resets only eligible explicit fields', async (
         for (const [field, value] of Object.entries(changes)) {
             const [section, key] = field.split('.');
             if (value === null) {
+                effective[section][key] = defaults[section][key];
                 explicit = explicit.filter(item => item !== field);
             } else {
                 effective[section][key] = value;
@@ -413,29 +408,33 @@ test('config saves only diffs and resets only eligible explicit fields', async (
         }
         return { ok: true, async json() { return { values: effective, explicit }; } };
     };
-    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
+    const { tweetApp, nookSaveConfig, nookConfigStateAction, nookRestoreDefaults } = loadScripts(
+        context, appScriptsWith('settings.js'), '({tweetApp, nookSaveConfig, nookConfigStateAction, nookRestoreDefaults})',
+    );
     const app = immediateComponent(tweetApp());
 
     await app.fetchConfig();
     app.showAdvancedConfig = true;
     assert.deepEqual(plain(app.changedConfigValues()), {});
-    await app.saveConfig();
+    await nookSaveConfig(app);
     assert.equal(requests.length, 0);
 
     app.configData.web.port = 9000;
-    await app.saveConfig();
+    await nookSaveConfig(app);
     assert.deepEqual(plain(requests.at(-1)), { changes: { 'web.port': 9000 } });
     assert.equal(app.configOriginal.web.port, 9000);
 
     app.configData.database.mmap_size_bytes = 536870912;
-    await app.saveConfig();
+    await nookSaveConfig(app);
     assert.deepEqual(plain(requests.at(-1)), { changes: { 'database.mmap_size_bytes': 536870912 } });
     assert.equal('database.cache_size_kb' in requests.at(-1).changes, false);
 
-    await app.resetConfigField('database', 'cache_size_kb');
+    nookConfigStateAction(app, { path: 'database.cache_size_kb', section: 'database', key: 'cache_size_kb' });
+    assert.equal(app.configData.database.cache_size_kb, 524288);
+    await nookSaveConfig(app);
     assert.deepEqual(plain(requests.at(-1)), { changes: { 'database.cache_size_kb': null } });
 
-    await app.restoreConfigDefaults();
+    await nookRestoreDefaults(app);
     assert.deepEqual(plain(requests.at(-1)), {
         changes: {
             'sync.page_delay': null,
@@ -446,9 +445,11 @@ test('config saves only diffs and resets only eligible explicit fields', async (
     assert.equal('auth.auth_token' in requests.at(-1).changes, false);
     assert.equal('tagging.api_key' in requests.at(-1).changes, false);
 
+    app.nookConfigSaved = false;
     app.configData.web.port = 7000;
     failNext = true;
-    await app.saveConfig();
+    await nookSaveConfig(app);
+    assert.equal(app.nookConfigSaved, false);
     assert.equal(app.configData.web.port, 7000);
     assert.notEqual(app.configOriginal.web.port, 7000);
 });

@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 from tweetnook.stats.models import (
-    StatItem,
     StatsReport,
     StatsSection,
     StatsSectionSpec,
@@ -217,7 +216,7 @@ def _unavailable_breakdown(
     }
 
 
-def _collect_overview(context: _StatsContext) -> StatsSection:
+def _collect_overview(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
     conn = context.store.conn
 
     def count(sql: str) -> int:
@@ -294,40 +293,13 @@ def _collect_overview(context: _StatsContext) -> StatsSection:
         "latest_sync": latest_sync,
     }
     return StatsSection(
-        id="overview",
-        title="Overview",
-        kind="cards",
-        items=[
-            StatItem("unique_posts", "Unique tweets", unique_posts),
-            StatItem(
-                "collection_memberships",
-                "Collection memberships",
-                collection_memberships,
-            ),
-            StatItem("media_rows", "Media", media_rows, description="Stored media records"),
-            StatItem("articles", "Articles", articles),
-            StatItem("urls", "URLs", urls),
-            StatItem("profiles", "Authors", profiles, description="Distinct archived authors"),
-            StatItem("raw_captures", "Raw captures", raw_captures),
-            StatItem(
-                "missing_archive_tweets",
-                "Missing archive tweets",
-                missing_archive_tweets,
-                subtitle=f"{missing_pct:.1f}% of {archive_tweets:,} imported tweets",
-                description=(
-                    "Imported archive tweets that Twitter/X currently reports as unavailable"
-                ),
-            ),
-            StatItem("oldest_post", "First tweet", oldest_post, format="datetime"),
-            StatItem("newest_post", "Latest tweet", newest_post, format="datetime"),
-            StatItem("latest_capture", "Latest capture", latest_capture, format="datetime"),
-            StatItem("latest_sync", "Last sync", latest_sync, format="datetime"),
-        ],
+        id=spec.id,
+        title=spec.title,
         data=data,
     )
 
 
-def _collect_collections(context: _StatsContext) -> StatsSection:
+def _collect_collections(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
     rows: list[dict[str, Any]] = []
     names = {"bookmark": "Bookmarks", "like": "Likes", "tweet": "Authored Tweets"}
     for collection in context.archive_stats.collections:
@@ -348,9 +320,8 @@ def _collect_collections(context: _StatsContext) -> StatsSection:
             }
         )
     return StatsSection(
-        id="collections",
-        title="Collections",
-        kind="table",
+        id=spec.id,
+        title=spec.title,
         columns=[
             TableColumn("collection", "Collection"),
             TableColumn("count", "Tweets", format="integer", align="right"),
@@ -360,11 +331,10 @@ def _collect_collections(context: _StatsContext) -> StatsSection:
             TableColumn("backfill_status", "Backfill"),
         ],
         rows=rows,
-        data={"collections": rows},
     )
 
 
-def _collect_archive_status(context: _StatsContext) -> StatsSection:
+def _collect_archive_status(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
     stats = context.archive_stats
     archive_tweets, unavailable_total = _archive_availability_counts(context.store.conn)
     unavailable = _unavailable_breakdown(
@@ -394,41 +364,13 @@ def _collect_archive_status(context: _StatsContext) -> StatsSection:
         "pending_linked_statuses": stats.pending_thread_linked_status_count,
     }
     return StatsSection(
-        id="archive_status",
-        title="Archive status",
-        kind="archive_status",
-        items=[
-            StatItem("enriched", "Enriched", stats.done_enrichment_count),
-            StatItem(
-                "threads_expanded",
-                "Threads",
-                stats.expanded_thread_target_count,
-                subtitle="TweetDetail targets expanded",
-            ),
-            StatItem(
-                "missing_enrichment",
-                "Missing enrichment",
-                incomplete,
-                subtitle=(
-                    f"{stats.pending_enrichment_count:,} pending · "
-                    f"{stats.transient_enrichment_failure_count:,} retrying"
-                ),
-            ),
-            StatItem("resurrected", "Resurrected", stats.resurrected_enrichment_count),
-            StatItem(
-                "unavailable",
-                "Unavailable tweets",
-                unavailable_total,
-                subtitle=f"{unavailable['percent_of_archive']:.1f}% of imported archive tweets",
-            ),
-            StatItem("preview_articles", "Preview-only articles", stats.preview_article_count),
-            StatItem("rehydrate_gaps", "Rehydrate gaps", stats.missing_tweet_object_count),
-        ],
+        id=spec.id,
+        title=spec.title,
         data=data,
     )
 
 
-def _collect_tags(context: _StatsContext) -> StatsSection:
+def _collect_tags(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
     conn = context.store.conn
     eligible_tweets, tagged_tweets = context.store.get_tagging_coverage_counts()
     unique_tags = int(
@@ -487,26 +429,13 @@ def _collect_tags(context: _StatsContext) -> StatsSection:
         "top_tags": top_tags,
     }
     return StatsSection(
-        id="tagging",
-        title="Tagging & search",
-        kind="tags",
-        items=[
-            StatItem(
-                "coverage",
-                "Coverage",
-                coverage_pct,
-                format="percent",
-                subtitle=f"{tagged_tweets:,} / {eligible_tweets:,} eligible",
-            ),
-            StatItem("unique_tags", "Unique tags", unique_tags),
-            StatItem("tagged_tweets", "Tagged tweets", tagged_tweets),
-            StatItem("average_tags", "Average tags", avg_tags, format="decimal"),
-        ],
+        id=spec.id,
+        title=spec.title,
         data=data,
     )
 
 
-def _collect_storage(context: _StatsContext) -> StatsSection:
+def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
     store = context.store
     segments: list[dict[str, Any]] = []
     payload_sample_limit = 4096
@@ -823,22 +752,18 @@ def _collect_storage(context: _StatsContext) -> StatsSection:
         "simplified_segments": simplified_segments,
     }
     return StatsSection(
-        id="storage",
-        title="Storage",
-        kind="storage",
-        items=[
-            StatItem("total", "Total", total_bytes, format="bytes"),
-        ],
+        id=spec.id,
+        title=spec.title,
         data=data,
     )
 
 
 STATS_SECTION_SPECS = (
-    StatsSectionSpec("overview", "Overview", "cards"),
-    StatsSectionSpec("collections", "Collections", "table"),
-    StatsSectionSpec("archive_status", "Archive status", "archive_status"),
-    StatsSectionSpec("storage", "Storage", "storage"),
-    StatsSectionSpec("tagging", "Tagging & search", "tags"),
+    StatsSectionSpec("overview", "Overview"),
+    StatsSectionSpec("collections", "Collections"),
+    StatsSectionSpec("archive_status", "Archive status"),
+    StatsSectionSpec("storage", "Storage"),
+    StatsSectionSpec("tagging", "Tagging & search"),
 )
 
 _COLLECTORS = {
@@ -854,14 +779,7 @@ def _collect_registered_section(
     context: _StatsContext,
     spec: StatsSectionSpec,
 ) -> StatsSection:
-    section = _COLLECTORS[spec.id](context)
-    identity = (section.id, section.title, section.kind)
-    expected = (spec.id, spec.title, spec.kind)
-    if identity != expected:
-        raise RuntimeError(
-            f"statistics collector {spec.id!r} returned {identity!r}; expected {expected!r}"
-        )
-    return section
+    return _COLLECTORS[spec.id](context, spec)
 
 
 def build_stats_section(store: ArchiveStore, section_id: str) -> StatsSection:

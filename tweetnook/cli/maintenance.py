@@ -193,8 +193,6 @@ def rehydrate_archive() -> None:
                 return
             with tqdm(total=total, desc="rehydrating", unit="tweets") as pbar:
                 result = store.rehydrate_from_raw_json(progress=pbar.update)
-            if result.tweets_updated or result.secondary_records:
-                pass
             console.print(
                 f"rehydrated {result.tweets_updated} tweet rows and rebuilt "
                 f"{result.secondary_records} secondary rows"

@@ -49,11 +49,6 @@ except ImportError:  # pragma: no cover - exercised in a dependency-isolated sub
     Image = None
 
 
-MEDIA_TAGGING_SYSTEM_PROMPT = build_media_system_prompt()
-TEXT_TAGGING_SYSTEM_PROMPT = build_text_system_prompt()
-TAGGING_SYSTEM_PROMPT = MEDIA_TAGGING_SYSTEM_PROMPT
-
-
 class MediaTagResult(BaseModel):
     description: str = Field(min_length=1)
     tags: list[str] = Field(min_length=2, max_length=5)
@@ -85,7 +80,6 @@ class TaggingPreview(BaseModel):
     tags: list[str]
 
 
-TagResult = MediaTagResult
 # Keep the wave-oriented execution path so a future backfill mode can raise
 # this internal ceiling without changing tagging orchestration.  It is not a
 # configuration setting and normal Paid processing is sequential for now.
@@ -454,8 +448,6 @@ def _content_types_for_tweets(
 
 
 def _top_archive_tags(store: ArchiveStore, limit: int = 50) -> list[str]:
-    if not hasattr(store, "get_tag_counts"):
-        return []
     try:
         return [str(row["tag"]) for row in store.get_tag_counts(limit=limit) if row.get("tag")]
     except Exception:
@@ -609,8 +601,6 @@ async def tag_media_tweets(
     _existing_tags: list[str] | None = None,
     _paid_stop: list[bool] | None = None,
     _paid_state: _PaidRunState | None = None,
-    _attempt: int = 1,
-    _logical_request_id: str | None = None,
 ) -> int:
     """Tag one Paid tweet or one homogeneous Free batch."""
     pipeline = current_pipeline()
@@ -647,7 +637,7 @@ async def tag_media_tweets(
     paid_state = _paid_state or _PaidRunState()
     if paid_state.stop_reason:
         return 0
-    logical_request_id = _logical_request_id or new_request_id()
+    logical_request_id = new_request_id()
 
     quote_targets = (
         _quote_targets(store, tweet_ids) if quoted_tweet_ids is None else quoted_tweet_ids
@@ -1676,7 +1666,6 @@ async def tag_pending_media_tweets(
     free_batch_size = min(batch_size or tag_config.free_batch_size, 20)
     processed = tagged = requests = sent_requests = 0
     attempted_ids: set[str] = set()
-    rich_selector = hasattr(store, "get_eligible_tagging_candidates")
 
     if pipeline is not None:
         mode_detail = f"{model_name} · " + (
@@ -1707,24 +1696,18 @@ async def tag_pending_media_tweets(
             if max_requests is not None:
                 remaining = min(remaining, max_requests - requests)
             selection_limit = max(remaining, 1)
-        content_type: Literal["media", "text"] = "media"
-        candidates: list[dict[str, Any]] = []
-        quote_targets: dict[str, str] = {}
-        if rich_selector:
-            candidates = store.get_eligible_tagging_candidates(
-                limit=selection_limit,
-                exclude_tweet_ids=attempted_ids,
-            )
-            tweet_ids = [candidate["tweet_id"] for candidate in candidates]
-            if candidates:
-                content_type = candidates[0]["content_type"]
-                quote_targets = {
-                    candidate["tweet_id"]: candidate["quoted_tweet_id"]
-                    for candidate in candidates
-                    if candidate.get("quoted_tweet_id")
-                }
-        else:
-            tweet_ids = store.get_eligible_tweets_for_tagging(limit=selection_limit)
+        candidates = store.get_eligible_tagging_candidates(
+            limit=selection_limit,
+            exclude_tweet_ids=attempted_ids,
+        )
+        tweet_ids = [candidate["tweet_id"] for candidate in candidates]
+        if candidates:
+            content_type = candidates[0]["content_type"]
+            quote_targets = {
+                candidate["tweet_id"]: candidate["quoted_tweet_id"]
+                for candidate in candidates
+                if candidate["quoted_tweet_id"]
+            }
         if not tweet_ids:
             break
 

@@ -42,7 +42,13 @@ def test_repeated_import_can_reuse_existing_archive_for_enrich_followup(
 
     async def fake_enrich_pending_rows(**kwargs):
         assert kwargs["limit"] is None
-        return 3, 1, 2, 4
+        return archive_enrich.ArchiveEnrichResult(
+            detail_lookups=3,
+            detail_terminal_unavailable=1,
+            detail_transient_failures=2,
+            pending_enrichment=4,
+            pending_untouched=4,
+        )
 
     monkeypatch.setattr(archive_enrich, "_run_live_reconciliation", fake_reconciliation)
     monkeypatch.setattr(archive_enrich, "_enrich_pending_rows", fake_enrich_pending_rows)
@@ -163,7 +169,13 @@ def test_enrich_imported_archive_reuses_existing_import_state(
     async def fake_enrich_pending_rows(**kwargs):
         captured["limit"] = kwargs["limit"]
         captured["started_at"] = kwargs["started_at"]
-        return 4, 1, 2, 3
+        return archive_enrich.ArchiveEnrichResult(
+            detail_lookups=4,
+            detail_terminal_unavailable=1,
+            detail_transient_failures=2,
+            pending_enrichment=3,
+            pending_untouched=3,
+        )
 
     monkeypatch.setattr(archive_enrich, "_run_live_reconciliation", fake_reconciliation)
     monkeypatch.setattr(archive_enrich, "_enrich_pending_rows", fake_enrich_pending_rows)
@@ -217,7 +229,13 @@ def test_enrich_imported_archive_can_skip_live_reconciliation(
         captured["limit"] = kwargs["limit"]
         captured["auth_token"] = kwargs["auth_bundle"].auth_token
         captured["user_id"] = kwargs["auth_bundle"].user_id
-        return 5, 0, 1, 2
+        return archive_enrich.ArchiveEnrichResult(
+            detail_lookups=5,
+            detail_terminal_unavailable=0,
+            detail_transient_failures=1,
+            pending_enrichment=2,
+            pending_untouched=2,
+        )
 
     monkeypatch.setattr(archive_enrich, "_run_live_reconciliation", fail_reconciliation)
     monkeypatch.setattr(archive_enrich, "_enrich_pending_rows", fake_enrich_pending_rows)
@@ -252,8 +270,6 @@ def test_unlimited_archive_followup_selects_one_snapshot_without_limit(
         limits.append(kwargs["limit"])
         trackers.append(kwargs["absence_tracker"])
         return archive_enrich.ArchiveEnrichResult(
-            selected=1_200,
-            completed=1_200,
             detail_lookups=1_200,
             pending_enrichment=0,
         )
@@ -275,5 +291,4 @@ def test_unlimited_archive_followup_selects_one_snapshot_without_limit(
 
     assert limits == [None]
     assert len(trackers) == 1
-    assert result.selected == 1_200
-    assert result.completed == 1_200
+    assert result.detail_lookups == 1_200

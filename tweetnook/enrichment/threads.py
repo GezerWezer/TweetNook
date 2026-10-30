@@ -186,7 +186,6 @@ async def _expand_target(
     config: AppConfig,
     console: Console,
     pacer: AdaptiveRequestPacer | None = None,
-    mark_dirty: Callable[[int, int], None] | None = None,
 ) -> tuple[list[str], FocalResultKind]:
     payload, tweets, focal, http_status = await _fetch_detail(
         tweet_id=tweet_id,
@@ -223,8 +222,6 @@ async def _expand_target(
             next_retry_at=next_retry_at,
             retry_count=0,
         )
-    if mark_dirty is not None and focal.kind != FocalResultKind.ABSENT:
-        mark_dirty(1, 1)
     return [tweet.tweet_id for tweet in tweets], focal.kind
 
 
@@ -237,13 +234,11 @@ async def _try_expand_target(
     client: httpx.AsyncClient,
     config: AppConfig,
     attempted_targets: set[str],
-    expanded_targets: set[str],
     known_tweet_ids: set[str],
     result: ThreadExpandResult,
     console: Console,
     absence_tracker: _FocalAbsenceTracker,
     pacer: AdaptiveRequestPacer | None = None,
-    mark_dirty: Callable[[int, int], None] | None = None,
 ) -> None:
     result.processed += 1
     attempted_targets.add(tweet_id)
@@ -257,7 +252,6 @@ async def _try_expand_target(
             config=config,
             console=console,
             pacer=pacer,
-            mark_dirty=mark_dirty,
         )
     except (
         AuthExpiredError,
@@ -280,7 +274,6 @@ async def _try_expand_target(
         result.failed += 1
         _log_thread_status(console, tweet_id, "ambiguous focal absence (deferred)")
         return
-    expanded_targets.add(tweet_id)
     if focal_kind == FocalResultKind.EXPLICIT_UNAVAILABLE:
         result.failed += 1
         _log_thread_status(console, tweet_id, "terminal unavailable (classified for retry)")
@@ -410,7 +403,6 @@ async def expand_threads(
     config: AppConfig | None = None,
     paths: XDGPaths | None = None,
     auth_bundle: ResolvedAuthBundle | None = None,
-    auth_status: Callable[[str], None] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
     console: Console | None = None,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
@@ -444,10 +436,10 @@ async def expand_threads(
                 pipeline.skip_step(step_key, "the requested limit allowing no candidates")
             return result
         _log_threads(console, "loading archived thread expansion state...")
-        expanded_targets = set(store.list_expanded_thread_target_ids())
+        expanded_before_run = set(store.list_expanded_thread_target_ids())
         _log_threads(
             console,
-            f"loaded {len(expanded_targets)} previously expanded thread targets",
+            f"loaded {len(expanded_before_run)} previously expanded thread targets",
         )
         known_tweet_ids: set[str] = set()
         pending_membership_ids: list[str] = []
@@ -462,7 +454,9 @@ async def expand_threads(
             result.skipped += duplicate_count
             target_ids = requested[:limit] if limit is not None else requested
             pending_membership_ids = [
-                tweet_id for tweet_id in target_ids if refresh or tweet_id not in expanded_targets
+                tweet_id
+                for tweet_id in target_ids
+                if refresh or tweet_id not in expanded_before_run
             ]
             result.skipped += len(target_ids) - len(pending_membership_ids)
             refresh_suffix = " (refresh)" if refresh else ""
@@ -474,7 +468,7 @@ async def expand_threads(
             _log_threads(console, "loading archived membership tweets...")
             membership_ids = store.list_membership_tweet_ids()
             pending_membership_ids = [
-                tweet_id for tweet_id in membership_ids if tweet_id not in expanded_targets
+                tweet_id for tweet_id in membership_ids if tweet_id not in expanded_before_run
             ]
             result.skipped += len(membership_ids) - len(pending_membership_ids)
             _log_threads(
@@ -508,7 +502,7 @@ async def expand_threads(
                     if target_id in walk.quote_reachable_targets
                     else walk.discovery_kinds[target_id]
                 )
-                if target_id in membership_id_set or target_id in expanded_targets:
+                if target_id in membership_id_set or target_id in expanded_before_run:
                     result.skipped += 1
                     continue
                 if kind == "linked" and target_id in known_tweet_ids:
@@ -579,7 +573,7 @@ async def expand_threads(
 
         if auth_bundle is None:
             _log_threads(console, "resolving auth bundle")
-            auth_bundle = resolve_auth_bundle(config, status=auth_status)
+            auth_bundle = resolve_auth_bundle(config)
         _log_threads(console, "resolving TweetDetail query ID")
         query_store = QueryIdStore(paths)
         query_ids = await resolve_query_ids(
@@ -629,13 +623,11 @@ async def expand_threads(
                         client=client,
                         config=config,
                         attempted_targets=attempted_targets,
-                        expanded_targets=expanded_targets,
                         known_tweet_ids=known_tweet_ids,
                         result=result,
                         console=console,
                         absence_tracker=absence_tracker,
                         pacer=pacer,
-                        mark_dirty=job.mark_dirty,
                     )
                     scanned += 1
                     if pipeline is not None:
@@ -651,7 +643,6 @@ async def expand_threads(
                         total=selected_total,
                         result=result,
                     )
-                    job.maybe_optimize_mid_job(console=console)
         finally:
             await client.aclose()
 

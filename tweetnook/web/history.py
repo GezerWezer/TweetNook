@@ -78,7 +78,8 @@ def _login_event(tweet_id: str, capture: dict[str, Any]) -> dict[str, Any] | Non
     focal = parse_tweet_detail_response(payload, tweet_id)
     if focal.kind == FocalResultKind.AVAILABLE:
         return _event(at, "Thread saved" if thread else "Fetched", "Your login", "available")
-    if focal.kind == FocalResultKind.EXPLICIT_UNAVAILABLE and focal.unavailable is not None:
+    if focal.kind == FocalResultKind.EXPLICIT_UNAVAILABLE:
+        assert focal.unavailable is not None
         return _event(
             at,
             "Missing from X",

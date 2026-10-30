@@ -304,7 +304,10 @@ def paid_queue_store(count: int = 3) -> Store:
     for index in range(1, count + 1):
         store.add_tweet(str(index))
     queue = QueueStore(
-        [{"tweet_id": str(index), "content_type": "text"} for index in range(1, count + 1)]
+        [
+            {"tweet_id": str(index), "content_type": "text", "quoted_tweet_id": None, "sort_ts": 0}
+            for index in range(1, count + 1)
+        ]
     )
     store.get_eligible_tagging_candidates = queue.get_eligible_tagging_candidates
     return store

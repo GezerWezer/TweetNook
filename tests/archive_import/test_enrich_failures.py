@@ -68,10 +68,9 @@ def test_enrich_focal_absence_counter_resets_on_explicit_empty_and_available_res
 
     result = detail_enrichment.run(respond)
 
-    assert result.selected == 7
-    assert result.classified_unavailable == 2
-    assert result.completed == 1
-    assert result.transient_failures == 4
+    assert result.detail_terminal_unavailable == 2
+    assert result.detail_lookups == 1
+    assert result.detail_transient_failures == 4
 
 
 def test_enrich_pending_rows_flushes_when_client_close_fails(
@@ -140,7 +139,7 @@ def test_enrich_pending_rows_keeps_known_transport_errors_per_row_retryable(
 
     result = detail_enrichment.run(offline)
 
-    assert result.transient_failures == 1
+    assert result.detail_transient_failures == 1
     row = tweet_object_rows(paths)["1"]
     assert row["enrichment_state"] == "transient_failure"
     assert row["enrichment_reason"] is None

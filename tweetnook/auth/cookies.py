@@ -38,11 +38,9 @@ def resolve_auth_bundle(
     config: AppConfig,
     *,
     env: Mapping[str, str] | None = None,
-    status=None,
 ) -> ResolvedAuthBundle:
     """Resolve credentials from explicit environment or config values only."""
 
-    del status
     env = os.environ if env is None else env
 
     def pick(env_name: str, config_attr: str) -> tuple[str | None, str | None]:

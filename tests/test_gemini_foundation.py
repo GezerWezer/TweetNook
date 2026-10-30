@@ -1038,3 +1038,20 @@ def test_capacity_reserves_and_legacy_uncertainty_survive_summary_upgrade(tmp_pa
     assert ledger.summary()["version"] == 4
     assert ledger.statistics(now=now)["today_unknown_cost_requests"] == 2
     assert ledger.daily_budget_usage(now=datetime(2026, 8, 16, tzinfo=UTC))["capacity_unknown"] == 0
+
+
+def test_pricing_opener_body_type_error_is_called_once(tmp_path):
+    from urllib.request import Request
+
+    calls = []
+
+    def opener(req, *, timeout):
+        calls.append(timeout)
+        assert isinstance(req, Request)
+        assert req.full_url == "https://openrouter.ai/api/v1/models"
+        assert req.get_header("Accept") == "application/json"
+        assert req.get_header("User-agent") == "TweetNook"
+        raise TypeError("opener body failed")
+
+    assert load_openrouter_pricing(tmp_path, "gemini-3.6-flash", opener=opener, timeout=2.5) is None
+    assert calls == [2.5]

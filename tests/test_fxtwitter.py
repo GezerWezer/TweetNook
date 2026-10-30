@@ -359,7 +359,7 @@ def test_enrichment_uses_fxtwitter_first_and_tweetdetail_for_the_rest(
 
     result, detail_requests = _run_enrichment(paths, monkeypatch, transport, ("1", "2"))
 
-    assert result.completed == 2
+    assert result.detail_lookups == 2
     assert detail_requests == ["2"]
     store = open_archive_store(paths, create=False)
     assert store is not None
@@ -371,7 +371,7 @@ def test_enrichment_uses_fxtwitter_first_and_tweetdetail_for_the_rest(
         "done",
     )
     assert (login_row["source"], login_row["text"]) == (LIVE_SOURCE, "from login")
-    assert json.loads(fx_row["raw_json"])["fxtwitter"]["source"] == "fxtwitter"
+    assert "fxtwitter" not in json.loads(fx_row["raw_json"])
     store.close()
 
 
@@ -388,7 +388,7 @@ def test_enrichment_stops_asking_fxtwitter_once_it_is_down(
     ids = [str(index) for index in range(1, 41)]
     result, detail_requests = _run_enrichment(paths, monkeypatch, httpx.MockTransport(handler), ids)
 
-    assert result.completed == len(ids)
+    assert result.detail_lookups == len(ids)
     # The batch stops after a few failures in a row instead of waiting out all 40.
     assert len(fx_requests) < 20
     assert sorted(detail_requests, key=int) == ids
@@ -441,7 +441,11 @@ def test_enrichment_without_an_account_leaves_the_rest_for_tweetdetail(
         paths, monkeypatch, transport, ("1", "2"), signed_in=False
     )
 
-    assert (result.completed, result.transient_failures, result.pending_untouched) == (1, 0, 1)
+    assert (result.detail_lookups, result.detail_transient_failures, result.pending_untouched) == (
+        1,
+        0,
+        1,
+    )
     assert detail_requests == []
     store = open_archive_store(paths, create=False)
     assert store is not None
@@ -463,7 +467,7 @@ def test_enrichment_without_an_account_stops_once_fxtwitter_is_down(
         signed_in=False,
     )
 
-    assert result.completed == 0
+    assert result.detail_lookups == 0
     assert result.pending_untouched == len(ids)
     assert detail_requests == []
 

@@ -504,9 +504,7 @@ async def run_check(
                         pipeline.revise_step(step, _step_counters(buckets))
             finally:
                 await client.aclose()
-                written = applier.flush()
-                if written:
-                    job.mark_dirty(rows=written, batches=1)
+                applier.flush()
 
     if budget > 0:
         result.detail = await _run_detail_fallback(
@@ -574,9 +572,7 @@ async def _check_scope(
             result.context_checked += checked
         else:
             result.unavailable_checked += checked
-        written = applier.flush()
-        if written:
-            job.mark_dirty(rows=written, batches=1)
+        applier.flush()
         if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
             message = (
                 f"FxTwitter failed {consecutive_errors} lookups in a row; "

@@ -1,7 +1,6 @@
 """Shared archive statistics report used by the CLI and Web UI."""
 
 from tweetnook.stats.models import (
-    StatItem,
     StatsReport,
     StatsSection,
     StatsSectionSpec,
@@ -18,7 +17,6 @@ from tweetnook.stats.service import (
 
 __all__ = [
     "STATS_SECTION_SPECS",
-    "StatItem",
     "StatsReport",
     "StatsSection",
     "StatsSectionSpec",

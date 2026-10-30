@@ -18,13 +18,14 @@ Keep request headers, variables, feature flags, cursor formats, and response tra
 
 A collection stores a head anchor plus older-history cursor/incomplete state. A normal run checks the head for recent items and can continue an unfinished backfill. Rows and cursor progress are written incrementally, so interruption leaves a resumable archive.
 
+`--article-backfill` is a hidden alias for `--backfill`; both use the same older-history pass.
+
 | Mode | State behavior |
 | --- | --- |
 | Normal | Fetch recent posts and continue eligible older history. |
 | `--head-only` | Clear the saved backfill cursor and run the head pass only. |
 | `--backfill` | Continue past known posts to repair gaps and extend history. |
 | `--full` | Reset targeted sync state before walking the collection again. |
-| `--article-backfill` | Revisit existing pages for Article fields without clearing state. |
 
 `--head-only` is incompatible with `--full`, `--backfill`, and `--article-backfill`. The other modes can be combined. A page limit bounds collection-page work, not the detail/media/tagging follow-ups. `sync` and `sync all` use `sync.collections`; individual subcommands target only their named collection.
 

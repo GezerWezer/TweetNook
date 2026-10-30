@@ -53,15 +53,6 @@ def test_resolve_auth_bundle_requires_explicit_session_values() -> None:
     assert "browser" not in str(exc_info.value).lower()
 
 
-def test_resolve_auth_bundle_does_not_probe_status_callback() -> None:
-    messages: list[str] = []
-    config = AppConfig(auth=AuthConfig(auth_token="token", ct0="csrf"))
-
-    resolve_auth_bundle(config, env={}, status=messages.append)
-
-    assert messages == []
-
-
 @pytest.mark.parametrize(("collection", "label"), [("likes", "Likes"), ("tweets", "Own-tweet")])
 def test_user_id_is_required_for_user_scoped_collections(
     collection: str,
