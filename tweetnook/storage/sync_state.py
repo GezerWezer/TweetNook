@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from tweetnook.core.exceptions import ArchiveOwnerMismatchError
 from tweetnook.core.utils import utc_now
@@ -11,6 +12,8 @@ from tweetnook.core.utils import utc_now
 from .common import folder_key
 from .record_types import RecordType
 from .records import PageBuffer, RecordsMixin
+
+T = TypeVar("T")
 
 
 @dataclass(slots=True)
@@ -23,6 +26,36 @@ class SyncState:
 
 
 class SyncStateMixin(RecordsMixin):
+    def metadata_value(self, key: str) -> str | None:
+        row = self._get_row(self._row_key_for_metadata(key))
+        return row["value"] if row else None
+
+    def reserve_metadata_counter(
+        self,
+        key: str,
+        decide: Callable[[str | None], tuple[str | None, T]],
+        *,
+        updated_at: str | None = None,
+    ) -> T:
+        """Read and conditionally replace a counter under one immediate transaction."""
+        with self.transaction():
+            value, result = decide(self.metadata_value(key))
+            if value is not None:
+                self.conn.execute(
+                    "INSERT INTO archive (row_key, record_type, key, value, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?) ON CONFLICT(row_key) DO UPDATE SET "
+                    "record_type = excluded.record_type, key = excluded.key, "
+                    "value = excluded.value, updated_at = excluded.updated_at",
+                    (
+                        self._row_key_for_metadata(key),
+                        RecordType.METADATA,
+                        key,
+                        value,
+                        updated_at or utc_now(),
+                    ),
+                )
+            return result
+
     def get_sync_state(self, collection_type: str, folder_id: str | None = None) -> SyncState:
         row = self._get_row(self._row_key_for_sync_state(collection_type, folder_id))
         if row is None:

@@ -6,6 +6,7 @@ import mimetypes
 import random
 import time
 from collections import defaultdict, deque
+from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any, Literal
@@ -18,7 +19,6 @@ from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.jobs.activity_history import new_run_id
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.storage.backend import ArchiveStore
-from tweetnook.storage.record_types import RecordType
 from tweetnook.tagging.accounting import (
     SEARCH_MONTHLY_ALLOWANCE,
     AIUsageLedger,
@@ -330,24 +330,6 @@ def _interaction_thinking_level(level: str) -> str:
     return "minimal" if level == "none" else level
 
 
-def _mark_failed(store: ArchiveStore, tweet_ids: list[str]) -> None:
-    with store.transaction():
-        for tweet_id in tweet_ids:
-            store.conn.execute(
-                "INSERT OR REPLACE INTO archive "
-                "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (
-                    f"media_tag:{tweet_id}",
-                    "media_tag",
-                    tweet_id,
-                    "{}",
-                    "failed",
-                    str(time.time()),
-                ),
-            )
-
-
 def _print_rpd_exhausted(console: Console, status: RpdStatus, model: str) -> None:
     reset_at = status.reset_at.strftime("%Y-%m-%d %H:%M %Z")
     console.print(
@@ -396,57 +378,10 @@ def _print_tag_preview(
 
 
 def _quote_targets(store: ArchiveStore, tweet_ids: list[str]) -> dict[str, str]:
-    if not tweet_ids:
-        return {}
-    placeholders = ", ".join("?" for _tweet_id in tweet_ids)
     try:
-        rows = store.conn.execute(
-            f"""
-            SELECT tweet_id, target_tweet_id
-            FROM archive INDEXED BY idx_archive_tweet_id
-            WHERE record_type = '{RecordType.TWEET_RELATION}'
-              AND relation_type = 'quote_of'
-              AND tweet_id IN ({placeholders})
-            ORDER BY tweet_id, target_tweet_id
-            """,
-            tweet_ids,
-        ).fetchall()
+        return store.tagging_quote_targets(tweet_ids)
     except Exception:
         return {}
-    targets: dict[str, str] = {}
-    for row in rows:
-        source_id = row["tweet_id"]
-        target_id = row["target_tweet_id"]
-        if source_id and target_id:
-            targets.setdefault(source_id, target_id)
-    return targets
-
-
-def _content_types_for_tweets(
-    store: ArchiveStore,
-    tweet_ids: list[str],
-    quote_targets: dict[str, str],
-) -> dict[str, Literal["media", "text"]]:
-    relevant_ids = list(dict.fromkeys([*tweet_ids, *quote_targets.values()]))
-    if not relevant_ids:
-        return {}
-    placeholders = ", ".join("?" for _tweet_id in relevant_ids)
-    rows = store.conn.execute(
-        f"""
-        SELECT DISTINCT tweet_id
-        FROM archive INDEXED BY idx_archive_tweet_id
-        WHERE record_type = '{RecordType.MEDIA}' AND tweet_id IN ({placeholders})
-          AND COALESCE(source, '') != 'link_card'
-        """,
-        relevant_ids,
-    ).fetchall()
-    media_ids = {row["tweet_id"] for row in rows if row["tweet_id"]}
-    return {
-        tweet_id: (
-            "media" if tweet_id in media_ids or quote_targets.get(tweet_id) in media_ids else "text"
-        )
-        for tweet_id in tweet_ids
-    }
 
 
 def _top_archive_tags(store: ArchiveStore, limit: int = 50) -> list[str]:
@@ -645,7 +580,7 @@ async def tag_media_tweets(
         _quote_targets(store, tweet_ids) if quoted_tweet_ids is None else quoted_tweet_ids
     )
     if content_type is None:
-        content_types = _content_types_for_tweets(store, tweet_ids, quote_targets)
+        content_types = store.tagging_content_types(tweet_ids, quote_targets)
         grouped_ids = {
             kind: [tweet_id for tweet_id in tweet_ids if content_types[tweet_id] == kind]
             for kind in ("media", "text")
@@ -759,30 +694,7 @@ async def tag_media_tweets(
         system_prompt = make_system_prompt(False)
 
         context_ids = list(dict.fromkeys([*tweet_ids, *quote_targets.values()]))
-        placeholders = ", ".join("?" for _tweet_id in context_ids)
-        all_media: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for row in store.conn.execute(
-            f"""
-            SELECT tweet_id, media_key, media_type, local_path
-            FROM archive INDEXED BY idx_archive_tweet_id
-            WHERE record_type = '{RecordType.MEDIA}' AND tweet_id IN ({placeholders})
-              AND COALESCE(source, '') != 'link_card'
-            """,
-            context_ids,
-        ).fetchall():
-            media = dict(row)
-            all_media[media["tweet_id"]].append(media)
-        tweet_objs = {
-            row["tweet_id"]: dict(row)
-            for row in store.conn.execute(
-                f"""
-                SELECT tweet_id, raw_json, author_display_name, author_username, text
-                FROM archive INDEXED BY idx_archive_tweet_id
-                WHERE record_type = '{RecordType.TWEET_OBJECT}' AND tweet_id IN ({placeholders})
-                """,
-                context_ids,
-            ).fetchall()
-        }
+        all_media, tweet_objs = store.tagging_context(context_ids)
 
         free_parts: list[Any] = [system_prompt, "\n\n--- TWEETS TO TAG ---\n\n"]
         interaction_input: list[Any] = []
@@ -1120,7 +1032,7 @@ async def tag_media_tweets(
                             if split or len(tweet_ids) > 1:
                                 return split
                             if not dry_run:
-                                _mark_failed(store, tweet_ids)
+                                store.mark_tagging_failed(tweet_ids)
                             return 0
                         console.print(
                             "[red]Gemini Tagging Failed: "
@@ -1512,7 +1424,7 @@ async def tag_media_tweets(
                     if tag_config.api_mode == "paid":
                         store.defer_tagging_failure(tweet_ids)
                     else:
-                        _mark_failed(store, tweet_ids)
+                        store.mark_tagging_failed(tweet_ids)
                 return 0
 
             parsed: list[tuple[str, MediaTagResult | TextTagResult]] = []
@@ -1553,7 +1465,8 @@ async def tag_media_tweets(
             if content_type == "media":
                 eligible &= {tweet_id for tweet_id, count in active_media_by_tweet.items() if count}
             tagged_count = 0
-            with store.transaction():
+            # Test mode saves nothing, so it must not wait on or fail with another writer.
+            with nullcontext() if dry_run else store.transaction():
                 for tweet_id, result in parsed:
                     if tweet_id not in eligible:
                         continue
@@ -1590,22 +1503,7 @@ async def tag_media_tweets(
                     payload: dict[str, Any] = {"tags": normalized_tags}
                     if description:
                         payload["description"] = description
-                    store.conn.execute(
-                        "INSERT OR REPLACE INTO archive "
-                        "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?)",
-                        (
-                            f"media_tag:{tweet_id}",
-                            "media_tag",
-                            tweet_id,
-                            json.dumps(payload),
-                            "done",
-                            str(time.time()),
-                        ),
-                    )
-                    store.conn.execute(
-                        "DELETE FROM archive WHERE row_key = ?", (f"tagging_retry:{tweet_id}",)
-                    )
+                    store.save_tagging_result(tweet_id, payload)
                     tagged_count += 1
 
             if dry_run:

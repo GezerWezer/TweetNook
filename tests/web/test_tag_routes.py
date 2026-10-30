@@ -166,3 +166,32 @@ def test_tag_routes_require_authentication(make_web_client) -> None:
 
     assert response.status_code == 401
     assert store.calls == []
+
+
+@pytest.mark.parametrize("global_delete", [False, True])
+def test_removing_last_label_keeps_saved_description(tmp_path, make_web_client, global_delete):
+    from tweetnook.storage import ArchiveStore
+
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    try:
+        store.update_media_tags("42", ["Only"], description="valuable description")
+        client = make_web_client(tag_routes.router, store=store)
+        response = (
+            client.delete("/api/tags/global/Only")
+            if global_delete
+            else client.put("/api/tags/42", json={"tags": []})
+        )
+        assert response.status_code == 200
+        assert (
+            store.conn.execute(
+                "SELECT raw_json FROM archive WHERE row_key='media_tag:42'"
+            ).fetchone()[0]
+            == '{"description": "valuable description", "tags": []}'
+        )
+        assert client.put("/api/tags/42", json={"tags": [], "description": ""}).status_code == 200
+        assert (
+            store.conn.execute("SELECT 1 FROM archive WHERE row_key='media_tag:42'").fetchone()
+            is None
+        )
+    finally:
+        store.close()

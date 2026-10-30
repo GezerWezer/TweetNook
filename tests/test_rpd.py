@@ -5,7 +5,6 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -13,43 +12,26 @@ from tweetnook.storage.backend import ArchiveStore
 from tweetnook.tagging.rpd import get_rpd_status, normalize_model_name, reserve_rpd_request
 
 
-def _connection(path: Path | str = ":memory:", *, check_same_thread: bool = True):
-    conn = sqlite3.connect(path, check_same_thread=check_same_thread)
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS archive (
-            row_key TEXT PRIMARY KEY,
-            record_type TEXT,
-            key TEXT,
-            value TEXT,
-            updated_at TEXT
-        )
-        """
-    )
-    conn.commit()
-    return conn
-
-
-def _store(conn: sqlite3.Connection) -> SimpleNamespace:
-    return SimpleNamespace(conn=conn)
+def _archive_store(path: Path | str = ":memory:"):
+    return ArchiveStore(Path(path), create=True)
 
 
 def _reserve(
-    conn: sqlite3.Connection,
+    store: ArchiveStore,
     *,
     model: str = "gemini-3.5-flash",
     limit: int = 2,
     now: datetime = datetime(2026, 7, 31, 12, tzinfo=UTC),
 ):
-    return reserve_rpd_request(_store(conn), model=model, limit=limit, now=now)
+    return reserve_rpd_request(store, model=model, limit=limit, now=now)
 
 
 def test_reservation_enforces_limit_and_returns_immutable_status() -> None:
-    conn = _connection()
+    store = _archive_store()
 
-    first = _reserve(conn)
-    second = _reserve(conn)
-    denied = _reserve(conn)
+    first = _reserve(store)
+    second = _reserve(store)
+    denied = _reserve(store)
 
     assert (first.allowed, first.used, first.remaining) == (True, 1, 1)
     assert (second.allowed, second.used, second.remaining) == (True, 2, 0)
@@ -62,17 +44,17 @@ def test_reservation_enforces_limit_and_returns_immutable_status() -> None:
 
 
 def test_read_only_status_does_not_create_or_repair_state() -> None:
-    conn = _connection()
+    store = _archive_store()
     missing = get_rpd_status(
-        _store(conn),
+        store,
         model="gemini-3.5-flash",
         limit=2,
         now=datetime(2026, 7, 31, 12, tzinfo=UTC),
     )
     assert (missing.allowed, missing.used, missing.remaining) == (True, 0, 2)
-    assert conn.execute("SELECT COUNT(*) FROM archive").fetchone()[0] == 0
+    assert store.conn.execute("SELECT COUNT(*) FROM archive").fetchone()[0] == 0
 
-    conn.execute(
+    store.conn.execute(
         "INSERT INTO archive (row_key, record_type, key, value) VALUES (?, ?, ?, ?)",
         (
             "metadata:gemini_rpd:gemini-3.5-flash",
@@ -81,24 +63,24 @@ def test_read_only_status_does_not_create_or_repair_state() -> None:
             "malformed",
         ),
     )
-    conn.commit()
+    store.conn.commit()
     malformed = get_rpd_status(
-        _store(conn),
+        store,
         model="gemini-3.5-flash",
         limit=2,
         now=datetime(2026, 7, 31, 12, tzinfo=UTC),
     )
 
     assert (malformed.allowed, malformed.used, malformed.remaining) == (True, 0, 2)
-    assert conn.execute("SELECT value FROM archive").fetchone()[0] == "malformed"
+    assert store.conn.execute("SELECT value FROM archive").fetchone()[0] == "malformed"
 
 
 def test_read_only_status_reports_exhausted_counter() -> None:
-    conn = _connection()
-    assert _reserve(conn, limit=1).allowed
+    store = _archive_store()
+    assert _reserve(store, limit=1).allowed
 
     status = get_rpd_status(
-        _store(conn),
+        store,
         model="gemini-3.5-flash",
         limit=1,
         now=datetime(2026, 7, 31, 12, tzinfo=UTC),
@@ -109,12 +91,12 @@ def test_read_only_status_reports_exhausted_counter() -> None:
 
 def test_counter_persists_across_connections_and_normalizes_model(tmp_path: Path) -> None:
     db_path = tmp_path / "archive.db"
-    first_conn = _connection(db_path)
-    assert _reserve(first_conn, model=" models/GEMINI-3.5-FLASH ", limit=1).allowed
-    first_conn.close()
+    first_store = _archive_store(db_path)
+    assert _reserve(first_store, model=" models/GEMINI-3.5-FLASH ", limit=1).allowed
+    first_store.close()
 
-    second_conn = _connection(db_path)
-    denied = _reserve(second_conn, model="gemini-3.5-flash", limit=1)
+    second_store = _archive_store(db_path)
+    denied = _reserve(second_store, model="gemini-3.5-flash", limit=1)
 
     assert normalize_model_name(" models/GEMINI-3.5-FLASH ") == "gemini-3.5-flash"
     assert not denied.allowed
@@ -148,9 +130,9 @@ def test_real_archive_reopens_existing_quota_state_without_a_migration(tmp_path:
 
 @pytest.mark.parametrize("stored_value", [None, "not-json", "[]", '{"version":99}'])
 def test_missing_or_malformed_state_starts_at_zero(stored_value: str | None) -> None:
-    conn = _connection()
+    store = _archive_store()
     if stored_value is not None:
-        conn.execute(
+        store.conn.execute(
             "INSERT INTO archive (row_key, record_type, key, value) VALUES (?, ?, ?, ?)",
             (
                 "metadata:gemini_rpd:gemini-3.5-flash",
@@ -159,17 +141,17 @@ def test_missing_or_malformed_state_starts_at_zero(stored_value: str | None) -> 
                 stored_value,
             ),
         )
-        conn.commit()
+        store.conn.commit()
 
-    status = _reserve(conn, limit=1)
+    status = _reserve(store, limit=1)
 
     assert status.allowed
     assert status.used == 1
 
 
 def test_old_pacific_day_resets_without_a_migration() -> None:
-    conn = _connection()
-    conn.execute(
+    store = _archive_store()
+    store.conn.execute(
         "INSERT INTO archive (row_key, record_type, key, value) VALUES (?, ?, ?, ?)",
         (
             "metadata:gemini_rpd:gemini-3.5-flash",
@@ -185,38 +167,38 @@ def test_old_pacific_day_resets_without_a_migration() -> None:
             ),
         ),
     )
-    conn.commit()
+    store.conn.commit()
 
-    status = _reserve(conn, limit=1)
+    status = _reserve(store, limit=1)
 
     assert status.allowed
     assert status.used == 1
 
 
 def test_lowered_and_raised_limit_use_current_configuration() -> None:
-    conn = _connection()
-    assert _reserve(conn, limit=3).allowed
-    assert _reserve(conn, limit=3).allowed
+    store = _archive_store()
+    assert _reserve(store, limit=3).allowed
+    assert _reserve(store, limit=3).allowed
 
-    lowered = _reserve(conn, limit=1)
-    raised = _reserve(conn, limit=4)
+    lowered = _reserve(store, limit=1)
+    raised = _reserve(store, limit=4)
 
     assert (lowered.allowed, lowered.used, lowered.limit) == (False, 2, 1)
     assert (raised.allowed, raised.used, raised.limit) == (True, 3, 4)
 
 
 def test_models_have_independent_counters() -> None:
-    conn = _connection()
+    store = _archive_store()
 
-    first_model = _reserve(conn, model="gemini-3.5-flash", limit=1)
-    second_model = _reserve(conn, model="gemini-3.5-pro", limit=1)
+    first_model = _reserve(store, model="gemini-3.5-flash", limit=1)
+    second_model = _reserve(store, model="gemini-3.5-pro", limit=1)
 
     assert first_model.allowed
     assert second_model.allowed
-    rows = conn.execute(
+    rows = store.conn.execute(
         "SELECT row_key FROM archive WHERE record_type = 'metadata' ORDER BY row_key"
     ).fetchall()
-    assert rows == [
+    assert [tuple(row) for row in rows] == [
         ("metadata:gemini_rpd:gemini-3.5-flash",),
         ("metadata:gemini_rpd:gemini-3.5-pro",),
     ]
@@ -257,7 +239,7 @@ def test_pacific_day_and_next_reset_are_dst_correct(
     expected_day: str,
     expected_reset: str,
 ) -> None:
-    status = _reserve(_connection(), limit=1, now=now)
+    status = _reserve(_archive_store(), limit=1, now=now)
 
     assert status.day.isoformat() == expected_day
     assert status.reset_at.isoformat() == expected_reset
@@ -265,11 +247,13 @@ def test_pacific_day_and_next_reset_are_dst_correct(
 
 def test_two_connections_cannot_both_reserve_last_request(tmp_path: Path) -> None:
     db_path = tmp_path / "archive.db"
-    first_conn = _connection(db_path, check_same_thread=False)
-    second_conn = _connection(db_path, check_same_thread=False)
+    first_store = _archive_store(db_path)
+    second_store = _archive_store(db_path)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(_reserve, conn, limit=1) for conn in (first_conn, second_conn)]
+        futures = [
+            executor.submit(_reserve, store, limit=1) for store in (first_store, second_store)
+        ]
         statuses = [future.result(timeout=5) for future in futures]
 
     assert sorted(status.allowed for status in statuses) == [False, True]
@@ -277,10 +261,25 @@ def test_two_connections_cannot_both_reserve_last_request(tmp_path: Path) -> Non
 
 
 def test_database_error_rolls_back_and_is_reraised() -> None:
-    conn = _connection()
-    conn.execute("DROP TABLE archive")
+    store = _archive_store()
+    store.conn.execute("DROP TABLE archive")
 
     with pytest.raises(sqlite3.OperationalError, match="no such table"):
-        _reserve(conn)
+        _reserve(store)
 
-    assert not conn.in_transaction
+    assert not store.conn.in_transaction
+
+
+def test_reservation_rejects_foreign_transaction_without_losing_its_work(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    try:
+        store.conn.execute(
+            "INSERT INTO archive (row_key, record_type) VALUES ('caller', 'metadata')"
+        )
+        with pytest.raises(RuntimeError, match="foreign transaction"):
+            reserve_rpd_request(store, model="gemini-3.5-flash", limit=1)
+        assert store.conn.in_transaction
+        assert store.conn.execute("SELECT 1 FROM archive WHERE row_key='caller'").fetchone()
+        store.conn.rollback()
+    finally:
+        store.close()

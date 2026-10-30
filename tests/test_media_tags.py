@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 
-from tweetnook.storage import open_archive_store
+from tweetnook.storage import ArchiveStore, open_archive_store
 
 
 def _tag_payload(store, tweet_id: str) -> dict[str, object] | None:
@@ -120,7 +120,9 @@ def test_tagging_candidate_scan_stops_when_batch_is_full(paths) -> None:
 
     assert [candidate["tweet_id"] for candidate in candidates] == ["9", "8"]
     classification_queries = [
-        statement for statement in statements if "AS quoted_tweet_id" in statement
+        statement
+        for statement in statements
+        if "SELECT DISTINCT tweet_id" in statement and "record_type = 'media'" in statement
     ]
     assert len(classification_queries) == 2
     candidate_queries = [
@@ -463,3 +465,93 @@ def test_export_includes_media_tags_only_for_tagged_tweets(paths) -> None:
     assert exported["1"]["media_tags"]["tags"] == ["Nature"]
     assert exported["2"]["media_tags"] is None
     store.close()
+
+
+def test_streaming_and_explicit_tagging_use_the_same_direct_quote(paths):
+    store = open_archive_store(paths, create=True)
+    try:
+        store.merge_rows(
+            [
+                {
+                    "row_key": "tweet:like::1",
+                    "record_type": "tweet",
+                    "tweet_id": "1",
+                    "collection_type": "like",
+                },
+                {
+                    "row_key": "tweet_object:1",
+                    "record_type": "tweet_object",
+                    "tweet_id": "1",
+                    "enrichment_state": "done",
+                },
+                *(
+                    {
+                        "row_key": f"relation:1:quote_of:{target}",
+                        "record_type": "tweet_relation",
+                        "tweet_id": "1",
+                        "target_tweet_id": target,
+                        "relation_type": "quote_of",
+                    }
+                    for target in ("2", "3")
+                ),
+                {"row_key": "media:3:photo", "record_type": "media", "tweet_id": "3"},
+                {
+                    "row_key": "media:2:card",
+                    "record_type": "media",
+                    "tweet_id": "2",
+                    "source": "link_card",
+                },
+            ]
+        )
+        assert store.tagging_quote_targets(["1"]) == {"1": "2"}
+        assert store.tagging_content_types(["1"], {"1": "2"}) == {"1": "text"}
+        assert [
+            (row["quoted_tweet_id"], row["content_type"])
+            for row in store.get_eligible_tagging_candidates()
+        ] == [("2", "text")]
+    finally:
+        store.close()
+
+
+def _tag_row(store: ArchiveStore, tweet_id: str) -> tuple[dict, str]:
+    raw_json, state = store.conn.execute(
+        "SELECT raw_json, enrichment_state FROM archive WHERE row_key = ?",
+        (f"media_tag:{tweet_id}",),
+    ).fetchone()
+    return json.loads(raw_json), state
+
+
+def test_automated_tagging_keeps_a_description_that_outlived_its_tags(tmp_path) -> None:
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    try:
+        store.update_media_tags("1", ["only"], description="written by hand")
+        store.update_media_tags("1", [])
+
+        store.mark_tagging_failed(["1"])
+        assert _tag_row(store, "1") == (
+            {"description": "written by hand", "tags": []},
+            "done",
+        )
+
+        store.save_tagging_result("1", {"tags": ["one", "two"], "description": "generated"})
+        assert _tag_row(store, "1")[0] == {
+            "description": "written by hand",
+            "tags": ["one", "two"],
+        }
+    finally:
+        store.close()
+
+
+def test_tagging_failure_never_replaces_saved_tags_and_marks_empty_rows(tmp_path) -> None:
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    try:
+        store.update_media_tags("1", ["one", "two"], description="saved")
+        store.mark_tagging_failed(["1", "2"])
+        assert _tag_row(store, "1")[0]["tags"] == ["one", "two"]
+        assert _tag_row(store, "2") == ({}, "failed")
+
+        # Regenerating tags that exist replaces them along with their description.
+        store.save_tagging_result("1", {"tags": ["three", "four"]})
+        assert _tag_row(store, "1")[0] == {"tags": ["three", "four"]}
+    finally:
+        store.close()

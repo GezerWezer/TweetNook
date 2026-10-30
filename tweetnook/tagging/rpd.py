@@ -3,21 +3,15 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from tweetnook.storage.record_types import RecordType
+from tweetnook.storage import ArchiveStore
 
 _PACIFIC = ZoneInfo("America/Los_Angeles")
 _STATE_VERSION = 1
 _METADATA_KEY_PREFIX = "gemini_rpd"
-
-
-class _ArchiveStore(Protocol):
-    conn: sqlite3.Connection
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,13 +90,8 @@ def _validate_limit(limit: int) -> None:
         raise ValueError("RPD limit must be a positive integer")
 
 
-def _state_location(model: str) -> tuple[str, str]:
-    metadata_key = f"{_METADATA_KEY_PREFIX}:{model}"
-    return f"metadata:{metadata_key}", metadata_key
-
-
 def get_rpd_status(
-    store: _ArchiveStore,
+    store: ArchiveStore,
     *,
     model: str,
     limit: int,
@@ -112,13 +101,8 @@ def get_rpd_status(
     _validate_limit(limit)
     normalized_model = normalize_model_name(model)
     quota_day, reset_at = _quota_window(now or datetime.now(UTC))
-    row_key, _metadata_key = _state_location(normalized_model)
-    row = store.conn.execute(
-        "SELECT value FROM archive WHERE row_key = ?",
-        (row_key,),
-    ).fetchone()
     used = _used_for_current_day(
-        row[0] if row is not None else None,
+        store.metadata_value(f"{_METADATA_KEY_PREFIX}:{normalized_model}"),
         quota_day=quota_day,
         model=normalized_model,
     )
@@ -132,7 +116,7 @@ def get_rpd_status(
 
 
 def reserve_rpd_request(
-    store: _ArchiveStore,
+    store: ArchiveStore,
     *,
     model: str,
     limit: int,
@@ -148,67 +132,36 @@ def reserve_rpd_request(
     normalized_model = normalize_model_name(model)
     effective_now = now or datetime.now(UTC)
     quota_day, reset_at = _quota_window(effective_now)
-    row_key, metadata_key = _state_location(normalized_model)
-    conn = store.conn
 
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        row = conn.execute(
-            "SELECT value FROM archive WHERE row_key = ?",
-            (row_key,),
-        ).fetchone()
-        used = _used_for_current_day(
-            row[0] if row is not None else None,
-            quota_day=quota_day,
-            model=normalized_model,
-        )
-        if used >= limit:
-            conn.commit()
-            return _status(
-                allowed=False,
-                used=used,
-                limit=limit,
-                quota_day=quota_day,
-                reset_at=reset_at,
+    def decide(raw_value: str | None) -> tuple[str | None, RpdStatus]:
+        used = _used_for_current_day(raw_value, quota_day=quota_day, model=normalized_model)
+        allowed = used < limit
+        if allowed:
+            used += 1
+        value = (
+            json.dumps(
+                {
+                    "day": quota_day.isoformat(),
+                    "model": normalized_model,
+                    "used": used,
+                    "version": _STATE_VERSION,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
             )
-
-        used += 1
-        value = json.dumps(
-            {
-                "day": quota_day.isoformat(),
-                "model": normalized_model,
-                "used": used,
-                "version": _STATE_VERSION,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
+            if allowed
+            else None
         )
-        conn.execute(
-            """
-            INSERT INTO archive (row_key, record_type, key, value, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(row_key) DO UPDATE SET
-                record_type = excluded.record_type,
-                key = excluded.key,
-                value = excluded.value,
-                updated_at = excluded.updated_at
-            """,
-            (
-                row_key,
-                RecordType.METADATA,
-                metadata_key,
-                value,
-                effective_now.astimezone(UTC).isoformat(),
-            ),
-        )
-        conn.commit()
-        return _status(
-            allowed=True,
+        return value, _status(
+            allowed=allowed,
             used=used,
             limit=limit,
             quota_day=quota_day,
             reset_at=reset_at,
         )
-    except BaseException:
-        conn.rollback()
-        raise
+
+    return store.reserve_metadata_counter(
+        f"{_METADATA_KEY_PREFIX}:{normalized_model}",
+        decide,
+        updated_at=effective_now.astimezone(UTC).isoformat(),
+    )

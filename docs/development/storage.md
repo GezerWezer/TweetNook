@@ -64,11 +64,17 @@ Name record types through `RecordType` from `storage/record_types.py`, in SQL te
 
 Use the row-key helpers in `ArchiveStore`; don't invent identifiers in callers. A canonical tweet object and its memberships are different facts. Deleting or enriching context must not manufacture a bookmark, like, or authored membership.
 
+`metadata_value(key)` reads a durable value. `reserve_metadata_counter(key, decide)` runs its read and optional replacement inside one immediate transaction; quota policy stays in tagging and never opens or rolls back a connection transaction itself.
+
 ## Merge rules
 
 `PageBuffer` collects related writes and tracks pending rows so a later item in a batch sees earlier writes. Source ranks prefer `live_graphql` over `fxtwitter` over `x_archive`. Merge code preserves better content, timestamps, downloaded files, and provenance when a weaker payload arrives.
 
 Raw captures remain evidence of the source response. Normalized tweet text, author fields, media and relation rows can be rebuilt through `rehydrate`, but rebuilding isn't a new remote observation. Test quoted and nested content as well as the focal post when changing extraction.
+
+Removing labels preserves an existing description, including removal of the final label. Passing an empty description explicitly clears it; `delete_media_tag` deletes both tags and description.
+
+Tagging uses storage-owned quote/type classification and `tagging_context(ids)` for bounded media and text inputs. `save_tagging_result` and `mark_tagging_failed` own tag-row and retry-metadata writes; the feature validates provider output and retains its batch transaction.
 
 ## Availability and history
 

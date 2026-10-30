@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from collections import defaultdict
 from collections.abc import Iterator
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, TypedDict
 
 from .db import ConnectionMixin
 from .record_types import RecordType
@@ -106,38 +107,6 @@ class TagsMixin(ConnectionMixin):
                      CAST(o.sort_index AS INTEGER) DESC,
                      o.tweet_id DESC
         """
-        classification_query = f"""
-            SELECT
-                (
-                    SELECT MIN(relation.target_tweet_id)
-                    FROM archive relation INDEXED BY idx_archive_tweet_id
-                    WHERE relation.tweet_id = ?
-                      AND relation.record_type = '{RecordType.TWEET_RELATION}'
-                      AND relation.relation_type = 'quote_of'
-                ) AS quoted_tweet_id,
-                CASE WHEN
-                    EXISTS (
-                        SELECT 1
-                        FROM archive media INDEXED BY idx_archive_tweet_id
-                        WHERE media.tweet_id = ?
-                          AND media.record_type = '{RecordType.MEDIA}'
-                          AND COALESCE(media.source, '') != 'link_card'
-                    )
-                    OR EXISTS (
-                        SELECT 1
-                        FROM archive relation INDEXED BY idx_archive_tweet_id
-                        JOIN archive quoted_media INDEXED BY idx_archive_tweet_id
-                          ON quoted_media.tweet_id = relation.target_tweet_id
-                         AND quoted_media.record_type = '{RecordType.MEDIA}'
-                         AND COALESCE(quoted_media.source, '') != 'link_card'
-                        WHERE relation.tweet_id = ?
-                          AND relation.record_type = '{RecordType.TWEET_RELATION}'
-                          AND relation.relation_type = 'quote_of'
-                    )
-                    THEN 'media' ELSE 'text'
-                END AS content_type
-        """
-
         excluded = exclude_tweet_ids or set()
         seen: set[str] = set()
         selected_type: str | None = None
@@ -192,13 +161,8 @@ class TagsMixin(ConnectionMixin):
                 seen.add(tweet_id)
                 if tweet_id in excluded:
                     continue
-                classification = self.conn.execute(
-                    classification_query,
-                    (tweet_id, tweet_id, tweet_id),
-                ).fetchone()
-                if classification is None:
-                    continue
-                content_type = cast(Literal["media", "text"], classification["content_type"])
+                quote_targets = self.tagging_quote_targets([tweet_id])
+                content_type = self.tagging_content_types([tweet_id], quote_targets)[tweet_id]
                 if selected_type is None:
                     selected_type = content_type
                 if content_type != selected_type:
@@ -206,7 +170,7 @@ class TagsMixin(ConnectionMixin):
                 selected.append(
                     {
                         "tweet_id": tweet_id,
-                        "quoted_tweet_id": classification["quoted_tweet_id"],
+                        "quoted_tweet_id": quote_targets.get(tweet_id),
                         "content_type": content_type,
                         "sort_ts": int(row["sort_ts"] or 0),
                     }
@@ -337,10 +301,6 @@ class TagsMixin(ConnectionMixin):
             ).fetchone()
 
             cleaned_description = description.strip() if description is not None else None
-            if not normalized_tags and (description is None or not cleaned_description):
-                self.delete_media_tag(tweet_id)
-                return
-
             now_ts = str(time.time())
             if row and row["raw_json"]:
                 try:
@@ -355,6 +315,10 @@ class TagsMixin(ConnectionMixin):
 
             if cleaned_description is not None:
                 data["description"] = cleaned_description
+
+            if not normalized_tags and not data.get("description"):
+                self.delete_media_tag(tweet_id)
+                return
 
             payload = json.dumps(data)
 
@@ -427,7 +391,7 @@ class TagsMixin(ConnectionMixin):
                     data = json.loads(row["raw_json"])
                     if "tags" in data:
                         data["tags"] = [t for t in data["tags"] if t.lower() != tag.lower()]
-                        if not data["tags"]:
+                        if not data["tags"] and not data.get("description"):
                             self.conn.execute(
                                 f"DELETE FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' "
                                 "AND tweet_id = ?",
@@ -535,3 +499,139 @@ class TagsMixin(ConnectionMixin):
 
         rows = self.conn.execute(sql, tuple(params)).fetchall()
         return [dict(r) for r in rows]
+
+    def _saved_tag_payload(self, tweet_id: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            "SELECT raw_json FROM archive WHERE row_key = ?", (f"media_tag:{tweet_id}",)
+        ).fetchone()
+        try:
+            payload = json.loads(row[0]) if row and row[0] else {}
+        except json.JSONDecodeError:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def mark_tagging_failed(self, tweet_ids: list[str]) -> None:
+        with self.transaction():
+            for tweet_id in tweet_ids:
+                # A failed attempt is only a retry marker; it never replaces saved content.
+                saved = self._saved_tag_payload(tweet_id)
+                if saved.get("tags") or saved.get("description"):
+                    continue
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO archive "
+                    "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        f"media_tag:{tweet_id}",
+                        "media_tag",
+                        tweet_id,
+                        "{}",
+                        "failed",
+                        str(time.time()),
+                    ),
+                )
+
+    def tagging_quote_targets(self, tweet_ids: list[str]) -> dict[str, str]:
+        if not tweet_ids:
+            return {}
+        placeholders = ", ".join("?" for _tweet_id in tweet_ids)
+        rows = self.conn.execute(
+            f"""
+            SELECT tweet_id, target_tweet_id
+            FROM archive INDEXED BY idx_archive_tweet_id
+            WHERE record_type = '{RecordType.TWEET_RELATION}'
+              AND relation_type = 'quote_of'
+              AND tweet_id IN ({placeholders})
+            ORDER BY tweet_id, target_tweet_id
+            """,
+            tweet_ids,
+        ).fetchall()
+        targets: dict[str, str] = {}
+        for row in rows:
+            source_id = row["tweet_id"]
+            target_id = row["target_tweet_id"]
+            if source_id and target_id:
+                targets.setdefault(source_id, target_id)
+        return targets
+
+    def tagging_content_types(
+        self, tweet_ids: list[str], quote_targets: dict[str, str]
+    ) -> dict[str, Literal["media", "text"]]:
+        relevant_ids = list(dict.fromkeys([*tweet_ids, *quote_targets.values()]))
+        if not relevant_ids:
+            return {}
+        placeholders = ", ".join("?" for _tweet_id in relevant_ids)
+        rows = self.conn.execute(
+            f"""
+            SELECT DISTINCT tweet_id
+            FROM archive INDEXED BY idx_archive_tweet_id
+            WHERE record_type = '{RecordType.MEDIA}' AND tweet_id IN ({placeholders})
+              AND COALESCE(source, '') != 'link_card'
+            """,
+            relevant_ids,
+        ).fetchall()
+        media_ids = {row["tweet_id"] for row in rows if row["tweet_id"]}
+        return {
+            tweet_id: (
+                "media"
+                if tweet_id in media_ids or quote_targets.get(tweet_id) in media_ids
+                else "text"
+            )
+            for tweet_id in tweet_ids
+        }
+
+    def tagging_context(
+        self, context_ids: list[str]
+    ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
+        if not context_ids:
+            return {}, {}
+        placeholders = ", ".join("?" for _tweet_id in context_ids)
+        all_media: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in self.conn.execute(
+            f"""
+            SELECT tweet_id, media_key, media_type, local_path
+            FROM archive INDEXED BY idx_archive_tweet_id
+            WHERE record_type = '{RecordType.MEDIA}' AND tweet_id IN ({placeholders})
+              AND COALESCE(source, '') != 'link_card'
+            """,
+            context_ids,
+        ).fetchall():
+            media = dict(row)
+            all_media[media["tweet_id"]].append(media)
+        tweet_objs = {
+            row["tweet_id"]: dict(row)
+            for row in self.conn.execute(
+                f"""
+                SELECT tweet_id, raw_json, author_display_name, author_username, text
+                FROM archive INDEXED BY idx_archive_tweet_id
+                WHERE record_type = '{RecordType.TWEET_OBJECT}' AND tweet_id IN ({placeholders})
+                """,
+                context_ids,
+            ).fetchall()
+        }
+
+        return dict(all_media), tweet_objs
+
+    def save_tagging_result(self, tweet_id: str, payload: dict[str, Any]) -> None:
+        with self.transaction():
+            # A description that outlived its tags stays a tagging candidate, so generated
+            # tags join it. Replacing existing tags still replaces their description.
+            saved = self._saved_tag_payload(tweet_id)
+            if saved.get("description") and not saved.get("tags"):
+                payload = {**payload, "description": saved["description"]}
+            self.conn.execute(
+                "INSERT OR REPLACE INTO archive "
+                "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    f"media_tag:{tweet_id}",
+                    "media_tag",
+                    tweet_id,
+                    json.dumps(payload),
+                    "done",
+                    str(time.time()),
+                ),
+            )
+            self.conn.execute(
+                "DELETE FROM archive WHERE row_key = ?", (f"tagging_retry:{tweet_id}",)
+            )

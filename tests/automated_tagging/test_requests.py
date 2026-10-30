@@ -92,6 +92,8 @@ async def test_dry_run_returns_preview_without_persisting_tags(monkeypatch, path
     install_fake_client(monkeypatch, models=models, interactions=FakeInteractions([]))
     allow_free_quota(monkeypatch)
     previews: list[tagging.TaggingPreview] = []
+    # Test mode saves nothing, so another writer holding the archive must not fail it.
+    monkeypatch.setattr(store, "transaction", lambda: pytest.fail("dry run took the write lock"))
 
     tagged = await tagging.tag_media_tweets(
         store,
