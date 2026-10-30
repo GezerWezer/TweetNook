@@ -2,20 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import zipfile
+from collections.abc import Callable
 from io import StringIO
 from pathlib import Path
 
+import httpx
 import pytest
 from rich.console import Console
 
 import tweetnook.importer.archive_enrich as archive_enrich
+from tests.conftest import request_details
 from tweetnook.auth import ResolvedAuthBundle
+from tweetnook.config import AppConfig, SyncConfig, XDGPaths
 from tweetnook.core.exceptions import (
     ConfigError,
 )
 from tweetnook.core.timeline_parsing import TimelineTweet
+from tweetnook.jobs.context import LockedArchiveJob
+from tweetnook.query_ids import QueryIdStore
+from tweetnook.storage import open_archive_store
 
 
 def _wrap_ytd(name: str, payload: object) -> str:
@@ -342,3 +350,99 @@ def _write_archive_zip(archive_dir: Path, destination: Path) -> Path:
             if path.is_file():
                 handle.write(path, path.relative_to(archive_dir).as_posix())
     return destination
+
+
+class DetailEnrichment:
+    """Runs archive detail enrichment through the real locked job and HTTP client.
+
+    TweetDetail requests go through an httpx.MockTransport, so the code under test keeps its
+    own lock, store, client and request path; only the remote answers are scripted.
+    """
+
+    def __init__(self, paths: XDGPaths, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.paths = paths
+        self.requested: list[str] = []
+        self.dirty: list[tuple[int, int]] = []
+        # No retries, so a transport failure is final without fetch_page's real backoff.
+        self.config = AppConfig(sync=SyncConfig(detail_delay=0.0, detail_max_retries=0))
+        QueryIdStore(paths).save({"TweetDetail": "detail-query-id"})
+        mark_dirty = LockedArchiveJob.mark_dirty
+
+        def spy(job: LockedArchiveJob, rows: int = 1, batches: int = 1) -> None:
+            self.dirty.append((rows, batches))
+            mark_dirty(job, rows=rows, batches=batches)
+
+        monkeypatch.setattr(LockedArchiveJob, "mark_dirty", spy)
+
+    def transport(self, respond: Callable[[str, httpx.Request], object]) -> httpx.MockTransport:
+        """Answer each TweetDetail request with respond(tweet_id, request).
+
+        respond returns a JSON payload or an httpx.Response, or raises.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            _operation, variables = request_details(str(request.url))
+            tweet_id = str(variables["focalTweetId"])
+            self.requested.append(tweet_id)
+            answer = respond(tweet_id, request)
+            if isinstance(answer, httpx.Response):
+                return answer
+            return httpx.Response(200, json=answer, request=request)
+
+        return httpx.MockTransport(handler)
+
+    def run(
+        self,
+        respond: Callable[[str, httpx.Request], object],
+        *,
+        limit: int | None = None,
+        signed_in: bool = True,
+        started_at: str | None = None,
+    ) -> archive_enrich.ArchiveEnrichResult:
+        return asyncio.run(
+            archive_enrich._enrich_pending_rows(
+                limit=limit,
+                config=self.config,
+                paths=self.paths,
+                auth_bundle=_auth_bundle() if signed_in else None,
+                transport=self.transport(respond),
+                console=_console(),
+                started_at=started_at,
+            )
+        )
+
+
+@pytest.fixture
+def detail_enrichment(paths: XDGPaths, monkeypatch: pytest.MonkeyPatch) -> DetailEnrichment:
+    return DetailEnrichment(paths, monkeypatch)
+
+
+def seed_tweet_objects(paths: XDGPaths, tweet_ids, **columns: object) -> None:
+    """Save sparse archive posts that are waiting for detail enrichment."""
+    values = {"enrichment_state": "pending", **columns}
+    names = ["row_key", "record_type", "tweet_id", *values]
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    try:
+        store.conn.executemany(
+            f"INSERT INTO archive ({', '.join(names)}) VALUES ({', '.join('?' * len(names))})",
+            [
+                (f"tweet_object:{tweet_id}", "tweet_object", tweet_id, *values.values())
+                for tweet_id in tweet_ids
+            ],
+        )
+        store.conn.commit()
+    finally:
+        store.close()
+
+
+def tweet_object_rows(paths: XDGPaths) -> dict[str, dict[str, object]]:
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        rows = store.conn.execute(
+            "SELECT * FROM archive WHERE record_type = 'tweet_object'"
+        ).fetchall()
+        return {row["tweet_id"]: dict(row) for row in rows}
+    finally:
+        store.close()

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from io import StringIO
 
@@ -12,8 +11,8 @@ from rich.console import Console
 
 import tweetnook.importer.archive_enrich as archive_enrich
 import tweetnook.importer.archive_rows as archive_rows
-from tests.conftest import make_tweet_detail_response, make_tweet_result, request_details
-from tweetnook.auth import ResolvedAuthBundle
+from tests.archive_import.conftest import DetailEnrichment, seed_tweet_objects
+from tests.conftest import make_tweet_detail_response, make_tweet_result
 from tweetnook.client import fxtwitter
 from tweetnook.config import AppConfig, CheckConfig, ScheduleConfig, XDGPaths
 from tweetnook.core.extractor import extract_secondary_objects
@@ -336,81 +335,21 @@ def _run_enrichment(
     *,
     signed_in: bool = True,
 ) -> tuple[archive_enrich.ArchiveEnrichResult, list[str]]:
-    store = open_archive_store(paths, create=True)
-    assert store is not None
-    buffer = archive_rows.PageBuffer()
-    for tweet_id in tweet_ids:
-        store._queue_record(
-            store._tweet_object_record(
-                archive_rows._PlaceholderTweetObject(tweet_id=tweet_id, text="placeholder"),
-                source=ARCHIVE_SOURCE,
-                enrichment_state="pending",
-                cursor=buffer,
-            ),
-            cursor=buffer,
-        )
-    archive_rows.flush_buffer(store, buffer)
-    store.close()
-
-    @asynccontextmanager
-    async def fake_locked_archive_job(*, config=None, paths=None, console=None):
-        job_store = open_archive_store(paths, create=False)
-
-        class _Job:
-            store = job_store
-
-            def mark_dirty(self, rows: int = 1, batches: int = 1) -> None:
-                return None
-
-        try:
-            yield _Job()
-        finally:
-            job_store.close()
-
-    async def fake_resolve_query_ids(*_args, **_kwargs):
-        return {"TweetDetail": "detail-query-id"}
-
-    detail_requests: list[str] = []
-
-    async def fake_fetch_page(*args, **_kwargs):
-        tweet_id = request_details(args[1])[1]["focalTweetId"]
-        detail_requests.append(tweet_id)
-        payload = make_tweet_detail_response([make_tweet_result(tweet_id, "from login")])
-        return httpx.Response(200, json=payload, request=httpx.Request("GET", args[1]))
-
-    class DummyClient:
-        async def aclose(self) -> None:
-            return None
-
+    seed_tweet_objects(paths, tweet_ids, source=ARCHIVE_SOURCE, text="placeholder")
+    enrichment = DetailEnrichment(paths, monkeypatch)
+    # The module builds its FxTwitter client from config alone, so route that one here.
     real_build = fxtwitter.build_fx_client
     monkeypatch.setattr(
         fxtwitter, "build_fx_client", lambda config, **_: real_build(config, transport=transport)
     )
-    monkeypatch.setattr(archive_enrich, "locked_archive_job", fake_locked_archive_job)
-    monkeypatch.setattr(archive_enrich, "resolve_query_ids", fake_resolve_query_ids)
-    monkeypatch.setattr(archive_enrich, "build_async_client", lambda *_a, **_k: DummyClient())
-    monkeypatch.setattr(archive_enrich, "fetch_page", fake_fetch_page)
 
-    result = asyncio.run(
-        archive_enrich._enrich_pending_rows(
-            limit=None,
-            config=AppConfig(),
-            paths=paths,
-            auth_bundle=ResolvedAuthBundle(
-                auth_token="t",
-                ct0="c",
-                user_id="42",
-                auth_token_source="test",
-                ct0_source="test",
-                user_id_source="test",
-            )
-            if signed_in
-            else None,
-            transport=None,
-            console=Console(file=StringIO()),
-        )
+    result = enrichment.run(
+        lambda tweet_id, _request: make_tweet_detail_response(
+            [make_tweet_result(tweet_id, "from login")]
+        ),
+        signed_in=signed_in,
     )
-    return result, detail_requests
+    return result, enrichment.requested
 
 
 def test_enrichment_uses_fxtwitter_first_and_tweetdetail_for_the_rest(
@@ -615,10 +554,6 @@ def test_check_is_off_by_default_and_never_scheduled(tmp_path) -> None:
 
 
 def test_sync_retries_unavailable_tweets_only_while_the_check_cannot() -> None:
-    from io import StringIO
-
-    from rich.console import Console
-
     from tweetnook.jobs.pipeline import PipelineReporter
     from tweetnook.sync.followups import (
         SyncFollowupPlan,
