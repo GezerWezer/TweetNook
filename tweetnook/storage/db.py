@@ -204,3 +204,6 @@ class ConnectionMixin:
             self.conn.execute(
                 "INSERT INTO archive_description_fts(archive_description_fts) VALUES ('optimize')"
             )
+
+    def checkpoint(self) -> None:
+        self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")

@@ -3,29 +3,19 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from tweetnook.enrichment.prune_files import (
+    cleanup_pending_files,
+    pending_file,
+    pending_paths,
+    record_pending_files,
+    referenced_media_files,
+)
 from tweetnook.enrichment.threads import walk_linked_statuses
 from tweetnook.storage import ArchiveStore
-from tweetnook.storage.record_types import RecordType
-
-# Rows owned by a single tweet, keyed by its tweet_id.
-TWEET_RECORD_TYPES = (
-    RecordType.TWEET_OBJECT,
-    RecordType.TWEET_RELATION,
-    RecordType.MEDIA,
-    RecordType.URL_REF,
-    RecordType.ARTICLE,
-    RecordType.MEDIA_TAG,
-    RecordType.TWEET_HIDDEN,
-)
-# Raw captures whose cursor_in is the tweet they fetched.
-TWEET_CAPTURE_OPERATIONS = ("ThreadExpandDetail", "TweetDetail", "TweetDetailResurrection")
-# Tweets carried inside another tweet's payload; sync stores them without fetching
-# their threads, so they stay with the tweet that embeds them.
-EMBEDDED_RELATIONS = ("quote_of", "retweet_of")
 
 ROW_LABELS = {
     "tweet_object": "tweets",
@@ -52,6 +42,7 @@ class PrunePlan:
     thread_fetch_count: int = 0
     media_files: list[Path] = field(default_factory=list)
     media_bytes: int = 0
+    cleanup_pending: bool = False
 
     @property
     def row_total(self) -> int:
@@ -65,6 +56,7 @@ class PruneResult:
     bytes_deleted: int = 0
     database_bytes_before: int = 0
     database_bytes_after: int = 0
+    files_pending: int = 0
 
 
 def _database_bytes(path: Path) -> int:
@@ -73,79 +65,6 @@ def _database_bytes(path: Path) -> int:
         for candidate in (path, path.with_name(path.name + "-wal"))
         if candidate.exists()
     )
-
-
-def _load_prune_rows(store: ArchiveStore, pruned_tweet_ids: Iterable[str]) -> None:
-    """Fill temp tables with the out-of-scope tweet ids and every row to delete."""
-    conn = store.conn
-    conn.execute("CREATE TEMP TABLE IF NOT EXISTS prune_ids (tweet_id TEXT PRIMARY KEY)")
-    conn.execute(
-        "CREATE TEMP TABLE IF NOT EXISTS prune_rows "
-        "(rid INTEGER PRIMARY KEY, record_type TEXT, tweet_id TEXT, operation TEXT)"
-    )
-    conn.execute("DELETE FROM temp.prune_ids")
-    conn.execute("DELETE FROM temp.prune_rows")
-    conn.executemany(
-        "INSERT OR IGNORE INTO temp.prune_ids VALUES (?)",
-        ((tweet_id,) for tweet_id in pruned_tweet_ids),
-    )
-    record_types = ", ".join(f"'{name}'" for name in TWEET_RECORD_TYPES)
-    conn.execute(
-        f"""
-        INSERT OR IGNORE INTO temp.prune_rows
-        SELECT owned.rowid, owned.record_type, owned.tweet_id, NULL
-        FROM temp.prune_ids AS pruned
-        JOIN archive AS owned INDEXED BY idx_archive_tweet_id ON owned.tweet_id = pruned.tweet_id
-        WHERE owned.record_type IN ({record_types})
-        """
-    )
-    operations = ", ".join(f"'{name}'" for name in TWEET_CAPTURE_OPERATIONS)
-    conn.execute(
-        f"""
-        INSERT OR IGNORE INTO temp.prune_rows
-        SELECT capture.rowid, '{RecordType.RAW_CAPTURE}', capture.cursor_in, capture.operation
-        FROM temp.prune_ids AS pruned
-        JOIN archive AS capture INDEXED BY idx_archive_capture_target
-          ON capture.record_type = '{RecordType.RAW_CAPTURE}'
-            AND capture.cursor_in = pruned.tweet_id
-        WHERE capture.operation IN ({operations})
-        """
-    )
-    # Unfurled links are shared by url_hash; drop only those no surviving ref uses.
-    conn.execute(
-        f"""
-        INSERT OR IGNORE INTO temp.prune_rows
-        SELECT url.rowid, '{RecordType.URL}', NULL, NULL
-        FROM archive AS url
-        WHERE url.row_key IN (
-            SELECT 'url:' || ref.url_hash
-            FROM temp.prune_rows AS doomed
-            JOIN archive AS ref ON ref.rowid = doomed.rid
-            WHERE doomed.record_type = '{RecordType.URL_REF}' AND ref.url_hash IS NOT NULL
-            EXCEPT
-            SELECT 'url:' || url_hash
-            FROM archive
-            WHERE record_type = '{RecordType.URL_REF}' AND url_hash IS NOT NULL
-              AND rowid NOT IN (SELECT rid FROM temp.prune_rows)
-        )
-        AND url.record_type = '{RecordType.URL}'
-        """
-    )
-
-
-def _media_paths(store: ArchiveStore, *, pruned: bool) -> set[str]:
-    membership = "IN" if pruned else "NOT IN"
-    rows = store.conn.execute(
-        f"""
-        SELECT local_path, thumbnail_local_path FROM archive
-        WHERE record_type = '{RecordType.MEDIA}'
-          AND rowid {membership} (
-            SELECT rid FROM temp.prune_rows WHERE record_type = '{RecordType.MEDIA}'
-          )
-          AND (local_path IS NOT NULL OR thumbnail_local_path IS NOT NULL)
-        """
-    )
-    return {value for row in rows for value in row if value}
 
 
 def plan_prune(
@@ -176,17 +95,7 @@ def plan_prune(
     )
 
     log("loading archived tweet conversations...")
-    conversation_of: dict[str, str] = {}
-    object_ids: set[str] = set()
-    for tweet_id, record_type, conversation_id in store.conn.execute(
-        "SELECT tweet_id, record_type, conversation_id FROM archive "
-        f"WHERE record_type IN ('{RecordType.TWEET}', '{RecordType.TWEET_OBJECT}') "
-        "AND tweet_id IS NOT NULL AND tweet_id != ''"
-    ):
-        if record_type == RecordType.TWEET_OBJECT:
-            object_ids.add(tweet_id)
-        if conversation_id:
-            conversation_of[tweet_id] = conversation_id
+    object_ids, conversation_of, embedded, capture_targets = store.prune_graph()
 
     kept_conversations = {conversation_of.get(tweet_id, tweet_id) for tweet_id in walk.depths}
     kept = set(walk.depths)
@@ -197,15 +106,6 @@ def plan_prune(
     )
 
     log("keeping tweets quoted or retweeted by kept tweets...")
-    relation_types = ", ".join(f"'{name}'" for name in EMBEDDED_RELATIONS)
-    embedded: dict[str, list[str]] = {}
-    for source_id, target_id in store.conn.execute(
-        "SELECT tweet_id, target_tweet_id FROM archive "
-        f"WHERE record_type = '{RecordType.TWEET_RELATION}' AND relation_type IN "
-        f"({relation_types}) "
-        "AND target_tweet_id IS NOT NULL AND target_tweet_id != ''"
-    ):
-        embedded.setdefault(source_id, []).append(target_id)
     frontier = list(kept)
     while frontier:
         reached = []
@@ -216,35 +116,23 @@ def plan_prune(
                     reached.append(target_id)
         frontier = reached
 
-    capture_targets = {
-        str(row[0])
-        for row in store.conn.execute(
-            "SELECT DISTINCT cursor_in FROM archive INDEXED BY idx_archive_capture_target "
-            f"WHERE record_type = '{RecordType.RAW_CAPTURE}' AND operation = 'ThreadExpandDetail' "
-            "AND cursor_in IS NOT NULL AND cursor_in != ''"
-        )
-    }
     plan.pruned_tweet_ids = (object_ids | capture_targets) - kept
     plan.kept_tweet_count = len(object_ids & kept)
     plan.kept_conversation_count = len(kept_conversations)
 
     log(f"collecting rows owned by {len(plan.pruned_tweet_ids)} out-of-scope tweets...")
-    _load_prune_rows(store, plan.pruned_tweet_ids)
-    plan.row_counts.update(
-        dict(
-            store.conn.execute(
-                "SELECT record_type, COUNT(*) FROM temp.prune_rows GROUP BY record_type"
-            ).fetchall()
-        )
-    )
-    plan.thread_fetch_count = store.conn.execute(
-        "SELECT COUNT(DISTINCT tweet_id) FROM temp.prune_rows "
-        f"WHERE record_type = '{RecordType.RAW_CAPTURE}' AND operation = 'ThreadExpandDetail'"
-    ).fetchone()[0]
+    selection = store.prune_plan(plan.pruned_tweet_ids)
+    plan.row_counts.update(selection.row_counts)
+    plan.thread_fetch_count = selection.thread_fetch_count
 
     media_root = (data_dir / "media").resolve()
-    for relative in sorted(_media_paths(store, pruned=True) - _media_paths(store, pruned=False)):
-        path = (data_dir / relative).resolve()
+    pending = pending_paths(data_dir, store.db_path)
+    plan.cleanup_pending = pending_file(store.db_path).exists()
+    candidates = {(data_dir / relative).resolve() for relative in selection.media_paths}
+    if pending:
+        # Cleanup skips files that gained a reference, so the plan must not count them.
+        candidates.update(set(pending.values()) - referenced_media_files(store, data_dir))
+    for path in sorted(candidates):
         if not path.is_relative_to(media_root) or not path.is_file():
             continue
         plan.media_files.append(path)
@@ -263,41 +151,20 @@ def apply_prune(
     """Delete the planned rows and media files, then reclaim database space."""
     log = log or (lambda _message: None)
     result = PruneResult(database_bytes_before=_database_bytes(database_path))
+    record_pending_files(data_dir, database_path, plan.media_files)
     log(f"deleting {plan.row_total} rows...")
-    with store.conn:
-        _load_prune_rows(store, plan.pruned_tweet_ids)
-        cursor = store.conn.execute(
-            "DELETE FROM archive WHERE rowid IN (SELECT rid FROM temp.prune_rows)"
-        )
-        result.rows_deleted = cursor.rowcount
-        store.conn.execute("DELETE FROM temp.prune_rows")
-        store.conn.execute("DELETE FROM temp.prune_ids")
+    result.rows_deleted = store.apply_prune(plan.pruned_tweet_ids)
 
     log(f"deleting {len(plan.media_files)} media files...")
-    media_root = (data_dir / "media").resolve()
-    parents: set[Path] = set()
-    for path in plan.media_files:
-        try:
-            size = path.stat().st_size
-            path.unlink()
-        except FileNotFoundError:
-            continue
-        result.files_deleted += 1
-        result.bytes_deleted += size
-        parents.add(path.parent)
-    for parent in sorted(parents, key=lambda value: len(value.parts), reverse=True):
-        while parent != media_root and parent.is_relative_to(media_root):
-            try:
-                parent.rmdir()
-            except OSError:
-                break
-            parent = parent.parent
+    result.files_deleted, result.bytes_deleted, result.files_pending = cleanup_pending_files(
+        store, data_dir, database_path, log
+    )
 
     log("reclaiming database space (VACUUM)...")
     store.optimize()
     # VACUUM in WAL mode rewrites the database into the WAL; fold it back so the
     # reported size is what is left on disk.
-    store.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    store.checkpoint()
     result.database_bytes_after = _database_bytes(database_path)
     return result
 
@@ -328,6 +195,8 @@ def describe_prune_plan(plan: PrunePlan) -> list[str]:
         f"  {plan.saved_count:,} saved tweets · {plan.kept_conversation_count:,} conversations "
         f"in scope · {plan.kept_tweet_count:,} archived tweets kept",
     ]
+    if plan.cleanup_pending:
+        lines.append("Pending media cleanup will be rechecked against surviving references.")
     if not plan.row_total and not plan.media_files:
         lines.append("Nothing is out of scope.")
         return lines
@@ -348,9 +217,14 @@ def describe_prune_plan(plan: PrunePlan) -> list[str]:
 
 
 def describe_prune_result(result: PruneResult) -> list[str]:
-    return [
+    lines = [
         f"Deleted {result.rows_deleted:,} rows and {result.files_deleted:,} media files "
         f"({_format_bytes(result.bytes_deleted)}).",
         f"Database: {_format_bytes(result.database_bytes_before)} → "
         f"{_format_bytes(result.database_bytes_after)}.",
     ]
+    if result.files_pending:
+        lines.append(
+            f"{result.files_pending:,} media files remain; run prune --apply to retry cleanup."
+        )
+    return lines

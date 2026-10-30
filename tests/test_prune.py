@@ -232,3 +232,204 @@ def test_prune_cli_is_a_dry_run_until_apply(paths, monkeypatch) -> None:
     # The reply hop keeps 700's thread and its media.
     assert files["700"].exists()
     assert _plan(paths, reply_linked_depth=1).row_total == 0
+
+
+def test_prune_preview_leaves_no_transaction_on_writer_or_private_reader(paths):
+    _seed(paths)
+    writer = open_archive_store(paths, create=False)
+    reader = writer.open_reader()
+    try:
+        for store in (writer, reader):
+            plan_prune(store, paths.data_dir, max_linked_depth=50, reply_linked_depth=0)
+            assert not store.conn.in_transaction
+            assert not store.conn.execute(
+                "SELECT 1 FROM sqlite_temp_master WHERE name IN ('prune_rows', 'prune_ids')"
+            ).fetchall()
+        writer.update_media_tags("100", ["Still writable"])
+    finally:
+        reader.close()
+        writer.close()
+
+
+def test_prune_removes_focal_fx_captures_so_rehydrate_cannot_restore_them(paths):
+    from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
+
+    _seed(paths)
+    store = open_archive_store(paths, create=False)
+    try:
+        for tweet_id in ("100", "990"):
+            status = {
+                "id": tweet_id,
+                "type": "status",
+                "text": "Fx saved content",
+                "author": {"id": "author", "screen_name": "synthetic"},
+            }
+            store.persist_fx_status(
+                tweet=fx_timeline_tweet(fx_status_to_graphql(status)),
+                payload={"code": 200, "status": status},
+            )
+        plan = plan_prune(store, paths.data_dir, max_linked_depth=50, reply_linked_depth=0)
+        assert "990" in plan.pruned_tweet_ids
+        apply_prune(store, plan, paths.data_dir, paths.database_path)
+        assert store.list_target_captures("990", ("FxTwitterStatus",)) == []
+        assert len(store.list_target_captures("100", ("FxTwitterStatus",))) == 1
+        store.rehydrate_from_raw_json()
+        assert "990" not in store.get_tweet_object_rows(["990"])
+        assert (
+            plan_prune(store, paths.data_dir, max_linked_depth=50, reply_linked_depth=0).row_total
+            == 0
+        )
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("rescued", [False, True])
+def test_failed_file_cleanup_survives_reopen_and_rechecks_references(paths, monkeypatch, rescued):
+    from tweetnook.enrichment.prune_files import pending_file
+
+    files = _seed(paths)
+    store = open_archive_store(paths, create=False)
+    failed = paths.data_dir / "media/701/second.jpg"
+    failed.parent.mkdir(parents=True)
+    failed.write_bytes(b"second image")
+    store.merge_rows(
+        [
+            dict(
+                row_key="media:701:second",
+                record_type="media",
+                tweet_id="701",
+                local_path="media/701/second.jpg",
+            )
+        ]
+    )
+    original_unlink = Path.unlink
+
+    def unlink(path, *args, **kwargs):
+        if path == failed:
+            raise PermissionError("synthetic cleanup failure")
+        return original_unlink(path, *args, **kwargs)
+
+    try:
+        plan = plan_prune(store, paths.data_dir, max_linked_depth=50, reply_linked_depth=0)
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, "unlink", unlink)
+            result = apply_prune(store, plan, paths.data_dir, paths.database_path)
+        assert result.rows_deleted == plan.row_total
+        assert (result.files_deleted, result.files_pending) == (1, 1)
+        assert not files["700"].exists() and failed.exists()
+        assert pending_file(paths.database_path).is_file()
+    finally:
+        store.close()
+
+    store = open_archive_store(paths, create=False)
+    try:
+        if rescued:
+            store.merge_rows(
+                [
+                    dict(
+                        row_key="media:100:rescued",
+                        record_type="media",
+                        tweet_id="100",
+                        local_path="media/701/second.jpg",
+                    )
+                ]
+            )
+        retry = plan_prune(store, paths.data_dir, max_linked_depth=50, reply_linked_depth=0)
+        assert retry.row_total == 0
+        assert retry.cleanup_pending
+        result = apply_prune(store, retry, paths.data_dir, paths.database_path)
+        assert result.files_pending == 0
+        assert result.files_deleted == (0 if rescued else 1)
+        assert failed.exists() is rescued
+        assert files["200"].exists()
+        assert not pending_file(paths.database_path).exists()
+    finally:
+        store.close()
+
+
+def test_prune_cannot_delete_rows_when_cleanup_intent_cannot_be_published(paths, monkeypatch):
+    from tweetnook.enrichment import prune_files
+
+    files = _seed(paths)
+    store = open_archive_store(paths, create=False)
+    try:
+        plan = plan_prune(store, paths.data_dir, max_linked_depth=50, reply_linked_depth=0)
+
+        def fail(*args, **kwargs):
+            raise OSError("intent publication failed")
+
+        monkeypatch.setattr(prune_files, "atomic_write_json", fail)
+        with pytest.raises(OSError, match="intent publication failed"):
+            apply_prune(store, plan, paths.data_dir, paths.database_path)
+        assert "700" in store.get_tweet_object_rows(["700"])
+        assert files["700"].exists()
+    finally:
+        store.close()
+
+
+def test_prune_cleanup_rejects_paths_outside_media_and_below_symlinks(tmp_path):
+    import json
+
+    from tweetnook.enrichment.prune_files import cleanup_pending_files, pending_file
+
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    outside = tmp_path / "outside.jpg"
+    outside.write_bytes(b"keep")
+    media = tmp_path / "media"
+    media.mkdir()
+    (media / "link").symlink_to(tmp_path, target_is_directory=True)
+    pending_file(store.db_path).write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "paths": ["media/../outside.jpg", str(outside), "media/link/outside.jpg"],
+            }
+        )
+    )
+    try:
+        assert cleanup_pending_files(store, tmp_path, store.db_path, lambda _: None) == (0, 0, 0)
+        assert outside.read_bytes() == b"keep"
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("content", ["{broken", "[]", '{"version": 1, "paths": [1]}'])
+@pytest.mark.parametrize("args", [["prune"], ["prune", "--apply"]])
+def test_prune_cli_names_an_invalid_cleanup_file(paths, monkeypatch, content, args) -> None:
+    from tweetnook.enrichment.prune_files import pending_file
+
+    _seed(paths)
+    intent = pending_file(paths.database_path)
+    intent.write_text(content)
+    buffer = StringIO()
+    patch_cli(
+        monkeypatch,
+        "configure_logging",
+        lambda: Console(file=buffer, force_terminal=False, color_system=None, width=400),
+    )
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "with_archive_write_lock", lambda _paths, fn: fn())
+
+    result = runner.invoke(cli.app, args)
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert str(intent) in buffer.getvalue()
+    assert intent.read_text() == content
+
+
+def test_prune_plan_does_not_count_pending_files_with_saved_references(paths) -> None:
+    from tweetnook.enrichment.prune_files import pending_file, record_pending_files
+
+    files = _seed(paths)
+    kept = files["700"]
+    orphan = paths.data_dir / "media" / "orphan.jpg"
+    orphan.write_bytes(b"gone")
+    record_pending_files(paths.data_dir, paths.database_path, [kept, orphan])
+    assert pending_file(paths.database_path).exists()
+
+    plan = _plan(paths, reply_linked_depth=1)
+
+    assert plan.cleanup_pending
+    assert orphan in plan.media_files
+    assert kept.resolve() not in plan.media_files

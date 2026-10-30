@@ -18,6 +18,7 @@ from .details import DetailsMixin
 from .enrichment import EnrichmentMixin
 from .imports import ImportsMixin
 from .objects import ObjectsMixin
+from .prune import PruneMixin
 from .reads import ReadsMixin
 from .records import RecordsMixin
 from .relations import RelationsMixin
@@ -52,6 +53,7 @@ class ArchiveStore(
     AuthorsMixin,
     RelationsMixin,
     TagsMixin,
+    PruneMixin,
     ConnectionMixin,
 ):
     TABLE_NAME = "archive"

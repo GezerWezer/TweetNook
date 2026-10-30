@@ -119,7 +119,7 @@ def prune_archive(
             )
             for line in describe_prune_plan(plan):
                 console.print(line, highlight=False)
-            if not plan.row_total and not plan.media_files:
+            if not plan.row_total and not plan.media_files and not plan.cleanup_pending:
                 return
             if not apply:
                 console.print(
@@ -130,6 +130,8 @@ def prune_archive(
             result = apply_prune(store, plan, paths.data_dir, paths.database_path, log=log)
             for line in describe_prune_result(result):
                 console.print(line, highlight=False)
+            if result.files_pending:
+                raise typer.Exit(1)
         finally:
             store.close()
 
@@ -138,6 +140,9 @@ def prune_archive(
             with_archive_write_lock(paths, run)
         else:
             run()
+    except ConfigError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
     except ProcessLockError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(2) from exc

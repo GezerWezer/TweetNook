@@ -24,6 +24,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | `authors.py` | Avatar URLs, handle resolution, profile snapshots and handle search. |
 | `reads.py` | Feed pagination, like order, ID fetches and export hydration. |
 | `stats.py` | Counts and the archive statistics summary. |
+| `prune.py` | Context graph projections, scoped row and media inventories, prune deletion. |
 | `imports.py` | Official-archive import cleanup and rehydration from raw captures. |
 | `search.py` | Full-text and structured search. |
 | `search_query.py` | Search query parsing, filter predicates, sorts and cursors, shared by CLI search and web feeds. |
@@ -74,7 +75,7 @@ Raw captures remain evidence of the source response. Normalized tweet text, auth
 
 Removing labels preserves an existing description, including removal of the final label. Passing an empty description explicitly clears it; `delete_media_tag` deletes both tags and description.
 
-Tagging uses storage-owned quote/type classification and `tagging_context(ids)` for bounded media and text inputs. `save_tagging_result` and `mark_tagging_failed` own tag-row and retry-metadata writes; the feature validates provider output and retains its batch transaction.
+Tagging uses storage-owned quote/type classification and `tagging_context(ids)` for bounded media and text inputs. `save_tagging_result` and `mark_tagging_failed` own tag-row and retry-metadata writes; the feature validates provider output and retains its batch transaction. A failed attempt never replaces saved tags or a description, and generated tags join a description that outlived its tags instead of replacing it.
 
 ## Availability and history
 
@@ -92,7 +93,7 @@ Like order derives from immutable live/archive observations rather than invented
 
 `db check` uses SQLite's quick check; `db check --full` uses its integrity check. `optimize` handles SQLite space/query/index maintenance. Jobs do not perform automatic mid-run or interrupt compaction. Explicit optimization and close-time planner maintenance are separate from job progress.
 
-Prune computes a reachable context graph from saved memberships and current depth settings. It can remove manually expanded context outside that graph. Planning is read-only by default; applying takes the write lock, removes scoped rows/files, and vacuums. Test the graph and file boundaries before changing it.
+Prune computes a reachable context graph from saved memberships and current depth settings. It can remove manually expanded context outside that graph. Planning owns a bounded read transaction and drops its TEMP inventory before returning; applying takes the write lock, removes scoped rows/files, and vacuums. Focal-owned authenticated and FxTwitter captures are deleted with pruned context, so local rehydration cannot replay those captures. Kept captures remain source evidence. Before deleting rows, apply atomically publishes root-contained file cleanup intent in `prune-pending.json` beside the database. Failed unlinks remain in that file and are retried by `prune --apply`, including when no rows remain to prune. Each retry protects surviving media references; paths outside media or below symlinks are ignored. Partial cleanup reports committed rows and pending files and exits unsuccessfully. An invalid `prune-pending.json` stops prune, including its dry run, with an error naming the file, because silently dropping it would forget the files it lists. Test the graph and file boundaries before changing it.
 
 Stop writers before copying a whole installation. A live database copy needs SQLite's backup protocol or the relevant WAL state; copying only the main file during writes is not a reliable backup. Keep data, media, configuration and session material private.
 

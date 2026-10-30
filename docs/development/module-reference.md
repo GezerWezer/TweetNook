@@ -53,7 +53,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `enrichment/threads.py`, `enrichment/media.py`, `enrichment/unfurl.py` | Conversation expansion, file downloads and link previews. |
 | `enrichment/articles.py` | Article body refresh. |
 | `enrichment/resurrection.py`, `enrichment/check.py` | Authenticated retry policy and public availability checks. |
-| `enrichment/prune.py` | Reachability planning and scoped context/file cleanup. |
+| `enrichment/prune.py`, `enrichment/prune_files.py` | Reachability policy and recoverable context/media cleanup; storage owns the row inventory and deletion. |
 | `export/` | JSON output and export file names. |
 | `stats/` | Ordered data sections shared by CLI and web consumers; each surface owns its presentation. |
 | `tagging/tagger.py`, `tagging/prompts.py` | Gemini request planning, evidence, validation and generated tags. |
