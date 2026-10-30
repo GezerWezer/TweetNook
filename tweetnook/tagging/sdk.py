@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
@@ -116,6 +118,56 @@ def list_models(
     client: Any | None = None,
 ) -> list[GeminiModel]:
     genai, _types, _image = load_gemini()
-    active_client = client or genai.Client(api_key=api_key)
-    models = [parsed for item in active_client.models.list() if (parsed := model_from_api(item))]
-    return sorted(models, key=lambda item: item.name.casefold())
+    active_client = client if client is not None else genai.Client(api_key=api_key)
+    try:
+        models = [
+            parsed for item in active_client.models.list() if (parsed := model_from_api(item))
+        ]
+        return sorted(models, key=lambda item: item.name.casefold())
+    finally:
+        if client is None:
+            close_client(active_client)
+
+
+def close_client(client: Any) -> None:
+    """Close an owned SDK client without hiding the run's initiating failure."""
+    with suppress(Exception):
+        client.close()
+
+
+async def upload_owned_file(client: Any, filename: str, owned: list[Any]) -> Any:
+    """Join an upload before cleanup so cancellation cannot orphan its late result."""
+    task = asyncio.create_task(asyncio.to_thread(client.files.upload, file=filename))
+    try:
+        remote = await asyncio.shield(task)
+    except asyncio.CancelledError:
+        # The thread cannot be cancelled. Retain its result before the run deletes uploads.
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                break
+        if not task.cancelled() and task.exception() is None:
+            owned.append(task.result())
+        raise
+    owned.append(remote)
+    return remote
+
+
+async def close_tagging_resources(client: Any, images: list[Any], uploads: list[Any]) -> None:
+    """Finish cleanup in acquisition order before releasing the owning SDK client."""
+    try:
+        for image in images:
+            with suppress(Exception):
+                image.close()
+        for remote in uploads:
+            with suppress(Exception):
+                await asyncio.to_thread(client.files.delete, name=remote.name)
+    finally:
+        try:
+            with suppress(Exception):
+                await client.aio.aclose()
+        finally:
+            close_client(client)

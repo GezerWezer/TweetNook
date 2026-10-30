@@ -252,11 +252,16 @@ class FakeFiles:
 
 
 def install_fake_client(monkeypatch, *, models: FakeModels, interactions: FakeInteractions):
+    async def close_async():
+        client.async_closed = True
+
     files = FakeFiles()
     client = SimpleNamespace(
         models=models,
         interactions=interactions,
-        aio=SimpleNamespace(interactions=interactions),
+        aio=SimpleNamespace(interactions=interactions, aclose=close_async),
+        async_closed=False,
+        close=lambda: None,
         files=files,
     )
     monkeypatch.setattr(tagging, "types", FakeTypes)

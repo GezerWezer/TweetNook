@@ -6,6 +6,7 @@ import json
 import os
 import random
 import time
+from contextlib import suppress
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from io import StringIO
@@ -307,39 +308,49 @@ class PipelineReporter:
         return str(self._run_writer.run_id) if self._run_writer is not None else None
 
     def __enter__(self) -> PipelineReporter:
-        self._started_at = time.monotonic()
-        self._started_at_unix = time.time()
+        # Outside the cleanup below: the status file belongs to whoever holds this lock, so a
+        # reporter that lost it must not publish its failure over the running command's state.
         if self.state_path is not None:
             from tweetnook.core.locking import ProcessLock
 
-            self._command_lock = ProcessLock(
+            command_lock = ProcessLock(
                 self.state_path.with_name("command.lock"),
                 conflict_message=(
                     "Another tweetnook command is already running. Wait for it to finish "
                     "before starting sync, import, or enrichment work."
                 ),
             )
-            self._command_lock.acquire()
-            try:
-                from tweetnook.jobs.activity_history import ActivityRunWriter
+            command_lock.acquire()
+            self._command_lock = command_lock
+        try:
+            self._started_at = time.monotonic()
+            self._started_at_unix = time.time()
+            if self.state_path is not None:
+                try:
+                    from tweetnook.jobs.activity_history import ActivityRunWriter
 
-                self._run_writer = ActivityRunWriter(self.state_path, self.title)
-                self._run_writer.start(pid=os.getpid(), started_at=self._started_at_unix)
-            except (OSError, ValueError):
-                self._run_writer = None
-        self._token = _CURRENT_PIPELINE.set(self)
-        if self.interactive:
-            self._record_history("command", "start")
-            self._live = Live(
-                self,
-                console=self.console,
-                refresh_per_second=20,
-                transient=False,
-            )
-            self._live.start(refresh=True)
-        else:
-            self._log("command", "start")
-        return self
+                    self._run_writer = ActivityRunWriter(self.state_path, self.title)
+                    self._run_writer.start(pid=os.getpid(), started_at=self._started_at_unix)
+                except (OSError, ValueError):
+                    self._run_writer = None
+            self._token = _CURRENT_PIPELINE.set(self)
+            if self.interactive:
+                self._record_history("command", "start")
+                self._live = Live(
+                    self,
+                    console=self.console,
+                    refresh_per_second=20,
+                    transient=False,
+                )
+                self._live.start(refresh=True)
+            else:
+                self._log("command", "start")
+            return self
+        except BaseException as error:
+            # Python does not call __exit__ when __enter__ fails.
+            with suppress(Exception):
+                self.__exit__(type(error), error, error.__traceback__)
+            raise
 
     def __exit__(self, exc_type, exc, _traceback) -> None:
         try:
@@ -365,16 +376,16 @@ class PipelineReporter:
                 self.finish(success=True)
         finally:
             if self._live is not None:
-                try:
+                with suppress(Exception):
                     self._live.stop()
-                except OSError:
-                    pass
                 self._live = None
             if self._token is not None:
-                _CURRENT_PIPELINE.reset(self._token)
+                with suppress(Exception):
+                    _CURRENT_PIPELINE.reset(self._token)
                 self._token = None
             if self._command_lock is not None:
-                self._command_lock.release()
+                with suppress(Exception):
+                    self._command_lock.release()
                 self._command_lock = None
 
     @property

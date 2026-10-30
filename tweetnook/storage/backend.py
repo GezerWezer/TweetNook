@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import quote
@@ -83,23 +84,24 @@ class ArchiveStore(
             # with serialized SQLite (python/cpython#118172). Keep the database page
             # cache, but prepare independent statements for concurrent cursors.
             self.conn = sqlite3.connect(db_file, check_same_thread=False, cached_statements=0)
-        self.conn.row_factory = sqlite3.Row
-        if not read_only:
-            self.conn.execute("PRAGMA journal_mode=WAL")
-            self.conn.execute("PRAGMA recursive_triggers=ON")
+        try:
+            self.conn.row_factory = sqlite3.Row
+            if not read_only:
+                self.conn.execute("PRAGMA journal_mode=WAL")
+                self.conn.execute("PRAGMA recursive_triggers=ON")
 
-        database_config = config.database if config is not None else DatabaseConfig()
-        self.conn.execute(
-            f"PRAGMA cache_size = -{database_config.cache_size_kb}"
-        )  # Negative for kibibytes
-        self.conn.execute(f"PRAGMA mmap_size = {database_config.mmap_size_bytes}")
+            database_config = config.database if config is not None else DatabaseConfig()
+            self.conn.execute(
+                f"PRAGMA cache_size = -{database_config.cache_size_kb}"
+            )  # Negative for kibibytes
+            self.conn.execute(f"PRAGMA mmap_size = {database_config.mmap_size_bytes}")
 
-        if not read_only and (create or db_path.exists()):
-            try:
+            if not read_only and (create or db_path.exists()):
                 self._migrate_schema()
-            except BaseException:
+        except BaseException:
+            with suppress(Exception):
                 self.conn.close()
-                raise
+            raise
 
     # --- availability checks and community-note history ------------------
 

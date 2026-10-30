@@ -159,6 +159,7 @@ async def iter_fx_statuses(
     finally:
         for task in tasks:
             task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def fetch_fx_statuses(

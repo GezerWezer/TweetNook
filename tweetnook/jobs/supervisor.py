@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from typing import Any
 
 from tweetnook.config import AppConfig, XDGPaths
@@ -68,6 +69,7 @@ class JobSupervisor:
         self._stopping = False
         self._console_handle: Any | None = None
         self._monitor_thread: threading.Thread | None = None
+        self._monitors: set[threading.Thread] = set()
         self._shutdown = False
         self._queue: list[dict[str, Any]] = []
         self._retry_timer: threading.Timer | None = None
@@ -119,19 +121,22 @@ class JobSupervisor:
                 raise JobConflictError("Another Web or scheduled command is already running.")
             run_id = run_id or new_run_id()
             command = [sys.executable, "-m", "tweetnook", *cli_args]
-            run_dir = reserve_run(
-                self.paths.data_dir,
-                run_id=run_id,
-                title=title,
-                command=command,
-                origin=origin,
-            )
-            console_handle = (run_dir / "console.log").open("ab")
-            env = os.environ.copy()
-            env[ACTIVITY_RUN_ID_ENV] = run_id
-            env[ACTIVITY_ORIGIN_ENV] = origin
-            env["PYTHONUNBUFFERED"] = "1"
+            console_handle = None
+            process = None
+            monitor = None
             try:
+                run_dir = reserve_run(
+                    self.paths.data_dir,
+                    run_id=run_id,
+                    title=title,
+                    command=command,
+                    origin=origin,
+                )
+                console_handle = (run_dir / "console.log").open("ab")
+                env = os.environ.copy()
+                env[ACTIVITY_RUN_ID_ENV] = run_id
+                env[ACTIVITY_ORIGIN_ENV] = origin
+                env["PYTHONUNBUFFERED"] = "1"
                 process = subprocess.Popen(
                     command,
                     stdin=subprocess.DEVNULL,
@@ -140,38 +145,66 @@ class JobSupervisor:
                     env=env,
                     start_new_session=True,
                 )
-            except OSError:
-                console_handle.close()
-                mark_run_process_result(self.paths.data_dir, run_id, exit_code=127)
-                raise
-            self._process = process
-            self._run_id = run_id
-            self._kind = kind
-            self._title = title
-            self._origin = origin
-            self._stopping = False
-            self._console_handle = console_handle
-            try:
-                update_run_metadata(
-                    self.paths.data_dir,
-                    run_id,
-                    status="starting",
-                    pid=process.pid,
-                    process_group=process.pid,
+                self._process = process
+                self._run_id = run_id
+                self._kind = kind
+                self._title = title
+                self._origin = origin
+                self._stopping = False
+                self._console_handle = console_handle
+                try:
+                    update_run_metadata(
+                        self.paths.data_dir,
+                        run_id,
+                        status="starting",
+                        pid=process.pid,
+                        process_group=process.pid,
+                    )
+                except OSError:
+                    # Once launched, a worker must always have its monitor installed.
+                    logging.getLogger(__name__).exception("Could not save worker PID")
+                monitor = threading.Thread(
+                    target=self._monitor_owned,
+                    args=(process, run_id),
+                    daemon=True,
+                    name=f"tweetnook-job-{kind}",
                 )
-            except OSError:
-                # Once launched, a worker must always have its monitor installed.
-                logging.getLogger(__name__).exception("Could not save worker PID")
-            self._monitor_thread = threading.Thread(
-                target=self._monitor,
-                args=(process, run_id),
-                daemon=True,
-                name=f"tweetnook-job-{kind}",
-            )
-            self._monitor_thread.start()
-            if self.on_start is not None:
+                self._monitor_thread = monitor
+                self._monitors.add(monitor)
+                monitor.start()
+            except BaseException:
+                if monitor is not None:
+                    self._monitors.discard(monitor)
+                if process is not None:
+                    with suppress(Exception):
+                        terminate_owned_process(process)
+                if console_handle is not None:
+                    with suppress(Exception):
+                        console_handle.close()
+                with suppress(Exception):
+                    mark_run_process_result(self.paths.data_dir, run_id, exit_code=127)
+                self._process = None
+                self._run_id = None
+                self._kind = None
+                self._title = None
+                self._origin = None
+                self._console_handle = None
+                self._monitor_thread = None
+                raise
+            result = {"started": True, "kind": kind, "run_id": run_id, "pid": process.pid}
+        if self.on_start is not None:
+            try:
                 self.on_start(run_id, process.pid)
-            return {"started": True, "kind": kind, "run_id": run_id, "pid": process.pid}
+            except Exception:
+                logging.getLogger(__name__).exception("Worker start notification failed")
+        return result
+
+    def _monitor_owned(self, process: subprocess.Popen[bytes], run_id: str) -> None:
+        try:
+            self._monitor(process, run_id)
+        finally:
+            with self._lock:
+                self._monitors.discard(threading.current_thread())
 
     @property
     def queue(self) -> list[dict[str, Any]]:
@@ -285,7 +318,6 @@ class JobSupervisor:
                 self._retry_timer.cancel()
                 self._retry_timer = None
             process = self._process
-            monitor = self._monitor_thread
             if process is not None and process.poll() is None:
                 self._stopping = True
         if process is not None:
@@ -307,8 +339,12 @@ class JobSupervisor:
                     continue
         # The monitor closes logs, records stopped status and delivers the callback.
         # Never hold the supervisor lock while joining it.
-        if monitor is not None and monitor is not threading.current_thread():
-            monitor.join(timeout=WORKER_KILL_TIMEOUT)
+        deadline = time.monotonic() + WORKER_KILL_TIMEOUT
+        with self._lock:
+            monitors = tuple(self._monitors)
+        for monitor in monitors:
+            if monitor is not threading.current_thread():
+                monitor.join(timeout=max(0.0, deadline - time.monotonic()))
 
     def _monitor(self, process: subprocess.Popen[bytes], run_id: str) -> None:
         exit_code = process.wait()
@@ -367,3 +403,18 @@ class JobSupervisor:
                     self.on_complete(run_id, exit_code)
             finally:
                 self._start_next()
+
+
+def terminate_owned_process(process: subprocess.Popen[bytes]) -> None:
+    for sig, timeout in (
+        (signal.SIGTERM, WORKER_TERMINATE_TIMEOUT),
+        (signal.SIGKILL, WORKER_KILL_TIMEOUT),
+    ):
+        if process.poll() is None:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, sig)
+        try:
+            process.wait(timeout=timeout)
+            return
+        except subprocess.TimeoutExpired:
+            continue
