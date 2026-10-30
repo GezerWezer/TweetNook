@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import sqlite3
+from contextlib import nullcontext
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
+from tweetnook.storage import ArchiveStore
 from tweetnook.web.routes import storage_stats
 
 
@@ -23,31 +23,10 @@ def test_format_bytes(size: float, formatted: str) -> None:
     assert storage_stats.format_bytes(size) == formatted
 
 
-def _storage_store(tmp_path: Path) -> SimpleNamespace:
+def _storage_store(tmp_path: Path) -> ArchiveStore:
     db_path = tmp_path / "archive.db"
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    conn.execute(
-        """
-        CREATE TABLE archive (
-            record_type TEXT,
-            tweet_id TEXT,
-            target_tweet_id TEXT,
-            relation_type TEXT,
-            local_path TEXT,
-            thumbnail_local_path TEXT,
-            media_type TEXT,
-            raw_json TEXT,
-            text TEXT,
-            content_text TEXT,
-            summary_text TEXT,
-            author_id TEXT,
-            author_username TEXT,
-            author_display_name TEXT
-        )
-        """
-    )
-    conn.execute("CREATE INDEX idx_archive_record_page ON archive(record_type, tweet_id)")
-    conn.execute("CREATE INDEX idx_archive_tweet_id ON archive(tweet_id)")
+    store = ArchiveStore(db_path, create=True)
+    conn = store.conn
     conn.executemany(
         """
         INSERT INTO archive (
@@ -173,6 +152,7 @@ def _storage_store(tmp_path: Path) -> SimpleNamespace:
         ],
     )
     conn.commit()
+    conn.execute("PRAGMA journal_mode=DELETE")
 
     media_dir = tmp_path / "media"
     (media_dir / "avatars").mkdir(parents=True)
@@ -180,8 +160,7 @@ def _storage_store(tmp_path: Path) -> SimpleNamespace:
     (media_dir / "core-poster.jpg").write_bytes(b"p" * 5)
     (media_dir / "context.mp4").write_bytes(b"v" * 13)
     (media_dir / "avatars" / "a1.jpg").write_bytes(b"a" * 7)
-    store = SimpleNamespace(conn=conn, db_path=db_path, close=lambda: None)
-    store.open_reader = lambda: store
+    store.read_snapshot = lambda: nullcontext(store)
     return store
 
 

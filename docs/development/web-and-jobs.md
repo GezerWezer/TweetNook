@@ -67,7 +67,7 @@ Use distinct XDG roots for the test install and keep replay tests away from prod
 
 The archive warmer prepares like order and reads common archive pages through a private read-only connection. Requests during warmup coalesce into one follow-up pass. Shutdown interrupts its reads, and managed job completion requests another warmup.
 
-Statistics use private readers so a long query doesn't stall the shared connection. The previous snapshot remains available during refresh and after a failed refresh. `web.analytics_refresh_time` controls daily refreshes; cached results also revalidate when stale. A caller with uncommitted writes collects on its own connection.
+Statistics use private readers so a long query doesn't stall the shared connection. The previous snapshot remains available during refresh and after a failed refresh. `web.analytics_refresh_time` controls daily refreshes; manual refresh also replaces the report, and reading an old report does not start a refresh. A caller with uncommitted writes collects on its own connection.
 
 Avatar fetching uses a separate executor so remote image waits don't occupy feed-request threads. Cached pictures remain available when downloading is disabled; failed or transparent responses aren't saved. Periodic size cleanup uses last-use timestamps and persisted run state, independently of sync scheduling.
 

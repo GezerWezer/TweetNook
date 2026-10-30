@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 
 from tweetnook.core.extractor import extract_status_id_from_url
 from tweetnook.core.utils import utc_now
 
-from .common import SEARCH_COLLECTION_ORDER, parse_created_at
+from .common import SEARCH_COLLECTION_ORDER, valid_date_bounds
 from .record_types import RecordType
 from .relations import RelationsMixin
 from .sync_state import SyncStateMixin
@@ -130,8 +129,6 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
             ).fetchall()
         ]
 
-        oldest_created_dt: datetime | None = None
-        newest_created_dt: datetime | None = None
         oldest_created_at: str | None = None
         newest_created_at: str | None = None
         unique_post_ids: set[str] = set()
@@ -146,26 +143,16 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
             *,
             collection: ArchiveCollectionStats | None = None,
         ) -> None:
-            nonlocal oldest_created_dt, newest_created_dt, oldest_created_at, newest_created_at
-
-            created_at = parse_created_at(raw)
-            if created_at is None:
-                return
-            if oldest_created_dt is None or created_at < oldest_created_dt:
-                oldest_created_dt = created_at
-                oldest_created_at = raw
-            if newest_created_dt is None or created_at > newest_created_dt:
-                newest_created_dt = created_at
-                newest_created_at = raw
-            if collection is None:
-                return
-
-            collection_oldest_dt = parse_created_at(collection.oldest_created_at)
-            if collection_oldest_dt is None or created_at < collection_oldest_dt:
-                collection.oldest_created_at = raw
-            collection_newest_dt = parse_created_at(collection.newest_created_at)
-            if collection_newest_dt is None or created_at > collection_newest_dt:
-                collection.newest_created_at = raw
+            nonlocal oldest_created_at, newest_created_at
+            oldest_created_at, _ = valid_date_bounds((oldest_created_at, raw))
+            _, newest_created_at = valid_date_bounds((newest_created_at, raw))
+            if collection is not None:
+                collection.oldest_created_at, _ = valid_date_bounds(
+                    (collection.oldest_created_at, raw)
+                )
+                _, collection.newest_created_at = valid_date_bounds(
+                    (collection.newest_created_at, raw)
+                )
 
         for row in tweet_rows:
             tweet_id = row.get("tweet_id")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
 from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ import pytest
 
 from tweetnook.stats import STATS_SECTION_SPECS, build_stats_report
 from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.report_facts import StatisticsFacts
 from tweetnook.storage.stats import ArchiveCollectionStats, ArchiveStats
 from tweetnook.web.routes import stats as stats_routes
 from tweetnook.web.stats_cache import WebStatsCache
@@ -309,11 +311,11 @@ def test_collections_formats_names_and_backfill_states(make_web_client) -> None:
         ]
     )
     store = SimpleNamespace(
-        archive_stats=lambda: archive_stats,
-        conn=SimpleNamespace(in_transaction=False),
-        close=lambda: None,
+        statistics_facts=lambda include: StatisticsFacts(
+            owner=None, collections=archive_stats.collections
+        ),
     )
-    store.open_reader = lambda: store
+    store.read_snapshot = lambda: nullcontext(store)
     client = make_web_client(stats_routes.router, store=store)
 
     response = client.get("/api/stats/collections")

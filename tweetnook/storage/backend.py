@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import quote
@@ -22,6 +23,7 @@ from .prune import PruneMixin
 from .reads import ReadsMixin
 from .records import RecordsMixin
 from .relations import RelationsMixin
+from .report_facts import ReportFactsMixin
 from .schema import SCHEMA_VERSION, MigrationReport, SchemaMixin
 from .search import SearchMixin
 from .sql_functions import register_export_functions, register_random_function
@@ -39,6 +41,7 @@ if TYPE_CHECKING:
 # method resolution order: a mixin comes before the mixins it builds on.
 class ArchiveStore(
     DetailsMixin,
+    ReportFactsMixin,
     TweetsMixin,
     StatsMixin,
     SearchMixin,
@@ -125,6 +128,20 @@ class ArchiveStore(
         # Closing this archive stops reader queries too, so shutdown never waits on them.
         reader.conn.set_progress_handler(lambda: self._warm_cancelled, 10_000)
         return reader
+
+    @contextmanager
+    def read_snapshot(self) -> Iterator[ArchiveStore]:
+        """Use a private reader, borrowing a caller's uncommitted transaction unchanged."""
+        with self._transaction_lock:
+            if self.conn.in_transaction:
+                yield self
+                return
+            reader = self.open_reader()
+        try:
+            with reader.transaction(write=False):
+                yield reader
+        finally:
+            reader.close()
 
 
 def open_archive_store(

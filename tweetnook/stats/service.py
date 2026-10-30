@@ -16,8 +16,7 @@ from tweetnook.stats.models import (
     TableColumn,
 )
 from tweetnook.storage import ArchiveStore
-from tweetnook.storage.record_types import RecordType
-from tweetnook.storage.stats import ArchiveStats
+from tweetnook.storage.report_facts import HealthFacts, StatisticsFacts
 
 UNAVAILABLE_REASON_LABELS = (
     ("protected_account", "Protected account"),
@@ -33,31 +32,14 @@ UNAVAILABLE_REASON_LABELS = (
 
 @contextmanager
 def _collection_store(store: ArchiveStore) -> Iterator[ArchiveStore]:
-    """Yield a private read-only store so collection never holds the shared connection.
-
-    A caller with uncommitted writes keeps its own connection, since a separate
-    reader would not see them.
-    """
-    if store.conn.in_transaction:
-        yield store
-        return
-    reader = store.open_reader()
-    try:
+    with store.read_snapshot() as reader:
         yield reader
-    finally:
-        reader.close()
 
 
 @dataclass(slots=True)
 class _StatsContext:
     store: ArchiveStore
-    _archive_stats: ArchiveStats | None = None
-
-    @property
-    def archive_stats(self) -> ArchiveStats:
-        if self._archive_stats is None:
-            self._archive_stats = self.store.archive_stats()
-        return self._archive_stats
+    facts: StatisticsFacts
 
 
 def _percentage(count: int, total: int) -> float:
@@ -75,24 +57,12 @@ def format_bytes(size: float) -> str:
 
 def get_enrichment_incomplete_count(store: ArchiveStore) -> int:
     """Return the lightweight banner count without collecting the full report."""
-    row = store.conn.execute(
-        f"""
-        SELECT count(*) FROM archive
-        WHERE record_type = '{RecordType.TWEET_OBJECT}'
-          AND enrichment_state IN ('pending', 'transient_failure')
-        """
-    ).fetchone()
-    return int(row[0] or 0) if row else 0
+    return store.enrichment_incomplete_count()
 
 
 def get_latest_sync_at(store: ArchiveStore) -> str | None:
     """Return the latest sync timestamp without collecting archive statistics."""
-    row = store.conn.execute(
-        f"SELECT max(updated_at) FROM archive WHERE record_type = '{RecordType.SYNC_STATE}'"
-    ).fetchone()
-    if row and isinstance(row[0], str) and row[0]:
-        return row[0]
-    return None
+    return store.latest_sync_at()
 
 
 def _backfill_status(cursor: str | None, incomplete: bool) -> str:
@@ -105,83 +75,11 @@ def _backfill_status(cursor: str | None, incomplete: bool) -> str:
     return "none saved"
 
 
-def _archive_availability_counts(conn: Any) -> tuple[int, int]:
-    row = conn.execute(
-        f"""
-        SELECT
-            count(*),
-            count(*) FILTER (WHERE enrichment_state = 'terminal_unavailable')
-        FROM archive
-        WHERE record_type = '{RecordType.TWEET_OBJECT}'
-        """
-    ).fetchone()
-    return (int(row[0] or 0), int(row[1] or 0)) if row else (0, 0)
-
-
 def _unavailable_breakdown(
-    conn: Any,
-    *,
-    archive_total: int,
-    unavailable_total: int,
+    facts: HealthFacts,
 ) -> dict[str, Any]:
-    now = datetime.now(tz=UTC).isoformat()
-    rows = conn.execute(
-        f"""
-        SELECT
-            COALESCE(NULLIF(enrichment_reason, ''), 'unavailable_unknown') AS reason,
-            count(*) AS count,
-            sum(CASE
-                WHEN deleted_at IS NOT NULL
-                  OR enrichment_retry_eligible = 0
-                  OR enrichment_reason IN ('archive_deleted', 'deleted_by_author')
-                THEN 1 ELSE 0
-            END) AS permanent,
-            sum(CASE
-                WHEN deleted_at IS NULL
-                  AND enrichment_retry_eligible = 1
-                  AND COALESCE(enrichment_reason, '') NOT IN (
-                      'archive_deleted', 'deleted_by_author'
-                  )
-                THEN 1 ELSE 0
-            END) AS retryable,
-            sum(CASE
-                WHEN deleted_at IS NULL
-                  AND enrichment_retry_eligible = 1
-                  AND COALESCE(enrichment_reason, '') NOT IN (
-                      'archive_deleted', 'deleted_by_author'
-                  )
-                  AND (
-                      enrichment_next_retry_at IS NULL
-                      OR enrichment_next_retry_at <= ?
-                  )
-                THEN 1 ELSE 0
-            END) AS due,
-            sum(CASE
-                WHEN deleted_at IS NULL
-                  AND enrichment_retry_eligible = 1
-                  AND COALESCE(enrichment_reason, '') NOT IN (
-                      'archive_deleted', 'deleted_by_author'
-                  )
-                  AND enrichment_next_retry_at > ?
-                THEN 1 ELSE 0
-            END) AS delayed
-        FROM archive
-        WHERE record_type = '{RecordType.TWEET_OBJECT}'
-          AND enrichment_state = 'terminal_unavailable'
-        GROUP BY COALESCE(NULLIF(enrichment_reason, ''), 'unavailable_unknown')
-        """,
-        (now, now),
-    ).fetchall()
-    counts_by_reason = {
-        str(row[0]): {
-            "count": int(row[1] or 0),
-            "permanent": int(row[2] or 0),
-            "retryable": int(row[3] or 0),
-            "due": int(row[4] or 0),
-            "delayed": int(row[5] or 0),
-        }
-        for row in rows
-    }
+    counts_by_reason = facts.reason_counts
+    archive_total, unavailable_total = facts.archive_total, facts.unavailable_total
     labels = dict(UNAVAILABLE_REASON_LABELS)
     ordered_reasons = [reason for reason, _label in UNAVAILABLE_REASON_LABELS]
     ordered_reasons.extend(sorted(set(counts_by_reason) - set(ordered_reasons)))
@@ -217,63 +115,16 @@ def _unavailable_breakdown(
 
 
 def _collect_overview(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
-    conn = context.store.conn
-
-    def count(sql: str) -> int:
-        return int(conn.execute(sql).fetchone()[0] or 0)
-
-    unique_posts = count(
-        f"SELECT count(DISTINCT tweet_id) FROM archive WHERE record_type = '{RecordType.TWEET}'"
-    )
-    collection_memberships = count(
-        f"SELECT count(*) FROM archive WHERE record_type = '{RecordType.TWEET}'"
-    )
-    articles = count(f"SELECT count(*) FROM archive WHERE record_type = '{RecordType.ARTICLE}'")
-    raw_captures = count(
-        f"SELECT count(*) FROM archive WHERE record_type = '{RecordType.RAW_CAPTURE}'"
-    )
-    media_rows = count(f"SELECT count(*) FROM archive WHERE record_type = '{RecordType.MEDIA}'")
-    urls = count(f"SELECT count(*) FROM archive WHERE record_type = '{RecordType.URL}'")
-    profiles = count(
-        """
-        SELECT count(DISTINCT author_id)
-        FROM archive
-        WHERE author_id IS NOT NULL AND author_id != ''
-        """
-    )
-    oldest_row = conn.execute(
-        f"""
-        SELECT created_at FROM archive
-        WHERE record_type = '{RecordType.TWEET}' AND created_at IS NOT NULL AND created_at != ''
-        ORDER BY created_at_ts ASC LIMIT 1
-        """
-    ).fetchone()
-    newest_row = conn.execute(
-        f"""
-        SELECT created_at FROM archive
-        WHERE record_type = '{RecordType.TWEET}' AND created_at IS NOT NULL AND created_at != ''
-        ORDER BY created_at_ts DESC LIMIT 1
-        """
-    ).fetchone()
-    latest_capture_row = conn.execute(
-        f"SELECT max(captured_at) FROM archive WHERE record_type = '{RecordType.RAW_CAPTURE}'"
-    ).fetchone()
-    latest_sync_row = conn.execute(
-        f"SELECT max(updated_at) FROM archive WHERE record_type = '{RecordType.SYNC_STATE}'"
-    ).fetchone()
-    owner_row = conn.execute(
-        f"""
-        SELECT value FROM archive
-        WHERE record_type = '{RecordType.METADATA}' AND key = 'owner_user_id'
-        ORDER BY updated_at DESC LIMIT 1
-        """
-    ).fetchone()
-    owner = owner_row[0] if owner_row and owner_row[0] else "Local Vault"
-    oldest_post = oldest_row[0] if oldest_row else None
-    newest_post = newest_row[0] if newest_row else None
-    latest_capture = latest_capture_row[0] if latest_capture_row else None
-    latest_sync = latest_sync_row[0] if latest_sync_row else None
-    archive_tweets, missing_archive_tweets = _archive_availability_counts(conn)
+    facts = context.facts.overview
+    assert facts is not None
+    unique_posts = facts.unique_posts
+    collection_memberships = facts.collection_memberships
+    articles, raw_captures = facts.articles, facts.raw_captures
+    media_rows, urls, profiles = facts.media_rows, facts.urls, facts.profiles
+    oldest_post, newest_post = facts.oldest_post, facts.newest_post
+    latest_capture, latest_sync = facts.latest_capture, facts.latest_sync
+    archive_tweets, missing_archive_tweets = facts.archive_tweets, facts.missing_archive_tweets
+    owner = context.facts.owner or "Local Vault"
     missing_pct = _percentage(missing_archive_tweets, archive_tweets)
     data = {
         "owner_user_id": owner,
@@ -302,7 +153,7 @@ def _collect_overview(context: _StatsContext, spec: StatsSectionSpec) -> StatsSe
 def _collect_collections(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
     rows: list[dict[str, Any]] = []
     names = {"bookmark": "Bookmarks", "like": "Likes", "tweet": "Authored Tweets"}
-    for collection in context.archive_stats.collections:
+    for collection in context.facts.collections or []:
         rows.append(
             {
                 "collection": names.get(
@@ -335,14 +186,11 @@ def _collect_collections(context: _StatsContext, spec: StatsSectionSpec) -> Stat
 
 
 def _collect_archive_status(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
-    stats = context.archive_stats
-    archive_tweets, unavailable_total = _archive_availability_counts(context.store.conn)
-    unavailable = _unavailable_breakdown(
-        context.store.conn,
-        archive_total=archive_tweets,
-        unavailable_total=unavailable_total,
-    )
-    incomplete = get_enrichment_incomplete_count(context.store)
+    facts = context.facts.health
+    assert facts is not None
+    stats = facts.stats
+    unavailable = _unavailable_breakdown(facts)
+    incomplete = facts.incomplete
     available = stats.done_enrichment_count + stats.resurrected_enrichment_count
     data = {
         "enrichment": {
@@ -371,53 +219,20 @@ def _collect_archive_status(context: _StatsContext, spec: StatsSectionSpec) -> S
 
 
 def _collect_tags(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
-    conn = context.store.conn
-    eligible_tweets, tagged_tweets = context.store.get_tagging_coverage_counts()
-    unique_tags = int(
-        conn.execute(
-            f"""
-            SELECT count(DISTINCT LOWER(t.value))
-            FROM (
-                SELECT raw_json FROM archive
-                WHERE record_type = '{RecordType.MEDIA_TAG}'
-                  AND (enrichment_state = 'done' OR enrichment_state IS NULL)
-                  AND json_valid(raw_json)
-            ) a, json_each(a.raw_json, '$.tags') AS t
-            """
-        ).fetchone()[0]
-        or 0
+    facts = context.facts.tagging
+    assert facts is not None
+    eligible_tweets, tagged_tweets = facts.eligible_tweets, facts.tagged_tweets
+    unique_tags, total_tag_instances, top_tags = (
+        facts.unique_tags,
+        facts.total_tag_instances,
+        facts.top_tags,
     )
-    total_tag_instances = int(
-        conn.execute(
-            f"""
-            SELECT count(t.value)
-            FROM (
-                SELECT raw_json FROM archive
-                WHERE record_type = '{RecordType.MEDIA_TAG}'
-                  AND (enrichment_state = 'done' OR enrichment_state IS NULL)
-                  AND json_valid(raw_json)
-            ) a, json_each(a.raw_json, '$.tags') AS t
-            """
-        ).fetchone()[0]
-        or 0
-    )
-    top_tags_rows = conn.execute(
-        f"""
-        SELECT LOWER(t.value) AS tag, count(*) AS count
-        FROM (
-            SELECT raw_json FROM archive
-            WHERE record_type = '{RecordType.MEDIA_TAG}'
-              AND (enrichment_state = 'done' OR enrichment_state IS NULL)
-              AND json_valid(raw_json)
-        ) a, json_each(a.raw_json, '$.tags') AS t
-        GROUP BY LOWER(t.value)
-        ORDER BY count DESC, tag ASC
-        LIMIT 20
-        """
-    ).fetchall()
-    top_tags = [{"tag": row[0], "count": row[1]} for row in top_tags_rows]
     coverage_pct = _percentage(tagged_tweets, eligible_tweets)
-    avg_tags = round(total_tag_instances / tagged_tweets, 1) if tagged_tweets else 0.0
+    avg_tags = (
+        round(total_tag_instances / facts.usage_tagged_tweets, 1)
+        if facts.usage_tagged_tweets
+        else 0.0
+    )
     data = {
         "eligible_tweets": eligible_tweets,
         "tagged_tweets": tagged_tweets,
@@ -438,71 +253,9 @@ def _collect_tags(context: _StatsContext, spec: StatsSectionSpec) -> StatsSectio
 def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
     store = context.store
     segments: list[dict[str, Any]] = []
-    payload_sample_limit = 4096
-
-    def get_db_stats(record_type: str, payload_expression: str) -> tuple[int, int]:
-        count = int(
-            store.conn.execute(
-                """
-                SELECT count(*)
-                FROM archive INDEXED BY idx_archive_record_page
-                WHERE record_type = ?
-                """,
-                (record_type,),
-            ).fetchone()[0]
-            or 0
-        )
-        if count == 0:
-            return 0, 0
-        sample_count, sample_bytes = store.conn.execute(
-            f"""
-            SELECT count(*), sum(payload_bytes)
-            FROM (
-                SELECT {payload_expression} AS payload_bytes
-                FROM archive INDEXED BY idx_archive_record_page
-                WHERE record_type = ?
-                LIMIT ?
-            )
-            """,
-            (record_type, payload_sample_limit),
-        ).fetchone()
-        estimated_bytes = round((int(sample_bytes or 0) / int(sample_count or 1)) * count)
-        return count, estimated_bytes
-
-    core_tweet_ids = {
-        str(row[0])
-        for row in store.conn.execute(
-            f"""
-            SELECT tweet_id
-            FROM archive INDEXED BY idx_archive_record_page
-            WHERE record_type = '{RecordType.TWEET}' AND tweet_id IS NOT NULL
-            """
-        )
-    }
-    root_tweet_ids = sorted(core_tweet_ids)
-    for start in range(0, len(root_tweet_ids), 500):
-        chunk = root_tweet_ids[start : start + 500]
-        placeholders = ", ".join("?" for _tweet_id in chunk)
-        related_rows = store.conn.execute(
-            f"""
-            SELECT target_tweet_id
-            FROM archive INDEXED BY idx_archive_tweet_id
-            WHERE tweet_id IN ({placeholders})
-              AND record_type = '{RecordType.TWEET_RELATION}'
-              AND relation_type IN ('quote_of', 'quoted', 'links_to_status')
-              AND target_tweet_id IS NOT NULL
-            """,
-            chunk,
-        ).fetchall()
-        core_tweet_ids.update(str(row[0]) for row in related_rows)
-
-    media_rows = store.conn.execute(
-        f"""
-        SELECT tweet_id, local_path, thumbnail_local_path, media_type
-        FROM archive INDEXED BY idx_archive_record_page
-        WHERE record_type = '{RecordType.MEDIA}'
-        """
-    ).fetchall()
+    facts = context.facts.storage
+    assert facts is not None
+    core_tweet_ids, media_rows = facts.core_tweet_ids, facts.media_rows
     core_media_rows = [row for row in media_rows if row[0] in core_tweet_ids]
     context_media_rows = [row for row in media_rows if row[0] not in core_tweet_ids]
     core_primary_types = {Path(row[1]).name: row[3] for row in core_media_rows if row[1]}
@@ -595,36 +348,12 @@ def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSec
             },
         ]
     )
-    core_db_count, core_db_bytes = get_db_stats(
-        "tweet",
-        "ifnull(length(raw_json), 0) + ifnull(length(text), 0)",
-    )
-    threads_count, threads_bytes = get_db_stats(
-        "tweet_object",
-        "ifnull(length(raw_json), 0)",
-    )
-    articles_count, articles_bytes = get_db_stats(
-        "article",
-        "ifnull(length(content_text), 0) + ifnull(length(summary_text), 0)",
-    )
-    tags_count, tags_bytes = get_db_stats(
-        "media_tag",
-        "ifnull(length(raw_json), 0)",
-    )
-    _tweet_count, profiles_bytes = get_db_stats(
-        "tweet",
-        "ifnull(length(author_username), 0) + ifnull(length(author_display_name), 0)",
-    )
-    profiles_count = int(
-        store.conn.execute(
-            """
-            SELECT count(DISTINCT author_id)
-            FROM archive
-            WHERE author_id IS NOT NULL AND author_id != ''
-            """
-        ).fetchone()[0]
-        or 0
-    )
+    core_db_count, core_db_bytes = facts.payloads["core"]
+    threads_count, threads_bytes = facts.payloads["threads"]
+    articles_count, articles_bytes = facts.payloads["articles"]
+    tags_count, tags_bytes = facts.payloads["tags"]
+    _tweet_count, profiles_bytes = facts.payloads["profiles"]
+    profiles_count = facts.profiles_count
     segments.extend(
         [
             {
@@ -788,7 +517,8 @@ def build_stats_section(store: ArchiveStore, section_id: str) -> StatsSection:
     if spec is None:
         raise KeyError(f"unknown statistics section: {section_id}")
     with _collection_store(store) as reader:
-        return _collect_registered_section(_StatsContext(reader), spec)
+        context = _StatsContext(reader, reader.statistics_facts({section_id}))
+    return _collect_registered_section(context, spec)
 
 
 def build_stats_report(
@@ -802,21 +532,15 @@ def build_stats_report(
     if unknown:
         raise KeyError(f"unknown statistics sections: {', '.join(sorted(unknown))}")
     with _collection_store(store) as reader:
-        context = _StatsContext(reader)
-        sections = [
-            _collect_registered_section(context, spec)
-            for spec in STATS_SECTION_SPECS
-            if spec.id in selected
-        ]
-        overview = next((section for section in sections if section.id == "overview"), None)
-        owner = (
-            str(overview.data["owner_user_id"])
-            if overview is not None
-            else (context.archive_stats.owner_user_id or "Local Vault")
-        )
-        return StatsReport(
-            archive_path=str(store.db_path),
-            owner=owner,
-            generated_at=datetime.now(tz=UTC).isoformat(),
-            sections=sections,
-        )
+        context = _StatsContext(reader, reader.statistics_facts(selected))
+    sections = [
+        _collect_registered_section(context, spec)
+        for spec in STATS_SECTION_SPECS
+        if spec.id in selected
+    ]
+    return StatsReport(
+        archive_path=str(store.db_path),
+        owner=context.facts.owner or "Local Vault",
+        generated_at=datetime.now(tz=UTC).isoformat(),
+        sections=sections,
+    )

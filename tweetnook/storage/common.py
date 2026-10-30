@@ -79,6 +79,20 @@ def parse_created_at(raw: str | None) -> datetime | None:
         return None
 
 
+def valid_date_bounds(values: Iterable[str | None]) -> tuple[str | None, str | None]:
+    oldest = newest = None
+    oldest_dt = newest_dt = None
+    for raw in values:
+        parsed = parse_created_at(raw)
+        if parsed is None:
+            continue
+        if oldest_dt is None or parsed < oldest_dt:
+            oldest, oldest_dt = raw, parsed
+        if newest_dt is None or parsed > newest_dt:
+            newest, newest_dt = raw, parsed
+    return oldest, newest
+
+
 LIVE_SOURCE = "live_graphql"
 ARCHIVE_SOURCE = "x_archive"
 FX_SOURCE = "fxtwitter"

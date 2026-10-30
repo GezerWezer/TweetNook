@@ -23,7 +23,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | `relations.py` | Known-ID, thread-target, URL-reference and quote lookups. |
 | `authors.py` | Avatar URLs, handle resolution, profile snapshots and handle search. |
 | `reads.py` | Feed pagination, like order, ID fetches and export hydration. |
-| `stats.py` | Counts and the archive statistics summary. |
+| `stats.py`, `report_facts.py` | Counts, the archive summary and typed database facts for requested report sections. |
 | `prune.py` | Context graph projections, scoped row and media inventories, prune deletion. |
 | `imports.py` | Official-archive import cleanup and rehydration from raw captures. |
 | `search.py` | Full-text and structured search. |
@@ -37,6 +37,8 @@ Put a new storage operation in the module for its concern, and add a mixin base 
 `open_archive_store` in `storage/backend.py` opens SQLite archives. With `create=False`, a missing archive stays missing, which lets the web server offer Setup without creating an empty database as a side effect. Legacy LanceDB content requires an explicit migration.
 
 Writable connections use WAL and recursive triggers. Database configuration sets the page-cache and memory-mapping allowances. Shared web connections disable CPython's prepared-statement cache; private read-only connections serve work that needs a reader confined to one thread. Close connections through the store lifecycle.
+
+Statistics collect only the requested database facts in one bounded read snapshot, then release it before filesystem measurement and presentation. Collection-only reports avoid health graphs; owner-only access reads archive metadata directly. Overview and collections use the same valid-date bounds and ignore malformed dates. A caller with pending writes borrows its existing transaction without committing or rolling it back.
 
 Random-search and legacy-export SQL callbacks register once at connection creation, before the store is shared. Reads never replace functions while another cursor is active.
 
@@ -72,6 +74,8 @@ Use the row-key helpers in `ArchiveStore`; don't invent identifiers in callers. 
 `PageBuffer` collects related writes and tracks pending rows so a later item in a batch sees earlier writes. Source ranks prefer `live_graphql` over `fxtwitter` over `x_archive`. Merge code preserves better content, timestamps, downloaded files, and provenance when a weaker payload arrives.
 
 Raw captures remain evidence of the source response. Normalized tweet text, author fields, media and relation rows can be rebuilt through `rehydrate`, but rebuilding isn't a new remote observation. Test quoted and nested content as well as the focal post when changing extraction.
+
+Tagging coverage counts eligible saved posts and their direct quotes. Tag usage and the average tags per tagged post use the same archive-wide population, including manually tagged context and unavailable posts.
 
 Removing labels preserves an existing description, including removal of the final label. Passing an empty description explicitly clears it; `delete_media_tag` deletes both tags and description.
 
