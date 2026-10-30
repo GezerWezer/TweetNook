@@ -83,7 +83,7 @@ Tagging uses storage-owned quote/type classification and `tagging_context(ids)` 
 
 ## Availability and history
 
-Enrichment states include `pending`, `done`, `transient_failure`, `terminal_unavailable`, and `resurrected`. The unavailable reason, checked time, retry count, retry eligibility, and next retry time are separate fields. A transient transport failure must not turn into proof of deletion.
+Enrichment states include `pending`, `done`, `transient_failure`, `terminal_unavailable`, and `resurrected`. The unavailable reason, checked time, retry count, retry eligibility, and next retry time are separate fields. A transient transport failure must not turn into proof of deletion. Retry queues, marking, check scope and reports share one eligibility predicate: no saved deletion, an explicit eligible flag, and no permanent deletion reason. A NULL flag is ineligible; a NULL reason does not exclude an explicitly eligible row.
 
 Checks and Community Note changes have dedicated history storage. A post can have saved content and a current unavailable state at the same time. See [availability checks](availability-checks.md) for the transition rules.
 

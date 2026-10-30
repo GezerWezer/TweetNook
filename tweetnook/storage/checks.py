@@ -8,6 +8,7 @@ from typing import Any
 
 from tweetnook.core.utils import utc_now
 
+from .common import RESURRECTION_ELIGIBLE_SQL
 from .record_types import RecordType
 from .records import RecordsMixin
 from .schema import SchemaMixin
@@ -240,8 +241,7 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
         return self._query(
             f"record_type = '{RecordType.TWEET_OBJECT}' "
             "AND enrichment_state = 'terminal_unavailable' "
-            "AND enrichment_retry_eligible = 1 AND deleted_at IS NULL "
-            "AND enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')",
+            f"AND {RESURRECTION_ELIGIBLE_SQL}",
             cols=[
                 "tweet_id",
                 "author_id",

@@ -14,7 +14,7 @@ from tweetnook.core.extractor import (
 from tweetnook.core.utils import utc_now
 
 from .checks import ChecksMixin
-from .common import Clause, and_clauses, clause_in, state_filter
+from .common import RESURRECTION_ELIGIBLE_SQL, Clause, and_clauses, clause_in, state_filter
 from .objects import ObjectsMixin
 from .record_types import RecordType
 from .records import PageBuffer
@@ -437,14 +437,12 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             "retryable_unavailable": self._count(
                 f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = "
                 "'terminal_unavailable' "
-                "AND enrichment_retry_eligible = 1 AND deleted_at IS NULL "
-                "AND enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')"
+                f"AND {RESURRECTION_ELIGIBLE_SQL}"
             ),
             "permanent_unavailable": self._count(
                 f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = "
                 "'terminal_unavailable' "
-                "AND (deleted_at IS NOT NULL OR enrichment_retry_eligible = 0 OR "
-                "enrichment_reason IN ('archive_deleted', 'deleted_by_author'))"
+                f"AND NOT {RESURRECTION_ELIGIBLE_SQL}"
             ),
             "done": self._count(
                 f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = 'done'"
@@ -466,9 +464,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         clauses = [
             f"record_type = '{RecordType.TWEET_OBJECT}'",
             "enrichment_state = 'terminal_unavailable'",
-            "enrichment_retry_eligible = 1",
-            "deleted_at IS NULL",
-            "enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')",
+            RESURRECTION_ELIGIBLE_SQL,
             Clause("(enrichment_next_retry_at IS NULL OR enrichment_next_retry_at <= ?)", (now,)),
         ]
         if reasons:
@@ -508,10 +504,8 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         clauses = [
             f"record_type = '{RecordType.TWEET_OBJECT}'",
             "enrichment_state = 'terminal_unavailable'",
-            "enrichment_retry_eligible = 1",
-            "deleted_at IS NULL",
+            RESURRECTION_ELIGIBLE_SQL,
             Clause("author_id = ?", (author_id,)),
-            "enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')",
         ]
         if due_only:
             clauses.append(
@@ -547,9 +541,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         clauses = [
             f"record_type = '{RecordType.TWEET_OBJECT}'",
             "enrichment_state = 'terminal_unavailable'",
-            "enrichment_retry_eligible = 1",
-            "deleted_at IS NULL",
-            "enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')",
+            RESURRECTION_ELIGIBLE_SQL,
             Clause("author_id = ?", (author_id,)),
         ]
         if exclude_tweet_ids:
@@ -575,9 +567,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         clauses = [
             f"record_type = '{RecordType.TWEET_OBJECT}'",
             "enrichment_state = 'terminal_unavailable'",
-            "enrichment_retry_eligible = 1",
-            "deleted_at IS NULL",
-            "enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author')",
+            RESURRECTION_ELIGIBLE_SQL,
             clause_in("tweet_id", tweet_ids),
         ]
         where = and_clauses(*clauses)
@@ -594,8 +584,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         return self._count(
             f"record_type = '{RecordType.TWEET_OBJECT}' "
             "AND enrichment_state = 'terminal_unavailable' "
-            "AND enrichment_retry_eligible = 1 AND deleted_at IS NULL "
-            "AND enrichment_reason NOT IN ('archive_deleted', 'deleted_by_author') "
+            f"AND {RESURRECTION_ELIGIBLE_SQL} "
             "AND (enrichment_next_retry_at IS NULL OR enrichment_next_retry_at <= ?)",
             (now,),
         )

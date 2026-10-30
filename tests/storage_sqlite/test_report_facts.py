@@ -132,3 +132,34 @@ def test_tag_average_uses_the_same_archive_wide_population_as_tag_instances(tmp_
         assert data["avg_tags_per_tweet"] == 3.0
     finally:
         store.close()
+
+
+def test_retry_eligibility_agrees_for_null_reason_and_null_flag(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    store.merge_rows(
+        [
+            {
+                "row_key": f"tweet_object:{tweet_id}",
+                "record_type": "tweet_object",
+                "tweet_id": tweet_id,
+                "enrichment_state": "terminal_unavailable",
+                "enrichment_retry_eligible": eligible,
+                "enrichment_reason": reason,
+            }
+            for tweet_id, eligible, reason in [
+                ("1", 1, None),
+                ("2", None, "protected_account"),
+                ("3", 0, None),
+            ]
+        ]
+    )
+    try:
+        counts = store.enrichment_status_counts()
+        assert (counts["retryable_unavailable"], counts["permanent_unavailable"]) == (1, 2)
+        assert [row["tweet_id"] for row in store.list_due_resurrection_tweets()] == ["1"]
+        assert store.count_due_resurrection_tweets() == 1
+        assert [row["tweet_id"] for row in store.list_retryable_unavailable_rows()] == ["1"]
+        report = build_stats_section(store, "archive_status").data["enrichment"]["unavailable"]
+        assert (report["retryable"], report["permanent"], report["due"]) == (1, 2, 1)
+    finally:
+        store.close()

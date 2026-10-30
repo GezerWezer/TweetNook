@@ -6,7 +6,7 @@ from dataclasses import dataclass, fields
 from datetime import UTC, datetime
 from typing import Any
 
-from .common import SEARCH_COLLECTION_ORDER, valid_date_bounds
+from .common import RESURRECTION_ELIGIBLE_SQL, SEARCH_COLLECTION_ORDER, valid_date_bounds
 from .record_types import RecordType
 from .stats import ArchiveCollectionStats, StatsMixin
 from .tags import TagsMixin
@@ -222,41 +222,13 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
             SELECT
                 COALESCE(NULLIF(enrichment_reason, ''), 'unavailable_unknown') AS reason,
                 count(*) AS count,
-                sum(CASE
-                    WHEN deleted_at IS NOT NULL
-                      OR enrichment_retry_eligible = 0
-                      OR enrichment_reason IN ('archive_deleted', 'deleted_by_author')
-                    THEN 1 ELSE 0
-                END) AS permanent,
-                sum(CASE
-                    WHEN deleted_at IS NULL
-                      AND enrichment_retry_eligible = 1
-                      AND COALESCE(enrichment_reason, '') NOT IN (
-                          'archive_deleted', 'deleted_by_author'
-                      )
-                    THEN 1 ELSE 0
-                END) AS retryable,
-                sum(CASE
-                    WHEN deleted_at IS NULL
-                      AND enrichment_retry_eligible = 1
-                      AND COALESCE(enrichment_reason, '') NOT IN (
-                          'archive_deleted', 'deleted_by_author'
-                      )
-                      AND (
-                          enrichment_next_retry_at IS NULL
-                          OR enrichment_next_retry_at <= ?
-                      )
-                    THEN 1 ELSE 0
-                END) AS due,
-                sum(CASE
-                    WHEN deleted_at IS NULL
-                      AND enrichment_retry_eligible = 1
-                      AND COALESCE(enrichment_reason, '') NOT IN (
-                          'archive_deleted', 'deleted_by_author'
-                      )
-                      AND enrichment_next_retry_at > ?
-                    THEN 1 ELSE 0
-                END) AS delayed
+                sum(CASE WHEN NOT {RESURRECTION_ELIGIBLE_SQL} THEN 1 ELSE 0 END) AS permanent,
+                sum(CASE WHEN {RESURRECTION_ELIGIBLE_SQL} THEN 1 ELSE 0 END) AS retryable,
+                sum(CASE WHEN {RESURRECTION_ELIGIBLE_SQL}
+                    AND (enrichment_next_retry_at IS NULL OR enrichment_next_retry_at <= ?)
+                    THEN 1 ELSE 0 END) AS due,
+                sum(CASE WHEN {RESURRECTION_ELIGIBLE_SQL} AND enrichment_next_retry_at > ?
+                    THEN 1 ELSE 0 END) AS delayed
             FROM archive
             WHERE record_type = '{RecordType.TWEET_OBJECT}'
               AND enrichment_state = 'terminal_unavailable'

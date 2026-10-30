@@ -127,3 +127,10 @@ COMMUNITY_NOTE_TWEET_IDS_SQL = (
     "SELECT tweet_id FROM archive_tweet_content WHERE has_note = 1 "
     "UNION SELECT tweet_id FROM community_notes"
 )
+
+# NULL retry eligibility is conservative; a missing reason does not exclude an
+# otherwise explicitly retryable observation. Every queue/count uses this predicate.
+RESURRECTION_ELIGIBLE_SQL = (
+    "(deleted_at IS NULL AND COALESCE(enrichment_retry_eligible, 0) = 1 "
+    "AND COALESCE(enrichment_reason, '') NOT IN ('archive_deleted', 'deleted_by_author'))"
+)

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from tweetnook.core.extractor import extract_status_id_from_url
 from tweetnook.core.utils import utc_now
 
-from .common import SEARCH_COLLECTION_ORDER, valid_date_bounds
+from .common import RESURRECTION_ELIGIBLE_SQL, SEARCH_COLLECTION_ORDER, valid_date_bounds
 from .record_types import RecordType
 from .relations import RelationsMixin
 from .sync_state import SyncStateMixin
@@ -111,7 +111,8 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
             for row in self.conn.execute(
                 f"""
                 SELECT deleted_at, enrichment_state, enrichment_reason,
-                       enrichment_retry_eligible, enrichment_next_retry_at
+                       enrichment_retry_eligible, enrichment_next_retry_at,
+                       {RESURRECTION_ELIGIBLE_SQL} AS can_retry
                 FROM archive INDEXED BY idx_archive_enrichment_due
                 WHERE record_type = '{RecordType.TWEET_OBJECT}'
                   AND enrichment_state IN ('transient_failure', 'terminal_unavailable')
@@ -188,18 +189,7 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
                 else:
                     transient_enrichment_delayed_count += 1
             elif enrichment_state == "terminal_unavailable":
-                reason = row.get("enrichment_reason")
-                deleted_at = row.get("deleted_at")
-                retry_eligible = self._parse_bool(row.get("enrichment_retry_eligible"))
-                permanently_unavailable = (
-                    bool(deleted_at)
-                    or not retry_eligible
-                    or reason
-                    in {
-                        "archive_deleted",
-                        "deleted_by_author",
-                    }
-                )
+                permanently_unavailable = not row["can_retry"]
                 if permanently_unavailable:
                     permanent_unavailable_count += 1
                 else:
