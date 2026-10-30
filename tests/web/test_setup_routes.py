@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import subprocess
 import tomllib
@@ -375,3 +376,40 @@ def test_confirmed_collections_require_id_only_when_connected(
     server_state["setup_coordinator"].state.auth_verified = False
     payload["collections"] = ["likes"]
     assert client.put("/api/setup/schedule", json=payload).status_code == 200
+
+
+def test_archive_publication_runs_off_the_event_loop(
+    tmp_path, make_web_client, monkeypatch
+) -> None:
+    paths = _paths(tmp_path)
+
+    class Supervisor:
+        active = False
+        active_run_id = None
+        active_kind = None
+
+        def _external_activity_is_running(self):
+            return False
+
+    server_state.update({"paths": paths, "store": SetupStore(), "job_supervisor": Supervisor()})
+    _install_coordinator(paths)
+    client = make_web_client(setup.router)
+    original = setup.publish_file
+    on_event_loop = []
+
+    def recording(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            on_event_loop.append(False)
+        else:
+            on_event_loop.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(setup, "publish_file", recording)
+    response = client.put(
+        "/api/setup/archive", content=_zip_bytes(), headers={"Content-Type": "application/zip"}
+    )
+    assert response.status_code == 200
+    assert on_event_loop == [False]
+    assert paths.staged_archive_file.exists()

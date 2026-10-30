@@ -797,7 +797,9 @@ class AIUsageLedger:
 
     def _atomic_summary(self, summary: dict[str, Any]) -> None:
         atomic_write_text(
-            self.summary_path, json.dumps(summary, sort_keys=True, separators=(",", ":"))
+            self.summary_path,
+            json.dumps(summary, sort_keys=True, separators=(",", ":")),
+            follow_umask=True,
         )
 
     def _read_summary(self) -> dict[str, Any] | None:

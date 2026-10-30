@@ -197,7 +197,10 @@ class AvatarCacheManager:
     def _save_state(self) -> None:
         try:
             atomic_write_text(
-                self.paths.avatar_cache_state_file, json.dumps(self._state, separators=(",", ":"))
+                self.paths.avatar_cache_state_file,
+                json.dumps(self._state, separators=(",", ":")),
+                fsync=False,
+                follow_umask=True,
             )
         except OSError:
             pass

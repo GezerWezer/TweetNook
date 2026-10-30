@@ -180,7 +180,9 @@ def _extract_google_models(payload: Any) -> dict[str, dict[str, str]]:
 
 
 def _write_cache(path: Path, payload: dict[str, Any]) -> None:
-    atomic_write_text(path, json.dumps(payload, sort_keys=True, separators=(",", ":")))
+    atomic_write_text(
+        path, json.dumps(payload, sort_keys=True, separators=(",", ":")), follow_umask=True
+    )
 
 
 def load_openrouter_pricing(

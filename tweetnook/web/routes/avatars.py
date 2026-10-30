@@ -81,7 +81,7 @@ def _avatar_format(content: bytes) -> tuple[str, str] | None:
 
 def _cache_avatar(path: Path, content: bytes) -> None:
     """Publish complete files so concurrent requests cannot see a partial write."""
-    atomic_write_bytes(path, content)
+    atomic_write_bytes(path, content, fsync=False, follow_umask=True)
 
 
 def _avatar_urls(url: str) -> list[str]:

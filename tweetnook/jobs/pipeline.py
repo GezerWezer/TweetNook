@@ -827,6 +827,9 @@ class PipelineReporter:
             atomic_write_text(
                 self.state_path,
                 json.dumps(snapshot or self._state_snapshot(), separators=(",", ":")),
+                # Rewritten on every progress update and only ever describes the live command.
+                fsync=False,
+                follow_umask=True,
             )
         except OSError:
             # Status publishing must never break the underlying archive command.

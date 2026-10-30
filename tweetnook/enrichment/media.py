@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 import re
 from dataclasses import dataclass
@@ -119,7 +120,7 @@ async def _download_file(
     content_type: str | None = None
     file_hash = sha256()
     byte_size = 0
-    with owned_temp(destination) as temporary:
+    with owned_temp(destination, follow_umask=True) as temporary:
         with temporary.open("wb") as handle:
             async with client.stream("GET", url) as response:
                 response.raise_for_status()
@@ -133,7 +134,7 @@ async def _download_file(
             extension = _content_extension(content_type, url)
             if destination.suffix.lower() != extension:
                 final_destination = destination.with_suffix(extension)
-        publish_file(temporary, final_destination)
+        await asyncio.to_thread(publish_file, temporary, final_destination)
         return final_destination, file_hash.hexdigest(), byte_size, content_type
 
 

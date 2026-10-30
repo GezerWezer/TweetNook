@@ -57,7 +57,10 @@ def runs_root(data_dir: Path) -> Path:
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
-    atomic_write_text(path, json.dumps(payload, separators=(",", ":")))
+    # Rewritten on every progress update; readers treat a torn record as missing.
+    atomic_write_text(
+        path, json.dumps(payload, separators=(",", ":")), fsync=False, follow_umask=True
+    )
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:

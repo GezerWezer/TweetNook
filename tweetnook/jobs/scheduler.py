@@ -481,7 +481,9 @@ class ScheduleManager:
     def _save_state(self) -> None:
         try:
             atomic_write_text(
-                self.paths.schedule_state_file, json.dumps(self._state, separators=(",", ":"))
+                self.paths.schedule_state_file,
+                json.dumps(self._state, separators=(",", ":")),
+                follow_umask=True,
             )
         except OSError:
             pass

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sqlite3
@@ -502,7 +503,8 @@ async def upload_archive(
             raise HTTPException(
                 status_code=409, detail="A command started during upload. Retry after it finishes."
             )
-        publish_file(temporary, archive)
+        # The flush can take as long as the whole upload took to write; other requests keep going.
+        await asyncio.to_thread(publish_file, temporary, archive)
     return _archive_payload()
 
 

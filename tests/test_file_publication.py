@@ -1,10 +1,13 @@
 import io
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from tweetnook.core.fileio import atomic_write_text
 from tweetnook.importer.archive_media import _copy_file_from_archive
+from tweetnook.jobs.activity_history import _atomic_json
 from tweetnook.query_ids.store import QueryIdStore
 from tweetnook.tagging.accounting import AIUsageLedger
 
@@ -60,3 +63,20 @@ def test_import_interrupt_after_actual_write_cleans_temporary(tmp_path):
     with pytest.raises(KeyboardInterrupt):
         _copy_file_from_archive(source, "asset.jpg", destination)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_rebuildable_high_frequency_files_skip_the_flush(paths, tmp_path, monkeypatch):
+    flushed = []
+    monkeypatch.setattr(os, "fsync", lambda fd: flushed.append(fd))
+    source = SimpleNamespace(open_binary=lambda _: io.BytesIO(b"asset"))
+    _copy_file_from_archive(source, "asset.jpg", tmp_path / "asset.jpg")
+    _atomic_json(tmp_path / "snapshot.json", {"running": True})
+    QueryIdStore(paths).save({"TweetDetail": "new"})
+    assert flushed == []
+
+
+def test_durable_publication_still_flushes(tmp_path, monkeypatch):
+    flushed = []
+    monkeypatch.setattr(os, "fsync", lambda fd: flushed.append(fd))
+    atomic_write_text(tmp_path / "config.toml", "kept")
+    assert len(flushed) == 1

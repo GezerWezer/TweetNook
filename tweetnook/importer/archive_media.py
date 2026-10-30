@@ -28,13 +28,14 @@ def _copy_file_from_archive(
 ) -> tuple[str, int]:
     sha = hashlib.sha256()
     byte_size = 0
-    with owned_temp(destination) as temporary:
+    with owned_temp(destination, follow_umask=True) as temporary:
         with temporary.open("wb") as handle, source.open_binary(relative_path) as input_handle:
             for chunk in iter(lambda: input_handle.read(1024 * 1024), b""):
                 handle.write(chunk)
                 sha.update(chunk)
                 byte_size += len(chunk)
-        publish_file(temporary, destination)
+        # Flushing per file slows large imports badly, and the export can always be imported again.
+        publish_file(temporary, destination, fsync=False)
     return sha.hexdigest(), byte_size
 
 
