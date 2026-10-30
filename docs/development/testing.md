@@ -36,7 +36,7 @@ Existing failures should be recorded with their command and scope. Targeted test
 
 Use the actual filenames under `tests/` when selecting a command. The [module reference](module-reference.md) maps operations to their owners.
 
-For storage changes, cover repeated opens, rollback, source precedence, raw-capture retention, skipped migration rows and derived-index refresh. Availability tests need public-provider failures, ambiguous results, protected fallback, quote scope and observed note changes. Enrichment checks should exercise explicit targets, retry state, quoted content and file boundaries.
+For storage changes, cover repeated opens, rollback, source precedence, raw-capture retention, skipped migration rows and derived-index refresh. Upgrades start from `tests/fixtures/schemas/`, the schema each release created, and must end identical to a fresh archive. A change that raises `SCHEMA_VERSION` adds the fixture for the schema the latest release ships (`uv run python scripts/dump_release_schema.py <tag>`) and lists it in `RELEASED_SCHEMAS`. Availability tests need public-provider failures, ambiguous results, protected fallback, quote scope and observed note changes. Enrichment checks should exercise explicit targets, retry state, quoted content and file boundaries.
 
 For job and server changes, cover startup without storage, Setup completion, manual queues, saved results, event-stream reconnection, shutdown and session authentication. Scheduler tests inject clocks and offsets for save/restart behavior, conflicts, month ends and timezone transitions. Tagging tests mock the provider while exercising reservations, retries, incomplete usage and previews that spend allowance without changing tags.
 

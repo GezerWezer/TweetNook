@@ -246,7 +246,8 @@ class SchemaMixin(ConnectionMixin):
             return
 
         # Releases shipped schema 5 (0.0.9 and 0.1.0), schema 8 (0.1.1 to 0.1.6),
-        # schema 9 (0.1.7 and 0.1.8), and schema 11 (1.1.0).
+        # schema 9 (0.1.7 and 0.1.8) and schema 10 (0.2.0 to 1.1.0). Schema 11 was only on
+        # development builds before 1.2.0.
         if current_version in {8, 9, 10, 11}:
             self._migrate_search_facts(current_version)
             return
