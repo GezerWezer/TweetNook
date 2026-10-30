@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from tests.conftest import (
     make_article_result,
     make_photo_media,
@@ -104,3 +106,54 @@ def test_export_json_includes_article_media_and_urls(paths, tmp_path: Path) -> N
     assert row["article"]["content_text"] == "Article body"
     assert row["article"]["media"][0]["source"] == "article_cover"
     assert row["urls"][0]["resolved"]["canonical_url"] == "https://example.com/story?keep=1"
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("failure", ["write", "close", "replace"])
+def test_failed_export_cleans_owned_temporary(paths, tmp_path, monkeypatch, existing, failure):
+    import tweetnook.export.json_export as exporter
+
+    _seed_archive(paths)
+    store = open_archive_store(paths, create=False)
+    output = tmp_path / "exports" / "output.json"
+    output.parent.mkdir()
+    if existing:
+        output.write_text("previous export")
+    original_dump = exporter.json.dump
+    original_open = Path.open
+    original_replace = Path.replace
+
+    def fail_dump(payload, handle, **kwargs):
+        handle.write("partial export")
+        handle.flush()
+        raise OSError("disk full")
+
+    class CloseFailure:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self.handle
+
+        def __exit__(self, *args):
+            self.handle.close()
+            raise OSError("close failed")
+
+    def open_file(path, *args, **kwargs):
+        handle = original_open(path, *args, **kwargs)
+        return CloseFailure(handle) if args and args[0] == "w" else handle
+
+    def replace(path, destination):
+        assert path.stat().st_size > 0
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(exporter.json, "dump", fail_dump if failure == "write" else original_dump)
+    monkeypatch.setattr(Path, "open", open_file if failure == "close" else original_open)
+    monkeypatch.setattr(Path, "replace", replace if failure == "replace" else original_replace)
+    try:
+        with pytest.raises(OSError):
+            export_json_archive(store, collection="bookmarks", out_path=output)
+    finally:
+        store.close()
+    assert output.read_text() == "previous export" if existing else not output.exists()
+    assert sorted(output.parent.iterdir()) == ([output] if existing else [])

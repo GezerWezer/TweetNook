@@ -21,6 +21,7 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
+from tweetnook.core.fileio import atomic_write_text
 from tweetnook.jobs.resource_failure import STORAGE_RECOVERY, is_storage_exhausted
 
 TWITTER_BLUE = "#1DA1F2"
@@ -811,17 +812,14 @@ class PipelineReporter:
     def _write_state_snapshot(self, snapshot: dict[str, object] | None = None) -> None:
         if self.state_path is None or self._started_at is None:
             return
-        temporary = self.state_path.with_name(f".{self.state_path.name}.{os.getpid()}.tmp")
         try:
-            self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            temporary.write_text(
+            atomic_write_text(
+                self.state_path,
                 json.dumps(snapshot or self._state_snapshot(), separators=(",", ":")),
-                encoding="utf-8",
             )
-            temporary.replace(self.state_path)
         except OSError:
             # Status publishing must never break the underlying archive command.
-            temporary.unlink(missing_ok=True)
+            pass
 
     def _progress_renderable(self, step: PipelineStep) -> RenderableType:
         progress = Table.grid(expand=True, padding=(0, 1))

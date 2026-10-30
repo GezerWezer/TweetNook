@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import calendar
 import json
-import os
 import random
 import threading
 import time
@@ -17,6 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from tweetnook.client.fxtwitter import fx_enabled
 from tweetnook.config import AppConfig, CheckConfig, ScheduleConfig, XDGPaths, load_config
+from tweetnook.core.fileio import atomic_write_text
 from tweetnook.jobs.supervisor import JobConflictError, JobSupervisor
 
 CHECK_CONFLICT_RETRY_SECONDS = 15 * 60
@@ -479,14 +479,9 @@ class ScheduleManager:
         return state if isinstance(state, dict) else {}
 
     def _save_state(self) -> None:
-        path = self.paths.schedule_state_file
-        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            temporary.write_text(
-                json.dumps(self._state, separators=(",", ":")),
-                encoding="utf-8",
+            atomic_write_text(
+                self.paths.schedule_state_file, json.dumps(self._state, separators=(",", ":"))
             )
-            temporary.replace(path)
         except OSError:
-            temporary.unlink(missing_ok=True)
+            pass

@@ -9,8 +9,6 @@ each request ledger row so historical estimates remain reproducible.
 from __future__ import annotations
 
 import json
-import os
-import uuid
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -18,6 +16,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, BinaryIO, Protocol
 from urllib import request
+
+from tweetnook.core.fileio import atomic_write_text
 
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 PRICING_CACHE_FILENAME = "openrouter-pricing.json"
@@ -180,19 +180,7 @@ def _extract_google_models(payload: Any) -> dict[str, dict[str, str]]:
 
 
 def _write_cache(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-    try:
-        with temporary.open("w", encoding="utf-8") as handle:
-            json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
-            handle.flush()
-            os.fsync(handle.fileno())
-        temporary.replace(path)
-    finally:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
+    atomic_write_text(path, json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
 
 def load_openrouter_pricing(

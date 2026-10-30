@@ -13,6 +13,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 
+from tweetnook.core.fileio import atomic_write_text
 from tweetnook.tagging.pricing import (
     OpenRouterPricing,
     calculate_estimated_cost_usd,
@@ -795,14 +796,9 @@ class AIUsageLedger:
         self.lock_path = self.root / "ledger.lock"
 
     def _atomic_summary(self, summary: dict[str, Any]) -> None:
-        temporary = self.summary_path.with_name(
-            f".{self.summary_path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+        atomic_write_text(
+            self.summary_path, json.dumps(summary, sort_keys=True, separators=(",", ":"))
         )
-        with temporary.open("w", encoding="utf-8") as handle:
-            handle.write(json.dumps(summary, sort_keys=True, separators=(",", ":")))
-            handle.flush()
-            os.fsync(handle.fileno())
-        temporary.replace(self.summary_path)
 
     def _read_summary(self) -> dict[str, Any] | None:
         try:

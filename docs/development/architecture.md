@@ -59,7 +59,11 @@ See [storage](storage.md) and [search](search-and-web-api.md) for query behavior
 
 Web tag/config edits and inline tagging previews can run alongside long jobs because they don't all acquire the process lock. Provider-budget decisions can also overlap. Multiple web processes sharing one data directory aren't a supported scheduler arrangement.
 
-### Trust and security
+### File publication
+
+`core/fileio.py` owns same-directory temporary files and atomic replacement. Streaming writers use `owned_temp` and `publish_file`; byte, text and JSON publishers use the atomic-write helpers. Cleanup covers interrupts, failed close and failed replacement without hiding the initiating error. Status snapshots and derived-cache callers retain their best-effort error policies.
+
+## Trust and security
 
 TweetNook assumes a trusted local administrator and trusted archive inputs. The built-in server serves HTTP and uses a shared password, with no per-user permissions. CSRF and origin checks are incomplete. Stored URLs can contact arbitrary hosts, and remote fetches have no general response-size budget. Use a trusted network, or put remote access behind a VPN or HTTPS reverse proxy.
 

@@ -9,13 +9,13 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
+from tweetnook.core.fileio import atomic_write_text
 from tweetnook.jobs.supervisor import SERVICE_STOP_TIMEOUT
 
 service_app = typer.Typer(
@@ -357,16 +357,7 @@ def install(
             cache_home=cache_home,
         )
         _owned_unit()
-        fd, name = tempfile.mkstemp(prefix=".tweetnook-", dir=UNIT_PATH.parent)
-        try:
-            with os.fdopen(fd, "w") as handle:
-                handle.write(unit)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(name, 0o644)
-            Path(name).replace(UNIT_PATH)
-        finally:
-            Path(name).unlink(missing_ok=True)
+        atomic_write_text(UNIT_PATH, unit, mode=0o644)
         _systemctl("daemon-reload")
         _systemctl("enable", UNIT_NAME)
         # enable --now only starts an inactive unit. An existing Python process

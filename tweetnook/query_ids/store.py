@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-import tempfile
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 from pydantic import BaseModel, Field
 
 from tweetnook.config import XDGPaths
+from tweetnook.core.fileio import atomic_write_text
 from tweetnook.query_ids.constants import FALLBACK_QUERY_IDS
 
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
@@ -35,17 +34,7 @@ class QueryIdStore:
     def save(self, ids: dict[str, str], *, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> QueryIdCache:
         cache = QueryIdCache(fetched_at=datetime.now(tz=UTC), ttl_seconds=ttl_seconds, ids=ids)
         payload = cache.model_dump_json(indent=2)
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=self.path.parent,
-            delete=False,
-            prefix=f"{self.path.name}.",
-            suffix=".tmp",
-        ) as handle:
-            handle.write(payload)
-            temp_path = Path(handle.name)
-        temp_path.replace(self.path)
+        atomic_write_text(self.path, payload)
         return cache
 
     def is_fresh(self, cache: QueryIdCache | None = None, *, now: datetime | None = None) -> bool:

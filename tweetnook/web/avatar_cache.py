@@ -12,6 +12,7 @@ from pathlib import Path
 from threading import Thread
 
 from tweetnook.config import AppConfig, XDGPaths
+from tweetnook.core.fileio import atomic_write_text
 
 AVATAR_ACCESS_TOUCH_INTERVAL_SECONDS = 24 * 60 * 60
 AVATAR_CLEANUP_INTERVAL_SECONDS = 7 * 24 * 60 * 60
@@ -194,14 +195,9 @@ class AvatarCacheManager:
         return state if isinstance(state, dict) else {}
 
     def _save_state(self) -> None:
-        path = self.paths.avatar_cache_state_file
-        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            temporary.write_text(
-                json.dumps(self._state, separators=(",", ":")),
-                encoding="utf-8",
+            atomic_write_text(
+                self.paths.avatar_cache_state_file, json.dumps(self._state, separators=(",", ":"))
             )
-            temporary.replace(path)
         except OSError:
-            temporary.unlink(missing_ok=True)
+            pass

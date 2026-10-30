@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import mimetypes
 import re
-import tempfile
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -15,6 +14,7 @@ from rich.console import Console
 
 from tweetnook.config import DEFAULT_USER_AGENT, AppConfig, XDGPaths
 from tweetnook.core.dev_replay import client_transport
+from tweetnook.core.fileio import owned_temp, publish_file
 from tweetnook.core.utils import utc_now
 from tweetnook.jobs.context import locked_archive_job
 from tweetnook.jobs.interactive import emit_status, progress_callback, status_printer
@@ -116,20 +116,11 @@ async def _download_file(
     url: str,
     destination: Path,
 ) -> tuple[Path, str, int, str | None]:
-    destination.parent.mkdir(parents=True, exist_ok=True)
     content_type: str | None = None
     file_hash = sha256()
     byte_size = 0
-    temp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            "wb",
-            dir=destination.parent,
-            delete=False,
-            prefix=f"{destination.name}.",
-            suffix=".tmp",
-        ) as handle:
-            temp_path = Path(handle.name)
+    with owned_temp(destination) as temporary:
+        with temporary.open("wb") as handle:
             async with client.stream("GET", url) as response:
                 response.raise_for_status()
                 content_type = response.headers.get("content-type")
@@ -142,16 +133,8 @@ async def _download_file(
             extension = _content_extension(content_type, url)
             if destination.suffix.lower() != extension:
                 final_destination = destination.with_suffix(extension)
-        final_destination.parent.mkdir(parents=True, exist_ok=True)
-        temp_path.replace(final_destination)
+        publish_file(temporary, final_destination)
         return final_destination, file_hash.hexdigest(), byte_size, content_type
-    except BaseException:
-        if temp_path is not None:
-            try:
-                temp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-        raise
 
 
 async def download_media(

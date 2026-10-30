@@ -65,7 +65,7 @@ def test_notices_remain_readable_when_full_disk_prevents_persistence(tmp_path, m
     def full(*args, **kwargs):
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr("tweetnook.web.notices.atomic_json", full)
+    monkeypatch.setattr("tweetnook.web.notices.atomic_write_json", full)
     notices = NoticeStore(tmp_path / "notices.json")
     notices.add("disk-full", "Storage is full", "Free disk space, then resume.")
     assert notices.list()[0]["title"] == "Storage is full"

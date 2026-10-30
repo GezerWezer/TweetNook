@@ -3,24 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
-
-def atomic_json(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(value, handle)
-            handle.flush()
-            os.fsync(handle.fileno())
-        Path(name).replace(path)
-    finally:
-        Path(name).unlink(missing_ok=True)
+from tweetnook.core.fileio import atomic_write_json
 
 
 class NoticeStore:
@@ -35,7 +22,7 @@ class NoticeStore:
 
     def _save(self):
         try:
-            atomic_json(self.path, self.items)
+            atomic_write_json(self.path, self.items)
         except OSError:
             # Keep notices readable while a full/read-only volume prevents persistence.
             pass

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 from tweetnook.config import XDGPaths
+from tweetnook.core.fileio import owned_temp, publish_file
 from tweetnook.core.utils import utc_now
 from tweetnook.importer.archive_input import ArchiveInput
 from tweetnook.storage import ArchiveStore
@@ -26,27 +26,15 @@ def _url_basename(value: Any) -> str | None:
 def _copy_file_from_archive(
     source: ArchiveInput, relative_path: str, destination: Path
 ) -> tuple[str, int]:
-    destination.parent.mkdir(parents=True, exist_ok=True)
     sha = hashlib.sha256()
     byte_size = 0
-    with tempfile.NamedTemporaryFile(
-        "wb",
-        dir=destination.parent,
-        delete=False,
-        prefix=f"{destination.name}.",
-        suffix=".tmp",
-    ) as handle:
-        temp_path = Path(handle.name)
-        try:
-            with source.open_binary(relative_path) as input_handle:
-                for chunk in iter(lambda: input_handle.read(1024 * 1024), b""):
-                    handle.write(chunk)
-                    sha.update(chunk)
-                    byte_size += len(chunk)
-        except Exception:
-            temp_path.unlink(missing_ok=True)
-            raise
-    temp_path.replace(destination)
+    with owned_temp(destination) as temporary:
+        with temporary.open("wb") as handle, source.open_binary(relative_path) as input_handle:
+            for chunk in iter(lambda: input_handle.read(1024 * 1024), b""):
+                handle.write(chunk)
+                sha.update(chunk)
+                byte_size += len(chunk)
+        publish_file(temporary, destination)
     return sha.hexdigest(), byte_size
 
 

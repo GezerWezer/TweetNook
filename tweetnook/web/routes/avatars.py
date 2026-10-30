@@ -3,7 +3,6 @@
 import asyncio
 import re
 import struct
-import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -16,6 +15,7 @@ from fastapi.responses import FileResponse, Response
 
 from tweetnook.config import XDGPaths
 from tweetnook.core.dev_replay import client_transport
+from tweetnook.core.fileio import atomic_write_bytes
 from tweetnook.web.avatar_cache import mark_avatar_accessed
 from tweetnook.web.deps import get_server_state, require_store, verify_credentials
 
@@ -81,14 +81,7 @@ def _avatar_format(content: bytes) -> tuple[str, str] | None:
 
 def _cache_avatar(path: Path, content: bytes) -> None:
     """Publish complete files so concurrent requests cannot see a partial write."""
-    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".avatar-", delete=False) as file:
-        temporary = Path(file.name)
-        try:
-            file.write(content)
-            file.flush()
-            temporary.replace(path)
-        finally:
-            temporary.unlink(missing_ok=True)
+    atomic_write_bytes(path, content)
 
 
 def _avatar_urls(url: str) -> list[str]:

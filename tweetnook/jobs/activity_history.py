@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tweetnook.core.fileio import atomic_write_text
+
 ACTIVITY_ORIGIN_ENV = "TWEETNOOK_ACTIVITY_ORIGIN"
 ACTIVITY_RUN_ID_ENV = "TWEETNOOK_ACTIVITY_RUN_ID"
 RUN_ID_RE = re.compile(r"^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$")
@@ -55,16 +57,7 @@ def runs_root(data_dir: Path) -> Path:
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
-        temporary.replace(path)
-    finally:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
+    atomic_write_text(path, json.dumps(payload, separators=(",", ":")))
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
