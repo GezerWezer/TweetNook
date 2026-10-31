@@ -95,12 +95,15 @@ class ArchiveInput:
             yield handle
 
     def iter_files(self, relative_dir: str) -> list[str]:
+        """List direct child files with canonical archive-relative names."""
         prefix = self._normalize_name(relative_dir).rstrip("/") + "/"
         if self._zip is not None:
             return [
-                name
-                for name in sorted(self._zip.namelist())
-                if name.startswith(prefix) and name != prefix
+                info.filename
+                for info in sorted(self._zip.infolist(), key=lambda info: info.filename)
+                if not info.is_dir()
+                and info.filename.startswith(prefix)
+                and "/" not in info.filename[len(prefix) :]
             ]
         directory = self._directory_path(relative_dir)
         if not directory.exists():
@@ -109,16 +112,30 @@ class ArchiveInput:
 
     def _load_manifest(self) -> dict[str, Any]:
         raw = self.read_text("data/manifest.js")
-        return _parse_assigned_json(raw, _MANIFEST_ASSIGNMENT_RE, "manifest.js")
+        manifest = _parse_assigned_json(raw, _MANIFEST_ASSIGNMENT_RE, "manifest.js")
+        if not isinstance(manifest, dict):
+            raise ConfigError("manifest.js must contain an object.")
+        for key in ("dataTypes", "userInfo", "archiveInfo"):
+            _manifest_mapping(manifest.get(key), key)
+        return manifest
 
     def dataset_files(self, key: str) -> list[str]:
-        dataset = ((self.manifest.get("dataTypes") or {}).get(key)) or {}
-        files = dataset.get("files") or []
-        return [
-            item["fileName"]
-            for item in files
-            if isinstance(item, dict) and isinstance(item.get("fileName"), str)
-        ]
+        label = f"dataTypes.{key}"
+        dataset = _manifest_mapping((self.manifest.get("dataTypes") or {}).get(key), label)
+        files = dataset.get("files")
+        if files is None:
+            files = []
+        if not isinstance(files, list):
+            raise ConfigError(f"manifest.js {label}.files must be an array.")
+        filenames = []
+        for index, item in enumerate(files):
+            if not isinstance(item, dict) or not isinstance(item.get("fileName"), str):
+                raise ConfigError(f"manifest.js {label}.files[{index}].fileName must be a string.")
+            filenames.append(item["fileName"])
+        media_directory = dataset.get("mediaDirectory")
+        if media_directory is not None and not isinstance(media_directory, str):
+            raise ConfigError(f"manifest.js {label}.mediaDirectory must be a string.")
+        return filenames
 
     def load_dataset(
         self,
@@ -134,9 +151,10 @@ class ArchiveInput:
             if item_status is not None:
                 item_status(filename)
             parsed = parse_ytd_js(self.read_text(filename), label=filename)
+            if not isinstance(parsed, list):
+                raise ConfigError(f"{filename} must contain an array.")
             parts.append((filename, parsed))
-            if isinstance(parsed, list):
-                items.extend(parsed)
+            items.extend(parsed)
             if progress is not None:
                 progress(index, len(files))
         return items, parts
@@ -193,6 +211,14 @@ class ArchiveInput:
                     if progress is not None:
                         progress(processed_bytes, total_bytes)
         return digest.hexdigest()
+
+
+def _manifest_mapping(value: Any, label: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ConfigError(f"manifest.js {label} must be an object.")
+    return value
 
 
 def _parse_assigned_json(raw: str, pattern: re.Pattern[str], label: str) -> Any:
