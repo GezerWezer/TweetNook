@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from tweetnook.core.fileio import atomic_write_text
+from tweetnook.jobs.outcome import Outcome, recorded_outcome
 
 ACTIVITY_ORIGIN_ENV = "TWEETNOOK_ACTIVITY_ORIGIN"
 ACTIVITY_RUN_ID_ENV = "TWEETNOOK_ACTIVITY_RUN_ID"
@@ -87,6 +88,11 @@ def sanitized_argv(argv: list[str] | None = None) -> list[str]:
             continue
         sanitized.append(value)
     return sanitized
+
+
+def _terminal_status(record: dict[str, Any]) -> str:
+    outcome = recorded_outcome(record)
+    return outcome.run_status if outcome is not None else "interrupted"
 
 
 def reserve_run(
@@ -183,15 +189,8 @@ class ActivityRunWriter:
             if terminal:
                 _atomic_json(self.run_dir / "final.json", payload)
                 self.update_metadata(
-                    status=(
-                        "completed"
-                        if payload.get("success")
-                        else (
-                            "stopped"
-                            if str(payload.get("summary", "")).lower().startswith("stopped")
-                            else "failed"
-                        )
-                    ),
+                    status=_terminal_status(payload),
+                    outcome=payload.get("outcome"),
                     completed_at=payload.get("completed_at") or time.time(),
                     success=payload.get("success"),
                     summary=payload.get("summary", ""),
@@ -239,21 +238,21 @@ def mark_run_process_result(
             }
         )
         final = snapshot
+    stopped = stopped or recorded_outcome(final) is Outcome.STOPPED
     final = terminal_snapshot(final, stopped=stopped)
-    if exit_code != 0 or stopped:
-        final["success"] = False
-    successful = exit_code == 0 and final.get("success") is True
+    outcome = recorded_outcome(final)
+    if stopped:
+        outcome = Outcome.STOPPED
+    elif exit_code != 0 and (outcome is None or outcome.ok):
+        # The exit status outranks whatever the worker managed to publish before it.
+        outcome = Outcome.FAILED
+    final["outcome"] = outcome
+    if outcome is not None:
+        final["success"] = outcome.ok
     metadata.update(
         {
-            "status": (
-                "stopped"
-                if stopped
-                else "completed"
-                if successful
-                else "interrupted"
-                if final.get("success") is None
-                else "failed"
-            ),
+            "status": outcome.run_status if outcome is not None else "interrupted",
+            "outcome": outcome,
             "completed_at": final.get("completed_at") or time.time(),
             "exit_code": exit_code,
             "success": final.get("success"),
@@ -326,13 +325,8 @@ def read_run(data_dir: Path, run_id: str) -> dict[str, Any] | None:
     if metadata.get("status") in {"starting", "running"}:
         if final is not None:
             metadata.update(
-                status=(
-                    "completed"
-                    if final.get("success") is True
-                    else "interrupted"
-                    if final.get("success") is None
-                    else "failed"
-                ),
+                status=_terminal_status(final),
+                outcome=final.get("outcome"),
                 success=final.get("success"),
                 completed_at=final.get("completed_at"),
                 summary=final.get("summary", ""),

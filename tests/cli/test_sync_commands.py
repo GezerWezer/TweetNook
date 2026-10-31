@@ -169,7 +169,7 @@ def test_sync_all_forwards_article_backfill(paths, monkeypatch, subcommand) -> N
     }
     output = buffer.getvalue()
     assert "bookmarks: 2 pages, 3 tweets" in output
-    assert "Likes sync failed: boom" in output
+    assert "Sync stopped after failure in likes." in output
 
 
 def test_sync_default_runs_sync_all_with_full_followups(paths, monkeypatch) -> None:

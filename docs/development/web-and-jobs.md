@@ -36,7 +36,7 @@ All web-save routes use `save_server_config` to serialize publication and applic
 
 ## Logs
 
-`PipelineReporter` publishes stages and final outcomes. `jobs/activity_history.py` keeps per-run records and logs under `activity/runs/`; retention is configurable. Worker logs receive timestamps. Notifications identify events that require attention and can link to a run.
+`PipelineReporter` publishes stages and one final `Outcome` (`jobs/outcome.py`): `succeeded`, `no_work`, `paused`, `partial`, `failed` or `stopped`. Its `finish` is the only terminal transition, and no step stays open after it. `JobSupervisor` settles the reported outcome against the exit status, which wins when nonzero, and passes both to its completion callback as a `JobCompletion`. A run with no outcome was never verified, such as a worker that vanished, and shows as `interrupted`. `jobs/activity_history.py` keeps per-run records and logs under `activity/runs/`; retention is configurable. Worker logs receive timestamps. Notifications identify events that require attention and can link to a run.
 
 The browser receives live activity over an event stream, with polling as a fallback. `/api/jobs` returns each job's latest saved result, including import and enrichment. Jobs follows active work, then shows an unsuccessful run or the most recent result. Saved results remain available after reconnecting or restarting the server.
 

@@ -124,7 +124,7 @@ def test_shutdown_joins_old_callback_after_new_worker_finishes(paths, monkeypatc
     supplied = iter([Process(finish_first), Process(finish_second)])
     monkeypatch.setattr(supervision.subprocess, "Popen", lambda *a, **kw: next(supplied))
 
-    def complete(run_id, code):
+    def complete(_completion):
         if not old_callback.is_set():
             old_callback.set()
             assert release_old.wait(5)

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import errno
+import json
 import sqlite3
 from io import StringIO
 
@@ -21,10 +23,23 @@ from tests.test_process_lock_os import other_process_sees
 from tweetnook.config import AppConfig
 from tweetnook.core.exceptions import ArchiveNotFoundError, ConfigError, StaleQueryIdError
 from tweetnook.jobs import context as job_context
+from tweetnook.jobs.activity_history import (
+    mark_run_process_result,
+    new_run_id,
+    read_run,
+    reserve_run,
+    runs_root,
+)
+from tweetnook.jobs.outcome import Outcome, finished_cleanly, recorded_outcome
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.jobs.resource_failure import STORAGE_RECOVERY, StorageExhaustedError
 from tweetnook.storage import ArchiveStore, open_archive_store
-from tweetnook.sync.collection import RemotePreflightError, run_preflight, sync_collection
+from tweetnook.sync.collection import (
+    RemotePreflightError,
+    run_preflight,
+    sync_all,
+    sync_collection,
+)
 
 FULL_DISK = OSError(errno.ENOSPC, "No space left on device")
 FULL_DATABASE = sqlite3.OperationalError("database or disk is full")
@@ -484,3 +499,203 @@ async def test_preflight_keeps_the_callers_query_ids_unchanged(paths, config, au
         console=Console(file=StringIO()),
     )
     assert given == {"Bookmarks": "qid"}
+
+
+def _finished_snapshot(tmp_path, build) -> dict:
+    state_path = tmp_path / "activity-status.json"
+    console = Console(file=StringIO(), force_terminal=False)
+    try:
+        with PipelineReporter(console, "Job", state_path=state_path) as pipeline:
+            build(pipeline)
+    except (KeyboardInterrupt, RuntimeError):
+        pass
+    return json.loads(state_path.read_text())
+
+
+def _two_steps(pipeline) -> None:
+    pipeline.add_step("one", "One", total=2, unit="items")
+    pipeline.add_step("two", "Two", total=2, unit="items")
+
+
+def _finish_first(pipeline) -> None:
+    _two_steps(pipeline)
+    pipeline.start_step("one", activity="working")
+    pipeline.complete_step("one", "done")
+
+
+def _raise(error):
+    raise error
+
+
+@pytest.mark.parametrize(
+    ("build", "outcome", "success"),
+    [
+        pytest.param(
+            lambda p: (_finish_first(p), p.skip_step("two", "nothing due")),
+            "succeeded",
+            True,
+            id="succeeded",
+        ),
+        pytest.param(_two_steps, "no_work", True, id="every-step-skipped"),
+        pytest.param(
+            lambda p: (
+                _finish_first(p),
+                p.start_step("two", activity="working"),
+                p.fail_step("two", "limit", paused=True),
+            ),
+            "paused",
+            True,
+            id="paused",
+        ),
+        pytest.param(
+            lambda p: (_finish_first(p), _raise(RuntimeError("boom"))),
+            "partial",
+            False,
+            id="failed-after-finishing-a-step",
+        ),
+        pytest.param(
+            lambda p: (
+                _two_steps(p),
+                p.start_step("one", activity="working"),
+                _raise(RuntimeError("boom")),
+            ),
+            "failed",
+            False,
+            id="failed-before-finishing-a-step",
+        ),
+        pytest.param(
+            lambda p: (_finish_first(p), _raise(KeyboardInterrupt())),
+            "stopped",
+            False,
+            id="interrupted",
+        ),
+    ],
+)
+def test_reporter_decides_one_outcome(tmp_path, build, outcome, success):
+    snapshot = _finished_snapshot(tmp_path, build)
+    assert snapshot["outcome"] == outcome
+    assert snapshot["success"] is success
+    assert snapshot["stopped"] is (outcome == "stopped")
+    assert not snapshot["running"]
+    assert snapshot["active_step"] is None
+    assert {step["state"] for step in snapshot["steps"]} <= {"complete", "skipped", "failed"}
+
+
+def test_finish_keeps_an_open_steps_progress(tmp_path):
+    def build(pipeline):
+        _two_steps(pipeline)
+        pipeline.start_step("one", activity="working")
+        pipeline.update_step("one", completed=1)
+
+    steps = {step["key"]: step for step in _finished_snapshot(tmp_path, build)["steps"]}
+    assert steps["one"]["state"] == "complete"
+    assert steps["one"]["completed"] == 1
+    assert steps["two"]["state"] == "skipped"
+
+
+def test_summary_wording_does_not_decide_a_stop(tmp_path):
+    run_id = _finished_snapshot(
+        tmp_path, lambda _: _raise(RuntimeError("Stopped responding: server gone"))
+    )["run_id"]
+    assert read_run(tmp_path, run_id)["status"] == "failed"
+    assert read_run(tmp_path, run_id)["outcome"] == "failed"
+
+
+def test_direct_and_supervised_interrupts_save_the_same_result(tmp_path):
+    direct = _finished_snapshot(tmp_path, lambda p: (_finish_first(p), _raise(KeyboardInterrupt())))
+    run_id = direct["run_id"]
+    assert read_run(tmp_path, run_id)["status"] == "stopped"
+
+    supervised = mark_run_process_result(tmp_path, run_id, exit_code=130, stopped=True)
+    assert supervised["status"] == "stopped"
+    assert supervised["snapshot"]["outcome"] == direct["outcome"] == "stopped"
+    assert supervised["snapshot"]["stopped"] is direct["stopped"] is True
+
+
+@pytest.mark.parametrize(
+    ("reported", "exit_code", "stopped", "status", "outcome", "clean"),
+    [
+        ("succeeded", 0, False, "completed", "succeeded", True),
+        ("no_work", 0, False, "completed", "no_work", True),
+        # A worker can save a failure and still exit zero; the saved failure counts.
+        ("failed", 0, False, "failed", "failed", False),
+        ("partial", 2, False, "failed", "partial", False),
+        # A nonzero exit outranks a worker that published success first.
+        ("succeeded", 2, False, "failed", "failed", False),
+        ("succeeded", 130, True, "stopped", "stopped", False),
+        # Publication is best-effort: a clean exit with nothing saved isn't a failure...
+        (None, 0, False, "interrupted", None, True),
+        # ...and a failed exit with nothing saved is.
+        (None, 2, False, "failed", "failed", False),
+    ],
+)
+def test_process_result_settles_the_reported_outcome(
+    tmp_path, reported, exit_code, stopped, status, outcome, clean
+):
+    run_id = new_run_id()
+    reserve_run(tmp_path, run_id=run_id, title="Job", command=["job"], origin="web")
+    if reported is not None:
+        (runs_root(tmp_path) / run_id / "final.json").write_text(
+            json.dumps(
+                {
+                    "running": False,
+                    "outcome": reported,
+                    "success": Outcome(reported).ok,
+                    "steps": [],
+                }
+            )
+        )
+    run = mark_run_process_result(tmp_path, run_id, exit_code=exit_code, stopped=stopped)
+    assert run["status"] == status
+    assert run["outcome"] == outcome
+    assert run["snapshot"]["outcome"] == outcome
+    assert finished_cleanly(exit_code, recorded_outcome(run["snapshot"])) is clean
+
+
+def test_history_saved_before_outcomes_still_reads(tmp_path):
+    assert recorded_outcome({"status": "stopped", "success": False}) is Outcome.STOPPED
+    assert recorded_outcome({"stopped": True, "success": False}) is Outcome.STOPPED
+    assert recorded_outcome({"success": True}) is Outcome.SUCCEEDED
+    assert recorded_outcome({"success": False}) is Outcome.FAILED
+    assert recorded_outcome({"success": None}) is None
+
+
+def test_one_collection_failing_is_one_issue_and_a_partial_run(
+    archive, config, auth_bundle, monkeypatch
+):
+    _save_query_ids(archive)
+    config.auth.user_id = "42"
+    _capture_cli(monkeypatch, archive, config)
+    likes_requests = []
+
+    def likes_fail_after_preflight(request: httpx.Request) -> httpx.Response:
+        if "Likes" in request.url.path:
+            likes_requests.append(request)
+            if len(likes_requests) > 1:
+                return httpx.Response(500, json={"errors": [{"message": "boom"}]})
+        return _empty_timeline(request)
+
+    real_sync_all = sync_all
+
+    def sync_all_offline(**kwargs):
+        kwargs.update(
+            config=config,
+            paths=archive,
+            auth_bundle=auth_bundle,
+            transport=httpx.MockTransport(likes_fail_after_preflight),
+            sleep=lambda _seconds: asyncio.sleep(0),
+        )
+        return real_sync_all(**kwargs)
+
+    patch_cli(monkeypatch, "sync_all", sync_all_offline)
+    patch_cli(monkeypatch, "resolve_auth_bundle", lambda _config: auth_bundle)
+
+    result = CliRunner().invoke(cli.app, ["sync"])
+
+    assert result.exit_code == 2, result.output
+    status = json.loads(archive.activity_status_file.read_text())
+    assert status["outcome"] == "partial"
+    assert status["success"] is False
+    failures = [issue for issue in status["issues"] if "sync failed" in issue["message"]]
+    assert [issue["count"] for issue in failures] == [1]
+    assert {step["state"] for step in status["steps"]} <= {"complete", "skipped", "failed"}

@@ -61,7 +61,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `tagging/sdk.py` | Optional dependency checks and model catalog. |
 | `tagging/accounting.py`, `tagging/pricing.py`, `tagging/rpd.py` | Local spend, Search usage and request allowances. |
 | `jobs/context.py`, `jobs/resource_failure.py` | Locked job context and storage-failure handling. |
-| `jobs/pipeline.py`, `jobs/activity_history.py`, `jobs/worker_logging.py` | Progress stages, durable outcomes and timestamped logs. |
+| `jobs/pipeline.py`, `jobs/outcome.py`, `jobs/activity_history.py`, `jobs/worker_logging.py` | Progress stages, the typed job outcome, durable run records and timestamped logs. |
 | `jobs/supervisor.py`, `jobs/scheduler.py` | Worker/queue ownership and scheduled submission. |
 | `jobs/reminders.py`, `jobs/interactive.py` | Notices and terminal interaction. |
 | `web/server.py`, `web/deps.py` | FastAPI lifecycle, shared state, sessions and archive readiness. |

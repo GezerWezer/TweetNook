@@ -11,6 +11,7 @@ from pydantic import BaseModel, ValidationError
 from tweetnook.core.fileio import atomic_write_json
 from tweetnook.jobs.activity_history import latest_finished_snapshot, new_run_id, read_run
 from tweetnook.jobs.context import archive_job
+from tweetnook.jobs.outcome import Outcome, finished_cleanly, recorded_outcome
 from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.storage import open_archive_store
 
@@ -116,10 +117,11 @@ class SetupCoordinator:
         ):
             latest = None
         if latest and (not run or (latest.get("started_at") or 0) >= (run.get("started_at") or 0)):
+            outcome = recorded_outcome(latest)
             return {
                 "status": "stopped"
-                if latest.get("stopped")
-                else ("completed" if latest.get("success") is True else "failed"),
+                if outcome is Outcome.STOPPED
+                else ("completed" if outcome is not None and outcome.ok else "failed"),
                 "success": latest.get("success"),
                 "snapshot": latest,
             }
@@ -193,10 +195,10 @@ class SetupCoordinator:
             self._commit(auth_verified=True, auth_skipped=False)
             self.reconcile()
 
-    def job_completed(self, run_id, exit_code):
+    def job_completed(self, completion):
         with self.lock:
-            if run_id == self.state.archive_init_run_id:
-                self._record_initialization(exit_code == 0, self._run(run_id))
+            if completion.run_id == self.state.archive_init_run_id:
+                self._record_initialization(completion.clean, self._run(completion.run_id))
             self.reconcile()
 
     def _record_initialization(self, clean, run, *, failure="failed"):
@@ -273,7 +275,7 @@ class SetupCoordinator:
                 # A separately surviving worker/command lock wins over stale metadata.
                 if supervisor._external_activity_is_running():
                     return
-                clean = bool(run and (run.get("exit_code") == 0 or run.get("success") is True))
+                clean = bool(run) and finished_cleanly(run.get("exit_code"), recorded_outcome(run))
                 self._record_initialization(clean, run, failure="interrupted")
             if self.state.archive_previously_ready or (
                 not init_running

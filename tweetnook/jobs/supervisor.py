@@ -12,6 +12,7 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import dataclass
 from typing import Any
 
 from tweetnook.config import AppConfig, XDGPaths
@@ -26,6 +27,7 @@ from tweetnook.jobs.activity_history import (
     reserve_run,
     update_run_metadata,
 )
+from tweetnook.jobs.outcome import Outcome, finished_cleanly, recorded_outcome
 
 WORKER_INTERRUPT_TIMEOUT = 45
 WORKER_TERMINATE_TIMEOUT = 10
@@ -35,6 +37,19 @@ WEB_STOP_TIMEOUT = 70
 # this often.
 QUEUE_RETRY_SECONDS = 30
 SERVICE_STOP_TIMEOUT = 90
+
+
+@dataclass(frozen=True, slots=True)
+class JobCompletion:
+    """A worker's exit status and what it reported; the two can disagree in either direction."""
+
+    run_id: str
+    exit_code: int
+    outcome: Outcome | None
+
+    @property
+    def clean(self) -> bool:
+        return finished_cleanly(self.exit_code, self.outcome)
 
 
 class JobConflictError(RuntimeError):
@@ -53,7 +68,7 @@ class JobSupervisor:
         paths: XDGPaths,
         config: AppConfig,
         *,
-        on_complete: Callable[[str, int], None] | None = None,
+        on_complete: Callable[[JobCompletion], None] | None = None,
         on_start: Callable[[str, int], None] | None = None,
     ) -> None:
         self.paths = paths
@@ -369,6 +384,9 @@ class JobSupervisor:
                         "run_id": run_id,
                         "running": False,
                         "stopped": stopped,
+                        "outcome": (
+                            Outcome.STOPPED if stopped else Outcome.FAILED if exit_code else None
+                        ),
                         "success": False if exit_code else None,
                         "summary": "The worker ended, but its final result could not be saved. "
                         "Check disk space, then resume. Saved progress is preserved.",
@@ -400,7 +418,13 @@ class JobSupervisor:
         finally:
             try:
                 if self.on_complete is not None:
-                    self.on_complete(run_id, exit_code)
+                    self.on_complete(
+                        JobCompletion(
+                            run_id=run_id,
+                            exit_code=exit_code,
+                            outcome=recorded_outcome(self.last_result["snapshot"]),
+                        )
+                    )
             finally:
                 self._start_next()
 

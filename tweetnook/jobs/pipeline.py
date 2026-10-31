@@ -23,6 +23,7 @@ from rich.table import Table
 from rich.text import Text
 
 from tweetnook.core.fileio import atomic_write_text
+from tweetnook.jobs.outcome import Outcome
 from tweetnook.jobs.resource_failure import STORAGE_RECOVERY, is_storage_exhausted
 
 TWITTER_BLUE = "#1DA1F2"
@@ -345,7 +346,7 @@ class PipelineReporter:
     _live: Live | None = field(default=None, init=False)
     _token: Token[PipelineReporter | NullPipeline] | None = field(default=None, init=False)
     _finished: bool = field(default=False, init=False)
-    _success: bool = field(default=True, init=False)
+    _outcome: Outcome | None = field(default=None, init=False)
     _final_summary: str = field(default="", init=False)
     _started_at: float | None = field(default=None, init=False)
     _finished_at: float | None = field(default=None, init=False)
@@ -417,9 +418,10 @@ class PipelineReporter:
         try:
             if exc is not None:
                 active = self.active_step
+                stopped = exc_type is KeyboardInterrupt
                 message = (
                     "Stopped by user"
-                    if exc_type is KeyboardInterrupt
+                    if stopped
                     else (_clean_line(str(exc)) or exc.__class__.__name__)
                 )
                 if is_storage_exhausted(exc):
@@ -432,7 +434,7 @@ class PipelineReporter:
                     dedupe_key="command:failure",
                     step=active.key if active is not None else None,
                 )
-                self.finish(message, success=False)
+                self.finish(message, success=False, stopped=stopped)
             elif not self._finished:
                 self.finish(success=True)
         finally:
@@ -710,10 +712,10 @@ class PipelineReporter:
             self._log(step.title, "failed", message)
         self._refresh()
 
-    def finish(self, summary: str = "", *, success: bool = True) -> None:
+    def finish(self, summary: str = "", *, success: bool = True, stopped: bool = False) -> None:
+        """The one terminal transition: no step stays open and the outcome is decided here."""
         if self._finished:
             return
-        self._finished = True
         self._finished_at = time.monotonic()
         self._finished_at_unix = time.time()
         if success and any(step.state == "failed" and not step.recoverable for step in self.steps):
@@ -722,7 +724,6 @@ class PipelineReporter:
                 "Some selected stages did not finish. Saved progress is preserved. "
                 "Review Activity and resume."
             )
-        self._success = success
         if summary:
             self._final_summary = summary
         pending_reason = (
@@ -733,6 +734,16 @@ class PipelineReporter:
         for step in self.steps:
             if step.state == "pending":
                 self.skip_step(step.key, pending_reason)
+            elif step.state == "active" and success:
+                # Keeps its progress: finishing the command doesn't mean every item was reached.
+                step.state = "complete"
+                step.finished_at = self._finished_at
+            elif step.state == "active":
+                self.fail_step(step.key, self._final_summary or pending_reason)
+        # Resolving the steps above publishes snapshots, and a snapshot that isn't running is read
+        # as the run's result. The run only stops running here, once its outcome exists.
+        self._outcome = self._terminal_outcome(success=success, stopped=stopped)
+        self._finished = True
         if self.interactive:
             self._record_history(
                 "command",
@@ -746,6 +757,18 @@ class PipelineReporter:
                 self._final_summary,
             )
         self._refresh()
+
+    def _terminal_outcome(self, *, success: bool, stopped: bool) -> Outcome:
+        if stopped:
+            return Outcome.STOPPED
+        if not success:
+            finished_some = any(step.state == "complete" for step in self.steps)
+            return Outcome.PARTIAL if finished_some else Outcome.FAILED
+        if any(step.paused for step in self.steps):
+            return Outcome.PAUSED
+        if self.steps and all(step.state == "skipped" for step in self.steps):
+            return Outcome.NO_WORK
+        return Outcome.SUCCEEDED
 
     def final_note(self, summary: str) -> None:
         """Set a useful command-level note without ending the lifecycle."""
@@ -838,7 +861,9 @@ class PipelineReporter:
             "pid": os.getpid(),
             "title": self.title,
             "running": self._started_at is not None and not self._finished,
-            "success": self._success if self._finished else None,
+            "success": self._outcome.ok if self._outcome is not None else None,
+            "outcome": self._outcome,
+            "stopped": self._outcome is Outcome.STOPPED,
             "summary": self._final_summary,
             "started_at": self._started_at_unix,
             "completed_at": self._finished_at_unix,

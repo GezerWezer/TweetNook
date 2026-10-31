@@ -13,7 +13,8 @@ from fastapi.testclient import TestClient
 from tweetnook.config import AppConfig, ensure_paths, resolve_paths
 from tweetnook.core.locking import ProcessLock
 from tweetnook.jobs.activity_history import mark_run_process_result, new_run_id, reserve_run
-from tweetnook.jobs.supervisor import JobConflictError
+from tweetnook.jobs.outcome import recorded_outcome
+from tweetnook.jobs.supervisor import JobCompletion, JobConflictError
 from tweetnook.storage import open_archive_store
 from tweetnook.web import server, setup_coordinator
 from tweetnook.web.deps import SESSION_COOKIE, server_state
@@ -71,9 +72,11 @@ class Supervisor:
                     }
                 )
             )
-        mark_run_process_result(self.paths.data_dir, run_id, exit_code=code, stopped=stopped)
+        result = mark_run_process_result(
+            self.paths.data_dir, run_id, exit_code=code, stopped=stopped
+        )
         if callback := self.callbacks.get("on_complete"):
-            callback(run_id, code)
+            callback(JobCompletion(run_id, code, recorded_outcome(result["snapshot"])))
         return run_id
 
     def shutdown(self):
@@ -984,3 +987,23 @@ def test_archive_upload_reports_a_full_disk(first_run, monkeypatch):
         assert response.status_code == 503
         assert "storage" in response.json()["detail"]
         assert not first_run.staged_archive_file.exists()
+
+
+@pytest.mark.parametrize("server_restarted", [False, True])
+def test_saved_failure_with_a_clean_exit_is_not_a_finished_initialization(
+    coordinator, server_restarted
+):
+    coord, jobs, _ = coordinator
+    coord.begin("migration")
+    coord.paths.database_path.touch()
+    if server_restarted:
+        jobs.callbacks.clear()
+    run_id = jobs.active_run_id
+    (coord.paths.activity_runs_dir / run_id / "final.json").write_text(
+        json.dumps({"running": False, "outcome": "failed", "success": False, "steps": []})
+    )
+    jobs.finish(1)
+    if server_restarted:
+        coord.reconcile()
+    assert coord.state.initialization_result in {"failed", "interrupted"}
+    assert server_state.get("store") is None

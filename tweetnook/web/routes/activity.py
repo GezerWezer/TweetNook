@@ -99,6 +99,8 @@ def read_active_snapshot() -> dict[str, Any] | None:
         "title": getattr(supervisor, "active_title", None) or f"tweetnook {kind}",
         "running": True,
         "success": None,
+        "outcome": None,
+        "stopped": False,
         "summary": "Starting worker process",
         "started_at": started_at,
         "updated_at": time.time(),

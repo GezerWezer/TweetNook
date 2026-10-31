@@ -10,7 +10,8 @@ import pytest
 
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.locking import ProcessLock
-from tweetnook.jobs.supervisor import JobConflictError, JobSupervisor
+from tweetnook.jobs.outcome import Outcome
+from tweetnook.jobs.supervisor import JobCompletion, JobConflictError, JobSupervisor
 
 
 def _paths(tmp_path):
@@ -174,12 +175,13 @@ def test_shutdown_escalates_only_after_grace_and_records_stop(tmp_path, monkeypa
 
     monkeypatch.setattr("tweetnook.jobs.supervisor.subprocess.Popen", lambda *a, **k: Process())
     monkeypatch.setattr("tweetnook.jobs.supervisor.os.killpg", killpg)
-    supervisor = JobSupervisor(paths, AppConfig(), on_complete=lambda *args: callbacks.append(args))
+    supervisor = JobSupervisor(paths, AppConfig(), on_complete=callbacks.append)
     result = supervisor.start(kind="import", cli_args=["import"], origin="web", title="Import")
     supervisor.shutdown(timeout=0.01)
     assert signals == [signal.SIGINT, signal.SIGTERM, signal.SIGKILL][: signals.index(exit_on) + 1]
     assert waits[0] == 0.01
-    assert callbacks == [(result["run_id"], 130)]
+    assert callbacks == [JobCompletion(result["run_id"], 130, Outcome.STOPPED)]
+    assert not callbacks[0].clean
     metadata = json.loads(
         (paths.activity_runs_dir / result["run_id"] / "metadata.json").read_text()
     )
@@ -205,9 +207,7 @@ def test_monitor_always_cleans_up_and_calls_back_when_result_persistence_fails(
     from unittest.mock import Mock
 
     callbacks = []
-    supervisor = JobSupervisor(
-        _paths(tmp_path), AppConfig(), on_complete=lambda *args: callbacks.append(args)
-    )
+    supervisor = JobSupervisor(_paths(tmp_path), AppConfig(), on_complete=callbacks.append)
     process = SimpleNamespace(wait=lambda: 2, poll=lambda: 2, pid=4321)
     handle = Mock()
     handle.close.side_effect = OSError(errno.ENOSPC, "No space left on device")
@@ -228,7 +228,7 @@ def test_monitor_always_cleans_up_and_calls_back_when_result_persistence_fails(
     assert supervisor.active_run_id is None
     assert supervisor._console_handle is None
     handle.close.assert_called_once()
-    assert callbacks == [("test-run", 2)]
+    assert callbacks == [JobCompletion("test-run", 2, Outcome.FAILED)]
     assert supervisor.last_result["snapshot"]["success"] is False
     # Persistence failure must not leave the supervisor refusing the next start.
     monkeypatch.setattr(supervisor, "_external_activity_is_running", lambda: False)

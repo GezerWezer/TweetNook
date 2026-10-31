@@ -58,6 +58,33 @@ def test_fatal_error_after_recoverable_step_still_fails_run(tmp_path):
     assert json.loads(path.read_text())["success"] is False
 
 
+@pytest.mark.parametrize(("success", "outcome"), [(True, "succeeded"), (False, "partial")])
+def test_finish_never_publishes_a_finished_run_without_its_outcome(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, success, outcome
+):
+    published: list[dict[str, object]] = []
+    write = PipelineReporter._write_state_snapshot
+
+    def record(self, snapshot=None):
+        published.append(snapshot or self._state_snapshot())
+        write(self, snapshot)
+
+    monkeypatch.setattr(PipelineReporter, "_write_state_snapshot", record)
+    path = tmp_path / "activity-status.json"
+    with PipelineReporter(_console(StringIO()), "sync", interactive=False, state_path=path) as run:
+        run.add_step("done", "Done", total=1, unit="pages")
+        run.complete_step("done", "Saved")
+        run.add_step("active", "Active", total=1, unit="pages")
+        run.start_step("active", activity="Working")
+        run.add_step("pending", "Pending", total=1, unit="pages")
+        del published[:]
+        run.finish(success=success)
+
+    finished = [snapshot for snapshot in published if not snapshot["running"]]
+    assert len(published) > 1
+    assert [snapshot["outcome"] for snapshot in finished] == [outcome]
+
+
 def test_reporter_chooses_one_spinner_for_the_command_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

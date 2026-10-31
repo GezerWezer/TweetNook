@@ -105,12 +105,6 @@ def _run_sync_command(
             result = asyncio.run(runner(config, auth_bundle, console))
             errors = getattr(result, "errors", None)
             if errors:
-                for name, error in errors.items():
-                    pipeline.issue(
-                        f"{str(name).title()} sync failed: {error}",
-                        level="error",
-                        dedupe_key=f"sync:{name}:failure",
-                    )
                 failed = ", ".join(str(name) for name in errors)
                 completed = summarize(result) if summarize is not None else ""
                 summary = f"{completed}. " if completed else ""

@@ -17,12 +17,13 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from tweetnook.config import AppConfig, XDGPaths, upgrade_config
 from tweetnook.jobs.activity_history import cleanup_runs, read_run
+from tweetnook.jobs.outcome import Outcome
 from tweetnook.jobs.reminders import (
     print_archive_migration_report,
     print_pending_archive_enrichment_reminder,
 )
 from tweetnook.jobs.scheduler import ScheduleManager
-from tweetnook.jobs.supervisor import JobSupervisor
+from tweetnook.jobs.supervisor import JobCompletion, JobSupervisor
 from tweetnook.storage import open_archive_store
 from tweetnook.web.avatar_cache import AvatarCacheManager
 from tweetnook.web.deps import WebSessionMiddleware, server_state, verify_credentials
@@ -180,7 +181,8 @@ async def lifespan(app: FastAPI):
                         server_state["activity_worker_run_id"] = run_id
                         server_state["activity_worker_started_at"] = time.time()
 
-            def on_job_complete(run_id: str, exit_code: int) -> None:
+            def on_job_complete(completion: JobCompletion) -> None:
+                run_id = completion.run_id
                 with _worker_timing_lock:
                     if server_state.get("activity_worker_run_id") == run_id:
                         server_state.pop("activity_worker_started_at", None)
@@ -197,10 +199,9 @@ async def lifespan(app: FastAPI):
                 if setup_job and (store := server_state.get("store")) is not None:
                     # A new archive should not show its pre-import report until tomorrow.
                     web_stats_cache.start_refresh(store)
-                if (
-                    (exit_code != 0 or run.get("success") is not True)
-                    and run.get("status") != "stopped"
-                    and not setup_job
+                outcome = completion.outcome
+                if (outcome is None or not outcome.ok) and (
+                    outcome is not Outcome.STOPPED and not setup_job
                 ):
                     action = (
                         "setup"
@@ -218,7 +219,7 @@ async def lifespan(app: FastAPI):
                         run_id=run_id,
                     )
                 if coordinator:
-                    coordinator.job_completed(run_id, exit_code)
+                    coordinator.job_completed(completion)
 
             supervisor = JobSupervisor(
                 paths, config, on_start=on_job_start, on_complete=on_job_complete
