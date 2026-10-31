@@ -138,18 +138,21 @@ def manifest_warnings(manifest_row: dict[str, Any] | None) -> list[str]:
     return [item for item in parsed if isinstance(item, str) and item]
 
 
-def finalize_import_enrichment_status(
+def record_followup_counts(
     store: ArchiveStore,
     manifest_row: dict[str, Any],
     *,
-    followup_status: str,
-    aborted_reason: str | None = None,
     count_updates: dict[str, Any] | None = None,
-) -> None:
+) -> dict[str, Any]:
+    """Save where enrichment stands on a manifest, and return the counts saved.
+
+    A manifest's warnings describe its ingest. A follow-up's warnings belong to that run, so
+    they stay out of here; duplicates are what earlier releases left by appending them.
+    """
+    counts = _manifest_all_counts(manifest_row)
     digest = manifest_row.get("archive_digest")
     if not isinstance(digest, str) or not digest:
-        return
-    counts = _manifest_all_counts(manifest_row)
+        return counts
     if count_updates:
         counts.update(count_updates)
     counts["pending_enrichment"] = store.count_incomplete_initial_enrichment()
@@ -162,11 +165,10 @@ def finalize_import_enrichment_status(
         status=str(manifest_row.get("status") or "completed"),
         import_started_at=manifest_row.get("import_started_at"),
         import_completed_at=utc_now(),
-        warnings=manifest_warnings(manifest_row),
+        warnings=list(dict.fromkeys(manifest_warnings(manifest_row))),
         counts=counts,
-        enrichment_followup_status=followup_status,
-        enrichment_aborted_reason=aborted_reason,
     )
+    return counts
 
 
 def aggregate_import_counts(manifest_rows: list[dict[str, Any]]) -> dict[str, int]:

@@ -39,7 +39,7 @@ from tweetnook.core.utils import utc_now
 from tweetnook.enrichment.resurrection import resurrection_retry_schedule, transient_retry_at
 from tweetnook.importer.archive_manifests import (
     aggregate_import_counts,
-    finalize_import_enrichment_status,
+    record_followup_counts,
 )
 from tweetnook.importer.archive_progress import (
     archive_status_printer,
@@ -77,6 +77,7 @@ class ArchiveEnrichResult:
     pending_untouched: int = 0
     transient_due: int = 0
     transient_delayed: int = 0
+    saved_counts: dict[str, Any] = field(default_factory=dict)
 
 
 def remaining_enrichment_text(remaining: int | None, noun: str) -> str:
@@ -320,32 +321,27 @@ async def run_import_followup(
     enrichment_started_at: str | None = None,
     account_optional: bool = False,
 ) -> ArchiveEnrichResult:
-    """Reconcile and enrich the collections an import's counts cover.
+    """Reconcile and enrich the collections an import's counts cover, and save the result.
 
-    An interrupted or failed follow-up is recorded on the import manifest it belongs to
-    (manifest_digest, or every completed import when None) before the error propagates.
-    Recording success is left to the caller, which knows what counts to write.
+    However it ends, the enrichment counts are saved on the import manifest it belongs to
+    (manifest_digest, or every completed import when None). A stopped follow-up saves them
+    before the error propagates, and that write never replaces the error.
     """
 
-    async def record_stop(followup_status: str, reason: str) -> int | None:
+    async def record_stop() -> int | None:
         # The disk may be why the run stopped, so this write must not replace that error.
         remaining: int | None = None
         try:
             async with locked_archive_job(config=config, paths=paths) as job:
                 remaining = job.store.count_incomplete_initial_enrichment()
                 for manifest_row in _followup_manifest_rows(job.store, manifest_digest):
-                    finalize_import_enrichment_status(
-                        job.store,
-                        manifest_row,
-                        followup_status=followup_status,
-                        aborted_reason=reason,
-                    )
+                    record_followup_counts(job.store, manifest_row)
         except Exception:
             logger.exception("Could not record the archive follow-up's stop")
         return remaining
 
     try:
-        return await _run_archive_followup(
+        result = await _run_archive_followup(
             collections=_followup_collections_from_counts(counts),
             detail_limit=detail_limit,
             reconcile_live=reconcile_live,
@@ -359,12 +355,23 @@ async def run_import_followup(
             account_optional=account_optional,
         )
     except (KeyboardInterrupt, asyncio.CancelledError) as exc:
-        remaining = await record_stop("enrichment_interrupted", str(exc) or type(exc).__name__)
+        remaining = await record_stop()
         raise ArchiveEnrichmentInterrupted(remaining) from exc
     except Exception as exc:
         raise_if_storage_exhausted(exc)
-        remaining = await record_stop("enrichment_aborted", _abort_message(exc))
+        remaining = await record_stop()
         raise ArchiveEnrichmentAborted(remaining, exc) from exc
+    async with locked_archive_job(config=config, paths=paths, console=console) as job:
+        count_updates = {
+            "detail_lookups": result.detail_lookups,
+            "detail_terminal_unavailable": result.detail_terminal_unavailable,
+            "detail_transient_failures": result.detail_transient_failures,
+        }
+        for manifest_row in _followup_manifest_rows(job.store, manifest_digest):
+            result.saved_counts = record_followup_counts(
+                job.store, manifest_row, count_updates=count_updates
+            )
+    return result
 
 
 def _archive_enrich_counts(store: ArchiveStore, *, now: str | None = None) -> ArchiveEnrichResult:
@@ -822,19 +829,6 @@ async def enrich_imported_archive(
         status=status,
         enrichment_started_at=enrichment_started_at,
     )
-    async with locked_archive_job(config=config, paths=paths) as job:
-        count_updates = {
-            "detail_lookups": result.detail_lookups,
-            "detail_terminal_unavailable": result.detail_terminal_unavailable,
-            "detail_transient_failures": result.detail_transient_failures,
-        }
-        for manifest_row in job.store.completed_manifests():
-            finalize_import_enrichment_status(
-                job.store,
-                manifest_row,
-                followup_status="enrichment_complete",
-                count_updates=count_updates,
-            )
     pipeline = current_pipeline()
     pipeline.final_note(
         f"Archive enrichment queue: {result.pending_untouched:,} pending untouched · "

@@ -2,11 +2,13 @@
 
 `importer/archive.py` ingests an official X ZIP or extracted directory, and `importer/archive_enrich.py` completes it from live data. Local ingest and live completion are separate phases, which lets Setup load a large archive while the user configures the connection and collection choices.
 
+`import_x_archive` coordinates and holds no stage's implementation. The stages in `importer/archive_stages.py` share one `ImportRun`, the bulk writes run from one table through one stage runner, and each pipeline step is declared once in `importer/archive_steps.py`. Every exit closes through one function that prints the debug summary, writes the final note and builds the result. The coordinator also raises the ingest's warnings as issues as soon as the ingest finishes, so a follow-up that stops the run doesn't lose them.
+
 ## Archive identity
 
 The input adapter locates the export's datasets, reads JavaScript-assigned JSON without executing it, and derives archive/account identity from the available manifest and account records. Validate owner compatibility before mixing imported data with an existing archive.
 
-The content digest identifies a completed import. Manifests keep counts, warnings, start/completion timestamps and follow-up status. A sampled import has a sampled manifest, so it doesn't pretend the complete archive was ingested.
+The content digest identifies a completed import, and that is decided before anything else about the run: a completed digest is a skip whatever the sample limit, and only whether follow-up runs depends on flags. Manifests keep counts, the warnings from their ingest, and start/completion timestamps; a follow-up's warnings belong to that run and are reported, not stored. A sampled import has a sampled manifest, so it doesn't pretend the complete archive was ingested.
 
 ## Local import
 
@@ -36,7 +38,7 @@ If import enrichment or media fails or stops after local ingest, the saved archi
 
 `import enrich` takes a stable command-start set of eligible rows. With no limit it processes that set; a limit bounds only detail completion. Afterward it calls a backfill-enabled sync of `config.sync.collections` with no page limit to repair gaps. A bounded detail invocation can therefore still lead to substantial timeline work.
 
-Interruption preserves completed rows and reports remaining incomplete work. Aborted or inaccessible detail results retain reasons and retry eligibility. Authentication and repeated-focal-absence errors stop the relevant work without turning transport failures into unavailable posts.
+`run_import_followup` saves the enrichment counts on its manifests however it ends, for both a fresh import and `import enrich`. Interruption preserves completed rows and reports remaining incomplete work. Aborted or inaccessible detail results retain reasons and retry eligibility. Authentication and repeated-focal-absence errors stop the relevant work without turning transport failures into unavailable posts.
 
 ## Regeneration
 
@@ -46,7 +48,7 @@ Interruption preserves completed rows and reports remaining incomplete work. Abo
 
 The raw upload byte limit doesn't impose a complete decompressed-size, entry-count or memory budget. Sample mode still loads full datasets. Identity from the archive is checked against existing owner metadata before writes; a configured live `user_id` can be checked only later during reconciliation, which may be skipped. Those are distinct guards.
 
-Manifests distinguish completed, sampled and failed local ingest from an interrupted/aborted live follow-up. Setup's imported-readiness predicate accepts sampled state, while duplicate/full-follow-up paths require completed state. Keep that distinction explicit when changing the state model.
+Manifests distinguish completed, sampled and failed local ingest. A stopped live follow-up leaves its manifest completed with refreshed enrichment counts, and the run itself reports the stop. Setup's imported-readiness predicate accepts sampled state, while duplicate/full-follow-up paths require completed state. Keep that distinction explicit when changing the state model.
 
 Detail completion checkpoints progress and keeps per-post retry state. Authentication expiry, unrecoverable protocol errors, exhausted rate limits or repeated missing focal results stop the pass after prior work is saved. A missing focal result alone does not establish deletion.
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 import typer
 
@@ -20,141 +20,13 @@ from tweetnook.importer.archive_enrich import (
     enrich_imported_archive,
     remaining_enrichment_text,
 )
-from tweetnook.jobs.pipeline import PipelineReporter
+from tweetnook.importer.archive_steps import plan_archive_import
 from tweetnook.sync.collection import sync_all
 from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline
-from tweetnook.sync.steps import head_step_key, preflight_step_key
 
 import_app = typer.Typer(
     no_args_is_help=True, help="Import and enrich official Twitter/X archives."
 )
-
-
-def _plan_archive_import_pipeline(
-    pipeline: PipelineReporter,
-    *,
-    regen: bool,
-    enrich: bool,
-    detail_lookups: int,
-    sample_limit: int | None,
-    offline: bool = False,
-    defer_followup: bool = False,
-) -> None:
-    pipeline.add_step(
-        "archive-inspect",
-        "Inspect",
-        total=1,
-        unit="bytes",
-        detail="archive content hash and owner validation",
-        rate_unit="bytes/s",
-    )
-    if regen:
-        pipeline.add_step(
-            "archive-regen",
-            "Regenerate",
-            total=1,
-            unit="cleanup",
-            detail="archive-import-owned rows and managed media only",
-            show_rate=False,
-            show_eta=False,
-        )
-    for key, title, unit, detail in (
-        ("archive-source", "Archive source", "operations", "dataset parsing and raw capture"),
-        ("archive-tweets", "Tweets", "tweets", "authored archive rows"),
-        ("archive-deleted", "Deleted tweets", "tweets", "deleted authored archive rows"),
-        ("archive-likes", "Likes", "likes", "archive like memberships"),
-        ("archive-media", "Archive media", "files", "exported media files"),
-    ):
-        pipeline.add_step(key, title, total=1, unit=unit, detail=detail)
-
-    if sample_limit is not None or offline:
-        return
-    pipeline.add_step(
-        "archive-auth",
-        "Authentication",
-        total=1,
-        unit="session",
-        detail=(
-            "optional Twitter/X session; enrichment uses FxTwitter without one"
-            if defer_followup
-            else "configured Twitter/X session for live archive follow-up"
-        ),
-        show_rate=False,
-        show_eta=False,
-    )
-    if not defer_followup:
-        for collection in ("tweets", "likes"):
-            pipeline.add_step(
-                preflight_step_key([collection]),
-                f"Prepare {collection}",
-                total=4,
-                unit="checks",
-                detail="authentication · archive owner · remote endpoint probe",
-                rate_unit="checks/s",
-            )
-            pipeline.add_step(
-                head_step_key(collection),
-                f"Reconcile {collection}",
-                total=1,
-                unit="current page",
-                detail="live Twitter/X timeline reconciled into imported archive rows",
-                show_rate=False,
-                show_eta=False,
-                show_progress=False,
-            )
-    if enrich or detail_lookups > 0:
-        pipeline.add_step(
-            "archive-enrich",
-            "Enrich",
-            total=1,
-            unit="tweets",
-            detail="stable snapshot of eligible sparse archive tweets",
-            rate_unit="tweets/s",
-        )
-    if defer_followup:
-        pipeline.add_step(
-            "media",
-            "Media",
-            total=1,
-            unit="items",
-            detail="pending archived media selected for local download",
-            rate_unit="items/s",
-        )
-
-
-def _archive_followup_summary(result: Any) -> str:
-    reconciled = ", ".join(getattr(result, "reconciled_collections", [])) or "none"
-    pending_untouched = getattr(result, "pending_untouched", result.pending_enrichment)
-    transient_due = getattr(result, "transient_due", 0)
-    transient_delayed = getattr(result, "transient_delayed", 0)
-    return (
-        f"live reconciliation: {reconciled}. detail enrichment: "
-        f"{result.detail_lookups:,} enriched, "
-        f"{result.detail_terminal_unavailable:,} terminal, "
-        f"{result.detail_transient_failures:,} transient failures, "
-        f"{pending_untouched:,} pending untouched, "
-        f"{transient_due:,} transient due, "
-        f"{transient_delayed:,} transient delayed"
-    )
-
-
-def _archive_import_summary(result: Any) -> str:
-    counts = result.counts
-    prefix = "archive import"
-    if result.skipped and result.followup_performed:
-        prefix = (
-            "archive import: already present; keeping existing imported data and running "
-            "follow-up enrichment. Stored totals"
-        )
-    elif result.skipped:
-        prefix = "archive import skipped: already imported. Stored totals"
-    return (
-        f"{prefix}: {counts.get('authored_tweets', 0)} authored, "
-        f"{counts.get('deleted_authored_tweets', 0)} deleted authored, "
-        f"{counts.get('likes', 0)} likes, "
-        f"{counts.get('media_files_copied', 0)} media files copied. "
-        f"{_archive_followup_summary(result)}"
-    )
 
 
 @import_app.command(
@@ -242,7 +114,7 @@ def import_x_archive_command(
     try:
         config, paths = load_config()
         with web_pipeline(console, "tweetnook import x-archive", paths) as pipeline:
-            _plan_archive_import_pipeline(
+            plan_archive_import(
                 pipeline,
                 regen=regen,
                 enrich=enrich,
@@ -251,7 +123,7 @@ def import_x_archive_command(
                 offline=offline,
                 defer_followup=defer_followup,
             )
-            result = asyncio.run(
+            asyncio.run(
                 import_x_archive(
                     archive,
                     offline=offline,
@@ -267,13 +139,6 @@ def import_x_archive_command(
                     console=console,
                 )
             )
-            if pipeline.step_state("archive-inspect") == "pending" and not pipeline.has_final_note:
-                pipeline.final_note(_archive_import_summary(result))
-                for warning in result.warnings:
-                    pipeline.issue(
-                        warning,
-                        dedupe_key=f"archive-import:{warning.split(':', 1)[0]}",
-                    )
             if defer_followup and not offline and sample_limit is None:
                 # Media URLs are public, so Setup downloads them before any account is needed.
                 asyncio.run(download_media(config=config, paths=paths, console=console))
@@ -355,7 +220,7 @@ def import_archive_enrich(
             pipeline.complete_step("archive-auth", "Twitter/X authentication resolved")
 
             async def enrich_then_sync():
-                result = await enrich_imported_archive(
+                await enrich_imported_archive(
                     limit=limit,
                     config=config,
                     paths=paths,
@@ -364,7 +229,7 @@ def import_archive_enrich(
                 )
                 # Walk through saved tweets to repair gaps left by archive import
                 # or an earlier short sync, without resetting archived data.
-                synced = await sync_all(
+                return await sync_all(
                     full=False,
                     backfill=True,
                     limit=None,
@@ -374,19 +239,8 @@ def import_archive_enrich(
                     console=console,
                     followups=followups,
                 )
-                return result, synced
 
-            result, synced = asyncio.run(enrich_then_sync())
-            if pipeline.step_state("archive-enrich") == "pending" and not pipeline.has_final_note:
-                pipeline.final_note(
-                    "archive enrich: existing imported archive data. "
-                    + _archive_followup_summary(result)
-                )
-                for warning in result.warnings:
-                    pipeline.issue(
-                        warning,
-                        dedupe_key=f"archive-enrich:{warning.split(':', 1)[0]}",
-                    )
+            synced = asyncio.run(enrich_then_sync())
             if synced.exit_code:
                 pipeline.finish(
                     "Archive enrichment saved; automatic sync did not finish. "

@@ -45,7 +45,10 @@ Some modules sit where their dependencies put them rather than where their name 
 | `query_ids/` | Operation defaults, cache and bundle discovery. |
 | `sync/collection.py` | Collection preflight and resumable pages. |
 | `sync/followups.py` | The follow-up plan and the work a sync runs after its collections. |
-| `importer/archive.py` | Official export ingest: one import run from reading the export to its follow-up. |
+| `sync/steps.py` | The pipeline steps a collection sync shows, declared once for the plan and the runner. |
+| `importer/archive.py` | Official export ingest: the coordinator of one import run, from reading the export to its follow-up and result. |
+| `importer/archive_stages.py` | `ImportRun` and the stages it passes through: inspect, regenerate, load, preserve, write and copy. |
+| `importer/archive_steps.py` | The pipeline steps an import shows, and the plan the CLI registers before it starts. |
 | `importer/archive_input.py`, `importer/archive_rows.py`, `importer/archive_media.py` | Reading the export, adapting observations into storage ingestion batches, and copying media files. |
 | `importer/archive_manifests.py` | Import manifests, their counts and warnings, and the files an import owns. |
 | `importer/archive_enrich.py` | Live reconciliation and sparse completion, after an import or for one already saved. |

@@ -172,8 +172,6 @@ class SyncStateMixin(RecordsMixin):
         import_completed_at: str | None = None,
         warnings: list[str] | None = None,
         counts: dict[str, Any] | None = None,
-        enrichment_followup_status: str | None = None,
-        enrichment_aborted_reason: str | None = None,
     ) -> None:
         existing = self.get_import_manifest(archive_digest)
         self.merge_rows(
@@ -191,8 +189,6 @@ class SyncStateMixin(RecordsMixin):
                     status=status,
                     warnings_json=self._json_value(warnings or []),
                     counts_json=self._json_value(counts or {}),
-                    enrichment_followup_status=enrichment_followup_status,
-                    enrichment_aborted_reason=enrichment_aborted_reason,
                     updated_at=utc_now(),
                 )
             ]

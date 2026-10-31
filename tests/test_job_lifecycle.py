@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 import tweetnook.cli as cli
 import tweetnook.importer.archive as archive_import
 import tweetnook.importer.archive_enrich as archive_enrich
+import tweetnook.importer.archive_stages as archive_stages
 from tests.archive_import.conftest import _write_archive_dir
 from tests.collection_sync.conftest import _bookmarks_response_from_results, _save_query_ids
 from tests.conftest import make_tweet_result, patch_cli
@@ -286,7 +287,7 @@ def _manifest_statuses(paths, config) -> list[str]:
 def test_full_disk_during_import_reaches_the_cli_as_storage_full(
     paths, config, tmp_path, monkeypatch
 ):
-    original = archive_import.record_archive_capture
+    original = archive_stages.record_archive_capture
     calls = 0
 
     def fail_after_first(*args, **kwargs):
@@ -296,7 +297,7 @@ def test_full_disk_during_import_reaches_the_cli_as_storage_full(
         if calls == 1:
             raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr(archive_import, "record_archive_capture", fail_after_first)
+    monkeypatch.setattr(archive_stages, "record_archive_capture", fail_after_first)
     buffer = _capture_cli(monkeypatch, paths, config)
     archive_dir = _write_archive_dir(tmp_path)
 
@@ -323,7 +324,7 @@ async def test_failed_manifest_write_never_replaces_the_import_error(
     def fail_import(*_args, **_kwargs):
         raise raised
 
-    monkeypatch.setattr(archive_import, "import_likes", fail_import)
+    monkeypatch.setattr(archive_stages, "import_likes", fail_import)
     original = ArchiveStore.set_import_manifest
 
     def fail_failed_write(self, digest, **kwargs):
@@ -363,7 +364,7 @@ async def test_interrupted_followup_survives_its_status_write_failing(paths, con
 
     monkeypatch.setattr(archive_enrich, "_run_archive_followup", interrupted)
     monkeypatch.setattr(archive_enrich, "_followup_manifest_rows", lambda *_: [{}])
-    monkeypatch.setattr(archive_enrich, "finalize_import_enrichment_status", _full_status_write)
+    monkeypatch.setattr(archive_enrich, "record_followup_counts", _full_status_write)
 
     with pytest.raises(archive_enrich.ArchiveEnrichmentInterrupted) as caught:
         await archive_enrich.run_import_followup(
@@ -391,7 +392,7 @@ async def test_aborted_followup_survives_its_status_write_failing(paths, config,
 
     monkeypatch.setattr(archive_enrich, "_run_archive_followup", aborted)
     monkeypatch.setattr(archive_enrich, "_followup_manifest_rows", lambda *_: [{}])
-    monkeypatch.setattr(archive_enrich, "finalize_import_enrichment_status", _full_status_write)
+    monkeypatch.setattr(archive_enrich, "record_followup_counts", _full_status_write)
 
     with pytest.raises(archive_enrich.ArchiveEnrichmentAborted) as caught:
         await archive_enrich.run_import_followup(

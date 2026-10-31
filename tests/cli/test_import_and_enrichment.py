@@ -7,11 +7,13 @@ from types import SimpleNamespace
 import pytest
 import typer
 
+from tests.archive_import.conftest import _write_archive_dir
 from tests.cli.conftest import _capture_console
 from tests.conftest import patch_cli
 from tweetnook.cli import enrichment as cli_enrichment
 from tweetnook.cli import imports as cli_imports
 from tweetnook.config import AppConfig
+from tweetnook.jobs.pipeline import PipelineReporter
 
 
 @pytest.mark.parametrize(
@@ -150,7 +152,7 @@ def test_expand_archive_threads_forwards_linked_depth_overrides(paths, monkeypat
     assert seen == {"max": 3, "reply": 1}
 
 
-def test_import_x_archive_reports_runner_result(paths, monkeypatch, tmp_path: Path) -> None:
+def test_import_x_archive_forwards_its_flags(paths, monkeypatch, tmp_path: Path) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
     patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
@@ -182,22 +184,6 @@ def test_import_x_archive_reports_runner_result(paths, monkeypatch, tmp_path: Pa
                 "auth_bundle": auth_bundle,
             }
         )
-        return SimpleNamespace(
-            skipped=False,
-            followup_performed=True,
-            counts={
-                "authored_tweets": 2,
-                "deleted_authored_tweets": 1,
-                "likes": 3,
-                "media_files_copied": 4,
-            },
-            warnings=["archive does not contain a bookmark dataset"],
-            reconciled_collections=["tweets", "likes"],
-            detail_lookups=5,
-            detail_terminal_unavailable=1,
-            detail_transient_failures=2,
-            pending_enrichment=9,
-        )
 
     patch_cli(monkeypatch, "import_x_archive", fake_import_x_archive)
     archive_path = tmp_path / "archive.zip"
@@ -221,14 +207,33 @@ def test_import_x_archive_reports_runner_result(paths, monkeypatch, tmp_path: Pa
         "detail_delay": 0,
         "auth_bundle": None,
     }
+
+
+def test_offline_import_raises_its_warnings_and_writes_its_note(
+    paths, monkeypatch, tmp_path: Path
+) -> None:
+    buffer = StringIO()
+    _capture_console(monkeypatch, buffer)
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    issues: list[tuple[str, str | None]] = []
+    original_issue = PipelineReporter.issue
+
+    def record_issue(self, message, *, level="warning", dedupe_key=None):
+        issues.append((message, dedupe_key))
+        return original_issue(self, message, level=level, dedupe_key=dedupe_key)
+
+    monkeypatch.setattr(PipelineReporter, "issue", record_issue)
+
+    cli_imports.import_x_archive_command(_write_archive_dir(tmp_path), offline=True)
+
+    warning = (
+        "archive does not contain a bookmark dataset (expected for current official "
+        "Twitter/X archives)"
+    )
+    assert issues == [(warning, f"archive-import:{warning}")]
     output = " ".join(buffer.getvalue().split())
-    assert "archive import: 2 authored, 1 deleted authored, 3 likes, 4 media files copied" in output
-    assert "live reconciliation: tweets, likes" in output
-    assert (
-        "detail enrichment: 5 enriched, 1 terminal, 2 transient failures, "
-        "9 pending untouched, 0 transient due, 0 transient delayed"
-    ) in output
-    assert "archive does not contain a bookmark dataset" in output
+    assert "bookmark dataset" in output
+    assert "Local archive import complete; live follow-up skipped (offline)." in output
 
 
 def test_import_x_archive_interrupt_reports_completed_import_and_continuation(
@@ -256,26 +261,7 @@ def test_import_x_archive_interrupt_reports_completed_import_and_continuation(
     assert "tweetnook import enrich" in output
 
 
-def test_archive_followup_explains_when_only_delayed_transient_rows_remain() -> None:
-    result = SimpleNamespace(
-        reconciled_collections=[],
-        detail_lookups=0,
-        detail_terminal_unavailable=0,
-        detail_transient_failures=0,
-        pending_enrichment=2_827,
-        pending_untouched=0,
-        transient_due=0,
-        transient_delayed=2_827,
-        warnings=[],
-    )
-
-    output = cli_imports._archive_followup_summary(result)
-
-    assert "0 pending untouched" in output
-    assert "2,827 transient delayed" in output
-
-
-def test_import_x_archive_enrich_reuses_existing_import(paths, monkeypatch, tmp_path: Path) -> None:
+def test_import_x_archive_enrich_flag_defaults(paths, monkeypatch, tmp_path: Path) -> None:
     buffer = StringIO()
     _capture_console(monkeypatch, buffer)
     patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
@@ -305,22 +291,6 @@ def test_import_x_archive_enrich_reuses_existing_import(paths, monkeypatch, tmp_
                 "debug": debug,
             }
         )
-        return SimpleNamespace(
-            skipped=True,
-            followup_performed=True,
-            counts={
-                "authored_tweets": 2,
-                "deleted_authored_tweets": 1,
-                "likes": 3,
-                "media_files_copied": 4,
-            },
-            warnings=[],
-            reconciled_collections=["likes"],
-            detail_lookups=7,
-            detail_terminal_unavailable=0,
-            detail_transient_failures=1,
-            pending_enrichment=5,
-        )
 
     patch_cli(monkeypatch, "import_x_archive", fake_import_x_archive)
     archive_path = tmp_path / "archive.zip"
@@ -336,12 +306,6 @@ def test_import_x_archive_enrich_reuses_existing_import(paths, monkeypatch, tmp_
         "sample_limit": None,
         "debug": False,
     }
-    output = " ".join(buffer.getvalue().split())
-    assert "already present; keeping existing imported data and running" in output
-    assert "follow-up enrichment" in output
-    assert "live reconciliation: likes" in output
-    assert "detail enrichment: 7 enriched, 0 terminal, 1 transient failures" in output
-    assert "5 pending untouched" in output
 
 
 @pytest.mark.parametrize("collections", [["bookmarks", "likes"], ["tweets"]])
@@ -406,12 +370,6 @@ def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch, co
     assert captured["auth_bundle"].auth_token == "token"
     assert captured["detail_delay"] == 0
     assert captured["syncs"] == 1
-    output = " ".join(buffer.getvalue().split())
-    assert "archive enrich: existing imported archive data" in output
-    assert "live reconciliation: tweets, likes" in output
-    assert "detail enrichment: 9 enriched, 2 terminal, 1 transient failures" in output
-    assert "4 pending untouched" in output
-    assert "detail enrichment failed: upstream 429" in output
 
 
 def test_import_enrich_reports_a_failed_automatic_sync_separately(paths, monkeypatch) -> None:

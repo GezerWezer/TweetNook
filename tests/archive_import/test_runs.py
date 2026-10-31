@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+from io import StringIO
 from pathlib import Path
 
 import pytest
+from rich.console import Console
 
 import tweetnook.importer.archive as archive_import
 import tweetnook.importer.archive_enrich as archive_enrich
 import tweetnook.importer.archive_manifests as archive_manifests
 import tweetnook.importer.archive_media as archive_media
+import tweetnook.importer.archive_stages as archive_stages
 from tests.archive_import.conftest import (
     _auth_bundle,
     _console,
@@ -23,6 +26,7 @@ from tweetnook.core.exceptions import (
     StaleQueryIdError,
 )
 from tweetnook.importer.archive import import_x_archive
+from tweetnook.importer.archive_steps import plan_archive_import
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
 
@@ -121,8 +125,6 @@ def test_import_x_archive_detail_stale_query_id_aborts_and_leaves_row_untouched(
     assert tweet_object["enrichment_http_status"] is None
     manifest_row = store._query(expr="record_type = 'import_manifest'", limit=1)[0]
     assert manifest_row["status"] == "completed"
-    assert manifest_row["enrichment_followup_status"] == "enrichment_aborted"
-    assert "stale query id" in manifest_row["enrichment_aborted_reason"]
     store.close()
 
 
@@ -151,8 +153,6 @@ def test_import_x_archive_finalizes_manifest_when_followup_is_interrupted(
     manifest = store._query(expr="record_type = 'import_manifest'", limit=1)[0]
     counts = json.loads(manifest["counts_json"])
     assert manifest["status"] == "completed"
-    assert manifest["enrichment_followup_status"] == "enrichment_interrupted"
-    assert manifest["enrichment_aborted_reason"] == "KeyboardInterrupt"
     assert counts["pending_enrichment"] == store.count_incomplete_initial_enrichment()
     assert "transient_due" in counts
     assert "transient_delayed" in counts
@@ -173,7 +173,7 @@ def test_import_x_archive_preserves_attempt_start_time(
         ]
     )
     # The import, its media copy and its manifest updates read the clock in turn.
-    for module in (archive_import, archive_media, archive_manifests):
+    for module in (archive_import, archive_stages, archive_media, archive_manifests):
         monkeypatch.setattr(module, "utc_now", lambda: next(timestamps))
 
     asyncio.run(
@@ -224,6 +224,34 @@ def test_import_x_archive_sample_limit_does_not_require_debug(paths, tmp_path: P
     assert not reporter.has_step("archive-enrich")
 
 
+def test_planned_steps_keep_the_details_the_import_shows(paths, tmp_path: Path) -> None:
+    console = _console()
+    with PipelineReporter(console, "archive import", interactive=False) as reporter:
+        plan_archive_import(
+            reporter,
+            regen=False,
+            enrich=False,
+            detail_lookups=0,
+            sample_limit=None,
+            offline=True,
+        )
+        planned = {step.key: (step.title, step.detail) for step in reporter.steps}
+        asyncio.run(
+            import_x_archive(
+                _write_archive_dir(tmp_path),
+                offline=True,
+                config=AppConfig(),
+                paths=paths,
+                console=console,
+            )
+        )
+
+    shown = {step.key: (step.title, step.detail) for step in reporter.steps}
+    inspect_title, inspect_detail = shown.pop("archive-inspect")
+    assert (inspect_title, inspect_detail.split(" · ", 1)[1]) == planned.pop("archive-inspect")
+    assert shown == planned
+
+
 def test_sampled_debug_import_stays_non_completed_and_full_import_can_rerun(
     paths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -268,12 +296,66 @@ def test_sampled_debug_import_stays_non_completed_and_full_import_can_rerun(
     store.close()
 
 
+def test_sampled_rerun_of_a_completed_import_is_a_skip_whatever_the_flags(
+    paths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_dir = _write_archive_dir(tmp_path)
+    _disable_live_reconciliation(monkeypatch)
+
+    def run(**flags):
+        return asyncio.run(
+            import_x_archive(
+                archive_dir, config=AppConfig(), paths=paths, console=_console(), **flags
+            )
+        )
+
+    completed = run()
+
+    for flags in ({}, {"enrich": False}, {"offline": True}):
+        rerun = run(sample_limit=1, **flags)
+        assert rerun.skipped is True
+        assert rerun.followup_performed is False
+        assert rerun.warnings == ["archive already imported; skipping duplicate import"]
+        assert rerun.counts["authored_tweets"] == 1
+        assert rerun.counts["likes"] == 1
+        assert rerun.pending_enrichment == 1
+
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    assert [row["status"] for row in store.completed_manifests()] == ["completed"]
+    store.close()
+    assert completed.skipped is False
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [{"offline": True}, {"sample_limit": 1}],
+    ids=["offline", "sampled"],
+)
+def test_every_debug_exit_prints_the_timing_summary(paths, tmp_path: Path, flags) -> None:
+    output = StringIO()
+
+    asyncio.run(
+        import_x_archive(
+            _write_archive_dir(tmp_path),
+            debug=True,
+            config=AppConfig(),
+            paths=paths,
+            console=Console(file=output, width=200),
+            **flags,
+        )
+    )
+
+    assert "debug summary:" in output.getvalue()
+    assert "like import" in output.getvalue()
+
+
 def test_interrupted_import_marks_manifest_failed_and_rerun_reuses_archive_captures(
     paths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     archive_dir = _write_archive_dir(tmp_path)
     _disable_live_reconciliation(monkeypatch)
-    original_import_authored_tweets = archive_import.import_authored_tweets
+    original_import_authored_tweets = archive_stages.import_authored_tweets
     optimize_calls = {"count": 0}
 
     def abort_import(*_args, **_kwargs) -> None:
@@ -282,7 +364,7 @@ def test_interrupted_import_marks_manifest_failed_and_rerun_reuses_archive_captu
     def fake_optimize(self) -> None:
         optimize_calls["count"] += 1
 
-    monkeypatch.setattr(archive_import, "import_authored_tweets", abort_import)
+    monkeypatch.setattr(archive_stages, "import_authored_tweets", abort_import)
     monkeypatch.setattr(archive_import.ArchiveStore, "optimize", fake_optimize)
 
     with pytest.raises(KeyboardInterrupt):
@@ -304,7 +386,7 @@ def test_interrupted_import_marks_manifest_failed_and_rerun_reuses_archive_captu
 
     assert optimize_calls["count"] == 0
 
-    monkeypatch.setattr(archive_import, "import_authored_tweets", original_import_authored_tweets)
+    monkeypatch.setattr(archive_stages, "import_authored_tweets", original_import_authored_tweets)
 
     rerun = asyncio.run(
         import_x_archive(

@@ -80,11 +80,12 @@ def test_repeated_import_can_reuse_existing_archive_for_enrich_followup(
     manifest_rows = store._query(expr="record_type = 'import_manifest'")
     manifest_counts = json.loads(manifest_rows[0]["counts_json"])
     assert manifest_counts["detail_lookups"] == 3
-    assert manifest_counts["pending_enrichment"] == 4
+    # The saved queue is read from the rows, whatever this stubbed enrichment reported.
+    assert manifest_counts["pending_enrichment"] == store.count_incomplete_initial_enrichment()
     store.close()
 
 
-def test_repeated_import_enrich_preserves_existing_manifest_warnings(
+def test_repeated_import_keeps_ingest_warnings_and_reports_this_runs_followup(
     paths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     archive_dir = _write_archive_dir(tmp_path)
@@ -126,11 +127,100 @@ def test_repeated_import_enrich_preserves_existing_manifest_warnings(
 
     store = open_archive_store(paths, create=False)
     assert store is not None
-    manifest_row = store._query(expr="record_type = 'import_manifest'", limit=1)[0]
-    manifest_warnings = json.loads(manifest_row["warnings_json"])
-    assert expected_warning in manifest_warnings
-    assert "detail enrichment failed: upstream 429" in manifest_warnings
+    manifest_row = store.completed_manifests()[0]
+    assert json.loads(manifest_row["warnings_json"]) == [expected_warning]
     store.close()
+
+
+def test_followup_reruns_do_not_grow_the_stored_warnings(
+    paths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_dir = _write_archive_dir(tmp_path)
+    no_auth = "live reconciliation skipped: no auth configured"
+    bookmark = (
+        "archive does not contain a bookmark dataset (expected for current official "
+        "Twitter/X archives)"
+    )
+
+    async def fake_followup(**_kwargs):
+        return archive_enrich.ArchiveEnrichResult(warnings=[no_auth])
+
+    monkeypatch.setattr(archive_enrich, "_run_archive_followup", fake_followup)
+
+    results = [
+        asyncio.run(
+            import_x_archive(archive_dir, config=AppConfig(), paths=paths, console=_console())
+        )
+        for _ in range(4)
+    ]
+
+    assert [result.warnings.count(no_auth) for result in results] == [1, 1, 1, 1]
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    manifest_row = store.completed_manifests()[0]
+    assert json.loads(manifest_row["warnings_json"]) == [bookmark]
+    store.close()
+
+
+def test_warnings_an_earlier_release_accumulated_collapse_on_the_next_followup(
+    paths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_dir = _write_archive_dir(tmp_path)
+
+    async def fake_followup(**_kwargs):
+        return archive_enrich.ArchiveEnrichResult()
+
+    monkeypatch.setattr(archive_enrich, "_run_archive_followup", fake_followup)
+    asyncio.run(import_x_archive(archive_dir, config=AppConfig(), paths=paths, console=_console()))
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    row = store.completed_manifests()[0]
+    store.set_import_manifest(
+        row["archive_digest"],
+        archive_generation_date=None,
+        status="completed",
+        warnings=["old warning", "old warning", "old warning"],
+        counts=json.loads(row["counts_json"]),
+    )
+    store.close()
+
+    asyncio.run(enrich_imported_archive(config=AppConfig(), paths=paths, console=_console()))
+
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    row = store.completed_manifests()[0]
+    assert json.loads(row["warnings_json"]) == ["old warning"]
+    store.close()
+
+
+def test_import_and_standalone_enrich_save_the_same_counts(
+    paths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_followup(**_kwargs):
+        return archive_enrich.ArchiveEnrichResult(detail_lookups=3)
+
+    monkeypatch.setattr(archive_enrich, "_run_archive_followup", fake_followup)
+
+    def saved_counts() -> dict[str, int]:
+        store = open_archive_store(paths, create=False)
+        assert store is not None
+        row = store.completed_manifests()[0]
+        store.close()
+        return json.loads(row["counts_json"])
+
+    imported = asyncio.run(
+        import_x_archive(
+            _write_archive_dir(tmp_path), config=AppConfig(), paths=paths, console=_console()
+        )
+    )
+    after_import = saved_counts()
+    assert imported.counts == after_import
+    assert after_import["detail_lookups"] == 3
+    assert {"transient_due", "transient_delayed"} <= after_import.keys()
+
+    asyncio.run(enrich_imported_archive(config=AppConfig(), paths=paths, console=_console()))
+
+    assert saved_counts() == after_import
 
 
 def test_enrich_imported_archive_requires_completed_import(paths) -> None:

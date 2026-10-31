@@ -199,8 +199,6 @@ def test_import_x_archive_directory_populates_archive_and_copies_media(
 
     manifest_rows = store._query(expr="record_type = 'import_manifest'")
     manifest_counts = json.loads(manifest_rows[0]["counts_json"])
-    assert manifest_rows[0]["enrichment_followup_status"] == "enrichment_complete"
-    assert manifest_rows[0]["enrichment_aborted_reason"] is None
     assert manifest_counts["pending_enrichment"] == 1
     store.close()
 
