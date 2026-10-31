@@ -418,3 +418,58 @@ def test_reply_hop_limit_keeps_saves_quotes_and_ancestors_without_reopening_bran
     }
     assert roots == {"100", "200", "500", "900"}
     assert module.limit_reply_hops(kept) == (kept, roots)
+
+
+@pytest.mark.asyncio
+async def test_prepare_loads_avatars_without_replacing_server_state(tmp_path, monkeypatch):
+    import sys
+    from types import MappingProxyType, SimpleNamespace
+
+    from tweetnook.config import AppConfig, AuthConfig
+    from tweetnook.web import deps
+
+    module = _preparer()
+    private = tmp_path / "private"
+    avatar = private / "media" / "avatars" / "42.jpg"
+    avatar.parent.mkdir(parents=True)
+    content = (ROOT / "demo/demo media/avatars/1.jpg").read_bytes()
+    avatar.write_bytes(content)
+    demo = tmp_path / "demo"
+    demo.mkdir()
+    fixture = {"tweets": [{}, {}, {}]}
+    (demo / "data.json").write_text(json.dumps(fixture))
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    monkeypatch.setattr(module, "PRIVATE", private)
+    monkeypatch.setattr(
+        module, "load_config", lambda: (AppConfig(auth=AuthConfig(user_id="42")), None)
+    )
+
+    async def no_network(**kwargs):
+        return SimpleNamespace(failed=0)
+
+    monkeypatch.setattr(module, "expand_threads", no_network)
+    monkeypatch.setattr(module, "download_media", no_network)
+    monkeypatch.setattr(module, "pending_context_targets", lambda *args: [])
+    monkeypatch.setattr(module, "publication_rows", lambda *args: ([{"author_id": "42"}], set()))
+    sentinel = object()
+    state = MappingProxyType({"sentinel": sentinel})
+    monkeypatch.setattr(deps, "server_state", state)
+
+    def project(store, guides, selected, avatars):
+        assert avatars == {"42": avatar}
+        assert avatars["42"].read_bytes() == content
+        assert deps.server_state is state
+        return guides
+
+    monkeypatch.setattr(module, "project_archive", project)
+    monkeypatch.setitem(
+        sys.modules,
+        "build_pages_demo",
+        SimpleNamespace(validate_fixture=lambda data: None, with_demo_metrics=lambda data: data),
+    )
+
+    await module.prepare([])
+
+    assert deps.server_state is state
+    assert deps.server_state["sentinel"] is sentinel
+    assert json.loads((demo / "data.json").read_text()) == fixture

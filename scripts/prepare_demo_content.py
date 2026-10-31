@@ -22,9 +22,8 @@ from tweetnook.core.timeline_parsing import parse_tweet_detail_response
 from tweetnook.enrichment.media import download_media
 from tweetnook.enrichment.threads import expand_threads, normalize_thread_target
 from tweetnook.storage import open_archive_store
-from tweetnook.web import deps
 from tweetnook.web.articles import annotate_web_articles
-from tweetnook.web.routes.avatars import _avatar_response
+from tweetnook.web.routes.avatars import load_avatar
 
 ROOT = Path(__file__).resolve().parents[1]
 PRIVATE = ROOT / "data" / "demo-content"
@@ -712,20 +711,19 @@ async def prepare(targets: list[str]) -> None:
         fixture_path = ROOT / "demo" / "data.json"
         prior_fixture = json.loads(fixture_path.read_text())
         retained_rows, _ = publication_rows(store, prior_fixture, selected)
-        previous_state = dict(deps.server_state)
-        deps.server_state.update(paths=paths, config=config)
         author_ids = sorted({row["author_id"] for row in retained_rows})
-        try:
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                responses = list(pool.map(lambda uid: _avatar_response(uid, store), author_ids))
-        finally:
-            deps.server_state.clear()
-            deps.server_state.update(previous_state)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            images = list(
+                pool.map(
+                    lambda uid: load_avatar(paths.media_dir / "avatars", uid, store, fetch=True),
+                    author_ids,
+                )
+            )
         avatars = {}
-        for uid, response in zip(author_ids, responses, strict=True):
-            if not getattr(response, "path", None):
+        for uid, image in zip(author_ids, images, strict=True):
+            if image is None or image.cache_path is None:
                 raise ValueError(f"Avatar fetch failed for author {uid}")
-            avatars[uid] = Path(response.path)
+            avatars[uid] = image.cache_path
         fixture = project_archive(store, prior_fixture, selected, avatars)
         # Validate before replacing the public fixture; original captures stay private.
         from build_pages_demo import validate_fixture, with_demo_metrics

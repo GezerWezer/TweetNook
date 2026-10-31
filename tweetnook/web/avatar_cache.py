@@ -39,15 +39,14 @@ def mark_avatar_accessed(
 ) -> bool:
     """Refresh an avatar's mtime when its recorded access is sufficiently old."""
     timestamp = time.time() if now is None else now
-    with _cache_lock:
-        try:
-            stat = path.stat()
-            if timestamp - stat.st_mtime < minimum_interval:
-                return False
-            os.utime(path, (stat.st_atime, timestamp))
-        except OSError:
-            # Access tracking must never prevent an otherwise valid cache hit.
+    try:
+        stat = path.stat()
+        if timestamp - stat.st_mtime < minimum_interval:
             return False
+        os.utime(path, (stat.st_atime, timestamp))
+    except OSError:
+        # Readers own their bytes; a concurrent eviction only loses this touch.
+        return False
     return True
 
 

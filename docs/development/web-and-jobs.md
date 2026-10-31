@@ -77,6 +77,8 @@ Statistics use private readers so a long query doesn't stall the shared connecti
 
 Avatar fetching uses a separate executor so remote image waits don't occupy feed-request threads. Cached pictures remain available when downloading is disabled; failed or transparent responses aren't saved. Periodic size cleanup uses last-use timestamps and persisted run state, independently of sync scheduling.
 
+`load_avatar` returns owned bytes, media type and an optional cache path for the HTTP route and demo preparation. Responses remain usable if cleanup evicts the file. If cache publication fails, the route serves the downloaded image without browser caching and logs the local failure instead of retrying other remote variants. Access touches are best-effort and do not wait for the cleanup lock.
+
 Browser caches and prefetch reuse feed and conversation results during navigation. Search suggestions discard stale responses. Media loads lazily, and activity updates preserve the visible feed and playback.
 
 Autoplay compares visible picture areas after viewport, sticky-header and container

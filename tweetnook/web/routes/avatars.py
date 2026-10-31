@@ -1,17 +1,19 @@
 """Avatar proxy endpoints."""
 
 import asyncio
+import logging
 import re
 import struct
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, Depends
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 
 from tweetnook.config import XDGPaths
 from tweetnook.core.dev_replay import client_transport
@@ -20,6 +22,7 @@ from tweetnook.web.avatar_cache import mark_avatar_accessed
 from tweetnook.web.deps import get_server_state, require_store, verify_credentials
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 AVATAR_CANDIDATE_LIMIT = 8
 AVATAR_FETCH_BUDGET_SECONDS = 20.0
 # Avatars rarely change; reuse them for a day, then refresh in the background.
@@ -124,19 +127,41 @@ def _avatar_response(user_id: str, store: Any):
     server_state = get_server_state()
     paths: XDGPaths = server_state["paths"]
     avatars_dir = paths.media_dir / "avatars"
-    avatars_dir.mkdir(parents=True, exist_ok=True)
-
     config = server_state.get("config")
+    fetch = bool(config and config.web.fetch_avatars)
+    avatar = load_avatar(avatars_dir, user_id, store, fetch=fetch)
+    if avatar is None:
+        headers = TRANSPARENT_CACHE_HEADERS if fetch else DISABLED_CACHE_HEADERS
+        return Response(content=TRANSPARENT_PNG, media_type="image/png", headers=headers)
+    if avatar.cache_path is not None:
+        if config and config.web.avatar_cache_limit_enabled:
+            mark_avatar_accessed(avatar.cache_path)
+        headers = AVATAR_CACHE_HEADERS
+    else:
+        headers = TRANSPARENT_CACHE_HEADERS
+    return Response(content=avatar.content, media_type=avatar.media_type, headers=headers)
+
+
+@dataclass(frozen=True, slots=True)
+class AvatarImage:
+    content: bytes
+    media_type: str
+    cache_path: Path | None
+
+
+def load_avatar(avatars_dir: Path, user_id: str, store: Any, *, fetch: bool) -> AvatarImage | None:
+    """Own the image bytes independently of cache eviction or publication failure."""
+    if "\x00" in user_id or "/" in user_id or "\\" in user_id or user_id in {"", ".", ".."}:
+        return None
     cache_paths = [
         avatars_dir / f"{user_id}{suffix}" for suffix in (".jpg", ".png", ".gif", ".webp")
     ]
     for avatar_path in cache_paths:
         try:
             with avatar_path.open("rb") as cached:
-                image_format = _avatar_format(cached.read(33))
-        except FileNotFoundError:
-            continue
-        except OSError:
+                content = cached.read()
+            image_format = _avatar_format(content)
+        except (OSError, ValueError):
             continue
         if image_format is None:
             try:
@@ -144,19 +169,10 @@ def _avatar_response(user_id: str, store: Any):
             except OSError:
                 pass
         else:
-            if config and config.web.avatar_cache_limit_enabled:
-                mark_avatar_accessed(avatar_path)
-            return FileResponse(
-                avatar_path, media_type=image_format[1], headers=AVATAR_CACHE_HEADERS
-            )
+            return AvatarImage(content, image_format[1], avatar_path)
 
-    def return_transparent(headers=TRANSPARENT_CACHE_HEADERS):
-        # A failed fetch must not become a persistent negative cache entry. The
-        # source URL or archive metadata may become available later.
-        return Response(content=TRANSPARENT_PNG, media_type="image/png", headers=headers)
-
-    if not config or not config.web.fetch_avatars:
-        return return_transparent(DISABLED_CACHE_HEADERS)
+    if not fetch:
+        return None
 
     urls = store.avatar_source_urls(user_id, limit=AVATAR_CANDIDATE_LIMIT)
     attempted_urls: set[str] = set()
@@ -168,19 +184,22 @@ def _avatar_response(user_id: str, store: Any):
             attempted_urls.add(url)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return return_transparent()
+                return None
             try:
                 resp = _fetch_avatar(url, timeout=min(10.0, remaining))
-                image_format = _avatar_format(resp.content)
-                if resp.status_code == 200 and image_format is not None:
-                    suffix, media_type = image_format
-                    avatar_path = avatars_dir / f"{user_id}{suffix}"
-                    _cache_avatar(avatar_path, resp.content)
-                    return FileResponse(
-                        avatar_path, media_type=media_type, headers=AVATAR_CACHE_HEADERS
-                    )
-            except Exception:
+            except (httpx.HTTPError, ValueError):
                 # Stale variants and network errors must not block other sources.
                 continue
+            image_format = _avatar_format(resp.content)
+            if resp.status_code != 200 or image_format is None:
+                continue
+            suffix, media_type = image_format
+            avatar_path = avatars_dir / f"{user_id}{suffix}"
+            try:
+                _cache_avatar(avatar_path, resp.content)
+            except OSError as exc:
+                logger.warning("Could not cache avatar: %s", exc)
+                return AvatarImage(resp.content, media_type, None)
+            return AvatarImage(resp.content, media_type, avatar_path)
 
-    return return_transparent()
+    return None

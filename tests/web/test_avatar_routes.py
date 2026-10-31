@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import json
 import os
 import struct
@@ -88,7 +89,7 @@ def test_cached_avatar_is_returned_without_store_or_network(
     server_state.update({"paths": paths, "config": AppConfig()})
 
     class Store:
-        def _query(self, **_kwargs):
+        def avatar_source_urls(self, *_args, **_kwargs):
             raise AssertionError("cache hit should not query")
 
     monkeypatch.setattr(
@@ -693,3 +694,121 @@ def test_avatar_work_runs_outside_the_request_thread_pool(
 
     assert response.headers["cache-control"] == "no-store, max-age=0"
     assert len(threads) == 1 and threads[0].startswith("tweetnook-avatar")
+
+
+def test_eviction_after_cache_read_cannot_break_the_response(
+    monkeypatch, make_web_client, tmp_path
+):
+    from tweetnook.web.avatar_cache import cleanup_avatar_cache
+
+    paths = _paths(tmp_path)
+    path = paths.media_dir / "avatars" / "42.jpg"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(JPEG)
+    server_state.update(paths=paths, config=AppConfig())
+
+    def evict(avatar_path):
+        result = cleanup_avatar_cache(avatar_path.parent, 0)
+        assert result.deleted_files == 1
+        return False
+
+    monkeypatch.setattr(avatars, "mark_avatar_accessed", evict)
+    response = make_web_client(avatars.router, store=AvatarStore()).get("/api/avatar/42")
+
+    assert response.status_code == 200
+    assert response.content == JPEG
+    assert not path.exists()
+
+
+def test_publication_failure_serves_download_once_without_caching(
+    monkeypatch, make_web_client, tmp_path, caplog
+):
+    paths = _paths(tmp_path)
+    server_state.update(paths=paths, config=AppConfig())
+    store = AvatarStore(
+        tweet_rows=[
+            {"raw_json": _raw_avatar(f"https://example.test/{i}_normal.jpg")} for i in range(3)
+        ]
+    )
+    fetched = []
+    monkeypatch.setattr(
+        avatars.httpx,
+        "get",
+        lambda url, **kwargs: fetched.append(url) or SimpleNamespace(status_code=200, content=JPEG),
+    )
+    replace = Path.replace
+    attempted = []
+
+    def full_disk(temporary, destination):
+        if destination.parent == paths.media_dir / "avatars":
+            assert temporary.read_bytes() == JPEG
+            attempted.append(destination)
+            raise OSError(errno.ENOSPC, "synthetic full disk")
+        return replace(temporary, destination)
+
+    monkeypatch.setattr(Path, "replace", full_disk)
+    response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
+
+    assert response.status_code == 200
+    assert response.content == JPEG
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert fetched == ["https://example.test/0_400x400.jpg"]
+    assert attempted == [paths.media_dir / "avatars" / "42.jpg"]
+    assert list((paths.media_dir / "avatars").iterdir()) == []
+    assert "cache avatar" in caplog.text
+
+
+def test_avatar_can_be_served_when_cache_directory_cannot_be_created(
+    monkeypatch, make_web_client, tmp_path
+):
+    paths = _paths(tmp_path)
+    server_state.update(paths=paths, config=AppConfig())
+    store = AvatarStore(tweet_rows=[{"raw_json": _raw_avatar("https://example.test/avatar.jpg")}])
+    mkdir = Path.mkdir
+
+    def denied(path, *args, **kwargs):
+        if path == paths.media_dir / "avatars":
+            raise PermissionError("synthetic unwritable cache")
+        return mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", denied)
+    monkeypatch.setattr(
+        avatars.httpx,
+        "get",
+        lambda *args, **kwargs: SimpleNamespace(status_code=200, content=JPEG),
+    )
+    response = make_web_client(avatars.router, store=store).get("/api/avatar/42")
+    assert response.status_code == 200
+    assert response.content == JPEG
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+
+
+def test_nul_avatar_id_uses_fallback_without_store_access(make_web_client, tmp_path):
+    paths = _paths(tmp_path)
+    server_state.update(paths=paths, config=AppConfig())
+
+    class Store:
+        def avatar_source_urls(self, *args, **kwargs):
+            pytest.fail("invalid path segment must not trigger lookups")
+
+    response = make_web_client(avatars.router, store=Store()).get("/api/avatar/a%00b")
+    assert response.status_code == 200
+    assert response.content == avatars.TRANSPARENT_PNG
+
+
+def test_public_avatar_loader_needs_no_server_state(tmp_path):
+    directory = tmp_path / "avatars"
+    directory.mkdir()
+    path = directory / "42.jpg"
+    path.write_bytes(JPEG)
+
+    class Store:
+        def avatar_source_urls(self, *args, **kwargs):
+            pytest.fail("cached image must not query the store")
+
+    image = avatars.load_avatar(directory, "42", Store(), fetch=False)
+
+    assert image.content == JPEG
+    assert image.media_type == "image/jpeg"
+    assert image.cache_path == path
+    assert server_state == {}
