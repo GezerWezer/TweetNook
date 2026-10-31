@@ -423,6 +423,28 @@ def _saved_card_images(store: Any) -> list[str]:
     ]
 
 
+def test_merging_a_card_back_keeps_a_wide_integer_exact(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    wide = 1180591620717411303425
+    persist_like_page(
+        store,
+        {**_with_card(_card("https://a.example/story", image="https://pbs.twimg.com/a.jpg"))},
+    )
+    stripped = _with_card(_card("https://a.example/story", image=None))
+    stripped["legacy"]["wide_count"] = wide
+
+    persist_like_page(store, stripped)
+
+    saved = store.conn.execute(
+        "SELECT raw_json FROM archive WHERE row_key = 'tweet:like::100' "
+        "OR (record_type = 'tweet' AND tweet_id = '100')"
+    ).fetchone()[0]
+    # The card came back, which means the document was decoded and written again.
+    assert "thumbnail_image_original" in saved
+    assert json.loads(saved)["legacy"]["wide_count"] == wide
+    store.close()
+
+
 def test_card_restoration_finds_an_older_capture_of_the_same_card(paths) -> None:
     store = open_archive_store(paths, create=True)
     store.backfill_link_card_media()
