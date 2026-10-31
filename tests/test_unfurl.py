@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 from io import StringIO
 from unittest.mock import MagicMock
 
@@ -17,6 +18,7 @@ from tests.conftest import (
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.enrichment.unfurl import unfurl_urls
 from tweetnook.jobs.pipeline import PipelineReporter
+from tweetnook.jobs.resource_failure import StorageExhaustedError
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import ArchiveStore
 
@@ -333,3 +335,132 @@ async def test_unfurl_urls_interactive_reports_status(paths, config, monkeypatch
     output = buffer.getvalue()
     assert "unfurl: loading saved URL rows" in output
     assert "unfurl: fetching metadata for 2 saved URLs" in output
+
+
+async def _unfurl_one(paths, config, handler):
+    return await unfurl_urls(
+        config=config,
+        paths=paths,
+        transport=httpx.MockTransport(handler),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_local_update_error_is_not_saved_as_a_failed_url(
+    paths, config, monkeypatch
+) -> None:
+    _seed_archive(paths)
+
+    real_update = ArchiveStore.build_url_unfurl_update
+
+    def broken_success_update(self, row, **fields):
+        # Only the success write breaks; the failed-row write works, so a catch-all around the
+        # update would save this as a bad URL.
+        if fields["unfurl_state"] == "done":
+            raise RuntimeError("local bug")
+        return real_update(self, row, **fields)
+
+    monkeypatch.setattr(ArchiveStore, "build_url_unfurl_update", broken_success_update)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, text="ok", headers={"content-type": "text/plain"}, request=request
+        )
+
+    with pytest.raises(RuntimeError, match="local bug"):
+        await _unfurl_one(paths, config, handler)
+
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        assert store.list_url_rows(states={"failed"}) == []
+    finally:
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_a_full_disk_while_saving_urls_stops_with_the_storage_error(
+    paths, config, monkeypatch
+) -> None:
+    _seed_archive(paths)
+
+    def full(self, *_args, **_kwargs):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(ArchiveStore, "build_url_unfurl_update", full)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, text="ok", headers={"content-type": "text/plain"}, request=request
+        )
+
+    with pytest.raises(StorageExhaustedError):
+        await _unfurl_one(paths, config, handler)
+
+
+@pytest.mark.parametrize(
+    ("answer", "http_status"),
+    [
+        (lambda request: httpx.Response(503, text="down", request=request), "503"),
+        (
+            lambda request: (_ for _ in ()).throw(httpx.ConnectError("offline", request=request)),
+            None,
+        ),
+    ],
+    ids=["server-error", "transport"],
+)
+@pytest.mark.asyncio
+async def test_remote_failures_stay_on_their_url(paths, config, answer, http_status):
+    _seed_archive(paths)
+
+    result = await _unfurl_one(paths, config, answer)
+
+    assert result.failed == result.processed >= 1
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        rows = store.list_url_rows(states={"failed"})
+        assert len(rows) == result.failed
+        assert all(row["http_status"] == http_status for row in rows)
+    finally:
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_canonical_link_falls_back_to_the_final_url(paths, config):
+    _seed_archive(paths)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text='<title>Saved</title><link rel="canonical" href="http://[broken">',
+            headers={"content-type": "text/html"},
+            request=request,
+        )
+
+    result = await _unfurl_one(paths, config, handler)
+
+    assert result.failed == 0
+    assert result.updated == result.processed >= 1
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_saved_url_is_that_rows_failure_under_a_pipeline(
+    paths, config, monkeypatch
+):
+    _seed_archive(paths)
+    real_rows = ArchiveStore.list_url_rows
+
+    def malformed_rows(self, **kwargs):
+        return [{**row, "final_url": "https://[broken"} for row in real_rows(self, **kwargs)]
+
+    monkeypatch.setattr(ArchiveStore, "list_url_rows", malformed_rows)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("unresolvable", request=request)
+
+    console = Console(file=StringIO(), force_terminal=False, color_system=None)
+    with PipelineReporter(console, "unfurl", interactive=False):
+        result = await _unfurl_one(paths, config, handler)
+
+    assert result.failed == result.processed >= 1

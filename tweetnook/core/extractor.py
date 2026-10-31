@@ -258,17 +258,20 @@ def _iso8601_from_unix(value: Any) -> str | None:
 def canonicalize_url(value: str | None) -> str | None:
     if not value:
         return None
-    parsed = urlsplit(value)
+    # These URLs come from posts and web pages, and urlsplit refuses some of what they contain.
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return None
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
         return None
     scheme = parsed.scheme.lower()
     hostname = parsed.hostname.lower() if parsed.hostname else ""
     if not hostname:
         return None
-    if parsed.port and not (
-        (scheme == "http" and parsed.port == 80) or (scheme == "https" and parsed.port == 443)
-    ):
-        netloc = f"{hostname}:{parsed.port}"
+    if port and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
+        netloc = f"{hostname}:{port}"
     else:
         netloc = hostname
     query_pairs = []
@@ -285,7 +288,10 @@ def canonicalize_url(value: str | None) -> str | None:
 def extract_status_id_from_url(value: str | None) -> str | None:
     if not value:
         return None
-    parsed = urlsplit(value)
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return None
     hostname = parsed.hostname.lower() if parsed.hostname else ""
     if not (
         hostname == "x.com"
