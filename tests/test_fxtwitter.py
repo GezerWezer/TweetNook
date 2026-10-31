@@ -106,6 +106,34 @@ def test_classify_fx_response_outcomes() -> None:
     assert broken.kind == "error"
 
 
+@pytest.mark.parametrize("http_status", [429, 500, 503, 418])
+def test_a_tombstone_in_a_failed_response_is_an_error(http_status: int) -> None:
+    payload = {"status": {"type": "tombstone", "reason": "suspended", "id": "2"}}
+
+    lookup = fxtwitter.classify_fx_response("2", http_status, payload)
+
+    assert (lookup.kind, lookup.reason, lookup.payload) == ("error", None, payload)
+
+
+@pytest.mark.parametrize("http_status", [200, 404, 401])
+def test_a_tombstone_for_another_post_is_an_error(http_status: int) -> None:
+    payload = {"status": {"type": "tombstone", "reason": "suspended", "id": "9"}}
+
+    lookup = fxtwitter.classify_fx_response("2", http_status, payload)
+
+    assert (lookup.kind, lookup.payload) == ("error", payload)
+    assert "post 9" in lookup.detail
+
+
+@pytest.mark.parametrize("http_status", [200, 401, 403, 404, 410])
+def test_a_final_tombstone_with_no_id_applies_to_the_requested_post(http_status: int) -> None:
+    payload = {"status": {"type": "tombstone", "reason": "suspended"}}
+
+    lookup = fxtwitter.classify_fx_response("2", http_status, payload)
+
+    assert (lookup.kind, lookup.reason) == ("tombstone", "suspended")
+
+
 def test_fetch_fx_status_retries_rate_limits_and_server_errors() -> None:
     calls: list[str] = []
     replies = iter(

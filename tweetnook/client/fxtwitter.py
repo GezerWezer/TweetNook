@@ -27,6 +27,9 @@ FX_RETRY_ATTEMPTS = 4
 FX_OUTAGE_ERRORS = 8
 # A Retry-After longer than this means FxTwitter is down for a while, not throttling.
 FX_MAX_RETRY_AFTER_SECONDS = 60.0
+# A tombstone is evidence only in a final answer. A rate limit or server error that happens
+# to carry one says the provider failed, however the body is shaped.
+FX_TOMBSTONE_HTTP_STATUSES = frozenset({200, 401, 403, 404, 410})
 
 
 @dataclass(slots=True)
@@ -83,7 +86,17 @@ def classify_fx_response(tweet_id: str, http_status: int, payload: Any) -> FxLoo
     status_type = status.get("type") if status else None
     if http_status == 200 and status_type == "status" and status.get("id") == tweet_id:
         return FxLookup(tweet_id, "available", http_status, status=status, payload=payload)
-    if status_type == "tombstone":
+    if status_type == "tombstone" and http_status in FX_TOMBSTONE_HTTP_STATUSES:
+        # Not every tombstone carries an ID, but one naming another post is about that post.
+        answered_id = status.get("id")
+        if answered_id is not None and str(answered_id) != tweet_id:
+            return FxLookup(
+                tweet_id,
+                "error",
+                http_status,
+                detail=f"FxTwitter answered with a tombstone for post {answered_id}",
+                payload=payload,
+            )
         reason = str(status.get("reason") or "unavailable")
         return FxLookup(
             tweet_id,

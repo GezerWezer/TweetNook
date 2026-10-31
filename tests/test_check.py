@@ -888,3 +888,31 @@ def test_note_check_reads_the_saved_baseline_only_before_any_version(
         assert applier.result.notes_added == 1
     finally:
         store.close()
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        ok({"type": "tombstone", "id": "99", "reason": "suspended"}),
+        (503, {"status": {"type": "tombstone", "id": "1", "reason": "suspended"}}),
+    ],
+    ids=["another-post", "server-error"],
+)
+def test_untrustworthy_tombstones_leave_a_saved_post_available(config, paths, answer) -> None:
+    store = open_archive_store(paths, create=True, config=config)
+    assert store is not None
+    _save(store, "1", "saved")
+    before = store.current_objects(["1"])["1"]["enrichment_state"]
+    store.close()
+
+    result = _run(config, paths, fx_transport({"1": answer}))
+
+    assert (result.became_unavailable, result.errors) == (0, 1)
+    store = open_archive_store(paths, create=False, config=config)
+    assert store is not None
+    try:
+        row = store.current_objects(["1"])["1"]
+        assert row["enrichment_state"] == before != "terminal_unavailable"
+        assert row["enrichment_reason"] is None
+    finally:
+        store.close()
