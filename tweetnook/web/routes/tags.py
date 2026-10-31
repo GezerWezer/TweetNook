@@ -46,7 +46,7 @@ def api_update_tag(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.delete("/api/tags/global/{tag}")
+@router.delete("/api/tags/global/{tag:path}")
 def api_delete_global_tag(
     tag: str,
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency

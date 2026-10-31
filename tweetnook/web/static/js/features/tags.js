@@ -46,6 +46,7 @@ function tagMethods() {
 function tagDialog() {
     let closeTimer = null;
     let autocompleteRequest = 0;
+    let dialogGeneration = 0;
     return {
         tagModalOpen: false,
         tagModalData: null,
@@ -71,6 +72,7 @@ function tagDialog() {
         },
 
         showTagDialog(tweetId, tagsData) {
+            dialogGeneration++;
             const normalizedData = {
                 description: typeof tagsData?.description === 'string' ? tagsData.description : '',
                 tags: Array.isArray(tagsData?.tags) ? [...tagsData.tags] : [],
@@ -95,7 +97,9 @@ function tagDialog() {
         },
 
         closeTagModal() {
+            dialogGeneration++;
             this.tagModalOpen = false;
+            this.tagSaving = false;
             this.tagDeleteConfirm = false;
             closeTimer = setTimeout(() => {
                 this.tagModalData = null;
@@ -340,22 +344,28 @@ function tagDialog() {
             if (this.tagSaving || !this.tagIsDirty()) return;
             // Text left in the tag field counts as a tag.
             if (this.tagSearchQuery.trim()) this.addEditableTag(this.tagSearchQuery);
+            const generation = dialogGeneration;
+            const tweetId = this.tagModalTweetId;
+            const tags = [...this.editableTags];
+            const description = this.editableDescription.trim();
             this.tagSaving = true;
             this.tagSearchDropdown = false;
             this.tagError = '';
             try {
-                const description = this.editableDescription.trim();
-                const res = await fetch(`/api/tags/${this.tagModalTweetId}`, {
+                const res = await fetch(`/api/tags/${tweetId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tags: this.editableTags, description })
+                    body: JSON.stringify({ tags, description })
                 });
                 if (!res.ok) throw new Error(`Server error: ${res.status}`);
-                const savedData = this.editableTags.length || description ? {
+                const savedData = tags.length || description ? {
                     description,
-                    tags: [...this.editableTags],
+                    tags,
                 } : null;
-                this.updateTweetTagData(this.tagModalTweetId, savedData);
+                this.updateTweetTagData(tweetId, savedData);
+                // The request still updates its post, but a reopened editor owns
+                // its own data, errors and pending state, even for the same post.
+                if (generation !== dialogGeneration) return;
                 if (savedData) {
                     this.tagModalData = savedData;
                     this.isEditingTags = false;
@@ -363,27 +373,34 @@ function tagDialog() {
                     this.closeTagModal();
                 }
             } catch(e) {
-                this.tagError = 'Couldn’t save your changes. They’re still here, so you can try again.';
+                if (generation === dialogGeneration) {
+                    this.tagError = 'Couldn’t save your changes. They’re still here, so you can try again.';
+                }
             } finally {
-                this.tagSaving = false;
+                if (generation === dialogGeneration) this.tagSaving = false;
             }
         },
 
         // Runs from the dialog's Delete confirmation.
         async deleteTags() {
             if (!this.tagModalTweetId || this.tagSaving) return;
+            const generation = dialogGeneration;
+            const tweetId = this.tagModalTweetId;
             this.tagSaving = true;
             this.tagConfirmError = '';
             try {
-                const res = await fetch(`/api/tags/${this.tagModalTweetId}`, { method: 'DELETE' });
+                const res = await fetch(`/api/tags/${tweetId}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error(`Server error: ${res.status}`);
-                this.updateTweetTagData(this.tagModalTweetId, null);
+                this.updateTweetTagData(tweetId, null);
+                if (generation !== dialogGeneration) return;
                 this.tagSaving = false;
                 this.closeTagModal();
             } catch (e) {
-                this.tagConfirmError = 'Couldn’t delete. Nothing was changed. Try again.';
+                if (generation === dialogGeneration) {
+                    this.tagConfirmError = 'Couldn’t delete. Nothing was changed. Try again.';
+                }
             } finally {
-                this.tagSaving = false;
+                if (generation === dialogGeneration) this.tagSaving = false;
             }
         },
     };

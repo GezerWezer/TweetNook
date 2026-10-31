@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from collections.abc import Callable
 
+import httpx
 import pytest
 
 from tweetnook.web.routes import tags as tag_routes
@@ -166,6 +169,62 @@ def test_tag_routes_require_authentication(make_web_client) -> None:
 
     assert response.status_code == 401
     assert store.calls == []
+
+
+@pytest.mark.parametrize(
+    ("encoded", "label"),
+    [
+        ("UI%2FUX", "UI/UX"),
+        ("%2Fleading", "/leading"),
+        ("trailing%2F", "trailing/"),
+        ("one%2F%2Ftwo", "one//two"),
+        ("100%25%2Ftag", "100%/tag"),
+        ("%3F%23%2F", "?#/"),
+        ("literal%252F%2Fslash", "literal%2F/slash"),
+    ],
+)
+def test_global_delete_accepts_encoded_slashes_exactly_once(make_web_client, encoded, label):
+    store = TagStore()
+    client = make_web_client(tag_routes.router, store=store)
+
+    # ASGITransport decodes the path once, as a real server does. TestClient's
+    # extra unquote would turn a literal "%2F" in a label into another slash.
+    async def delete():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=client.app), base_url="http://test"
+        ) as http:
+            return await http.delete(f"/api/tags/global/{encoded}")
+
+    response = asyncio.run(delete())
+
+    assert response.status_code == 200
+    assert response.json() == {"success": True}
+    assert store.calls == [("delete_global_tag", label)]
+
+
+def test_slash_tag_deletion_reaches_real_archive(tmp_path, make_web_client):
+    from tweetnook.storage import ArchiveStore
+
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    try:
+        store.update_media_tags("101", ["UI/UX", "Keep"], description="Saved note")
+        store.update_media_tags("202", ["UI/UX"])
+        client = make_web_client(tag_routes.router, store=store)
+
+        response = client.delete("/api/tags/global/UI%2FUX")
+
+        assert response.status_code == 200
+        assert store.get_tag_counts(limit=-1) == [{"tag": "Keep", "count": 1}]
+        saved = store.conn.execute(
+            "SELECT raw_json FROM archive WHERE row_key='media_tag:101'"
+        ).fetchone()[0]
+        assert json.loads(saved) == {"tags": ["Keep"], "description": "Saved note"}
+        assert (
+            store.conn.execute("SELECT 1 FROM archive WHERE row_key='media_tag:202'").fetchone()
+            is None
+        )
+    finally:
+        store.close()
 
 
 @pytest.mark.parametrize("global_delete", [False, True])

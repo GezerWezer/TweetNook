@@ -323,6 +323,23 @@ test('tag settings only mount when open and expose accessible bounded page contr
     assert.match(html, /:disabled="currentPage\(\) >= pageCount\(\)" @click="changePage\(1\)"/);
 });
 
+test('global tag deletion encodes slashes and reserved characters in the submitted label', async () => {
+    const context = browserContext();
+    const requests = [];
+    context.fetch = async (url, options) => { requests.push([url, options.method]); return { ok: true }; };
+    const { nookTagsPage } = loadScripts(context, ['settings.js'], '({nookTagsPage})');
+    const page = Object.assign(nookTagsPage(), { $nextTick: callback => callback() });
+    page.globalTags = [{ tag: 'UI/UX ?#%', count: 2 }, { tag: 'Keep', count: 1 }];
+    page.confirmDelete = 'UI/UX ?#%';
+
+    await page.deleteTag();
+
+    assert.deepEqual(requests, [['/api/tags/global/UI%2FUX%20%3F%23%25', 'DELETE']]);
+    assert.deepEqual(Array.from(page.globalTags, tag => tag.tag), ['Keep']);
+    assert.equal(page.confirmDelete, null);
+    assert.equal(page.busy, false);
+});
+
 test('config and stats requests update their matching UI state', async () => {
     const context = browserContext();
     context.fetch = async url => ({

@@ -112,7 +112,7 @@ Routes and request/response models are defined in `web/routes/`. The [documentat
 | GET | `/api/storage/breakdown` | `storage_stats.py` |
 | DELETE | `/api/tags/{tweet_id}` | `tags.py` |
 | PUT | `/api/tags/{tweet_id}` | `tags.py` |
-| DELETE | `/api/tags/global/{tag}` | `tags.py` |
+| DELETE | `/api/tags/global/{tag:path}` | `tags.py` |
 | POST | `/api/tags/merge` | `tags.py` |
 | GET | `/api/tags/autocomplete` | `tags.py` |
 | GET | `/api/tags/stats` | `tags.py` |
@@ -141,5 +141,7 @@ Article search uses the shared query parser and matches saved Article text in Py
 Storage resolves one ancestor chain in directional lookup order, and detail assembly loads and renders that same chain. It walks up to fifty parents with cycle protection and up to 250 descendant replies with indexed breadth-first frontier reads. Replies expose flattened descendant metadata under `op_replies`, plus `thread_depth` and `parent_tweet_id`. Mention-only direct replies below five likes can be placed in `other_children`; media, links, quotes, substantive text, and saved branches retain primary visibility.
 
 Quote results include canonical context objects outside collections and retain placeholder slots for uncaptured sources. They return tweets/total/page/limit rather than the list endpoint's full paging shape. Author search is local and capped at ten matches; profile history returns distinct captured states by fetch time, not post time, with a limit from 1 through 100. Tag autocomplete matches every query fragment literally and case-insensitively.
+
+Global tag deletion captures the remaining path, including slashes inside a label. Clients encode the complete label once with `encodeURIComponent`; the server uses the decoded value without another decoding pass.
 
 List/detail/quote payloads abbreviate raw data to fields the UI renders. The complete stored document remains available at `/api/tweets/{tweet_id}/raw`; fixtures test that abbreviated/full forms render equivalently. Highlight terms come from submitted positive text/hashtag clauses and are applied before safe HTML escaping, including quote text and Show more.
