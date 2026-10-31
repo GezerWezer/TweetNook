@@ -70,11 +70,13 @@ class JobSupervisor:
         *,
         on_complete: Callable[[JobCompletion], None] | None = None,
         on_start: Callable[[str, int], None] | None = None,
+        on_launch_failure: Callable[[str, str, OSError], None] | None = None,
     ) -> None:
         self.paths = paths
         self.config = config
         self.on_complete = on_complete
         self.on_start = on_start
+        self.on_launch_failure = on_launch_failure
         self._lock = threading.RLock()
         self._process: subprocess.Popen[bytes] | None = None
         self._run_id: str | None = None
@@ -132,7 +134,7 @@ class JobSupervisor:
         with self._lock:
             if self._shutdown:
                 raise JobConflictError("The server is stopping.")
-            if self._run_id is not None or self._external_activity_is_running():
+            if self._run_id is not None or self.external_activity_is_running():
                 raise JobConflictError("Another Web or scheduled command is already running.")
             run_id = run_id or new_run_id()
             command = [sys.executable, "-m", "tweetnook", *cli_args]
@@ -244,19 +246,19 @@ class JobSupervisor:
                 raise JobConflictError("The server is stopping.")
             if any(item["kind"] == kind for item in self._queue):
                 raise JobConflictError(f"{title} is already queued.")
-            self._queue.append(
-                {
-                    "kind": kind,
-                    "cli_args": list(cli_args),
-                    "origin": origin,
-                    "title": title,
-                    "queued_at": time.time(),
-                }
-            )
-            position = len(self._queue)
-        started = self._start_next()
-        if started is not None and started.get("kind") == kind:
-            return started
+            item = {
+                "kind": kind,
+                "cli_args": list(cli_args),
+                "origin": origin,
+                "title": title,
+                "queued_at": time.time(),
+            }
+            self._queue.append(item)
+            started = self._start_next(requested=item)
+            if started is not None and started.get("kind") == kind:
+                return started
+            # Counted now: a failed launch ahead of this job can have moved it up.
+            position = self._queue.index(item) + 1
         return {"started": False, "queued": True, "kind": kind, "position": position}
 
     def dequeue(self, kind: str) -> bool:
@@ -265,35 +267,54 @@ class JobSupervisor:
             self._queue = [item for item in self._queue if item["kind"] != kind]
             return len(self._queue) != before
 
-    def _start_next(self) -> dict[str, Any] | None:
+    def _start_next(self, *, requested: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        """Start the queue's head. An idle queue always has a running job or a timer afterwards.
+
+        A failed launch drops that item and moves on, since retrying a command that can't start
+        would hold back everything behind it. The caller waiting on `requested` gets its failure.
+        """
         with self._lock:
             if self._retry_timer is not None:
                 self._retry_timer.cancel()
                 self._retry_timer = None
-            if not self._queue or self._shutdown or self._run_id is not None:
-                return None
-            item = self._queue[0]
-            try:
-                started = self.start(
-                    kind=item["kind"],
-                    cli_args=item["cli_args"],
-                    origin=item["origin"],
-                    title=item["title"],
-                )
-            except JobConflictError:
-                # Another process holds the archive; look again shortly.
-                self._retry_timer = threading.Timer(QUEUE_RETRY_SECONDS, self._start_next)
-                self._retry_timer.daemon = True
-                self._retry_timer.start()
-                return None
-            except OSError:
-                logging.getLogger(__name__).exception("Could not start a queued job")
+            while self._queue and not self._shutdown and self._run_id is None:
+                item = self._queue[0]
+                run_id = new_run_id()
+                try:
+                    started = self.start(
+                        kind=item["kind"],
+                        cli_args=item["cli_args"],
+                        origin=item["origin"],
+                        title=item["title"],
+                        run_id=run_id,
+                    )
+                except JobConflictError:
+                    # Another process holds the archive; look again shortly.
+                    self._retry_timer = threading.Timer(QUEUE_RETRY_SECONDS, self._start_next)
+                    self._retry_timer.daemon = True
+                    self._retry_timer.start()
+                    return None
+                except OSError as exc:
+                    self._queue.pop(0)
+                    if item is requested:
+                        raise
+                    logging.getLogger(__name__).exception("Could not start a queued job")
+                    self._report_launch_failure(run_id, item["title"], exc)
+                    continue
                 self._queue.pop(0)
-                return None
-            self._queue.pop(0)
-            return started
+                return started
+            return None
 
-    def _external_activity_is_running(self) -> bool:
+    def _report_launch_failure(self, run_id: str, title: str, error: OSError) -> None:
+        if self.on_launch_failure is None:
+            return
+        # The queue still has to advance, and this callback only writes a notice.
+        try:
+            self.on_launch_failure(run_id, title, error)
+        except OSError:
+            logging.getLogger(__name__).exception("Queued job failure notification failed")
+
+    def external_activity_is_running(self) -> bool:
         try:
             snapshot = json.loads(self.paths.activity_status_file.read_text(encoding="utf-8"))
             pid = snapshot.get("pid")

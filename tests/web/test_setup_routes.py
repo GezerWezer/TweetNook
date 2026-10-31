@@ -103,7 +103,7 @@ def test_archive_upload_import_and_clear_are_real_guarded_actions(
         active_run_id = None
         active_kind = None
 
-        def _external_activity_is_running(self):
+        def external_activity_is_running(self):
             return False
 
         @staticmethod
@@ -157,7 +157,7 @@ def test_setup_import_can_skip_all_live_followup(tmp_path, make_web_client) -> N
         active_run_id = None
         active_kind = None
 
-        def _external_activity_is_running(self):
+        def external_activity_is_running(self):
             return False
 
         @staticmethod
@@ -388,7 +388,7 @@ def test_archive_publication_runs_off_the_event_loop(
         active_run_id = None
         active_kind = None
 
-        def _external_activity_is_running(self):
+        def external_activity_is_running(self):
             return False
 
     server_state.update({"paths": paths, "store": SetupStore(), "job_supervisor": Supervisor()})

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import json
 import signal
 import subprocess
@@ -10,6 +11,7 @@ import pytest
 
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.locking import ProcessLock
+from tweetnook.jobs.activity_history import read_run
 from tweetnook.jobs.outcome import Outcome
 from tweetnook.jobs.supervisor import JobCompletion, JobConflictError, JobSupervisor
 
@@ -231,7 +233,99 @@ def test_monitor_always_cleans_up_and_calls_back_when_result_persistence_fails(
     assert callbacks == [JobCompletion("test-run", 2, Outcome.FAILED)]
     assert supervisor.last_result["snapshot"]["success"] is False
     # Persistence failure must not leave the supervisor refusing the next start.
-    monkeypatch.setattr(supervisor, "_external_activity_is_running", lambda: False)
+    monkeypatch.setattr(supervisor, "external_activity_is_running", lambda: False)
     monkeypatch.setattr("tweetnook.jobs.supervisor.reserve_run", full)
     with pytest.raises(OSError):
         supervisor.start(kind="sync", cli_args=["sync"], origin="web", title="Sync")
+
+
+class _QueueWorld:
+    """A real supervisor where Popen is scripted per command and workers finish on request."""
+
+    def __init__(self, tmp_path, monkeypatch, *, failing: set[str]):
+        self.failures: list[tuple[str, str]] = []
+        self.finish_events: list[threading.Event] = []
+        self.launched: list[str] = []
+        world = self
+
+        class Process:
+            def __init__(self):
+                self.pid = 4000 + len(world.launched)
+                self.done = threading.Event()
+                world.finish_events.append(self.done)
+
+            def poll(self):
+                return 0 if self.done.is_set() else None
+
+            def wait(self, timeout=None):
+                self.done.wait(5)
+                return 0
+
+        def popen(command, **_kwargs):
+            if command[-1] in failing:
+                raise FileNotFoundError(errno.ENOENT, "No such file", command[0])
+            world.launched.append(command[-1])
+            return Process()
+
+        monkeypatch.setattr("tweetnook.jobs.supervisor.subprocess.Popen", popen)
+        self.supervisor = JobSupervisor(
+            _paths(tmp_path),
+            AppConfig(),
+            on_launch_failure=lambda run_id, title, _exc: self.failures.append((run_id, title)),
+        )
+        monkeypatch.setattr(self.supervisor, "external_activity_is_running", lambda: False)
+
+    def enqueue(self, kind):
+        return self.supervisor.enqueue(kind=kind, cli_args=[kind], origin="web", title=kind)
+
+    def wait_for(self, kind):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if self.launched and self.launched[-1] == kind and self.supervisor.active:
+                return
+            time.sleep(0.01)
+        pytest.fail(
+            f"{kind} never started; launched {self.launched}, queue {self.supervisor.queue}"
+        )
+
+
+def test_deferred_launch_failure_is_reported_and_the_next_job_starts(tmp_path, monkeypatch):
+    world = _QueueWorld(tmp_path, monkeypatch, failing={"broken"})
+    assert world.enqueue("first")["started"] is True
+    assert world.enqueue("broken") == {
+        "started": False,
+        "queued": True,
+        "kind": "broken",
+        "position": 1,
+    }
+    assert world.enqueue("after")["position"] == 2
+
+    world.finish_events[0].set()
+    world.wait_for("after")
+
+    assert [title for _run_id, title in world.failures] == ["broken"]
+    run = read_run(tmp_path, world.failures[0][0])
+    assert run["exit_code"] == 127
+    assert run["status"] == "failed"
+    assert world.supervisor.queue == []
+    world.finish_events[1].set()
+
+
+def test_requested_job_that_cannot_launch_fails_the_request(tmp_path, monkeypatch):
+    world = _QueueWorld(tmp_path, monkeypatch, failing={"broken"})
+    with pytest.raises(OSError):
+        world.enqueue("broken")
+    assert world.supervisor.queue == []
+    assert world.failures == []
+
+
+def test_queue_conflict_keeps_the_job_and_retries(tmp_path, monkeypatch):
+    world = _QueueWorld(tmp_path, monkeypatch, failing=set())
+    monkeypatch.setattr(world.supervisor, "external_activity_is_running", lambda: True)
+    assert world.enqueue("later")["position"] == 1
+    assert world.supervisor._retry_timer is not None
+    world.supervisor._retry_timer.cancel()
+    monkeypatch.setattr(world.supervisor, "external_activity_is_running", lambda: False)
+    world.supervisor._start_next()
+    world.wait_for("later")
+    world.finish_events[0].set()

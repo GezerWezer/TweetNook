@@ -57,7 +57,7 @@ def test_jobs_wait_in_a_queue_behind_the_running_one(tmp_path) -> None:
     started: list[str] = []
     busy = {"value": True}
 
-    def start(*, kind, cli_args, origin, title):
+    def start(*, kind, cli_args, origin, title, run_id=None):
         if busy["value"]:
             raise JobConflictError("busy")
         started.append(kind)

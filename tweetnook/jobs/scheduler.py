@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import calendar
 import json
+import logging
 import random
 import threading
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from pathlib import Path
 from threading import Thread
 from typing import Any
@@ -18,6 +19,8 @@ from tweetnook.client.fxtwitter import fx_enabled
 from tweetnook.config import AppConfig, CheckConfig, ScheduleConfig, XDGPaths, load_config
 from tweetnook.core.fileio import atomic_write_text
 from tweetnook.jobs.supervisor import JobConflictError, JobSupervisor
+
+logger = logging.getLogger(__name__)
 
 CHECK_CONFLICT_RETRY_SECONDS = 15 * 60
 
@@ -43,37 +46,38 @@ def _clock(config: ScheduleConfig) -> tuple[int, int]:
     return int(hour), int(minute)
 
 
+def _local_instant(day: date, hour: int, minute: int, zone: tzinfo) -> datetime:
+    """The UTC instant of a local time; of the two a clock change can give, the later one.
+
+    In a repeated hour that is the second pass. In a skipped hour it is just after the change.
+    """
+    return max(
+        datetime(day.year, day.month, day.day, hour, minute, tzinfo=zone, fold=fold).astimezone(UTC)
+        for fold in (0, 1)
+    )
+
+
 def _next_nominal_run(config: ScheduleConfig, after: datetime) -> datetime:
     zone = _timezone(config.timezone)
-    local = after.astimezone(zone)
+    local = after.astimezone(zone).date()
     if config.cadence == "hours":
         return after + timedelta(hours=config.every_hours)
 
+    # Candidates compare as instants: local clock times can't order two passes of a repeated hour.
     hour, minute = _clock(config)
-    if config.cadence == "daily":
-        candidate = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if candidate <= local:
-            candidate += timedelta(days=1)
-        return candidate.astimezone(UTC)
-
-    if config.cadence == "weekly":
-        days = (config.weekday - local.weekday()) % 7
-        candidate = (local + timedelta(days=days)).replace(
-            hour=hour,
-            minute=minute,
-            second=0,
-            microsecond=0,
-        )
-        if candidate <= local:
-            candidate += timedelta(days=7)
-        return candidate.astimezone(UTC)
+    if config.cadence in {"daily", "weekly"}:
+        step = 1 if config.cadence == "daily" else 7
+        day = local if step == 1 else local + timedelta(days=(config.weekday - local.weekday()) % 7)
+        while (candidate := _local_instant(day, hour, minute, zone)) <= after:
+            day += timedelta(days=step)
+        return candidate
 
     year, month = local.year, local.month
     while True:
-        day = min(config.day_of_month, calendar.monthrange(year, month)[1])
-        candidate = datetime(year, month, day, hour, minute, tzinfo=zone)
-        if candidate > local:
-            return candidate.astimezone(UTC)
+        day = date(year, month, min(config.day_of_month, calendar.monthrange(year, month)[1]))
+        candidate = _local_instant(day, hour, minute, zone)
+        if candidate > after:
+            return candidate
         month += 1
         if month == 13:
             year += 1
@@ -270,17 +274,18 @@ class ScheduleManager:
 
     def _loop(self) -> None:
         while not self._stop.wait(5):
-            try:
-                self.tick()
-            except Exception:
-                # Scheduling must never bring down the archive Web service.
-                continue
+            self.tick()
 
     def tick(self, *, now: float | None = None) -> None:
         timestamp = time.time() if now is None else now
         with self._lock:
-            self._tick_sync(timestamp)
-            self._tick_check(timestamp)
+            for name, stage in (("sync", self._tick_sync), ("check", self._tick_check)):
+                try:
+                    stage(timestamp)
+                except Exception:
+                    # Scheduling must never bring down the Web service, and one stage's failure
+                    # must not stop the other from running when it is due.
+                    logger.exception("Scheduled %s could not run", name)
 
     def _tick_sync(self, timestamp: float) -> None:
         schedule = self.config.schedule
@@ -321,6 +326,13 @@ class ScheduleManager:
                 except Exception:
                     # A notification failure must not interrupt schedule advancement.
                     pass
+        except OSError as exc:
+            # Couldn't launch at all, so keep the slot and retry instead of every few seconds.
+            logger.exception("Could not start the scheduled sync")
+            self._state["last_result"] = f"failed to start: {exc}"
+            self._state["next_run_at"] = timestamp + CHECK_CONFLICT_RETRY_SECONDS
+            self._save_state()
+            return
         self._state["last_run_at"] = timestamp
         self._state["next_run_at"] = next_run_after(
             schedule,
@@ -434,6 +446,10 @@ class ScheduleManager:
         except JobConflictError:
             # Unlike a missed sync, a due check waits for the running command.
             self._state["check_last_result"] = "deferred: another command was running"
+            self._state["check_next_run_at"] = timestamp + CHECK_CONFLICT_RETRY_SECONDS
+        except OSError as exc:
+            logger.exception("Could not start the scheduled availability check")
+            self._state["check_last_result"] = f"failed to start: {exc}"
             self._state["check_next_run_at"] = timestamp + CHECK_CONFLICT_RETRY_SECONDS
         else:
             self._state["check_last_result"] = "started"

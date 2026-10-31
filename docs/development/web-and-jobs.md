@@ -32,7 +32,7 @@ All web-save routes use `save_server_config` to serialize publication and applic
 
 `JobSupervisor` launches commands with the installed Python, explicit run identity/origin, and durable logs. It owns one active worker, records exit status, and can queue supported jobs. A separate process lock prevents a CLI writer from racing a web worker.
 
-`web/jobs.py` defines job names, CLI arguments and option types. Validate values before building arguments, reject unsupported options, and keep flags consistent with the CLI. Queue entries can be removed before launch. Manual queues live in memory and are cleared at shutdown; run history and Setup's first-sync intent are persisted separately. Avoid a second implementation of an operation in a route handler.
+`web/jobs.py` defines job names, CLI arguments and option types. Validate values before building arguments, reject unsupported options, and keep flags consistent with the CLI. Queue entries can be removed before launch. A job that can't launch when requested fails that request. One that can't launch from the queue is dropped with a notice and the next entry starts, so an idle queue always has a job running or a retry timer set. Manual queues live in memory and are cleared at shutdown; run history and Setup's first-sync intent are persisted separately. Avoid a second implementation of an operation in a route handler.
 
 ## Logs
 

@@ -6,6 +6,7 @@ import asyncio
 import errno
 import json
 import sqlite3
+import time
 from io import StringIO
 
 import httpx
@@ -22,13 +23,18 @@ from tests.conftest import make_tweet_result, patch_cli
 from tests.test_process_lock_os import other_process_sees
 from tweetnook.config import AppConfig
 from tweetnook.core.exceptions import ArchiveNotFoundError, ConfigError, StaleQueryIdError
+from tweetnook.jobs import activity_history
 from tweetnook.jobs import context as job_context
 from tweetnook.jobs.activity_history import (
+    cleanup_runs,
+    list_runs,
     mark_run_process_result,
     new_run_id,
     read_run,
+    read_run_log,
     reserve_run,
     runs_root,
+    update_run_metadata,
 )
 from tweetnook.jobs.outcome import Outcome, finished_cleanly, recorded_outcome
 from tweetnook.jobs.pipeline import PipelineReporter
@@ -817,3 +823,43 @@ def test_sync_limit_refuses_a_negative_value_before_any_request(
     result = CliRunner().invoke(cli.app, ["sync", "bookmarks", "--limit", "-1"])
     assert result.exit_code == 1
     assert "--limit cannot be negative." in output.getvalue()
+
+
+def _finished_run(data_dir) -> str:
+    run_id = new_run_id()
+    reserve_run(data_dir, run_id=run_id, title="Job", command=["job"], origin="web")
+    mark_run_process_result(data_dir, run_id, exit_code=0)
+    return run_id
+
+
+def test_history_cleanup_removes_a_run_from_every_lookup(tmp_path):
+    removed = _finished_run(tmp_path)
+    update_run_metadata(tmp_path, removed, started_at=1.0, completed_at=2.0)
+    kept = _finished_run(tmp_path)
+    update_run_metadata(tmp_path, kept, completed_at=time.time())
+
+    cleanup_runs(tmp_path, max_runs=1, retention_days=30)
+
+    assert [run["run_id"] for run in list_runs(tmp_path)] == [kept]
+    assert read_run(tmp_path, removed) is None
+    assert read_run_log(tmp_path, removed) == ""
+    assert read_run(tmp_path, kept) is not None
+
+
+def test_cached_result_stays_while_its_run_still_exists(tmp_path, monkeypatch):
+    """The cache exists for a run whose final result couldn't be written to disk."""
+    run_id = new_run_id()
+    reserve_run(tmp_path, run_id=run_id, title="Job", command=["job"], origin="web")
+
+    def full(*_args, **_kwargs):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(activity_history, "_atomic_json", full)
+    mark_run_process_result(tmp_path, run_id, exit_code=2)
+    monkeypatch.undo()
+
+    run = read_run(tmp_path, run_id)
+    assert run["status"] == "failed"
+    assert "final result could not be saved" in run["snapshot"]["history_warning"]
+    cleanup_runs(tmp_path, max_runs=10, retention_days=30)
+    assert read_run(tmp_path, run_id)["status"] == "failed"

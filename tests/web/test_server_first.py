@@ -48,7 +48,7 @@ class Supervisor:
         )
         return {"started": True, "run_id": self.active_run_id, "kind": self.active_kind}
 
-    def _external_activity_is_running(self):
+    def external_activity_is_running(self):
         return self.active
 
     def finish(self, code=0, *, stopped=False, steps=None):

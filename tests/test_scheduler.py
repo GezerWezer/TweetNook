@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import errno
+import logging
 from datetime import UTC, datetime
 from unittest.mock import patch
 
@@ -435,3 +437,144 @@ def test_scheduler_ignores_conflict_notification_failure(tmp_path) -> None:
 )
 def test_schedule_label_is_short_and_includes_the_time(kwargs, label) -> None:
     assert schedule_label(ScheduleConfig(**kwargs)) == label
+
+
+def test_failed_sync_launch_is_logged_retried_later_and_leaves_the_check_due(
+    tmp_path, caplog
+) -> None:
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    config = AppConfig.model_validate(
+        {
+            "schedule": {"enabled": True, "randomize_time": False},
+            "check": {"enabled": True},
+            "fxtwitter": {"enabled": True},
+        }
+    )
+    started: list[str] = []
+
+    class Supervisor:
+        active_kind = None
+        active_run_id = None
+
+        def start(self, *, kind, **_kwargs):
+            started.append(kind)
+            if kind == "sync":
+                raise OSError(errno.ENOSPC, "No space left on device")
+            return {"run_id": "check-run"}
+
+    manager = ScheduleManager(paths, config, Supervisor())
+    now = 10_000.0
+    manager._state["next_run_at"] = now - 1
+    manager._state["check_next_run_at"] = now - 1
+
+    with caplog.at_level(logging.ERROR, logger="tweetnook.jobs.scheduler"):
+        manager.tick(now=now)
+
+    assert started == ["sync", "check"]
+    assert "Could not start the scheduled sync" in caplog.text
+    assert manager._state["next_run_at"] == now + 15 * 60
+    assert manager._state["last_result"].startswith("failed to start")
+    assert manager._state["check_last_result"] == "started"
+
+    # The retry waits for its time rather than repeating on every tick.
+    manager.tick(now=now + 5)
+    assert started == ["sync", "check"]
+    manager.tick(now=now + 15 * 60)
+    assert started == ["sync", "check", "sync"]
+
+
+def test_unexpected_stage_failure_is_logged_and_the_loop_keeps_going(tmp_path, caplog) -> None:
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    manager = ScheduleManager(paths, AppConfig(), object())
+    ran = []
+
+    def explode(_timestamp):
+        raise RuntimeError("boom")
+
+    manager._tick_sync = explode
+    manager._tick_check = ran.append
+    with caplog.at_level(logging.ERROR, logger="tweetnook.jobs.scheduler"):
+        manager.tick(now=1.0)
+    assert ran == [1.0]
+    assert "Scheduled sync could not run" in caplog.text
+
+
+NEW_YORK = {"timezone": "America/New_York", "randomize_time": False}
+
+
+@pytest.mark.parametrize(
+    ("cadence", "after", "expected"),
+    [
+        # 2026-11-01: New York repeats 01:00-02:00, at 05:00-06:00Z then 06:00-07:00Z.
+        pytest.param({"cadence": "weekly", "weekday": 6}, "05:15", "06:30", id="weekly-first-pass"),
+        pytest.param(
+            {"cadence": "weekly", "weekday": 6}, "06:15", "06:30", id="weekly-second-pass"
+        ),
+        pytest.param({"cadence": "monthly", "day_of_month": 1}, "05:15", "06:30", id="month-first"),
+        pytest.param(
+            {"cadence": "monthly", "day_of_month": 1}, "06:15", "06:30", id="month-second"
+        ),
+        pytest.param({"cadence": "daily"}, "05:15", "06:30", id="daily-first-pass"),
+        pytest.param({"cadence": "daily"}, "06:15", "06:30", id="daily-second-pass"),
+    ],
+)
+def test_repeated_hour_resolves_to_its_later_occurrence(cadence, after, expected) -> None:
+    config = ScheduleConfig(**NEW_YORK, time="01:30", **cadence)
+    hour, minute = map(int, after.split(":"))
+    reference = datetime(2026, 11, 1, hour, minute, tzinfo=UTC)
+    hour, minute = map(int, expected.split(":"))
+    assert next_run_after(config, reference) == datetime(2026, 11, 1, hour, minute, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("cadence", "expected"),
+    [
+        ({"cadence": "daily"}, datetime(2026, 11, 2, 6, 30, tzinfo=UTC)),
+        ({"cadence": "weekly", "weekday": 6}, datetime(2026, 11, 8, 6, 30, tzinfo=UTC)),
+        ({"cadence": "monthly", "day_of_month": 1}, datetime(2026, 12, 1, 6, 30, tzinfo=UTC)),
+    ],
+)
+def test_exact_occurrence_is_not_returned_again(cadence, expected) -> None:
+    config = ScheduleConfig(**NEW_YORK, time="01:30", **cadence)
+    assert next_run_after(config, datetime(2026, 11, 1, 6, 30, tzinfo=UTC)) == expected
+
+
+def test_skipped_hour_runs_just_after_the_change() -> None:
+    # 2026-03-08: New York skips 02:00-03:00, so 02:30 EST is 07:30Z, shown as 03:30 EDT.
+    config = ScheduleConfig(**NEW_YORK, time="02:30", cadence="daily")
+    reference = datetime(2026, 3, 8, 6, 0, tzinfo=UTC)
+    assert next_run_after(config, reference) == datetime(2026, 3, 8, 7, 30, tzinfo=UTC)
+
+
+def test_repeated_hour_check_starts_once(tmp_path) -> None:
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    config = AppConfig.model_validate(
+        {
+            "schedule": {"timezone": "America/New_York"},
+            "check": {"enabled": True, "cadence": "weekly", "weekday": 6, "time": "01:30"},
+            "fxtwitter": {"enabled": True},
+        }
+    )
+    started: list[str] = []
+
+    class Supervisor:
+        active_kind = None
+        active_run_id = None
+
+        def start(self, *, kind, **_kwargs):
+            started.append(kind)
+            return {"run_id": "check-run"}
+
+    manager = ScheduleManager(paths, config, Supervisor())
+    second_pass = datetime(2026, 11, 1, 6, 15, tzinfo=UTC).timestamp()
+    manager._state["check_next_run_at"] = second_pass
+    for elapsed in (0, 5, 10):
+        manager.tick(now=second_pass + elapsed)
+    assert started == ["check"]
+    assert manager._state["check_next_run_at"] > second_pass + 10

@@ -482,6 +482,8 @@ def cleanup_runs(data_dir: Path, *, max_runs: int, retention_days: int) -> None:
         for child in run_dir.iterdir():
             if child.is_file():
                 child.unlink(missing_ok=True)
+        # The cache outlives a run only while its files do, for a result disk couldn't hold.
+        _TERMINAL_RESULTS.pop((str(data_dir.resolve()), str(record["run_id"])), None)
         try:
             run_dir.rmdir()
         except OSError:

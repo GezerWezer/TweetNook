@@ -273,7 +273,7 @@ class SetupCoordinator:
                 and self.state.initialization_result is None
             ):
                 # A separately surviving worker/command lock wins over stale metadata.
-                if supervisor._external_activity_is_running():
+                if supervisor.external_activity_is_running():
                     return
                 clean = bool(run) and finished_cleanly(run.get("exit_code"), recorded_outcome(run))
                 self._record_initialization(clean, run, failure="interrupted")

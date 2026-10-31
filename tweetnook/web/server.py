@@ -221,8 +221,20 @@ async def lifespan(app: FastAPI):
                 if coordinator:
                     coordinator.job_completed(completion)
 
+            def on_launch_failure(run_id: str, title: str, error: OSError) -> None:
+                notices.add(
+                    f"job-{run_id}",
+                    title,
+                    f"This queued job could not start: {error}",
+                    run_id=run_id,
+                )
+
             supervisor = JobSupervisor(
-                paths, config, on_start=on_job_start, on_complete=on_job_complete
+                paths,
+                config,
+                on_start=on_job_start,
+                on_complete=on_job_complete,
+                on_launch_failure=on_launch_failure,
             )
             server_state["job_supervisor"] = supervisor
             coordinator = SetupCoordinator(
