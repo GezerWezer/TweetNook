@@ -329,17 +329,13 @@ def _run_enrichment(
 ) -> tuple[archive_enrich.ArchiveEnrichResult, list[str]]:
     seed_tweet_objects(paths, tweet_ids, source=ARCHIVE_SOURCE, text="placeholder")
     enrichment = DetailEnrichment(paths, monkeypatch)
-    # The module builds its FxTwitter client from config alone, so route that one here.
-    real_build = fxtwitter.build_fx_client
-    monkeypatch.setattr(
-        fxtwitter, "build_fx_client", lambda config, **_: real_build(config, transport=transport)
-    )
 
     result = enrichment.run(
         lambda tweet_id, _request: make_tweet_detail_response(
             [make_tweet_result(tweet_id, "from login")]
         ),
         signed_in=signed_in,
+        fx_transport=transport,
     )
     return result, enrichment.requested
 

@@ -1,6 +1,6 @@
 # Availability checks
 
-`enrichment/check.py` checks public availability through FxTwitter and uses bounded authenticated detail lookups for cases that need the user's account. `enrichment/resurrection.py` owns the reason-aware X retry policy. The web presentation reads durable availability state alongside the last saved content.
+`enrichment/check.py` checks public availability through FxTwitter, then runs bounded authenticated lookups for unavailable posts that are due. `enrichment/resurrection.py` owns the reason-aware X retry policy. The web presentation reads durable availability state alongside the last saved content.
 
 ## Public lookups
 
@@ -18,7 +18,7 @@ Context checks are off by default, with a 60-day target cycle when enabled. The 
 
 Public lookups distinguish available, not found, protected, explicit tombstone, and transport/error outcomes. A generic 404 needs repeated evidence before an available post is marked unavailable. The run also watches for a broad 404 outage; a broken provider response must not mark an entire archive missing.
 
-Protected-account responses can need authenticated confirmation. Transport failures remain failures. Record `suspect`/to-recheck states when evidence is insufficient, and keep detailed counters tied to the final outcome after provisional 404s settle.
+A protected response for an available post is counted and changes nothing: the check doesn't confirm it with the login, because authenticated lookups only retry unavailable posts. Transport failures remain failures. Record `suspect`/to-recheck states when evidence is insufficient, and keep detailed counters tied to the final outcome after provisional 404s settle.
 
 ## Availability state
 
@@ -42,7 +42,7 @@ For unavailable posts, saved canonical content takes precedence over stale embed
 | `unavailable_unknown` | 7, 30, 90, then 180 days |
 | `archive_deleted`, `deleted_by_author` | No automatic restoration retry |
 
-Transport retry delays are 1, 6, 24, then 72 hours. Account probes can prioritize related unavailable posts when evidence suggests an account returned; all work stays within bounded policy. These intervals are local retry choices, not claims about X retention.
+A transport failure on an already unavailable post retries one hour later and keeps its reason and retry count, however many times it repeats, so an outage can't push a post further along its schedule. First-time enrichment of a post escalates through 1, 6, 24, then 72 hours. Account probes can prioritize related unavailable posts when evidence suggests an account returned; all work stays within bounded policy. These intervals are local retry choices, not claims about X retention.
 
 ## History
 

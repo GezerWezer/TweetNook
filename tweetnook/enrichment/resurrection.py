@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -14,27 +13,24 @@ from rich.console import Console
 
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
 from tweetnook.client.base import AdaptiveRequestPacer, build_async_client
-from tweetnook.client.timelines import build_tweet_detail_url, fetch_page
+from tweetnook.client.detail import TweetDetailRequester, resolve_detail_query_ids
 from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.core.exceptions import (
-    APIResponseError,
-    AuthExpiredError,
-    FeatureFlagDriftError,
-    RateLimitExhaustedError,
-    RepeatedFocalAbsenceError,
-    StaleQueryIdError,
+from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
+from tweetnook.enrichment.availability import (
+    preserve_reason_confidence,
+    record_unavailable,
 )
-from tweetnook.core.timeline_parsing import (
-    FOCAL_ABSENCE_DETAIL,
-    MAX_CONSECUTIVE_FOCAL_ABSENCES,
-    FocalResultKind,
-    parse_tweet_detail_response,
-    parse_tweet_detail_tweets,
+from tweetnook.enrichment.detail import (
+    DetailAbsent,
+    DetailAvailable,
+    DetailExecutor,
+    DetailOutcome,
+    DetailUnavailable,
+    detail_reporters,
+    record_transient_outcome,
 )
-from tweetnook.core.utils import utc_now
 from tweetnook.jobs.context import locked_archive_job, resolve_job_context
 from tweetnook.jobs.pipeline import current_pipeline
-from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.records import PageBuffer
 
@@ -43,30 +39,10 @@ ACCOUNT_PROBE_LIMIT = 5
 ACCOUNT_PROBE_SUCCESS_THRESHOLD = 3
 ACCOUNT_BOOST_LIMIT = 15
 DETAIL_WRITE_BATCH = 100
+_DETAIL_OPERATION = "TweetDetailResurrection"
 
-PERMANENT_REASONS = frozenset({"archive_deleted", "deleted_by_author"})
 ACCOUNT_LEVEL_REASONS = frozenset({"protected_account", "suspended_account", "account_missing"})
 AMBIGUOUS_REASONS = frozenset({"withheld", "not_found", "unavailable_unknown"})
-REASON_CONFIDENCE = {
-    "unavailable_unknown": 0,
-    "not_found": 20,
-    "withheld": 40,
-    "protected_account": 60,
-    "suspended_account": 60,
-    "account_missing": 60,
-    "archive_deleted": 100,
-    "deleted_by_author": 100,
-}
-
-RETRY_INTERVAL_DAYS = {
-    "protected_account": (7,),
-    "suspended_account": (30,),
-    "account_missing": (90,),
-    "withheld": (90,),
-    "not_found": (180,),
-    "unavailable_unknown": (7, 30, 90, 180),
-}
-TRANSPORT_RETRY_HOURS = (1, 6, 24, 72)
 
 
 @dataclass(slots=True)
@@ -95,63 +71,6 @@ def _pipeline_outcomes(result: ResurrectionResult, *, final: bool = False) -> st
     if final and result.remaining_due:
         parts.append(f"{result.remaining_due} still due")
     return " · ".join(parts)
-
-
-def as_utc_datetime(value: str | None = None) -> datetime:
-    if value:
-        try:
-            parsed = datetime.fromisoformat(value)
-            return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
-        except ValueError:
-            pass
-    return datetime.now(tz=UTC)
-
-
-def _after(*, now: str | None, days: int = 0, hours: int = 0) -> str:
-    return (as_utc_datetime(now) + timedelta(days=days, hours=hours)).isoformat()
-
-
-def resurrection_retry_schedule(
-    reason: str,
-    retry_count: int,
-    *,
-    now: str | None = None,
-) -> tuple[bool, str | None]:
-    if reason in PERMANENT_REASONS:
-        return False, None
-    intervals = RETRY_INTERVAL_DAYS.get(reason, RETRY_INTERVAL_DAYS["unavailable_unknown"])
-    interval = intervals[min(max(retry_count, 0), len(intervals) - 1)]
-    return True, _after(now=now, days=interval)
-
-
-def transient_retry_at(retry_count: int, *, now: str | None = None) -> str:
-    hours = TRANSPORT_RETRY_HOURS[min(max(retry_count - 1, 0), len(TRANSPORT_RETRY_HOURS) - 1)]
-    return _after(now=now, hours=hours)
-
-
-def preserve_reason_confidence(
-    previous_reason: str,
-    previous_detail: str | None,
-    new_reason: str,
-    new_detail: str | None,
-) -> tuple[str, str | None]:
-    if (
-        new_reason in PERMANENT_REASONS
-        or previous_reason == "unavailable_unknown"
-        or REASON_CONFIDENCE.get(new_reason, 0) >= REASON_CONFIDENCE.get(previous_reason, 0)
-    ):
-        return new_reason, new_detail
-    return previous_reason, previous_detail
-
-
-def _append_absence_diagnostic(detail: str | None, diagnostic: str | None) -> str | None:
-    if not diagnostic:
-        return detail
-    if not detail:
-        return diagnostic
-    if diagnostic in detail:
-        return detail
-    return f"{detail}\nRetry diagnostic: {diagnostic}"
 
 
 def select_weighted_resurrection_candidates(
@@ -209,6 +128,198 @@ def select_weighted_resurrection_candidates(
     return selected[:budget]
 
 
+@dataclass(slots=True)
+class _ResurrectionRun:
+    """One restoration pass: its queue, write buffer and same-author probes."""
+
+    store: ArchiveStore
+    budget: int
+    queue: deque[dict[str, Any]]
+    result: ResurrectionResult
+    step_key: str = "resurrection"
+    buffer: PageBuffer = field(default_factory=PageBuffer)
+    buffered_attempts: int = 0
+    queued_ids: set[str] = field(default_factory=set)
+    processed_ids: set[str] = field(default_factory=set)
+    probe_ids: dict[str, set[str]] = field(default_factory=dict)
+    probe_successes: dict[str, int] = field(default_factory=dict)
+    boosted_authors: set[str] = field(default_factory=set)
+    probed_authors: set[str] = field(default_factory=set)
+
+    def flush(self) -> None:
+        self.store.flush(self.buffer)
+        self.buffered_attempts = 0
+
+    def _publish_progress(self, completed: int, **fields: Any) -> None:
+        pipeline = current_pipeline()
+        if not pipeline.active:
+            return
+        planned_total = min(self.budget, self.result.attempted + len(self.queue))
+        pipeline.update_step(
+            self.step_key,
+            completed=completed,
+            total=max(planned_total, self.result.attempted),
+            counters=_pipeline_outcomes(self.result),
+            **fields,
+        )
+
+    async def select_targets(self) -> AsyncIterator[dict[str, Any]]:
+        result = self.result
+        while self.queue and result.attempted < self.budget:
+            row = self.queue.popleft()
+            tweet_id = str(row["tweet_id"])
+            self.queued_ids.discard(tweet_id)
+            if tweet_id in self.processed_ids:
+                continue
+            self.processed_ids.add(tweet_id)
+            # An earlier response in this run may have returned this post as thread context.
+            # Selection's copy is stale then, and acting on it would undo the restoration.
+            current = self.store.current_resurrection_candidates(
+                [tweet_id], cursor=self.buffer
+            ).get(tweet_id)
+            if current is None:
+                continue
+            result.attempted += 1
+            self.buffered_attempts += 1
+            self._publish_progress(result.attempted - 1, activity="Checking an unavailable tweet")
+            yield current
+
+    def record(self, row: dict[str, Any], outcome: DetailOutcome) -> None:
+        tweet_id = outcome.tweet_id
+        if isinstance(outcome, DetailAvailable):
+            self.store.persist_thread_detail(
+                focal_tweet_id=tweet_id,
+                tweets=parse_tweet_detail_tweets(outcome.payload),
+                raw_json=outcome.payload,
+                http_status=outcome.http_status,
+                cursor=self.buffer,
+            )
+            self.result.resurrected += 1
+        elif isinstance(outcome, DetailUnavailable):
+            reason, detail = preserve_reason_confidence(
+                str(row.get("enrichment_reason") or "unavailable_unknown"),
+                row.get("enrichment_detail"),
+                outcome.reason,
+                outcome.detail,
+            )
+            record_unavailable(
+                self.store,
+                tweet_id=tweet_id,
+                operation=_DETAIL_OPERATION,
+                payload=outcome.payload,
+                http_status=outcome.http_status,
+                reason=reason,
+                detail=detail,
+                retry_count=int(row.get("enrichment_retry_count") or 0) + 1,
+                cursor=self.buffer,
+            )
+            self.result.still_unavailable += 1
+        else:
+            if isinstance(outcome, DetailAbsent):
+                self.store.append_raw_capture(
+                    _DETAIL_OPERATION,
+                    tweet_id,
+                    None,
+                    outcome.http_status,
+                    outcome.payload,
+                    cursor=self.buffer,
+                )
+            record_transient_outcome(
+                self.store,
+                row,
+                outcome,
+                label="Resurrection",
+                issue_key="resurrection",
+                cursor=self.buffer,
+            )
+            self.result.transient_failures += 1
+
+    def _prepend(self, rows: list[dict[str, Any]]) -> list[str]:
+        """Queue related posts ahead of the rest, unless this run already restored them."""
+
+        ids = [row["tweet_id"] for row in rows if isinstance(row.get("tweet_id"), str)]
+        candidates = self.store.current_resurrection_candidates(ids, cursor=self.buffer)
+        added: list[dict[str, Any]] = []
+        for row in rows:
+            tweet_id = row.get("tweet_id")
+            if (
+                tweet_id not in candidates
+                or tweet_id in self.queued_ids
+                or tweet_id in self.processed_ids
+            ):
+                continue
+            self.queued_ids.add(tweet_id)
+            added.append(row)
+        for row in reversed(added):
+            self.queue.appendleft(row)
+        return [row["tweet_id"] for row in added]
+
+    def _boost_probed_author(self, author_id: str) -> None:
+        """Three restored probes mean the account is back: prioritize its other posts."""
+
+        self.boosted_authors.add(author_id)
+        boosted = self.store.list_same_author_resurrection_tweets(
+            author_id,
+            exclude_tweet_ids=self.processed_ids | self.queued_ids,
+            limit=ACCOUNT_BOOST_LIMIT,
+            due_only=False,
+        )
+        added = self._prepend(boosted)
+        persisted_due = self.store.mark_author_resurrection_due(
+            author_id,
+            exclude_tweet_ids=self.processed_ids,
+        )
+        if added or persisted_due:
+            self.result.account_boosts += 1
+        self.result.account_rows_prioritized += len(added)
+        if added:
+            current_pipeline().status(
+                self.step_key,
+                f"Prioritized {len(added)} same-author recovery candidates",
+                important=True,
+            )
+
+    def _probe_author(self, author_id: str) -> None:
+        """A restored post from an account-level loss is a reason to try that account again."""
+
+        self.probed_authors.add(author_id)
+        probes = self.store.list_same_author_resurrection_tweets(
+            author_id,
+            exclude_tweet_ids=self.processed_ids | self.queued_ids,
+            limit=ACCOUNT_PROBE_LIMIT,
+            due_only=False,
+        )
+        added = self._prepend(probes)
+        self.probe_ids[author_id] = set(added)
+        self.store.mark_tweets_resurrection_due(set(added))
+        self.result.account_probes += len(added)
+
+    def after_record(self, row: dict[str, Any], outcome: DetailOutcome) -> None:
+        tweet_id = outcome.tweet_id
+        author_id = outcome.tweet.author_id if isinstance(outcome, DetailAvailable) else None
+        probe_author = next(
+            (author for author, ids in self.probe_ids.items() if tweet_id in ids), None
+        )
+        if probe_author is not None:
+            if author_id == probe_author:
+                self.probe_successes[probe_author] = self.probe_successes.get(probe_author, 0) + 1
+            if (
+                self.probe_successes.get(probe_author, 0) >= ACCOUNT_PROBE_SUCCESS_THRESHOLD
+                and probe_author not in self.boosted_authors
+            ):
+                self._boost_probed_author(probe_author)
+        if (
+            author_id is not None
+            and author_id.isdigit()
+            and row.get("enrichment_reason") in ACCOUNT_LEVEL_REASONS
+            and author_id not in self.probed_authors
+        ):
+            self._probe_author(author_id)
+        self._publish_progress(self.result.attempted)
+        if self.buffered_attempts >= DETAIL_WRITE_BATCH:
+            self.flush()
+
+
 async def resurrect_due_tweets(
     *,
     budget: int = DEFAULT_RESURRECTION_BUDGET,
@@ -217,7 +328,6 @@ async def resurrect_due_tweets(
     auth_bundle: ResolvedAuthBundle | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
     console: Console | None = None,
-    status: Callable[[str], None] | None = None,
     sleep: Callable[[float], Any] = asyncio.sleep,
 ) -> ResurrectionResult:
     config, paths = resolve_job_context(config=config, paths=paths)
@@ -266,344 +376,44 @@ async def resurrect_due_tweets(
             auth_bundle = resolve_auth_bundle(config)
             pipeline.status(step_key, "Preparing recovery checks")
 
-        query_store = QueryIdStore(paths)
-        query_ids = await resolve_query_ids(
-            query_store,
-            ["TweetDetail"],
-            force_refresh=not query_store.is_fresh(operations=["TweetDetail"]),
-            transport=transport,
-        )
+        query_store, query_ids = await resolve_detail_query_ids(paths, transport=transport)
         pipeline.status(
             step_key,
             "Checking an unavailable tweet",
         )
         client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
-        queue = deque(candidates)
-        queued_ids = {row["tweet_id"] for row in candidates if isinstance(row.get("tweet_id"), str)}
-        processed_ids: set[str] = set()
-        probe_ids: dict[str, set[str]] = {}
-        probe_successes: dict[str, int] = {}
-        boosted_authors: set[str] = set()
-        probed_authors: set[str] = set()
-        pacer = AdaptiveRequestPacer(config.sync.detail_delay)
-        buffer = PageBuffer()
-        buffered_attempts = 0
-        consecutive_focal_absences = 0
-
-        def prepend(rows: list[dict[str, Any]]) -> list[str]:
-            added: list[dict[str, Any]] = []
-            for row in rows:
-                tweet_id = row.get("tweet_id")
-                if (
-                    not isinstance(tweet_id, str)
-                    or tweet_id in queued_ids
-                    or tweet_id in processed_ids
-                ):
-                    continue
-                queued_ids.add(tweet_id)
-                added.append(row)
-            for row in reversed(added):
-                queue.appendleft(row)
-            return [row["tweet_id"] for row in added]
-
-        def flush() -> None:
-            nonlocal buffered_attempts
-            store.flush(buffer)
-            buffered_attempts = 0
-
+        run = _ResurrectionRun(
+            store=store,
+            budget=budget,
+            queue=deque(candidates),
+            result=result,
+            queued_ids={
+                row["tweet_id"] for row in candidates if isinstance(row.get("tweet_id"), str)
+            },
+        )
+        retry_status, pacing_status = detail_reporters(step_key, label="Resurrection")
         try:
-            while queue and result.attempted < budget:
-                row = queue.popleft()
-                tweet_id = str(row["tweet_id"])
-                queued_ids.discard(tweet_id)
-                if tweet_id in processed_ids:
-                    continue
-                processed_ids.add(tweet_id)
-                result.attempted += 1
-                buffered_attempts += 1
-                if pipeline.active:
-                    planned_total = min(budget, result.attempted + len(queue))
-                    pipeline.update_step(
-                        step_key,
-                        completed=result.attempted - 1,
-                        total=max(planned_total, result.attempted),
-                        activity="Checking an unavailable tweet",
-                        counters=_pipeline_outcomes(result),
-                    )
-                await pacer.wait(attempted=result.attempted - 1, sleep=sleep)
-
-                previous_reason = str(row.get("enrichment_reason") or "unavailable_unknown")
-                previous_detail = (
-                    str(row["enrichment_detail"])
-                    if row.get("enrichment_detail") is not None
-                    else None
-                )
-                previous_retry_count = int(row.get("enrichment_retry_count") or 0)
-                availability_retry_count = previous_retry_count + 1
-
-                async def refresh_once(tweet_id: str = tweet_id) -> str:
-                    refreshed = await refresh_query_ids(
-                        query_store, operations=["TweetDetail"], client=client
-                    )
-                    query_ids.update(refreshed)
-                    return build_tweet_detail_url(query_ids["TweetDetail"], tweet_id)
-
-                available_author_id: str | None = None
-                absence_error: RepeatedFocalAbsenceError | None = None
-                write_checkpoint = buffer.checkpoint()
-                try:
-                    response = await fetch_page(
-                        client,
-                        build_tweet_detail_url(query_ids["TweetDetail"], tweet_id),
-                        config.sync,
-                        max_retries=config.sync.detail_max_retries,
-                        backoff_base=config.sync.detail_backoff_base,
-                        refresh_once=refresh_once,
-                        status=(
-                            (
-                                lambda message, tweet_id=tweet_id: pipeline.status(
-                                    step_key,
-                                    f"Resurrection tweet {tweet_id}: {message}",
-                                    important=True,
-                                )
-                            )
-                            if pipeline.active
-                            else status
-                        ),
-                        sleep=sleep,
-                    )
-                    pacer.observe(
-                        response,
-                        status=(
-                            status
-                            if status is not None
-                            else (
-                                lambda message: pipeline.status(step_key, message, important=True)
-                                if pipeline.active
-                                else None
-                            )
-                        ),
-                    )
-                    payload = response.json()
-                    focal = parse_tweet_detail_response(payload, tweet_id)
-                    if focal.kind == FocalResultKind.AVAILABLE:
-                        assert focal.tweet is not None
-                        consecutive_focal_absences = 0
-                        available_author_id = focal.tweet.author_id
-                        thread_tweets = parse_tweet_detail_tweets(payload)
-                        store.persist_thread_detail(
-                            focal_tweet_id=tweet_id,
-                            tweets=thread_tweets,
-                            raw_json=payload,
-                            http_status=response.status_code,
-                            cursor=buffer,
-                        )
-                        result.resurrected += 1
-                    elif focal.kind == FocalResultKind.EXPLICIT_UNAVAILABLE:
-                        consecutive_focal_absences = 0
-                        assert focal.unavailable is not None
-                        reason, detail = preserve_reason_confidence(
-                            previous_reason,
-                            previous_detail,
-                            focal.unavailable.reason,
-                            focal.unavailable.detail,
-                        )
-                        eligible, next_retry = resurrection_retry_schedule(
-                            reason, availability_retry_count
-                        )
-                        store.persist_unavailable_tweet(
-                            tweet_id=tweet_id,
-                            operation="TweetDetailResurrection",
-                            raw_json=payload,
-                            http_status=response.status_code,
-                            reason=reason,
-                            detail=detail,
-                            retry_eligible=eligible,
-                            next_retry_at=next_retry,
-                            retry_count=availability_retry_count,
-                            cursor=buffer,
-                        )
-                        result.still_unavailable += 1
-                    else:
-                        assert focal.kind == FocalResultKind.ABSENT
-                        buffer.restore(write_checkpoint)
-                        store.append_raw_capture(
-                            "TweetDetailResurrection",
-                            tweet_id,
-                            None,
-                            response.status_code,
-                            payload,
-                            cursor=buffer,
-                        )
-                        store.update_tweet_object_enrichment(
-                            tweet_id,
-                            enrichment_state="terminal_unavailable",
-                            enrichment_checked_at=utc_now(),
-                            enrichment_http_status=response.status_code,
-                            enrichment_reason=previous_reason,
-                            enrichment_detail=_append_absence_diagnostic(
-                                previous_detail,
-                                FOCAL_ABSENCE_DETAIL,
-                            ),
-                            enrichment_retry_count=previous_retry_count,
-                            enrichment_next_retry_at=transient_retry_at(1),
-                            enrichment_retry_eligible=True,
-                            cursor=buffer,
-                        )
-                        result.transient_failures += 1
-                        consecutive_focal_absences += 1
-                        pipeline.issue(
-                            f"Resurrection tweet {tweet_id}: focal tweet absent; retry scheduled",
-                            dedupe_key="resurrection:focal-absence",
-                        )
-                        if consecutive_focal_absences >= MAX_CONSECUTIVE_FOCAL_ABSENCES:
-                            absence_error = RepeatedFocalAbsenceError(
-                                f"TweetDetail omitted its requested focal tweet for "
-                                f"{consecutive_focal_absences} consecutive responses; "
-                                f"last target was {tweet_id}."
-                            )
-                except APIResponseError as exc:
-                    if isinstance(
-                        exc,
-                        StaleQueryIdError
-                        | AuthExpiredError
-                        | FeatureFlagDriftError
-                        | RateLimitExhaustedError,
-                    ):
-                        raise
-                    if exc.status_code == 410:
-                        reason, detail = preserve_reason_confidence(
-                            previous_reason,
-                            previous_detail,
-                            "not_found",
-                            str(exc),
-                        )
-                        eligible, next_retry = resurrection_retry_schedule(
-                            reason, availability_retry_count
-                        )
-                        store.persist_unavailable_tweet(
-                            tweet_id=tweet_id,
-                            operation="TweetDetailResurrection",
-                            raw_json={"http_status": 410, "error": str(exc)},
-                            http_status=410,
-                            reason=reason,
-                            detail=detail,
-                            retry_eligible=eligible,
-                            next_retry_at=next_retry,
-                            retry_count=availability_retry_count,
-                            cursor=buffer,
-                        )
-                        result.still_unavailable += 1
-                    else:
-                        store.update_tweet_object_enrichment(
-                            tweet_id,
-                            enrichment_state="terminal_unavailable",
-                            enrichment_checked_at=utc_now(),
-                            enrichment_http_status=exc.status_code,
-                            enrichment_reason=previous_reason,
-                            enrichment_retry_count=previous_retry_count,
-                            enrichment_next_retry_at=transient_retry_at(1),
-                            enrichment_retry_eligible=True,
-                            cursor=buffer,
-                        )
-                        result.transient_failures += 1
-                        pipeline.issue(
-                            f"Resurrection tweet {tweet_id}: {exc}",
-                            dedupe_key="resurrection:api-failure",
-                        )
-                except httpx.TransportError as exc:
-                    store.update_tweet_object_enrichment(
-                        tweet_id,
-                        enrichment_state="terminal_unavailable",
-                        enrichment_checked_at=utc_now(),
-                        enrichment_http_status=None,
-                        enrichment_reason=previous_reason,
-                        enrichment_retry_count=previous_retry_count,
-                        enrichment_next_retry_at=transient_retry_at(1),
-                        enrichment_retry_eligible=True,
-                        cursor=buffer,
-                    )
-                    result.transient_failures += 1
-                    pipeline.issue(
-                        f"Resurrection tweet {tweet_id}: {exc.__class__.__name__}: {exc}",
-                        dedupe_key="resurrection:transport-failure",
-                    )
-                except (KeyboardInterrupt, asyncio.CancelledError):
-                    raise
-                except Exception:
-                    buffer.restore(write_checkpoint)
-                    raise
-
-                if absence_error is not None:
-                    flush()
-                    raise absence_error
-
-                probe_author = next(
-                    (author for author, ids in probe_ids.items() if tweet_id in ids), None
-                )
-                if probe_author is not None:
-                    if available_author_id == probe_author:
-                        probe_successes[probe_author] = probe_successes.get(probe_author, 0) + 1
-                    if (
-                        probe_successes.get(probe_author, 0) >= ACCOUNT_PROBE_SUCCESS_THRESHOLD
-                        and probe_author not in boosted_authors
-                    ):
-                        boosted_authors.add(probe_author)
-                        boosted = store.list_same_author_resurrection_tweets(
-                            probe_author,
-                            exclude_tweet_ids=processed_ids | queued_ids,
-                            limit=ACCOUNT_BOOST_LIMIT,
-                            due_only=False,
-                        )
-                        added = prepend(boosted)
-                        persisted_due = store.mark_author_resurrection_due(
-                            probe_author,
-                            exclude_tweet_ids=processed_ids,
-                        )
-                        if added or persisted_due:
-                            result.account_boosts += 1
-                        result.account_rows_prioritized += len(added)
-                        if added:
-                            pipeline.status(
-                                step_key,
-                                f"Prioritized {len(added)} same-author recovery candidates",
-                                important=True,
-                            )
-
-                if (
-                    available_author_id is not None
-                    and available_author_id.isdigit()
-                    and previous_reason in ACCOUNT_LEVEL_REASONS
-                    and available_author_id not in probed_authors
-                ):
-                    probed_authors.add(available_author_id)
-                    probes = store.list_same_author_resurrection_tweets(
-                        available_author_id,
-                        exclude_tweet_ids=processed_ids | queued_ids,
-                        limit=ACCOUNT_PROBE_LIMIT,
-                        due_only=False,
-                    )
-                    added = prepend(probes)
-                    probe_ids[available_author_id] = set(added)
-                    store.mark_tweets_resurrection_due(set(added))
-                    result.account_probes += len(added)
-
-                if pipeline.active:
-                    planned_total = min(budget, result.attempted + len(queue))
-                    pipeline.update_step(
-                        step_key,
-                        completed=result.attempted,
-                        total=max(planned_total, result.attempted),
-                        counters=_pipeline_outcomes(result),
-                    )
-
-                if buffered_attempts >= DETAIL_WRITE_BATCH:
-                    flush()
+            await DetailExecutor(
+                requester=TweetDetailRequester(
+                    client, query_store, query_ids, config.sync, sleep=sleep
+                ),
+                pacer=AdaptiveRequestPacer(config.sync.detail_delay),
+                gone_is_unavailable=True,
+                buffer=run.buffer,
+                retry_status=retry_status,
+                pacing_status=pacing_status,
+                sleep=sleep,
+            ).run(
+                run.select_targets(),
+                tweet_id_of=lambda row: str(row["tweet_id"]),
+                record=run.record,
+                after=run.after_record,
+            )
         finally:
             try:
                 await client.aclose()
             finally:
-                flush()
+                run.flush()
 
         result.remaining_due = store.count_due_resurrection_tweets()
         pipeline.complete_step(

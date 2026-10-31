@@ -15,8 +15,9 @@ along with it. Results:
   broken and none are marked.
 - Community notes are versioned; like and view counts are not kept over time.
 
-Protected accounts answer 401 on FxTwitter, so they are left to the TweetDetail retry
-schedule, which runs last within ``check.detail_budget`` lookups. With FxTwitter off the
+Protected accounts answer 401 on FxTwitter. An available tweet that answers so is counted
+and otherwise left alone: the login only retries unavailable tweets that are due, last in the
+run and within ``check.detail_budget`` lookups. With FxTwitter off the
 check doesn't run; sync's resurrection step keeps retrying unavailable tweets instead.
 """
 
@@ -41,12 +42,13 @@ from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.extractor import classify_tweet_unavailability
 from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
 from tweetnook.core.utils import utc_now
-from tweetnook.enrichment.resurrection import (
-    ResurrectionResult,
+from tweetnook.enrichment.availability import (
     as_utc_datetime,
     preserve_reason_confidence,
+    record_unavailable,
     resurrection_retry_schedule,
 )
+from tweetnook.enrichment.resurrection import ResurrectionResult
 from tweetnook.jobs.context import locked_archive_job, resolve_job_context
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.storage.backend import ArchiveStore
@@ -288,18 +290,11 @@ class _CheckApplier:
         for lookup, scope, step in pending:
             # A second 404 in a row. The fixed detail (not FxTwitter's message) marks it
             # as unconfirmed, which keeps it due for a login lookup.
-            self.store.persist_unavailable_tweet(
-                tweet_id=lookup.tweet_id,
-                operation="FxTwitterStatus",
-                raw_json=lookup.payload if isinstance(lookup.payload, dict) else {},
-                http_status=lookup.http_status,
+            self._save_unavailable(
+                lookup,
                 reason="unavailable_unknown",
                 detail=FX_NOT_FOUND_DETAIL,
-                retry_eligible=True,
-                next_retry_at=self.now,
-                retry_count=0,
-                checked_at=self.now,
-                cursor=self.buffer,
+                schedule=(True, self.now),
             )
             self.result.became_unavailable += 1
             # Recorded after the provisional "suspect", so this one is kept.
@@ -364,22 +359,30 @@ class _CheckApplier:
             else:
                 self.result.suspect += 1
             return False
-        eligible, next_retry = resurrection_retry_schedule(reason, 0, now=self.now)
-        self.store.persist_unavailable_tweet(
+        self._save_unavailable(lookup, reason=reason, detail=detail)
+        self.result.became_unavailable += 1
+        return True
+
+    def _save_unavailable(
+        self,
+        lookup: FxLookup,
+        *,
+        reason: str,
+        detail: str | None,
+        schedule: tuple[bool, str | None] | None = None,
+    ) -> None:
+        record_unavailable(
+            self.store,
             tweet_id=lookup.tweet_id,
             operation="FxTwitterStatus",
-            raw_json=lookup.payload if isinstance(lookup.payload, dict) else {},
+            payload=lookup.payload if isinstance(lookup.payload, dict) else {},
             http_status=lookup.http_status,
             reason=reason,
             detail=detail,
-            retry_eligible=eligible,
-            next_retry_at=next_retry,
-            retry_count=0,
-            checked_at=self.now,
+            schedule=schedule,
+            now=self.now,
             cursor=self.buffer,
         )
-        self.result.became_unavailable += 1
-        return True
 
 
 async def run_check(
@@ -585,7 +588,7 @@ async def _run_detail_fallback(
     sleep: Callable[[float], Awaitable[None]],
     result: CheckResult,
 ) -> ResurrectionResult | None:
-    """Check what FxTwitter couldn't settle (protected accounts, bare 404s) with the login."""
+    """Retry due unavailable tweets with the login, including 404s FxTwitter couldn't settle."""
 
     from tweetnook.auth import resolve_auth_bundle
     from tweetnook.core.exceptions import AuthExpiredError, AuthResolutionError

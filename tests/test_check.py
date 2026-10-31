@@ -371,6 +371,43 @@ def test_check_context_is_opt_in_and_scales_with_frequency(
     assert len(requests) == expected
 
 
+def test_login_lookups_leave_an_available_protected_post_alone(
+    config, paths, monkeypatch, auth_bundle
+) -> None:
+    import tweetnook.auth as auth
+
+    store = open_archive_store(paths, create=True, config=config)
+    assert store is not None
+    _save(store, "1", "from a protected account")
+    before = store.get_tweet_object_rows(["1"])["1"]
+    store.close()
+    monkeypatch.setattr(auth, "resolve_auth_bundle", lambda _config: auth_bundle)
+
+    def no_login_requests(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"unexpected login lookup: {request.url}")
+
+    result = asyncio.run(
+        run_check(
+            config=config,
+            paths=paths,
+            detail_budget=5,
+            fx_transport=fx_transport({"1": (401, {"code": 401})}),
+            transport=httpx.MockTransport(no_login_requests),
+            console=Console(file=StringIO()),
+            sleep=_no_sleep,
+        )
+    )
+
+    assert result.protected == 1
+    assert result.detail is None or result.detail.attempted == 0
+    store = open_archive_store(paths, create=False, config=config)
+    assert store is not None
+    after = store.get_tweet_object_rows(["1"])["1"]
+    assert after == before
+    assert store.get_tweet_check("1")["outcome"] == "protected"
+    store.close()
+
+
 def test_check_does_not_run_while_fxtwitter_is_off(config, paths, monkeypatch) -> None:
     import tweetnook.enrichment.check as check
 
@@ -655,6 +692,7 @@ def test_check_help_lists_its_flags() -> None:
     assert result.exit_code == 0
     normalized = " ".join(result.stdout.split())
     assert "Check that archived tweets still exist" in normalized
+    assert "reports as protected is left as it is" in normalized
     assert "Runs at the configured frequency (weekly by default)" in normalized
     assert "check.context_enabled" in normalized
     assert "nightly" not in normalized.lower()

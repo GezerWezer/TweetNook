@@ -149,4 +149,18 @@ RESURRECTION_ELIGIBLE_SQL = (
     "(deleted_at IS NULL AND enrichment_retry_eligible = 1 "
     "AND COALESCE(enrichment_reason, '') NOT IN ('archive_deleted', 'deleted_by_author'))"
 )
+_PERMANENT_UNAVAILABLE_REASONS = frozenset({"archive_deleted", "deleted_by_author"})
+
+
+def is_resurrection_candidate(row: dict[str, Any]) -> bool:
+    """RESURRECTION_ELIGIBLE_SQL for an unavailable row already in hand, staged or saved."""
+
+    return (
+        row.get("enrichment_state") == "terminal_unavailable"
+        and row.get("deleted_at") is None
+        and row.get("enrichment_retry_eligible") == 1
+        and row.get("enrichment_reason") not in _PERMANENT_UNAVAILABLE_REASONS
+    )
+
+
 RESURRECTION_PERMANENT_SQL = f"({RESURRECTION_ELIGIBLE_SQL} IS NOT TRUE)"

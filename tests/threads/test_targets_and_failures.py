@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from io import StringIO
 
 import httpx
 import pytest
+from rich.console import Console
 
 from tests.conftest import (
     list_raw_capture_target_ids,
@@ -17,8 +19,13 @@ from tweetnook.core.exceptions import (
 )
 from tweetnook.enrichment.resurrection import resurrect_due_tweets
 from tweetnook.enrichment.threads import expand_threads, normalize_thread_target
+from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.storage import open_archive_store
+
+
+async def _no_sleep(_seconds: float) -> None:
+    return None
 
 
 def test_normalize_thread_target_accepts_ids_and_urls() -> None:
@@ -205,3 +212,34 @@ async def test_thread_auth_failure_aborts_before_remaining_targets(
         )
 
     assert attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_a_repeated_target_that_failed_is_reported_as_skipped_not_known(
+    paths, config, auth_bundle
+) -> None:
+    _seed_thread_archive(paths)
+    QueryIdStore(paths).save({"TweetDetail": "detail-qid"})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, request=request)
+
+    reporter = PipelineReporter(
+        Console(file=StringIO(), force_terminal=False, color_system=None),
+        "threads",
+        interactive=False,
+    )
+    with reporter:
+        result = await expand_threads(
+            targets=["100", "100"],
+            config=config,
+            paths=paths,
+            auth_bundle=auth_bundle,
+            transport=httpx.MockTransport(handler),
+            sleep=_no_sleep,
+        )
+
+    assert (result.failed, result.skipped) == (1, 1)
+    summary = reporter._step_by_key["threads"].summary
+    assert "1 skipped" in summary
+    assert "known" not in summary

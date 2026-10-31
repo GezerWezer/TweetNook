@@ -20,6 +20,7 @@ from .common import (
     Clause,
     and_clauses,
     clause_in,
+    is_resurrection_candidate,
     state_filter,
 )
 from .objects import ObjectsMixin
@@ -485,6 +486,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             cols=[
                 "tweet_id",
                 "author_id",
+                "enrichment_state",
                 "enrichment_reason",
                 "enrichment_detail",
                 "enrichment_checked_at",
@@ -497,6 +499,20 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             ),
             limit=limit,
         )
+
+    def current_resurrection_candidates(
+        self, tweet_ids: list[str], *, cursor: PageBuffer | None = None
+    ) -> dict[str, dict[str, Any]]:
+        """The current rows of these posts that still await restoration, whenever they're due.
+
+        Reads writes staged in ``cursor``, so a post restored earlier in a batch drops out.
+        """
+
+        return {
+            tweet_id: row
+            for tweet_id, row in self.current_objects(tweet_ids, cursor=cursor).items()
+            if is_resurrection_candidate(row)
+        }
 
     def list_same_author_resurrection_tweets(
         self,
@@ -529,6 +545,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             cols=[
                 "tweet_id",
                 "author_id",
+                "enrichment_state",
                 "enrichment_reason",
                 "enrichment_detail",
                 "enrichment_checked_at",

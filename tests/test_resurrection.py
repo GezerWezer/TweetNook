@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections import deque
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from types import SimpleNamespace
 
@@ -8,9 +10,11 @@ import httpx
 import pytest
 from rich.console import Console
 
+import tweetnook.client.detail as client_detail
 import tweetnook.enrichment.resurrection as resurrection
 from tests.conftest import make_tweet_detail_response, make_tweet_result, request_details
 from tweetnook.core.timeline_parsing import TimelineTweet
+from tweetnook.enrichment.availability import resurrection_retry_schedule
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.storage import open_archive_store
@@ -67,15 +71,13 @@ def _terminal_row(
 
 
 def test_resurrection_retry_policy_is_reason_aware() -> None:
-    assert resurrection.resurrection_retry_schedule("archive_deleted", 0) == (False, None)
-    assert resurrection.resurrection_retry_schedule("deleted_by_author", 0) == (False, None)
-    protected = resurrection.resurrection_retry_schedule(
-        "protected_account", 0, now="2026-01-01T00:00:00+00:00"
-    )
-    unknown_first = resurrection.resurrection_retry_schedule(
+    assert resurrection_retry_schedule("archive_deleted", 0) == (False, None)
+    assert resurrection_retry_schedule("deleted_by_author", 0) == (False, None)
+    protected = resurrection_retry_schedule("protected_account", 0, now="2026-01-01T00:00:00+00:00")
+    unknown_first = resurrection_retry_schedule(
         "unavailable_unknown", 0, now="2026-01-01T00:00:00+00:00"
     )
-    unknown_later = resurrection.resurrection_retry_schedule(
+    unknown_later = resurrection_retry_schedule(
         "unavailable_unknown", 3, now="2026-01-01T00:00:00+00:00"
     )
     assert protected == (True, "2026-01-08T00:00:00+00:00")
@@ -427,7 +429,7 @@ async def test_resurrection_flushes_buffered_work_when_client_close_fails(
         "build_async_client",
         lambda *_args, **_kwargs: FailingCloseClient(),
     )
-    monkeypatch.setattr(resurrection, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(client_detail, "fetch_page", fake_fetch_page)
 
     with pytest.raises(RuntimeError, match="close failed"):
         await resurrection.resurrect_due_tweets(
@@ -560,6 +562,9 @@ async def test_account_recovery_boost_stays_inside_global_budget(
         def update_tweet_object_enrichment(self, *_args, **_kwargs):
             raise AssertionError("unexpected transient failure")
 
+        def current_resurrection_candidates(self, tweet_ids, *, cursor=None):
+            return {tweet_id: rows[tweet_id] for tweet_id in tweet_ids}
+
         def mark_author_resurrection_due(self, author_id, *, exclude_tweet_ids=None):
             self.marked_due += 1
             return 1
@@ -606,10 +611,10 @@ async def test_account_recovery_boost_stays_inside_global_budget(
         return httpx.Response(200, json=payload, request=httpx.Request("GET", args[1]))
 
     monkeypatch.setattr(resurrection, "locked_archive_job", fake_locked_archive_job)
-    monkeypatch.setattr(resurrection, "QueryIdStore", FakeQueryStore)
-    monkeypatch.setattr(resurrection, "resolve_query_ids", fake_resolve_query_ids)
+    monkeypatch.setattr(client_detail, "QueryIdStore", FakeQueryStore)
+    monkeypatch.setattr(client_detail, "resolve_query_ids", fake_resolve_query_ids)
     monkeypatch.setattr(resurrection, "build_async_client", lambda *_args, **_kwargs: FakeClient())
-    monkeypatch.setattr(resurrection, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(client_detail, "fetch_page", fake_fetch_page)
 
     result = await resurrection.resurrect_due_tweets(
         budget=10,
@@ -656,7 +661,7 @@ async def test_unexpected_resurrection_parser_error_aborts_without_mutating_rows
     def fail_parser(*_args, **_kwargs):
         raise RuntimeError("response-shape regression")
 
-    monkeypatch.setattr(resurrection, "parse_tweet_detail_response", fail_parser)
+    monkeypatch.setattr("tweetnook.enrichment.detail.parse_tweet_detail_response", fail_parser)
 
     with pytest.raises(RuntimeError, match="response-shape regression"):
         await resurrection.resurrect_due_tweets(
@@ -712,6 +717,9 @@ async def test_transport_failures_do_not_advance_availability_retry_count(
         assert current["enrichment_retry_count"] == 0
         assert current["enrichment_reason"] == "unavailable_unknown"
         assert current["enrichment_detail"] == "original tombstone detail"
+        # The delay stays at one hour across repeated failures rather than escalating.
+        wait = datetime.fromisoformat(current["enrichment_next_retry_at"]) - datetime.now(UTC)
+        assert timedelta(minutes=59) < wait <= timedelta(hours=1)
         store.update_tweet_object_enrichment(
             "1",
             enrichment_state="terminal_unavailable",
@@ -753,5 +761,170 @@ async def test_transport_failures_do_not_advance_availability_retry_count(
         current = store._get_row("tweet_object:1")
         assert current["enrichment_retry_count"] == 1
         assert current["enrichment_reason"] == "unavailable_unknown"
+    finally:
+        store.close()
+
+
+def _seed_due(paths, *rows_args) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    store._merge_records(
+        [_terminal_row(store, tweet_id, reason, **kwargs) for tweet_id, reason, kwargs in rows_args]
+    )
+    store.close()
+    QueryIdStore(paths).save({"TweetDetail": "qid"})
+
+
+def _state_of(paths, tweet_id: str) -> dict[str, object]:
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        return store.current_objects([tweet_id])[tweet_id]
+    finally:
+        store.close()
+
+
+async def _no_sleep(_delay: float) -> None:
+    return None
+
+
+def _thread_answer(request: httpx.Request, ids: list[str]) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json=make_tweet_detail_response(
+            [make_tweet_result(tweet_id, f"returned {tweet_id}", user_id="42") for tweet_id in ids]
+        ),
+        request=request,
+    )
+
+
+@pytest.mark.parametrize("batch", [100, 1], ids=["same-buffer", "after-a-flush"])
+@pytest.mark.asyncio
+async def test_a_post_restored_as_thread_context_is_not_requested_or_marked_unavailable_again(
+    paths, config, auth_bundle, monkeypatch: pytest.MonkeyPatch, batch: int
+) -> None:
+    monkeypatch.setattr(resurrection, "DETAIL_WRITE_BATCH", batch)
+    _seed_due(paths, ("1", "protected_account", {}), ("2", "protected_account", {}))
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        focal = request_details(str(request.url))[1]["focalTweetId"]
+        requested.append(focal)
+        if focal == "1":
+            return _thread_answer(request, ["1", "2"])
+        # Before the fix, the stale queue entry requests 2 and this overlays its old state.
+        raise httpx.ConnectError("offline", request=request)
+
+    result = await resurrection.resurrect_due_tweets(
+        budget=5,
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        transport=httpx.MockTransport(handler),
+        sleep=_no_sleep,
+    )
+
+    assert requested == ["1"]
+    assert (result.attempted, result.transient_failures) == (1, 0)
+    assert _state_of(paths, "2")["enrichment_state"] == "resurrected"
+    assert _state_of(paths, "2")["text"] == "returned 2"
+
+
+@pytest.mark.asyncio
+async def test_a_probe_skips_a_post_this_run_already_restored(paths, config, auth_bundle) -> None:
+    future = "2030-01-01T00:00:00+00:00"
+    _seed_due(
+        paths,
+        ("1", "protected_account", {}),
+        ("2", "protected_account", {"next_retry_at": future}),
+        ("3", "protected_account", {"next_retry_at": future}),
+    )
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        focal = request_details(str(request.url))[1]["focalTweetId"]
+        requested.append(focal)
+        return _thread_answer(request, ["1", "2"] if focal == "1" else [focal])
+
+    result = await resurrection.resurrect_due_tweets(
+        budget=5,
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        transport=httpx.MockTransport(handler),
+        sleep=_no_sleep,
+    )
+
+    # 3 is still authorized as a future-due probe; 2 came back with the first response.
+    assert requested == ["1", "3"]
+    assert result.account_probes == 1
+    assert _state_of(paths, "2")["enrichment_state"] == "resurrected"
+    assert _state_of(paths, "3")["enrichment_state"] == "resurrected"
+
+
+@pytest.mark.asyncio
+async def test_a_still_unavailable_candidate_uses_its_current_lifecycle(
+    paths, config, auth_bundle
+) -> None:
+    _seed_due(paths, ("1", "protected_account", {}))
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    candidate = resurrection.select_weighted_resurrection_candidates(store, budget=1)[0]
+    # Selection's copy says protected; an earlier pass has since sharpened the reason.
+    store.update_tweet_object_enrichment(
+        "1",
+        enrichment_state="terminal_unavailable",
+        enrichment_checked_at="2026-01-02T00:00:00+00:00",
+        enrichment_http_status=200,
+        enrichment_reason="suspended_account",
+        enrichment_retry_count=2,
+    )
+    run = resurrection._ResurrectionRun(
+        store=store,
+        budget=1,
+        queue=deque([candidate]),
+        result=resurrection.ResurrectionResult(),
+    )
+    try:
+        selected = [row async for row in run.select_targets()]
+    finally:
+        store.close()
+
+    assert selected[0]["enrichment_reason"] == "suspended_account"
+    assert selected[0]["enrichment_retry_count"] == 2
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        {"enrichment_state": "resurrected"},
+        {"deleted_at": "2026-01-01T00:00:00+00:00"},
+        {"enrichment_retry_eligible": 0},
+        {"enrichment_retry_eligible": None},
+        {"enrichment_reason": "archive_deleted"},
+        {"enrichment_reason": "deleted_by_author"},
+    ],
+)
+def test_candidate_predicate_excludes_what_the_due_query_excludes(paths, columns) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    row = _terminal_row(store, "1", "protected_account")
+    row.update(columns)
+    store._merge_records([row])
+    try:
+        assert store.current_resurrection_candidates(["1"]) == {}
+        assert store.count_due_resurrection_tweets() == 0
+    finally:
+        store.close()
+
+
+def test_candidate_predicate_keeps_a_row_with_no_reason_or_future_retry(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    row = _terminal_row(store, "1", "protected_account", next_retry_at="2030-01-01T00:00:00+00:00")
+    row["enrichment_reason"] = None
+    store._merge_records([row])
+    try:
+        assert set(store.current_resurrection_candidates(["1"])) == {"1"}
     finally:
         store.close()

@@ -354,11 +354,9 @@ def test_unlimited_archive_followup_selects_one_snapshot_without_limit(
     paths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     limits: list[int | None] = []
-    trackers: list[object] = []
 
     async def fake_enrich_pending_rows(**kwargs):
         limits.append(kwargs["limit"])
-        trackers.append(kwargs["absence_tracker"])
         return archive_enrich.ArchiveEnrichResult(
             detail_lookups=1_200,
             pending_enrichment=0,
@@ -380,5 +378,4 @@ def test_unlimited_archive_followup_selects_one_snapshot_without_limit(
     )
 
     assert limits == [None]
-    assert len(trackers) == 1
     assert result.detail_lookups == 1_200

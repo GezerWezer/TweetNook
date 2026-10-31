@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -15,28 +15,24 @@ from rich.console import Console
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
 from tweetnook.client import fxtwitter
 from tweetnook.client.base import AdaptiveRequestPacer, build_async_client
-from tweetnook.client.timelines import build_tweet_detail_url, fetch_page
+from tweetnook.client.detail import TweetDetailRequester, resolve_detail_query_ids
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.exceptions import (
-    APIResponseError,
     ArchiveNotFoundError,
-    AuthExpiredError,
     ConfigError,
-    FeatureFlagDriftError,
-    RateLimitExhaustedError,
-    RepeatedFocalAbsenceError,
-    StaleQueryIdError,
     TweetNookError,
 )
 from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
-from tweetnook.core.timeline_parsing import (
-    FOCAL_ABSENCE_DETAIL,
-    MAX_CONSECUTIVE_FOCAL_ABSENCES,
-    FocalResultKind,
-    parse_tweet_detail_response,
-)
 from tweetnook.core.utils import utc_now
-from tweetnook.enrichment.resurrection import resurrection_retry_schedule, transient_retry_at
+from tweetnook.enrichment.availability import record_unavailable
+from tweetnook.enrichment.detail import (
+    DetailAvailable,
+    DetailExecutor,
+    DetailOutcome,
+    DetailUnavailable,
+    detail_reporters,
+    record_transient_outcome,
+)
 from tweetnook.importer.archive_manifests import (
     aggregate_import_counts,
     record_followup_counts,
@@ -52,7 +48,6 @@ from tweetnook.jobs.context import (
 from tweetnook.jobs.interactive import emit_status, progress_callback
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
-from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 from tweetnook.storage import ArchiveStore
 from tweetnook.storage.records import PageBuffer
 from tweetnook.sync.collection import sync_collection
@@ -102,22 +97,6 @@ class ArchiveEnrichmentAborted(TweetNookError):
         super().__init__(_abort_message(cause))
         self.remaining = remaining
         self.cause = cause
-
-
-@dataclass(slots=True)
-class _FocalAbsenceTracker:
-    consecutive: int = 0
-
-    def observe(self, kind: FocalResultKind, tweet_id: str) -> None:
-        if kind == FocalResultKind.ABSENT:
-            self.consecutive += 1
-            if self.consecutive >= MAX_CONSECUTIVE_FOCAL_ABSENCES:
-                raise RepeatedFocalAbsenceError(
-                    f"TweetDetail omitted its requested focal tweet for "
-                    f"{self.consecutive} consecutive responses; last target was {tweet_id}."
-                )
-        else:
-            self.consecutive = 0
 
 
 def _followup_collections_from_counts(counts: dict[str, int]) -> list[str]:
@@ -269,7 +248,6 @@ async def _run_archive_followup(
         )
     enrichment_result = ArchiveEnrichResult()
     if resolved_auth is not None or fxtwitter.fx_enabled(config):
-        absence_tracker = _FocalAbsenceTracker()
         enrichment_result = await _enrich_pending_rows(
             limit=detail_limit,
             config=config,
@@ -278,7 +256,6 @@ async def _run_archive_followup(
             transport=transport,
             console=console,
             status=status,
-            absence_tracker=absence_tracker,
             started_at=enrichment_started_at,
         )
     else:
@@ -383,6 +360,188 @@ def _archive_enrich_counts(store: ArchiveStore, *, now: str | None = None) -> Ar
     )
 
 
+@dataclass(slots=True)
+class _EnrichRun:
+    """One enrichment pass: its rows, write buffer, counters and provider fan-out."""
+
+    store: ArchiveStore
+    rows: list[dict[str, Any]]
+    config: AppConfig
+    console: Console
+    signed_in: bool
+    fx_client: httpx.AsyncClient | None
+    step_key: str = "archive-enrich"
+    buffer: PageBuffer = field(default_factory=PageBuffer)
+    buffered_writes: int = 0
+    # Rows finished so far, in whatever order FxTwitter answers, so progress never jumps.
+    done: int = 0
+    succeeded: int = 0
+    terminal: int = 0
+    transient: int = 0
+    deferred: int = 0
+    fx_served: int = 0
+    progress: Callable[[int, int], None] | None = None
+
+    def flush(self) -> None:
+        if self.buffered_writes <= 0:
+            return
+        self.store.flush(self.buffer)
+        self.buffered_writes = 0
+
+    def report_progress(self, activity: str | None = None) -> None:
+        if self.progress:
+            self.progress(self.done, len(self.rows))
+        pipeline = current_pipeline()
+        if not pipeline.active:
+            return
+        counters = (
+            f"{self.done} checked · {self.succeeded} enriched · "
+            f"{self.terminal} unavailable · {self.transient} transient"
+        )
+        if not self.signed_in:
+            counters += f" · {self.deferred} need account"
+        pipeline.update_step(
+            self.step_key,
+            completed=self.done,
+            counters=counters,
+            **({"activity": activity} if activity else {}),
+        )
+
+    def _save_fx_lookup(self, lookup: fxtwitter.FxLookup) -> None:
+        if lookup.kind != "available":
+            return
+        assert lookup.status is not None
+        self.store.persist_fx_status(
+            tweet=fx_timeline_tweet(fx_status_to_graphql(lookup.status)),
+            payload=lookup.payload,
+            http_status=lookup.http_status or 200,
+            cursor=self.buffer,
+        )
+        self.succeeded += 1
+        self.fx_served += 1
+        self.done += 1
+        self.buffered_writes += 1
+        if self.buffered_writes >= _DETAIL_ENRICH_WRITE_BATCH:
+            self.flush()
+        self.report_progress()
+
+    async def _prefetch_fx(self, tweet_ids: list[str]) -> dict[str, fxtwitter.FxLookup]:
+        assert self.fx_client is not None
+        self.report_progress("Looking up posts through FxTwitter")
+        results, fx_down = await fxtwitter.fetch_fx_statuses(
+            self.fx_client,
+            tweet_ids,
+            concurrency=self.config.fxtwitter.concurrency,
+            on_lookup=self._save_fx_lookup,
+        )
+        if fx_down:
+            # FxTwitter is down; TweetDetail handles the rest of this run.
+            await self.fx_client.aclose()
+            self.fx_client = None
+            self.console.print(
+                "[yellow]FxTwitter isn't answering; using TweetDetail "
+                "for the rest of this run.[/yellow]"
+            )
+        return results
+
+    async def select_targets(self) -> AsyncIterator[dict[str, Any]]:
+        """Yield the rows FxTwitter didn't answer that TweetDetail can still try."""
+
+        fx_results: dict[str, fxtwitter.FxLookup] = {}
+
+        def fx_answered(row: dict[str, Any]) -> bool:
+            lookup = fx_results.get(row["tweet_id"])
+            return lookup is not None and lookup.kind == "available"
+
+        for index, row in enumerate(self.rows):
+            if self.fx_client is not None and index % _FX_ENRICH_PREFETCH == 0:
+                fx_results = await self._prefetch_fx(
+                    [str(item["tweet_id"]) for item in self.rows[index:][:_FX_ENRICH_PREFETCH]]
+                )
+            if fx_answered(row):
+                continue  # Saved and counted as FxTwitter answered.
+            if not self.signed_in:
+                # Left as-is so the next authenticated run picks it up.
+                if self.fx_client is None:
+                    remaining = [item for item in self.rows[index:] if not fx_answered(item)]
+                    self.deferred += len(remaining)
+                    self.done += len(remaining)
+                    self.report_progress()
+                    break
+                self.deferred += 1
+                self.done += 1
+                self.report_progress()
+                continue
+            self.report_progress(f"Fetching live details for tweet {row['tweet_id']}")
+            yield row
+
+    def record(self, row: dict[str, Any], outcome: DetailOutcome) -> None:
+        if isinstance(outcome, DetailAvailable):
+            self.store.persist_tweet_detail(
+                tweet=outcome.tweet,
+                raw_json=outcome.payload,
+                http_status=outcome.http_status,
+                cursor=self.buffer,
+            )
+            self.succeeded += 1
+        elif isinstance(outcome, DetailUnavailable):
+            record_unavailable(
+                self.store,
+                tweet_id=outcome.tweet_id,
+                operation="TweetDetail",
+                payload=outcome.payload,
+                http_status=outcome.http_status,
+                reason=outcome.reason,
+                detail=outcome.detail,
+                cursor=self.buffer,
+            )
+            self.terminal += 1
+        else:
+            record_transient_outcome(
+                self.store,
+                row,
+                outcome,
+                label="Enrichment",
+                issue_key="archive-enrich",
+                cursor=self.buffer,
+            )
+            self.transient += 1
+
+    def after_record(self, _row: dict[str, Any], _outcome: DetailOutcome) -> None:
+        self.buffered_writes += 1
+        if self.buffered_writes >= _DETAIL_ENRICH_WRITE_BATCH:
+            self.flush()
+            current_pipeline().status(
+                self.step_key,
+                f"Committed {self.done + 1}/{len(self.rows)} enrichment attempts",
+                important=True,
+            )
+        self.done += 1
+        self.report_progress()
+
+
+async def _run_enrichment(run: _EnrichRun, executor: DetailExecutor | None) -> None:
+    with progress_callback(
+        run.console,
+        label="archive enrich detail",
+        total=len(run.rows),
+        unit="tweets",
+        leave=False,
+    ) as progress:
+        run.progress = progress
+        if executor is None:
+            # Without an account the selection does all the work and yields nothing.
+            async for _row in run.select_targets():
+                raise AssertionError("an unauthenticated run has no TweetDetail targets")
+            return
+        await executor.run(
+            run.select_targets(),
+            tweet_id_of=lambda row: str(row["tweet_id"]),
+            record=run.record,
+            after=run.after_record,
+        )
+
+
 async def _enrich_pending_rows(
     *,
     limit: int | None,
@@ -392,22 +551,22 @@ async def _enrich_pending_rows(
     transport: httpx.AsyncBaseTransport | None,
     console: Console,
     status: Callable[[str], None] | None = None,
-    absence_tracker: _FocalAbsenceTracker | None = None,
     started_at: str | None = None,
+    fx_transport: httpx.AsyncBaseTransport | None = None,
 ) -> ArchiveEnrichResult:
     pipeline = current_pipeline()
+    step_key = "archive-enrich"
     if limit is not None and limit <= 0:
         async with locked_archive_job(config=config, paths=paths, console=console) as job:
             result = _archive_enrich_counts(job.store)
-        if pipeline.has_step("archive-enrich"):
-            pipeline.skip_step("archive-enrich", "detail enrichment being disabled for this run")
+        if pipeline.has_step(step_key):
+            pipeline.skip_step(step_key, "detail enrichment being disabled for this run")
         return result
 
     async with locked_archive_job(config=config, paths=paths, console=console) as job:
         store = job.store
         selection_started_at = started_at or utc_now()
         rows = store.list_tweet_objects_for_enrichment(limit=limit, now=selection_started_at)
-        desc_type = "eligible sparse tweets"
         if not rows:
             result = _archive_enrich_counts(store, now=selection_started_at)
             emit_status(status, "no archive enrichment rows are currently due")
@@ -417,14 +576,13 @@ async def _enrich_pending_rows(
                     f"{result.transient_delayed:,} transient failures remain scheduled "
                     "for later retry",
                 )
-            if pipeline.has_step("archive-enrich"):
+            if pipeline.has_step(step_key):
                 pipeline.skip_step(
-                    "archive-enrich",
+                    step_key,
                     "no sparse archive tweets being eligible for enrichment",
                 )
             return result
         queue_counts = _archive_enrich_counts(store, now=selection_started_at)
-        step_key = "archive-enrich"
         pipeline.add_step(
             step_key,
             "Enrich",
@@ -442,345 +600,60 @@ async def _enrich_pending_rows(
             counters="0 checked · 0 enriched · 0 unavailable · 0 transient",
         )
         limit_suffix = "" if limit is None else f" (limit {limit})"
-        emit_status(status, f"detail enrichment over {len(rows)} {desc_type}{limit_suffix}")
-        query_store = QueryIdStore(paths)
+        emit_status(
+            status, f"detail enrichment over {len(rows)} eligible sparse tweets{limit_suffix}"
+        )
         # Without an account only FxTwitter runs; rows it can't answer wait for TweetDetail.
         client = None
-        query_ids: dict[str, str] = {}
-        if auth_bundle is not None:
-            query_ids = await resolve_query_ids(
-                query_store,
-                ["TweetDetail"],
-                force_refresh=not query_store.is_fresh(operations=["TweetDetail"]),
-                transport=transport,
-            )
-            client = build_async_client(
-                auth_bundle, timeout=config.sync.timeout, transport=transport
-            )
-        succeeded = 0
-        terminal = 0
-        transient = 0
-        deferred = 0
-        pacer = AdaptiveRequestPacer(config.sync.detail_delay)
-        write_buffer = PageBuffer()
-        buffered_writes = 0
-        absence_tracker = absence_tracker or _FocalAbsenceTracker()
-        # FxTwitter answers most lookups without the login; TweetDetail handles the rest.
-        fx_client = fxtwitter.build_fx_client(config) if fxtwitter.fx_enabled(config) else None
-        fx_results: dict[str, fxtwitter.FxLookup] = {}
-        fx_served = 0
-        detail_attempts = 0
-
-        def flush_detail_writes() -> None:
-            nonlocal buffered_writes
-            if buffered_writes <= 0:
-                return
-            store.flush(write_buffer)
-            buffered_writes = 0
-
-        # Rows finished so far, in whatever order FxTwitter answers, so progress never jumps.
-        done = 0
-        detail_progress = None
-
-        def report_progress(activity: str | None = None) -> None:
-            if detail_progress:
-                detail_progress(done, len(rows))
-            if not pipeline.active:
-                return
-            counters = (
-                f"{done} checked · {succeeded} enriched · "
-                f"{terminal} unavailable · {transient} transient"
-            )
-            if client is None:
-                counters += f" · {deferred} need account"
-            pipeline.update_step(
-                step_key,
-                completed=done,
-                counters=counters,
-                **({"activity": activity} if activity else {}),
-            )
-
-        def save_fx_lookup(lookup: fxtwitter.FxLookup) -> None:
-            nonlocal succeeded, fx_served, buffered_writes, done
-            if lookup.kind != "available":
-                return
-            assert lookup.status is not None
-            store.persist_fx_status(
-                tweet=fx_timeline_tweet(fx_status_to_graphql(lookup.status)),
-                payload=lookup.payload,
-                http_status=lookup.http_status or 200,
-                cursor=write_buffer,
-            )
-            succeeded += 1
-            fx_served += 1
-            done += 1
-            buffered_writes += 1
-            if buffered_writes >= _DETAIL_ENRICH_WRITE_BATCH:
-                flush_detail_writes()
-            report_progress()
-
+        executor = None
+        run = _EnrichRun(
+            store=store,
+            rows=rows,
+            config=config,
+            console=console,
+            signed_in=auth_bundle is not None,
+            # FxTwitter answers most lookups without the login; TweetDetail handles the rest.
+            fx_client=(
+                fxtwitter.build_fx_client(config, transport=fx_transport)
+                if fxtwitter.fx_enabled(config)
+                else None
+            ),
+        )
         try:
-            with progress_callback(
-                console,
-                label="archive enrich detail",
-                total=len(rows),
-                unit="tweets",
-                leave=False,
-            ) as detail_progress:
-                for index, row in enumerate(rows, start=1):
-                    tweet_id = row["tweet_id"]
-                    wrote_row = False
-                    absence_error: RepeatedFocalAbsenceError | None = None
-                    if fx_client is not None and (index - 1) % _FX_ENRICH_PREFETCH == 0:
-                        report_progress("Looking up posts through FxTwitter")
-                        fx_results, fx_down = await fxtwitter.fetch_fx_statuses(
-                            fx_client,
-                            [
-                                str(item["tweet_id"])
-                                for item in rows[index - 1 : index - 1 + _FX_ENRICH_PREFETCH]
-                            ],
-                            concurrency=config.fxtwitter.concurrency,
-                            on_lookup=save_fx_lookup,
-                        )
-                        if fx_down:
-                            # FxTwitter is down; TweetDetail handles the rest of this run.
-                            await fx_client.aclose()
-                            fx_client = None
-                            console.print(
-                                "[yellow]FxTwitter isn't answering; using TweetDetail "
-                                "for the rest of this run.[/yellow]"
-                            )
-                    fx_lookup = fx_results.get(tweet_id)
-                    if fx_lookup is not None and fx_lookup.kind == "available":
-                        continue  # Saved and counted as FxTwitter answered.
-                    if client is None:
-                        # Left as-is so the next authenticated run picks it up.
-                        if fx_client is None:
-                            remaining = [
-                                item
-                                for item in rows[index - 1 :]
-                                if getattr(fx_results.get(item["tweet_id"]), "kind", None)
-                                != "available"
-                            ]
-                            deferred += len(remaining)
-                            done += len(remaining)
-                            report_progress()
-                            break
-                        deferred += 1
-                        done += 1
-                        report_progress()
-                        continue
-                    report_progress(f"Fetching live details for tweet {tweet_id}")
-                    await pacer.wait(attempted=detail_attempts)
-                    detail_attempts += 1
-
-                    async def refresh_once(tweet_id: str = tweet_id) -> str:
-                        refreshed = await refresh_query_ids(
-                            query_store,
-                            operations=["TweetDetail"],
-                            client=client,
-                        )
-                        query_ids.update(refreshed)
-                        return build_tweet_detail_url(query_ids["TweetDetail"], tweet_id)
-
-                    write_checkpoint = write_buffer.checkpoint()
-                    try:
-                        response = await fetch_page(
-                            client,
-                            build_tweet_detail_url(query_ids["TweetDetail"], tweet_id),
-                            config.sync,
-                            max_retries=config.sync.detail_max_retries,
-                            backoff_base=config.sync.detail_backoff_base,
-                            refresh_once=refresh_once,
-                            status=(
-                                (
-                                    lambda message, tweet_id=tweet_id: emit_status(
-                                        status, f"detail {tweet_id}: {message}"
-                                    )
-                                )
-                                if status is not None
-                                else (
-                                    lambda message, tweet_id=tweet_id: pipeline.status(
-                                        step_key,
-                                        f"Enrichment tweet {tweet_id}: {message}",
-                                        important=True,
-                                    )
-                                    if pipeline.active
-                                    else None
-                                )
-                            ),
-                        )
-                        pacer.observe(
-                            response,
-                            status=(
-                                status
-                                if status is not None
-                                else (
-                                    lambda message: pipeline.status(
-                                        step_key, message, important=True
-                                    )
-                                    if pipeline.active
-                                    else None
-                                )
-                            ),
-                        )
-                        payload = response.json()
-                        focal = parse_tweet_detail_response(payload, tweet_id)
-                        if focal.kind == FocalResultKind.AVAILABLE:
-                            assert focal.tweet is not None
-                            absence_tracker.observe(focal.kind, tweet_id)
-                            store.persist_tweet_detail(
-                                tweet=focal.tweet,
-                                raw_json=payload,
-                                http_status=response.status_code,
-                                cursor=write_buffer,
-                            )
-                            succeeded += 1
-                        elif focal.kind == FocalResultKind.EXPLICIT_UNAVAILABLE:
-                            absence_tracker.observe(focal.kind, tweet_id)
-                            assert focal.unavailable is not None
-                            eligible, next_retry = resurrection_retry_schedule(
-                                focal.unavailable.reason, 0
-                            )
-                            store.persist_unavailable_tweet(
-                                tweet_id=tweet_id,
-                                operation="TweetDetail",
-                                raw_json=payload,
-                                http_status=response.status_code,
-                                reason=focal.unavailable.reason,
-                                detail=focal.unavailable.detail,
-                                retry_eligible=eligible,
-                                next_retry_at=next_retry,
-                                retry_count=0,
-                                cursor=write_buffer,
-                            )
-                            terminal += 1
-                        else:
-                            assert focal.kind == FocalResultKind.ABSENT
-                            write_buffer.restore(write_checkpoint)
-                            retry_count = int(row.get("enrichment_retry_count") or 0) + 1
-                            store.update_tweet_object_enrichment(
-                                tweet_id,
-                                enrichment_state="transient_failure",
-                                enrichment_checked_at=utc_now(),
-                                enrichment_http_status=response.status_code,
-                                enrichment_reason="focal_tweet_absent",
-                                enrichment_detail=FOCAL_ABSENCE_DETAIL,
-                                enrichment_retry_count=retry_count,
-                                enrichment_next_retry_at=transient_retry_at(retry_count),
-                                enrichment_retry_eligible=None,
-                                cursor=write_buffer,
-                            )
-                            transient += 1
-                            pipeline.issue(
-                                f"Enrichment tweet {tweet_id}: focal tweet absent; retry scheduled",
-                                dedupe_key="archive-enrich:focal-absence",
-                            )
-                        wrote_row = True
-                        if focal.kind == FocalResultKind.ABSENT:
-                            try:
-                                absence_tracker.observe(focal.kind, tweet_id)
-                            except RepeatedFocalAbsenceError as exc:
-                                absence_error = exc
-                    except APIResponseError as exc:
-                        if isinstance(
-                            exc,
-                            StaleQueryIdError
-                            | AuthExpiredError
-                            | FeatureFlagDriftError
-                            | RateLimitExhaustedError,
-                        ):
-                            raise
-                        if exc.status_code == 410:
-                            eligible, next_retry = resurrection_retry_schedule("not_found", 0)
-                            store.persist_unavailable_tweet(
-                                tweet_id=tweet_id,
-                                operation="TweetDetail",
-                                raw_json={"http_status": 410, "error": str(exc)},
-                                http_status=exc.status_code,
-                                reason="not_found",
-                                detail=str(exc),
-                                retry_eligible=eligible,
-                                next_retry_at=next_retry,
-                                retry_count=0,
-                                cursor=write_buffer,
-                            )
-                            terminal += 1
-                            wrote_row = True
-                        else:
-                            retry_count = int(row.get("enrichment_retry_count") or 0) + 1
-                            store.update_tweet_object_enrichment(
-                                tweet_id,
-                                enrichment_state="transient_failure",
-                                enrichment_checked_at=utc_now(),
-                                enrichment_http_status=exc.status_code,
-                                enrichment_reason=None,
-                                enrichment_detail=str(exc),
-                                enrichment_retry_count=retry_count,
-                                enrichment_next_retry_at=transient_retry_at(retry_count),
-                                enrichment_retry_eligible=None,
-                                cursor=write_buffer,
-                            )
-                            transient += 1
-                            wrote_row = True
-                            pipeline.issue(
-                                f"Enrichment tweet {tweet_id}: {exc}",
-                                dedupe_key="archive-enrich:api-failure",
-                            )
-                    except httpx.TransportError as exc:
-                        retry_count = int(row.get("enrichment_retry_count") or 0) + 1
-                        store.update_tweet_object_enrichment(
-                            tweet_id,
-                            enrichment_state="transient_failure",
-                            enrichment_checked_at=utc_now(),
-                            enrichment_http_status=None,
-                            enrichment_reason=None,
-                            enrichment_detail=f"{exc.__class__.__name__}: {exc}",
-                            enrichment_retry_count=retry_count,
-                            enrichment_next_retry_at=transient_retry_at(retry_count),
-                            enrichment_retry_eligible=None,
-                            cursor=write_buffer,
-                        )
-                        transient += 1
-                        wrote_row = True
-                        pipeline.issue(
-                            f"Enrichment tweet {tweet_id}: {exc.__class__.__name__}: {exc}",
-                            dedupe_key="archive-enrich:transport-failure",
-                        )
-                    except Exception:
-                        write_buffer.restore(write_checkpoint)
-                        raise
-                    if wrote_row:
-                        buffered_writes += 1
-                        if buffered_writes >= _DETAIL_ENRICH_WRITE_BATCH:
-                            flush_detail_writes()
-                            pipeline.status(
-                                step_key,
-                                f"Committed {done + 1}/{len(rows)} enrichment attempts",
-                                important=True,
-                            )
-                    if absence_error is not None:
-                        flush_detail_writes()
-                        raise absence_error
-                    done += 1
-                    report_progress()
+            if auth_bundle is not None:
+                query_store, query_ids = await resolve_detail_query_ids(paths, transport=transport)
+                client = build_async_client(
+                    auth_bundle, timeout=config.sync.timeout, transport=transport
+                )
+                retry_status, pacing_status = detail_reporters(
+                    step_key, label="Enrichment", status=status
+                )
+                executor = DetailExecutor(
+                    requester=TweetDetailRequester(client, query_store, query_ids, config.sync),
+                    pacer=AdaptiveRequestPacer(config.sync.detail_delay),
+                    gone_is_unavailable=True,
+                    buffer=run.buffer,
+                    retry_status=retry_status,
+                    pacing_status=pacing_status,
+                )
+            await _run_enrichment(run, executor)
         finally:
             try:
                 if client is not None:
                     await client.aclose()
-                if fx_client is not None:
-                    await fx_client.aclose()
+                if run.fx_client is not None:
+                    await run.fx_client.aclose()
             finally:
-                flush_detail_writes()
+                run.flush()
         result = _archive_enrich_counts(store)
-        result.detail_lookups = succeeded
-        result.detail_terminal_unavailable = terminal
-        result.detail_transient_failures = transient
+        result.detail_lookups = run.succeeded
+        result.detail_terminal_unavailable = run.terminal
+        result.detail_transient_failures = run.transient
         pipeline.complete_step(
             step_key,
-            f"{succeeded} enriched ({fx_served} via FxTwitter) · "
-            f"{terminal} unavailable · {transient} transient · "
-            + (f"{deferred} need account · " if client is None else "")
+            f"{run.succeeded} enriched ({run.fx_served} via FxTwitter) · "
+            f"{run.terminal} unavailable · {run.transient} transient · "
+            + (f"{run.deferred} need account · " if not run.signed_in else "")
             + f"{result.pending_untouched} pending untouched · "
             f"{result.transient_due} due · {result.transient_delayed} delayed",
         )

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from rich.console import Console
 
+import tweetnook.client.detail as client_detail
 import tweetnook.importer.archive as archive_import
 import tweetnook.importer.archive_enrich as archive_enrich
 import tweetnook.importer.archive_manifests as archive_manifests
@@ -50,11 +51,11 @@ def test_import_x_archive_detail_api_errors_become_transient_failures(
             return None
 
     monkeypatch.setattr(archive_enrich, "_run_live_reconciliation", fake_reconciliation)
-    monkeypatch.setattr(archive_enrich, "resolve_query_ids", fake_resolve_query_ids)
+    monkeypatch.setattr(client_detail, "resolve_query_ids", fake_resolve_query_ids)
     monkeypatch.setattr(
         archive_enrich, "build_async_client", lambda *_args, **_kwargs: DummyClient()
     )
-    monkeypatch.setattr(archive_enrich, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(client_detail, "fetch_page", fake_fetch_page)
 
     result = asyncio.run(
         import_x_archive(
@@ -100,11 +101,11 @@ def test_import_x_archive_detail_stale_query_id_aborts_and_leaves_row_untouched(
             return None
 
     monkeypatch.setattr(archive_enrich, "_run_live_reconciliation", fake_reconciliation)
-    monkeypatch.setattr(archive_enrich, "resolve_query_ids", fake_resolve_query_ids)
+    monkeypatch.setattr(client_detail, "resolve_query_ids", fake_resolve_query_ids)
     monkeypatch.setattr(
         archive_enrich, "build_async_client", lambda *_args, **_kwargs: DummyClient()
     )
-    monkeypatch.setattr(archive_enrich, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(client_detail, "fetch_page", fake_fetch_page)
 
     with pytest.raises(archive_enrich.ArchiveEnrichmentAborted, match="stale query id") as exc:
         asyncio.run(

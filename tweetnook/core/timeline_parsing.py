@@ -42,10 +42,6 @@ class FocalResultKind(StrEnum):
     ABSENT = "absent"
 
 
-MAX_CONSECUTIVE_FOCAL_ABSENCES = 3
-FOCAL_ABSENCE_DETAIL = "TweetDetail response did not contain an identifiable focal result."
-
-
 @dataclass(slots=True)
 class FocalTweetDetailResult:
     kind: FocalResultKind

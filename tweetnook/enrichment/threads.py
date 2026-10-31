@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 
 import httpx
@@ -11,30 +11,22 @@ from rich.console import Console
 
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
 from tweetnook.client.base import AdaptiveRequestPacer, build_async_client
-from tweetnook.client.timelines import build_tweet_detail_url, fetch_page
+from tweetnook.client.detail import TweetDetailRequester, resolve_detail_query_ids
 from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.core.exceptions import (
-    APIResponseError,
-    AuthExpiredError,
-    ConfigError,
-    FeatureFlagDriftError,
-    QueryIdRefreshError,
-    RateLimitExhaustedError,
-    RepeatedFocalAbsenceError,
-    StaleQueryIdError,
-)
+from tweetnook.core.exceptions import ConfigError
 from tweetnook.core.extractor import extract_status_id_from_url
-from tweetnook.core.timeline_parsing import (
-    MAX_CONSECUTIVE_FOCAL_ABSENCES,
-    FocalResultKind,
-    FocalTweetDetailResult,
-    TimelineTweet,
-    parse_tweet_detail_response,
-    parse_tweet_detail_tweets,
+from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
+from tweetnook.enrichment.availability import record_unavailable
+from tweetnook.enrichment.detail import (
+    DetailAbsent,
+    DetailAvailable,
+    DetailExecutor,
+    DetailOutcome,
+    DetailUnavailable,
+    normalize_status_target,
 )
 from tweetnook.jobs.context import locked_archive_job, resolve_job_context
 from tweetnook.jobs.pipeline import current_pipeline
-from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 from tweetnook.storage import ArchiveStore
 
 _SCAN_PROGRESS_EVERY = 100
@@ -53,38 +45,14 @@ def _pipeline_outcomes(result: ThreadExpandResult, *, final: bool = False) -> st
     if final or result.expanded:
         parts.append(f"{result.expanded} expanded")
     if result.skipped:
-        parts.append(f"{result.skipped} already known")
+        parts.append(f"{result.skipped} skipped")
     if result.failed:
         parts.append(f"{result.failed} failed")
     return " · ".join(parts)
 
 
-@dataclass(slots=True)
-class _FocalAbsenceTracker:
-    consecutive: int = 0
-
-    def observe(self, kind: FocalResultKind, tweet_id: str) -> None:
-        if kind != FocalResultKind.ABSENT:
-            self.consecutive = 0
-            return
-        self.consecutive += 1
-        if self.consecutive >= MAX_CONSECUTIVE_FOCAL_ABSENCES:
-            raise RepeatedFocalAbsenceError(
-                f"TweetDetail omitted its requested focal tweet for "
-                f"{self.consecutive} consecutive responses; last target was {tweet_id}."
-            )
-
-
 def normalize_thread_target(value: str) -> str:
-    candidate = value.strip()
-    if candidate.isdigit():
-        return candidate
-    tweet_id = extract_status_id_from_url(candidate)
-    if tweet_id:
-        return tweet_id
-    raise ConfigError(
-        f"Unsupported thread target '{value}'. Use a tweet ID or Twitter/X status URL."
-    )
+    return normalize_status_target(value, "thread")
 
 
 def _dedupe_targets(values: list[str]) -> tuple[list[str], int]:
@@ -140,146 +108,42 @@ def _log_scan_progress(
     )
 
 
-async def _fetch_detail(
-    *,
-    tweet_id: str,
-    query_ids: dict[str, str],
-    query_store: QueryIdStore,
-    client: httpx.AsyncClient,
-    config: AppConfig,
-    console: Console,
-    pacer: AdaptiveRequestPacer | None = None,
-) -> tuple[dict[str, object], list[TimelineTweet], FocalTweetDetailResult, int]:
-    async def refresh_once() -> str:
-        refreshed = await refresh_query_ids(
-            query_store,
-            operations=["TweetDetail"],
-            client=client,
-        )
-        query_ids.update(refreshed)
-        return build_tweet_detail_url(query_ids["TweetDetail"], tweet_id)
-
-    response = await fetch_page(
-        client,
-        build_tweet_detail_url(query_ids["TweetDetail"], tweet_id),
-        config.sync,
-        max_retries=config.sync.detail_max_retries,
-        backoff_base=config.sync.detail_backoff_base,
-        refresh_once=refresh_once,
-        status=lambda message: _log_thread_status(console, tweet_id, message),
-    )
-    if pacer is not None:
-        pacer.observe(response)
-    payload = response.json()
-    tweets = parse_tweet_detail_tweets(payload)
-    focal = parse_tweet_detail_response(payload, tweet_id)
-    return payload, tweets, focal, response.status_code
-
-
-async def _expand_target(
-    *,
-    tweet_id: str,
+def _record_thread_outcome(
     store: ArchiveStore,
-    query_ids: dict[str, str],
-    query_store: QueryIdStore,
-    client: httpx.AsyncClient,
-    config: AppConfig,
-    console: Console,
-    pacer: AdaptiveRequestPacer | None = None,
-) -> tuple[list[str], FocalResultKind]:
-    payload, tweets, focal, http_status = await _fetch_detail(
-        tweet_id=tweet_id,
-        query_ids=query_ids,
-        query_store=query_store,
-        client=client,
-        config=config,
-        console=console,
-        pacer=pacer,
-    )
-    if focal.kind == FocalResultKind.AVAILABLE:
-        store.persist_thread_detail(
-            focal_tweet_id=tweet_id,
-            tweets=tweets,
-            raw_json=payload,
-            http_status=http_status,
-        )
-    elif focal.kind == FocalResultKind.EXPLICIT_UNAVAILABLE:
-        assert focal.unavailable is not None
-        from tweetnook.enrichment.resurrection import resurrection_retry_schedule
-
-        retry_eligible, next_retry_at = resurrection_retry_schedule(
-            focal.unavailable.reason,
-            0,
-        )
-        store.persist_unavailable_tweet(
-            tweet_id=tweet_id,
-            operation="ThreadExpandDetail",
-            raw_json=payload,
-            http_status=http_status,
-            reason=focal.unavailable.reason,
-            detail=focal.unavailable.detail,
-            retry_eligible=retry_eligible,
-            next_retry_at=next_retry_at,
-            retry_count=0,
-        )
-    return [tweet.tweet_id for tweet in tweets], focal.kind
-
-
-async def _try_expand_target(
+    outcome: DetailOutcome,
     *,
-    tweet_id: str,
-    store: ArchiveStore,
-    query_ids: dict[str, str],
-    query_store: QueryIdStore,
-    client: httpx.AsyncClient,
-    config: AppConfig,
-    attempted_targets: set[str],
     known_tweet_ids: set[str],
     result: ThreadExpandResult,
     console: Console,
-    absence_tracker: _FocalAbsenceTracker,
-    pacer: AdaptiveRequestPacer | None = None,
 ) -> None:
-    result.processed += 1
-    attempted_targets.add(tweet_id)
-    try:
-        discovered_ids, focal_kind = await _expand_target(
-            tweet_id=tweet_id,
-            store=store,
-            query_ids=query_ids,
-            query_store=query_store,
-            client=client,
-            config=config,
-            console=console,
-            pacer=pacer,
+    tweet_id = outcome.tweet_id
+    if isinstance(outcome, DetailAvailable):
+        tweets = parse_tweet_detail_tweets(outcome.payload)
+        store.persist_thread_detail(
+            focal_tweet_id=tweet_id,
+            tweets=tweets,
+            raw_json=outcome.payload,
+            http_status=outcome.http_status,
         )
-    except (
-        AuthExpiredError,
-        FeatureFlagDriftError,
-        QueryIdRefreshError,
-        RateLimitExhaustedError,
-        RepeatedFocalAbsenceError,
-        StaleQueryIdError,
-    ):
-        raise
-    except (APIResponseError, httpx.TransportError) as exc:
-        result.failed += 1
-        _log_thread_status(console, tweet_id, f"failed ({exc})")
+        known_tweet_ids.update(tweet.tweet_id for tweet in tweets)
+        result.expanded += 1
         return
-    except Exception:
-        raise
-
-    absence_tracker.observe(focal_kind, tweet_id)
-    if focal_kind == FocalResultKind.ABSENT:
-        result.failed += 1
-        _log_thread_status(console, tweet_id, "ambiguous focal absence (deferred)")
-        return
-    if focal_kind == FocalResultKind.EXPLICIT_UNAVAILABLE:
-        result.failed += 1
+    result.failed += 1
+    if isinstance(outcome, DetailUnavailable):
+        record_unavailable(
+            store,
+            tweet_id=tweet_id,
+            operation="ThreadExpandDetail",
+            payload=outcome.payload,
+            http_status=outcome.http_status,
+            reason=outcome.reason,
+            detail=outcome.detail,
+        )
         _log_thread_status(console, tweet_id, "terminal unavailable (classified for retry)")
-        return
-    known_tweet_ids.update(discovered_ids)
-    result.expanded += 1
+    elif isinstance(outcome, DetailAbsent):
+        _log_thread_status(console, tweet_id, "ambiguous focal absence (deferred)")
+    else:
+        _log_thread_status(console, tweet_id, f"failed ({outcome.error})")
 
 
 @dataclass(slots=True)
@@ -558,7 +422,7 @@ async def expand_threads(
             counters=(
                 f"{len(pending_membership_ids)} membership · "
                 f"{len(pending_quote_ids)} quoted · "
-                f"{len(pending_linked_ids)} linked · {result.skipped} already known"
+                f"{len(pending_linked_ids)} linked · {result.skipped} skipped"
             ),
             detail=(
                 f"{len(pending_membership_ids)} membership candidates · "
@@ -571,21 +435,15 @@ async def expand_threads(
             _log_threads(console, "resolving auth bundle")
             auth_bundle = resolve_auth_bundle(config)
         _log_threads(console, "resolving TweetDetail query ID")
-        query_store = QueryIdStore(paths)
-        query_ids = await resolve_query_ids(
-            query_store,
-            ["TweetDetail"],
-            force_refresh=not query_store.is_fresh(operations=["TweetDetail"]),
-            transport=transport,
-        )
+        query_store, query_ids = await resolve_detail_query_ids(paths, transport=transport)
         attempted_targets: set[str] = set()
         attempted_reply_count = 0
-        pacer = AdaptiveRequestPacer(config.sync.detail_delay)
-        absence_tracker = _FocalAbsenceTracker()
         client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
         selected_total = min(pending_total, limit) if limit is not None else pending_total
         scanned = 0
-        try:
+
+        async def select_targets() -> AsyncIterator[tuple[str, str]]:
+            nonlocal attempted_reply_count
             for phase, target_ids in (
                 ("thread", pending_membership_ids),
                 ("quoted tweet", pending_quote_ids),
@@ -609,34 +467,44 @@ async def expand_threads(
                         activity=f"Fetching {phase} context",
                         counters=_pipeline_outcomes(result),
                     )
-                    await pacer.wait(attempted=result.processed, sleep=sleep)
-                    await _try_expand_target(
-                        tweet_id=tweet_id,
-                        store=store,
-                        query_ids=query_ids,
-                        query_store=query_store,
-                        client=client,
-                        config=config,
-                        attempted_targets=attempted_targets,
-                        known_tweet_ids=known_tweet_ids,
-                        result=result,
-                        console=console,
-                        absence_tracker=absence_tracker,
-                        pacer=pacer,
-                    )
-                    scanned += 1
-                    pipeline.update_step(
-                        step_key,
-                        completed=min(scanned, selected_total),
-                        counters=_pipeline_outcomes(result),
-                    )
-                    _log_scan_progress(
-                        console,
-                        phase=phase,
-                        scanned=scanned,
-                        total=selected_total,
-                        result=result,
-                    )
+                    result.processed += 1
+                    attempted_targets.add(tweet_id)
+                    yield tweet_id, phase
+
+        def record(target: tuple[str, str], outcome: DetailOutcome) -> None:
+            nonlocal scanned
+            _record_thread_outcome(
+                store,
+                outcome,
+                known_tweet_ids=known_tweet_ids,
+                result=result,
+                console=console,
+            )
+            scanned += 1
+            pipeline.update_step(
+                step_key,
+                completed=min(scanned, selected_total),
+                counters=_pipeline_outcomes(result),
+            )
+            _log_scan_progress(
+                console,
+                phase=target[1],
+                scanned=scanned,
+                total=selected_total,
+                result=result,
+            )
+
+        try:
+            await DetailExecutor(
+                requester=TweetDetailRequester(
+                    client, query_store, query_ids, config.sync, sleep=sleep
+                ),
+                pacer=AdaptiveRequestPacer(config.sync.detail_delay),
+                retry_status=lambda tweet_id, message: _log_thread_status(
+                    console, tweet_id, message
+                ),
+                sleep=sleep,
+            ).run(select_targets(), tweet_id_of=lambda target: target[0], record=record)
         finally:
             await client.aclose()
 

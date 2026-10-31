@@ -287,7 +287,7 @@ async def test_expand_threads_explicit_targets_skip_already_expanded_by_default(
         raise AssertionError(f"should not refetch explicit target without --refresh: {request.url}")
 
     monkeypatch.setattr(
-        "tweetnook.enrichment.threads.resolve_query_ids",
+        "tweetnook.client.detail.resolve_query_ids",
         lambda *_args, **_kwargs: pytest.fail(
             "TweetDetail metadata should not resolve for an empty thread queue"
         ),

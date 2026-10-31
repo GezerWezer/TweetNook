@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import re
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 
 import httpx
@@ -12,17 +11,19 @@ from rich.console import Console
 
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
 from tweetnook.client.base import AdaptiveRequestPacer, build_async_client
-from tweetnook.client.timelines import build_tweet_detail_url, fetch_page
+from tweetnook.client.detail import TweetDetailRequester, resolve_detail_query_ids
 from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.core.exceptions import ConfigError
-from tweetnook.core.timeline_parsing import parse_tweet_detail_response
+from tweetnook.enrichment.detail import (
+    DetailAvailable,
+    DetailExecutor,
+    DetailFailed,
+    DetailOutcome,
+    detail_reporters,
+    normalize_status_target,
+)
 from tweetnook.jobs.context import locked_archive_job, resolve_job_context
 from tweetnook.jobs.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs.pipeline import current_pipeline
-from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
-from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
-
-_STATUS_URL_RE = re.compile(r"/status/(\d+)")
 
 
 @dataclass(slots=True)
@@ -42,15 +43,7 @@ def _pipeline_outcomes(result: ArticleRefreshResult, *, final: bool = False) -> 
 
 
 def normalize_article_target(value: str) -> str:
-    candidate = value.strip()
-    if candidate.isdigit():
-        return candidate
-    match = _STATUS_URL_RE.search(candidate)
-    if match:
-        return match.group(1)
-    raise ConfigError(
-        f"Unsupported article target '{value}'. Use a tweet ID or Twitter/X status URL."
-    )
+    return normalize_status_target(value, "article")
 
 
 async def refresh_articles(
@@ -121,114 +114,72 @@ async def refresh_articles(
             pipeline.status(step_key, "Preparing article refresh")
 
         emit_status(status, "resolving TweetDetail query ID")
-        query_store = QueryIdStore(paths)
-        query_ids = await resolve_query_ids(
-            query_store,
-            ["TweetDetail"],
-            force_refresh=not query_store.is_fresh(operations=["TweetDetail"]),
-            transport=transport,
-        )
+        query_store, query_ids = await resolve_detail_query_ids(paths, transport=transport)
         pipeline.status(step_key, "Refreshing an article")
+
+        retry_status, pacing_status = detail_reporters(step_key, label="Article", status=status)
         client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
         try:
-            attempted = 0
-            pacer = AdaptiveRequestPacer(config.sync.detail_delay)
+            executor = DetailExecutor(
+                requester=TweetDetailRequester(
+                    client, query_store, query_ids, config.sync, sleep=sleep
+                ),
+                pacer=AdaptiveRequestPacer(config.sync.detail_delay),
+                retry_status=retry_status,
+                pacing_status=pacing_status,
+                sleep=sleep,
+            )
             with progress_callback(
                 console,
                 label="articles refresh",
                 total=len(tweet_ids),
                 unit="tweets",
             ) as progress:
-                for index, tweet_id in enumerate(tweet_ids, start=1):
-                    try:
+
+                async def targets() -> AsyncIterator[str]:
+                    for index, tweet_id in enumerate(tweet_ids):
                         result.processed += 1
                         pipeline.update_step(
                             step_key,
-                            completed=index - 1,
+                            completed=index,
                             activity="Refreshing an article",
                             counters=_pipeline_outcomes(result),
                         )
-                        await pacer.wait(attempted=attempted, sleep=sleep)
-                        attempted += 1
+                        yield tweet_id
 
-                        async def refresh_once(tweet_id: str = tweet_id) -> str:
-                            refreshed = await refresh_query_ids(
-                                query_store,
-                                operations=["TweetDetail"],
-                                client=client,
-                            )
-                            query_ids.update(refreshed)
-                            return build_tweet_detail_url(query_ids["TweetDetail"], tweet_id)
-
-                        response = await fetch_page(
-                            client,
-                            build_tweet_detail_url(query_ids["TweetDetail"], tweet_id),
-                            config.sync,
-                            max_retries=config.sync.detail_max_retries,
-                            backoff_base=config.sync.detail_backoff_base,
-                            refresh_once=refresh_once,
-                            status=(
-                                (
-                                    lambda message, tweet_id=tweet_id: emit_status(
-                                        status, f"detail {tweet_id}: {message}"
-                                    )
-                                )
-                                if status is not None
-                                else (
-                                    lambda message, tweet_id=tweet_id: pipeline.status(
-                                        step_key,
-                                        f"Article tweet {tweet_id}: {message}",
-                                        important=True,
-                                    )
-                                    if pipeline.active
-                                    else None
-                                )
-                            ),
-                            sleep=sleep,
-                        )
-                        pacer.observe(
-                            response,
-                            status=(
-                                status
-                                if status is not None
-                                else (
-                                    lambda message: pipeline.status(
-                                        step_key, message, important=True
-                                    )
-                                    if pipeline.active
-                                    else None
-                                )
-                            ),
-                        )
-                        payload = response.json()
-                        focal = parse_tweet_detail_response(payload, tweet_id)
-                        if not focal.is_available:
-                            raise ValueError(f"TweetDetail did not include focal tweet {tweet_id}.")
-                        assert focal.tweet is not None
+                def record(tweet_id: str, outcome: DetailOutcome) -> None:
+                    if isinstance(outcome, DetailAvailable):
                         store.persist_tweet_detail(
-                            tweet=focal.tweet,
-                            raw_json=payload,
-                            http_status=response.status_code,
+                            tweet=outcome.tweet,
+                            raw_json=outcome.payload,
+                            http_status=outcome.http_status,
                         )
                         result.updated += 1
-                    except Exception as exc:
-                        raise_if_storage_exhausted(exc)
+                    else:
                         result.failed += 1
+                        message = (
+                            outcome.error
+                            if isinstance(outcome, DetailFailed)
+                            else f"TweetDetail did not include focal tweet {tweet_id}."
+                        )
                         if pipeline.active:
                             pipeline.issue(
-                                f"Article tweet {tweet_id}: {exc}",
+                                f"Article tweet {tweet_id}: {message}",
                                 dedupe_key="articles:refresh-failure",
                             )
                         elif console:
-                            console.print(f"article {tweet_id}: failed ({exc})", highlight=False)
-                    finally:
-                        pipeline.update_step(
-                            step_key,
-                            completed=index,
-                            counters=_pipeline_outcomes(result),
-                        )
-                        if progress is not None:
-                            progress(index, len(tweet_ids))
+                            console.print(
+                                f"article {tweet_id}: failed ({message})", highlight=False
+                            )
+                    pipeline.update_step(
+                        step_key,
+                        completed=result.processed,
+                        counters=_pipeline_outcomes(result),
+                    )
+                    if progress is not None:
+                        progress(result.processed, len(tweet_ids))
+
+                await executor.run(targets(), tweet_id_of=str, record=record)
         finally:
             await client.aclose()
         pipeline.complete_step(

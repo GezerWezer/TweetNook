@@ -133,7 +133,7 @@ async function main() {
     assert.equal(publicStep('media').metrics.downloaded, 21);
     const publicReplayLog = await (await publicReplayStore.handle('https://example.test/api/activity/runs/demo-archive-replay/log')).text();
     assert.match(publicReplayLog, /^DEMO REPLAY:/);
-    assert.match(publicReplayLog, /7 expanded · 150 already known/);
+    assert.match(publicReplayLog, /7 expanded · 150 skipped/);
     assert.match(publicReplayLog, /representative sample runs; timings adjusted/);
     const publicFeed = await request(publicStore, 'https://example.test/api/tweets?collection=all&limit=100');
     assert.equal(publicFeed.body.total, publicFixture.tweets.filter(tweet => tweet.collections.length).length);

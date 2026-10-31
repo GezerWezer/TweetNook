@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 from rich.console import Console
+from typer.testing import CliRunner
 
 from tests.conftest import (
     list_article_rows,
@@ -16,7 +17,14 @@ from tests.conftest import (
     make_tweet_detail_response,
     make_tweet_result,
 )
+from tweetnook import cli
 from tweetnook.config import AppConfig, AuthConfig, SyncConfig
+from tweetnook.core.exceptions import (
+    AuthExpiredError,
+    ConfigError,
+    FeatureFlagDriftError,
+    RepeatedFocalAbsenceError,
+)
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.enrichment.articles import normalize_article_target, refresh_articles
 from tweetnook.jobs.pipeline import PipelineReporter
@@ -90,6 +98,19 @@ def _article_detail_payload(tweet_id: str, *, plain_text: str = "Body") -> dict[
             )
         ]
     )
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["https://example.com/status/100", "https://x.com/user/status/123abc", "/status/100"],
+)
+def test_normalize_article_target_rejects_other_hosts_and_partial_ids(target: str) -> None:
+    with pytest.raises(ConfigError, match="Unsupported article target"):
+        normalize_article_target(target)
+
+
+def test_normalize_article_target_keeps_query_suffixes() -> None:
+    assert normalize_article_target("https://twitter.com/u/status/100?s=20") == "100"
 
 
 def test_normalize_article_target_accepts_ids_and_urls() -> None:
@@ -370,3 +391,228 @@ async def test_refresh_articles_adapts_to_rate_limit_headers(paths, auth_bundle)
     assert result.updated == 2
     assert len(sleep_calls) == 1
     assert sleep_calls[0] > 3.0
+
+
+def _requested_focal(request: httpx.Request) -> str:
+    return json.loads(request.url.params["variables"])["focalTweetId"]
+
+
+async def _refresh_each(paths, config, auth_bundle, respond) -> tuple[list[str], object]:
+    """Refresh every seeded row; return the requests made and the result or raised error."""
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        tweet_id = _requested_focal(request)
+        requested.append(tweet_id)
+        return respond(tweet_id, request)
+
+    QueryIdStore(paths).save({"TweetDetail": "detail-qid"})
+    try:
+        outcome = await refresh_articles(
+            targets=sorted(_SEEDED_IDS),
+            config=config,
+            paths=paths,
+            auth_bundle=auth_bundle,
+            transport=httpx.MockTransport(handler),
+        )
+    except Exception as exc:
+        outcome = exc
+    return requested, outcome
+
+
+_SEEDED_IDS = ("100", "101", "102", "103", "104")
+
+
+@pytest.mark.parametrize(
+    ("status_code", "error"),
+    [(401, AuthExpiredError), (400, FeatureFlagDriftError)],
+)
+@pytest.mark.asyncio
+async def test_refresh_articles_stops_the_run_on_a_typed_stop(
+    paths, config, auth_bundle, status_code, error
+) -> None:
+    _seed_preview_article(paths, *_SEEDED_IDS)
+
+    def respond(tweet_id: str, request: httpx.Request) -> httpx.Response:
+        if tweet_id == "100":
+            return httpx.Response(
+                200, json=_article_detail_payload("100", plain_text="Kept"), request=request
+            )
+        return httpx.Response(status_code, json={}, request=request)
+
+    requested, outcome = await _refresh_each(paths, config, auth_bundle, respond)
+
+    assert isinstance(outcome, error)
+    assert requested == ["100", "101"]
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        # The success before the stop was already committed.
+        assert "100" not in {row["tweet_id"] for row in list_article_rows(store, preview_only=True)}
+    finally:
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_refresh_articles_stops_after_three_focal_absences(
+    paths, config, auth_bundle
+) -> None:
+    _seed_preview_article(paths, *_SEEDED_IDS)
+
+    def respond(tweet_id: str, request: httpx.Request) -> httpx.Response:
+        if tweet_id == "100":
+            return httpx.Response(
+                200, json=_article_detail_payload("100", plain_text="Kept"), request=request
+            )
+        return httpx.Response(
+            200, json=_article_detail_payload("999", plain_text="Wrong"), request=request
+        )
+
+    requested, outcome = await _refresh_each(paths, config, auth_bundle, respond)
+
+    assert isinstance(outcome, RepeatedFocalAbsenceError)
+    assert requested == ["100", "101", "102", "103"]
+
+
+@pytest.mark.asyncio
+async def test_refresh_articles_resets_the_absence_count_on_a_saved_or_unavailable_result(
+    paths, config, auth_bundle
+) -> None:
+    _seed_preview_article(paths, *_SEEDED_IDS)
+
+    def respond(tweet_id: str, request: httpx.Request) -> httpx.Response:
+        if tweet_id == "102":
+            # An explicit answer about the requested post breaks the run of absences.
+            payload = {
+                "data": {
+                    "threaded_conversation_with_injections_v2": {
+                        "instructions": [
+                            {
+                                "entries": [
+                                    {
+                                        "entryId": "tweet-102",
+                                        "content": {
+                                            "itemContent": {
+                                                "tweet_results": {
+                                                    "result": {
+                                                        "__typename": "TweetUnavailable",
+                                                        "rest_id": "102",
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+            return httpx.Response(200, json=payload, request=request)
+        return httpx.Response(
+            200, json=_article_detail_payload("999", plain_text="Wrong"), request=request
+        )
+
+    requested, outcome = await _refresh_each(paths, config, auth_bundle, respond)
+
+    assert requested == list(_SEEDED_IDS)
+    assert (outcome.processed, outcome.updated, outcome.failed) == (5, 0, 5)
+
+
+@pytest.mark.asyncio
+async def test_refresh_articles_keeps_remote_failures_per_item(paths, config, auth_bundle) -> None:
+    _seed_preview_article(paths, "100", "101", "102")
+
+    def respond(tweet_id: str, request: httpx.Request) -> httpx.Response:
+        if tweet_id == "100":
+            return httpx.Response(503, json={}, request=request)
+        if tweet_id == "101":
+            raise httpx.ConnectError("offline", request=request)
+        return httpx.Response(
+            200, json=_article_detail_payload("102", plain_text="Saved"), request=request
+        )
+
+    QueryIdStore(paths).save({"TweetDetail": "detail-qid"})
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(_requested_focal(request))
+        return respond(requested[-1], request)
+
+    result = await refresh_articles(
+        targets=["100", "101", "102"],
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert requested == ["100", "101", "102"]
+    assert (result.processed, result.updated, result.failed) == (3, 1, 2)
+
+
+@pytest.mark.asyncio
+async def test_refresh_articles_does_not_report_a_local_error_as_a_failed_item(
+    paths, config, auth_bundle, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_preview_article(paths, *_SEEDED_IDS)
+    from tweetnook.storage.backend import ArchiveStore
+
+    real_persist = ArchiveStore.persist_tweet_detail
+    writes: list[str] = []
+
+    def failing_persist(self, *, tweet, **kwargs):
+        if tweet.tweet_id == "101":
+            raise RuntimeError("local bug")
+        writes.append(tweet.tweet_id)
+        return real_persist(self, tweet=tweet, **kwargs)
+
+    monkeypatch.setattr(ArchiveStore, "persist_tweet_detail", failing_persist)
+
+    def respond(tweet_id: str, request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json=_article_detail_payload(tweet_id, plain_text="Body"), request=request
+        )
+
+    requested, outcome = await _refresh_each(paths, config, auth_bundle, respond)
+
+    assert isinstance(outcome, RuntimeError)
+    assert requested == ["100", "101"]
+    assert writes == ["100"]
+
+
+@pytest.mark.asyncio
+async def test_refresh_articles_runs_every_named_target_regardless_of_limit(
+    paths, config, auth_bundle
+) -> None:
+    _seed_preview_article(paths, "100", "101", "102")
+    QueryIdStore(paths).save({"TweetDetail": "detail-qid"})
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(_requested_focal(request))
+        return httpx.Response(
+            200, json=_article_detail_payload(requested[-1], plain_text="Saved"), request=request
+        )
+
+    result = await refresh_articles(
+        targets=["100", "101", "102"],
+        limit=1,
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert requested == ["100", "101", "102"]
+    assert result.updated == 3
+
+
+def test_articles_refresh_help_scopes_the_limit_to_automatic_selection() -> None:
+    result = CliRunner().invoke(cli.app, ["articles", "refresh", "--help"])
+
+    assert result.exit_code == 0
+    # Option help wraps inside Rich's table borders.
+    normalized = " ".join(result.stdout.replace("│", " ").split())
+    assert "archived article rows to select automatically" in normalized
+    assert "Targets you name all run" in normalized

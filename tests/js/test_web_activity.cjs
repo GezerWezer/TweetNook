@@ -551,8 +551,8 @@ test('activity run summary turns structured outcomes into analytics-style cards'
     assert.equal(cards['media-saved'].value, '4');
     assert.equal(cards['media-failed'].value, '0');
     assert.equal(cards.threads.subtitle, 'New context saved');
-    assert.equal(cards['threads-known'].value, '148');
-    assert.equal(cards['threads-known'].wide, true);
+    assert.equal(cards['threads-skipped'].value, '148');
+    assert.equal(cards['threads-skipped'].wide, false);
     assert.equal(cards['threads-failed'].value, '0');
     assert.equal(cards.restored.label, 'Tweets resurrected');
     assert.equal(cards.restored.value, '1');

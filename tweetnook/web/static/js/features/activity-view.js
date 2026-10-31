@@ -334,7 +334,8 @@ function activityViewMethods() {
             const threads = stepFor('threads');
             if (threads) {
                 const expanded = metric(threads, 'expanded');
-                const known = metric(threads, 'already_known');
+                // The metric keeps its saved name so older runs' history still reads.
+                const skipped = metric(threads, 'already_known');
                 add(
                     'threads',
                     'Threads expanded',
@@ -342,10 +343,10 @@ function activityViewMethods() {
                     expanded === null ? unavailableSubtitle(threads) : 'New context saved',
                 );
                 add(
-                    'threads-known',
-                    'Threads already known',
-                    known === null ? '—' : count(known),
-                    known === null ? unavailableSubtitle(threads) : 'Skipped safely',
+                    'threads-skipped',
+                    'Threads skipped',
+                    skipped === null ? '—' : count(skipped),
+                    skipped === null ? unavailableSubtitle(threads) : 'Saved earlier or repeated',
                 );
                 const failed = metric(threads, 'failed');
                 add(

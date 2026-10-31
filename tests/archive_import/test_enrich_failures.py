@@ -3,7 +3,6 @@ from __future__ import annotations
 import httpx
 import pytest
 
-import tweetnook.importer.archive_enrich as archive_enrich
 from tests.archive_import.conftest import (
     _detail_entry_payload,
     _empty_detail_entry_payload,
@@ -115,8 +114,7 @@ def test_enrich_pending_rows_aborts_on_unexpected_parser_error_without_mutating_
 ) -> None:
     seed_tweet_objects(paths, ["1", "2"])
     monkeypatch.setattr(
-        archive_enrich,
-        "parse_tweet_detail_response",
+        "tweetnook.enrichment.detail.parse_tweet_detail_response",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(TypeError("parser bug")),
     )
 

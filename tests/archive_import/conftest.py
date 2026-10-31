@@ -399,6 +399,7 @@ class DetailEnrichment:
         limit: int | None = None,
         signed_in: bool = True,
         started_at: str | None = None,
+        fx_transport: httpx.AsyncBaseTransport | None = None,
     ) -> archive_enrich.ArchiveEnrichResult:
         return asyncio.run(
             archive_enrich._enrich_pending_rows(
@@ -409,6 +410,7 @@ class DetailEnrichment:
                 transport=self.transport(respond),
                 console=_console(),
                 started_at=started_at,
+                fx_transport=fx_transport,
             )
         )
 

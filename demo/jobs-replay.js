@@ -6,7 +6,7 @@
     const durations = {sync: 152, check: 30};
     const command = key => `tweetnook ${key}`;
     const countText = metrics => Object.entries(metrics).map(([key, value]) =>
-        `${value.toLocaleString('en-US')} ${{still_available: 'still on X', still_unavailable: 'still unavailable', retry_later: 'to recheck', already_known: 'already known', remaining_due: 'still due', downloaded_bytes: 'bytes'}[key] || key.replaceAll('_', ' ')}`).join(' · ');
+        `${value.toLocaleString('en-US')} ${{still_available: 'still on X', still_unavailable: 'still unavailable', retry_later: 'to recheck', already_known: 'skipped', remaining_due: 'still due', downloaded_bytes: 'bytes'}[key] || key.replaceAll('_', ' ')}`).join(' · ');
 
     function phase(key, title, start, end, total, unit, metrics, activity, extra = {}) {
         return {key, title, start, end, total, unit, metrics, activity, ...extra};
@@ -30,7 +30,7 @@
                 'Connecting to Twitter/X', {summary: `Connected · ${selected.length}/${selected.length} collections ready`}),
             ...collectionSteps,
             phase('threads', 'Threads', collectionStart, threadsEnd, 7, 'candidates', {expanded: 7, already_known: 150, failed: 0},
-                'Expanding replies and quotes', {summary: '7 expanded · 150 already known', loading: 20}),
+                'Expanding replies and quotes', {summary: '7 expanded · 150 skipped', loading: 20}),
             phase('resurrection', 'Unavailable tweets', threadsEnd, threadsEnd, 0, 'tweets', {}, '', {skip: 'no due retryable unavailable tweets'}),
             phase('articles', 'Articles', threadsEnd, threadsEnd, 0, 'articles', {}, '', {skip: 'no article rows requiring refresh'}),
             phase('media', 'Media', threadsEnd, mediaEnd, 21, 'items', {downloaded: 21, downloaded_bytes: 14260634, failed: 0},

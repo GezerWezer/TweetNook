@@ -27,7 +27,10 @@ from tweetnook.jobs.pipeline import current_pipeline
 article_app = typer.Typer(no_args_is_help=True, help="Refresh archived article bodies.")
 media_app = typer.Typer(no_args_is_help=True, help="Download archived tweet media.")
 thread_app = typer.Typer(no_args_is_help=True, help="Expand archived tweet threads.")
-ARTICLE_LIMIT_HELP = "Maximum number of archived article rows or explicit targets to process."
+ARTICLE_LIMIT_HELP = (
+    "Maximum number of archived article rows to select automatically. "
+    "Targets you name all run, whatever the limit."
+)
 THREAD_LIMIT_HELP = "Maximum number of archived thread targets to process."
 MEDIA_LIMIT_HELP = (
     "Maximum number of media items to process. A video or GIF can include a poster file."
@@ -177,9 +180,9 @@ CHECK_HELP = (
     "Check that archived tweets still exist: every saved tweet and the post it quotes, a "
     "rolling share of context tweets when check.context_enabled is on, and every "
     "unavailable tweet that may come back. "
-    "Looks up through FxTwitter, then uses your login for protected accounts and results "
-    "FxTwitter can't confirm. Runs at the configured frequency (weekly by default) from "
-    "the Web service when check.enabled is on."
+    "Looks up through FxTwitter, then uses your login to retry unavailable tweets that are "
+    "due. A saved tweet FxTwitter reports as protected is left as it is. Runs at the "
+    "configured frequency (weekly by default) from the Web service when check.enabled is on."
 )
 
 
