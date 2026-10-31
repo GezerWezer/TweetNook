@@ -188,6 +188,9 @@ async def test_create_opens_a_new_archive_and_the_default_requires_one(paths, co
 
 def _downgrade(paths) -> None:
     with sqlite3.connect(paths.database_path) as connection:
+        # Schema 5 still had these; the upgrade drops them.
+        for column in ("enrichment_followup_status", "enrichment_aborted_reason"):
+            connection.execute(f"ALTER TABLE archive ADD COLUMN {column} TEXT")
         connection.execute("PRAGMA user_version = 5")
 
 

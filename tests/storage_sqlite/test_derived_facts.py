@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from tests.storage_sqlite.conftest import CREATED_2024, CREATED_2026, _membership
+from tests.storage_sqlite.conftest import (
+    CREATED_2024,
+    CREATED_2026,
+    _membership,
+    add_released_followup_columns,
+)
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.schema import SCHEMA_VERSION
@@ -150,6 +155,7 @@ def _v10_content_archive(db_path):
     for suffix in ("ai", "au", "ad"):
         store.conn.execute(f"DROP TRIGGER archive_content_{suffix}")
     store.conn.execute("DROP TABLE archive_tweet_content")
+    add_released_followup_columns(store)
     store.conn.execute("PRAGMA user_version = 10")
     store.conn.commit()
     store.close()
@@ -199,6 +205,7 @@ def test_v11_upgrade_recomputes_content_flags_and_triggers_for_placeholder_text(
         "CREATE TRIGGER archive_content_au AFTER UPDATE OF text ON archive BEGIN "
         "UPDATE archive_tweet_content SET has_content = 1 WHERE row_key = new.row_key; END"
     )
+    add_released_followup_columns(store)
     store.conn.execute("PRAGMA user_version = 11")
     store.conn.commit()
     store.close()
@@ -264,6 +271,7 @@ def _v8_archive(db_path: Path) -> None:
     for trigger in ("archive_facts_ai", "archive_facts_au", "archive_facts_ad"):
         initial.conn.execute(f"DROP TRIGGER {trigger}")
     initial.conn.execute("DROP TABLE archive_tweet_facts")
+    add_released_followup_columns(initial)
     initial.conn.execute("PRAGMA user_version = 8")
     initial.conn.commit()
     initial.close()
@@ -275,7 +283,7 @@ def test_schema_v8_upgrade_backfills_search_facts_and_reports(tmp_path: Path) ->
 
     migrated = ArchiveStore(db_path, create=False)
 
-    assert migrated.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 12
+    assert migrated.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 13
     assert migrated.migration_report.from_version == 8
     assert [row["tweet_id"] for row in search_posts(migrated, "is:reply").rows] == ["1"]
     assert [row["tweet_id"] for row in search_posts(migrated, "-is:reply").rows] == ["2"]
@@ -343,6 +351,7 @@ def test_schema_v9_upgrade_backfills_the_description_index(tmp_path: Path) -> No
     for trigger in ("archive_description_ai", "archive_description_au", "archive_description_ad"):
         initial.conn.execute(f"DROP TRIGGER {trigger}")
     initial.conn.execute("DROP TABLE archive_description_fts")
+    add_released_followup_columns(initial)
     initial.conn.execute("PRAGMA user_version = 9")
     initial.conn.commit()
     initial.close()

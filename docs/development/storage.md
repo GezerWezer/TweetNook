@@ -50,7 +50,7 @@ Random-search and legacy-export SQL callbacks register once at connection creati
 
 The schema maintains content and Community Note flags used by search, including uncaptured placeholders and note history. Migrations backfill derived data transactionally while preserving saved content.
 
-Schema migrations run when a writable store opens. `SCHEMA_VERSION` in `storage/schema.py` is the authoritative version. New databases receive the latest schema; migrations must preserve existing archive content and update derived structures as needed.
+Schema migrations run when a writable store opens. `SCHEMA_VERSION` in `storage/schema.py` is the authoritative version. New databases receive the latest schema; migrations must preserve existing archive content and update derived structures as needed. The upgrade to schema 13 drops two manifest columns nothing read, which rewrites the table once, so the first open of a large archive afterward takes longer and needs room for the rewrite.
 
 ## Record types
 

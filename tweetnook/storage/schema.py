@@ -100,8 +100,6 @@ ARCHIVE_COLUMNS = [
     "import_completed_at",
     "warnings_json",
     "counts_json",
-    "enrichment_followup_status",
-    "enrichment_aborted_reason",
     "last_head_tweet_id",
     "backfill_cursor",
     "backfill_incomplete",
@@ -110,7 +108,7 @@ ARCHIVE_COLUMNS = [
     "value",
 ]
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 COLUMN_TYPES = {
     field: (
         "TEXT PRIMARY KEY"
@@ -246,9 +244,9 @@ class SchemaMixin(ConnectionMixin):
             return
 
         # Releases shipped schema 5 (0.0.9 and 0.1.0), schema 8 (0.1.1 to 0.1.6),
-        # schema 9 (0.1.7 and 0.1.8) and schema 10 (0.2.0 to 1.1.0). Schema 11 was only on
-        # development builds before 1.2.0.
-        if current_version in {8, 9, 10, 11}:
+        # schema 9 (0.1.7 and 0.1.8), schema 10 (0.2.0 to 1.1.0) and schema 12 (1.2.0). Schema
+        # 11 was only on development builds before 1.2.0.
+        if current_version in {8, 9, 10, 11, 12}:
             self._migrate_search_facts(current_version)
             return
         if current_version != 5:
@@ -270,6 +268,7 @@ class SchemaMixin(ConnectionMixin):
     def _migrate_search_index(self, current_version: int) -> None:
         """Repair derived FTS documents/triggers without copying canonical archive data."""
         with self.transaction():
+            self._drop_unread_followup_columns()
             self._rebuild_fts_schema()
             self._create_archive_indexes()
             expected = self.conn.execute(
@@ -288,13 +287,14 @@ class SchemaMixin(ConnectionMixin):
         )
 
     def _migrate_search_facts(self, current_version: int) -> None:
-        """Add missing derived search tables; canonical rows are unchanged.
+        """Add missing derived search tables and drop the columns nothing reads.
 
         v8 lacks the search-filter facts; v8 and v9 lack the description index.
         v10 lacks the content/note flags used to filter uncaptured tweets and notes;
         v11 computed those flags from an incomplete list of placeholder texts.
         """
         with self.transaction():
+            self._drop_unread_followup_columns()
             self._create_archive_indexes()
             expected = self.conn.execute(
                 f"SELECT COUNT(*) FROM archive WHERE record_type = '{RecordType.TWEET}' AND "
@@ -322,6 +322,15 @@ class SchemaMixin(ConnectionMixin):
         self.migration_report = MigrationReport(
             from_version=current_version, to_version=SCHEMA_VERSION
         )
+
+    def _drop_unread_followup_columns(self) -> None:
+        """Remove the manifest's follow-up status, which schemas before 13 hold and nothing reads.
+
+        SQLite rewrites every row to do this, so the first open after an upgrade takes longer
+        on a large archive, and the transaction undoes it if the disk fills.
+        """
+        for column in ("enrichment_followup_status", "enrichment_aborted_reason"):
+            self.conn.execute(f"ALTER TABLE archive DROP COLUMN {column}")
 
     def _archive_table_exists(self) -> bool:
         return (

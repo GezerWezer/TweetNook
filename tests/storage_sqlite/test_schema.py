@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import tweetnook.storage.backend as storage_backend
-from tests.storage_sqlite.conftest import CREATED_2012, _membership
+from tests.storage_sqlite.conftest import CREATED_2012, _membership, add_released_followup_columns
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.schema import ARCHIVE_COLUMNS, ENRICHMENT_INDEXES, SCHEMA_VERSION
@@ -160,6 +160,7 @@ def test_schema_v5_repairs_orphaned_fts_documents_atomically(tmp_path: Path, mon
             "(row_key,record_type,tweet_id,collection_type,text) "
             "VALUES ('tweet:like::1','tweet','1','like','newword')"
         )
+        add_released_followup_columns(initial)
         initial.conn.execute("PRAGMA user_version=5")
     assert initial.conn.execute("SELECT COUNT(*) FROM archive_fts").fetchone()[0] == 2
     initial.close()
@@ -299,6 +300,7 @@ def test_schema_v5_upgrade_adds_later_indexes_and_reports_migration(tmp_path: Pa
     )
     for index in later_indexes:
         initial.conn.execute(f"DROP INDEX {index}")
+    add_released_followup_columns(initial)
     initial.conn.execute("PRAGMA user_version = 5")
     initial.conn.commit()
     initial.close()

@@ -93,3 +93,9 @@ def _seed_search_rows(store: ArchiveStore) -> None:
         ),
     ]
     store._merge_records(rows)
+
+
+def add_released_followup_columns(store) -> None:
+    """Give a fresh archive being rolled back to an old schema the columns those schemas held."""
+    for column in ("enrichment_followup_status", "enrichment_aborted_reason"):
+        store.conn.execute(f"ALTER TABLE archive ADD COLUMN {column} TEXT")

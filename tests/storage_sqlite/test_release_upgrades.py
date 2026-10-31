@@ -18,9 +18,9 @@ from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.schema import SCHEMA_VERSION
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "schemas"
-# The last release that created each schema. 1.2.0 ships schema 12, the current one; the
-# change that raises SCHEMA_VERSION adds its fixture from that release's tag.
-RELEASED_SCHEMAS = {5: "v0.1.0", 8: "v0.1.6", 9: "v0.1.8", 10: "v1.1.0"}
+# The last release that created each schema. The change that raises SCHEMA_VERSION adds the
+# fixture for the schema the latest release ships, from that release's tag.
+RELEASED_SCHEMAS = {5: "v0.1.0", 8: "v0.1.6", 9: "v0.1.8", 10: "v1.1.0", 12: "v1.2.0"}
 
 
 def schema_of(db_path: Path) -> dict[tuple[str, str], str]:
@@ -129,6 +129,81 @@ def test_released_schema_upgrades_to_the_fresh_schema(tmp_path: Path, version: i
     assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     connection.close()
     assert schema_of(db_path) == schema_of(fresh_path)
+
+
+def _save_stopped_followup_manifest(db_path: Path) -> None:
+    connection = sqlite3.connect(db_path)
+    try:
+        with connection:
+            connection.execute(
+                "INSERT INTO archive (row_key, record_type, archive_digest, status, counts_json,"
+                " enrichment_followup_status, enrichment_aborted_reason)"
+                " VALUES ('import_manifest:abc', 'import_manifest', 'abc', 'completed',"
+                " '{\"likes\": 4}', 'enrichment_aborted', 'stale query id')"
+            )
+    finally:
+        connection.close()
+
+
+def _archive_columns(db_path: Path) -> set[str]:
+    connection = sqlite3.connect(db_path)
+    try:
+        return {row[1] for row in connection.execute("PRAGMA table_info(archive)")}
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("version", sorted(RELEASED_SCHEMAS))
+def test_upgrade_drops_the_followup_columns_and_keeps_the_manifest(
+    tmp_path: Path, version: int
+) -> None:
+    db_path = tmp_path / "released.db"
+    released_archive(db_path, version)
+    _save_stopped_followup_manifest(db_path)
+
+    store = ArchiveStore(db_path, create=False)
+    try:
+        manifest = store.get_import_manifest("abc")
+    finally:
+        store.close()
+
+    assert manifest is not None
+    assert manifest["status"] == "completed"
+    assert manifest["counts_json"] == '{"likes": 4}'
+    assert "enrichment_followup_status" not in _archive_columns(db_path)
+    assert "enrichment_aborted_reason" not in _archive_columns(db_path)
+
+
+@pytest.mark.parametrize("version", [5, 12])
+def test_failed_upgrade_keeps_the_columns_and_the_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: int
+) -> None:
+    db_path = tmp_path / "released.db"
+    released_archive(db_path, version)
+    _save_stopped_followup_manifest(db_path)
+    dropped = []
+    real_drop = ArchiveStore._drop_unread_followup_columns
+
+    def drop_then_fail_next(self) -> None:
+        real_drop(self)
+        dropped.append(True)
+        raise sqlite3.OperationalError("database or disk is full")
+
+    monkeypatch.setattr(ArchiveStore, "_drop_unread_followup_columns", drop_then_fail_next)
+
+    with pytest.raises(sqlite3.OperationalError):
+        ArchiveStore(db_path, create=False)
+
+    assert dropped == [True]
+    assert "enrichment_followup_status" in _archive_columns(db_path)
+    connection = sqlite3.connect(db_path)
+    try:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == version
+        assert connection.execute(
+            "SELECT enrichment_followup_status FROM archive WHERE row_key = 'import_manifest:abc'"
+        ).fetchone() == ("enrichment_aborted",)
+    finally:
+        connection.close()
 
 
 def test_every_released_schema_has_a_fixture() -> None:
