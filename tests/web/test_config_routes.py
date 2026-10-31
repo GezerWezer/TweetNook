@@ -393,3 +393,26 @@ def test_validation_errors_do_not_echo_saved_secret(
     assert secret not in response.text
     assert secret not in capsys.readouterr().err
     assert load_config(_env(tmp_path))[0].tagging.enabled is False
+
+
+@pytest.mark.parametrize(
+    "path", ["sync.timeout", "fxtwitter.timeout", "tagging.daily_spend_limit_usd"]
+)
+@pytest.mark.parametrize("value", ["inf", "-inf", "nan"])
+def test_config_api_rejects_nonfinite_strings_without_saving(
+    monkeypatch, make_web_client, tmp_path, path, value
+):
+    _, paths = _use_temp_config(monkeypatch, tmp_path)
+    env = _env(tmp_path)
+    paths.config_file.write_text("[sync]\npage_delay = 4.0\n", encoding="utf-8")
+    original = paths.config_file.read_bytes()
+    monkeypatch.setattr("tweetnook.config.load_config", lambda: load_config(env))
+    client = make_web_client(config_routes.router)
+
+    response = client.post("/api/config", json={"changes": {path: value}})
+
+    assert response.status_code == 400
+    assert paths.config_file.read_bytes() == original
+    response = client.get("/api/config")
+    assert response.status_code == 200
+    assert response.json()["values"]["sync"]["page_delay"] == 4.0

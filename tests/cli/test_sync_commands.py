@@ -324,3 +324,53 @@ def test_article_backfill_alias_is_hidden_from_help(subcommand):
     assert result.exit_code == 0
     assert "--backfill" in result.output
     assert "--article-backfill" not in result.output
+
+
+@pytest.mark.parametrize("command", [["sync"], ["sync", "all"], ["threads", "expand"]])
+def test_linked_depth_rejects_negative_values_before_loading_config(monkeypatch, command):
+    def unexpected_load():
+        pytest.fail("invalid command must not load configuration")
+
+    patch_cli(monkeypatch, "load_config", unexpected_load)
+    result = runner.invoke(cli.app, [*command, "--max-linked-depth", "-1"])
+
+    assert result.exit_code == 2, result.output
+    assert "--max-linked-depth" in result.output
+
+
+@pytest.mark.parametrize("command", [["sync"], ["sync", "all"], ["threads", "expand"]])
+def test_linked_depth_help_describes_zero_and_default(command):
+    result = runner.invoke(cli.app, [*command, "--help"])
+
+    assert result.exit_code == 0
+    assert "--max-linked-depth" in result.output
+    help_text = " ".join(result.output.replace("│", " ").split())
+    assert "0 disables linked discovery" in help_text
+    assert "default 50" in help_text
+
+
+@pytest.mark.parametrize("depths", [(-1, None), (None, 2)])
+def test_programmatic_depth_override_does_not_leave_invalid_sync_settings(depths):
+    from pydantic import ValidationError
+
+    from tweetnook.cli.common import apply_sync_depth_options
+
+    config = AppConfig()
+    original = config.sync
+    with pytest.raises(ValidationError):
+        apply_sync_depth_options(config, *depths)
+    assert config.sync is original
+    assert config.sync.max_linked_depth == 50
+    assert config.sync.reply_linked_depth == 0
+
+
+def test_programmatic_depth_override_preserves_other_sync_settings():
+    from tweetnook.cli.common import apply_sync_depth_options
+
+    config = AppConfig(sync={"timeout": 90, "collections": ["tweets"]})
+    apply_sync_depth_options(config, 0, 1)
+
+    assert config.sync.max_linked_depth == 0
+    assert config.sync.reply_linked_depth == 1
+    assert config.sync.timeout == 90
+    assert config.sync.collections == ["tweets"]

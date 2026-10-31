@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from tweetnook.config import AppConfig, SyncConfig
 from tweetnook.config import initialize_config as load_config
 from tweetnook.core.collection_names import normalize_collection_name
 from tweetnook.jobs.context import open_job_store
@@ -28,6 +29,7 @@ SYNC_MAX_LINKED_DEPTH_OPTION = Annotated[
     int | None,
     typer.Option(
         "--max-linked-depth",
+        min=0,
         help=(
             "Safety cap on quote/linked-status hops followed from saved tweets and their "
             "author's own thread (0 disables linked discovery; default 50)."
@@ -46,6 +48,21 @@ SYNC_REPLY_LINKED_DEPTH_OPTION = Annotated[
         ),
     ),
 ]
+
+
+def apply_sync_depth_options(
+    config: AppConfig, max_linked_depth: int | None, reply_linked_depth: int | None
+) -> None:
+    updates = {
+        name: value
+        for name, value in (
+            ("max_linked_depth", max_linked_depth),
+            ("reply_linked_depth", reply_linked_depth),
+        )
+        if value is not None
+    }
+    if updates:
+        config.sync = SyncConfig.model_validate(config.sync.model_dump() | updates)
 
 
 def configure_logging() -> Console:

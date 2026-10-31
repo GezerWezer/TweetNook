@@ -4,11 +4,13 @@
 
 ## Load and save
 
-`load_config` and `load_config_at` read and validate TOML without creating directories or changing files, then apply environment overlays. CLI entry points use `initialize_config`; server startup uses the same explicit bootstrap. `upgrade_config` creates the auth skeleton, migrates supported old tagging/auth fields and restricts the file to `0600`. A current file isn't touched, and an existing file it can't change still loads, because loading applies the same upgrades in memory; this keeps commands working on a read-only config. Empty auth placeholders become `None` for validation. Unknown fields are ignored by the models; they aren't a supported way to add settings.
+`load_config` and `load_config_at` read and validate TOML without creating directories or changing files, then apply and validate environment overlays against the same model rules. CLI depth overrides also validate the merged sync settings. CLI entry points use `initialize_config`; server startup uses the same explicit bootstrap. `upgrade_config` creates the auth skeleton, migrates supported old tagging/auth fields and restricts the file to `0600`. A current file isn't touched, and an existing file it can't change still loads, because loading applies the same upgrades in memory; this keeps commands working on a read-only config. Empty auth placeholders become `None` for validation. Unknown fields are ignored by the models; they aren't a supported way to add settings.
 
 `update_config_values` accepts known dotted paths, validates the resulting configuration and omits values equal to their defaults. Auth placeholders stay explicit. Resetting a field therefore often removes its line from TOML rather than writing the default value.
 
 Use the config APIs rather than editing TOML strings in route handlers. Secrets are masked in web responses. Setup and tagging endpoints preserve unchanged masked secrets. Generic `POST /api/config` rejects masked placeholders; omit unchanged secrets. Environment values take precedence for that process and are not necessarily written to the file.
+
+Auth environment selection belongs to `resolve_auth_config`. Nonempty overrides take precedence; empty overrides fall back to saved credentials. Loaded configurations retain that selection and its per-field provenance, so later credential resolution does not reread a changed environment. Directly constructed configurations use the same selection policy when resolved.
 
 ## Directories
 
@@ -63,7 +65,7 @@ The UI groups advanced fields with their owning section. Schedule and tagging ha
 
 ## Settings reference
 
-Defaults are defined by `AppConfig` in `config.py`; the [documentation checks](testing.md#documentation-checks) compare this reference with the model. Unset optional fields are omitted from TOML. Time strings use `HH:MM`; durations are seconds unless another unit is stated.
+Defaults are defined by `AppConfig` in `config.py`; the [documentation checks](testing.md#documentation-checks) compare this reference with the model. Unset optional fields are omitted from TOML. Numeric durations and spending limits must be finite; unlimited Paid spending uses `tagging.unlimited_spend`, not an infinite limit. Time strings use `HH:MM`; durations are seconds unless another unit is stated.
 
 ### auth
 
@@ -195,7 +197,7 @@ Defaults are defined by `AppConfig` in `config.py`; the [documentation checks](t
 
 Paid tagging requires a daily limit or explicit unlimited spending when enabled. Non-hourly random windows require the minimum to be no greater than the maximum. Timezones are validated, and collection choices are normalized into bookmarks/likes/tweets order. All config edits should preserve those invariants before writing.
 
-`load_config` applies supported environment overlays after model validation using model copies. That is an implementation detail to consider when changing overlay validation; a UI field's validation contract should not be inferred from an environment overlay alone.
+`load_config` validates environment overlays against the same models as TOML. CLI depth overrides validate the merged sync settings before use.
 
 ## Writes and permissions
 

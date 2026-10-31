@@ -92,15 +92,15 @@ class SyncConfig(BaseModel):
         default_factory=lambda: list(DEFAULT_SYNC_COLLECTIONS), min_length=1
     )
 
-    page_delay: float = Field(default=2.0, ge=0)
-    detail_delay: float = Field(default=0.0, ge=0)
+    page_delay: float = Field(default=2.0, ge=0, allow_inf_nan=False)
+    detail_delay: float = Field(default=0.0, ge=0, allow_inf_nan=False)
     max_retries: int = Field(default=3, ge=0)
-    backoff_base: float = Field(default=2.0, ge=0)
+    backoff_base: float = Field(default=2.0, ge=0, allow_inf_nan=False)
     detail_max_retries: int = Field(default=2, ge=0)
-    detail_backoff_base: float = Field(default=30.0, ge=0)
+    detail_backoff_base: float = Field(default=30.0, ge=0, allow_inf_nan=False)
     cooldown_threshold: int = Field(default=3, ge=1)
-    cooldown_duration: float = Field(default=300.0, ge=0)
-    timeout: float = Field(default=30.0, ge=1.0)
+    cooldown_duration: float = Field(default=300.0, ge=0, allow_inf_nan=False)
+    timeout: float = Field(default=30.0, ge=1.0, allow_inf_nan=False)
     max_linked_depth: int = Field(default=50, ge=0)
     reply_linked_depth: int = Field(default=0, ge=0, le=1)
     reply_linked_limit: int = Field(default=1, ge=1)
@@ -134,8 +134,8 @@ class ScheduleConfig(BaseModel):
     every_hours: int = Field(default=6, ge=1, le=720)
     time: str = Field(default="03:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     randomize_time: bool = True
-    random_offset_min_hours: float = Field(default=0.0, ge=0.0, le=24.0)
-    random_offset_max_hours: float = Field(default=2.0, ge=0.0, le=24.0)
+    random_offset_min_hours: float = Field(default=0.0, ge=0.0, le=24.0, allow_inf_nan=False)
+    random_offset_max_hours: float = Field(default=2.0, ge=0.0, le=24.0, allow_inf_nan=False)
     weekday: int = Field(default=0, ge=0, le=6)
     day_of_month: int = Field(default=1, ge=1, le=31)
     timezone: str = Field(default="local", min_length=1)
@@ -185,7 +185,7 @@ class FxTwitterConfig(BaseModel):
     enabled: bool = True
     base_url: str = Field(default="https://api.fxtwitter.com", min_length=1)
     concurrency: int = Field(default=4, ge=1, le=16)
-    timeout: float = Field(default=30.0, ge=1.0)
+    timeout: float = Field(default=30.0, ge=1.0, allow_inf_nan=False)
 
 
 class ActivityConfig(BaseModel):
@@ -215,7 +215,7 @@ class TaggingConfig(BaseModel):
     free_rpm: int = Field(default=10, ge=1)
     free_rpd: int = Field(default=20, ge=1)
     processing_tier: Literal["standard", "flex"] = "flex"
-    daily_spend_limit_usd: float | None = Field(default=None, gt=0)
+    daily_spend_limit_usd: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     unlimited_spend: bool = False
     search_safety_reserve: int = Field(default=100, ge=1, le=1000)
     unknown_billing_policy: Literal["reserve", "stop"] = "reserve"
@@ -285,6 +285,7 @@ class ReplayConfig(BaseModel):
 class AppConfig(BaseModel):
     _generation: int = PrivateAttr(default=0)
     _config_path: str | None = PrivateAttr(default=None)
+    _auth_env_values: dict[str, str] | None = PrivateAttr(default=None)
 
     model_config = ConfigDict(extra="ignore")
 
@@ -298,6 +299,35 @@ class AppConfig(BaseModel):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     tagging: TaggingConfig = Field(default_factory=TaggingConfig)
     replay: ReplayConfig = Field(default_factory=ReplayConfig)
+
+
+def resolve_auth_config(
+    config: AppConfig, *, env: Mapping[str, str] | None = None
+) -> tuple[AuthConfig, dict[str, str | None]]:
+    """Select auth overlays once, retaining the provenance of a loaded snapshot."""
+    selected = config._auth_env_values
+    if selected is None:
+        env = os.environ if env is None else env
+        selected = {
+            field: value
+            for field, name in (
+                ("auth_token", "TWEETNOOK_AUTH_TOKEN"),
+                ("ct0", "TWEETNOOK_CT0"),
+                ("user_id", "TWEETNOOK_USER_ID"),
+            )
+            if (value := env.get(name))
+        }
+        values = config.auth.model_dump() | selected
+    else:
+        values = config.auth.model_dump()
+    auth = AuthConfig.model_validate({field: value or None for field, value in values.items()})
+    sources = {
+        field: ("env" if field in selected and selected[field] == value else "config")
+        if value
+        else None
+        for field, value in auth.model_dump().items()
+    }
+    return auth, sources
 
 
 class XDGPaths(BaseModel):
@@ -590,12 +620,12 @@ def load_config_at(
         config._config_path = str(paths.config_file.resolve())
         config._generation = _config_generations.get(config._config_path, 0)
 
-    auth_updates = {
-        "auth_token": env.get("TWEETNOOK_AUTH_TOKEN"),
-        "ct0": env.get("TWEETNOOK_CT0"),
-        "user_id": env.get("TWEETNOOK_USER_ID"),
+    config.auth, auth_sources = resolve_auth_config(config, env=env)
+    config._auth_env_values = {
+        field: getattr(config.auth, field)
+        for field, source in auth_sources.items()
+        if source == "env"
     }
-    auth_updates = {key: value for key, value in auth_updates.items() if value is not None}
     sync_updates = {
         "page_delay": _env_float(env, "TWEETNOOK_PAGE_DELAY"),
         "detail_delay": _env_float(env, "TWEETNOOK_DETAIL_DELAY"),
@@ -612,13 +642,13 @@ def load_config_at(
     }
     sync_updates = {key: value for key, value in sync_updates.items() if value is not None}
 
-    if auth_updates:
-        config.auth = config.auth.model_copy(update=auth_updates)
     if sync_updates:
-        config.sync = config.sync.model_copy(update=sync_updates)
+        config.sync = SyncConfig.model_validate(config.sync.model_dump() | sync_updates)
     api_key = env.get("TWEETNOOK_GEMINI_API_KEY") or env.get("GEMINI_API_KEY")
     if api_key:
-        config.tagging = config.tagging.model_copy(update={"api_key": api_key})
+        config.tagging = TaggingConfig.model_validate(
+            config.tagging.model_dump() | {"api_key": api_key}
+        )
     return config, paths
 
 

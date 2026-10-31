@@ -13,6 +13,7 @@ from tweetnook.auth import resolve_auth_bundle
 from tweetnook.cli.common import (
     SYNC_MAX_LINKED_DEPTH_OPTION,
     SYNC_REPLY_LINKED_DEPTH_OPTION,
+    apply_sync_depth_options,
     configure_logging,
     web_pipeline,
 )
@@ -197,10 +198,7 @@ def _run_with_depth(
     limit,
     followups,
 ):
-    if max_linked_depth is not None:
-        config.sync.max_linked_depth = max_linked_depth
-    if reply_linked_depth is not None:
-        config.sync.reply_linked_depth = reply_linked_depth
+    apply_sync_depth_options(config, max_linked_depth, reply_linked_depth)
     return sync_all(
         full=full,
         backfill=backfill,
