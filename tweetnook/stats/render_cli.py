@@ -159,17 +159,17 @@ def _header(report: StatsReport, *, detailed: bool, width: int) -> Panel:
     metadata.add_column(style=DIM, no_wrap=True)
     metadata.add_column(style="white", overflow="fold")
     if width < 100:
-        metadata.add_row("Archive", report.archive_path)
-        metadata.add_row("Owner", report.owner)
-        metadata.add_row("Generated", format_stat_value(report.generated_at, "datetime"))
+        metadata.add_row("Archive", Text(report.archive_path))
+        metadata.add_row("Owner", Text(report.owner))
+        metadata.add_row("Generated", Text(format_stat_value(report.generated_at, "datetime")))
         metadata.add_row("View", "detailed" if detailed else "summary")
     else:
         metadata.add_column(style=DIM, no_wrap=True)
         metadata.add_column(style=MUTED, justify="right")
-        metadata.add_row("Archive", report.archive_path, "Owner", report.owner)
+        metadata.add_row("Archive", Text(report.archive_path), "Owner", Text(report.owner))
         metadata.add_row(
             "Generated",
-            format_stat_value(report.generated_at, "datetime"),
+            Text(format_stat_value(report.generated_at, "datetime")),
             "View",
             "detailed" if detailed else "summary",
         )
