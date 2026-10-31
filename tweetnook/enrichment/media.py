@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import mimetypes
 import re
+from contextlib import suppress
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -20,7 +21,7 @@ from tweetnook.core.utils import utc_now
 from tweetnook.jobs.context import locked_archive_job
 from tweetnook.jobs.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs.pipeline import current_pipeline
-from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
+from tweetnook.storage.backend import ArchiveStore
 
 _CONTENT_TYPE_EXTENSIONS = {
     "image/gif": ".gif",
@@ -31,6 +32,8 @@ _CONTENT_TYPE_EXTENSIONS = {
     "video/mp4": ".mp4",
 }
 _UPDATE_BATCH_SIZE = 100
+_REMOTE_FAILURES = (httpx.HTTPError, httpx.InvalidURL)
+_URL_EXTENSION = re.compile(r"\.[a-z0-9]{1,16}")
 
 
 @dataclass(slots=True)
@@ -69,9 +72,9 @@ def _content_extension(content_type: str | None, url: str) -> str:
         guessed = mimetypes.guess_extension(base_type)
         if guessed:
             return ".jpg" if guessed == ".jpe" else guessed
-    path = urlsplit(url).path
-    suffix = Path(path).suffix.lower()
-    return suffix or ".bin"
+    # The URL's suffix becomes part of a file name, and a saved URL can hold anything.
+    suffix = Path(urlsplit(url).path).suffix.lower()
+    return suffix if _URL_EXTENSION.fullmatch(suffix) else ".bin"
 
 
 def _photo_download_url(url: str) -> str:
@@ -84,13 +87,14 @@ def _photo_download_url(url: str) -> str:
 
 
 def _asset_url(row: dict[str, object]) -> str | None:
-    media_type = row.get("media_type")
     media_url = row.get("media_url")
-    if not isinstance(media_url, str) or not media_url:
-        return None
-    if media_type == "photo" and row.get("source") != "link_card":
-        return _photo_download_url(media_url)
-    return media_url
+    return media_url if isinstance(media_url, str) and media_url else None
+
+
+def _request_url(row: dict[str, object], url: str) -> str:
+    if row.get("media_type") == "photo" and row.get("source") != "link_card":
+        return _photo_download_url(url)
+    return url
 
 
 def _poster_url(row: dict[str, object]) -> str | None:
@@ -136,6 +140,88 @@ async def _download_file(
                 final_destination = destination.with_suffix(extension)
         await asyncio.to_thread(publish_file, temporary, final_destination)
         return final_destination, file_hash.hexdigest(), byte_size, content_type
+
+
+def _asset_saved(base_dir: Path, relative_path: object) -> bool:
+    return (
+        isinstance(relative_path, str)
+        and bool(relative_path)
+        and (base_dir / relative_path).is_file()
+    )
+
+
+async def _obtain_missing_assets(
+    client: httpx.AsyncClient,
+    row: dict[str, object],
+    base_dir: Path,
+) -> tuple[dict[str, object], int, str | None]:
+    """Download whichever of a row's main file and poster aren't saved yet.
+
+    The two files fail independently: a provider that has stopped serving one must not block
+    the other or discard it, so each is attempted and kept on its own. Returns the row's asset
+    state, the bytes transferred, and the first failure. Only a failed transfer or a saved URL
+    that can't be parsed is the row's failure; a local error isn't about this row and stops
+    the job.
+    """
+
+    state: dict[str, object] = {
+        "local_path": row.get("local_path"),
+        "sha256": row.get("sha256"),
+        "byte_size": row.get("byte_size"),
+        "content_type": row.get("content_type"),
+        "thumbnail_local_path": row.get("thumbnail_local_path"),
+        "thumbnail_sha256": row.get("thumbnail_sha256"),
+        "thumbnail_byte_size": row.get("thumbnail_byte_size"),
+        "thumbnail_content_type": row.get("thumbnail_content_type"),
+    }
+    transferred = 0
+    error: str | None = None
+
+    async def obtain(saved_url: str, suffix: str, field_prefix: str, path_field: str) -> None:
+        nonlocal transferred, error
+        # This block only parses the URL, so its ValueError can't hide a local failure. The
+        # row stays selectable until it is recorded, so raising would stop every later run here.
+        try:
+            url = _request_url(row, saved_url)
+            _, destination = _target_path(base_dir, row, url=url, suffix=suffix)
+        except ValueError as exc:
+            error = error or f"invalid URL: {exc}"
+            return
+        try:
+            final_path, file_hash, byte_size, content_type = await _download_file(
+                client, url=url, destination=destination
+            )
+        except _REMOTE_FAILURES as exc:
+            error = error or str(exc)
+            return
+        state[path_field] = final_path.relative_to(base_dir).as_posix()
+        state[f"{field_prefix}sha256"] = file_hash
+        state[f"{field_prefix}byte_size"] = byte_size
+        state[f"{field_prefix}content_type"] = content_type
+        transferred += byte_size
+
+    if not _asset_saved(base_dir, row.get("local_path")):
+        asset_url = _asset_url(row)
+        if asset_url is None:
+            error = "missing media download URL"
+        else:
+            await obtain(asset_url, "", "", "local_path")
+    poster_url = _poster_url(row)
+    if poster_url and not _asset_saved(base_dir, row.get("thumbnail_local_path")):
+        await obtain(poster_url, "-poster", "thumbnail_", "thumbnail_local_path")
+    return state, transferred, error
+
+
+def _row_update(
+    store: ArchiveStore, row: dict[str, object], state: dict[str, object], error: str | None
+) -> dict[str, object]:
+    return store.build_media_download_update(
+        row,
+        download_state="failed" if error else "done",
+        downloaded_at=(row.get("downloaded_at") or None) if error else utc_now(),
+        download_error=error,
+        **state,
+    )
 
 
 async def download_media(
@@ -219,145 +305,58 @@ async def download_media(
                 store.merge_rows(updates)
                 pending_updates.clear()
 
-            with progress_callback(
-                console,
-                label="media download",
-                total=len(rows),
-                unit="items",
-            ) as progress:
-                for index, row in enumerate(rows, start=1):
-                    try:
-                        result.processed += 1
-                        pipeline.update_step(
-                            step_key,
-                            completed=index - 1,
-                            activity=_media_activity(row),
-                            counters=_pipeline_outcomes(result),
-                        )
-                        state = {
-                            "local_path": row.get("local_path"),
-                            "sha256": row.get("sha256"),
-                            "byte_size": row.get("byte_size"),
-                            "content_type": row.get("content_type"),
-                            "thumbnail_local_path": row.get("thumbnail_local_path"),
-                            "thumbnail_sha256": row.get("thumbnail_sha256"),
-                            "thumbnail_byte_size": row.get("thumbnail_byte_size"),
-                            "thumbnail_content_type": row.get("thumbnail_content_type"),
-                        }
+            try:
+                with progress_callback(
+                    console,
+                    label="media download",
+                    total=len(rows),
+                    unit="items",
+                ) as progress:
+                    for index, row in enumerate(rows, start=1):
                         try:
-                            asset_url = _asset_url(row)
-                            if asset_url is None:
-                                raise ValueError("missing media download URL")
-                            _, destination = _target_path(
-                                paths.data_dir,
-                                row,
-                                url=asset_url,
-                                suffix="",
+                            result.processed += 1
+                            pipeline.update_step(
+                                step_key,
+                                completed=index - 1,
+                                activity=_media_activity(row),
+                                counters=_pipeline_outcomes(result),
                             )
-                            final_path, file_hash, byte_size, content_type = await _download_file(
-                                client,
-                                url=asset_url,
-                                destination=destination,
+                            state, transferred, error = await _obtain_missing_assets(
+                                client, row, paths.data_dir
                             )
-                            state.update(
-                                {
-                                    "local_path": final_path.relative_to(paths.data_dir).as_posix(),
-                                    "sha256": file_hash,
-                                    "byte_size": byte_size,
-                                    "content_type": content_type,
-                                }
+                            result.downloaded_bytes += transferred
+                            pending_updates.append(_row_update(store, row, state, error))
+                            if error is None:
+                                result.downloaded += 1
+                            else:
+                                result.failed += 1
+                                if pipeline.active:
+                                    pipeline.issue(
+                                        f"Media {row['row_key']}: {error}",
+                                        dedupe_key="media:download-failure",
+                                    )
+                                elif console:
+                                    console.print(
+                                        f"media {row['row_key']}: failed ({error})",
+                                        highlight=False,
+                                    )
+                            if len(pending_updates) >= _UPDATE_BATCH_SIZE:
+                                flush_updates()
+                        finally:
+                            pipeline.update_step(
+                                step_key,
+                                completed=index,
+                                counters=_pipeline_outcomes(result),
                             )
+                            if progress is not None:
+                                progress(index, len(rows))
 
-                            poster_url = _poster_url(row)
-                            if poster_url:
-                                _, poster_destination = _target_path(
-                                    paths.data_dir,
-                                    row,
-                                    url=poster_url,
-                                    suffix="-poster",
-                                )
-                                (
-                                    poster_path,
-                                    poster_hash,
-                                    poster_size,
-                                    poster_content_type,
-                                ) = await _download_file(
-                                    client,
-                                    url=poster_url,
-                                    destination=poster_destination,
-                                )
-                                state.update(
-                                    {
-                                        "thumbnail_local_path": poster_path.relative_to(
-                                            paths.data_dir
-                                        ).as_posix(),
-                                        "thumbnail_sha256": poster_hash,
-                                        "thumbnail_byte_size": poster_size,
-                                        "thumbnail_content_type": poster_content_type,
-                                    }
-                                )
-
-                            pending_updates.append(
-                                store.build_media_download_update(
-                                    row,
-                                    download_state="done",
-                                    local_path=state["local_path"],
-                                    sha256=state["sha256"],
-                                    byte_size=state["byte_size"],
-                                    content_type=state["content_type"],
-                                    thumbnail_local_path=state["thumbnail_local_path"],
-                                    thumbnail_sha256=state["thumbnail_sha256"],
-                                    thumbnail_byte_size=state["thumbnail_byte_size"],
-                                    thumbnail_content_type=state["thumbnail_content_type"],
-                                    downloaded_at=utc_now(),
-                                    download_error=None,
-                                )
-                            )
-                            result.downloaded += 1
-                            result.downloaded_bytes += byte_size + int(
-                                state.get("thumbnail_byte_size") or 0
-                            )
-                        except Exception as exc:
-                            raise_if_storage_exhausted(exc)
-                            pending_updates.append(
-                                store.build_media_download_update(
-                                    row,
-                                    download_state="failed",
-                                    local_path=state["local_path"],
-                                    sha256=state["sha256"],
-                                    byte_size=state["byte_size"],
-                                    content_type=state["content_type"],
-                                    thumbnail_local_path=state["thumbnail_local_path"],
-                                    thumbnail_sha256=state["thumbnail_sha256"],
-                                    thumbnail_byte_size=state["thumbnail_byte_size"],
-                                    thumbnail_content_type=state["thumbnail_content_type"],
-                                    downloaded_at=row.get("downloaded_at") or None,
-                                    download_error=str(exc),
-                                )
-                            )
-                            result.failed += 1
-                            if pipeline.active:
-                                pipeline.issue(
-                                    f"Media {row['row_key']}: {exc}",
-                                    dedupe_key="media:download-failure",
-                                )
-                            elif console:
-                                console.print(
-                                    f"media {row['row_key']}: failed ({exc})",
-                                    highlight=False,
-                                )
-                        if len(pending_updates) >= _UPDATE_BATCH_SIZE:
-                            flush_updates()
-                    finally:
-                        pipeline.update_step(
-                            step_key,
-                            completed=index,
-                            counters=_pipeline_outcomes(result),
-                        )
-                        if progress is not None:
-                            progress(index, len(rows))
-
-            flush_updates()
+                flush_updates()
+            finally:
+                # Rows already finished stay true when a later one stops the job. The store
+                # may be what failed, and that must not replace the real error.
+                with suppress(Exception):
+                    flush_updates()
         pipeline.complete_step(
             step_key,
             _pipeline_outcomes(result, final=True),

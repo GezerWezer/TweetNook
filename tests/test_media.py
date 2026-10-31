@@ -16,6 +16,7 @@ from tests.conftest import (
     make_video_media,
 )
 from tweetnook.core.timeline_parsing import TimelineTweet
+from tweetnook.enrichment import media as media_module
 from tweetnook.enrichment.media import download_media
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.storage import open_archive_store
@@ -565,3 +566,392 @@ def test_card_restore_retries_media_after_insert_failure(paths):
         ]
     finally:
         store.close()
+
+
+_VIDEO_URL_SUFFIX = ".mp4"
+
+
+class _AssetServer:
+    """Serve each asset kind from a switchable answer and record what was requested."""
+
+    def __init__(self) -> None:
+        self.video_status = 200
+        self.poster_status = 200
+        self.requested: list[str] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        is_video = request.url.path.endswith(_VIDEO_URL_SUFFIX)
+        self.requested.append("video" if is_video else "poster")
+        status = self.video_status if is_video else self.poster_status
+        if status != 200:
+            return httpx.Response(status, text="nope", request=request)
+        return httpx.Response(
+            200,
+            content=b"video-bytes" if is_video else b"poster",
+            headers={"content-type": "video/mp4" if is_video else "image/jpeg"},
+            request=request,
+        )
+
+
+async def _download_videos(paths, config, server: _AssetServer, *, retry_failed: bool = False):
+    server.requested = []
+    return await download_media(
+        config=config,
+        paths=paths,
+        retry_failed=retry_failed,
+        transport=httpx.MockTransport(server),
+    )
+
+
+def _video_row(paths) -> dict[str, object]:
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        return next(row for row in store.list_media_rows() if row["media_type"] == "video")
+    finally:
+        store.close()
+
+
+def _only_video(paths) -> None:
+    """Leave the seeded video as the only row awaiting download."""
+    _seed_archive(paths)
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        store.merge_rows(
+            [
+                store.build_media_download_update(
+                    row,
+                    download_state="done",
+                    local_path=None,
+                    sha256=None,
+                    byte_size=None,
+                    content_type=None,
+                    thumbnail_local_path=None,
+                    thumbnail_sha256=None,
+                    thumbnail_byte_size=None,
+                    thumbnail_content_type=None,
+                    downloaded_at=None,
+                    download_error=None,
+                )
+                for row in store.list_media_rows()
+                if row["media_type"] != "video"
+            ]
+        )
+    finally:
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_retry_fetches_only_the_poster_after_the_video_was_saved(paths, config) -> None:
+    _only_video(paths)
+    server = _AssetServer()
+    server.poster_status = 503
+
+    first = await _download_videos(paths, config, server)
+
+    assert (first.downloaded, first.failed) == (0, 1)
+    assert server.requested == ["video", "poster"]
+    saved = _video_row(paths)
+    assert saved["download_state"] == "failed"
+    assert int(str(saved["byte_size"])) == len(b"video-bytes")
+
+    # The video URL has since expired, which must not block the poster.
+    server.poster_status = 200
+    server.video_status = 503
+    second = await _download_videos(paths, config, server, retry_failed=True)
+
+    assert server.requested == ["poster"]
+    assert (second.downloaded, second.failed) == (1, 0)
+    assert second.downloaded_bytes == len(b"poster")
+    done = _video_row(paths)
+    assert done["download_state"] == "done"
+    assert done["local_path"] == saved["local_path"]
+    assert done["sha256"] == saved["sha256"]
+    assert (paths.data_dir / str(done["thumbnail_local_path"])).read_bytes() == b"poster"
+
+
+@pytest.mark.asyncio
+async def test_a_video_imported_without_its_poster_only_needs_the_poster(paths, config) -> None:
+    _only_video(paths)
+    imported = paths.data_dir / "imported" / "video.mp4"
+    imported.parent.mkdir(parents=True)
+    imported.write_bytes(b"from the export")
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        row = next(row for row in store.list_media_rows() if row["media_type"] == "video")
+        store.merge_rows(
+            [
+                store.build_media_download_update(
+                    row,
+                    download_state="pending",
+                    local_path="imported/video.mp4",
+                    sha256="imported-hash",
+                    byte_size=15,
+                    content_type="video/mp4",
+                    thumbnail_local_path=None,
+                    thumbnail_sha256=None,
+                    thumbnail_byte_size=None,
+                    thumbnail_content_type=None,
+                    downloaded_at=None,
+                    download_error=None,
+                )
+            ]
+        )
+    finally:
+        store.close()
+    server = _AssetServer()
+
+    result = await _download_videos(paths, config, server)
+
+    assert server.requested == ["poster"]
+    assert result.downloaded == 1
+    done = _video_row(paths)
+    assert (done["local_path"], done["sha256"]) == ("imported/video.mp4", "imported-hash")
+    assert imported.read_bytes() == b"from the export"
+
+
+@pytest.mark.asyncio
+async def test_a_main_file_missing_from_disk_is_downloaded_again(paths, config) -> None:
+    _only_video(paths)
+    server = _AssetServer()
+    server.poster_status = 503
+    await _download_videos(paths, config, server)
+    (paths.data_dir / str(_video_row(paths)["local_path"])).unlink()
+    server.poster_status = 200
+
+    result = await _download_videos(paths, config, server, retry_failed=True)
+
+    assert server.requested == ["video", "poster"]
+    assert result.downloaded == 1
+    assert (paths.data_dir / str(_video_row(paths)["local_path"])).read_bytes() == b"video-bytes"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_video_still_saves_its_poster_for_the_retry(paths, config) -> None:
+    _only_video(paths)
+    server = _AssetServer()
+    server.video_status = 503
+
+    first = await _download_videos(paths, config, server)
+
+    assert server.requested == ["video", "poster"]
+    assert first.failed == 1
+    saved = _video_row(paths)
+    assert saved["download_state"] == "failed"
+    assert saved["thumbnail_local_path"] is not None
+
+    server.video_status = 200
+    second = await _download_videos(paths, config, server, retry_failed=True)
+
+    assert server.requested == ["video"]
+    assert second.downloaded == 1
+    assert _video_row(paths)["download_state"] == "done"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [RuntimeError("local bug"), PermissionError("read-only"), ValueError("local bug")],
+)
+@pytest.mark.asyncio
+async def test_a_local_error_stops_the_job_instead_of_failing_the_row(
+    paths, config, monkeypatch, error
+) -> None:
+    _only_video(paths)
+
+    async def broken(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr("tweetnook.enrichment.media._download_file", broken)
+
+    with pytest.raises(type(error)):
+        await download_media(
+            config=config, paths=paths, transport=httpx.MockTransport(_AssetServer())
+        )
+    assert _video_row(paths)["download_state"] == "pending"
+
+
+_UNPARSEABLE_URL = "http://[broken"
+_VALID_PHOTO_URL = "https://pbs.twimg.com/media/valid.jpg"
+
+
+def _media_tweet(tweet_id: str, media: dict[str, object]) -> TimelineTweet:
+    return TimelineTweet(
+        tweet_id=tweet_id,
+        text="post",
+        author_id="1000",
+        author_username="user1000",
+        author_display_name="User 1000",
+        created_at="Sat Mar 14 00:00:00 +0000 2026",
+        sort_index=tweet_id,
+        raw_json=make_tweet_result(tweet_id, "post", user_id="1000", media=[media]),
+    )
+
+
+def _seed_media(paths, *media: dict[str, object]) -> None:
+    """Save one post per media item through the real ingestion path, then a valid photo."""
+    tweets = [_media_tweet(str(100 + index), item) for index, item in enumerate(media)]
+    tweets.append(_media_tweet("900", make_photo_media("3_valid", _VALID_PHOTO_URL)))
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    try:
+        store.persist_page(
+            operation="Bookmarks",
+            collection_type="bookmark",
+            cursor_in=None,
+            cursor_out=None,
+            http_status=200,
+            raw_json={"ok": True},
+            tweets=tweets,
+            last_head_tweet_id=tweets[0].tweet_id,
+            backfill_cursor=None,
+            backfill_incomplete=False,
+        )
+    finally:
+        store.close()
+
+
+def _rows_by_post(paths) -> dict[str, dict[str, object]]:
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        return {str(row["tweet_id"]): row for row in store.list_media_rows()}
+    finally:
+        store.close()
+
+
+def _serve_assets(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(
+        200, content=b"asset", headers={"content-type": "image/jpeg"}, request=request
+    )
+
+
+@pytest.mark.parametrize(
+    "media",
+    [
+        pytest.param(make_photo_media("3_bad", _UNPARSEABLE_URL), id="photo"),
+        pytest.param(
+            make_photo_media("3_bad", "https://exa\N{FULLWIDTH SOLIDUS}mple.com/photo.jpg"),
+            id="photo-with-rejected-host",
+        ),
+        pytest.param(
+            make_video_media(
+                "7_bad", "https://pbs.twimg.com/poster.jpg", bitrate_url=_UNPARSEABLE_URL
+            ),
+            id="video",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_an_unparseable_main_url_fails_only_its_row(paths, config, media) -> None:
+    _seed_media(paths, media)
+
+    result = await download_media(
+        config=config, paths=paths, transport=httpx.MockTransport(_serve_assets)
+    )
+
+    assert (result.downloaded, result.failed) == (1, 1)
+    rows = _rows_by_post(paths)
+    assert rows["100"]["download_state"] == "failed"
+    assert rows["100"]["local_path"] is None
+    assert rows["900"]["download_state"] == "done"
+    # A video's poster is a separate file, and its URL is fine.
+    assert (rows["100"]["thumbnail_local_path"] is not None) == (media["type"] == "video")
+
+
+@pytest.mark.asyncio
+async def test_an_unparseable_poster_url_keeps_the_saved_video(paths, config) -> None:
+    _seed_media(
+        paths,
+        make_video_media("7_bad", _UNPARSEABLE_URL, bitrate_url="https://video.twimg.com/v.mp4"),
+    )
+
+    result = await download_media(
+        config=config, paths=paths, transport=httpx.MockTransport(_serve_assets)
+    )
+
+    assert (result.downloaded, result.failed) == (1, 1)
+    rows = _rows_by_post(paths)
+    assert rows["100"]["download_state"] == "failed"
+    assert (paths.data_dir / str(rows["100"]["local_path"])).read_bytes() == b"asset"
+    assert rows["100"]["thumbnail_local_path"] is None
+    assert rows["900"]["download_state"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_a_url_with_a_null_byte_fails_only_its_row(paths, config) -> None:
+    # It parses, and its suffix would reach the file name before the request rejects it.
+    _seed_media(paths, make_photo_media("3_bad", "https://example.com/photo.jp\x00g"))
+
+    result = await download_media(
+        config=config, paths=paths, transport=httpx.MockTransport(_serve_assets)
+    )
+
+    assert (result.downloaded, result.failed) == (1, 1)
+    rows = _rows_by_post(paths)
+    assert rows["100"]["download_state"] == "failed"
+    assert rows["900"]["download_state"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_a_url_suffix_too_long_for_a_file_name_still_downloads(paths, config) -> None:
+    _seed_media(paths, make_photo_media("3_long", f"https://example.com/photo.{'j' * 300}"))
+
+    result = await download_media(
+        config=config, paths=paths, transport=httpx.MockTransport(_serve_assets)
+    )
+
+    assert (result.downloaded, result.failed) == (2, 0)
+    assert _rows_by_post(paths)["100"]["local_path"] == "media/100/3_long.jpg"
+
+
+@pytest.mark.asyncio
+async def test_a_local_error_keeps_the_rows_finished_before_it(paths, config, monkeypatch) -> None:
+    _seed_media(paths, make_photo_media("3_first", "https://pbs.twimg.com/media/first.jpg"))
+    download_file = media_module._download_file
+    calls = 0
+
+    async def fail_second(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise PermissionError("read-only")
+        return await download_file(*args, **kwargs)
+
+    monkeypatch.setattr("tweetnook.enrichment.media._download_file", fail_second)
+
+    with pytest.raises(PermissionError):
+        await download_media(
+            config=config, paths=paths, transport=httpx.MockTransport(_serve_assets)
+        )
+
+    states = sorted(str(row["download_state"]) for row in _rows_by_post(paths).values())
+    assert states == ["done", "pending"]
+
+
+@pytest.mark.asyncio
+async def test_saving_finished_rows_cannot_replace_the_error_that_stopped_the_job(
+    paths, config, monkeypatch
+) -> None:
+    _seed_media(paths, make_photo_media("3_first", "https://pbs.twimg.com/media/first.jpg"))
+    download_file = media_module._download_file
+    calls = 0
+
+    async def fail_second(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise PermissionError("read-only")
+        return await download_file(*args, **kwargs)
+
+    def broken_merge(self, rows):
+        raise RuntimeError("store failed too")
+
+    monkeypatch.setattr("tweetnook.enrichment.media._download_file", fail_second)
+    monkeypatch.setattr(ArchiveStore, "merge_rows", broken_merge)
+
+    with pytest.raises(PermissionError):
+        await download_media(
+            config=config, paths=paths, transport=httpx.MockTransport(_serve_assets)
+        )

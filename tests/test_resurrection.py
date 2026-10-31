@@ -768,7 +768,7 @@ async def test_transport_failures_do_not_advance_availability_retry_count(
 def _seed_due(paths, *rows_args) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None
-    store._merge_records(
+    store.merge_rows(
         [_terminal_row(store, tweet_id, reason, **kwargs) for tweet_id, reason, kwargs in rows_args]
     )
     store.close()
@@ -910,7 +910,7 @@ def test_candidate_predicate_excludes_what_the_due_query_excludes(paths, columns
     assert store is not None
     row = _terminal_row(store, "1", "protected_account")
     row.update(columns)
-    store._merge_records([row])
+    store.merge_rows([row])
     try:
         assert store.current_resurrection_candidates(["1"]) == {}
         assert store.count_due_resurrection_tweets() == 0
@@ -923,7 +923,7 @@ def test_candidate_predicate_keeps_a_row_with_no_reason_or_future_retry(paths) -
     assert store is not None
     row = _terminal_row(store, "1", "protected_account", next_retry_at="2030-01-01T00:00:00+00:00")
     row["enrichment_reason"] = None
-    store._merge_records([row])
+    store.merge_rows([row])
     try:
         assert set(store.current_resurrection_candidates(["1"])) == {"1"}
     finally:
