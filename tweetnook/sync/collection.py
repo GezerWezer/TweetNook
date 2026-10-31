@@ -117,26 +117,24 @@ async def run_preflight(
 ) -> PreflightResult:
     pipeline = current_pipeline()
     step_key = "preflight:" + ",".join(collections)
-    if pipeline is not None:
-        pipeline.add_step(
-            step_key,
-            "Prepare",
-            total=3 + len(collections),
-            unit="checks",
-            detail=f"sign-in · archive owner · {len(collections)} collection checks",
-            rate_unit="checks/s",
-        )
-        pipeline.start_step(step_key, activity="Connecting to Twitter/X")
+    pipeline.add_step(
+        step_key,
+        "Prepare",
+        total=3 + len(collections),
+        unit="checks",
+        detail=f"sign-in · archive owner · {len(collections)} collection checks",
+        rate_unit="checks/s",
+    )
+    pipeline.start_step(step_key, activity="Connecting to Twitter/X")
     console = console or Console(stderr=True)
     try:
         auth_bundle = auth_bundle or resolve_auth_bundle(config)
-        if pipeline is not None:
-            pipeline.update_step(
-                step_key,
-                completed=1,
-                activity="Checking archive ownership",
-                counters="Signed in",
-            )
+        pipeline.update_step(
+            step_key,
+            completed=1,
+            activity="Checking archive ownership",
+            counters="Signed in",
+        )
         existing_store = open_job_store(paths, create=False, config=config, console=console)
         if existing_store is not None:
             try:
@@ -149,13 +147,12 @@ async def run_preflight(
                     )
             finally:
                 existing_store.close()
-        if pipeline is not None:
-            pipeline.update_step(
-                step_key,
-                completed=2,
-                activity="Preparing Twitter/X requests",
-                counters="Signed in · archive owner confirmed",
-            )
+        pipeline.update_step(
+            step_key,
+            completed=2,
+            activity="Preparing Twitter/X requests",
+            counters="Signed in · archive owner confirmed",
+        )
         operation_names = [COLLECTION_TO_OPERATION[collection] for collection in collections]
         query_store = QueryIdStore(paths)
         # Copied, because a refresh below writes into it and the dict belongs to the caller.
@@ -169,13 +166,12 @@ async def run_preflight(
                 transport=transport,
             )
         )
-        if pipeline is not None:
-            pipeline.update_step(
-                step_key,
-                completed=3,
-                activity=f"Checking {collections[0].title()}",
-                counters=f"{len(query_ids)} request types ready",
-            )
+        pipeline.update_step(
+            step_key,
+            completed=3,
+            activity=f"Checking {collections[0].title()}",
+            counters=f"{len(query_ids)} request types ready",
+        )
         probes: dict[str, ProbeResult] = {}
         client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
         try:
@@ -211,8 +207,7 @@ async def run_preflight(
                     )
 
                 try:
-                    if pipeline is not None:
-                        pipeline.status(step_key, f"Checking {collection.title()}")
+                    pipeline.status(step_key, f"Checking {collection.title()}")
                     await fetch_page(
                         client,
                         _build_url(collection, query_ids[operation], auth_bundle, None, 1),
@@ -235,33 +230,30 @@ async def run_preflight(
                 probes[collection] = ProbeResult(
                     collection=collection, ready=True, detail="Remote probe succeeded."
                 )
-                if pipeline is not None:
-                    ready_count = sum(probe.ready for probe in probes.values())
-                    pipeline.update_step(
-                        step_key,
-                        completed=3 + len(probes),
-                        counters=f"{ready_count}/{len(collections)} collections ready",
-                    )
+                ready_count = sum(probe.ready for probe in probes.values())
+                pipeline.update_step(
+                    step_key,
+                    completed=3 + len(probes),
+                    counters=f"{ready_count}/{len(collections)} collections ready",
+                )
         finally:
             await client.aclose()
-        if pipeline is not None:
-            ready_count = sum(probe.ready for probe in probes.values())
-            if ready_count == len(collections):
-                pipeline.complete_step(
-                    step_key,
-                    f"Connected · {ready_count}/{len(collections)} collections ready",
-                )
-            else:
-                pipeline.fail_step(
-                    step_key,
-                    f"{ready_count}/{len(collections)} collections ready",
-                )
+        ready_count = sum(probe.ready for probe in probes.values())
+        if ready_count == len(collections):
+            pipeline.complete_step(
+                step_key,
+                f"Connected · {ready_count}/{len(collections)} collections ready",
+            )
+        else:
+            pipeline.fail_step(
+                step_key,
+                f"{ready_count}/{len(collections)} collections ready",
+            )
         return PreflightResult(auth=auth_bundle, query_ids=query_ids, probes=probes)
     except Exception as exc:
         # Left active, this step would refuse the next collection's Prepare step and hide
         # the real failure behind that complaint. An interrupt is the reporter's to resolve.
-        if pipeline is not None:
-            pipeline.fail_step(step_key, str(exc) or type(exc).__name__)
+        pipeline.fail_step(step_key, str(exc) or type(exc).__name__)
         raise
 
 
@@ -380,7 +372,7 @@ async def _run_pass(
 
         page_number = pages_fetched + 1
         pass_name = _pass_label(is_head_pass=is_head_pass)
-        if pipeline is not None and pipeline_step_key is not None:
+        if pipeline_step_key is not None:
             pipeline.update_step(
                 pipeline_step_key,
                 completed=0,
@@ -410,7 +402,7 @@ async def _run_pass(
                         important=True,
                     )
                 )
-                if pipeline is not None and pipeline_step_key is not None
+                if pipeline.active and pipeline_step_key is not None
                 else None
             ),
         )
@@ -445,7 +437,7 @@ async def _run_pass(
             stop_reason=stop_reason,
             is_head_pass=is_head_pass,
         )
-        if pipeline is not None and pipeline_step_key is not None:
+        if pipeline_step_key is not None:
             pipeline.status(
                 pipeline_step_key,
                 f"Saving {len(tweets):,} tweets from page {page_number}",
@@ -467,7 +459,7 @@ async def _run_pass(
 
         pages_fetched += 1
         tweets_seen += len(tweets)
-        if pipeline is not None and pipeline_step_key is not None:
+        if pipeline.active and pipeline_step_key is not None:
             rate_context = _rate_limit_context(response)
             detail = f"{pass_name} pass · durable through page {pages_fetched}"
             if rate_context:
@@ -620,11 +612,11 @@ async def _sync_collection_ready(
         )
         try:
             head_step_key = f"sync:{collection}:head"
-            combine_pipeline_passes = pipeline is not None and collection in {
+            combine_pipeline_passes = pipeline.active and collection in {
                 "bookmarks",
                 "likes",
             }
-            if pipeline is not None:
+            if pipeline.active:
                 stop_policy = (
                     "continue through saved duplicates"
                     if full or backfill
@@ -667,7 +659,7 @@ async def _sync_collection_ready(
                 client=client,
                 pipeline_step_key=head_step_key,
             )
-            if pipeline is not None and not combine_pipeline_passes:
+            if not combine_pipeline_passes:
                 pipeline.complete_step(
                     head_step_key,
                     f"{head_pages:,} pages · {head_tweets:,} tweets · {_stop_summary(head_reason)}",
@@ -691,7 +683,7 @@ async def _sync_collection_ready(
                 resume_backfill and not head_only and prior_backfill_incomplete and remaining != 0
             )
             if resume_saved_backfill:
-                if pipeline is not None:
+                if pipeline.active:
                     if combine_pipeline_passes:
                         pipeline.update_step(
                             head_step_key,
@@ -744,18 +736,18 @@ async def _sync_collection_ready(
                     console=console,
                     sleep=sleep,
                     client=client,
-                    pipeline_step_key=backfill_step_key if pipeline is not None else None,
+                    pipeline_step_key=backfill_step_key if pipeline.active else None,
                 )
                 pages_total += backfill_pages
                 tweets_total += backfill_tweets
                 stop_reason = backfill_reason
-                if pipeline is not None and not combine_pipeline_passes:
+                if not combine_pipeline_passes:
                     pipeline.complete_step(
                         backfill_step_key,
                         f"{backfill_pages:,} pages · {backfill_tweets:,} tweets · "
                         f"{_stop_summary(backfill_reason)}",
                     )
-            if pipeline is not None and combine_pipeline_passes:
+            if pipeline.active and combine_pipeline_passes:
                 metrics = {
                     "new_tweets": max(
                         store.count_export_rows(COLLECTION_TO_STORAGE[collection])
@@ -780,11 +772,7 @@ async def _sync_collection_ready(
                         f"{_stop_summary(head_reason)}",
                         metrics=metrics,
                     )
-            elif (
-                pipeline is not None
-                and pipeline.has_step(f"sync:{collection}:backfill")
-                and not resume_saved_backfill
-            ):
+            elif pipeline.has_step(f"sync:{collection}:backfill") and not resume_saved_backfill:
                 if not prior_backfill_incomplete:
                     reason = "no saved older-history cursor"
                 elif remaining == 0:
@@ -838,7 +826,7 @@ async def sync_all(
         raise RemotePreflightError("sync all preflight failed on a remote probe.")
 
     pipeline = current_pipeline()
-    if pipeline is not None:
+    if pipeline.active:
         stop_policy = (
             "continue through saved duplicates"
             if full or backfill
@@ -880,7 +868,7 @@ async def sync_all(
             exit_code = 2
             errors[collection] = str(exc)
             pipeline = current_pipeline()
-            if pipeline is not None:
+            if pipeline.active:
                 pipeline.issue(
                     f"{collection.title()} sync failed: {exc}",
                     level="error",

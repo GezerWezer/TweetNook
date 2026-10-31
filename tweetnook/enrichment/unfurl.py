@@ -84,17 +84,16 @@ async def unfurl_urls(
 ) -> UrlUnfurlResult:
     console = console or Console(stderr=True)
     pipeline = current_pipeline()
-    status = None if pipeline is not None else status_printer(console, "unfurl")
+    status = None if pipeline.active else status_printer(console, "unfurl")
     step_key = "urls"
-    if pipeline is not None:
-        pipeline.add_step(
-            step_key,
-            "Link previews",
-            total=1,
-            unit="URLs",
-            detail="saved URLs selected for redirect and canonical metadata refresh",
-            rate_unit="URLs/s",
-        )
+    pipeline.add_step(
+        step_key,
+        "Link previews",
+        total=1,
+        unit="URLs",
+        detail="saved URLs selected for redirect and canonical metadata refresh",
+        rate_unit="URLs/s",
+    )
     async with locked_archive_job(config=config, paths=paths, console=console) as job:
         config = job.config
         store = job.store
@@ -106,8 +105,7 @@ async def unfurl_urls(
         result = UrlUnfurlResult()
         if not rows:
             emit_status(status, "no URL rows pending unfurl")
-            if pipeline is not None:
-                pipeline.skip_step(step_key, "no saved URLs requiring metadata")
+            pipeline.skip_step(step_key, "no saved URLs requiring metadata")
             return result
         mode_suffix = " (including failed)" if retry_failed else ""
         limit_suffix = "" if limit is None else f" (limit {limit})"
@@ -115,7 +113,7 @@ async def unfurl_urls(
             status,
             f"fetching metadata for {len(rows)} saved URLs{mode_suffix}{limit_suffix}",
         )
-        if pipeline is not None:
+        if pipeline.active:
             scope = "saved URLs · redirects followed · canonical metadata persisted"
             if retry_failed:
                 scope += " · retrying failed rows"
@@ -173,7 +171,7 @@ async def unfurl_urls(
                             or row.get("canonical_url")
                             or row.get("url")
                         )
-                        if pipeline is not None:
+                        if pipeline.active:
                             host = (
                                 urlsplit(str(request_url)).netloc
                                 if request_url is not None
@@ -271,7 +269,7 @@ async def unfurl_urls(
                                 )
                             )
                             result.failed += 1
-                            if pipeline is not None:
+                            if pipeline.active:
                                 pipeline.issue(
                                     f"URL {row['row_key']}: {exc}",
                                     dedupe_key="urls:unfurl-failure",
@@ -284,23 +282,21 @@ async def unfurl_urls(
                         if len(pending_updates) >= _UPDATE_BATCH_SIZE:
                             flush_updates()
                     finally:
-                        if pipeline is not None:
-                            pipeline.update_step(
-                                step_key,
-                                completed=index,
-                                counters=_pipeline_outcomes(result),
-                            )
+                        pipeline.update_step(
+                            step_key,
+                            completed=index,
+                            counters=_pipeline_outcomes(result),
+                        )
                         if progress is not None:
                             progress(index, len(rows))
 
             flush_updates()
-        if pipeline is not None:
-            pipeline.complete_step(
-                step_key,
-                _pipeline_outcomes(result, final=True),
-                metrics={
-                    "updated": result.updated,
-                    "failed": result.failed,
-                },
-            )
+        pipeline.complete_step(
+            step_key,
+            _pipeline_outcomes(result, final=True),
+            metrics={
+                "updated": result.updated,
+                "failed": result.failed,
+            },
+        )
         return result

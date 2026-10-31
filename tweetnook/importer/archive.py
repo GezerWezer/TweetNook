@@ -124,24 +124,23 @@ async def import_x_archive(
         hash_started = perf_counter()
         digest_total_bytes = (
             source.digest_total_bytes()
-            if (debug or console.is_terminal or pipeline is not None)
+            if (debug or console.is_terminal or pipeline.active)
             else None
         )
         inspect_step_key = "archive-inspect"
-        if pipeline is not None:
-            pipeline.add_step(
-                inspect_step_key,
-                "Inspect",
-                total=max(digest_total_bytes or 0, 1),
-                unit="bytes",
-                detail=f"{archive_path.name} · content hash and archive owner validation",
-                rate_unit="bytes/s",
-            )
-            pipeline.start_step(
-                inspect_step_key,
-                activity=f"Hashing {archive_path.name} for idempotence",
-                counters="verifying every imported dataset and media file",
-            )
+        pipeline.add_step(
+            inspect_step_key,
+            "Inspect",
+            total=max(digest_total_bytes or 0, 1),
+            unit="bytes",
+            detail=f"{archive_path.name} · content hash and archive owner validation",
+            rate_unit="bytes/s",
+        )
+        pipeline.start_step(
+            inspect_step_key,
+            activity=f"Hashing {archive_path.name} for idempotence",
+            counters="verifying every imported dataset and media file",
+        )
         with progress_callback(
             console,
             label="archive import hash",
@@ -153,21 +152,20 @@ async def import_x_archive(
             def update_hash(done: int, total: int) -> None:
                 if hash_progress is not None:
                     hash_progress(done, total)
-                if pipeline is not None:
-                    pipeline.update_step(
-                        inspect_step_key,
-                        completed=done,
-                        total=max(total, 1),
-                        counters=f"{done:,}/{total:,} bytes hashed",
-                    )
+                pipeline.update_step(
+                    inspect_step_key,
+                    completed=done,
+                    total=max(total, 1),
+                    counters=f"{done:,}/{total:,} bytes hashed",
+                )
 
             digest = source.digest(
-                progress=update_hash if pipeline is not None else hash_progress,
+                progress=update_hash if pipeline.active else hash_progress,
                 item_status=(
                     lambda relative_path: pipeline.status(
                         inspect_step_key, f"Hashing {relative_path}"
                     )
-                    if pipeline is not None
+                    if pipeline.active
                     else None
                 ),
                 total_bytes=digest_total_bytes,
@@ -208,12 +206,11 @@ async def import_x_archive(
                 unit="parts",
             )
         identity = archive_identity(source.manifest, account_items)
-        if pipeline is not None:
-            owner = f"@{identity.username}" if identity.username else "archive owner resolved"
-            pipeline.complete_step(
-                inspect_step_key,
-                f"archive hash verified · {owner}",
-            )
+        owner = f"@{identity.username}" if identity.username else "archive owner resolved"
+        pipeline.complete_step(
+            inspect_step_key,
+            f"archive hash verified · {owner}",
+        )
         existing_manifest: dict[str, Any] | None = None
         import_started_at = utc_now()
         followup_requested = not offline and (enrich or detail_lookups > 0)
@@ -236,20 +233,19 @@ async def import_x_archive(
                 store.ensure_archive_owner_id(identity.account_id)
                 if regen:
                     regen_step_key = "archive-regen"
-                    if pipeline is not None:
-                        pipeline.add_step(
-                            regen_step_key,
-                            "Regenerate",
-                            total=1,
-                            unit="cleanup",
-                            detail="archive-import-owned rows and managed media only",
-                            show_rate=False,
-                            show_eta=False,
-                        )
-                        pipeline.start_step(
-                            regen_step_key,
-                            activity="Clearing the previous import owned by this archive",
-                        )
+                    pipeline.add_step(
+                        regen_step_key,
+                        "Regenerate",
+                        total=1,
+                        unit="cleanup",
+                        detail="archive-import-owned rows and managed media only",
+                        show_rate=False,
+                        show_eta=False,
+                    )
+                    pipeline.start_step(
+                        regen_step_key,
+                        activity="Clearing the previous import owned by this archive",
+                    )
                     emit_status(status, "clearing previously imported archive-owned rows...")
                     regen_started = perf_counter()
                     archive_media_paths = store.list_archive_import_media_paths()
@@ -261,12 +257,11 @@ async def import_x_archive(
                         f"regen cleared {sum(cleared_rows.values())} rows and {cleared_files} "
                         "managed archive media files",
                     )
-                    if pipeline is not None:
-                        pipeline.complete_step(
-                            regen_step_key,
-                            f"{sum(cleared_rows.values()):,} rows removed · "
-                            f"{cleared_files:,} managed media files removed",
-                        )
+                    pipeline.complete_step(
+                        regen_step_key,
+                        f"{sum(cleared_rows.values()):,} rows removed · "
+                        f"{cleared_files:,} managed media files removed",
+                    )
                     if debug:
                         record_debug_timing(
                             status,
@@ -280,33 +275,31 @@ async def import_x_archive(
                 if existing_manifest and existing_manifest.get("status") == "completed":
                     counts = manifest_counts(existing_manifest)
                     warnings = manifest_warnings(existing_manifest)
-                    if pipeline is not None:
+                    for step_key in (
+                        "archive-source",
+                        "archive-tweets",
+                        "archive-deleted",
+                        "archive-likes",
+                        "archive-media",
+                    ):
+                        if pipeline.has_step(step_key):
+                            pipeline.skip_step(step_key, "this archive already being imported")
+                    if not followup_requested:
                         for step_key in (
-                            "archive-source",
-                            "archive-tweets",
-                            "archive-deleted",
-                            "archive-likes",
-                            "archive-media",
+                            "archive-auth",
+                            "preflight:tweets",
+                            "sync:tweets:head",
+                            "preflight:likes",
+                            "sync:likes:head",
                         ):
                             if pipeline.has_step(step_key):
-                                pipeline.skip_step(step_key, "this archive already being imported")
-                    if not followup_requested:
-                        if pipeline is not None:
-                            for step_key in (
-                                "archive-auth",
-                                "preflight:tweets",
-                                "sync:tweets:head",
-                                "preflight:likes",
-                                "sync:likes:head",
-                            ):
-                                if pipeline.has_step(step_key):
-                                    pipeline.skip_step(
-                                        step_key,
-                                        "the duplicate archive having no requested follow-up",
-                                    )
-                            pipeline.final_note(
-                                "Archive already imported; no follow-up work requested."
-                            )
+                                pipeline.skip_step(
+                                    step_key,
+                                    "the duplicate archive having no requested follow-up",
+                                )
+                        pipeline.final_note(
+                            "Archive already imported; no follow-up work requested."
+                        )
                         return ArchiveImportResult(
                             skipped=True,
                             followup_performed=False,
@@ -329,7 +322,7 @@ async def import_x_archive(
                         len(source.dataset_files(key)) for key in source_dataset_keys
                     )
                     source_parts_loaded = 0
-                    if pipeline is not None and source_part_total:
+                    if pipeline.active and source_part_total:
                         first_source_file = next(
                             filename
                             for key in source_dataset_keys
@@ -355,21 +348,20 @@ async def import_x_archive(
                         offset = source_parts_loaded
 
                         def update_source_part(done: int, _total: int) -> None:
-                            if pipeline is not None:
-                                pipeline.update_step(
-                                    source_step_key,
-                                    completed=offset + done,
-                                    counters=(
-                                        f"{offset + done}/{source_part_total} parts parsed · "
-                                        "0 preserved"
-                                    ),
-                                )
+                            pipeline.update_step(
+                                source_step_key,
+                                completed=offset + done,
+                                counters=(
+                                    f"{offset + done}/{source_part_total} parts parsed · "
+                                    "0 preserved"
+                                ),
+                            )
 
                         loaded = source.load_dataset(
                             key,
                             progress=(
                                 update_source_part
-                                if pipeline is not None and source_part_total
+                                if pipeline.active and source_part_total
                                 else None
                             ),
                             item_status=(
@@ -378,7 +370,7 @@ async def import_x_archive(
                                         source_step_key, f"Parsing {filename}"
                                     )
                                 )
-                                if pipeline is not None and source_part_total
+                                if pipeline.active and source_part_total
                                 else None
                             ),
                         )
@@ -473,71 +465,70 @@ async def import_x_archive(
                         media_total = len(
                             slice_for_sample(source.iter_files(media_directory), limit=sample_limit)
                         )
-                    if pipeline is not None:
-                        if not source_part_total:
-                            pipeline.skip_step(
-                                "archive-source", "the archive containing no tweet or like datasets"
-                            )
-                        if tweets:
-                            pipeline.add_step(
-                                "archive-tweets",
-                                "Tweets",
-                                total=len(tweets),
-                                unit="tweets",
-                                detail=(
-                                    "authored archive rows · normalized objects, relations, "
-                                    "and raw source"
-                                ),
-                                rate_unit="tweets/s",
-                            )
-                        if deleted_tweets:
-                            pipeline.add_step(
-                                "archive-deleted",
-                                "Deleted tweets",
-                                total=len(deleted_tweets),
-                                unit="tweets",
-                                detail=(
-                                    "deleted authored rows · archive deletion provenance preserved"
-                                ),
-                                rate_unit="tweets/s",
-                            )
-                        if likes:
-                            pipeline.add_step(
-                                "archive-likes",
-                                "Likes",
-                                total=len(likes),
-                                unit="likes",
-                                detail=(
-                                    "archive like memberships · sparse objects queued for live "
-                                    "enrichment"
-                                ),
-                                rate_unit="likes/s",
-                            )
-                        if media_total:
-                            pipeline.add_step(
-                                "archive-media",
-                                "Archive media",
-                                total=media_total,
-                                unit="files",
-                                detail="exported media matched to normalized tweet assets",
-                                rate_unit="files/s",
-                            )
-                        for present, step_key, reason in (
-                            (tweets, "archive-tweets", "the authored-tweet dataset being empty"),
-                            (
-                                deleted_tweets,
-                                "archive-deleted",
-                                "the deleted-tweet dataset being empty",
+                    if not source_part_total:
+                        pipeline.skip_step(
+                            "archive-source", "the archive containing no tweet or like datasets"
+                        )
+                    if tweets:
+                        pipeline.add_step(
+                            "archive-tweets",
+                            "Tweets",
+                            total=len(tweets),
+                            unit="tweets",
+                            detail=(
+                                "authored archive rows · normalized objects, relations, "
+                                "and raw source"
                             ),
-                            (likes, "archive-likes", "the likes dataset being empty"),
-                            (
-                                media_total,
-                                "archive-media",
-                                "the archive containing no exported media",
+                            rate_unit="tweets/s",
+                        )
+                    if deleted_tweets:
+                        pipeline.add_step(
+                            "archive-deleted",
+                            "Deleted tweets",
+                            total=len(deleted_tweets),
+                            unit="tweets",
+                            detail=(
+                                "deleted authored rows · archive deletion provenance preserved"
                             ),
-                        ):
-                            if not present:
-                                pipeline.skip_step(step_key, reason)
+                            rate_unit="tweets/s",
+                        )
+                    if likes:
+                        pipeline.add_step(
+                            "archive-likes",
+                            "Likes",
+                            total=len(likes),
+                            unit="likes",
+                            detail=(
+                                "archive like memberships · sparse objects queued for live "
+                                "enrichment"
+                            ),
+                            rate_unit="likes/s",
+                        )
+                    if media_total:
+                        pipeline.add_step(
+                            "archive-media",
+                            "Archive media",
+                            total=media_total,
+                            unit="files",
+                            detail="exported media matched to normalized tweet assets",
+                            rate_unit="files/s",
+                        )
+                    for present, step_key, reason in (
+                        (tweets, "archive-tweets", "the authored-tweet dataset being empty"),
+                        (
+                            deleted_tweets,
+                            "archive-deleted",
+                            "the deleted-tweet dataset being empty",
+                        ),
+                        (likes, "archive-likes", "the likes dataset being empty"),
+                        (
+                            media_total,
+                            "archive-media",
+                            "the archive containing no exported media",
+                        ),
+                    ):
+                        if not present:
+                            pipeline.skip_step(step_key, reason)
 
                     capture_started = perf_counter()
                     raw_source_parts = [
@@ -562,7 +553,7 @@ async def import_x_archive(
                     for index, (operation, filename, payload) in enumerate(
                         raw_source_parts, start=1
                     ):
-                        if pipeline is not None and source_part_total:
+                        if source_part_total:
                             pipeline.update_step(
                                 source_step_key,
                                 completed=source_part_total + index - 1,
@@ -579,7 +570,7 @@ async def import_x_archive(
                             payload,
                             archive_digest=digest,
                         )
-                        if pipeline is not None and source_part_total:
+                        if source_part_total:
                             pipeline.update_step(
                                 source_step_key,
                                 completed=source_part_total + index,
@@ -588,7 +579,7 @@ async def import_x_archive(
                                     f"{index}/{source_part_total} preserved"
                                 ),
                             )
-                    if pipeline is not None and source_part_total:
+                    if source_part_total:
                         record_total = total_tweets + total_deleted_tweets + total_likes
                         pipeline.complete_step(
                             source_step_key,
@@ -619,7 +610,7 @@ async def import_x_archive(
                     authored_start_count = (
                         counts["authored_tweets"] + counts["deleted_authored_tweets"]
                     )
-                    if pipeline is not None and tweets:
+                    if tweets:
                         pipeline.add_step(
                             authored_step_key,
                             "Tweets",
@@ -659,11 +650,11 @@ async def import_x_archive(
                                     activity=f"Importing authored tweet {tweet_id}",
                                     counters=f"{done} imported",
                                 )
-                                if pipeline is not None
+                                if pipeline.active
                                 else None
                             ),
                         )
-                    if pipeline is not None and tweets:
+                    if tweets:
                         imported = (
                             counts["authored_tweets"]
                             + counts["deleted_authored_tweets"]
@@ -687,7 +678,7 @@ async def import_x_archive(
                     deleted_started = perf_counter()
                     deleted_step_key = "archive-deleted"
                     deleted_start_count = counts["deleted_authored_tweets"]
-                    if pipeline is not None and deleted_tweets:
+                    if deleted_tweets:
                         pipeline.add_step(
                             deleted_step_key,
                             "Deleted tweets",
@@ -724,11 +715,11 @@ async def import_x_archive(
                                     activity=f"Importing deleted tweet {tweet_id}",
                                     counters=f"{done} imported",
                                 )
-                                if pipeline is not None
+                                if pipeline.active
                                 else None
                             ),
                         )
-                    if pipeline is not None and deleted_tweets:
+                    if deleted_tweets:
                         imported = counts["deleted_authored_tweets"] - deleted_start_count
                         pipeline.complete_step(
                             deleted_step_key, f"{imported:,} deleted rows imported"
@@ -746,7 +737,7 @@ async def import_x_archive(
                     likes_started = perf_counter()
                     likes_step_key = "archive-likes"
                     likes_start_count = counts["likes"]
-                    if pipeline is not None and likes:
+                    if likes:
                         pipeline.add_step(
                             likes_step_key,
                             "Likes",
@@ -783,11 +774,11 @@ async def import_x_archive(
                                     activity=f"Importing liked tweet {tweet_id}",
                                     counters=f"{done} imported",
                                 )
-                                if pipeline is not None
+                                if pipeline.active
                                 else None
                             ),
                         )
-                    if pipeline is not None and likes:
+                    if likes:
                         imported = counts["likes"] - likes_start_count
                         pipeline.complete_step(likes_step_key, f"{imported:,} likes imported")
                     if debug:
@@ -803,7 +794,7 @@ async def import_x_archive(
                     media_started = perf_counter()
                     media_step_key = "archive-media"
                     media_start_count = counts["media_files_copied"]
-                    if pipeline is not None and media_total:
+                    if media_total:
                         pipeline.add_step(
                             media_step_key,
                             "Archive media",
@@ -844,12 +835,12 @@ async def import_x_archive(
                                         f"{counts['media_files_copied'] - media_start_count} copied"
                                     ),
                                 )
-                                if pipeline is not None
+                                if pipeline.active
                                 else None
                             ),
                             limit=sample_limit,
                         )
-                    if pipeline is not None and media_total:
+                    if media_total:
                         copied = counts["media_files_copied"] - media_start_count
                         pipeline.complete_step(
                             media_step_key,
@@ -889,13 +880,12 @@ async def import_x_archive(
                 raise
 
         if local_only and not sampled_import:
-            if pipeline is not None:
-                pipeline.final_note(
-                    "Local archive import complete; enrichment skipped and live sync deferred "
-                    "to the separate Setup first-sync task."
-                    if defer_followup
-                    else "Local archive import complete; live follow-up skipped (offline)."
-                )
+            pipeline.final_note(
+                "Local archive import complete; enrichment skipped and live sync deferred "
+                "to the separate Setup first-sync task."
+                if defer_followup
+                else "Local archive import complete; live follow-up skipped (offline)."
+            )
             return ArchiveImportResult(
                 skipped=not import_performed,
                 followup_performed=False,
@@ -915,12 +905,11 @@ async def import_x_archive(
                 emit_status(status, "debug summary:")
                 for summary in debug_summaries:
                     emit_status(status, f"  {summary}")
-            if pipeline is not None:
-                pipeline.final_note(
-                    f"Sample imported: {counts['authored_tweets']:,} authored · "
-                    f"{counts['deleted_authored_tweets']:,} deleted · {counts['likes']:,} likes · "
-                    f"{counts['media_files_copied']:,} media copied."
-                )
+            pipeline.final_note(
+                f"Sample imported: {counts['authored_tweets']:,} authored · "
+                f"{counts['deleted_authored_tweets']:,} deleted · {counts['likes']:,} likes · "
+                f"{counts['media_files_copied']:,} media copied."
+            )
             return ArchiveImportResult(
                 skipped=False,
                 followup_performed=False,
@@ -990,20 +979,19 @@ async def import_x_archive(
             for summary in debug_summaries:
                 emit_status(status, f"  {summary}")
 
-        if pipeline is not None:
-            pipeline.final_note(
-                f"Imported totals: {final_counts.get('authored_tweets', 0):,} authored · "
-                f"{final_counts.get('deleted_authored_tweets', 0):,} deleted · "
-                f"{final_counts.get('likes', 0):,} likes · "
-                f"{final_counts.get('media_files_copied', 0):,} media copied. "
-                f"Enrichment queue: {followup.pending_untouched:,} pending untouched · "
-                f"{followup.transient_due:,} due · {followup.transient_delayed:,} delayed."
-                + (
-                    " Live sync deferred to the separate Setup first-sync task."
-                    if defer_followup
-                    else ""
-                )
+        pipeline.final_note(
+            f"Imported totals: {final_counts.get('authored_tweets', 0):,} authored · "
+            f"{final_counts.get('deleted_authored_tweets', 0):,} deleted · "
+            f"{final_counts.get('likes', 0):,} likes · "
+            f"{final_counts.get('media_files_copied', 0):,} media copied. "
+            f"Enrichment queue: {followup.pending_untouched:,} pending untouched · "
+            f"{followup.transient_due:,} due · {followup.transient_delayed:,} delayed."
+            + (
+                " Live sync deferred to the separate Setup first-sync task."
+                if defer_followup
+                else ""
             )
+        )
 
         return ArchiveImportResult(
             skipped=not import_performed,

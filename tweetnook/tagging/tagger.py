@@ -393,8 +393,7 @@ def _top_archive_tags(store: ArchiveStore, limit: int = 50) -> list[str]:
 
 def _run_id() -> str:
     pipeline = current_pipeline()
-    active = getattr(pipeline, "run_id", None) if pipeline is not None else None
-    return str(active or new_run_id())
+    return str(pipeline.run_id or new_run_id())
 
 
 def _media_mime(path, media_type: str | None) -> str:
@@ -541,7 +540,7 @@ async def tag_media_tweets(
 ) -> int:
     """Tag one Paid tweet or one homogeneous Free batch."""
     pipeline = current_pipeline()
-    if pipeline is not None and pipeline.has_step("tagging") and not dry_run:
+    if pipeline.has_step("tagging") and not dry_run:
         console = pipeline.capture_console("tagging")  # type: ignore[assignment]
     tag_config = config.tagging
     if not tag_config.enabled or not tag_config.api_key:
@@ -1543,7 +1542,7 @@ async def tag_pending_media_tweets(
     pipeline = current_pipeline()
     tag_config = config.tagging
     if not tag_config.enabled or not tag_config.api_key:
-        if pipeline is not None and pipeline.has_step("tagging"):
+        if pipeline.has_step("tagging"):
             pipeline.skip_step(
                 "tagging",
                 "tagging being disabled in configuration"
@@ -1552,7 +1551,7 @@ async def tag_pending_media_tweets(
             )
         return TaggingRunResult()
     if not _ensure_optional_dependencies():
-        if pipeline is not None and pipeline.has_step("tagging"):
+        if pipeline.has_step("tagging"):
             pipeline.skip_step("tagging", "the automated-tagging extra not being installed")
         else:
             console.print(
@@ -1576,7 +1575,7 @@ async def tag_pending_media_tweets(
     processed = tagged = requests = sent_requests = 0
     attempted_ids: set[str] = set()
 
-    if pipeline is not None:
+    if pipeline.active:
         mode_detail = f"{model_name} · " + (
             f"Free · up to {free_batch_size} tweets/request · {tag_config.free_rpd} requests/day"
             if tag_config.api_mode == "free"
@@ -1620,24 +1619,23 @@ async def tag_pending_media_tweets(
         if not tweet_ids:
             break
 
-        if pipeline is not None:
-            pipeline.update_step(
-                "tagging",
-                completed=processed,
-                total=max(max_requests or processed + len(tweet_ids), 1),
-                activity=(
-                    f"Generating {content_type} tags for {len(tweet_ids)} tweet"
-                    f"{'s' if len(tweet_ids) != 1 else ''}"
-                ),
-                counters=" · ".join(
-                    part
-                    for value, part in (
-                        (tagged, f"{tagged} tagged"),
-                        (sent_requests, f"{sent_requests} requests"),
-                    )
-                    if value
-                ),
-            )
+        pipeline.update_step(
+            "tagging",
+            completed=processed,
+            total=max(max_requests or processed + len(tweet_ids), 1),
+            activity=(
+                f"Generating {content_type} tags for {len(tweet_ids)} tweet"
+                f"{'s' if len(tweet_ids) != 1 else ''}"
+            ),
+            counters=" · ".join(
+                part
+                for value, part in (
+                    (tagged, f"{tagged} tagged"),
+                    (sent_requests, f"{sent_requests} requests"),
+                )
+                if value
+            ),
+        )
 
         if tag_config.api_mode == "free":
             # Refresh after the previous request has committed its tags.  A
@@ -1718,43 +1716,41 @@ async def tag_pending_media_tweets(
         requests += len(dispatched_ids) if tag_config.api_mode == "paid" else request_increment
         sent_requests = paid_state.attempts if tag_config.api_mode == "paid" else requests
         attempted_ids.update(dispatched_ids)
-        if pipeline is not None:
-            pipeline.update_step(
-                "tagging",
-                completed=processed,
-                total=max(max_requests or processed, processed, 1),
-                counters=" · ".join(
-                    part
-                    for value, part in (
-                        (tagged, f"{tagged} tagged"),
-                        (sent_requests, f"{sent_requests} requests"),
-                    )
-                    if value
-                ),
-                important=True,
-            )
+        pipeline.update_step(
+            "tagging",
+            completed=processed,
+            total=max(max_requests or processed, processed, 1),
+            counters=" · ".join(
+                part
+                for value, part in (
+                    (tagged, f"{tagged} tagged"),
+                    (sent_requests, f"{sent_requests} requests"),
+                )
+                if value
+            ),
+            important=True,
+        )
         if dry_run or paid_state.stop_reason:
             break
 
-    if pipeline is not None:
-        if paid_state.stop_reason:
-            pipeline.update_step("tagging", completed=processed)
-            pipeline.fail_step(
-                "tagging",
-                f"Paused: {paid_state.stop_reason}",
-                metrics={"tagged": tagged, "requests": paid_state.attempts},
-                reason=paid_state.stop_reason,
-                paused=True,
-            )
-        elif processed == 0:
-            pipeline.skip_step("tagging", "no eligible tweets or available quota/spend")
-        else:
-            pipeline.complete_step(
-                "tagging",
-                f"{tagged} tagged · {sent_requests} requests",
-                metrics={
-                    "tagged": tagged,
-                    "requests": sent_requests,
-                },
-            )
+    if paid_state.stop_reason:
+        pipeline.update_step("tagging", completed=processed)
+        pipeline.fail_step(
+            "tagging",
+            f"Paused: {paid_state.stop_reason}",
+            metrics={"tagged": tagged, "requests": paid_state.attempts},
+            reason=paid_state.stop_reason,
+            paused=True,
+        )
+    elif processed == 0:
+        pipeline.skip_step("tagging", "no eligible tweets or available quota/spend")
+    else:
+        pipeline.complete_step(
+            "tagging",
+            f"{tagged} tagged · {sent_requests} requests",
+            metrics={
+                "tagged": tagged,
+                "requests": sent_requests,
+            },
+        )
     return TaggingRunResult(processed=processed, tagged=tagged, batches=sent_requests)

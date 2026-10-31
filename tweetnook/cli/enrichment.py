@@ -384,20 +384,19 @@ def tag_archive(
             async with locked_archive_job(config=config, paths=paths, console=console) as job:
                 if tweet_id is not None:
                     pipeline = current_pipeline()
-                    if pipeline is not None:
-                        pipeline.add_step(
-                            "tagging",
-                            "Automated tags",
-                            total=1,
-                            unit="tweet",
-                            detail=f"explicit target · {model or config.tagging.model}",
-                            show_rate=False,
-                            show_eta=False,
-                        )
-                        pipeline.start_step(
-                            "tagging",
-                            activity="Generating tags",
-                        )
+                    pipeline.add_step(
+                        "tagging",
+                        "Automated tags",
+                        total=1,
+                        unit="tweet",
+                        detail=f"explicit target · {model or config.tagging.model}",
+                        show_rate=False,
+                        show_eta=False,
+                    )
+                    pipeline.start_step(
+                        "tagging",
+                        activity="Generating tags",
+                    )
                     tagged = await tag_media_tweets(
                         store=job.store,
                         config=config,
@@ -407,13 +406,12 @@ def tag_archive(
                         model_override=model,
                         dry_run=test,
                     )
-                    if pipeline is not None:
-                        summary = f"{tagged} tagged" + (" · test mode, not saved" if test else "")
-                        pipeline.complete_step(
-                            "tagging",
-                            summary,
-                            counters=summary,
-                        )
+                    summary = f"{tagged} tagged" + (" · test mode, not saved" if test else "")
+                    pipeline.complete_step(
+                        "tagging",
+                        summary,
+                        counters=summary,
+                    )
                     return TaggingRunResult(processed=1, tagged=tagged, batches=1)
 
                 return await tag_pending_media_tweets(

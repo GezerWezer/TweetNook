@@ -113,7 +113,7 @@ def _import_lancedb() -> Any | None:
 
 
 def _create_progress(total_rows: int) -> Any | None:
-    if current_pipeline() is not None:
+    if current_pipeline().active:
         return None
     try:
         from tqdm import tqdm
@@ -142,7 +142,7 @@ def _run_worker(
 
 def _progress_warning(progress: Any | None, message: str) -> None:
     pipeline = current_pipeline()
-    if pipeline is not None:
+    if pipeline.active:
         pipeline.issue(message.removeprefix("Warning: "), dedupe_key="migration:worker-warning")
         return
     if progress is not None:
@@ -153,7 +153,7 @@ def _progress_warning(progress: Any | None, message: str) -> None:
 
 def _advance_progress(progress: Any | None, total_rows: int, batch_size: int) -> None:
     pipeline = current_pipeline()
-    if pipeline is not None and pipeline.has_step("migration-copy"):
+    if pipeline.has_step("migration-copy"):
         step = pipeline.active_step
         completed = min(
             (step.completed if step is not None and step.key == "migration-copy" else 0)
@@ -293,7 +293,7 @@ def _copy_batches(
 
 def _rebuild_fts(store: ArchiveStore) -> bool:
     pipeline = current_pipeline()
-    if pipeline is not None:
+    if pipeline.active:
         pipeline.status("migration-index", "Rebuilding the SQLite full-text search index")
     else:
         print("Rebuilding Full-Text Search index (this may take a few moments)...")
@@ -302,7 +302,7 @@ def _rebuild_fts(store: ArchiveStore) -> bool:
         return True
     except Exception as error:
         message = f"Failed to rebuild FTS index: {error}"
-        if pipeline is not None:
+        if pipeline.active:
             pipeline.issue(message, level="error", dedupe_key="migration:index-rebuild")
         else:
             print(f"Warning: {message}")
@@ -314,40 +314,39 @@ def run_migration(
 ) -> MigrationResult:
     config, paths = load_config()
     pipeline = current_pipeline()
-    if pipeline is not None:
-        pipeline.add_step(
-            "migration-inspect",
-            "Inspect source",
-            total=1,
-            unit="archive",
-            detail="legacy LanceDB archive table and destination validation",
-            show_rate=False,
-            show_eta=False,
-        )
-        pipeline.add_step(
-            "migration-copy",
-            "Copy rows",
-            total=1,
-            unit="rows",
-            detail=f"isolated worker chunks of {batch_size:,} rows · existing SQLite rows kept",
-            rate_unit="rows/s",
-        )
-        pipeline.add_step(
-            "migration-index",
-            "Search index",
-            total=1,
-            unit="index",
-            detail="rebuild SQLite FTS after imported rows are durable",
-            show_rate=False,
-            show_eta=False,
-        )
-        pipeline.start_step(
-            "migration-inspect",
-            activity="Locating the legacy LanceDB archive",
-        )
+    pipeline.add_step(
+        "migration-inspect",
+        "Inspect source",
+        total=1,
+        unit="archive",
+        detail="legacy LanceDB archive table and destination validation",
+        show_rate=False,
+        show_eta=False,
+    )
+    pipeline.add_step(
+        "migration-copy",
+        "Copy rows",
+        total=1,
+        unit="rows",
+        detail=f"isolated worker chunks of {batch_size:,} rows · existing SQLite rows kept",
+        rate_unit="rows/s",
+    )
+    pipeline.add_step(
+        "migration-index",
+        "Search index",
+        total=1,
+        unit="index",
+        detail="rebuild SQLite FTS after imported rows are durable",
+        show_rate=False,
+        show_eta=False,
+    )
+    pipeline.start_step(
+        "migration-inspect",
+        activity="Locating the legacy LanceDB archive",
+    )
     lance_path = paths.data_dir / "archive.lancedb"
     if not lance_path.exists():
-        if pipeline is not None:
+        if pipeline.active:
             pipeline.skip_step("migration-inspect", "no legacy LanceDB archive being present")
             pipeline.skip_step("migration-copy", "no legacy source archive being present")
             pipeline.skip_step("migration-index", "no rows being migrated")
@@ -362,7 +361,7 @@ def run_migration(
             "The `legacy-migration` extra is required to read the legacy archive. "
             'Install it with `python -m pip install "tweetnook[legacy-migration]"`.'
         )
-        if pipeline is not None:
+        if pipeline.active:
             pipeline.fail_step("migration-inspect", message)
             pipeline.issue(message, level="error", dedupe_key="migration:dependencies")
             pipeline.skip_step("migration-copy", "legacy migration dependencies being unavailable")
@@ -371,7 +370,7 @@ def run_migration(
             print(f"Error: {message}")
         return MigrationResult(status="dependency_missing")
 
-    if pipeline is not None:
+    if pipeline.active:
         pipeline.status("migration-inspect", f"Reading the archive table at {lance_path}")
     else:
         print(f"Reading LanceDB at {lance_path}...")
@@ -380,7 +379,7 @@ def run_migration(
         table = legacy_database.open_table("archive")
         total_rows = int(table.count_rows())
     except Exception as error:
-        if pipeline is not None:
+        if pipeline.active:
             message = f"Legacy archive table is unreadable: {error}"
             pipeline.fail_step("migration-inspect", message)
             pipeline.issue(message, level="error", dedupe_key="migration:source-table")
@@ -390,12 +389,12 @@ def run_migration(
             print(f"LanceDB archive table not found or unreadable: {error}")
         return MigrationResult(status="table_missing")
 
-    if pipeline is not None:
+    if pipeline.active:
         pipeline.complete_step("migration-inspect", f"{total_rows:,} legacy rows ready to migrate")
     else:
         print(f"Found {total_rows} rows to migrate.")
     database_path = paths.database_path
-    if pipeline is not None:
+    if pipeline.active:
         pipeline.add_step(
             "migration-copy",
             "Copy rows",
@@ -426,14 +425,13 @@ def run_migration(
                 batch_size=batch_size,
             )
     except ProcessLockError:
-        if pipeline is not None:
-            pipeline.fail_step("migration-copy", "Another archive job is running")
-            pipeline.skip_step("migration-index", "another archive job holding the archive")
+        pipeline.fail_step("migration-copy", "Another archive job is running")
+        pipeline.skip_step("migration-index", "another archive job holding the archive")
         raise
     except Exception as error:
         if opened:
             raise
-        if pipeline is not None:
+        if pipeline.active:
             pipeline.fail_step("migration-copy", f"Failed to initialize SQLite: {error}")
             pipeline.skip_step("migration-index", "the SQLite destination failing to initialize")
         else:
@@ -464,7 +462,7 @@ def _migrate_rows(
             progress.close()
 
     if result.status == "aborted":
-        if pipeline is not None:
+        if pipeline.active:
             pipeline.fail_step(
                 "migration-copy",
                 f"stopped after {result.final_offset:,} rows due to repeated worker failures",
@@ -475,18 +473,17 @@ def _migrate_rows(
             print("Migration stopped before all readable chunks were processed.")
         return result
 
-    if pipeline is not None:
-        pipeline.complete_step(
-            "migration-copy",
-            f"{result.migrated_rows:,} migrated · {result.skipped_rows:,} skipped",
-        )
-        pipeline.start_step(
-            "migration-index",
-            activity="Rebuilding the SQLite full-text search index",
-        )
+    pipeline.complete_step(
+        "migration-copy",
+        f"{result.migrated_rows:,} migrated · {result.skipped_rows:,} skipped",
+    )
+    pipeline.start_step(
+        "migration-index",
+        activity="Rebuilding the SQLite full-text search index",
+    )
     result.fts_rebuilt = _rebuild_fts(store)
     skipped_unit = "row" if result.skipped_rows == 1 else "rows"
-    if pipeline is not None:
+    if pipeline.active:
         if result.fts_rebuilt:
             pipeline.complete_step("migration-index", "SQLite full-text search index rebuilt")
         else:

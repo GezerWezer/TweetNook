@@ -135,39 +135,31 @@ def _resolve_archive_followup_auth(
 ) -> ResolvedAuthBundle | None:
     pipeline = current_pipeline()
     step_key = "archive-auth"
-    if (
-        auth_bundle is not None
-        and pipeline is not None
-        and pipeline.step_state(step_key) == "complete"
-    ):
+    if auth_bundle is not None and pipeline.step_state(step_key) == "complete":
         return auth_bundle
-    if pipeline is not None:
-        pipeline.add_step(
-            step_key,
-            "Authentication",
-            total=1,
-            unit="session",
-            detail="resolve the configured Twitter/X session values for live follow-up",
-            show_rate=False,
-            show_eta=False,
-        )
-        pipeline.start_step(
-            step_key,
-            activity="Resolving Twitter/X authentication for archive follow-up",
-        )
+    pipeline.add_step(
+        step_key,
+        "Authentication",
+        total=1,
+        unit="session",
+        detail="resolve the configured Twitter/X session values for live follow-up",
+        show_rate=False,
+        show_eta=False,
+    )
+    pipeline.start_step(
+        step_key,
+        activity="Resolving Twitter/X authentication for archive follow-up",
+    )
     try:
         resolved = auth_bundle if auth_bundle is not None else resolve_auth_bundle(config)
     except ConfigError as exc:
         if optional:
             # FxTwitter answers most enrichment lookups without an account.
-            if pipeline is not None:
-                pipeline.skip_step(step_key, "no Twitter/X account being connected")
+            pipeline.skip_step(step_key, "no Twitter/X account being connected")
             return None
-        if pipeline is not None:
-            pipeline.fail_step(step_key, str(exc))
+        pipeline.fail_step(step_key, str(exc))
         raise
-    if pipeline is not None:
-        pipeline.complete_step(step_key, "Twitter/X authentication resolved")
+    pipeline.complete_step(step_key, "Twitter/X authentication resolved")
     return resolved
 
 
@@ -183,7 +175,7 @@ async def _run_live_reconciliation(
 ) -> tuple[list[str], list[str], ResolvedAuthBundle | None]:
     warnings: list[str] = []
     pipeline = current_pipeline()
-    if pipeline is not None:
+    if pipeline.active:
         for collection in ("tweets", "likes"):
             if collection in collections:
                 continue
@@ -197,11 +189,10 @@ async def _run_live_reconciliation(
         resolved_auth = _resolve_archive_followup_auth(config, auth_bundle)
     except ConfigError as exc:
         warnings.append(f"live reconciliation skipped: {exc}")
-        if pipeline is not None:
-            for collection in collections:
-                for step_key in (f"preflight:{collection}", f"sync:{collection}:head"):
-                    if pipeline.has_step(step_key):
-                        pipeline.skip_step(step_key, "Twitter/X authentication being unavailable")
+        for collection in collections:
+            for step_key in (f"preflight:{collection}", f"sync:{collection}:head"):
+                if pipeline.has_step(step_key):
+                    pipeline.skip_step(step_key, "Twitter/X authentication being unavailable")
         return [], warnings, None
 
     completed: list[str] = []
@@ -292,12 +283,12 @@ async def _run_archive_followup(
         async with locked_archive_job(config=config, paths=paths) as job:
             enrichment_result = _archive_enrich_counts(job.store)
         pipeline = current_pipeline()
-        if pipeline is not None and pipeline.has_step("archive-enrich"):
+        if pipeline.has_step("archive-enrich"):
             pipeline.skip_step("archive-enrich", "Twitter/X authentication being unavailable")
     enrichment_result.warnings = warnings
     enrichment_result.reconciled_collections = reconciled_collections
     pipeline = current_pipeline()
-    if pipeline is not None:
+    if pipeline.active:
         for warning in warnings:
             pipeline.issue(
                 warning,
@@ -400,7 +391,7 @@ async def _enrich_pending_rows(
     if limit is not None and limit <= 0:
         async with locked_archive_job(config=config, paths=paths, console=console) as job:
             result = _archive_enrich_counts(job.store)
-        if pipeline is not None and pipeline.has_step("archive-enrich"):
+        if pipeline.has_step("archive-enrich"):
             pipeline.skip_step("archive-enrich", "detail enrichment being disabled for this run")
         return result
 
@@ -418,7 +409,7 @@ async def _enrich_pending_rows(
                     f"{result.transient_delayed:,} transient failures remain scheduled "
                     "for later retry",
                 )
-            if pipeline is not None and pipeline.has_step("archive-enrich"):
+            if pipeline.has_step("archive-enrich"):
                 pipeline.skip_step(
                     "archive-enrich",
                     "no sparse archive tweets being eligible for enrichment",
@@ -426,23 +417,22 @@ async def _enrich_pending_rows(
             return result
         queue_counts = _archive_enrich_counts(store, now=selection_started_at)
         step_key = "archive-enrich"
-        if pipeline is not None:
-            pipeline.add_step(
-                step_key,
-                "Enrich",
-                total=len(rows),
-                unit="tweets",
-                detail=(
-                    f"stable command-start snapshot · {queue_counts.transient_delayed} "
-                    f"delayed outside this run · {_DETAIL_ENRICH_WRITE_BATCH}-attempt checkpoints"
-                ),
-                rate_unit="tweets/s",
-            )
-            pipeline.start_step(
-                step_key,
-                activity=f"Fetching live details for tweet {rows[0]['tweet_id']}",
-                counters="0 checked · 0 enriched · 0 unavailable · 0 transient",
-            )
+        pipeline.add_step(
+            step_key,
+            "Enrich",
+            total=len(rows),
+            unit="tweets",
+            detail=(
+                f"stable command-start snapshot · {queue_counts.transient_delayed} "
+                f"delayed outside this run · {_DETAIL_ENRICH_WRITE_BATCH}-attempt checkpoints"
+            ),
+            rate_unit="tweets/s",
+        )
+        pipeline.start_step(
+            step_key,
+            activity=f"Fetching live details for tweet {rows[0]['tweet_id']}",
+            counters="0 checked · 0 enriched · 0 unavailable · 0 transient",
+        )
         limit_suffix = "" if limit is None else f" (limit {limit})"
         emit_status(status, f"detail enrichment over {len(rows)} {desc_type}{limit_suffix}")
         query_store = QueryIdStore(paths)
@@ -487,7 +477,7 @@ async def _enrich_pending_rows(
         def report_progress(activity: str | None = None) -> None:
             if detail_progress:
                 detail_progress(done, len(rows))
-            if pipeline is None:
+            if not pipeline.active:
                 return
             counters = (
                 f"{done} checked · {succeeded} enriched · "
@@ -607,7 +597,7 @@ async def _enrich_pending_rows(
                                         f"Enrichment tweet {tweet_id}: {message}",
                                         important=True,
                                     )
-                                    if pipeline is not None
+                                    if pipeline.active
                                     else None
                                 )
                             ),
@@ -621,7 +611,7 @@ async def _enrich_pending_rows(
                                     lambda message: pipeline.status(
                                         step_key, message, important=True
                                     )
-                                    if pipeline is not None
+                                    if pipeline.active
                                     else None
                                 )
                             ),
@@ -674,12 +664,10 @@ async def _enrich_pending_rows(
                                 cursor=write_buffer,
                             )
                             transient += 1
-                            if pipeline is not None:
-                                pipeline.issue(
-                                    f"Enrichment tweet {tweet_id}: focal tweet absent; "
-                                    "retry scheduled",
-                                    dedupe_key="archive-enrich:focal-absence",
-                                )
+                            pipeline.issue(
+                                f"Enrichment tweet {tweet_id}: focal tweet absent; retry scheduled",
+                                dedupe_key="archive-enrich:focal-absence",
+                            )
                         wrote_row = True
                         if focal.kind == FocalResultKind.ABSENT:
                             try:
@@ -727,11 +715,10 @@ async def _enrich_pending_rows(
                             )
                             transient += 1
                             wrote_row = True
-                            if pipeline is not None:
-                                pipeline.issue(
-                                    f"Enrichment tweet {tweet_id}: {exc}",
-                                    dedupe_key="archive-enrich:api-failure",
-                                )
+                            pipeline.issue(
+                                f"Enrichment tweet {tweet_id}: {exc}",
+                                dedupe_key="archive-enrich:api-failure",
+                            )
                     except httpx.TransportError as exc:
                         retry_count = int(row.get("enrichment_retry_count") or 0) + 1
                         store.update_tweet_object_enrichment(
@@ -748,11 +735,10 @@ async def _enrich_pending_rows(
                         )
                         transient += 1
                         wrote_row = True
-                        if pipeline is not None:
-                            pipeline.issue(
-                                f"Enrichment tweet {tweet_id}: {exc.__class__.__name__}: {exc}",
-                                dedupe_key="archive-enrich:transport-failure",
-                            )
+                        pipeline.issue(
+                            f"Enrichment tweet {tweet_id}: {exc.__class__.__name__}: {exc}",
+                            dedupe_key="archive-enrich:transport-failure",
+                        )
                     except Exception:
                         write_buffer.restore(write_checkpoint)
                         raise
@@ -760,12 +746,11 @@ async def _enrich_pending_rows(
                         buffered_writes += 1
                         if buffered_writes >= _DETAIL_ENRICH_WRITE_BATCH:
                             flush_detail_writes()
-                            if pipeline is not None:
-                                pipeline.status(
-                                    step_key,
-                                    f"Committed {done + 1}/{len(rows)} enrichment attempts",
-                                    important=True,
-                                )
+                            pipeline.status(
+                                step_key,
+                                f"Committed {done + 1}/{len(rows)} enrichment attempts",
+                                important=True,
+                            )
                     if absence_error is not None:
                         flush_detail_writes()
                         raise absence_error
@@ -783,15 +768,14 @@ async def _enrich_pending_rows(
         result.detail_lookups = succeeded
         result.detail_terminal_unavailable = terminal
         result.detail_transient_failures = transient
-        if pipeline is not None:
-            pipeline.complete_step(
-                step_key,
-                f"{succeeded} enriched ({fx_served} via FxTwitter) · "
-                f"{terminal} unavailable · {transient} transient · "
-                + (f"{deferred} need account · " if client is None else "")
-                + f"{result.pending_untouched} pending untouched · "
-                f"{result.transient_due} due · {result.transient_delayed} delayed",
-            )
+        pipeline.complete_step(
+            step_key,
+            f"{succeeded} enriched ({fx_served} via FxTwitter) · "
+            f"{terminal} unavailable · {transient} transient · "
+            + (f"{deferred} need account · " if client is None else "")
+            + f"{result.pending_untouched} pending untouched · "
+            f"{result.transient_due} due · {result.transient_delayed} delayed",
+        )
     return result
 
 
@@ -851,10 +835,9 @@ async def enrich_imported_archive(
                 count_updates=count_updates,
             )
     pipeline = current_pipeline()
-    if pipeline is not None:
-        pipeline.final_note(
-            f"Archive enrichment queue: {result.pending_untouched:,} pending untouched · "
-            f"{result.transient_due:,} transient due · "
-            f"{result.transient_delayed:,} transient delayed."
-        )
+    pipeline.final_note(
+        f"Archive enrichment queue: {result.pending_untouched:,} pending untouched · "
+        f"{result.transient_due:,} transient due · "
+        f"{result.transient_delayed:,} transient delayed."
+    )
     return result

@@ -37,7 +37,7 @@ def progress_callback(
     unit: str,
     leave: bool = False,
 ) -> Iterator[Callable[[int, int], None] | None]:
-    if current_pipeline() is not None or not console.is_terminal or total <= 0:
+    if current_pipeline().active or not console.is_terminal or total <= 0:
         yield None
         return
 

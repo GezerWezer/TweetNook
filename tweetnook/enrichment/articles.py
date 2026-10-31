@@ -68,17 +68,16 @@ async def refresh_articles(
     config, paths = resolve_job_context(config=config, paths=paths)
     console = console or Console(stderr=True)
     pipeline = current_pipeline()
-    status = None if pipeline is not None else status_printer(console, "articles refresh")
+    status = None if pipeline.active else status_printer(console, "articles refresh")
     step_key = "articles"
-    if pipeline is not None:
-        pipeline.add_step(
-            step_key,
-            "Articles",
-            total=1,
-            unit="tweets",
-            detail="archived article rows selected for TweetDetail refresh",
-            rate_unit="tweets/s",
-        )
+    pipeline.add_step(
+        step_key,
+        "Articles",
+        total=1,
+        unit="tweets",
+        detail="archived article rows selected for TweetDetail refresh",
+        rate_unit="tweets/s",
+    )
 
     async with locked_archive_job(config=config, paths=paths, console=console) as job:
         store = job.store
@@ -93,38 +92,33 @@ async def refresh_articles(
         result = ArticleRefreshResult()
         if not tweet_ids:
             emit_status(status, "no article rows pending refresh")
-            if pipeline is not None:
-                pipeline.skip_step(step_key, "no article rows requiring refresh")
+            pipeline.skip_step(step_key, "no article rows requiring refresh")
             return result
 
-        if pipeline is not None:
-            mode = (
-                "explicit targets"
-                if targets
-                else ("preview-only article rows" if preview_only else "all article rows")
-            )
-            pipeline.add_step(
-                step_key,
-                "Articles",
-                total=len(tweet_ids),
-                unit="tweets",
-                detail=f"{mode} · TweetDetail adaptive pacing",
-                rate_unit="tweets/s",
-            )
-            pipeline.start_step(
-                step_key,
-                activity=(
-                    "Connecting to Twitter/X"
-                    if auth_bundle is None
-                    else "Preparing article refresh"
-                ),
-            )
+        mode = (
+            "explicit targets"
+            if targets
+            else ("preview-only article rows" if preview_only else "all article rows")
+        )
+        pipeline.add_step(
+            step_key,
+            "Articles",
+            total=len(tweet_ids),
+            unit="tweets",
+            detail=f"{mode} · TweetDetail adaptive pacing",
+            rate_unit="tweets/s",
+        )
+        pipeline.start_step(
+            step_key,
+            activity=(
+                "Connecting to Twitter/X" if auth_bundle is None else "Preparing article refresh"
+            ),
+        )
 
         if auth_bundle is None:
             emit_status(status, "resolving auth bundle")
             auth_bundle = resolve_auth_bundle(config)
-            if pipeline is not None:
-                pipeline.status(step_key, "Preparing article refresh")
+            pipeline.status(step_key, "Preparing article refresh")
 
         emit_status(status, "resolving TweetDetail query ID")
         query_store = QueryIdStore(paths)
@@ -134,8 +128,7 @@ async def refresh_articles(
             force_refresh=not query_store.is_fresh(operations=["TweetDetail"]),
             transport=transport,
         )
-        if pipeline is not None:
-            pipeline.status(step_key, "Refreshing an article")
+        pipeline.status(step_key, "Refreshing an article")
         client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
         try:
             attempted = 0
@@ -149,13 +142,12 @@ async def refresh_articles(
                 for index, tweet_id in enumerate(tweet_ids, start=1):
                     try:
                         result.processed += 1
-                        if pipeline is not None:
-                            pipeline.update_step(
-                                step_key,
-                                completed=index - 1,
-                                activity="Refreshing an article",
-                                counters=_pipeline_outcomes(result),
-                            )
+                        pipeline.update_step(
+                            step_key,
+                            completed=index - 1,
+                            activity="Refreshing an article",
+                            counters=_pipeline_outcomes(result),
+                        )
                         await pacer.wait(attempted=attempted, sleep=sleep)
                         attempted += 1
 
@@ -188,7 +180,7 @@ async def refresh_articles(
                                         f"Article tweet {tweet_id}: {message}",
                                         important=True,
                                     )
-                                    if pipeline is not None
+                                    if pipeline.active
                                     else None
                                 )
                             ),
@@ -203,7 +195,7 @@ async def refresh_articles(
                                     lambda message: pipeline.status(
                                         step_key, message, important=True
                                     )
-                                    if pipeline is not None
+                                    if pipeline.active
                                     else None
                                 )
                             ),
@@ -222,7 +214,7 @@ async def refresh_articles(
                     except Exception as exc:
                         raise_if_storage_exhausted(exc)
                         result.failed += 1
-                        if pipeline is not None:
+                        if pipeline.active:
                             pipeline.issue(
                                 f"Article tweet {tweet_id}: {exc}",
                                 dedupe_key="articles:refresh-failure",
@@ -230,23 +222,21 @@ async def refresh_articles(
                         elif console:
                             console.print(f"article {tweet_id}: failed ({exc})", highlight=False)
                     finally:
-                        if pipeline is not None:
-                            pipeline.update_step(
-                                step_key,
-                                completed=index,
-                                counters=_pipeline_outcomes(result),
-                            )
+                        pipeline.update_step(
+                            step_key,
+                            completed=index,
+                            counters=_pipeline_outcomes(result),
+                        )
                         if progress is not None:
                             progress(index, len(tweet_ids))
         finally:
             await client.aclose()
-        if pipeline is not None:
-            pipeline.complete_step(
-                step_key,
-                _pipeline_outcomes(result, final=True),
-                metrics={
-                    "refreshed": result.updated,
-                    "failed": result.failed,
-                },
-            )
+        pipeline.complete_step(
+            step_key,
+            _pipeline_outcomes(result, final=True),
+            metrics={
+                "refreshed": result.updated,
+                "failed": result.failed,
+            },
+        )
         return result

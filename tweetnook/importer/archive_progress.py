@@ -16,7 +16,7 @@ def archive_status_printer(
     console: Console, prefix: str, *, force: bool = False
 ) -> Callable[[str], None] | None:
     pipeline = current_pipeline()
-    if pipeline is not None:
+    if pipeline.active:
         if force:
             return lambda message: pipeline.detail(prefix, message)
         return None
@@ -24,7 +24,7 @@ def archive_status_printer(
 
 
 def runner_console_for(console: Console, *, force: bool = False) -> Console:
-    if current_pipeline() is not None:
+    if current_pipeline().active:
         return console
     if force or console.is_terminal:
         return console

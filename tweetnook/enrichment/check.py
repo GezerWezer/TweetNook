@@ -416,18 +416,17 @@ async def run_check(
         )
         if enabled
     ]
-    if pipeline is not None:
-        for _, step, title in scopes:
-            pipeline.add_step(step, title, total=1, unit="tweets", rate_unit="tweets/s")
-        if budget > 0:
-            pipeline.add_step(
-                "resurrection",
-                "Unavailable tweets",
-                total=1,
-                unit="tweets",
-                detail=f"due unavailable tweets · {budget}-request ceiling",
-                rate_unit="tweets/s",
-            )
+    for _, step, title in scopes:
+        pipeline.add_step(step, title, total=1, unit="tweets", rate_unit="tweets/s")
+    if budget > 0:
+        pipeline.add_step(
+            "resurrection",
+            "Unavailable tweets",
+            total=1,
+            unit="tweets",
+            detail=f"due unavailable tweets · {budget}-request ceiling",
+            rate_unit="tweets/s",
+        )
     if scopes:
         async with locked_archive_job(config=config, paths=paths, console=console) as job:
             store = job.store
@@ -484,16 +483,14 @@ async def run_check(
                         sleep=sleep,
                     )
                     if not reachable:
-                        if pipeline is not None:
-                            for _, remaining_step, _ in scopes[index + 1 :]:
-                                pipeline.skip_step(remaining_step, "FxTwitter stopped answering")
+                        for _, remaining_step, _ in scopes[index + 1 :]:
+                            pipeline.skip_step(remaining_step, "FxTwitter stopped answering")
                         break
                 for step, count in applier.settle_404s().items():
                     buckets = applier.step_buckets[step]
                     buckets["to recheck"] -= count
                     buckets["unavailable"] += count
-                    if pipeline is not None:
-                        pipeline.revise_step(step, _step_counters(buckets))
+                    pipeline.revise_step(step, _step_counters(buckets))
             finally:
                 await client.aclose()
                 applier.flush()
@@ -529,7 +526,7 @@ async def _check_scope(
     result = applier.result
     buckets: Counter[str] = Counter()
     applier.step_buckets[step] = buckets
-    if pipeline is not None:
+    if pipeline.active:
         pipeline.add_step(step, title, total=max(len(ids), 1), unit="tweets", rate_unit="tweets/s")
         if not ids:
             pipeline.skip_step(step, "nothing due")
@@ -555,7 +552,7 @@ async def _check_scope(
                 if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                     break
                 now = time.monotonic()
-                if pipeline is not None and now - last_progress >= PROGRESS_INTERVAL_SECONDS:
+                if now - last_progress >= PROGRESS_INTERVAL_SECONDS:
                     last_progress = now
                     pipeline.update_step(step, completed=done, counters=_step_counters(buckets))
         if scope == "save":
@@ -571,13 +568,10 @@ async def _check_scope(
                 "the rest of the check waits for the next run."
             )
             result.warnings.append(message)
-            if pipeline is not None:
-                pipeline.fail_step(step, message)
+            pipeline.fail_step(step, message)
             return False
-        if pipeline is not None:
-            pipeline.update_step(step, completed=done, counters=_step_counters(buckets))
-    if pipeline is not None:
-        pipeline.complete_step(step, _step_counters(buckets))
+        pipeline.update_step(step, completed=done, counters=_step_counters(buckets))
+    pipeline.complete_step(step, _step_counters(buckets))
     return True
 
 
@@ -602,8 +596,7 @@ async def _run_detail_fallback(
         auth_bundle = resolve_auth_bundle(config)
     except AuthResolutionError as exc:
         result.warnings.append(f"Skipped login lookups: {exc}")
-        if pipeline is not None:
-            pipeline.skip_step("resurrection", "login credentials being unavailable")
+        pipeline.skip_step("resurrection", "login credentials being unavailable")
         return None
     try:
         return await resurrect_due_tweets(
@@ -618,6 +611,5 @@ async def _run_detail_fallback(
     except AuthExpiredError as exc:
         # FxTwitter results are already saved; an expired login only skips this part.
         result.warnings.append(f"Skipped login lookups: {exc}")
-        if pipeline is not None:
-            pipeline.skip_step("resurrection", "the login having expired")
+        pipeline.skip_step("resurrection", "the login having expired")
         return None

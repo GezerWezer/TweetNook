@@ -225,20 +225,18 @@ async def resurrect_due_tweets(
     pipeline = current_pipeline()
     result = ResurrectionResult()
     step_key = "resurrection"
-    if pipeline is not None:
-        pipeline.add_step(
-            step_key,
-            "Unavailable tweets",
-            total=1,
-            unit="tweets",
-            detail=f"due unavailable tweets · {budget}-request ceiling",
-            rate_unit="tweets/s",
-        )
+    pipeline.add_step(
+        step_key,
+        "Unavailable tweets",
+        total=1,
+        unit="tweets",
+        detail=f"due unavailable tweets · {budget}-request ceiling",
+        rate_unit="tweets/s",
+    )
     if budget <= 0:
         async with locked_archive_job(config=config, paths=paths, console=console) as job:
             result.remaining_due = job.store.count_due_resurrection_tweets()
-        if pipeline is not None:
-            pipeline.skip_step(step_key, "the request budget being zero")
+        pipeline.skip_step(step_key, "the request budget being zero")
         return result
 
     async with locked_archive_job(config=config, paths=paths, console=console) as job:
@@ -246,32 +244,27 @@ async def resurrect_due_tweets(
         candidates = select_weighted_resurrection_candidates(store, budget=budget)
         if not candidates:
             result.remaining_due = store.count_due_resurrection_tweets()
-            if pipeline is not None:
-                pipeline.skip_step(step_key, "no due retryable unavailable tweets")
+            pipeline.skip_step(step_key, "no due retryable unavailable tweets")
             return result
 
-        if pipeline is not None:
-            pipeline.add_step(
-                step_key,
-                "Unavailable tweets",
-                total=len(candidates),
-                unit="tweets",
-                detail=(f"{len(candidates)} due selected"),
-                rate_unit="tweets/s",
-            )
-            pipeline.start_step(
-                step_key,
-                activity=(
-                    "Connecting to Twitter/X"
-                    if auth_bundle is None
-                    else "Preparing recovery checks"
-                ),
-            )
+        pipeline.add_step(
+            step_key,
+            "Unavailable tweets",
+            total=len(candidates),
+            unit="tweets",
+            detail=(f"{len(candidates)} due selected"),
+            rate_unit="tweets/s",
+        )
+        pipeline.start_step(
+            step_key,
+            activity=(
+                "Connecting to Twitter/X" if auth_bundle is None else "Preparing recovery checks"
+            ),
+        )
 
         if auth_bundle is None:
             auth_bundle = resolve_auth_bundle(config)
-            if pipeline is not None:
-                pipeline.status(step_key, "Preparing recovery checks")
+            pipeline.status(step_key, "Preparing recovery checks")
 
         query_store = QueryIdStore(paths)
         query_ids = await resolve_query_ids(
@@ -280,11 +273,10 @@ async def resurrect_due_tweets(
             force_refresh=not query_store.is_fresh(operations=["TweetDetail"]),
             transport=transport,
         )
-        if pipeline is not None:
-            pipeline.status(
-                step_key,
-                "Checking an unavailable tweet",
-            )
+        pipeline.status(
+            step_key,
+            "Checking an unavailable tweet",
+        )
         client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
         queue = deque(candidates)
         queued_ids = {row["tweet_id"] for row in candidates if isinstance(row.get("tweet_id"), str)}
@@ -329,7 +321,7 @@ async def resurrect_due_tweets(
                 processed_ids.add(tweet_id)
                 result.attempted += 1
                 buffered_attempts += 1
-                if pipeline is not None:
+                if pipeline.active:
                     planned_total = min(budget, result.attempted + len(queue))
                     pipeline.update_step(
                         step_key,
@@ -375,7 +367,7 @@ async def resurrect_due_tweets(
                                     important=True,
                                 )
                             )
-                            if pipeline is not None
+                            if pipeline.active
                             else status
                         ),
                         sleep=sleep,
@@ -387,7 +379,7 @@ async def resurrect_due_tweets(
                             if status is not None
                             else (
                                 lambda message: pipeline.status(step_key, message, important=True)
-                                if pipeline is not None
+                                if pipeline.active
                                 else None
                             )
                         ),
@@ -460,12 +452,10 @@ async def resurrect_due_tweets(
                         )
                         result.transient_failures += 1
                         consecutive_focal_absences += 1
-                        if pipeline is not None:
-                            pipeline.issue(
-                                f"Resurrection tweet {tweet_id}: focal tweet absent; "
-                                "retry scheduled",
-                                dedupe_key="resurrection:focal-absence",
-                            )
+                        pipeline.issue(
+                            f"Resurrection tweet {tweet_id}: focal tweet absent; retry scheduled",
+                            dedupe_key="resurrection:focal-absence",
+                        )
                         if consecutive_focal_absences >= MAX_CONSECUTIVE_FOCAL_ABSENCES:
                             absence_error = RepeatedFocalAbsenceError(
                                 f"TweetDetail omitted its requested focal tweet for "
@@ -517,11 +507,10 @@ async def resurrect_due_tweets(
                             cursor=buffer,
                         )
                         result.transient_failures += 1
-                        if pipeline is not None:
-                            pipeline.issue(
-                                f"Resurrection tweet {tweet_id}: {exc}",
-                                dedupe_key="resurrection:api-failure",
-                            )
+                        pipeline.issue(
+                            f"Resurrection tweet {tweet_id}: {exc}",
+                            dedupe_key="resurrection:api-failure",
+                        )
                 except httpx.TransportError as exc:
                     store.update_tweet_object_enrichment(
                         tweet_id,
@@ -535,11 +524,10 @@ async def resurrect_due_tweets(
                         cursor=buffer,
                     )
                     result.transient_failures += 1
-                    if pipeline is not None:
-                        pipeline.issue(
-                            f"Resurrection tweet {tweet_id}: {exc.__class__.__name__}: {exc}",
-                            dedupe_key="resurrection:transport-failure",
-                        )
+                    pipeline.issue(
+                        f"Resurrection tweet {tweet_id}: {exc.__class__.__name__}: {exc}",
+                        dedupe_key="resurrection:transport-failure",
+                    )
                 except (KeyboardInterrupt, asyncio.CancelledError):
                     raise
                 except Exception:
@@ -575,7 +563,7 @@ async def resurrect_due_tweets(
                         if added or persisted_due:
                             result.account_boosts += 1
                         result.account_rows_prioritized += len(added)
-                        if pipeline is not None and added:
+                        if added:
                             pipeline.status(
                                 step_key,
                                 f"Prioritized {len(added)} same-author recovery candidates",
@@ -600,7 +588,7 @@ async def resurrect_due_tweets(
                     store.mark_tweets_resurrection_due(set(added))
                     result.account_probes += len(added)
 
-                if pipeline is not None:
+                if pipeline.active:
                     planned_total = min(budget, result.attempted + len(queue))
                     pipeline.update_step(
                         step_key,
@@ -618,15 +606,14 @@ async def resurrect_due_tweets(
                 flush()
 
         result.remaining_due = store.count_due_resurrection_tweets()
-        if pipeline is not None:
-            pipeline.complete_step(
-                step_key,
-                _pipeline_outcomes(result, final=True),
-                metrics={
-                    "restored": result.resurrected,
-                    "still_unavailable": result.still_unavailable,
-                    "retry_later": result.transient_failures,
-                    "remaining_due": result.remaining_due,
-                },
-            )
+        pipeline.complete_step(
+            step_key,
+            _pipeline_outcomes(result, final=True),
+            metrics={
+                "restored": result.resurrected,
+                "still_unavailable": result.still_unavailable,
+                "retry_later": result.transient_failures,
+                "remaining_due": result.remaining_due,
+            },
+        )
     return result

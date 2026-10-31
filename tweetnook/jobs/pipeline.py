@@ -11,7 +11,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from rich import box
 from rich.cells import cell_len
@@ -116,13 +116,72 @@ SPINNER_FRAMES: dict[str, tuple[str, ...]] = {
 StepState = Literal["pending", "active", "complete", "skipped", "failed"]
 IssueLevel = Literal["warning", "error"]
 _SERVICE_ENV_VARS = ("INVOCATION_ID", "JOURNAL_STREAM")
-_CURRENT_PIPELINE: ContextVar[PipelineReporter | None] = ContextVar(
-    "tweetnook_pipeline", default=None
+
+
+class NullPipeline:
+    """The reporter when no command owns one, so reporting code never has to ask.
+
+    `active` is for the few branches that do different work without a live display, such as
+    printing plain progress instead.
+    """
+
+    active = False
+    run_id = None
+    active_step = None
+    has_final_note = False
+    elapsed = 0.0
+
+    def add_step(self, *_args, **_kwargs) -> None:
+        pass
+
+    def has_step(self, _key: str) -> bool:
+        return False
+
+    def step_state(self, _key: str) -> None:
+        return None
+
+    def start_step(self, *_args, **_kwargs) -> None:
+        pass
+
+    def update_step(self, *_args, **_kwargs) -> None:
+        pass
+
+    def status(self, *_args, **_kwargs) -> None:
+        pass
+
+    def detail(self, *_args, **_kwargs) -> None:
+        pass
+
+    def issue(self, *_args, **_kwargs) -> None:
+        pass
+
+    def complete_step(self, *_args, **_kwargs) -> None:
+        pass
+
+    def revise_step(self, *_args, **_kwargs) -> None:
+        pass
+
+    def skip_step(self, *_args, **_kwargs) -> None:
+        pass
+
+    def fail_step(self, *_args, **_kwargs) -> None:
+        pass
+
+    def finish(self, *_args, **_kwargs) -> None:
+        pass
+
+    def final_note(self, *_args, **_kwargs) -> None:
+        pass
+
+
+NULL_PIPELINE = NullPipeline()
+_CURRENT_PIPELINE: ContextVar[PipelineReporter | NullPipeline] = ContextVar(
+    "tweetnook_pipeline", default=NULL_PIPELINE
 )
 
 
-def current_pipeline() -> PipelineReporter | None:
-    """Return the reporter active for this command lifecycle, if any."""
+def current_pipeline() -> PipelineReporter | NullPipeline:
+    """Return the reporter for this command lifecycle, or one that discards every report."""
 
     return _CURRENT_PIPELINE.get()
 
@@ -271,6 +330,8 @@ class _CapturedPipelineConsole:
 class PipelineReporter:
     """Render one live pipeline or emit bounded plain records for a whole command."""
 
+    active: ClassVar[bool] = True
+
     console: Console
     title: str
     spinner_name: str | None = None
@@ -282,7 +343,7 @@ class PipelineReporter:
     _step_by_key: dict[str, PipelineStep] = field(default_factory=dict, init=False)
     _issue_by_key: dict[str, PipelineIssue] = field(default_factory=dict, init=False)
     _live: Live | None = field(default=None, init=False)
-    _token: Token[PipelineReporter | None] | None = field(default=None, init=False)
+    _token: Token[PipelineReporter | NullPipeline] | None = field(default=None, init=False)
     _finished: bool = field(default=False, init=False)
     _success: bool = field(default=True, init=False)
     _final_summary: str = field(default="", init=False)

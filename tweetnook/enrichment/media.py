@@ -150,17 +150,16 @@ async def download_media(
 ) -> MediaDownloadResult:
     console = console or Console(stderr=True)
     pipeline = current_pipeline()
-    status = None if pipeline is not None else status_printer(console, "media download")
+    status = None if pipeline.active else status_printer(console, "media download")
     step_key = "media"
-    if pipeline is not None:
-        pipeline.add_step(
-            step_key,
-            "Media",
-            total=1,
-            unit="items",
-            detail="pending archived media selected for local download",
-            rate_unit="items/s",
-        )
+    pipeline.add_step(
+        step_key,
+        "Media",
+        total=1,
+        unit="items",
+        detail="pending archived media selected for local download",
+        rate_unit="items/s",
+    )
     async with locked_archive_job(config=config, paths=paths, console=console) as job:
         config = job.config
         paths = job.paths
@@ -178,8 +177,7 @@ async def download_media(
         result = MediaDownloadResult()
         if not rows:
             emit_status(status, "no media items pending download")
-            if pipeline is not None:
-                pipeline.skip_step(step_key, "no media items requiring download")
+            pipeline.skip_step(step_key, "no media items requiring download")
             return result
         filters: list[str] = []
         if photos_only:
@@ -189,7 +187,7 @@ async def download_media(
         filter_suffix = f" ({', '.join(filters)})" if filters else ""
         limit_suffix = "" if limit is None else f" (limit {limit})"
         emit_status(status, f"downloading {len(rows)} media items{filter_suffix}{limit_suffix}")
-        if pipeline is not None:
+        if pipeline.active:
             scope = "pending media items"
             if filters:
                 scope += f" · {', '.join(filters)}"
@@ -230,13 +228,12 @@ async def download_media(
                 for index, row in enumerate(rows, start=1):
                     try:
                         result.processed += 1
-                        if pipeline is not None:
-                            pipeline.update_step(
-                                step_key,
-                                completed=index - 1,
-                                activity=_media_activity(row),
-                                counters=_pipeline_outcomes(result),
-                            )
+                        pipeline.update_step(
+                            step_key,
+                            completed=index - 1,
+                            activity=_media_activity(row),
+                            counters=_pipeline_outcomes(result),
+                        )
                         state = {
                             "local_path": row.get("local_path"),
                             "sha256": row.get("sha256"),
@@ -339,7 +336,7 @@ async def download_media(
                                 )
                             )
                             result.failed += 1
-                            if pipeline is not None:
+                            if pipeline.active:
                                 pipeline.issue(
                                     f"Media {row['row_key']}: {exc}",
                                     dedupe_key="media:download-failure",
@@ -352,24 +349,22 @@ async def download_media(
                         if len(pending_updates) >= _UPDATE_BATCH_SIZE:
                             flush_updates()
                     finally:
-                        if pipeline is not None:
-                            pipeline.update_step(
-                                step_key,
-                                completed=index,
-                                counters=_pipeline_outcomes(result),
-                            )
+                        pipeline.update_step(
+                            step_key,
+                            completed=index,
+                            counters=_pipeline_outcomes(result),
+                        )
                         if progress is not None:
                             progress(index, len(rows))
 
             flush_updates()
-        if pipeline is not None:
-            pipeline.complete_step(
-                step_key,
-                _pipeline_outcomes(result, final=True),
-                metrics={
-                    "downloaded": result.downloaded,
-                    "downloaded_bytes": result.downloaded_bytes,
-                    "failed": result.failed,
-                },
-            )
+        pipeline.complete_step(
+            step_key,
+            _pipeline_outcomes(result, final=True),
+            metrics={
+                "downloaded": result.downloaded,
+                "downloaded_bytes": result.downloaded_bytes,
+                "failed": result.failed,
+            },
+        )
         return result

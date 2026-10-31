@@ -33,7 +33,7 @@ def test_reporter_enter_failure_releases_history_context_and_os_lock(paths, monk
     with pytest.raises(RuntimeError, match="live startup failed"):
         with reporter:
             pytest.fail("body must not run")
-    assert reporting.current_pipeline() is None
+    assert not reporting.current_pipeline().active
     metadata = json.loads((paths.activity_runs_dir / reporter.run_id / "metadata.json").read_text())
     assert metadata["status"] == "failed"
     probe = subprocess.run(

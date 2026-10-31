@@ -11,6 +11,7 @@ from rich.text import Text
 
 from tweetnook.core.exceptions import ProcessLockError
 from tweetnook.jobs.pipeline import (
+    NULL_PIPELINE,
     SPINNER_FRAMES,
     TWITTER_BLUE,
     PipelineReporter,
@@ -307,7 +308,7 @@ def test_reporter_cleans_up_context_and_records_failure() -> None:
             reporter.start_step("bookmarks", activity="Fetching page 1")
             raise RuntimeError("network failed")
 
-    assert current_pipeline() is None
+    assert not current_pipeline().active
     assert reporter._step_by_key["bookmarks"].state == "failed"
     assert [(issue.level, issue.message) for issue in reporter.issues] == [
         ("error", "network failed")
@@ -480,7 +481,28 @@ def test_full_console_does_not_prevent_final_snapshot_or_lock_release(tmp_path):
     final = json.loads(path.read_text())
     assert final["success"] is False
     assert "Free or add disk space" in final["summary"]
-    assert current_pipeline() is None
+    assert not current_pipeline().active
     lock = ProcessLock(tmp_path / "command.lock")
     lock.acquire()
     lock.release()
+
+
+def test_null_pipeline_answers_everything_the_reporter_is_asked() -> None:
+    public = {
+        name
+        for name, member in vars(PipelineReporter).items()
+        if not name.startswith("_") and (callable(member) or isinstance(member, property))
+    }
+    # Live-display access: callers ask for it only after checking has_step or active.
+    public.discard("capture_console")
+    assert public <= set(dir(NULL_PIPELINE))
+
+    assert current_pipeline() is NULL_PIPELINE
+    NULL_PIPELINE.add_step("step", "Step", total=1)
+    NULL_PIPELINE.start_step("step", total=1)
+    NULL_PIPELINE.fail_step("step", "boom", recoverable=True)
+    NULL_PIPELINE.finish("done", success=False)
+    assert NULL_PIPELINE.has_step("step") is False
+    assert NULL_PIPELINE.step_state("step") is None
+    assert NULL_PIPELINE.active_step is None
+    assert NULL_PIPELINE.run_id is None

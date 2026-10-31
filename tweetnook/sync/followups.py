@@ -114,7 +114,7 @@ def _log_embedding_warning(
     console: Console | None, message: str, *, step_key: str | None = None
 ) -> None:
     pipeline = current_pipeline()
-    if pipeline is not None:
+    if pipeline.active:
         if step_key is not None and pipeline.has_step(step_key):
             pipeline.fail_step(step_key, message, recoverable=True)
         else:
@@ -127,7 +127,7 @@ def _log_embedding_warning(
 
 
 def _log_sync_followup(console: Console | None, message: str) -> None:
-    if current_pipeline() is not None:
+    if current_pipeline().active:
         return
     if console is not None:
         console.print(f"sync follow-up: {message}", highlight=False)
@@ -365,7 +365,7 @@ async def run_auto_followups(
     skip_previews = bool(config.replay.url and config.replay.skip_link_previews)
     if plan.enabled and plan.unfurl and skip_previews:
         pipeline = current_pipeline()
-        if pipeline is not None and pipeline.has_step("urls"):
+        if pipeline.has_step("urls"):
             pipeline.skip_step("urls", "link previews being disabled for this replay sync")
         _log_sync_followup(console, "link previews skipped by developer replay setting")
     if plan.enabled and plan.unfurl and not skip_previews:
@@ -413,7 +413,7 @@ async def run_auto_followups(
                 f"tagging: {tagged_count} tagged",
             )
 
-    if current_pipeline() is None:
+    if not current_pipeline().active:
         from tweetnook.jobs.reminders import print_pending_archive_enrichment_reminder
 
         store = open_archive_store(paths, create=False, config=config)

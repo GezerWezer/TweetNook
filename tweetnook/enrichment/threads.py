@@ -94,7 +94,7 @@ def _dedupe_targets(values: list[str]) -> tuple[list[str], int]:
 
 def _log_thread_status(console: Console, tweet_id: str, message: str) -> None:
     pipeline = current_pipeline()
-    if pipeline is not None:
+    if pipeline.active:
         active = pipeline.active_step
         if active is None:
             return
@@ -110,7 +110,7 @@ def _log_thread_status(console: Console, tweet_id: str, message: str) -> None:
 
 def _log_threads(console: Console, message: str) -> None:
     pipeline = current_pipeline()
-    if pipeline is not None:
+    if pipeline.active:
         active = pipeline.active_step
         if active is not None:
             pipeline.status(active.key, message, important=True)
@@ -126,7 +126,7 @@ def _log_scan_progress(
     total: int,
     result: ThreadExpandResult,
 ) -> None:
-    if current_pipeline() is not None:
+    if current_pipeline().active:
         return
     if scanned % _SCAN_PROGRESS_EVERY != 0 and scanned != total:
         return
@@ -414,26 +414,24 @@ async def expand_threads(
     if refresh and not targets:
         raise ConfigError("--refresh requires one or more explicit thread targets.")
     step_key = "threads"
-    if pipeline is not None:
-        pipeline.add_step(
-            step_key,
-            "Threads",
-            total=1,
-            unit="candidates",
-            detail="membership and reachable linked-status candidates",
-            rate_unit="candidates/s",
-        )
-        pipeline.start_step(
-            step_key,
-            activity="Selecting candidates",
-        )
+    pipeline.add_step(
+        step_key,
+        "Threads",
+        total=1,
+        unit="candidates",
+        detail="membership and reachable linked-status candidates",
+        rate_unit="candidates/s",
+    )
+    pipeline.start_step(
+        step_key,
+        activity="Selecting candidates",
+    )
 
     async with locked_archive_job(config=config, paths=paths, console=console) as job:
         store = job.store
         result = ThreadExpandResult()
         if limit is not None and limit <= 0:
-            if pipeline is not None:
-                pipeline.skip_step(step_key, "the requested limit allowing no candidates")
+            pipeline.skip_step(step_key, "the requested limit allowing no candidates")
             return result
         _log_threads(console, "loading archived thread expansion state...")
         expanded_before_run = set(store.list_expanded_thread_target_ids())
@@ -540,36 +538,34 @@ async def expand_threads(
             len(pending_membership_ids) + len(pending_quote_ids) + len(pending_linked_ids)
         )
         if pending_total == 0:
-            if pipeline is not None:
-                pipeline.skip_step(
-                    step_key,
-                    "quote expansion being disabled and no other thread candidates remaining"
-                    if skip_quotes and not targets
-                    else "all thread candidates already being expanded or known",
-                )
+            pipeline.skip_step(
+                step_key,
+                "quote expansion being disabled and no other thread candidates remaining"
+                if skip_quotes and not targets
+                else "all thread candidates already being expanded or known",
+            )
             return result
 
-        if pipeline is not None:
-            pipeline.update_step(
-                step_key,
-                completed=0,
-                total=(min(pending_total, limit) if limit is not None else pending_total),
-                activity=(
-                    "Connecting to Twitter/X"
-                    if auth_bundle is None
-                    else "Preparing conversation lookups"
-                ),
-                counters=(
-                    f"{len(pending_membership_ids)} membership · "
-                    f"{len(pending_quote_ids)} quoted · "
-                    f"{len(pending_linked_ids)} linked · {result.skipped} already known"
-                ),
-                detail=(
-                    f"{len(pending_membership_ids)} membership candidates · "
-                    f"{len(pending_quote_ids)} quoted-status candidates · "
-                    f"{len(pending_linked_ids)} reachable linked-status candidates"
-                ),
-            )
+        pipeline.update_step(
+            step_key,
+            completed=0,
+            total=(min(pending_total, limit) if limit is not None else pending_total),
+            activity=(
+                "Connecting to Twitter/X"
+                if auth_bundle is None
+                else "Preparing conversation lookups"
+            ),
+            counters=(
+                f"{len(pending_membership_ids)} membership · "
+                f"{len(pending_quote_ids)} quoted · "
+                f"{len(pending_linked_ids)} linked · {result.skipped} already known"
+            ),
+            detail=(
+                f"{len(pending_membership_ids)} membership candidates · "
+                f"{len(pending_quote_ids)} quoted-status candidates · "
+                f"{len(pending_linked_ids)} reachable linked-status candidates"
+            ),
+        )
 
         if auth_bundle is None:
             _log_threads(console, "resolving auth bundle")
@@ -607,13 +603,12 @@ async def expand_threads(
                         if attempted_reply_count >= config.sync.reply_linked_limit:
                             continue
                         attempted_reply_count += 1
-                    if pipeline is not None:
-                        pipeline.update_step(
-                            step_key,
-                            completed=min(scanned, selected_total),
-                            activity=f"Fetching {phase} context",
-                            counters=_pipeline_outcomes(result),
-                        )
+                    pipeline.update_step(
+                        step_key,
+                        completed=min(scanned, selected_total),
+                        activity=f"Fetching {phase} context",
+                        counters=_pipeline_outcomes(result),
+                    )
                     await pacer.wait(attempted=result.processed, sleep=sleep)
                     await _try_expand_target(
                         tweet_id=tweet_id,
@@ -630,12 +625,11 @@ async def expand_threads(
                         pacer=pacer,
                     )
                     scanned += 1
-                    if pipeline is not None:
-                        pipeline.update_step(
-                            step_key,
-                            completed=min(scanned, selected_total),
-                            counters=_pipeline_outcomes(result),
-                        )
+                    pipeline.update_step(
+                        step_key,
+                        completed=min(scanned, selected_total),
+                        counters=_pipeline_outcomes(result),
+                    )
                     _log_scan_progress(
                         console,
                         phase=phase,
@@ -646,19 +640,18 @@ async def expand_threads(
         finally:
             await client.aclose()
 
-        if pipeline is not None:
-            pipeline.update_step(
-                step_key,
-                completed=max(scanned, 1),
-                total=max(scanned, 1),
-            )
-            pipeline.complete_step(
-                step_key,
-                _pipeline_outcomes(result, final=True),
-                metrics={
-                    "expanded": result.expanded,
-                    "already_known": result.skipped,
-                    "failed": result.failed,
-                },
-            )
+        pipeline.update_step(
+            step_key,
+            completed=max(scanned, 1),
+            total=max(scanned, 1),
+        )
+        pipeline.complete_step(
+            step_key,
+            _pipeline_outcomes(result, final=True),
+            metrics={
+                "expanded": result.expanded,
+                "already_known": result.skipped,
+                "failed": result.failed,
+            },
+        )
         return result
