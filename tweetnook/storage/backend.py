@@ -85,6 +85,7 @@ class ArchiveStore(
         self._like_capture_pages = {}
         self._indexed_like_order = None
         self._transaction_depth = 0
+        self._transaction_aborted = False
         self._read_only = read_only
         self._has_written = False
         self._warm_cancelled = False

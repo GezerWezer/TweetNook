@@ -37,8 +37,8 @@ class SyncStateMixin(RecordsMixin):
         *,
         updated_at: str | None = None,
     ) -> T:
-        """Read and conditionally replace a counter under one immediate transaction."""
-        with self.transaction():
+        """Commit a conditional counter replacement without an enclosing transaction."""
+        with self.transaction(allow_nested=False):
             value, result = decide(self.metadata_value(key))
             if value is not None:
                 self.conn.execute(

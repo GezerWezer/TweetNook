@@ -42,6 +42,8 @@ Put a new storage operation in the module for its concern, and add a mixin base 
 
 Writable connections use WAL and recursive triggers. Database configuration sets the page-cache and memory-mapping allowances. Shared web connections disable CPython's prepared-statement cache; private read-only connections serve work that needs a reader confined to one thread. Close connections through the store lifecycle.
 
+`transaction()` serializes mutations and nests helpers through savepoints. If SQLite aborts the entire transaction or savepoint rollback fails, further mutations are refused until the outer scope exits, and that scope cannot report success. The original database failure still propagates from the failing helper.
+
 Statistics collect only the requested database facts in one bounded read snapshot, then release it before filesystem measurement and presentation. Collection-only reports avoid health graphs; owner-only access reads archive metadata directly. Overview and collections use the same valid-date bounds and ignore malformed dates. A caller with pending writes borrows its existing transaction without committing or rolling it back.
 
 Random-search and legacy-export SQL callbacks register once at connection creation, before the store is shared. Reads never replace functions while another cursor is active.
@@ -71,11 +73,11 @@ Name record types through `RecordType` from `storage/record_types.py`, in SQL te
 
 Use the row-key helpers in `ArchiveStore`; don't invent identifiers in callers. A canonical tweet object and its memberships are different facts. Deleting or enriching context must not manufacture a bookmark, like, or authored membership.
 
-`metadata_value(key)` reads a durable value. `reserve_metadata_counter(key, decide)` runs its read and optional replacement inside one immediate transaction; quota policy stays in tagging and never opens or rolls back a connection transaction itself.
+`metadata_value(key)` reads a durable value. `reserve_metadata_counter(key, decide)` runs its read and optional replacement inside one immediate transaction and commits before returning. It refuses enclosing transactions so quota reservations cannot be lost after a request is dispatched; quota policy stays in tagging and never opens or rolls back a connection transaction itself.
 
 ## Merge rules
 
-`flush(buffer)` owns complete-record persistence and clears the batch only after a successful transaction. A failed flush keeps the batch available for retry; feature code does not merge or clear its dictionaries. The low-level `merge_rows` operation replaces complete records, setting omitted columns to NULL.
+`flush(buffer)` owns complete-record persistence and clears the batch only after a successful commit. A nonempty flush refuses any enclosing transaction, keeping its rows available for a standalone retry. A failed flush keeps the batch available for retry; feature code does not merge or clear its dictionaries. The low-level `merge_rows` operation replaces complete records, setting omitted columns to NULL and participating in an enclosing transaction when present.
 
 `ingest_import_batch(observations, membership=...)` owns import row construction, key prefetch, sparse-like placeholder gating and completion. Importers keep payload adaptation, chunk sizing, counts and progress. `current_objects(ids, cursor=...)` reads canonical state with pending batch visibility; checks and resurrection use storage-owned flushes.
 

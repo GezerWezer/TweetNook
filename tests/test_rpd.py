@@ -283,3 +283,40 @@ def test_reservation_rejects_foreign_transaction_without_losing_its_work(tmp_pat
         store.conn.rollback()
     finally:
         store.close()
+
+
+@pytest.mark.parametrize("write", [False, True])
+def test_reservation_rejects_owned_transactions_and_commits_before_return(tmp_path, write):
+    path = tmp_path / "archive.db"
+    store = _archive_store(path)
+    try:
+        with store.transaction(write=write):
+            store.update_media_tags("unrelated", ["Keep"])
+            with pytest.raises(RuntimeError, match="outermost transaction"):
+                _reserve(store, limit=1)
+        assert store.get_tag_counts() == [{"tag": "Keep", "count": 1}]
+        assert _reserve(store, limit=1).allowed
+        reader = _archive_store(path)
+        try:
+            status = get_rpd_status(
+                reader,
+                model="gemini-3.5-flash",
+                limit=1,
+                now=datetime(2026, 7, 31, 12, tzinfo=UTC),
+            )
+            assert (status.used, status.remaining) == (1, 0)
+            assert not _reserve(reader, limit=1).allowed
+        finally:
+            reader.close()
+        with pytest.raises(ValueError, match="later failure"):
+            with store.transaction():
+                store.update_media_tags("failed", ["Lose"])
+                raise ValueError("later failure")
+    finally:
+        store.close()
+    reopened = _archive_store(path)
+    try:
+        assert not _reserve(reopened, limit=1).allowed
+        assert reopened.get_tag_counts() == [{"tag": "Keep", "count": 1}]
+    finally:
+        reopened.close()

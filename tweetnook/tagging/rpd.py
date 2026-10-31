@@ -126,7 +126,8 @@ def reserve_rpd_request(
 
     Reservations are committed before the caller dispatches the request and are never
     refunded. This deliberately favors a conservative overcount if the process exits
-    between reserving and sending the request.
+    between reserving and sending the request. An enclosing transaction is rejected
+    so dispatch never relies on a provisional reservation.
     """
     _validate_limit(limit)
     normalized_model = normalize_model_name(model)

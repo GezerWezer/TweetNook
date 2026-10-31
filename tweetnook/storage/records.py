@@ -107,11 +107,12 @@ class RecordsMixin(ConnectionMixin):
         self._merge_records(rows)
 
     def flush(self, buffer: PageBuffer) -> int:
-        """Persist a batch and clear it only after its transaction succeeds."""
+        """Commit a batch without an enclosing transaction, then clear it."""
         if not buffer.records:
             return 0
         pending = len(buffer.records)
-        self._merge_records(list(buffer.records.values()))
+        with self.transaction(allow_nested=False):
+            self._merge_records(list(buffer.records.values()))
         buffer.records.clear()
         buffer.existing_rows.clear()
         return pending

@@ -119,6 +119,62 @@ def test_nested_helpers_rollback_only_their_savepoint(tmp_path):
         store.close()
 
 
+@pytest.mark.parametrize("retry_write", [False, True])
+def test_sqlite_rollback_aborts_the_outer_scope_until_it_exits(tmp_path, retry_write):
+    path = tmp_path / "archive.db"
+    store = ArchiveStore(path, create=True)
+    store.conn.execute(
+        "CREATE TEMP TRIGGER abort_transaction BEFORE INSERT ON archive "
+        "WHEN new.row_key = 'tweet_hidden:abort' AND EXISTS "
+        "(SELECT 1 FROM archive WHERE row_key = 'media_tag:before') "
+        "BEGIN SELECT RAISE(ROLLBACK, 'whole transaction'); END"
+    )
+    try:
+        with pytest.raises(RuntimeError, match="transaction.*aborted"):
+            with store.transaction():
+                store.update_media_tags("before", ["Lose"])
+                with pytest.raises(sqlite3.IntegrityError, match="whole transaction"):
+                    store.set_tweet_hidden("abort", True)
+                if retry_write:
+                    with pytest.raises(RuntimeError, match="transaction.*aborted"):
+                        store.update_media_tags("after", ["Lose"])
+        assert store.get_tag_counts() == []
+        store.update_media_tags("fresh", ["Keep"])
+    finally:
+        store.close()
+    reopened = ArchiveStore(path, create=False)
+    try:
+        assert reopened.get_tag_counts() == [{"tag": "Keep", "count": 1}]
+    finally:
+        reopened.close()
+
+
+def test_failed_savepoint_rollback_cannot_commit_the_failed_helper(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+
+    def reject_savepoint_rollback(action, operation, _name, _database, _source):
+        if action == sqlite3.SQLITE_SAVEPOINT and operation == "ROLLBACK":
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    store.conn.set_authorizer(reject_savepoint_rollback)
+    try:
+        with pytest.raises(RuntimeError, match="transaction.*aborted"):
+            with store.transaction():
+                store.update_media_tags("before", ["Lose"])
+                with pytest.raises(ValueError, match="original failure"):
+                    with store.transaction():
+                        store.update_media_tags("failed", ["Lose"])
+                        raise ValueError("original failure")
+                with pytest.raises(RuntimeError, match="transaction.*aborted"):
+                    store.update_media_tags("after", ["Lose"])
+        assert store.get_tag_counts() == []
+        store.update_media_tags("fresh", ["Keep"])
+        assert store.get_tag_counts() == [{"tag": "Keep", "count": 1}]
+    finally:
+        store.close()
+
+
 def test_global_tag_selection_and_write_share_the_transaction_lock(tmp_path):
     store = ArchiveStore(tmp_path / "archive.db", create=True)
     selected, release, edited, started = Event(), Event(), Event(), Event()

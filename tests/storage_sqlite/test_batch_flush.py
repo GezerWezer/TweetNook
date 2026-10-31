@@ -8,6 +8,41 @@ from tweetnook.storage.ingestion import ImportObservation
 from tweetnook.storage.records import PageBuffer
 
 
+@pytest.mark.parametrize("write", [False, True])
+def test_flush_rejects_an_enclosing_transaction_and_keeps_the_batch(tmp_path, write):
+    path = tmp_path / "archive.db"
+    store = ArchiveStore(path, create=True)
+    batch = PageBuffer()
+    tweet = TimelineTweet(
+        tweet_id="42",
+        text="saved",
+        author_id=None,
+        author_username=None,
+        author_display_name=None,
+        created_at=None,
+        sort_index=None,
+        raw_json={"rest_id": "42", "legacy": {"full_text": "saved"}},
+    )
+    store.persist_tweet_detail(tweet=tweet, raw_json={"synthetic": True}, cursor=batch)
+    try:
+        with store.transaction(write=write):
+            store.update_media_tags("unrelated", ["Keep"])
+            with pytest.raises(RuntimeError, match="outermost transaction"):
+                store.flush(batch)
+            assert store.current_objects(["42"]) == {}
+        assert store.get_tag_counts() == [{"tag": "Keep", "count": 1}]
+        assert store.flush(batch) == 2
+        assert store.flush(batch) == 0
+    finally:
+        store.close()
+    reopened = ArchiveStore(path, create=False)
+    try:
+        assert reopened.current_objects(["42"])["42"]["text"] == "saved"
+        assert reopened.counts()["raw_captures"] == 1
+    finally:
+        reopened.close()
+
+
 def test_failed_flush_retains_the_batch_and_rolls_back_its_real_first_write(tmp_path):
     store = ArchiveStore(tmp_path / "archive.db", create=True)
     batch = PageBuffer()

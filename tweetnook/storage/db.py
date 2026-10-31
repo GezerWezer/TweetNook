@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterator, Sequence
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
@@ -50,22 +50,29 @@ class ConnectionMixin:
     _like_capture_pages: dict[tuple[str, str | None], PageObservations | None]
     _indexed_like_order: LikeOrder | None
     _transaction_depth: int
+    _transaction_aborted: bool
     _read_only: bool
     _has_written: bool
     _count_cache: dict[str, tuple[int, int]]
     _search_count_cache: dict[tuple, tuple[tuple[int, int], int]]
 
     @contextmanager
-    def transaction(self, *, write: bool = True) -> Iterator[None]:
+    def transaction(self, *, write: bool = True, allow_nested: bool = True) -> Iterator[None]:
         """Own one serialized transaction, nesting store helpers by savepoint.
 
         A foreign transaction belongs to its caller: refusing it must never commit
-        or roll back that caller's pending work.
+        or roll back that caller's pending work. Operations that require a durable
+        result before returning disallow nesting.
         """
         with self._transaction_lock:
             nested = self._transaction_depth > 0
+            if nested and (self._transaction_aborted or not self.conn.in_transaction):
+                self._transaction_aborted = True
+                raise RuntimeError("Archive transaction was aborted")
             if not nested and self.conn.in_transaction:
                 raise RuntimeError("Cannot enter a foreign transaction")
+            if nested and not allow_nested:
+                raise RuntimeError("Operation requires an outermost transaction")
             if write and self._read_only:
                 raise RuntimeError("Cannot write through a read-only store")
             savepoint = f"store_{self._transaction_depth}"
@@ -76,6 +83,8 @@ class ConnectionMixin:
             self._transaction_depth += 1
             try:
                 yield
+                if self._transaction_aborted or not self.conn.in_transaction:
+                    raise RuntimeError("Archive transaction was aborted")
                 if nested:
                     self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
                 else:
@@ -83,16 +92,24 @@ class ConnectionMixin:
                     if write and self.conn.total_changes != before:
                         self._has_written = True
             except BaseException:
+                # SQLite can abort the whole transaction, including every savepoint.
+                # A caught error must not let a sibling helper commit new work early.
+                if nested and not self.conn.in_transaction:
+                    self._transaction_aborted = True
                 if self.conn.in_transaction:
-                    with suppress(sqlite3.Error):
+                    try:
                         if nested:
                             self.conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
                             self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
                         else:
                             self.conn.rollback()
+                    except sqlite3.Error:
+                        self._transaction_aborted = True
                 raise
             finally:
                 self._transaction_depth -= 1
+                if not nested:
+                    self._transaction_aborted = False
 
     def cache_revision(self, scope: str) -> int:
         return int(
