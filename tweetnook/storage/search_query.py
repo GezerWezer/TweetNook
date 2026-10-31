@@ -109,6 +109,7 @@ class SearchClause:
     value: str
     key: str | None = None
     negated: bool = False
+    numeric_value: int | float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,7 +210,7 @@ def _strip_quotes(value: str) -> str:
     return value
 
 
-def _validate_filter(key: str, value: str) -> None:
+def _validate_filter(key: str, value: str) -> int | float | None:
     if key not in _FILTER_KEYS:
         raise SearchQueryError(f"Unsupported search filter: {key}:")
     if not value:
@@ -224,9 +225,16 @@ def _validate_filter(key: str, value: str) -> None:
         raise SearchQueryError(f"Search filter {key}: expects YYYY-MM-DD.")
     if key in _NUMERIC_FILTERS:
         try:
-            float(value) if key.endswith("_time") else int(value)
+            number = float(value) if key.endswith("_time") else int(value)
         except ValueError as exc:
             raise SearchQueryError(f"Search filter {key}: expects a number.") from exc
+        if isinstance(number, float):
+            if not math.isfinite(number):
+                raise SearchQueryError(f"Search filter {key}: expects a finite timestamp.")
+        elif not -(2**63) <= number < 2**63:
+            raise SearchQueryError(f"Search filter {key}: expects a signed 64-bit integer.")
+        return number
+    return None
 
 
 def parse_search_query(query: str | None) -> ParsedSearchQuery:
@@ -266,12 +274,14 @@ def parse_search_query(query: str | None) -> ParsedSearchQuery:
             key, raw_value = filter_match.groups()
             key = key.lower()
             value = _strip_quotes(raw_value).lower()
-            _validate_filter(key, value)
-            clause = SearchClause("filter", value, key=key, negated=negated)
+            numeric_value = _validate_filter(key, value)
+            clause = SearchClause(
+                "filter", value, key=key, negated=negated, numeric_value=numeric_value
+            )
         elif token.startswith("#") and len(token) > 1:
             clause = SearchClause("filter", token[1:].lower(), key="hashtag", negated=negated)
         else:
-            if not token:
+            if not _strip_quotes(token).strip():
                 raise SearchQueryError("Search terms cannot be empty.")
             clause = SearchClause("text", token, negated=negated)
 
@@ -356,7 +366,9 @@ def _negate(clause: Clause) -> Clause:
     return Clause(f"NOT (COALESCE(({clause.sql}), 0))", clause.params)
 
 
-def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> Clause | None:
+def _normalized_filter_expr(
+    key: str, value: str, *, negated: bool = False, numeric_value: int | float | None = None
+) -> Clause | None:
     """Translate filters backed by archive columns or JSON into SQLite predicates."""
     condition = None
     related_index = "idx_archive_tweet_id"
@@ -421,13 +433,13 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> C
     elif key == "mentions":
         expression = _fact_list_contains("mentions", value.replace("@", ""))
     elif key in {"since", "since_time", "until", "until_time"}:
-        boundary = _parse_twitter_date(value) if key in {"since", "until"} else float(value)
+        boundary = _parse_twitter_date(value) if key in {"since", "until"} else numeric_value
         comparison = ">=" if key in {"since", "since_time"} else "<"
-        expression = Clause(f"created_at_ts {comparison} ?", (int(boundary),))
+        expression = Clause(f"created_at_ts {comparison} ?", (boundary,))
     elif key == "since_id":
-        expression = Clause("CAST(archive.tweet_id AS INTEGER) > ?", (int(value),))
+        expression = Clause("CAST(archive.tweet_id AS INTEGER) > ?", (numeric_value,))
     elif key == "max_id":
-        expression = Clause("CAST(archive.tweet_id AS INTEGER) <= ?", (int(value),))
+        expression = Clause("CAST(archive.tweet_id AS INTEGER) <= ?", (numeric_value,))
     elif (key, value) in {("is", "reply"), ("filter", "replies")}:
         expression = Clause(_fact("is_reply"))
     elif (key, value) in {("is", "quote"), ("filter", "quote")}:
@@ -458,7 +470,7 @@ def _normalized_filter_expr(key: str, value: str, *, negated: bool = False) -> C
             "min_faves": "favorite_count",
             "min_replies": "reply_count",
         }[key]
-        expression = Clause(f"{_fact(count_field)} >= ?", (int(value),))
+        expression = Clause(f"{_fact(count_field)} >= ?", (numeric_value,))
     elif key == "conversation_id":
         expression = Clause("conversation_id = ?", (value,))
     elif key == "quoted_tweet_id":
@@ -552,7 +564,10 @@ def _compile_tweet_query(parsed: ParsedSearchQuery) -> tuple[tuple, bool, bool]:
                 )
                 continue
             expression = _normalized_filter_expr(
-                str(clause.key), clause.value, negated=clause.negated
+                str(clause.key),
+                clause.value,
+                negated=clause.negated,
+                numeric_value=clause.numeric_value,
             )
             if expression is None:
                 raise SearchQueryError(f"Unsupported search filter: {clause.key}:")

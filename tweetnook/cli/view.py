@@ -31,12 +31,12 @@ view_app = typer.Typer(no_args_is_help=True, help="Render archived tweets in the
 SEARCH_TYPE_HELP = "Comma-delimited search result types: post (default), article."
 SEARCH_COLLECTION_HELP = "Comma-delimited collections: bookmark, like, tweet."
 SEARCH_SORT_HELP = "Search result sort: relevance, newest, oldest."
-VIEW_LIMIT_HELP = "Maximum number of rows to display."
+VIEW_LIMIT_HELP = "Maximum number of rows to display. The limit must be at least 1."
 VIEW_SORT_HELP = "Display order: newest or oldest."
 EXPORT_COLLECTION_HELP = "Collection to export: bookmarks, likes, tweets, or all."
 EXPORT_OUT_HELP = "Destination file path. Defaults to the exports/ directory."
 SEARCH_QUERY_HELP = "Search query text."
-SEARCH_LIMIT_HELP = "Maximum number of results to return."
+SEARCH_LIMIT_HELP = "Maximum number of results to return. The limit must be at least 1."
 # Keep the user-facing flag as --type, but map it onto internal search-result kinds so
 # search code does not collide with storage-level record_type/type terminology.
 SEARCH_TYPE_ALIASES = {
@@ -49,12 +49,14 @@ SEARCH_SORT_OPTION = Annotated[
     Literal["relevance", "newest", "oldest"],
     typer.Option("--sort", help=SEARCH_SORT_HELP),
 ]
-VIEW_LIMIT_OPTION = Annotated[int, typer.Option("--limit", help=VIEW_LIMIT_HELP)]
-VIEW_SORT_OPTION = Annotated[str, typer.Option("--sort", help=VIEW_SORT_HELP)]
+VIEW_LIMIT_OPTION = Annotated[int, typer.Option("--limit", min=1, help=VIEW_LIMIT_HELP)]
+VIEW_SORT_OPTION = Annotated[
+    Literal["newest", "oldest"], typer.Option("--sort", help=VIEW_SORT_HELP)
+]
 EXPORT_COLLECTION_OPTION = Annotated[str, typer.Option("--collection", help=EXPORT_COLLECTION_HELP)]
 EXPORT_OUT_OPTION = Annotated[Path | None, typer.Option("--out", help=EXPORT_OUT_HELP)]
 SEARCH_QUERY_ARGUMENT = Annotated[str, typer.Argument(help=SEARCH_QUERY_HELP)]
-SEARCH_LIMIT_OPTION = Annotated[int, typer.Option("--limit", help=SEARCH_LIMIT_HELP)]
+SEARCH_LIMIT_OPTION = Annotated[int, typer.Option("--limit", min=1, help=SEARCH_LIMIT_HELP)]
 
 
 def _parse_search_types(value: str | None, console: Console) -> set[str] | None:

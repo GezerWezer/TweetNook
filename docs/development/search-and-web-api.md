@@ -136,6 +136,12 @@ Chronological feed cursors seek through indexed date/sort/ID boundaries; liked-o
 
 Text results can omit totals/pages while `/api/tweets/count` computes exact deduplicated matches on a private reader. Filter-only/feed totals can be returned immediately. Positive text drives relevance by default; filter-only queries default to newest. Hidden exclusion is relaxed when any `is:hidden` clause is present, then the compiler evaluates its positive/negative/OR predicate normally.
 
+Numeric query filters validate once during parsing. ID and engagement bounds must fit SQLite's signed 64-bit integer domain. Unix timestamp bounds must be finite and retain fractional seconds in comparisons. Invalid numeric clauses produce `SearchQueryError` and HTTP 400 for both list and count endpoints.
+
+Quoted text must contain a non-whitespace character. Empty phrases, including negated and OR alternatives, are rejected during parsing with `SearchQueryError` and HTTP 400 instead of reaching full-text execution.
+
+CLI `search` and `view` require positive limits, and `view` accepts only `newest` or `oldest` sorting. Invalid options fail during CLI parsing before archive opening or upgrades. Storage export readers retain their separate zero-limit contract for direct callers.
+
 Article search uses the shared query parser and matches saved Article text in Python. It rejects structured post filters, selects collection memberships and excludes hidden posts before limiting results. Article dates and relevance are sorted across matching candidates before the result limit is applied.
 
 Storage resolves one ancestor chain in directional lookup order, and detail assembly loads and renders that same chain. It walks up to fifty parents with cycle protection and up to 250 descendant replies with indexed breadth-first frontier reads. Replies expose flattened descendant metadata under `op_replies`, plus `thread_depth` and `parent_tweet_id`. Mention-only direct replies below five likes can be placed in `other_children`; media, links, quotes, substantive text, and saved branches retain primary visibility.
