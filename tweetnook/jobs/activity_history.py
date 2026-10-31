@@ -377,7 +377,8 @@ def _worker_disappeared(metadata: dict[str, Any]) -> bool:
     return False
 
 
-def list_runs(data_dir: Path, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+def list_runs(data_dir: Path, *, limit: int | None = 50, offset: int = 0) -> list[dict[str, Any]]:
+    """List newest-started runs; ``limit=None`` selects all retained history."""
     root = runs_root(data_dir)
     if not root.is_dir():
         return []
@@ -392,7 +393,7 @@ def list_runs(data_dir: Path, *, limit: int = 50, offset: int = 0) -> list[dict[
         key=lambda item: (item.get("started_at") or 0, item.get("run_id", "")),
         reverse=True,
     )
-    return records[offset : offset + limit]
+    return records[offset:] if limit is None else records[offset : offset + limit]
 
 
 def latest_finished_snapshot(
@@ -401,7 +402,7 @@ def latest_finished_snapshot(
     title: str | None = None,
     titles: set[str] | None = None,
 ) -> dict[str, Any] | None:
-    for record in list_runs(data_dir, limit=25):
+    for record in list_runs(data_dir, limit=None):
         if record.get("status") in {"starting", "running"}:
             continue
         if title is not None and record.get("title") != title:
@@ -457,14 +458,16 @@ def read_run_log(data_dir: Path, run_id: str, *, max_bytes: int = 2_000_000) -> 
     candidates = (run_dir / "console.log", run_dir / "output.log")
     for path in candidates:
         try:
-            data = path.read_bytes()
+            with path.open("rb") as handle:
+                size = handle.seek(0, os.SEEK_END)
+                handle.seek(max(0, size - max_bytes))
+                data = handle.read(max_bytes)
         except OSError:
             continue
         if not data:
             continue
         prefix = ""
-        if len(data) > max_bytes:
-            data = data[-max_bytes:]
+        if size > max_bytes:
             prefix = "[earlier log output truncated]\n"
         return (prefix + data.decode("utf-8", errors="replace")).strip()
     return ""

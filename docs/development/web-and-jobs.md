@@ -127,7 +127,7 @@ Text/API responses use gzip when appropriate, while media/avatar paths bypass it
 
 ## Run files and timeouts
 
-A run directory can contain `metadata.json`, `events.jsonl`, `output.log`, worker `console.log`, and `final.json`. The current `activity-status.json` snapshot uses atomic replacement. Log retrieval prefers worker console output and bounds it to the last 2,000,000 bytes. Retention skips active runs.
+A run directory can contain `metadata.json`, `events.jsonl`, `output.log`, worker `console.log`, and `final.json`. The current `activity-status.json` snapshot uses atomic replacement. Log retrieval prefers worker console output and bounds it to the last 2,000,000 bytes, seeking to the tail before reading the full-log response. Retention skips active runs. Latest matching outcomes, catalog job results and the weekly run count use all retained history, independently of Activity pagination. The weekly count includes retained starts within the last seven days.
 
 Stop sends SIGINT to owned process groups, or the PID of discovered CLI activity. Shutdown waits for cooperative interruption, then escalates to SIGTERM and SIGKILL if needed. Timeout constants in `jobs/supervisor.py` leave the personal server and systemd enough time to finish worker shutdown.
 

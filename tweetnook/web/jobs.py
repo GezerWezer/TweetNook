@@ -399,7 +399,7 @@ def jobs_payload(
     """
 
     last: dict[str, dict[str, Any]] = {}
-    runs = list_runs(data_dir, limit=200) if data_dir is not None else []
+    runs = list_runs(data_dir, limit=None) if data_dir is not None else []
     week_ago = time.time() - 7 * 86400
     for run in runs:
         job = JOBS_BY_TITLE.get(str(run.get("title") or ""))
