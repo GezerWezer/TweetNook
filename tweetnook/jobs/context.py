@@ -84,30 +84,31 @@ def archive_job(
 
     hold_lock is for read-only work that runs beside other jobs, such as a prune preview.
     """
-    config, paths = resolve_job_context(config=config, paths=paths)
-    lock = ProcessLock(paths.lock_file)
-    if hold_lock:
-        lock.acquire()
     try:
-        store = open_job_store(
-            paths,
-            create=create,
-            config=config,
-            console=console or Console(stderr=True),
-        )
-        if store is None:
-            raise ArchiveNotFoundError("No local archive found.")
+        config, paths = resolve_job_context(config=config, paths=paths)
+        lock = ProcessLock(paths.lock_file)
         try:
-            yield LockedArchiveJob(config=config, paths=paths, store=store)
-        except BaseException:
-            close_after_failure(store)
-            raise
-        store.close()
+            if hold_lock:
+                lock.acquire()
+            store = open_job_store(
+                paths,
+                create=create,
+                config=config,
+                console=console or Console(stderr=True),
+            )
+            if store is None:
+                raise ArchiveNotFoundError("No local archive found.")
+            try:
+                yield LockedArchiveJob(config=config, paths=paths, store=store)
+            except BaseException:
+                close_after_failure(store)
+                raise
+            store.close()
+        finally:
+            lock.release()
     except BaseException as exc:
         raise_if_storage_exhausted(exc, recovery=storage_recovery)
         raise
-    finally:
-        lock.release()
 
 
 @asynccontextmanager

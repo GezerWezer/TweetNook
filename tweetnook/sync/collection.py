@@ -23,12 +23,13 @@ from tweetnook.client.timelines import (
 from tweetnook.config import AppConfig, XDGPaths, ensure_paths, load_config
 from tweetnook.core.exceptions import (
     APIResponseError,
+    ArchiveNotFoundError,
     AuthResolutionError,
     ConfigError,
     TweetNookError,
 )
 from tweetnook.core.timeline_parsing import TimelineTweet, parse_timeline_response
-from tweetnook.jobs.context import locked_archive_job, open_job_store
+from tweetnook.jobs.context import archive_job, locked_archive_job
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
@@ -161,18 +162,18 @@ async def run_preflight(
             activity="Checking archive ownership",
             counters="Signed in",
         )
-        existing_store = open_job_store(paths, create=False, config=config, console=console)
-        if existing_store is not None:
-            try:
-                existing_owner = existing_store.get_archive_owner_id()
+        try:
+            with archive_job(config=config, paths=paths, console=console, hold_lock=False) as job:
+                existing_owner = job.store.get_archive_owner_id()
                 if existing_owner and auth_bundle.user_id and existing_owner != auth_bundle.user_id:
                     raise LocalPreflightError(
                         f"Local archive belongs to Twitter/X user {existing_owner}, but current "
                         "auth resolved "
                         f"{auth_bundle.user_id}."
                     )
-            finally:
-                existing_store.close()
+        except ArchiveNotFoundError:
+            # A first sync creates the archive after its remote probes have passed.
+            pass
         pipeline.update_step(
             step_key,
             completed=2,

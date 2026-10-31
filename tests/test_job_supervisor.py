@@ -11,7 +11,7 @@ import pytest
 
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.locking import ProcessLock
-from tweetnook.jobs.activity_history import read_run
+from tweetnook.jobs.activity_history import new_run_id, read_run
 from tweetnook.jobs.outcome import Outcome
 from tweetnook.jobs.supervisor import JobCompletion, JobConflictError, JobSupervisor
 
@@ -102,6 +102,83 @@ def test_supervisor_stops_the_worker_process_group(tmp_path, monkeypatch) -> Non
             break
         time.sleep(0.01)
     assert metadata["status"] == "stopped"
+
+
+@pytest.mark.parametrize(
+    ("first_outcome", "first_exit", "second_outcome", "second_exit"),
+    [("succeeded", 0, "failed", 2), ("failed", 2, "succeeded", 0)],
+)
+def test_overlapping_completions_keep_their_own_outcomes(
+    tmp_path, monkeypatch, first_outcome, first_exit, second_outcome, second_exit
+):
+    import tweetnook.jobs.supervisor as supervision
+
+    paths = _paths(tmp_path)
+    first_id, second_id = new_run_id(), new_run_id()
+    first_at_cleanup, release_first, second_callback = (threading.Event() for _ in range(3))
+    callbacks = []
+
+    class Process:
+        def __init__(self, pid, exit_code):
+            self.pid = pid
+            self.exit_code = exit_code
+            self.done = threading.Event()
+
+        def wait(self, timeout=None):
+            assert self.done.wait(5)
+            return self.exit_code
+
+    first_process = Process(20001, first_exit)
+    second_process = Process(20002, second_exit)
+    supplied = iter([first_process, second_process])
+    monkeypatch.setattr(supervision.subprocess, "Popen", lambda *a, **kw: next(supplied))
+    original_cleanup = supervision.cleanup_runs
+
+    def cleanup(*args, **kwargs):
+        if threading.current_thread().name == "tweetnook-job-first":
+            first_at_cleanup.set()
+            assert release_first.wait(5)
+        return original_cleanup(*args, **kwargs)
+
+    monkeypatch.setattr(supervision, "cleanup_runs", cleanup)
+
+    def complete(completion):
+        callbacks.append(completion)
+        if completion.run_id != first_id:
+            second_callback.set()
+
+    supervisor = JobSupervisor(paths, AppConfig(), on_complete=complete)
+    monitors = []
+    try:
+        for kind, run_id, outcome, process in (
+            ("first", first_id, first_outcome, first_process),
+            ("second", second_id, second_outcome, second_process),
+        ):
+            supervisor.start(kind=kind, cli_args=[kind], origin="web", title=kind, run_id=run_id)
+            monitors.append(supervisor._monitor_thread)
+            (paths.activity_runs_dir / run_id / "final.json").write_text(
+                json.dumps({"outcome": outcome, "success": outcome == "succeeded", "steps": []})
+            )
+            process.done.set()
+            if kind == "first":
+                assert first_at_cleanup.wait(2)
+                assert not supervisor.active
+            else:
+                assert second_callback.wait(2)
+    finally:
+        release_first.set()
+        first_process.done.set()
+        second_process.done.set()
+        for monitor in monitors:
+            monitor.join(5)
+            assert not monitor.is_alive()
+
+    assert callbacks == [
+        JobCompletion(second_id, second_exit, Outcome(second_outcome)),
+        JobCompletion(first_id, first_exit, Outcome(first_outcome)),
+    ]
+    assert read_run(paths.data_dir, first_id)["snapshot"]["outcome"] == first_outcome
+    assert supervisor.last_result["run_id"] == second_id
 
 
 def test_supervisor_rejects_a_live_external_pipeline(tmp_path, monkeypatch) -> None:

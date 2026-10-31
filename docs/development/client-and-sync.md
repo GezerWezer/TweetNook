@@ -8,6 +8,8 @@ Credentials come only from explicit config or environment values. `auth_token` a
 
 Preflight validates local configuration, account ownership, and the relevant remote operation before starting a collection. `auth check` probes bookmarks, likes, and tweets and reports local versus remote readiness. Use mocked transports in tests; never put a developer's cookies into a fixture.
 
+The ownership check uses `archive_job(hold_lock=False)` for shared open, migration-report, close and storage-failure handling. Remote probes run after that store closes; a missing archive is created only after preflight succeeds.
+
 ## Query IDs and feature flags
 
 Operation IDs are discovered from X's published web bundles and stored under the cache directory. `QueryIdStore` merges cached/discovered information with known defaults. `auth refresh-ids` forces discovery. Stale IDs and feature-flag drift have explicit exceptions so callers can refresh or report a useful error without treating a malformed response as an empty timeline.

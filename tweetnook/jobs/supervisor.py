@@ -423,6 +423,12 @@ class JobSupervisor:
                     self._origin = None
                     self._stopping = False
                     self._console_handle = None
+            # A new worker may finish during history cleanup below.
+            completion = JobCompletion(
+                run_id=run_id,
+                exit_code=exit_code,
+                outcome=recorded_outcome(self.last_result["snapshot"]),
+            )
         if handle is not None:
             try:
                 handle.close()
@@ -439,13 +445,7 @@ class JobSupervisor:
         finally:
             try:
                 if self.on_complete is not None:
-                    self.on_complete(
-                        JobCompletion(
-                            run_id=run_id,
-                            exit_code=exit_code,
-                            outcome=recorded_outcome(self.last_result["snapshot"]),
-                        )
-                    )
+                    self.on_complete(completion)
             finally:
                 self._start_next()
 

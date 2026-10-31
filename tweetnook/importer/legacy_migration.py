@@ -13,6 +13,7 @@ from tweetnook.config import load_config
 from tweetnook.core.exceptions import ProcessLockError
 from tweetnook.jobs.context import archive_job
 from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.storage import ArchiveStore
 
 WORKER_END_OF_TABLE = 42
@@ -301,6 +302,7 @@ def _rebuild_fts(store: ArchiveStore) -> bool:
         store.rebuild_search_index()
         return True
     except Exception as error:
+        raise_if_storage_exhausted(error)
         message = f"Failed to rebuild FTS index: {error}"
         if pipeline.active:
             pipeline.issue(message, level="error", dedupe_key="migration:index-rebuild")
@@ -431,6 +433,7 @@ def run_migration(
     except Exception as error:
         if opened:
             raise
+        raise_if_storage_exhausted(error)
         if pipeline.active:
             pipeline.fail_step("migration-copy", f"Failed to initialize SQLite: {error}")
             pipeline.skip_step("migration-index", "the SQLite destination failing to initialize")
@@ -482,12 +485,17 @@ def _migrate_rows(
         activity="Rebuilding the SQLite full-text search index",
     )
     result.fts_rebuilt = _rebuild_fts(store)
+    if not result.fts_rebuilt:
+        # The rows are saved, but search can't see them until a rerun rebuilds the index.
+        result.status = "index_failed"
+        if pipeline.active:
+            pipeline.fail_step("migration-index", "SQLite full-text search index rebuild failed")
+        else:
+            print("Migration did not finish: run it again to rebuild the search index.")
+        return result
     skipped_unit = "row" if result.skipped_rows == 1 else "rows"
     if pipeline.active:
-        if result.fts_rebuilt:
-            pipeline.complete_step("migration-index", "SQLite full-text search index rebuilt")
-        else:
-            pipeline.fail_step("migration-index", "SQLite full-text search index rebuild failed")
+        pipeline.complete_step("migration-index", "SQLite full-text search index rebuilt")
         if result.status == "partial":
             pipeline.final_note(
                 f"Migration partially complete: {result.migrated_rows:,} rows copied and "

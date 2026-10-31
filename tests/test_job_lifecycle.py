@@ -8,6 +8,7 @@ import json
 import sqlite3
 import time
 from io import StringIO
+from pathlib import Path
 
 import httpx
 import pytest
@@ -21,6 +22,7 @@ import tweetnook.importer.archive_stages as archive_stages
 from tests.archive_import.conftest import _write_archive_dir
 from tests.collection_sync.conftest import _bookmarks_response_from_results, _save_query_ids
 from tests.conftest import make_tweet_result, patch_cli
+from tests.storage_sqlite.test_release_upgrades import released_archive
 from tests.test_process_lock_os import other_process_sees
 from tweetnook.config import AppConfig
 from tweetnook.core.exceptions import ArchiveNotFoundError, ConfigError, StaleQueryIdError
@@ -41,7 +43,9 @@ from tweetnook.jobs.outcome import Outcome, finished_cleanly, recorded_outcome
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.jobs.resource_failure import STORAGE_RECOVERY, StorageExhaustedError
 from tweetnook.storage import ArchiveStore, open_archive_store
+from tweetnook.storage.schema import SchemaMixin
 from tweetnook.sync.collection import (
+    LocalPreflightError,
     RemotePreflightError,
     run_preflight,
     sync_all,
@@ -91,6 +95,30 @@ def _fail_close(monkeypatch, error: BaseException) -> None:
         raise error
 
     monkeypatch.setattr(ArchiveStore, "close", close)
+
+
+@pytest.mark.parametrize("error_number", [errno.ENOSPC, errno.EDQUOT])
+@pytest.mark.parametrize(("method", "target"), [("mkdir", "data_dir"), ("open", "lock_file")])
+def test_job_preparation_classifies_storage_failures(
+    paths, config, monkeypatch, error_number, method, target
+):
+    original = getattr(Path, method)
+    failed_path = getattr(paths, target)
+
+    def fail(path, *args, **kwargs):
+        if path == failed_path:
+            raise OSError(error_number, "Storage exhausted")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, method, fail)
+    recovery = "Storage is full; free space and retry this job."
+    with pytest.raises(StorageExhaustedError, match=recovery):
+        with job_context.archive_job(
+            config=config, paths=paths, create=True, storage_recovery=recovery
+        ):
+            pytest.fail("the body must not run")
+    assert not paths.database_path.exists()
+    assert other_process_sees(paths.lock_file) == "free"
 
 
 @pytest.mark.asyncio
@@ -354,6 +382,31 @@ async def test_failed_manifest_write_never_replaces_the_import_error(
 # ---- enrichment follow-up ----
 
 
+def test_import_followup_interrupt_saves_a_stopped_cli_run(paths, config, tmp_path, monkeypatch):
+    _capture_cli(monkeypatch, paths, config)
+
+    async def interrupted(**_kwargs):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(archive_enrich, "_run_archive_followup", interrupted)
+    archive_dir = _write_archive_dir(tmp_path)
+    result = CliRunner().invoke(cli.app, ["import", "x-archive", str(archive_dir)])
+
+    assert result.exit_code == 130
+    direct = json.loads(paths.activity_status_file.read_text())
+    assert direct["outcome"] == "stopped"
+    assert direct["stopped"] is True
+    assert direct["success"] is False
+    saved = read_run(paths.data_dir, direct["run_id"])
+    assert saved["status"] == "stopped"
+    assert saved["outcome"] == "stopped"
+    supervised = mark_run_process_result(
+        paths.data_dir, direct["run_id"], exit_code=130, stopped=True
+    )
+    assert supervised["snapshot"]["outcome"] == direct["outcome"]
+    assert supervised["snapshot"]["stopped"] is direct["stopped"]
+
+
 def _full_status_write(*_args, **_kwargs):
     raise sqlite3.OperationalError("database or disk is full")
 
@@ -426,6 +479,74 @@ def test_remaining_text_admits_an_unreadable_count():
 
 def _empty_timeline(_request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json=_bookmarks_response_from_results([]))
+
+
+def test_sync_preflight_upgrade_full_disk_reaches_the_cli_as_a_typed_error(
+    paths, config, monkeypatch
+):
+    released_archive(paths.database_path, 12)
+    buffer = _capture_cli(monkeypatch, paths, config)
+    monkeypatch.setattr("tweetnook.sync.collection.load_config", lambda: (config, paths))
+    writes = []
+
+    def fail_after_first_write(self):
+        self.conn.execute("ALTER TABLE archive DROP COLUMN enrichment_followup_status")
+        writes.append(True)
+        raise sqlite3.OperationalError("database or disk is full")
+
+    monkeypatch.setattr(SchemaMixin, "_drop_unread_followup_columns", fail_after_first_write)
+    result = CliRunner().invoke(cli.app, ["sync", "bookmarks"])
+
+    assert writes == [True]
+    assert result.exit_code == 2, result.output
+    assert not isinstance(result.exception, sqlite3.Error)
+    assert "Free or add disk space" in buffer.getvalue()
+    with sqlite3.connect(paths.database_path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 12
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(archive)")}
+        assert {"enrichment_followup_status", "enrichment_aborted_reason"} <= columns
+        assert connection.execute("SELECT COUNT(*) FROM archive").fetchone()[0] == 3
+    assert other_process_sees(paths.lock_file) == "free"
+
+
+@pytest.mark.asyncio
+async def test_sync_preflight_classifies_a_close_only_storage_failure(
+    archive, config, auth_bundle, opened, monkeypatch
+):
+    _fail_close(monkeypatch, FULL_DISK)
+    with pytest.raises(StorageExhaustedError):
+        await run_preflight(
+            config=config,
+            paths=archive,
+            collections=["bookmarks"],
+            auth_bundle=auth_bundle,
+            transport=httpx.MockTransport(_empty_timeline),
+            console=Console(file=StringIO()),
+        )
+    assert len(opened) == 1
+    assert _is_closed(opened[0])
+
+
+@pytest.mark.asyncio
+async def test_sync_preflight_preserves_owner_error_when_close_also_fails(
+    archive, config, auth_bundle, opened, monkeypatch
+):
+    store = open_archive_store(archive, create=False, config=config)
+    store.ensure_archive_owner_id("99")
+    store.close()
+    opened.clear()
+    _fail_close(monkeypatch, FULL_DISK)
+    with pytest.raises(LocalPreflightError, match="belongs to Twitter/X user 99"):
+        await run_preflight(
+            config=config,
+            paths=archive,
+            collections=["bookmarks"],
+            auth_bundle=auth_bundle,
+            transport=httpx.MockTransport(_empty_timeline),
+            console=Console(file=StringIO()),
+        )
+    assert len(opened) == 1
+    assert _is_closed(opened[0])
 
 
 @pytest.mark.asyncio

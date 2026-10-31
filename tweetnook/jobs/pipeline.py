@@ -418,7 +418,7 @@ class PipelineReporter:
         try:
             if exc is not None:
                 active = self.active_step
-                stopped = exc_type is KeyboardInterrupt
+                stopped = isinstance(exc, KeyboardInterrupt)
                 message = (
                     "Stopped by user"
                     if stopped

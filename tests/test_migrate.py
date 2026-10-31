@@ -762,7 +762,7 @@ def test_fts_rebuild_failure_warns_and_still_closes_store(
 
     result = migrate.run_migration()
 
-    assert result.status == "complete"
+    assert result.status == "index_failed"
     assert result.fts_rebuilt is False
     assert stores[-1].closed is True
     assert "Failed to rebuild FTS index: no fts5" in capsys.readouterr().out
