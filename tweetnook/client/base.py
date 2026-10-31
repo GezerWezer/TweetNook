@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -36,6 +37,7 @@ class AdaptiveRequestPacer:
     base_delay: float
     dynamic_delay: float = 0.0
     _last_logged_delay: float | None = None
+    _reset_at: int | None = None
 
     async def wait(
         self,
@@ -45,6 +47,7 @@ class AdaptiveRequestPacer:
     ) -> None:
         if attempted <= 0:
             return
+        self._expire_sample(time.time())
         delay = max(self.base_delay, self.dynamic_delay)
         if delay > 0:
             await sleep(delay)
@@ -55,13 +58,16 @@ class AdaptiveRequestPacer:
         *,
         status: Callable[[str], None] | None = None,
     ) -> None:
-        info = get_rate_limit_info(response)
+        now = time.time()
+        self._expire_sample(now)
+        info = get_rate_limit_info(response, now=now)
         if info is None:
             return
-        suggested_delay = compute_adaptive_pacing_delay(info)
+        suggested_delay = compute_adaptive_pacing_delay(info, now=now)
         if suggested_delay is None or suggested_delay <= 0:
             return
         self.dynamic_delay = suggested_delay
+        self._reset_at = info.reset_at
         effective_delay = max(self.base_delay, suggested_delay)
         if status is None or effective_delay <= self.base_delay + 0.5:
             return
@@ -73,6 +79,12 @@ class AdaptiveRequestPacer:
             message += f" ({summary})"
         status(message)
         self._last_logged_delay = effective_delay
+
+    def _expire_sample(self, now: float) -> None:
+        if self._reset_at is not None and now >= self._reset_at:
+            self.dynamic_delay = 0.0
+            self._reset_at = None
+            self._last_logged_delay = None
 
     def _should_log(self, effective_delay: float) -> bool:
         if self._last_logged_delay is None:
@@ -144,16 +156,29 @@ def _parse_retry_after(value: str | None, *, now: float | None = None) -> float 
     if value is None:
         return None
     try:
-        return max(float(value), 0.0)
+        seconds = float(value)
     except (TypeError, ValueError):
         try:
             parsed = parsedate_to_datetime(value)
-        except (TypeError, ValueError, IndexError):
+        except (TypeError, ValueError, IndexError, OverflowError):
             return None
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=UTC)
         reference_now = time.time() if now is None else now
-        return max(parsed.timestamp() - reference_now, 0.0)
+        try:
+            seconds = parsed.timestamp() - reference_now
+        except (OverflowError, OSError, ValueError):
+            return None
+    return max(seconds, 0.0) if math.isfinite(seconds) else None
+
+
+def _reset_datetime(reset_at: int | None) -> datetime | None:
+    if reset_at is None:
+        return None
+    try:
+        return datetime.fromtimestamp(reset_at, UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def get_rate_limit_info(
@@ -161,10 +186,11 @@ def get_rate_limit_info(
     *,
     now: float | None = None,
 ) -> RateLimitInfo | None:
+    reset_at = _parse_int_header(response.headers.get("x-rate-limit-reset"))
     info = RateLimitInfo(
         limit=_parse_int_header(response.headers.get("x-rate-limit-limit")),
         remaining=_parse_int_header(response.headers.get("x-rate-limit-remaining")),
-        reset_at=_parse_int_header(response.headers.get("x-rate-limit-reset")),
+        reset_at=reset_at if _reset_datetime(reset_at) is not None else None,
         retry_after=_parse_retry_after(response.headers.get("retry-after"), now=now),
     )
     if (
@@ -219,8 +245,9 @@ def format_rate_limit_info(info: RateLimitInfo, *, now: float | None = None) -> 
         parts.append(f"remaining {info.remaining}/{info.limit}")
     elif info.remaining is not None:
         parts.append(f"remaining {info.remaining}")
-    if info.reset_at is not None:
-        reset_time = datetime.fromtimestamp(info.reset_at, UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    reset_datetime = _reset_datetime(info.reset_at)
+    if reset_datetime is not None:
+        reset_time = reset_datetime.strftime("%Y-%m-%d %H:%M:%S UTC")
         reset_delay = max(info.reset_at - reference_now, 0.0)
         parts.append(f"reset in {reset_delay:.1f}s")
         parts.append(f"at {reset_time}")

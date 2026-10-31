@@ -9,6 +9,7 @@ extractor and the Web UI read, so the existing persistence path can store them.
 from __future__ import annotations
 
 import asyncio
+import math
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -68,10 +69,12 @@ def build_fx_client(
 def _retry_after(response: httpx.Response, attempt: int) -> float:
     header = response.headers.get("retry-after")
     try:
-        delay = max(float(header), 1.0) if header else float(2**attempt)
+        delay = float(header) if header else float(2**attempt)
     except ValueError:
         delay = float(2**attempt)
-    return min(delay, FX_MAX_RETRY_AFTER_SECONDS)
+    if not math.isfinite(delay):
+        delay = float(2**attempt)
+    return min(max(delay, 1.0), FX_MAX_RETRY_AFTER_SECONDS)
 
 
 def classify_fx_response(tweet_id: str, http_status: int, payload: Any) -> FxLookup:

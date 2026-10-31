@@ -37,7 +37,7 @@ Capture the raw page and its operation/cursors/status, extract graph records, pe
 
 ## Requests and errors
 
-Timeline and detail pacing use separate delay, retry and backoff settings. Adaptive pacing responds to remote rate limits and repeated failures; rate-limit resets may make a run wait. Auth expiry, stale IDs, feature drift, exhausted retries, repeated focal absence, and storage exhaustion remain distinguishable.
+Timeline and detail pacing use separate delay, retry and backoff settings. Adaptive pacing retains a quota sample until its reset deadline, including across responses without usable headers, then returns to the configured base delay. A new usable sample replaces the previous one. Rate-limit resets may make a run wait. Auth expiry, stale IDs, feature drift, exhausted retries, repeated focal absence, and storage exhaustion remain distinguishable.
 
 Do not skip past a failed page and claim the collection is caught up. Preserve the last committed state, expose the stop reason, and allow another run to continue. A later follow-up failure also must not erase the earlier successful collection outcome.
 
