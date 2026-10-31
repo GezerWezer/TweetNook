@@ -25,6 +25,7 @@ from tweetnook.jobs.reminders import (
 from tweetnook.jobs.scheduler import ScheduleManager
 from tweetnook.jobs.supervisor import JobCompletion, JobSupervisor
 from tweetnook.storage import open_archive_store
+from tweetnook.web.address import normalize_listener_host
 from tweetnook.web.avatar_cache import AvatarCacheManager
 from tweetnook.web.deps import WebSessionMiddleware, server_state, verify_credentials
 from tweetnook.web.notices import NoticeStore
@@ -468,6 +469,7 @@ def run_server(
 ) -> None:
     import uvicorn
 
+    host = normalize_listener_host(host)
     upgrade_config(paths)
     server_state["config"] = config
     server_state["paths"] = paths

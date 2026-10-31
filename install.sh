@@ -710,6 +710,7 @@ from tweetnook.web.address import display_web_url
 
 def wait_for_web(host, port, timeout=20):
     """Check the local application, without HTTP proxies or redirects."""
+    host = host.strip()
     probe_host = {"0.0.0.0": "127.0.0.1", "::": "::1", "[::]": "::1"}.get(host, host)
     probe_host = probe_host.removeprefix("[").removesuffix("]")
     deadline = time.monotonic() + timeout

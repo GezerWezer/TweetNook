@@ -44,5 +44,5 @@ def serve_daemon_internal(
     config, paths = load_config()
 
     web = config.web
-    Console().print(f"Open TweetNook at {display_web_url(web.host, web.port)}")
+    Console().print(f"Open TweetNook at {display_web_url(web.host, web.port)}", markup=False)
     run_server(config, paths, web.host, web.port, web.password_hash)

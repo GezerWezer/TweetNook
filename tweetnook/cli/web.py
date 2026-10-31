@@ -122,7 +122,10 @@ def start_web(dev_tools: Annotated[bool, DEV_TOOLS_OPTION] = False) -> None:
         raise typer.Exit(1)
 
     web_config = config.web
-    console.print(f"Starting web server on {display_web_url(web_config.host, web_config.port)} ...")
+    console.print(
+        f"Starting web server on {display_web_url(web_config.host, web_config.port)} ...",
+        markup=False,
+    )
 
     command = [sys.executable, "-m", "tweetnook", "serve"]
     if dev_tools:

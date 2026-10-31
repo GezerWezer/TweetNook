@@ -28,6 +28,10 @@ An unset password permits access. This is a deliberate local-use option, so the 
 
 All web-save routes use `save_server_config` to serialize publication and application, then `reload_server_config` to update the running services from one validated snapshot. The shared lifecycle lock prevents a reload from overlapping archive attachment or teardown. Avatar-limit changes wake cleanup, and Analytics time changes reschedule the existing refresher thread. The active worker and listener stay in place.
 
+Listener startup and address display normalize surrounding host whitespace and IPv6 URL brackets. Wildcard hosts remain wildcard listeners; device-address discovery only chooses the displayed URL. The installer applies the same normalization for its local readiness probe. Normalization does not rewrite the saved configuration.
+
+Wildcard discovery skips IPv6 link-local candidates, including scoped socket results: their interface zones belong to the server and are not portable to another device. If no usable candidate remains, display falls back to loopback. Explicitly configured scoped hosts retain their URL formatting.
+
 ## Workers
 
 `JobSupervisor` launches commands with the installed Python, explicit run identity/origin, and durable logs. It owns one active worker, records exit status, and can queue supported jobs. A separate process lock prevents a CLI writer from racing a web worker.

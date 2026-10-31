@@ -1,9 +1,21 @@
-"""Resolve user-facing Web UI addresses without changing the server bind host."""
+"""Normalize listener hosts and resolve user-facing Web UI addresses."""
 
 from __future__ import annotations
 
 import ipaddress
 import socket
+
+from tweetnook.core.exceptions import ConfigError
+
+
+def normalize_listener_host(bind_host: str) -> str:
+    """Accept surrounding whitespace and URL brackets on IPv6 listener hosts."""
+    host = bind_host.strip()
+    if host.startswith("[") and host.endswith("]") and ":" in host:
+        host = host[1:-1]
+    if not host:
+        raise ConfigError("Web host must not be blank.")
+    return host
 
 
 def _usable_device_address(value: str) -> bool:
@@ -12,7 +24,13 @@ def _usable_device_address(value: str) -> bool:
         address = ipaddress.ip_address(candidate)
     except ValueError:
         return False
-    return not (address.is_unspecified or address.is_loopback or address.is_multicast)
+    # A server-local IPv6 zone cannot identify the interface in another device's browser.
+    return not (
+        address.is_unspecified
+        or address.is_loopback
+        or address.is_multicast
+        or (address.version == 6 and address.is_link_local)
+    )
 
 
 def _discover_device_address(family: socket.AddressFamily) -> str | None:
@@ -45,10 +63,10 @@ def _discover_device_address(family: socket.AddressFamily) -> str | None:
 def display_web_host(bind_host: str) -> str:
     """Return a reachable host for display while leaving concrete bind hosts unchanged."""
 
-    host = bind_host.strip()
+    host = normalize_listener_host(bind_host)
     if host == "0.0.0.0":
         return _discover_device_address(socket.AF_INET) or "127.0.0.1"
-    if host in {"::", "[::]"}:
+    if host == "::":
         return _discover_device_address(socket.AF_INET6) or "::1"
     return host
 

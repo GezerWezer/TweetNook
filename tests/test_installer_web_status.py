@@ -80,7 +80,15 @@ def install_fake_http(status, monkeypatch, responses):
 
 @pytest.mark.parametrize(
     ("host", "probe_host"),
-    [("0.0.0.0", "127.0.0.1"), ("::", "::1"), ("[::]", "::1"), ("archive.local", "archive.local")],
+    [
+        ("0.0.0.0", "127.0.0.1"),
+        ("::", "::1"),
+        ("[::]", "::1"),
+        ("archive.local", "archive.local"),
+        (" [::] ", "::1"),
+        (" [::1] ", "::1"),
+        (" 127.0.0.1 ", "127.0.0.1"),
+    ],
 )
 def test_http_retries_until_app_is_ready_and_probes_bound_interface(
     status, monkeypatch, host, probe_host
