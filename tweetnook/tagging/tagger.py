@@ -1190,7 +1190,6 @@ async def tag_media_tweets(
                             estimate={"input_tokens": preflight_input_tokens},
                             reserved_cost_usd=str(reserved_cost),
                             pricing=pricing,
-                            pricing_multiplier=pricing_multiplier(tag_config.processing_tier),
                             preflight_input_tokens=preflight_input_tokens,
                         )
                         append_usage(usage_record)
@@ -1315,7 +1314,6 @@ async def tag_media_tweets(
                             estimate={"input_tokens": preflight_input_tokens},
                             reserved_cost_usd=str(reserved_cost),
                             pricing=pricing,
-                            pricing_multiplier=pricing_multiplier(tag_config.processing_tier),
                             preflight_input_tokens=preflight_input_tokens,
                         )
                         if has_usage:
@@ -1329,6 +1327,7 @@ async def tag_media_tweets(
                                 model=model_name,
                                 search=search,
                                 status="billing_unknown" if billing_unknown else "failed",
+                                pricing_multiplier=pricing_multiplier(tag_config.processing_tier),
                                 **common,
                             )
                             if not billing_unknown:

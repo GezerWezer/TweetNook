@@ -7,6 +7,7 @@ import json
 import os
 import threading
 import uuid
+from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -255,7 +256,6 @@ def usage_from_interaction(
     estimate: dict[str, Any] | None = None,
     reserved_cost_usd: str = "0",
     pricing: OpenRouterPricing | None = None,
-    pricing_multiplier: Decimal | None = None,
     preflight_input_tokens: int | None = None,
     now: datetime | None = None,
 ) -> tuple[UsageRecord, SearchAccounting]:
@@ -290,11 +290,9 @@ def usage_from_interaction(
         tool_tokens = _usage_value(usage, "total_tool_tokens", "tool_tokens", "tool_token_count")
     else:
         prompt = cached = output = thinking = tool_tokens = None
-    effective_multiplier = (
-        pricing_multiplier
-        if pricing_multiplier is not None
-        else tier_pricing_multiplier(actual_tier)
-    )
+    # The tier that served the request prices it. The requested tier only stands in when
+    # the provider didn't say, so the recorded tier and multiplier can't disagree.
+    effective_multiplier = tier_pricing_multiplier(actual_tier)
     cost = (
         calculate_estimated_cost_usd(
             pricing,
@@ -578,6 +576,7 @@ def _empty_summary() -> dict[str, Any]:
         "monthly": {},
         "search": {},
         "unknown_cost_requests": 0,
+        "log_sizes": {},
     }
 
 
@@ -788,7 +787,12 @@ def _apply_record(summary: dict[str, Any], record: dict[str, Any]) -> None:
 
 
 class AIUsageLedger:
-    """Concurrent append-only request records plus an atomically replaced summary."""
+    """Concurrent append-only request records plus an atomically replaced summary.
+
+    The monthly logs are authoritative. The summary records the log sizes it covers, so a
+    summary that missed a durable append (its publication failed, or the process died
+    between the two writes) reads as stale and is rebuilt rather than understating spend.
+    """
 
     def __init__(self, root: Path):
         self.root = Path(root)
@@ -807,12 +811,14 @@ class AIUsageLedger:
             value = json.loads(self.summary_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None
-        required = {"lifetime", "models", "tweet_types", "daily", "monthly", "search"}
+        required = {"lifetime", "models", "tweet_types", "daily", "monthly", "search", "log_sizes"}
         if not isinstance(value, dict) or not required.issubset(value):
             return None
         if value.get("version") != LEDGER_VERSION:
             return None
         if any(not isinstance(value.get(key), dict) for key in required):
+            return None
+        if value["log_sizes"] != self._log_sizes():
             return None
         if "unknown_cost_requests" not in value:
             return None
@@ -840,17 +846,26 @@ class AIUsageLedger:
                 bucket.setdefault("requests", 0)
         return value
 
+    def _log_sizes(self) -> dict[str, int]:
+        sizes: dict[str, int] = {}
+        for path in self.root.glob("????-??.jsonl"):
+            with suppress(OSError):
+                sizes[path.name] = path.stat().st_size
+        return sizes
+
     def _rebuild_locked(self) -> dict[str, Any]:
         summary = _empty_summary()
         for path in sorted(self.root.glob("????-??.jsonl")):
             try:
-                lines = path.read_text(encoding="utf-8").splitlines()
+                data = path.read_bytes()
             except OSError:
                 continue
-            for line in lines:
+            summary["log_sizes"][path.name] = len(data)
+            # Split bytes: a torn append can end inside a UTF-8 sequence.
+            for line in data.split(b"\n"):
                 try:
                     payload = json.loads(line)
-                except json.JSONDecodeError:
+                except ValueError:
                     continue
                 if isinstance(payload, dict):
                     _apply_record(summary, payload)
@@ -879,10 +894,19 @@ class AIUsageLedger:
             summary = self._read_summary() or self._rebuild_locked()
             timestamp = datetime.fromisoformat(record.timestamp.replace("Z", "+00:00"))
             ledger_path = self.root / f"{timestamp.astimezone(UTC):%Y-%m}.jsonl"
-            with ledger_path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+            line = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
+            with ledger_path.open("ab+") as handle:
+                # A torn earlier append must not swallow this record into one unreadable
+                # line. Ending it keeps every byte, and a complete record stays countable.
+                if handle.seek(0, os.SEEK_END) > 0:
+                    handle.seek(-1, os.SEEK_END)
+                    if handle.read(1) != b"\n":
+                        line = b"\n" + line
+                handle.write(line)
                 handle.flush()
                 os.fsync(handle.fileno())
+                size = handle.seek(0, os.SEEK_END)
+            summary["log_sizes"][ledger_path.name] = size
             _apply_record(summary, payload)
             self._atomic_summary(summary)
             return summary

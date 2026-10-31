@@ -294,7 +294,6 @@ def test_actual_interaction_cost_is_calculated_and_stored_at_request_time() -> N
         search_enabled=True,
         latency_ms=123,
         pricing=pricing,
-        pricing_multiplier=Decimal("0.5"),
         now=now,
     )
     # (800 uncached x 0.000001 + 200 cached x 0.0000001 + 100 output x 0.000002
