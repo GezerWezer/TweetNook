@@ -148,6 +148,8 @@ Storage resolves one ancestor chain in directional lookup order, and detail asse
 
 Quote results include canonical context objects outside collections and retain placeholder slots for uncaptured sources. They return tweets/total/page/limit rather than the list endpoint's full paging shape. Author search is local and capped at ten matches; profile history returns distinct captured states by fetch time, not post time, with a limit from 1 through 100. Tag autocomplete matches every query fragment literally and case-insensitively.
 
+Author search selects one saved row per case-insensitive handle using the newest post date and a known author ID, matching handle resolution. ID, spelling and display name come from that row. Exact handles rank before prefixes and substrings, and SQL wildcard characters in the query are literal text.
+
 Global tag deletion captures the remaining path, including slashes inside a label. Clients encode the complete label once with `encodeURIComponent`; the server uses the decoded value without another decoding pass.
 
 The Web conversation-expansion job selects due archive targets. Its options omit `--refresh`, which the CLI reserves for explicit post targets. Unsupported run options are rejected before a job is queued.

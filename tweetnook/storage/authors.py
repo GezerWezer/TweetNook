@@ -108,19 +108,31 @@ class AuthorsMixin(ConnectionMixin):
             return []
 
         sql = f"""
-            SELECT MIN(author_id) AS author_id,
-                   author_username,
-                   MIN(author_display_name) AS author_display_name
-            FROM archive
-            WHERE record_type = '{RecordType.TWEET}' 
-              AND author_username IS NOT NULL
-              AND (LOWER(author_username) LIKE LOWER(?) OR LOWER(author_display_name) LIKE LOWER(?))
-            GROUP BY LOWER(author_username)
-            ORDER BY author_username ASC
+            WITH authors AS (
+                SELECT author_id, author_username, author_display_name,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY LOWER(author_username) ORDER BY created_at_ts DESC
+                    ) AS position
+                FROM archive
+                WHERE record_type = '{RecordType.TWEET}' AND author_username IS NOT NULL
+                    AND author_id IS NOT NULL AND author_id != ''
+            )
+            SELECT author_id, author_username, author_display_name
+            FROM authors
+            WHERE position = 1 AND (
+                LOWER(author_username) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(author_display_name) LIKE LOWER(?) ESCAPE '\\'
+            )
+            ORDER BY CASE
+                WHEN LOWER(author_username) = LOWER(?) THEN 0
+                WHEN LOWER(author_username) LIKE LOWER(?) ESCAPE '\\' THEN 1
+                ELSE 2
+            END, LOWER(author_username)
             LIMIT ?
         """
-        pattern = f"%{query}%"
-        rows = self.conn.execute(sql, (pattern, pattern, limit)).fetchall()
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        rows = self.conn.execute(sql, (pattern, pattern, query, f"{escaped}%", limit)).fetchall()
         return [
             {
                 "id": r["author_id"],
