@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from tweetnook.config import AppConfig, TaggingConfig
+from tweetnook.tagging import results
 from tweetnook.tagging import tagger as tagging
 from tweetnook.tagging.sdk import GeminiModel
 from tweetnook.web.routes import automated_tagging as routes
@@ -163,7 +164,7 @@ def test_test_run_uses_unsaved_settings_and_returns_preview(
         observed["config"] = kwargs["config"]
         observed["dry_run"] = kwargs["dry_run"]
         kwargs["preview_results"].append(
-            tagging.TaggingPreview(
+            results.TaggingPreview(
                 id="42",
                 content_type="text",
                 model="unsaved-model",

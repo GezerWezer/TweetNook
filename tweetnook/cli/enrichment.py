@@ -368,10 +368,13 @@ def tag_archive(
     try:
         config, paths = load_config()
         from tweetnook.jobs.context import locked_archive_job
+        from tweetnook.jobs.outcome import Outcome
+        from tweetnook.tagging.run import TagRequest
         from tweetnook.tagging.tagger import (
             TaggingRunResult,
-            tag_media_tweets,
+            finish_tagging_step,
             tag_pending_media_tweets,
+            tag_tweets,
         )
 
         tweet_id = None
@@ -398,22 +401,26 @@ def tag_archive(
                         "tagging",
                         activity="Generating tags",
                     )
-                    tagged = await tag_media_tweets(
+                    outcome = await tag_tweets(
                         store=job.store,
                         config=config,
                         paths=paths,
                         console=console,
-                        tweet_ids=[tweet_id],
-                        model_override=model,
-                        dry_run=test,
+                        request=TagRequest([tweet_id], model, dry_run=test),
                     )
-                    summary = f"{tagged} tagged" + (" · test mode, not saved" if test else "")
-                    pipeline.complete_step(
-                        "tagging",
-                        summary,
-                        counters=summary,
+                    processed = 1 if outcome.attempts or not outcome.halted else 0
+                    finish_tagging_step(
+                        pipeline,
+                        outcome,
+                        processed=processed,
+                        note=" · test mode, not saved" if test else "",
                     )
-                    return TaggingRunResult(processed=1, tagged=tagged, batches=1)
+                    return TaggingRunResult(
+                        processed=processed,
+                        tagged=outcome.tagged,
+                        batches=outcome.attempts,
+                        outcome=outcome.status,
+                    )
 
                 return await tag_pending_media_tweets(
                     store=job.store,
@@ -441,7 +448,10 @@ def tag_archive(
                 show_eta=False,
             )
             result = asyncio.run(run_tagging())
-            if result.processed == 0:
+            if result.outcome is Outcome.FAILED:
+                # Here tagging is the whole command, so its failure is the command's.
+                raise TweetNookError("Tagging failed: no tags were saved. See the output above.")
+            if result.processed == 0 and result.outcome is Outcome.NO_WORK:
                 pipeline.skip_step("tagging", "no eligible untagged tweets")
                 pipeline.final_note("No eligible untagged tweets found.")
             elif not test:

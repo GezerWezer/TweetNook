@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 
@@ -17,8 +15,11 @@ from tests.automated_tagging.conftest import (
     console,
     free_response,
     install_fake_client,
+    install_paid_pricing,
+    paid_queue_store,
     paid_response,
 )
+from tweetnook.tagging import paid
 from tweetnook.tagging import tagger as tagging
 
 
@@ -154,6 +155,7 @@ async def test_free_refreshes_existing_tags_between_batches(monkeypatch, paths) 
 
 @pytest.mark.asyncio
 async def test_paid_refreshes_existing_tags_once_per_concurrency_wave(monkeypatch, paths) -> None:
+    install_paid_pricing(monkeypatch)
     store = Store()
     for tweet_id in ("A", "B", "C", "D"):
         store.add_tweet(tweet_id)
@@ -168,7 +170,6 @@ async def test_paid_refreshes_existing_tags_once_per_concurrency_wave(monkeypatc
         ][:limit]
 
     store.get_eligible_tagging_candidates = select_candidates  # type: ignore[method-assign]
-    snapshots: list[tuple[str, tuple[str, ...]]] = []
 
     def top_tags(current_store) -> list[str]:
         values = ["Deadlock"]
@@ -177,27 +178,10 @@ async def test_paid_refreshes_existing_tags_once_per_concurrency_wave(monkeypatc
         return values
 
     monkeypatch.setattr(tagging, "_top_archive_tags", top_tags)
-    monkeypatch.setattr(tagging, "_ensure_optional_dependencies", lambda: True)
-
-    async def fake_tag(**kwargs: Any) -> int:
-        tweet_id = kwargs["tweet_ids"][0]
-        kwargs["_paid_state"].attempts += 1
-        snapshots.append((tweet_id, tuple(kwargs["_existing_tags"])))
-        await asyncio.sleep(0)
-        store.conn.execute(
-            "INSERT OR REPLACE INTO archive "
-            "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
-            "VALUES (?, 'media_tag', ?, ?, 'done', 'now')",
-            (
-                f"media_tag:{tweet_id}",
-                tweet_id,
-                json.dumps({"tags": ["Shiv (Deadlock)", "Deadlock"]}),
-            ),
-        )
-        store.conn.commit()
-        return 1
-
-    monkeypatch.setattr(tagging, "tag_media_tweets", fake_tag)
+    interactions = FakeInteractions(
+        [paid_response({"tags": ["Shiv (Deadlock)", "Deadlock"]}) for _ in range(4)]
+    )
+    install_fake_client(monkeypatch, models=FakeModels([]), interactions=interactions)
     result = await tagging.tag_pending_media_tweets(
         store,
         config(api_mode="paid", unlimited_spend=True),
@@ -207,11 +191,11 @@ async def test_paid_refreshes_existing_tags_once_per_concurrency_wave(monkeypatc
     )
 
     assert result == tagging.TaggingRunResult(processed=4, tagged=4, batches=4)
-    assert snapshots == [
-        ("A", ("Deadlock",)),
-        ("B", ("Deadlock", "Shiv (Deadlock)")),
-        ("C", ("Deadlock", "Shiv (Deadlock)")),
-        ("D", ("Deadlock", "Shiv (Deadlock)")),
+    assert ["- Shiv (Deadlock)" in call["system_instruction"] for call in interactions.calls] == [
+        False,
+        True,
+        True,
+        True,
     ]
 
 
@@ -321,30 +305,12 @@ async def test_rejected_free_batch_splits_and_retries_smaller_batches(monkeypatc
 async def test_paid_uses_one_independent_interaction_per_tweet_sequentially(
     monkeypatch, paths
 ) -> None:
-    monkeypatch.setattr(tagging, "_ensure_optional_dependencies", lambda: True)
-    active = peak = 0
-    calls: list[list[str]] = []
-    lock = asyncio.Lock()
-
-    async def fake_tag(**kwargs: Any) -> int:
-        nonlocal active, peak
-        kwargs["_paid_state"].attempts += 1
-        calls.append(kwargs["tweet_ids"])
-        async with lock:
-            active += 1
-            peak = max(peak, active)
-        await asyncio.sleep(0.01)
-        async with lock:
-            active -= 1
-        return 1
-
-    monkeypatch.setattr(tagging, "tag_media_tweets", fake_tag)
-    store = QueueStore(
-        [
-            {"tweet_id": str(index), "content_type": "text", "quoted_tweet_id": None, "sort_ts": 0}
-            for index in range(4)
-        ]
+    install_paid_pricing(monkeypatch)
+    store = paid_queue_store(4)
+    interactions = FakeInteractions(
+        [paid_response({"tags": ["One", "Two"]}) for _ in range(4)], delay=0.01
     )
+    install_fake_client(monkeypatch, models=FakeModels([]), interactions=interactions)
     result = await tagging.tag_pending_media_tweets(
         store,
         config(api_mode="paid", unlimited_spend=True),
@@ -353,14 +319,16 @@ async def test_paid_uses_one_independent_interaction_per_tweet_sequentially(
         batch_limit=4,
     )
     assert result == tagging.TaggingRunResult(processed=4, tagged=4, batches=4)
-    assert peak == 1
-    assert sorted(calls) == [["0"], ["1"], ["2"], ["3"]]
+    assert interactions.peak == 1
+    assert all(len(call["input"]) == 1 for call in interactions.calls)
+    assert all(store.media_tag(str(index)) is not None for index in range(1, 5))
 
 
 @pytest.mark.asyncio
 async def test_paid_engine_dispatches_independent_interactions_sequentially(
     monkeypatch, paths
 ) -> None:
+    install_paid_pricing(monkeypatch)
     store = Store()
     for tweet_id in ("1", "2", "3", "4"):
         store.add_tweet(tweet_id)
@@ -396,6 +364,7 @@ async def test_paid_engine_dispatches_independent_interactions_sequentially(
 async def test_paid_interaction_uses_model_schema_search_and_service_tier(
     monkeypatch, paths, tier
 ) -> None:
+    install_paid_pricing(monkeypatch)
     store = Store()
     store.add_tweet("1", text="A recent release")
     interactions = FakeInteractions([paid_response({"tags": ["Specific One", "Specific Two"]})])
@@ -455,7 +424,7 @@ async def test_paid_count_tokens_omits_search_tool_when_search_is_disabled(
     interactions = FakeInteractions([paid_response({"tags": ["One", "Two"]})])
     models = FakeModels([])
     install_fake_client(monkeypatch, models=models, interactions=interactions)
-    monkeypatch.setattr(tagging, "load_openrouter_pricing", lambda *_args: None)
+    monkeypatch.setattr(paid, "load_openrouter_pricing", lambda *_args: None)
 
     tagged = await tagging.tag_media_tweets(
         store,

@@ -19,6 +19,8 @@ import tweetnook.tagging.tagger as tagging
 from tests.conftest import patch_cli
 from tweetnook.config import AppConfig, TaggingConfig
 from tweetnook.core.exceptions import ConfigError, TweetNookError
+from tweetnook.jobs.outcome import Outcome
+from tweetnook.tagging.run import TaggingOutcome, TagRequest
 
 runner = CliRunner()
 
@@ -75,6 +77,7 @@ def configure_tag_command(
     *,
     pending_result: tagging.TaggingRunResult | None = None,
     direct_tagged: int = 1,
+    direct_outcome: TaggingOutcome | None = None,
     enter_error: BaseException | None = None,
     pending_error: BaseException | None = None,
 ) -> tuple[
@@ -103,10 +106,12 @@ def configure_tag_command(
         lock_calls.append(kwargs)
         return FakeLockedJob(store, lifecycle, enter_error=enter_error)
 
-    async def fake_tag_media_tweets(**kwargs: Any) -> int:
+    async def fake_tag_tweets(**kwargs: Any) -> TaggingOutcome:
         lifecycle.append("direct")
         direct_calls.append(kwargs)
-        return direct_tagged
+        return direct_outcome or TaggingOutcome(
+            Outcome.SUCCEEDED, tagged=direct_tagged, attempts=direct_tagged
+        )
 
     async def fake_tag_pending_media_tweets(**kwargs: Any) -> tagging.TaggingRunResult:
         lifecycle.append("pending")
@@ -116,7 +121,7 @@ def configure_tag_command(
         return pending_result or tagging.TaggingRunResult(processed=3, tagged=3, batches=2)
 
     monkeypatch.setattr(jobs, "locked_archive_job", fake_locked_archive_job)
-    monkeypatch.setattr(tagging, "tag_media_tweets", fake_tag_media_tweets)
+    monkeypatch.setattr(tagging, "tag_tweets", fake_tag_tweets)
     monkeypatch.setattr(tagging, "tag_pending_media_tweets", fake_tag_pending_media_tweets)
     return config, store, lifecycle, lock_calls, direct_calls, pending_calls
 
@@ -262,9 +267,7 @@ def test_tag_command_normalizes_explicit_target_and_bypasses_pending_runner(
             "config": config,
             "paths": paths,
             "console": ANY,
-            "tweet_ids": [tweet_id],
-            "model_override": "gemini-explicit",
-            "dry_run": False,
+            "request": TagRequest([tweet_id], "gemini-explicit"),
         }
     ]
     assert "Automated tags: complete · 1 tagged" in output.getvalue()
@@ -284,8 +287,7 @@ def test_tag_command_forwards_test_mode_for_explicit_target_without_summary(
     assert result.exit_code == 0, result.output
     assert lifecycle == ["enter", "direct", "exit:clean"]
     assert pending_calls == []
-    assert direct_calls[0]["tweet_ids"] == ["41"]
-    assert direct_calls[0]["dry_run"] is True
+    assert direct_calls[0]["request"] == TagRequest(["41"], dry_run=True)
     assert "tag: 1 processed" not in output.getvalue()
 
 
@@ -413,6 +415,58 @@ def test_tag_command_maps_runner_domain_error_to_exit_two_and_closes_job(
     assert result.exit_code == 2
     assert lifecycle == ["enter", "pending", "exit:TweetNookError"]
     assert "tagging is unavailable" in output.getvalue()
+
+
+def test_tag_command_exits_two_when_every_request_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    paths,
+) -> None:
+    output = capture_console(monkeypatch)
+    configure_tag_command(
+        monkeypatch,
+        paths,
+        pending_result=tagging.TaggingRunResult(
+            processed=2, tagged=0, batches=2, outcome=Outcome.FAILED
+        ),
+    )
+
+    result = runner.invoke(cli.app, ["tag"])
+
+    assert result.exit_code == 2
+    assert "no tags were saved" in output.getvalue()
+
+
+def test_tag_command_explicit_target_failure_exits_two(
+    monkeypatch: pytest.MonkeyPatch,
+    paths,
+) -> None:
+    capture_console(monkeypatch)
+    configure_tag_command(
+        monkeypatch,
+        paths,
+        direct_outcome=TaggingOutcome.failed("Forbidden"),
+    )
+
+    result = runner.invoke(cli.app, ["tag", "41"])
+
+    assert result.exit_code == 2
+
+
+def test_tag_command_pause_is_not_reported_as_no_eligible_tweets(
+    monkeypatch: pytest.MonkeyPatch,
+    paths,
+) -> None:
+    output = capture_console(monkeypatch)
+    configure_tag_command(
+        monkeypatch,
+        paths,
+        pending_result=tagging.TaggingRunResult(outcome=Outcome.PAUSED),
+    )
+
+    result = runner.invoke(cli.app, ["tag"])
+
+    assert result.exit_code == 0
+    assert "No eligible untagged tweets found" not in output.getvalue()
 
 
 def test_python_module_help_dispatches_real_cli() -> None:

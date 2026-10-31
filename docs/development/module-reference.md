@@ -63,7 +63,11 @@ Some modules sit where their dependencies put them rather than where their name 
 | `enrichment/prune.py`, `enrichment/prune_files.py` | Reachability policy and recoverable context/media cleanup; storage owns the row inventory and deletion. |
 | `export/` | JSON output and export file names. |
 | `stats/` | Ordered data sections shared by CLI and web consumers; each surface owns its presentation. |
-| `tagging/tagger.py`, `tagging/prompts.py` | Gemini request planning, evidence, validation and generated tags. |
+| `tagging/tagger.py` | Tagging entry points, the pending-post runner and Free requests. |
+| `tagging/paid.py` | Paid attempts: budget preflight, Search reservations and one ledger settlement per attempt. |
+| `tagging/preparation.py` | Loads posts and media into parts every request over them reuses. |
+| `tagging/results.py`, `tagging/run.py`, `tagging/failures.py` | Result schemas and acceptance, the state stages share, and provider failure rules. |
+| `tagging/prompts.py` | System prompts. |
 | `tagging/sdk.py` | Optional dependency checks and model catalog. |
 | `tagging/accounting.py`, `tagging/pricing.py`, `tagging/rpd.py` | Local spend, Search usage and request allowances. |
 | `jobs/context.py`, `jobs/resource_failure.py` | Locked job context and storage-failure handling. |

@@ -14,6 +14,7 @@ from tests.automated_tagging.conftest import (
     console,
     free_response,
     install_fake_client,
+    install_paid_pricing,
     paid_response,
 )
 from tweetnook.tagging import tagger as tagging
@@ -116,6 +117,7 @@ async def test_dry_run_returns_preview_without_persisting_tags(monkeypatch, path
 async def test_owned_gemini_files_are_cleaned_without_listing_unrelated_files(
     monkeypatch, paths
 ) -> None:
+    install_paid_pricing(monkeypatch)
     media_dir = paths.data_dir / "media"
     media_dir.mkdir(parents=True)
     (media_dir / "photo.jpg").write_bytes(b"not-decoded-in-paid-mode")

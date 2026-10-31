@@ -12,15 +12,31 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 
 import httpx
+import pytest
 from rich.console import Console
 
 from tweetnook.config import AppConfig, TaggingConfig
 from tweetnook.storage.backend import ArchiveStore
+from tweetnook.tagging import paid, pricing
 from tweetnook.tagging import tagger as tagging
 from tweetnook.tagging.accounting import (
     AIUsageLedger,
 )
 from tweetnook.tagging.pricing import OpenRouterPricing
+
+
+@pytest.fixture(autouse=True)
+def no_live_pricing(monkeypatch):
+    """Fail a test that reaches for the live catalogue, which the loader's errors would hide."""
+    attempts: list[Any] = []
+
+    def refuse(url: Any, *_args: Any, **_kwargs: Any) -> None:
+        attempts.append(url)
+        raise OSError("live pricing is not available in tests")
+
+    monkeypatch.setattr(pricing.request, "urlopen", refuse)
+    yield
+    assert not attempts, "call install_paid_pricing: this test fetched live pricing"
 
 
 class Store(ArchiveStore):
@@ -285,7 +301,7 @@ def install_paid_pricing(monkeypatch) -> None:
         thinking_per_token=Decimal("0.000002"),
         cached_input_per_token=Decimal("0.0000001"),
     )
-    monkeypatch.setattr(tagging, "load_openrouter_pricing", lambda *_args: pricing)
+    monkeypatch.setattr(paid, "load_openrouter_pricing", lambda *_args: pricing)
 
 
 def paid_queue_store(count: int = 3) -> Store:

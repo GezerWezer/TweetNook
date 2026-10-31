@@ -16,9 +16,11 @@ from tests.automated_tagging.conftest import (
     config,
     console,
     install_fake_client,
+    install_paid_pricing,
     ledger_records,
     paid_response,
 )
+from tweetnook.tagging import paid
 from tweetnook.tagging import tagger as tagging
 from tweetnook.tagging.accounting import (
     AIUsageLedger,
@@ -104,7 +106,7 @@ async def test_billing_unknown_does_not_block_unlimited_paid_work(monkeypatch, p
     store.add_tweet("1")
     interactions = FakeInteractions([paid_response({"tags": ["One", "Two"]})])
     install_fake_client(monkeypatch, models=FakeModels([]), interactions=interactions)
-    monkeypatch.setattr(tagging, "load_openrouter_pricing", lambda *_args: None)
+    monkeypatch.setattr(paid, "load_openrouter_pricing", lambda *_args: None)
 
     tagged = await tagging.tag_media_tweets(
         store,
@@ -150,7 +152,7 @@ async def test_unpriced_request_does_not_block_unlimited_paid_work(monkeypatch, 
     store.add_tweet("1")
     interactions = FakeInteractions([paid_response({"tags": ["One", "Two"]})])
     install_fake_client(monkeypatch, models=FakeModels([]), interactions=interactions)
-    monkeypatch.setattr(tagging, "load_openrouter_pricing", lambda *_args: None)
+    monkeypatch.setattr(paid, "load_openrouter_pricing", lambda *_args: None)
 
     tagged = await tagging.tag_media_tweets(
         store,
@@ -173,7 +175,7 @@ async def test_paid_token_preflight_failure_is_nonfatal(monkeypatch, paths) -> N
     interactions = FakeInteractions([paid_response({"tags": ["One", "Two"]})])
     models = FakeModels([])
     install_fake_client(monkeypatch, models=models, interactions=interactions)
-    monkeypatch.setattr(tagging, "load_openrouter_pricing", lambda *_args: None)
+    monkeypatch.setattr(paid, "load_openrouter_pricing", lambda *_args: None)
 
     def fail_count(**_kwargs: Any) -> Any:
         raise RuntimeError("counting unavailable")
@@ -197,6 +199,7 @@ async def test_paid_token_preflight_failure_is_nonfatal(monkeypatch, paths) -> N
 async def test_unknown_search_accounting_disables_search_for_later_requests(
     monkeypatch, paths
 ) -> None:
+    install_paid_pricing(monkeypatch)
     store = Store()
     store.add_tweet("1")
     store.add_tweet("2")
@@ -207,7 +210,7 @@ async def test_unknown_search_accounting_disables_search_for_later_requests(
         ]
     )
     install_fake_client(monkeypatch, models=FakeModels([]), interactions=interactions)
-    policy = tagging._SearchPolicy(AIUsageLedger(paths.ai_usage_dir), reserve=100, enabled=True)
+    policy = paid.SearchPolicy(AIUsageLedger(paths.ai_usage_dir), reserve=100, enabled=True)
 
     for tweet_id in ("1", "2"):
         await tagging.tag_media_tweets(
@@ -230,6 +233,7 @@ async def test_unknown_search_accounting_disables_search_for_later_requests(
 async def test_retry_with_known_search_usage_keeps_first_attempt_accounted(
     monkeypatch, paths
 ) -> None:
+    install_paid_pricing(monkeypatch)
     store = Store()
     store.add_tweet("1")
     failure = RuntimeError("503 after provider response")
@@ -279,7 +283,7 @@ async def test_retry_with_empty_usage_marks_billing_unknown(monkeypatch, paths) 
     )
     interactions = FakeInteractions([failure, paid_response({"tags": ["One", "Two"]})])
     install_fake_client(monkeypatch, models=FakeModels([]), interactions=interactions)
-    monkeypatch.setattr(tagging, "load_openrouter_pricing", lambda *_args: None)
+    monkeypatch.setattr(paid, "load_openrouter_pricing", lambda *_args: None)
     original_sleep = asyncio.sleep
     monkeypatch.setattr(tagging.asyncio, "sleep", lambda _delay: original_sleep(0))
     ledger = AIUsageLedger(paths.ai_usage_dir)
@@ -308,6 +312,7 @@ async def test_retry_with_empty_usage_marks_billing_unknown(monkeypatch, paths) 
 async def test_retry_with_unknown_search_usage_disables_search_and_consumes_reservation(
     monkeypatch, paths
 ) -> None:
+    install_paid_pricing(monkeypatch)
     store = Store()
     store.add_tweet("1")
     interactions = FakeInteractions(
@@ -340,14 +345,15 @@ async def test_retry_with_unknown_search_usage_disables_search_and_consumes_rese
     records = ledger_records(ledger)
     assert records[0]["google_search_count"] is None
     assert records[0]["google_search_accounting_source"] == "unknown"
-    assert records[0]["search_reservation_consumed"] == tagging.SEARCH_ATTEMPT_SAFETY_RESERVATION
-    assert ledger.monthly_search_count() == tagging.SEARCH_ATTEMPT_SAFETY_RESERVATION
+    assert records[0]["search_reservation_consumed"] == paid.SEARCH_ATTEMPT_SAFETY_RESERVATION
+    assert ledger.monthly_search_count() == paid.SEARCH_ATTEMPT_SAFETY_RESERVATION
 
 
 @pytest.mark.asyncio
 async def test_monthly_search_reserve_prevents_intentional_allowance_crossing(
     monkeypatch, paths
 ) -> None:
+    install_paid_pricing(monkeypatch)
     ledger = AIUsageLedger(paths.ai_usage_dir)
     now = datetime.now(UTC)
     ledger.append(

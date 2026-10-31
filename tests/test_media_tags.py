@@ -108,6 +108,47 @@ def test_tagging_eligibility_filters_dedupes_orders_and_limits(paths) -> None:
     store.close()
 
 
+def test_tagging_candidates_restore_tweet_id_order_within_a_timestamp(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    # sort_index runs against tweet ID, so only the Python tie sort can produce this order.
+    for position, tweet_id in enumerate(["a", "b", "c", "d"]):
+        _seed_tag_candidate(store, tweet_id, created_at_ts=100)
+        store.conn.execute(
+            "UPDATE archive SET sort_index = ? WHERE row_key = ?",
+            (str(10 - position), f"tweet:bookmark::{tweet_id}"),
+        )
+        store.conn.commit()
+    _seed_tag_candidate(store, "newer", created_at_ts=200)
+    _seed_tag_candidate(store, "older", created_at_ts=50)
+
+    candidates = store.get_eligible_tagging_candidates(limit=4)
+
+    assert [candidate["tweet_id"] for candidate in candidates] == ["newer", "d", "c", "b"]
+    store.close()
+
+
+def test_tagging_candidates_walk_past_the_other_content_type_to_fill_a_batch(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    assert store is not None
+    _seed_tag_candidate(store, "media-newest", created_at_ts=100)
+    for position in range(5):
+        _seed_tag_candidate(
+            store, f"text-{position}", created_at_ts=90 - position, with_media=False
+        )
+    _seed_tag_candidate(store, "media-oldest", created_at_ts=10)
+
+    candidates = store.get_eligible_tagging_candidates(limit=2)
+    assert [candidate["tweet_id"] for candidate in candidates] == ["media-newest", "media-oldest"]
+    assert {candidate["content_type"] for candidate in candidates} == {"media"}
+
+    remaining = store.get_eligible_tagging_candidates(
+        limit=2, exclude_tweet_ids={"media-newest", "media-oldest"}
+    )
+    assert [candidate["tweet_id"] for candidate in remaining] == ["text-0", "text-1"]
+    store.close()
+
+
 def test_tagging_candidate_scan_stops_when_batch_is_full(paths) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None

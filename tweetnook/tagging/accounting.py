@@ -896,9 +896,10 @@ class AIUsageLedger:
             ledger_path = self.root / f"{timestamp.astimezone(UTC):%Y-%m}.jsonl"
             line = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
             with ledger_path.open("ab+") as handle:
+                previous_size = handle.seek(0, os.SEEK_END)
                 # A torn earlier append must not swallow this record into one unreadable
                 # line. Ending it keeps every byte, and a complete record stays countable.
-                if handle.seek(0, os.SEEK_END) > 0:
+                if previous_size > 0:
                     handle.seek(-1, os.SEEK_END)
                     if handle.read(1) != b"\n":
                         line = b"\n" + line
@@ -906,7 +907,10 @@ class AIUsageLedger:
                 handle.flush()
                 os.fsync(handle.fileno())
                 size = handle.seek(0, os.SEEK_END)
-            summary["log_sizes"][ledger_path.name] = size
+            # A rebuild that couldn't read this log left its records out. Claiming the new
+            # size would hide them for good; left stale, the next read rebuilds.
+            if summary["log_sizes"].get(ledger_path.name, 0) == previous_size:
+                summary["log_sizes"][ledger_path.name] = size
             _apply_record(summary, payload)
             self._atomic_summary(summary)
             return summary

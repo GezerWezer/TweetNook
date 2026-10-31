@@ -21,6 +21,7 @@ from tests.automated_tagging.conftest import (
 from tweetnook.tagging import tagger as tagging
 from tweetnook.tagging.accounting import AIUsageLedger
 
+
 # At .000001 input and .000002 output/thinking, 100 input + 20 output + 5 thinking is
 # 0.00015 at the Standard rate, and half that at Flex.
 @pytest.mark.parametrize(

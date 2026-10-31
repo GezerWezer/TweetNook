@@ -159,7 +159,8 @@ async def post_automated_tagging_test(
     if not validated.api_key:
         raise HTTPException(status_code=400, detail="Enter a Gemini API key first")
 
-    from tweetnook.tagging.tagger import TaggingPreview, tag_media_tweets
+    from tweetnook.tagging.results import TaggingPreview
+    from tweetnook.tagging.tagger import tag_media_tweets
 
     test_config = config.model_copy(update={"tagging": validated})
     previews: list[TaggingPreview] = []

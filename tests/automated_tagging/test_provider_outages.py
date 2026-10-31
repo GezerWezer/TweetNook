@@ -21,6 +21,7 @@ from tests.automated_tagging.conftest import (
     provider_failure,
 )
 from tweetnook.jobs.pipeline import PipelineReporter
+from tweetnook.tagging import paid
 from tweetnook.tagging import tagger as tagging
 from tweetnook.tagging.accounting import (
     AIUsageLedger,
@@ -98,7 +99,7 @@ async def test_paid_five_overloads_pause_with_jitter_and_leave_candidate_pending
     install_fake_client(monkeypatch, models=FakeModels([]), interactions=interactions)
     install_paid_pricing(monkeypatch)
     factors = iter([0.8, 1.2, 0.8, 1.2])
-    monkeypatch.setattr(tagging.random, "uniform", lambda low, high: next(factors))
+    monkeypatch.setattr(paid.random, "uniform", lambda low, high: next(factors))
     delays = []
 
     async def no_sleep(delay):
@@ -140,7 +141,7 @@ async def test_paid_overload_preserves_spending_and_strict_policy_guards(
         pass
 
     monkeypatch.setattr(tagging.asyncio, "sleep", no_sleep)
-    state = tagging._PaidRunState()
+    state = paid.PaidRunState()
     assert (
         await tagging.tag_media_tweets(
             store,
@@ -203,15 +204,15 @@ async def test_paid_ambiguous_failures_still_stop_after_recovered_overload(
 )
 def test_paid_overload_with_generation_evidence_remains_ambiguous(evidence):
     body = {"error": {"code": "service_unavailable"}, **evidence}
-    assert not tagging._is_capacity_response(503, body, "currently experiencing high demand")
+    assert not paid.is_capacity_response(503, body, "currently experiencing high demand")
 
 
 def test_paid_overload_requires_explicit_provider_status():
     body = {"error": {"code": "service_unavailable"}}
-    assert tagging._is_capacity_response(503, body, "provider unavailable")
-    assert not tagging._is_capacity_response(None, body, "currently experiencing high demand")
-    assert not tagging._is_capacity_response(500, body, "currently experiencing high demand")
-    assert not tagging._is_capacity_response(503, {}, "generic server failure")
+    assert paid.is_capacity_response(503, body, "provider unavailable")
+    assert not paid.is_capacity_response(None, body, "currently experiencing high demand")
+    assert not paid.is_capacity_response(500, body, "currently experiencing high demand")
+    assert not paid.is_capacity_response(503, {}, "generic server failure")
 
 
 @pytest.mark.asyncio
@@ -341,9 +342,9 @@ async def test_paid_slow_provider_failure_limits_retry_time(monkeypatch, paths, 
     install_paid_pricing(monkeypatch)
     clock = [0.0]
     monkeypatch.setattr(
-        tagging,
+        paid,
         "time",
-        SimpleNamespace(monotonic=lambda: clock[0], time=tagging.time.time),
+        SimpleNamespace(monotonic=lambda: clock[0], time=paid.time.time),
     )
     create = interactions.create
 

@@ -1,47 +1,51 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import mimetypes
-import random
 import time
 from collections import defaultdict, deque
-from contextlib import nullcontext
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import ValidationError
 from rich.console import Console
 from rich.text import Text
 
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.jobs.activity_history import new_run_id
+from tweetnook.jobs.outcome import Outcome
 from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.tagging.accounting import (
-    SEARCH_MONTHLY_ALLOWANCE,
     AIUsageLedger,
-    SearchAccounting,
     failed_usage_record,
-    has_usable_interaction_usage,
-    interaction_search_accounting,
     new_request_id,
     usage_from_generate_content,
-    usage_from_interaction,
 )
-from tweetnook.tagging.pricing import (
-    load_openrouter_pricing,
-    minimum_input_cost_usd,
-    pricing_multiplier,
+from tweetnook.tagging.failures import (
+    is_rejected_free_payload,
+    is_retryable_free_error,
+    provider_error_code,
+    retry_delay_seconds,
+    safe_error,
 )
-from tweetnook.tagging.prompts import build_media_system_prompt, build_text_system_prompt
+from tweetnook.tagging.paid import PaidRunState, SearchPolicy, tag_paid_tweet
+from tweetnook.tagging.preparation import MediaLoader, PreparedBatch, prepare_batch
+from tweetnook.tagging.results import MediaTagResult, TextTagResult, parse_result_list
 from tweetnook.tagging.rpd import RpdStatus, get_rpd_status, reserve_rpd_request
+from tweetnook.tagging.run import (
+    TaggingOutcome,
+    TaggingRun,
+    TagRequest,
+    announce_batch,
+    persist,
+    system_prompt,
+)
 from tweetnook.tagging.sdk import (
     AutomatedTaggingUnavailable,
     close_tagging_resources,
     load_gemini,
-    upload_owned_file,
 )
 
 try:  # Optional extra: importing this module must remain safe in base installations.
@@ -54,15 +58,6 @@ except ImportError:  # pragma: no cover - exercised in a dependency-isolated sub
     Image = None
 
 
-class MediaTagResult(BaseModel):
-    description: str = Field(min_length=1)
-    tags: list[str] = Field(min_length=2, max_length=5)
-
-
-class TextTagResult(BaseModel):
-    tags: list[str] = Field(min_length=2, max_length=5)
-
-
 class _FreeMediaTagResult(MediaTagResult):
     id: str
 
@@ -71,139 +66,19 @@ class _FreeTextTagResult(TextTagResult):
     id: str
 
 
-class TaggingPreview(BaseModel):
-    """Structured result returned by test runs without persisting tweet tags."""
-
-    id: str
-    content_type: Literal["media", "text"]
-    model: str
-    tweet_type: str
-    author_display_name: str
-    author_username: str
-    text: str
-    description: str | None = None
-    tags: list[str]
-
-
 # Keep the wave-oriented execution path so a future backfill mode can raise
 # this internal ceiling without changing tagging orchestration.  It is not a
 # configuration setting and normal Paid processing is sequential for now.
 PAID_CONCURRENCY = 1
-PAID_MAX_PROVIDER_FAILURES = 5
-PAID_PROVIDER_FAILURE_WINDOW_SECONDS = 15 * 60
 
 
 @dataclass(frozen=True, slots=True)
 class TaggingRunResult:
     processed: int = 0
     tagged: int = 0
+    # Provider attempts actually sent, including retries and split children.
     batches: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class _TweetTagContext:
-    tweet_id: str
-    tweet_type: str
-    author_display_name: str
-    author_username: str
-    text: str
-
-
-SEARCH_ATTEMPT_SAFETY_RESERVATION = 5
-
-
-@dataclass(frozen=True, slots=True)
-class _SearchReservation:
-    """In-flight safety budget for one provider attempt.
-
-    This is an application reservation, not a claim about how many searches a
-    Gemini request can perform.  The provider's authoritative count replaces it
-    when the response is available.
-    """
-
-    amount: int = SEARCH_ATTEMPT_SAFETY_RESERVATION
-
-
-@dataclass(slots=True)
-class _SearchPolicy:
-    ledger: AIUsageLedger
-    reserve: int
-    enabled: bool
-    in_flight: int = 0
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    unavailable_warning_emitted: bool = False
-    limit_warning_emitted: bool = False
-    unknown_policy: str = "disable"
-    max_unknown_attempts: int = 3
-    unknown_attempts: int = 0
-
-    async def reserve_attempt(self) -> tuple[_SearchReservation | None, str | None]:
-        async with self.lock:
-            if not self.enabled:
-                return None, "accounting" if self.unavailable_warning_emitted else None
-            used = self.ledger.monthly_search_count()
-            if (
-                used + self.in_flight + SEARCH_ATTEMPT_SAFETY_RESERVATION
-                >= SEARCH_MONTHLY_ALLOWANCE - self.reserve
-            ):
-                first = not self.limit_warning_emitted
-                self.limit_warning_emitted = True
-                return None, "limit" if first else None
-            reservation = _SearchReservation()
-            self.in_flight += reservation.amount
-            return reservation, None
-
-    async def commit(
-        self,
-        reservation: _SearchReservation | None,
-        accounting: SearchAccounting | None,
-    ) -> None:
-        if reservation is None:
-            return
-        async with self.lock:
-            self.in_flight = max(self.in_flight - reservation.amount, 0)
-
-    async def mark_unknown(self, reservation: _SearchReservation | None) -> bool:
-        """Consume an estimated reservation; cap tolerated unknown attempts."""
-
-        if reservation is None:
-            return False
-        async with self.lock:
-            self.in_flight = max(self.in_flight - reservation.amount, 0)
-            if not self.enabled:
-                return False
-            self.unknown_attempts += 1
-            if (
-                self.unknown_policy == "reserve"
-                and self.unknown_attempts < self.max_unknown_attempts
-            ):
-                return False
-            self.enabled = False
-            first = not self.unavailable_warning_emitted
-            self.unavailable_warning_emitted = True
-            return first
-
-    # Compatibility shims for callers from older integrations.  New code uses
-    # reserve_attempt/commit/mark_unknown so every retry owns its own lifecycle.
-    async def acquire(self) -> tuple[bool, str | None]:
-        reservation, reason = await self.reserve_attempt()
-        return reservation is not None, reason
-
-    async def finish(
-        self,
-        acquired: bool,
-        accounting: SearchAccounting | None,
-        *,
-        disable_if_unknown: bool = True,
-    ) -> bool:
-        reservation = _SearchReservation() if acquired else None
-        if accounting is None or not accounting.reliable:
-            if disable_if_unknown:
-                return await self.mark_unknown(reservation)
-            await self.commit(reservation, accounting)
-            return False
-        await self.commit(reservation, accounting)
-        return False
+    outcome: Outcome = field(default=Outcome.NO_WORK, compare=False)
 
 
 _THINKING_BUDGETS = {
@@ -213,75 +88,6 @@ _THINKING_BUDGETS = {
     "high": 8192,
 }
 _FREE_REQUEST_TIMES: dict[str, deque[float]] = defaultdict(deque)
-
-
-@dataclass(slots=True)
-class _PaidRunState:
-    attempts: int = 0
-    stop_reason: str | None = None
-    provider_failures: int = 0
-    provider_failure_started: float | None = None
-
-    def provider_pause_reason(self) -> str | None:
-        if self.provider_failures >= PAID_MAX_PROVIDER_FAILURES:
-            return (
-                "Gemini remained unavailable after five consecutive request failures; retry later"
-            )
-        if (
-            self.provider_failure_started is not None
-            and time.monotonic() - self.provider_failure_started
-            >= PAID_PROVIDER_FAILURE_WINDOW_SECONDS
-        ):
-            return "Gemini remained unavailable for 15 minutes; retry later"
-        return None
-
-
-def _provider_error_code(error: BaseException) -> int | None:
-    for raw in (
-        getattr(error, "status_code", None),
-        getattr(error, "code", None),
-        getattr(getattr(error, "response", None), "status_code", None),
-    ):
-        try:
-            code = int(raw)
-        except (ValueError, TypeError):
-            continue
-        if 400 <= code < 600:
-            return code
-    return None
-
-
-def _budget_pause(tag_config: Any, usage: dict[str, Any]) -> str | None:
-    if usage["unreserved"]:
-        return "earlier billing uncertainty has no cost reservation"
-    if usage["unknown"] and tag_config.unknown_billing_policy == "stop":
-        return "billing usage is uncertain (strict policy)"
-    if (
-        usage["unknown"] - usage.get("capacity_unknown", 0)
-        >= tag_config.max_unknown_requests_per_day
-    ):
-        return "the daily limit on billing-unknown requests was reached"
-    if usage["unpriced"]:
-        return "an earlier request has no price estimate"
-    return None
-
-
-def _is_capacity_response(code: int | None, failure: Any, message: str) -> bool:
-    """Recognize an explicit overload rejection, without evidence of generation.
-
-    A generic 503 or a client timeout remains ambiguous. Even a capacity
-    rejection keeps its unknown billing and reserve; only retry policy differs.
-    """
-    if code != 503:
-        return False
-    for name in ("usage", "id", "outputs", "output", "output_text", "steps"):
-        value = failure.get(name) if isinstance(failure, dict) else getattr(failure, name, None)
-        if value is not None:
-            return False
-    error = failure.get("error") if isinstance(failure, dict) else None
-    return (
-        isinstance(error, dict) and error.get("code") == "service_unavailable"
-    ) or "currently experiencing high demand" in message.casefold()
 
 
 async def _wait_for_free_rpm(model: str, requests_per_minute: int) -> None:
@@ -294,13 +100,6 @@ async def _wait_for_free_rpm(model: str, requests_per_minute: int) -> None:
             timestamps.append(now)
             return
         await asyncio.sleep(max(60 - (now - timestamps[0]), 0.01))
-
-
-def _safe_error(error: BaseException, api_key: str | None) -> str:
-    message = str(error)
-    if api_key:
-        message = message.replace(api_key, "[REDACTED]")
-    return message
 
 
 def _ensure_optional_dependencies() -> bool:
@@ -326,13 +125,10 @@ def _thinking_config(level: str) -> Any | None:
     return None
 
 
-def _interaction_thinking_level(level: str) -> str:
-    return "minimal" if level == "none" else level
-
-
-def _print_rpd_exhausted(console: Console, status: RpdStatus, model: str) -> None:
+def _print_rpd_exhausted(run: TaggingRun, status: RpdStatus) -> None:
+    model = run.model_name
     reset_at = status.reset_at.strftime("%Y-%m-%d %H:%M %Z")
-    console.print(
+    run.console.print(
         Text(
             f"Gemini daily request limit reached for {model} "
             f"({status.used}/{status.limit}). No further requests will be sent until "
@@ -342,39 +138,14 @@ def _print_rpd_exhausted(console: Console, status: RpdStatus, model: str) -> Non
     )
 
 
-def _print_rpd_storage_error(
-    console: Console,
-    error: BaseException,
-    api_key: str | None,
-) -> None:
-    console.print(
+def _print_rpd_storage_error(run: TaggingRun, error: BaseException) -> None:
+    run.console.print(
         Text(
             "Could not update Gemini daily request usage; request not sent: "
-            f"{_safe_error(error, api_key)}",
+            f"{safe_error(error, run.tag_config.api_key)}",
             style="red",
         )
     )
-
-
-def _print_tag_preview(
-    console: Console,
-    context: _TweetTagContext,
-    *,
-    description: str | None,
-    tags: list[str],
-) -> None:
-    author = context.author_display_name
-    if context.author_username:
-        author = (
-            f"{author} (@{context.author_username})" if author else f"@{context.author_username}"
-        )
-    console.print(Text(f"Tweet {context.tweet_id} ({context.tweet_type})", style="bold"))
-    if author:
-        console.print(Text(f"Author: {author}"))
-    console.print(Text(f"Text: {context.text}"))
-    if description:
-        console.print(Text(f"Description: {description}"))
-    console.print(Text(f"Tags: {', '.join(tags)}"))
 
 
 def _quote_targets(store: ArchiveStore, tweet_ids: list[str]) -> dict[str, str]:
@@ -396,127 +167,444 @@ def _run_id() -> str:
     return str(pipeline.run_id or new_run_id())
 
 
-def _media_mime(path, media_type: str | None) -> str:
-    guessed, _encoding = mimetypes.guess_type(path.name)
-    if guessed:
-        return guessed
-    return "video/mp4" if media_type in {"video", "animated_gif"} else "image/jpeg"
-
-
-def _remote_state_name(remote: Any) -> str:
-    state = getattr(remote, "state", None)
-    return str(getattr(state, "name", None) or state or "ACTIVE").upper()
-
-
-async def _wait_for_remote_file(client: Any, remote: Any) -> Any:
-    for _attempt in range(90):
-        current = await asyncio.to_thread(client.files.get, name=remote.name)
-        state = _remote_state_name(current)
-        if state == "ACTIVE":
-            return current
-        if state == "FAILED":
-            raise RuntimeError(f"Gemini failed to process {remote.name}")
-        await asyncio.sleep(10)
-    raise TimeoutError(f"Gemini file processing timed out for {remote.name}")
-
-
-async def _count_request_tokens(
-    client: Any,
+def _new_run(
+    store: ArchiveStore,
+    config: AppConfig,
+    paths: XDGPaths,
+    console: Console,
+    request: TagRequest,
     *,
-    model: str,
-    system_prompt: str,
-    interaction_input: list[Any],
-    search_enabled: bool = False,
-    console: Console | None = None,
-    api_key: str | None = None,
-) -> tuple[int | None, bool]:
-    """Count prompt/media input; subsequent Search/tool expansion is uncertain."""
+    ledger: AIUsageLedger | None = None,
+    search_policy: SearchPolicy | None = None,
+    paid_state: PaidRunState | None = None,
+) -> TaggingRun:
+    tag_config = config.tagging
+    ledger = ledger or AIUsageLedger(paths.ai_usage_dir)
+    return TaggingRun(
+        store=store,
+        tag_config=tag_config,
+        paths=paths,
+        console=console,
+        model_name=request.model_override or tag_config.model,
+        ledger=ledger,
+        run_identifier=_run_id(),
+        search_policy=search_policy
+        or SearchPolicy(
+            ledger,
+            tag_config.search_safety_reserve,
+            tag_config.api_mode == "paid" and tag_config.google_search,
+            unknown_policy=tag_config.search_unknown_policy,
+            max_unknown_attempts=tag_config.max_unknown_search_requests,
+        ),
+        paid_state=paid_state or PaidRunState(),
+        dry_run=request.dry_run,
+        previews=request.preview_results,
+    )
 
-    counter = getattr(getattr(client, "models", None), "count_tokens", None)
-    if not callable(counter):
-        if console is not None:
-            console.print(
-                Text("Token preflight unavailable: SDK has no token counter.", style="yellow")
-            )
-        return None, False
-    # Developer API countTokens rejects CountTokensConfig.system_instruction.
-    # Include the prompt as content for this estimate; the Interactions request
-    # still sends its real system instruction separately.
-    contents: list[Any] = [system_prompt] if system_prompt else []
-    for item in interaction_input:
-        if isinstance(item, str):
-            contents.append(item)
-            continue
-        if not isinstance(item, dict):
-            contents.append(item)
-            continue
-        item_type = str(item.get("type") or "")
-        if item_type == "text":
-            contents.append(str(item.get("text") or ""))
-            continue
-        uri = item.get("uri")
-        if uri:
-            part_factory = getattr(getattr(types, "Part", None), "from_uri", None)
-            if callable(part_factory):
-                try:
-                    contents.append(
-                        part_factory(
-                            file_uri=str(uri),
-                            mime_type=str(item.get("mime_type") or "application/octet-stream"),
-                        )
-                    )
-                    continue
-                except Exception:
-                    pass
-            # Token preflight is telemetry only.  A URI string is still a
-            # GenerateContent-compatible scalar when a test/fallback SDK has
-            # no Part factory; never pass Interactions dictionaries through.
-            contents.append(str(uri))
-    kwargs: dict[str, Any] = {"model": model, "contents": contents}
+
+def _free_generation_config(run: TaggingRun, batch: PreparedBatch) -> Any:
+    result_schema = _FreeMediaTagResult if batch.content_type == "media" else _FreeTextTagResult
+    config_args: dict[str, Any] = {
+        "http_options": types.HttpOptions(
+            timeout=900_000,
+            retry_options=types.HttpRetryOptions(attempts=1),
+        ),
+        "response_mime_type": "application/json",
+        "max_output_tokens": 8192,
+        "response_schema": list[result_schema],
+    }
+    thinking_config = _thinking_config(run.tag_config.thinking_level)
+    if thinking_config is not None:
+        config_args["thinking_config"] = thinking_config
+    return types.GenerateContentConfig(**config_args)
+
+
+@dataclass(slots=True)
+class _FreeSend:
+    """How one Free batch's provider attempts ended."""
+
+    response: Any | None = None
+    rejected: bool = False
+    stop: TaggingOutcome | None = None
+
+
+def _free_quota_stop(run: TaggingRun, check: Callable[..., RpdStatus]) -> TaggingOutcome | None:
+    """Return why no Free request may be sent: spent allowance, or usage that can't be counted."""
     try:
-        response = await asyncio.to_thread(counter, **kwargs)
+        status = check(run.store, model=run.model_name, limit=run.tag_config.free_rpd)
     except Exception as error:
-        if console is not None:
-            console.print(Text(f"Token preflight unavailable: {_safe_error(error, api_key)}"))
-        return None, False
-    total = getattr(response, "total_tokens", None)
-    if total is None:
-        total = getattr(response, "totalTokenCount", None)
+        raise_if_storage_exhausted(error)
+        _print_rpd_storage_error(run, error)
+        return TaggingOutcome.failed("Gemini daily request usage could not be updated", halted=True)
+    if status.allowed:
+        return None
+    _print_rpd_exhausted(run, status)
+    return TaggingOutcome.paused(f"the Gemini daily request limit was reached for {run.model_name}")
+
+
+async def _send_free_request(
+    run: TaggingRun,
+    client: Any,
+    batch: PreparedBatch,
+    existing_tags: Sequence[str],
+) -> _FreeSend:
+    tag_config = run.tag_config
+    request_id = new_request_id()
+    contents = batch.free_parts(system_prompt(run, batch, existing_tags, search=False))
+    metadata = batch.request_metadata(existing_tag_count=len(existing_tags), tag_config=tag_config)
+    generation_config = _free_generation_config(run, batch)
+    for attempt in range(5):
+        stop = _free_quota_stop(run, reserve_rpd_request)
+        if stop is not None:
+            return _FreeSend(stop=stop)
+        await _wait_for_free_rpm(run.model_name, tag_config.free_rpm)
+        started = time.monotonic()
+        run.free_attempts += 1
+        try:
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=run.model_name,
+                contents=contents,
+                config=generation_config,
+            )
+        except Exception as error:
+            _record_free_failure(run, batch, request_id, started, attempt + 1, metadata)
+            code = provider_error_code(error)
+            if is_retryable_free_error(error, code) and attempt < 4:
+                delay = retry_delay_seconds(attempt)
+                run.console.print(
+                    f"[yellow]Gemini API busy. Retrying in {delay} seconds "
+                    f"(Attempt {attempt + 1}/5)...[/yellow]"
+                )
+                await asyncio.sleep(delay)
+                continue
+            if is_rejected_free_payload(error, code):
+                return _FreeSend(rejected=True)
+            message = safe_error(error, tag_config.api_key)
+            run.console.print(f"[red]Gemini Tagging Failed: {message}[/red]")
+            return _FreeSend(stop=TaggingOutcome.failed(message))
+        _record_free_success(run, batch, response, request_id, started, attempt + 1, metadata)
+        return _FreeSend(response=response)
+    raise AssertionError("the final attempt always returns")
+
+
+def _record_free_success(
+    run: TaggingRun,
+    batch: PreparedBatch,
+    response: Any,
+    request_id: str,
+    started: float,
+    attempt_number: int,
+    metadata: dict[str, Any],
+) -> None:
     try:
-        return max(int(total), 1), True
+        run.ledger.append(
+            usage_from_generate_content(
+                response,
+                run_id=run.run_identifier,
+                request_id=request_id,
+                requested_model=run.model_name,
+                content_type=batch.content_type,
+                tweet_ids=batch.tweet_ids,
+                latency_ms=round((time.monotonic() - started) * 1000),
+                attempt=attempt_number,
+                thinking_level=run.tag_config.thinking_level,
+                request_metadata=metadata,
+                reserved_cost_usd="0",
+            )
+        )
+    except Exception as error:
+        raise_if_storage_exhausted(error)
+        run.console.print(
+            "[yellow]Gemini Free usage could not be written to the AI ledger: "
+            f"{safe_error(error, run.tag_config.api_key)}[/yellow]"
+        )
+
+
+def _record_free_failure(
+    run: TaggingRun,
+    batch: PreparedBatch,
+    request_id: str,
+    started: float,
+    attempt_number: int,
+    metadata: dict[str, Any],
+) -> None:
+    try:
+        run.ledger.append(
+            failed_usage_record(
+                run_id=run.run_identifier,
+                request_id=request_id,
+                api_mode="free",
+                model=run.model_name,
+                service_tier="free",
+                content_type=batch.content_type,
+                tweet_ids=batch.tweet_ids,
+                latency_ms=round((time.monotonic() - started) * 1000),
+                search_enabled=False,
+                attempt=attempt_number,
+                thinking_level=run.tag_config.thinking_level,
+                request_metadata=metadata,
+                reserved_cost_usd="0",
+            )
+        )
+    except Exception as error:
+        raise_if_storage_exhausted(error)
+
+
+async def _split_free_batch(
+    run: TaggingRun, client: Any, batch: PreparedBatch, reason: str
+) -> TaggingOutcome:
+    first, second = batch.halves()
+    run.console.print(
+        f"[yellow]{reason} for a Free batch of {len(batch.tweets)}. Splitting into "
+        f"batches of {len(first.tweets)} and {len(second.tweets)}...[/yellow]"
+    )
+    total = TaggingOutcome()
+    for child in (first, second):
+        # Each child reads the tags its sibling just saved, and reuses the prepared media.
+        total = total.plus(await _tag_free_batch(run, client, child, _top_archive_tags(run.store)))
+        if total.halted:
+            break
+    return total
+
+
+def _free_results(run: TaggingRun, batch: PreparedBatch, raw_results: list[Any]) -> list[Any]:
+    model = _FreeMediaTagResult if batch.content_type == "media" else _FreeTextTagResult
+    parsed: list[tuple[str, MediaTagResult | TextTagResult]] = []
+    for raw in raw_results:
+        try:
+            result = model.model_validate(raw)
+            parsed.append((result.id, result))
+        except (ValidationError, TypeError, ValueError):
+            run.console.print(
+                "[yellow]Skipping a Gemini result that did not match the batch schema.[/yellow]"
+            )
+    return parsed
+
+
+async def _tag_free_batch(
+    run: TaggingRun, client: Any, batch: PreparedBatch, existing_tags: Sequence[str]
+) -> TaggingOutcome:
+    announce_batch(run, batch)
+    can_split = len(batch.tweets) > 1
+    send = await _send_free_request(run, client, batch, existing_tags)
+    if send.stop is not None:
+        return send.stop
+    if send.rejected:
+        if can_split:
+            return await _split_free_batch(run, client, batch, "Gemini rejected the payload")
+        if not run.dry_run:
+            run.store.mark_tagging_failed(batch.tweet_ids)
+        return TaggingOutcome.failed("Gemini rejected the payload")
+    response_text = getattr(send.response, "text", None)
+    if not response_text:
+        if can_split:
+            return await _split_free_batch(run, client, batch, "Gemini returned an empty response")
+        run.console.print("[red]Gemini returned an empty response.[/red]")
+        if not run.dry_run:
+            run.store.mark_tagging_failed(batch.tweet_ids)
+        return TaggingOutcome.failed("Gemini returned an empty response")
+    try:
+        raw_results = parse_result_list(response_text)
     except (TypeError, ValueError):
-        if console is not None:
-            console.print(Text("Token preflight unavailable: invalid token count.", style="yellow"))
-        return None, False
+        reason = "Gemini returned invalid structured output"
+        if can_split:
+            return await _split_free_batch(run, client, batch, reason)
+        run.console.print(f"[red]{reason}.[/red]")
+        return TaggingOutcome.failed(reason)
+    return TaggingOutcome.from_results(
+        persist(run, batch, _free_results(run, batch, raw_results), existing_tags)
+    )
 
 
-async def _create_interaction(client: Any, **kwargs: Any) -> Any:
-    aio = getattr(client, "aio", None)
-    if aio is not None and getattr(aio, "interactions", None) is not None:
-        if hasattr(aio.interactions, "sdk_configuration"):
-            # Newer SDKs retry internally even with HttpRetryOptions(attempts=1).
-            # Own retries here so every HTTP attempt has separate accounting.
-            aio.interactions.sdk_configuration.retry_config = None
-        return await aio.interactions.create(**kwargs)
-    if hasattr(client.interactions, "sdk_configuration"):
-        client.interactions.sdk_configuration.retry_config = None
-    return await asyncio.to_thread(client.interactions.create, **kwargs)
+async def _prepare_and_execute(
+    run: TaggingRun,
+    client: Any,
+    tweet_ids: list[str],
+    content_type: Literal["media", "text"],
+    quote_targets: dict[str, str],
+    existing_tags: Sequence[str],
+    resources: tuple[list[Any], list[Any]],
+) -> TaggingOutcome:
+    tag_config = run.tag_config
+    images, uploads = resources
+    context_ids = list(dict.fromkeys([*tweet_ids, *quote_targets.values()]))
+    all_media, tweet_objs = run.store.tagging_context(context_ids)
+    try:
+        batch = await prepare_batch(
+            tweet_ids,
+            content_type,
+            quote_targets=quote_targets,
+            all_media=all_media,
+            tweet_objs=tweet_objs,
+            loader=MediaLoader(
+                client=client,
+                data_dir=run.paths.data_dir,
+                max_media_size_mb=tag_config.max_media_size_mb,
+                upload_all=run.paid,
+                image_module=Image,
+                images=images,
+                uploads=uploads,
+                console=run.console,
+                api_key=tag_config.api_key,
+            ),
+            with_ids=not run.paid,
+        )
+        if not any(tweet_id in tweet_objs for tweet_id in tweet_ids):
+            run.console.print(
+                "[yellow]No stored tweet objects found for the selected IDs.[/yellow]"
+            )
+            return TaggingOutcome()
+        if not batch.tweets:
+            run.console.print("[yellow]No loadable media found for the selected tweets.[/yellow]")
+            if not run.dry_run and run.paid:
+                run.store.defer_tagging_failure(tweet_ids)
+            return TaggingOutcome()
+        execute = tag_paid_tweet if run.paid else _tag_free_batch
+        return await execute(run, client, batch, existing_tags)
+    except Exception as error:
+        # A full disk is the run's failure, not this batch's. Report it as what it is.
+        raise_if_storage_exhausted(error)
+        message = safe_error(error, tag_config.api_key)
+        run.console.print(f"[red]Gemini Tagging Failed: {message}[/red]")
+        return TaggingOutcome.failed(message)
 
 
-def _normalized_tags(tags: list[str], existing_tags: list[str]) -> list[str]:
-    canonical = {tag.casefold(): tag for tag in existing_tags}
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for raw in tags:
-        value = str(raw).strip()
-        if not value:
-            continue
-        value = canonical.get(value.casefold(), value)
-        folded = value.casefold()
-        if folded not in seen:
-            normalized.append(value)
-            seen.add(folded)
-    return normalized
+async def _tag_scope(
+    run: TaggingRun,
+    tweet_ids: list[str],
+    content_type: Literal["media", "text"],
+    quote_targets: dict[str, str],
+    existing_tags: Sequence[str],
+) -> TaggingOutcome:
+    """Own one client and everything loaded through it, for one request and its children."""
+    tag_config = run.tag_config
+    if run.paid_state.stop_reason:
+        return TaggingOutcome.paused(run.paid_state.stop_reason)
+    if not run.paid:
+        stop = _free_quota_stop(run, get_rpd_status)
+        if stop is not None:
+            return stop
+    try:
+        client = genai.Client(
+            api_key=tag_config.api_key,
+            http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)),
+        )
+    except Exception as error:
+        message = safe_error(error, tag_config.api_key)
+        run.console.print(f"[red]Could not initialize Gemini: {message}[/red]")
+        return TaggingOutcome.failed(message, halted=True)
+
+    images: list[Any] = []
+    uploads: list[Any] = []
+    attempts_before = run.attempts_sent
+    try:
+        outcome = await _prepare_and_execute(
+            run, client, tweet_ids, content_type, quote_targets, existing_tags, (images, uploads)
+        )
+    finally:
+        await close_tagging_resources(client, images, uploads)
+    return replace(outcome, attempts=run.attempts_sent - attempts_before)
+
+
+async def _tag_group(
+    run: TaggingRun,
+    tweet_ids: list[str],
+    content_type: Literal["media", "text"],
+    quote_targets: dict[str, str],
+    existing_tags: Sequence[str],
+) -> TaggingOutcome:
+    if not run.paid or len(tweet_ids) == 1:
+        return await _tag_scope(run, tweet_ids, content_type, quote_targets, existing_tags)
+    # Keep the generic wave path, but Paid processing is intentionally sequential until a
+    # future feature opts into a higher internal cap. Each tweet is its own request, and
+    # prepares nothing until its turn, so a pause doesn't waste uploads.
+    semaphore = asyncio.Semaphore(PAID_CONCURRENCY)
+
+    async def paid_one(tweet_id: str) -> TaggingOutcome:
+        async with semaphore:
+            targets = {tweet_id: quote_targets[tweet_id]} if tweet_id in quote_targets else {}
+            return await _tag_scope(run, [tweet_id], content_type, targets, existing_tags)
+
+    total = TaggingOutcome()
+    for outcome in await asyncio.gather(*(paid_one(tweet_id) for tweet_id in tweet_ids)):
+        total = total.plus(outcome)
+    return total
+
+
+async def tag_tweets(
+    store: ArchiveStore,
+    config: AppConfig,
+    paths: XDGPaths,
+    console: Console,
+    request: TagRequest,
+    *,
+    ledger: AIUsageLedger | None = None,
+    search_policy: SearchPolicy | None = None,
+    paid_state: PaidRunState | None = None,
+) -> TaggingOutcome:
+    """Tag specific tweets: plan their requests, then run each through its stages."""
+    pipeline = current_pipeline()
+    if pipeline.has_step("tagging") and not request.dry_run:
+        console = pipeline.capture_console("tagging")  # type: ignore[assignment]
+    tag_config = config.tagging
+    if not tag_config.enabled or not tag_config.api_key:
+        console.print("[yellow]Tagging is disabled or missing API key.[/yellow]")
+        return TaggingOutcome()
+    if not _ensure_optional_dependencies():
+        console.print(
+            "[yellow]Automated tagging is not installed; sync will continue. Install "
+            "tweetnook[automated-tagging] to enable it.[/yellow]"
+        )
+        return TaggingOutcome()
+    tweet_ids = request.tweet_ids
+    if not tweet_ids:
+        return TaggingOutcome()
+    if request.dry_run and len(tweet_ids) != 1:
+        raise ValueError("Test tag generation requires exactly one tweet")
+    run = _new_run(
+        store,
+        config,
+        paths,
+        console,
+        request,
+        ledger=ledger,
+        search_policy=search_policy,
+        paid_state=paid_state,
+    )
+    if run.paid_state.stop_reason:
+        return TaggingOutcome.paused(run.paid_state.stop_reason)
+    quote_targets = (
+        _quote_targets(store, tweet_ids)
+        if request.quoted_tweet_ids is None
+        else request.quoted_tweet_ids
+    )
+    total = TaggingOutcome()
+    for content_type, ids in _plan_groups(store, request, quote_targets):
+        targets = {
+            tweet_id: quote_targets[tweet_id] for tweet_id in ids if tweet_id in quote_targets
+        }
+        # Each group reads the tags the previous one just saved.
+        existing_tags = tuple(_top_archive_tags(store))
+        total = total.plus(await _tag_group(run, ids, content_type, targets, existing_tags))
+        if total.halted:
+            break
+    return total
+
+
+def _plan_groups(
+    store: ArchiveStore, request: TagRequest, quote_targets: dict[str, str]
+) -> list[tuple[Literal["media", "text"], list[str]]]:
+    """A request sends one content type, so a mixed selection becomes homogeneous groups."""
+    if request.content_type is not None:
+        return [(request.content_type, request.tweet_ids)]
+    content_types = store.tagging_content_types(request.tweet_ids, quote_targets)
+    groups: list[tuple[Literal["media", "text"], list[str]]] = []
+    for kind in ("media", "text"):
+        ids = [tweet_id for tweet_id in request.tweet_ids if content_types[tweet_id] == kind]
+        if ids:
+            groups.append((kind, ids))
+    return groups
 
 
 async def tag_media_tweets(
@@ -527,998 +615,60 @@ async def tag_media_tweets(
     tweet_ids: list[str],
     model_override: str | None = None,
     *,
-    dry_run: bool = False,
-    content_type: Literal["media", "text"] | None = None,
-    quoted_tweet_ids: dict[str, str] | None = None,
-    preview_results: list[TaggingPreview] | None = None,
-    _search_policy: _SearchPolicy | None = None,
+    _search_policy: SearchPolicy | None = None,
     _ledger: AIUsageLedger | None = None,
-    _run_identifier: str | None = None,
-    _existing_tags: list[str] | None = None,
-    _paid_stop: list[bool] | None = None,
-    _paid_state: _PaidRunState | None = None,
+    _paid_state: PaidRunState | None = None,
+    **options: Any,
 ) -> int:
-    """Tag one Paid tweet or one homogeneous Free batch."""
-    pipeline = current_pipeline()
-    if pipeline.has_step("tagging") and not dry_run:
-        console = pipeline.capture_console("tagging")  # type: ignore[assignment]
-    tag_config = config.tagging
-    if not tag_config.enabled or not tag_config.api_key:
-        console.print("[yellow]Tagging is disabled or missing API key.[/yellow]")
-        return 0
-    if not _ensure_optional_dependencies():
-        console.print(
-            "[yellow]Automated tagging is not installed; sync will continue. Install "
-            "tweetnook[automated-tagging] to enable it.[/yellow]"
-        )
-        return 0
-    if not tweet_ids:
-        return 0
-    if dry_run and len(tweet_ids) != 1:
-        raise ValueError("Test tag generation requires exactly one tweet")
-
-    model_name = model_override or tag_config.model
-    ledger = _ledger or AIUsageLedger(paths.ai_usage_dir)
-    run_identifier = _run_identifier or _run_id()
-    existing_tags = tuple(
-        _existing_tags if _existing_tags is not None else _top_archive_tags(store)
+    """Tag specific tweets for a caller that only needs the number tagged."""
+    outcome = await tag_tweets(
+        store,
+        config,
+        paths,
+        console,
+        TagRequest(tweet_ids, model_override, **options),
+        ledger=_ledger,
+        search_policy=_search_policy,
+        paid_state=_paid_state,
     )
-    search_policy = _search_policy or _SearchPolicy(
-        ledger,
-        tag_config.search_safety_reserve,
-        tag_config.api_mode == "paid" and tag_config.google_search,
-        unknown_policy=tag_config.search_unknown_policy,
-        max_unknown_attempts=tag_config.max_unknown_search_requests,
-    )
-    paid_state = _paid_state or _PaidRunState()
-    if paid_state.stop_reason:
-        return 0
-    logical_request_id = new_request_id()
+    return outcome.tagged
 
-    quote_targets = (
-        _quote_targets(store, tweet_ids) if quoted_tweet_ids is None else quoted_tweet_ids
-    )
-    if content_type is None:
-        content_types = store.tagging_content_types(tweet_ids, quote_targets)
-        grouped_ids = {
-            kind: [tweet_id for tweet_id in tweet_ids if content_types[tweet_id] == kind]
-            for kind in ("media", "text")
-        }
-        groups = [kind for kind, ids in grouped_ids.items() if ids]
-        if len(groups) > 1:
-            total = 0
-            for kind in groups:
-                ids = grouped_ids[kind]
-                group_existing_tags = tuple(_top_archive_tags(store))
-                total += await tag_media_tweets(
-                    store,
-                    config,
-                    paths,
-                    console,
-                    ids,
-                    model_override,
-                    dry_run=dry_run,
-                    content_type=kind,
-                    quoted_tweet_ids={
-                        tweet_id: quote_targets[tweet_id]
-                        for tweet_id in ids
-                        if tweet_id in quote_targets
-                    },
-                    preview_results=preview_results,
-                    _search_policy=search_policy,
-                    _ledger=ledger,
-                    _run_identifier=run_identifier,
-                    _existing_tags=group_existing_tags,
-                    _paid_stop=_paid_stop,
-                    _paid_state=paid_state,
-                )
-            return total
-        content_type = groups[0] if groups else "text"
 
-    if tag_config.api_mode == "paid" and len(tweet_ids) > 1:
-        # Keep the generic wave path, but Paid processing is intentionally
-        # sequential until a future feature opts into a higher internal cap.
-        semaphore = asyncio.Semaphore(PAID_CONCURRENCY)
+def finish_tagging_step(
+    pipeline: Any, outcome: TaggingOutcome, *, processed: int, note: str = ""
+) -> None:
+    """Report one outcome the same way for every caller.
 
-        async def paid_one(tweet_id: str) -> int:
-            async with semaphore:
-                return await tag_media_tweets(
-                    store,
-                    config,
-                    paths,
-                    console,
-                    [tweet_id],
-                    model_override,
-                    dry_run=dry_run,
-                    content_type=content_type,
-                    quoted_tweet_ids=(
-                        {tweet_id: quote_targets[tweet_id]} if tweet_id in quote_targets else {}
-                    ),
-                    preview_results=preview_results,
-                    _search_policy=search_policy,
-                    _ledger=ledger,
-                    _run_identifier=run_identifier,
-                    _existing_tags=existing_tags,
-                    _paid_stop=_paid_stop,
-                    _paid_state=paid_state,
-                )
-
-        return sum(await asyncio.gather(*(paid_one(tweet_id) for tweet_id in tweet_ids)))
-
-    if tag_config.api_mode != "paid":
-        try:
-            status = get_rpd_status(store, model=model_name, limit=tag_config.free_rpd)
-        except Exception as error:
-            _print_rpd_storage_error(console, error, tag_config.api_key)
-            return 0
-        if not status.allowed:
-            _print_rpd_exhausted(console, status, model_name)
-            return 0
-
-    try:
-        client = genai.Client(
-            api_key=tag_config.api_key,
-            http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)),
+    Tagging is an optional follow-up, so a failure stays recoverable here: a sync that saved
+    its posts didn't fail because Gemini did. A command that only tags decides for itself.
+    """
+    summary = f"{outcome.tagged} tagged · {outcome.attempts} requests{note}"
+    metrics = {"tagged": outcome.tagged, "requests": outcome.attempts}
+    reason = outcome.reason or "tagging could not finish"
+    if outcome.status is Outcome.PAUSED:
+        pipeline.update_step("tagging", completed=processed)
+        pipeline.fail_step(
+            "tagging", f"Paused: {reason}", metrics=metrics, reason=reason, paused=True
         )
-    except Exception as error:
-        console.print(
-            f"[red]Could not initialize Gemini: {_safe_error(error, tag_config.api_key)}[/red]"
+    elif outcome.status is Outcome.FAILED:
+        pipeline.update_step("tagging", completed=processed)
+        pipeline.fail_step(
+            "tagging", f"No tags saved: {reason}", metrics=metrics, reason=reason, recoverable=True
         )
-        return 0
+    elif processed == 0:
+        pipeline.skip_step("tagging", "no eligible tweets or available quota/spend")
+    elif outcome.status is Outcome.PARTIAL:
+        pipeline.complete_step("tagging", f"{summary} · some requests failed", metrics=metrics)
+    else:
+        pipeline.complete_step("tagging", summary, metrics=metrics)
 
-    opened_images: list[Any] = []
-    uploaded_files: list[Any] = []
-    try:
 
-        def make_system_prompt(search_enabled: bool) -> str:
-            if content_type == "media":
-                return build_media_system_prompt(
-                    existing_tags=existing_tags,
-                    tagging_context=tag_config.tagging_context,
-                    additional_instructions=tag_config.additional_instructions,
-                    google_search=search_enabled,
-                    tweet_isolation=tag_config.api_mode == "free" and len(tweet_ids) > 1,
-                )
-            return build_text_system_prompt(
-                existing_tags=existing_tags,
-                tagging_context=tag_config.tagging_context,
-                additional_instructions=tag_config.additional_instructions,
-                google_search=search_enabled,
-                tweet_isolation=tag_config.api_mode == "free" and len(tweet_ids) > 1,
-            )
-
-        # Free requests never enable Search.  Paid requests rebuild this prompt per
-        # provider attempt so a retry after uncertain Search accounting can proceed
-        # without the Search tool and its corresponding instruction.
-        system_prompt = make_system_prompt(False)
-
-        context_ids = list(dict.fromkeys([*tweet_ids, *quote_targets.values()]))
-        all_media, tweet_objs = store.tagging_context(context_ids)
-
-        free_parts: list[Any] = [system_prompt, "\n\n--- TWEETS TO TAG ---\n\n"]
-        interaction_input: list[Any] = []
-        tweet_contexts: dict[str, _TweetTagContext] = {}
-        active_media_by_tweet: dict[str, int] = defaultdict(int)
-        pending_files: list[tuple[Any, str, str, str, int | None, int | None]] = []
-        media_count = 0
-        image_count = 0
-        video_count = 0
-        gif_count = 0
-
-        async def split_free_batch(reason: str) -> int:
-            if len(tweet_ids) <= 1:
-                return 0
-            midpoint = len(tweet_ids) // 2
-            console.print(
-                f"[yellow]{reason} for a Free batch of {len(tweet_ids)}. Splitting into "
-                f"batches of {midpoint} and {len(tweet_ids) - midpoint}...[/yellow]"
-            )
-            total = 0
-            for subset in (tweet_ids[:midpoint], tweet_ids[midpoint:]):
-                split_existing_tags = tuple(_top_archive_tags(store))
-                total += await tag_media_tweets(
-                    store,
-                    config,
-                    paths,
-                    console,
-                    subset,
-                    model_override,
-                    dry_run=dry_run,
-                    content_type=content_type,
-                    quoted_tweet_ids={
-                        tweet_id: quote_targets[tweet_id]
-                        for tweet_id in subset
-                        if tweet_id in quote_targets
-                    },
-                    preview_results=preview_results,
-                    _search_policy=search_policy,
-                    _ledger=ledger,
-                    _run_identifier=run_identifier,
-                    _existing_tags=split_existing_tags,
-                )
-            return total
-
-        try:
-            for tweet_id in tweet_ids:
-                tweet = tweet_objs.get(tweet_id)
-                if tweet is None:
-                    continue
-                try:
-                    raw = json.loads(tweet.get("raw_json") or "{}")
-                    if not isinstance(raw, dict):
-                        raw = {}
-                except (json.JSONDecodeError, TypeError):
-                    raw = {}
-                legacy = raw.get("legacy") or {}
-                quoted_id = quote_targets.get(tweet_id)
-                tweet_type = "Standalone"
-                if quoted_id or legacy.get("quoted_status_id_str"):
-                    tweet_type = "Quote Tweet"
-                elif legacy.get("in_reply_to_status_id_str"):
-                    tweet_type = "Reply"
-                context = _TweetTagContext(
-                    tweet_id=tweet_id,
-                    tweet_type=tweet_type,
-                    author_display_name=str(tweet.get("author_display_name") or ""),
-                    author_username=str(tweet.get("author_username") or ""),
-                    text=str(tweet.get("text") or ""),
-                )
-                tweet_contexts[tweet_id] = context
-                tweet_text = ""
-                if tag_config.api_mode == "free":
-                    # Free batches need an explicit identifier so the model can
-                    # map each result back to its source tweet. Paid requests are
-                    # one-tweet operations, so do not expose archive IDs in the
-                    # model input/output path.
-                    tweet_text += f"[ID: {tweet_id}]\n"
-                tweet_text += (
-                    f"Type: {tweet_type}\n"
-                    f"Author: {context.author_display_name} (@{context.author_username})\n"
-                    f"Text: {json.dumps(context.text)}\n"
-                )
-                quoted = tweet_objs.get(quoted_id or "")
-                if quoted is not None:
-                    tweet_text += "Quoted Tweet Context:\n"
-                    if tag_config.api_mode == "free":
-                        tweet_text += f"ID: {quoted_id}\n"
-                    tweet_text += (
-                        f"Author: {quoted.get('author_display_name', '')} "
-                        f"(@{quoted.get('author_username', '')})\n"
-                        f"Text: {json.dumps(quoted.get('text', ''))}\n"
-                    )
-                free_parts.append(tweet_text)
-                interaction_input.append({"type": "text", "text": tweet_text})
-                if content_type == "text":
-                    free_parts.append("\n")
-                    continue
-
-                media_sources = [("Direct Tweet Media", tweet_id)]
-                if quoted_id:
-                    media_sources.append(("Quoted Tweet Media", quoted_id))
-                for source_label, source_id in media_sources:
-                    source_media = all_media.get(source_id, [])
-                    if source_media:
-                        label = f"\n{source_label}:\n"
-                        free_parts.append(label)
-                        interaction_input.append({"type": "text", "text": label})
-                    for media in source_media:
-                        local_path = media.get("local_path")
-                        if not local_path:
-                            continue
-                        absolute = paths.data_dir / local_path
-                        if not absolute.exists():
-                            continue
-                        size_mb = absolute.stat().st_size / (1024 * 1024)
-                        if size_mb > tag_config.max_media_size_mb:
-                            console.print(
-                                f"[yellow]Skipping media {absolute.name}: size ({size_mb:.1f}MB) "
-                                f"exceeds limit ({tag_config.max_media_size_mb}MB)[/yellow]"
-                            )
-                            continue
-                        media_type = str(media.get("media_type") or "")
-                        media_count += 1
-                        if media_type == "video":
-                            video_count += 1
-                        elif media_type == "animated_gif":
-                            gif_count += 1
-                        else:
-                            image_count += 1
-                        mime_type = _media_mime(absolute, media_type)
-                        upload = tag_config.api_mode == "paid" or media_type in {
-                            "video",
-                            "animated_gif",
-                        }
-                        if upload:
-                            remote = await upload_owned_file(client, str(absolute), uploaded_files)
-                            free_index = len(free_parts) if tag_config.api_mode == "free" else None
-                            interaction_index = (
-                                len(interaction_input) if tag_config.api_mode == "paid" else None
-                            )
-                            if free_index is not None:
-                                free_parts.append(remote)
-                            if interaction_index is not None:
-                                interaction_input.append(
-                                    {"type": "text", "text": "Processing media"}
-                                )
-                            pending_files.append(
-                                (
-                                    remote,
-                                    tweet_id,
-                                    media_type,
-                                    mime_type,
-                                    free_index,
-                                    interaction_index,
-                                )
-                            )
-                        else:
-                            image = Image.open(str(absolute))
-                            opened_images.append(image)
-                            image.load()
-                            free_parts.append(image)
-                            active_media_by_tweet[tweet_id] += 1
-                free_parts.append("\n")
-
-            for (
-                remote,
-                tweet_id,
-                media_type,
-                mime_type,
-                free_index,
-                interaction_index,
-            ) in pending_files:
-                try:
-                    active = await _wait_for_remote_file(client, remote)
-                except Exception as error:
-                    console.print(
-                        f"[red]Failed while processing Gemini file {remote.name}: "
-                        f"{_safe_error(error, tag_config.api_key)}[/red]"
-                    )
-                    if free_index is not None:
-                        free_parts[free_index] = None
-                    if interaction_index is not None:
-                        interaction_input[interaction_index] = None
-                    continue
-                active_media_by_tweet[tweet_id] += 1
-                if free_index is not None:
-                    free_parts[free_index] = active
-                if interaction_index is not None:
-                    kind = "video" if media_type in {"video", "animated_gif"} else "image"
-                    interaction_input[interaction_index] = {
-                        "type": kind,
-                        "uri": getattr(active, "uri", None) or getattr(remote, "uri", None),
-                        "mime_type": getattr(active, "mime_type", None) or mime_type,
-                    }
-
-            free_parts = [part for part in free_parts if part is not None]
-            interaction_input = [part for part in interaction_input if part is not None]
-            if not tweet_contexts:
-                console.print(
-                    "[yellow]No stored tweet objects found for the selected IDs.[/yellow]"
-                )
-                return 0
-            if content_type == "media" and not active_media_by_tweet:
-                console.print("[yellow]No loadable media found for the selected tweets.[/yellow]")
-                if not dry_run and tag_config.api_mode == "paid":
-                    store.defer_tagging_failure(tweet_ids)
-                return 0
-
-            console.print(
-                Text(
-                    f"Generating {content_type} tags for {len(tweet_ids)} tweets "
-                    f"using {model_name}..."
-                )
-            )
-            request_metadata = {
-                "tweet_count": len(tweet_ids),
-                "media_count": media_count,
-                "image_count": image_count,
-                "video_count": video_count,
-                "gif_count": gif_count,
-                "input_text_chars": sum(
-                    len(str(part.get("text") or ""))
-                    for part in interaction_input
-                    if isinstance(part, dict) and part.get("type") == "text"
-                ),
-                "existing_tag_count": len(existing_tags),
-                "tagging_hint_count": len(tag_config.tagging_context),
-                "additional_instructions_present": bool(tag_config.additional_instructions),
-            }
-
-            response: Any | None = None
-            if tag_config.api_mode == "free":
-                result_schema = (
-                    _FreeMediaTagResult if content_type == "media" else _FreeTextTagResult
-                )
-                config_args: dict[str, Any] = {
-                    "http_options": types.HttpOptions(
-                        timeout=900_000,
-                        retry_options=types.HttpRetryOptions(attempts=1),
-                    ),
-                    "response_mime_type": "application/json",
-                    "max_output_tokens": 8192,
-                    "response_schema": list[result_schema],
-                }
-                thinking_config = _thinking_config(tag_config.thinking_level)
-                if thinking_config is not None:
-                    config_args["thinking_config"] = thinking_config
-                generation_config = types.GenerateContentConfig(**config_args)
-                for attempt in range(5):
-                    attempt_number = attempt + 1
-                    request_identifier = logical_request_id
-                    try:
-                        reservation = reserve_rpd_request(
-                            store,
-                            model=model_name,
-                            limit=tag_config.free_rpd,
-                        )
-                    except Exception as error:
-                        _print_rpd_storage_error(console, error, tag_config.api_key)
-                        return 0
-                    if not reservation.allowed:
-                        _print_rpd_exhausted(console, reservation, model_name)
-                        return 0
-                    await _wait_for_free_rpm(model_name, tag_config.free_rpm)
-                    started = time.monotonic()
-                    try:
-                        response = await asyncio.to_thread(
-                            client.models.generate_content,
-                            model=model_name,
-                            contents=free_parts,
-                            config=generation_config,
-                        )
-                        latency_ms = round((time.monotonic() - started) * 1000)
-                        try:
-                            ledger.append(
-                                usage_from_generate_content(
-                                    response,
-                                    run_id=run_identifier,
-                                    request_id=request_identifier,
-                                    requested_model=model_name,
-                                    content_type=content_type,
-                                    tweet_ids=tweet_ids,
-                                    latency_ms=latency_ms,
-                                    attempt=attempt_number,
-                                    thinking_level=tag_config.thinking_level,
-                                    request_metadata=request_metadata,
-                                    reserved_cost_usd="0",
-                                )
-                            )
-                        except Exception as error:
-                            console.print(
-                                "[yellow]Gemini Free usage could not be written to the AI ledger: "
-                                f"{_safe_error(error, tag_config.api_key)}[/yellow]"
-                            )
-                        break
-                    except Exception as error:
-                        latency_ms = round((time.monotonic() - started) * 1000)
-                        try:
-                            ledger.append(
-                                failed_usage_record(
-                                    run_id=run_identifier,
-                                    request_id=request_identifier,
-                                    api_mode="free",
-                                    model=model_name,
-                                    service_tier="free",
-                                    content_type=content_type,
-                                    tweet_ids=tweet_ids,
-                                    latency_ms=latency_ms,
-                                    search_enabled=False,
-                                    attempt=attempt_number,
-                                    thinking_level=tag_config.thinking_level,
-                                    request_metadata=request_metadata,
-                                    reserved_cost_usd="0",
-                                )
-                            )
-                        except Exception:
-                            pass
-                        error_text = str(error).upper()
-                        if (
-                            any(
-                                marker in error_text
-                                for marker in ("429", "503", "RESOURCE_EXHAUSTED")
-                            )
-                            and attempt < 4
-                        ):
-                            delay = 15 * (2**attempt)
-                            console.print(
-                                f"[yellow]Gemini API busy. Retrying in {delay} seconds "
-                                f"(Attempt {attempt + 1}/5)...[/yellow]"
-                            )
-                            await asyncio.sleep(delay)
-                            continue
-                        if any(marker in error_text for marker in ("400", "INVALID_ARGUMENT")):
-                            split = await split_free_batch("Gemini rejected the payload")
-                            if split or len(tweet_ids) > 1:
-                                return split
-                            if not dry_run:
-                                store.mark_tagging_failed(tweet_ids)
-                            return 0
-                        console.print(
-                            "[red]Gemini Tagging Failed: "
-                            f"{_safe_error(error, tag_config.api_key)}[/red]"
-                        )
-                        return 0
-            else:
-                result_schema = MediaTagResult if content_type == "media" else TextTagResult
-                daily_limit = (
-                    None
-                    if tag_config.unlimited_spend or tag_config.daily_spend_limit_usd is None
-                    else Decimal(str(tag_config.daily_spend_limit_usd))
-                )
-
-                def pause(reason: str) -> None:
-                    paid_state.stop_reason = reason
-                    if _paid_stop is not None:
-                        _paid_stop[0] = True
-                    console.print(Text(f"Paid tagging paused: {reason}.", style="yellow"))
-
-                def append_usage(record: Any) -> None:
-                    try:
-                        ledger.append(record)
-                    except Exception:
-                        pause("the usage ledger could not be saved")
-                        raise
-
-                for attempt in range(5):
-                    attempt_number = attempt + 1
-                    started = time.monotonic()
-                    search_reservation = None
-                    attempt_use_search = False
-                    provider_started = False
-                    pricing = None
-                    preflight_input_tokens = None
-                    reserved_cost = Decimal("0")
-                    search_settled = False
-                    phase = "preflight"
-                    try:
-                        reason = paid_state.provider_pause_reason()
-                        if reason:
-                            pause(reason)
-                            return 0
-                        budget = ledger.daily_budget_usage()
-                        if daily_limit is not None:
-                            reason = _budget_pause(tag_config, budget)
-                            if reason:
-                                pause(reason)
-                                return 0
-                            if budget["spend"] + budget["reserved"] >= daily_limit:
-                                pause(
-                                    "daily estimated spend and uncertainty reserves "
-                                    "reached the limit"
-                                )
-                                return 0
-                        if tag_config.google_search:
-                            search_reservation, reason = await search_policy.reserve_attempt()
-                            attempt_use_search = search_reservation is not None
-                            if reason:
-                                console.print(
-                                    Text(
-                                        f"Google Search disabled for this attempt: {reason}.",
-                                        style="yellow",
-                                    )
-                                )
-                        attempt_prompt = make_system_prompt(attempt_use_search)
-                        pricing = await asyncio.to_thread(
-                            load_openrouter_pricing, paths.ai_usage_dir, model_name
-                        )
-                        preflight_input_tokens, _ = await _count_request_tokens(
-                            client,
-                            model=model_name,
-                            system_prompt=attempt_prompt,
-                            interaction_input=interaction_input,
-                            search_enabled=attempt_use_search,
-                            console=console,
-                            api_key=tag_config.api_key,
-                        )
-                        # This is an explicit local uncertainty allowance, not a
-                        # claimed provider billing cap. Never estimate old unknown
-                        # records retroactively, or turn their actual cost into zero.
-                        reserved_cost = Decimal(str(tag_config.unknown_request_reserve_usd))
-                        if pricing is not None and preflight_input_tokens is not None:
-                            token_estimate = minimum_input_cost_usd(
-                                pricing,
-                                preflight_input_tokens,
-                                multiplier=pricing_multiplier(tag_config.processing_tier),
-                            ) + Decimal(2048) * max(
-                                pricing.output_per_token, pricing.thinking_per_token
-                            ) * pricing_multiplier(tag_config.processing_tier)
-                            reserved_cost = max(reserved_cost, token_estimate)
-                        if daily_limit is not None:
-                            if pricing is None:
-                                pause("current pricing is unavailable")
-                                return 0
-                            if budget["spend"] + budget["reserved"] + reserved_cost > daily_limit:
-                                pause(
-                                    "the next request's cost allowance would exceed "
-                                    "the daily budget"
-                                )
-                                return 0
-                        kwargs = {
-                            "model": model_name,
-                            "input": interaction_input,
-                            "store": False,
-                            "system_instruction": attempt_prompt,
-                            "response_format": {
-                                "type": "text",
-                                "mime_type": "application/json",
-                                "schema": result_schema.model_json_schema(),
-                            },
-                            "generation_config": {
-                                "max_output_tokens": 2048,
-                                "thinking_level": _interaction_thinking_level(
-                                    tag_config.thinking_level
-                                ),
-                            },
-                            "service_tier": tag_config.processing_tier,
-                        }
-                        if tag_config.processing_tier == "flex":
-                            kwargs["timeout"] = 900.0
-                        if attempt_use_search:
-                            kwargs["tools"] = [{"type": "google_search"}]
-                        # Preflight can consume the remaining failure interval.
-                        reason = paid_state.provider_pause_reason()
-                        if reason:
-                            pause(reason)
-                            return 0
-                        phase = "interaction"
-                        provider_started = True
-                        paid_state.attempts += 1
-                        response = await _create_interaction(client, **kwargs)
-                        paid_state.provider_failures = 0
-                        paid_state.provider_failure_started = None
-                        usage_record, search = usage_from_interaction(
-                            response,
-                            run_id=run_identifier,
-                            request_id=logical_request_id,
-                            requested_model=model_name,
-                            service_tier=tag_config.processing_tier,
-                            content_type=content_type,
-                            tweet_ids=tweet_ids,
-                            search_enabled=attempt_use_search,
-                            latency_ms=round((time.monotonic() - started) * 1000),
-                            search_reservation_consumed=(
-                                search_reservation.amount
-                                if search_reservation is not None
-                                and not interaction_search_accounting(
-                                    response, search_enabled=attempt_use_search
-                                ).reliable
-                                else None
-                            ),
-                            attempt=attempt_number,
-                            thinking_level=tag_config.thinking_level,
-                            request_metadata=request_metadata,
-                            estimate={"input_tokens": preflight_input_tokens},
-                            reserved_cost_usd=str(reserved_cost),
-                            pricing=pricing,
-                            preflight_input_tokens=preflight_input_tokens,
-                        )
-                        append_usage(usage_record)
-                        if search.reliable:
-                            await search_policy.commit(search_reservation, search)
-                        else:
-                            disabled = await search_policy.mark_unknown(search_reservation)
-                            console.print(
-                                Text(
-                                    "Search usage is unknown; retained an estimated "
-                                    "five-query reserve."
-                                    + (
-                                        " Search disabled for the remainder of this run."
-                                        if disabled
-                                        else ""
-                                    ),
-                                    style="yellow",
-                                )
-                            )
-                        search_settled = True
-                        if usage_record.status == "billing_unknown":
-                            console.print(
-                                Text(
-                                    f"Billing usage missing for tweet {tweet_ids[0]}, "
-                                    f"attempt {attempt_number}; "
-                                    f"retained ${reserved_cost} as an estimated "
-                                    "uncertainty reserve.",
-                                    style="yellow",
-                                )
-                            )
-                            if daily_limit is not None:
-                                reason = _budget_pause(tag_config, ledger.daily_budget_usage())
-                                if reason:
-                                    pause(reason)
-                        break  # Keep useful output even if its billing is unknown.
-                    except Exception as error:
-                        code = _provider_error_code(error)
-                        retryable = code in {429, 500, 502, 503, 504} or (
-                            code is None
-                            and (
-                                isinstance(error, TimeoutError)
-                                or any(
-                                    marker in f"{type(error).__name__}: {error}".upper()
-                                    for marker in (
-                                        "429",
-                                        "503",
-                                        "RESOURCE_EXHAUSTED",
-                                        "TIMEOUT",
-                                        "TIMED OUT",
-                                        "UNAVAILABLE",
-                                        "DEADLINE",
-                                    )
-                                )
-                            )
-                        )
-                        message = _safe_error(error, tag_config.api_key)
-                        console.print(
-                            Text(
-                                f"Gemini {phase} failed for tweet {tweet_ids[0]}, "
-                                f"attempt {attempt_number}/5: "
-                                f"{type(error).__name__} (HTTP {code or 'unknown'}): {message}",
-                                style="yellow",
-                            )
-                        )
-                        if paid_state.stop_reason == "the usage ledger could not be saved":
-                            return 0
-                        failure = (
-                            getattr(error, "interaction", None)
-                            or getattr(error, "response", None)
-                            or getattr(error, "result", None)
-                        )
-                        if callable(getattr(failure, "json", None)):
-                            try:
-                                body = failure.json()
-                                if isinstance(body, dict):
-                                    failure = body
-                            except (ValueError, TypeError):
-                                pass
-                        usage = (
-                            failure.get("usage")
-                            if isinstance(failure, dict)
-                            else getattr(failure, "usage", None)
-                        )
-                        has_usage = has_usable_interaction_usage(usage)
-                        # Explicit validation/auth/rate rejections with no evidence
-                        # of generation are distinct from timeouts/5xx ambiguity.
-                        interaction_id = (
-                            failure.get("id")
-                            if isinstance(failure, dict)
-                            else getattr(failure, "id", None)
-                        )
-                        rejected = code in {400, 401, 403, 404, 422, 429} and not (
-                            usage is not None or interaction_id
-                        )
-                        billing_unknown = provider_started and not has_usage and not rejected
-                        capacity_failure = billing_unknown and _is_capacity_response(
-                            code, failure, message
-                        )
-                        search = (
-                            interaction_search_accounting(
-                                failure, search_enabled=attempt_use_search
-                            )
-                            if provider_started and not rejected
-                            else SearchAccounting(0, "disabled")
-                        )
-                        common = dict(
-                            run_id=run_identifier,
-                            request_id=logical_request_id,
-                            service_tier=tag_config.processing_tier,
-                            content_type=content_type,
-                            tweet_ids=tweet_ids,
-                            search_enabled=attempt_use_search,
-                            latency_ms=round((time.monotonic() - started) * 1000),
-                            search_reservation_consumed=(
-                                search_reservation.amount
-                                if search_reservation is not None and not search.reliable
-                                else None
-                            ),
-                            attempt=attempt_number,
-                            thinking_level=tag_config.thinking_level,
-                            request_metadata=request_metadata,
-                            estimate={"input_tokens": preflight_input_tokens},
-                            reserved_cost_usd=str(reserved_cost),
-                            pricing=pricing,
-                            preflight_input_tokens=preflight_input_tokens,
-                        )
-                        if has_usage:
-                            record, _ = usage_from_interaction(
-                                failure, requested_model=model_name, **common
-                            )
-                            record = replace(record, status="failed")
-                        else:
-                            record = failed_usage_record(
-                                api_mode="paid",
-                                model=model_name,
-                                search=search,
-                                status="billing_unknown" if billing_unknown else "failed",
-                                pricing_multiplier=pricing_multiplier(tag_config.processing_tier),
-                                **common,
-                            )
-                            if not billing_unknown:
-                                record = replace(record, cost_usd="0", estimated_cost_usd="0")
-                        record = replace(
-                            record,
-                            error_type=type(error).__name__,
-                            error_code=code,
-                            error_message=message,
-                            failure_phase=phase,
-                            failure_kind="capacity" if capacity_failure else None,
-                        )
-                        append_usage(record)
-                        # Provider availability errors do not identify a bad tweet.
-                        # Leave the queue eligible for the next run and reserve
-                        # candidate backoff for item-specific failures.
-                        if not dry_run and not retryable and code not in {401, 403}:
-                            store.defer_tagging_failure(tweet_ids)
-                        if search.reliable:
-                            await search_policy.commit(search_reservation, search)
-                        else:
-                            disabled = await search_policy.mark_unknown(search_reservation)
-                            console.print(
-                                Text(
-                                    "Search usage is unknown; retained an estimated "
-                                    "five-query reserve."
-                                    + (
-                                        " Search disabled for the remainder of this run."
-                                        if disabled
-                                        else ""
-                                    ),
-                                    style="yellow",
-                                )
-                            )
-                        search_settled = True
-                        if code in {401, 403}:
-                            pause("Gemini rejected authentication or access")
-                            return 0
-                        if billing_unknown and daily_limit is not None:
-                            reason = _budget_pause(tag_config, ledger.daily_budget_usage())
-                            if reason:
-                                pause(reason)
-                                return 0
-                        if retryable and provider_started:
-                            paid_state.provider_failures += 1
-                            if paid_state.provider_failure_started is None:
-                                paid_state.provider_failure_started = started
-                            reason = paid_state.provider_pause_reason()
-                            if reason:
-                                pause(reason)
-                                return 0
-                        if retryable and attempt < 4:
-                            delay = 15 * (2**attempt)
-                            if capacity_failure:
-                                delay *= random.uniform(0.8, 1.2)
-                            if paid_state.provider_failure_started is not None:
-                                delay = max(
-                                    0,
-                                    min(
-                                        delay,
-                                        PAID_PROVIDER_FAILURE_WINDOW_SECONDS
-                                        - (time.monotonic() - paid_state.provider_failure_started),
-                                    ),
-                                )
-                            console.print(
-                                Text(
-                                    f"Gemini API busy. Retrying in {delay:g} seconds "
-                                    f"(Attempt {attempt + 1}/5)...",
-                                    style="yellow",
-                                )
-                            )
-                            await asyncio.sleep(delay)
-                            continue
-                        return 0
-                    finally:
-                        # Also release reservations on a pricing/budget early return.
-                        if not search_settled:
-                            await search_policy.commit(search_reservation, None)
-
-            if response is None:
-                return 0
-            response_text = (
-                getattr(response, "text", None)
-                if tag_config.api_mode == "free"
-                else getattr(response, "output_text", None)
-            )
-            if not response_text:
-                if tag_config.api_mode == "free" and len(tweet_ids) > 1:
-                    return await split_free_batch("Gemini returned an empty response")
-                console.print("[red]Gemini returned an empty response.[/red]")
-                if not dry_run:
-                    if tag_config.api_mode == "paid":
-                        store.defer_tagging_failure(tweet_ids)
-                    else:
-                        store.mark_tagging_failed(tweet_ids)
-                return 0
-
-            parsed: list[tuple[str, MediaTagResult | TextTagResult]] = []
-            if tag_config.api_mode == "paid":
-                result_model = MediaTagResult if content_type == "media" else TextTagResult
-                try:
-                    parsed.append((tweet_ids[0], result_model.model_validate_json(response_text)))
-                except (ValidationError, ValueError, TypeError) as error:
-                    console.print(
-                        "[red]Gemini returned invalid structured output: "
-                        f"{_safe_error(error, tag_config.api_key)}[/red]"
-                    )
-                    if not dry_run:
-                        store.defer_tagging_failure(tweet_ids)
-                    return 0
-            else:
-                free_model = _FreeMediaTagResult if content_type == "media" else _FreeTextTagResult
-                try:
-                    raw_results = json.loads(response_text)
-                    if not isinstance(raw_results, list):
-                        raise ValueError("top-level response must be a list")
-                except (json.JSONDecodeError, TypeError, ValueError):
-                    if len(tweet_ids) > 1:
-                        return await split_free_batch("Gemini returned invalid structured output")
-                    console.print("[red]Gemini returned invalid structured output.[/red]")
-                    return 0
-                for raw in raw_results:
-                    try:
-                        result = free_model.model_validate(raw)
-                        parsed.append((result.id, result))
-                    except (ValidationError, TypeError, ValueError):
-                        console.print(
-                            "[yellow]Skipping a Gemini result that did not match the batch schema."
-                            "[/yellow]"
-                        )
-
-            eligible = set(tweet_contexts)
-            if content_type == "media":
-                eligible &= {tweet_id for tweet_id, count in active_media_by_tweet.items() if count}
-            tagged_count = 0
-            # Test mode saves nothing, so it must not wait on or fail with another writer.
-            with nullcontext() if dry_run else store.transaction():
-                for tweet_id, result in parsed:
-                    if tweet_id not in eligible:
-                        continue
-                    normalized_tags = _normalized_tags(result.tags, existing_tags)
-                    if not 2 <= len(normalized_tags) <= 5:
-                        if not dry_run and tag_config.api_mode == "paid":
-                            store.defer_tagging_failure([tweet_id])
-                        continue
-                    description = getattr(result, "description", None)
-                    if dry_run:
-                        context = tweet_contexts[tweet_id]
-                        if preview_results is not None:
-                            preview_results.append(
-                                TaggingPreview(
-                                    id=tweet_id,
-                                    content_type=content_type,
-                                    model=model_name,
-                                    tweet_type=context.tweet_type,
-                                    author_display_name=context.author_display_name,
-                                    author_username=context.author_username,
-                                    text=context.text,
-                                    description=description,
-                                    tags=normalized_tags,
-                                )
-                            )
-                        _print_tag_preview(
-                            console,
-                            context,
-                            description=description,
-                            tags=normalized_tags,
-                        )
-                        tagged_count += 1
-                        continue
-                    payload: dict[str, Any] = {"tags": normalized_tags}
-                    if description:
-                        payload["description"] = description
-                    store.save_tagging_result(tweet_id, payload)
-                    tagged_count += 1
-
-            if dry_run:
-                console.print(
-                    f"[green]Generated tags for {tagged_count} tweet"
-                    f"{'s' if tagged_count != 1 else ''} in test mode; no tags were saved.[/green]"
-                )
-            else:
-                console.print(f"[green]Successfully tagged {tagged_count} tweets![/green]")
-            return tagged_count
-        except Exception as error:
-            console.print(
-                f"[red]Gemini Tagging Failed: {_safe_error(error, tag_config.api_key)}[/red]"
-            )
-            return 0
-    finally:
-        await close_tagging_resources(client, opened_images, uploaded_files)
+def _step_counters(tagged: int, requests: int) -> str:
+    return " · ".join(
+        part
+        for value, part in ((tagged, f"{tagged} tagged"), (requests, f"{requests} requests"))
+        if value
+    )
 
 
 async def tag_pending_media_tweets(
@@ -1558,22 +708,9 @@ async def tag_pending_media_tweets(
             )
         return TaggingRunResult()
 
-    model_name = model_override or tag_config.model
-    ledger = AIUsageLedger(paths.ai_usage_dir)
-    run_identifier = _run_id()
-    search_policy = _SearchPolicy(
-        ledger,
-        tag_config.search_safety_reserve,
-        tag_config.api_mode == "paid" and tag_config.google_search,
-        unknown_policy=tag_config.search_unknown_policy,
-        max_unknown_attempts=tag_config.max_unknown_search_requests,
-    )
-    paid_state = _PaidRunState()
     max_requests = 1 if dry_run else batch_limit
     free_batch_size = min(batch_size or tag_config.free_batch_size, 20)
-    processed = tagged = requests = sent_requests = 0
-    attempted_ids: set[str] = set()
-
+    model_name = model_override or tag_config.model
     if pipeline.active:
         mode_detail = f"{model_name} · " + (
             f"Free · up to {free_batch_size} tweets/request · {tag_config.free_rpd} requests/day"
@@ -1594,29 +731,35 @@ async def tag_pending_media_tweets(
             "tagging",
             activity="Selecting tweets",
         )
+    if pipeline.has_step("tagging") and not dry_run:
+        console = pipeline.capture_console("tagging")  # type: ignore[assignment]
+
+    run = _new_run(store, config, paths, console, TagRequest([], model_override, dry_run=dry_run))
+    processed = requests = 0
+    total = TaggingOutcome()
+    attempted_ids: set[str] = set()
 
     while max_requests is None or requests < max_requests:
-        if tag_config.api_mode == "free":
-            selection_limit = 1 if dry_run else free_batch_size
-        else:
+        if run.paid:
             remaining = PAID_CONCURRENCY
             if max_requests is not None:
                 remaining = min(remaining, max_requests - requests)
             selection_limit = max(remaining, 1)
+        else:
+            selection_limit = 1 if dry_run else free_batch_size
         candidates = store.get_eligible_tagging_candidates(
             limit=selection_limit,
             exclude_tweet_ids=attempted_ids,
         )
-        tweet_ids = [candidate["tweet_id"] for candidate in candidates]
-        if candidates:
-            content_type = candidates[0]["content_type"]
-            quote_targets = {
-                candidate["tweet_id"]: candidate["quoted_tweet_id"]
-                for candidate in candidates
-                if candidate["quoted_tweet_id"]
-            }
-        if not tweet_ids:
+        if not candidates:
             break
+        tweet_ids = [candidate["tweet_id"] for candidate in candidates]
+        content_type = candidates[0]["content_type"]
+        quote_targets = {
+            candidate["tweet_id"]: candidate["quoted_tweet_id"]
+            for candidate in candidates
+            if candidate["quoted_tweet_id"]
+        }
 
         pipeline.update_step(
             "tagging",
@@ -1626,130 +769,35 @@ async def tag_pending_media_tweets(
                 f"Generating {content_type} tags for {len(tweet_ids)} tweet"
                 f"{'s' if len(tweet_ids) != 1 else ''}"
             ),
-            counters=" · ".join(
-                part
-                for value, part in (
-                    (tagged, f"{tagged} tagged"),
-                    (sent_requests, f"{sent_requests} requests"),
-                )
-                if value
-            ),
+            counters=_step_counters(total.tagged, total.attempts),
         )
 
-        if tag_config.api_mode == "free":
-            # Refresh after the previous request has committed its tags.  A
-            # Free request owns one homogeneous batch, so every tweet in it
-            # receives the same immutable vocabulary snapshot.
-            existing_tags = tuple(_top_archive_tags(store))
-            results = [
-                await tag_media_tweets(
-                    store=store,
-                    config=config,
-                    paths=paths,
-                    console=console,
-                    tweet_ids=tweet_ids,
-                    model_override=model_override,
-                    dry_run=dry_run,
-                    content_type=content_type,
-                    quoted_tweet_ids=quote_targets,
-                    _search_policy=search_policy,
-                    _ledger=ledger,
-                    _run_identifier=run_identifier,
-                    _existing_tags=existing_tags,
-                )
-            ]
-            request_increment = 1
-        else:
-            # One snapshot per Paid concurrency wave.  Do not look up tags in
-            # each task: completion order must not change the prompts within a
-            # wave.
-            existing_tags = tuple(_top_archive_tags(store))
-            paid_stop = [False]
-            attempts_before = paid_state.attempts
+        # Refresh after the previous request has committed its tags. One snapshot per Free
+        # batch or Paid wave: completion order must not change the prompts within it.
+        existing_tags = tuple(_top_archive_tags(store))
+        outcome = await _tag_group(run, tweet_ids, content_type, quote_targets, existing_tags)
+        total = total.plus(outcome)
 
-            async def tag_one(
-                tweet_id: str,
-                *,
-                selected_content_type: Literal["media", "text"] = content_type,
-                selected_quote_targets: dict[str, str] = quote_targets,
-                selected_existing_tags: tuple[str, ...] = existing_tags,
-                selected_paid_stop: list[bool] = paid_stop,
-            ) -> int:
-                return await tag_media_tweets(
-                    store=store,
-                    config=config,
-                    paths=paths,
-                    console=console,
-                    tweet_ids=[tweet_id],
-                    model_override=model_override,
-                    dry_run=dry_run,
-                    content_type=selected_content_type,
-                    quoted_tweet_ids=(
-                        {tweet_id: selected_quote_targets[tweet_id]}
-                        if tweet_id in selected_quote_targets
-                        else {}
-                    ),
-                    _search_policy=search_policy,
-                    _ledger=ledger,
-                    _run_identifier=run_identifier,
-                    _existing_tags=selected_existing_tags,
-                    _paid_stop=selected_paid_stop,
-                    _paid_state=paid_state,
-                )
-
-            results = (
-                [await tag_one(tweet_ids[0])]
-                if len(tweet_ids) == 1
-                else await asyncio.gather(*(tag_one(tweet_id) for tweet_id in tweet_ids))
-            )
-            request_increment = len(tweet_ids)
-
-        if tag_config.api_mode == "paid":
-            dispatched_ids = (
-                tweet_ids if not paid_stop[0] or paid_state.attempts > attempts_before else []
-            )
-        else:
-            dispatched_ids = tweet_ids
+        # A stop before anything was sent leaves these tweets as they were found.
+        dispatched_ids = [] if outcome.halted and not outcome.attempts else tweet_ids
         processed += len(dispatched_ids)
-        tagged += sum(results)
-        requests += len(dispatched_ids) if tag_config.api_mode == "paid" else request_increment
-        sent_requests = paid_state.attempts if tag_config.api_mode == "paid" else requests
+        # The limit counts logical requests; retries and split children are attempts within one.
+        # Tweets with nothing to send aren't a request, so they can't use up the limit before
+        # the next eligible tweet is reached.
+        if outcome.status is not Outcome.NO_WORK:
+            requests += len(dispatched_ids) if run.paid else 1
         attempted_ids.update(dispatched_ids)
         pipeline.update_step(
             "tagging",
             completed=processed,
             total=max(max_requests or processed, processed, 1),
-            counters=" · ".join(
-                part
-                for value, part in (
-                    (tagged, f"{tagged} tagged"),
-                    (sent_requests, f"{sent_requests} requests"),
-                )
-                if value
-            ),
+            counters=_step_counters(total.tagged, total.attempts),
             important=True,
         )
-        if dry_run or paid_state.stop_reason:
+        if dry_run or outcome.halted:
             break
 
-    if paid_state.stop_reason:
-        pipeline.update_step("tagging", completed=processed)
-        pipeline.fail_step(
-            "tagging",
-            f"Paused: {paid_state.stop_reason}",
-            metrics={"tagged": tagged, "requests": paid_state.attempts},
-            reason=paid_state.stop_reason,
-            paused=True,
-        )
-    elif processed == 0:
-        pipeline.skip_step("tagging", "no eligible tweets or available quota/spend")
-    else:
-        pipeline.complete_step(
-            "tagging",
-            f"{tagged} tagged · {sent_requests} requests",
-            metrics={
-                "tagged": tagged,
-                "requests": sent_requests,
-            },
-        )
-    return TaggingRunResult(processed=processed, tagged=tagged, batches=sent_requests)
+    finish_tagging_step(pipeline, total, processed=processed)
+    return TaggingRunResult(
+        processed=processed, tagged=total.tagged, batches=total.attempts, outcome=total.status
+    )

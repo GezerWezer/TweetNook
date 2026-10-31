@@ -43,11 +43,7 @@ SIZE_EXCLUDED = (
 )
 # Over the limit for a reason a move can't fix. Each ceiling is the file's size when it was
 # exempted, so it can shrink but not grow; split the file instead of raising the number.
-SIZE_EXEMPT = {
-    # tag_media_tweets is one function of about 1,000 lines. It needs restructuring into
-    # stages, which changes the paid Gemini path and deserves its own review.
-    "tweetnook/tagging/tagger.py": 1869,
-}
+SIZE_EXEMPT: dict[str, int] = {}
 
 # config belongs to core but stays a top-level module: install.sh imports it by name.
 CORE = {"core", "config"}

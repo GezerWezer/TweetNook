@@ -36,8 +36,16 @@ class TagsMixin(ConnectionMixin):
         eligible population is particularly expensive here: large archives make
         SQLite sort that population into temporary B-trees before it can return
         even a one-tweet batch.  Walking the existing record/page index lets us
-        stop as soon as the next homogeneous batch is full and keeps temporary
-        storage independent of archive size.
+        stop as soon as the next homogeneous batch is full and keeps SQLite's
+        temporary storage independent of archive size.
+
+        Python memory still grows with the walk: every row sharing a timestamp is
+        buffered to restore tweet-ID tie order, and each tweet passed over stays in
+        ``seen``, including those of the other content type.  An archive whose
+        remaining candidates are nearly all one type can walk to the end to fill a
+        batch of the other.  That holds only tweet IDs and tie rows, which is small
+        beside the sort this replaces, so it stays unbounded rather than capping a
+        walk that would then miss eligible tweets.
         """
         if limit < 1:
             return []

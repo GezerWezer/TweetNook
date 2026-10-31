@@ -22,6 +22,7 @@ from tests.automated_tagging.conftest import (
     provider_failure,
 )
 from tweetnook.jobs.pipeline import PipelineReporter
+from tweetnook.tagging import paid
 from tweetnook.tagging import tagger as tagging
 from tweetnook.tagging.accounting import (
     AIUsageLedger,
@@ -42,7 +43,7 @@ async def test_paid_finite_failure_classification_reserves_and_logs(monkeypatch,
     original_sleep = asyncio.sleep
     monkeypatch.setattr(tagging.asyncio, "sleep", lambda _: original_sleep(0))
     sink, output = console()
-    state = tagging._PaidRunState()
+    state = paid.PaidRunState()
     result = await tagging.tag_media_tweets(
         store,
         config(api_mode="paid", daily_spend_limit_usd=1),
@@ -94,7 +95,7 @@ async def test_paid_uncertainty_stops_at_budget_or_policy_without_another_dispat
     install_paid_pricing(monkeypatch)
     original_sleep = asyncio.sleep
     monkeypatch.setattr(tagging.asyncio, "sleep", lambda _: original_sleep(0))
-    state = tagging._PaidRunState()
+    state = paid.PaidRunState()
     result = await tagging.tag_media_tweets(
         store,
         config(
@@ -200,6 +201,7 @@ async def test_paid_unknown_billing_keeps_useful_output_and_dry_run_has_no_archi
 
 @pytest.mark.asyncio
 async def test_search_tolerates_only_configured_number_of_unknown_attempts(monkeypatch, paths):
+    install_paid_pricing(monkeypatch)
     store = Store()
     store.add_tweet("1")
     interactions = FakeInteractions(
@@ -207,9 +209,7 @@ async def test_search_tolerates_only_configured_number_of_unknown_attempts(monke
     )
     install_fake_client(monkeypatch, models=FakeModels([]), interactions=interactions)
     ledger = AIUsageLedger(paths.ai_usage_dir)
-    policy = tagging._SearchPolicy(
-        ledger, 100, True, unknown_policy="reserve", max_unknown_attempts=2
-    )
+    policy = paid.SearchPolicy(ledger, 100, True, unknown_policy="reserve", max_unknown_attempts=2)
     for _ in range(4):
         assert (
             await tagging.tag_media_tweets(
@@ -266,7 +266,7 @@ async def test_paid_sdk_retries_are_disabled_without_sending_an_extra_body_field
     interactions = FakeInteractions([paid_response({"tags": ["One", "Two"]})])
     interactions.sdk_configuration = SimpleNamespace(retry_config="SDK default")
     client, _ = install_fake_client(monkeypatch, models=FakeModels([]), interactions=interactions)
-    await tagging._create_interaction(client, model="gemini-3.6-flash", input="test")
+    await paid.create_interaction(client, model="gemini-3.6-flash", input="test")
     assert interactions.sdk_configuration.retry_config is None
     assert "retries" not in interactions.calls[0]
 
@@ -277,7 +277,7 @@ async def test_token_preflight_failure_is_visible_and_secret_is_masked(monkeypat
         raise RuntimeError("count failed secret")
 
     sink, output = console()
-    assert await tagging._count_request_tokens(
+    assert await paid.count_request_tokens(
         SimpleNamespace(models=SimpleNamespace(count_tokens=broken_counter)),
         model="gemini-3.6-flash",
         system_prompt="prompt",
@@ -330,7 +330,7 @@ async def test_paid_ledger_write_failure_stops_queue_without_a_second_request(mo
         raise OSError("disk write failed")
 
     monkeypatch.setattr(ledger, "append", cannot_append)
-    state = tagging._PaidRunState()
+    state = paid.PaidRunState()
     assert (
         await tagging.tag_media_tweets(
             store,
@@ -358,7 +358,7 @@ async def test_paid_preflight_increases_reserve_for_expensive_input(monkeypatch,
     interactions = FakeInteractions([paid_response({"tags": ["One", "Two"]})])
     install_fake_client(monkeypatch, models=models, interactions=interactions)
     install_paid_pricing(monkeypatch)
-    state = tagging._PaidRunState()
+    state = paid.PaidRunState()
     assert (
         await tagging.tag_media_tweets(
             store,
@@ -416,9 +416,9 @@ async def test_paid_provider_retry_window_is_checked_after_preflight(monkeypatch
     install_paid_pricing(monkeypatch)
     clock = [0.0]
     monkeypatch.setattr(
-        tagging,
+        paid,
         "time",
-        SimpleNamespace(monotonic=lambda: clock[0], time=tagging.time.time),
+        SimpleNamespace(monotonic=lambda: clock[0], time=paid.time.time),
     )
     count = models.count_tokens
 

@@ -1,16 +1,18 @@
 # Automated tagging
 
-The tagger is optional, and its modules are in `tweetnook/tagging/`. `sdk.py` checks for the SDK/Pillow dependencies and discovers usable model metadata. `tagger.py` plans requests, loads evidence, calls Gemini and persists descriptions/tags. Prompts live in `prompts.py`.
+The tagger is optional, and its modules are in `tweetnook/tagging/`. `sdk.py` checks for the SDK/Pillow dependencies and discovers usable model metadata. `tagger.py` plans requests and runs Free batches, `preparation.py` loads evidence once for every request over it, `paid.py` runs Paid attempts, and `run.py` persists descriptions/tags. Prompts live in `prompts.py`.
 
 ## Evidence and output
 
 Text-only and media-bearing posts use different request shapes. Media evidence can include quoted content and local saved assets. Descriptions and tags must be grounded in the supplied evidence; tagging context is a weak hint, and user instructions remain below the built-in isolation/output rules.
 
-Validate responses before saving them. Tagging state belongs to the post being tagged and must not create collection membership. Manual tag editing is available independently of the optional SDK and shouldn't be blocked by provider failures.
+Validate responses before saving them. A post accepts one usable result per run: the first with two to five tags, and for media a non-blank description, wins, and a repeated entry can't overwrite or count twice. A failed retag keeps the post's saved tags and description. Tagging state belongs to the post being tagged and must not create collection membership. Manual tag editing is available independently of the optional SDK and shouldn't be blocked by provider failures.
+
+Media that can't be read costs only its own item. A post with another usable asset is still sent, and a post with none is left out of the batch rather than tagged from its text.
 
 ## Free requests
 
-Free mode batches homogeneous kinds of posts, up to twenty per request. The configured batch size is a post count; `--limit` remains a request count. Free RPM and RPD are local admission controls, with per-model Pacific calendar-day accounting. They don't describe the actual quota of the user's Google project.
+Free mode batches homogeneous kinds of posts, up to twenty per request. The configured batch size is a post count; `--limit` remains a request count, and posts with nothing to send don't use it. Free RPM and RPD are local admission controls, with per-model Pacific calendar-day accounting. They don't describe the actual quota of the user's Google project.
 
 Google Search is disabled in Free mode. A request can contain several posts but still produces separately validated output for each target. Don't count a rejected response as successful completion of every batch item.
 
@@ -26,13 +28,19 @@ Model discovery filters metadata for Gemini models capable of content generation
 
 Paid requests with missing usage follow `unknown_billing_policy`: reserve an estimate and continue within limits, or stop. The minimum reserve and maximum uncertain requests per UTC day bound that policy. Actual charges can differ from estimates, and requests made outside this installation aren't visible here.
 
+A Paid attempt cancelled after dispatch may already have been billed, so it settles as billing-unknown before the cancellation continues, including its Search reservation. An attempt cancelled before dispatch records nothing.
+
 Search accounting has a separate policy and monthly rollover. An uncertain Search request reserves an estimated five queries; five is a local assumption, not a provider limit. The safety reserve and uncertainty ceiling can turn Search off for the rest of a run while allowing tagging to continue.
 
 ## Retries
 
-Explicit provider overloads and uncertain billing failures need different handling. Keep rate limits, retry delays, consecutive-failure guards and usage reservations together. SDK-internal retries are constrained where necessary so they don't bypass accounting for each attempt.
+Both modes classify a provider failure by its numeric status first and read message text only when there's no status. Explicit provider overloads and uncertain billing failures need different handling. Keep rate limits, retry delays, consecutive-failure guards and usage reservations together. SDK-internal retries are constrained where necessary so they don't bypass accounting for each attempt.
 
-Persist retry state for unfinished posts so the next eligible run can continue. Storage-full failures must fail the run accurately. A test preview performs real requests and accounting but doesn't save generated tags/descriptions or unsaved settings.
+Persist retry state for unfinished posts so the next eligible run can continue. A test preview performs real requests and accounting but doesn't save generated tags/descriptions or unsaved settings.
+
+## Outcomes
+
+Each stage returns a `TaggingOutcome` in `tagging/run.py`: a status, the provider attempts actually sent (retries and split children included), and whether the rest of the run can still succeed. A spent allowance or budget pauses the run and leaves unreached candidates untouched. In `tweetnook tag` a run that saved nothing because requests failed exits 2. In a sync the same failure is recoverable, because the sync's posts are already saved. Storage exhaustion isn't a batch failure: it reaches the job as `StorageExhaustedError` from any write in the run.
 
 ## Web controls
 
@@ -46,11 +54,11 @@ Free uses structured `generate_content` requests, homogeneous batches and an in-
 
 Free photos are sent inline through Pillow; Free videos/GIFs and Paid media use Gemini Files uploads. Enforce the per-item local-file size limit and clean remote uploads best-effort. Paid uses sequential Interactions requests with `store=false`, schema, thinking level, tier and optional Search. Prompts ask for two to five tags; text-only output has no description. At most fifty common existing tags are hints.
 
-Paid requests retry overloads with bounded backoff and stop after sustained failures. Structured capacity failures retain uncertainty reserves but are counted separately from generic billing-unknown failures. Strict billing policy and monetary limits still apply. Retry thresholds and classifications are defined in `tagging/tagger.py`.
+Paid requests retry overloads with bounded backoff and stop after sustained failures. Structured capacity failures retain uncertainty reserves but are counted separately from generic billing-unknown failures. Strict billing policy and monetary limits still apply. Retry thresholds and classifications are defined in `tagging/failures.py` and `tagging/paid.py`.
 
 Search uses a local 5,000-query monthly safety allowance and the configured reserve. Provider grounding counts are preferred, with interaction query steps as fallback. Missing usage follows the configured reserve/disable policy. Search coordination is in-process, unlike Free RPD's transactional reservation.
 
-Monthly JSONL and the atomic ledger summary live under `activity/ai-usage` with file locking. Usage history distinguishes unknown prices from unknown billing, including after a summary rebuild. Pricing metadata is cached for 24 hours from OpenRouter, stale data can survive refresh failure, and Flex estimates apply a 0.5 rate multiplier. Estimates exclude Search/tool fees and account charges.
+Monthly JSONL and the atomic ledger summary live under `activity/ai-usage` with file locking. The JSONL is authoritative: the summary records each log's byte size and is rebuilt when they differ, so an append whose summary write failed still counts after reopening. A rebuild that can't read a log leaves its size unrecorded, and a later append keeps it that way, so the summary stays stale until the log is read. An append terminates a torn final line first, so it can't absorb the next record. A record's cost uses the rate of the tier the provider reports serving, not the one requested. Usage history distinguishes unknown prices from unknown billing, including after a summary rebuild. Pricing metadata is cached for 24 hours from OpenRouter, stale data can survive refresh failure, and Flex estimates apply a 0.5 rate multiplier. Estimates exclude Search/tool fees and account charges.
 
 Budget preflight and ledger append aren't one atomic provider transaction. Inline web previews or direct concurrent callers can overlap a budget decision; local limits aren't a hard spending cap. Test routes bypass the long-job writer lock, so avoid running them alongside archive writers/taggers. Previews leave saved tags unchanged but record real usage.
 

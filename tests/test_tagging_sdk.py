@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from tweetnook.tagging import tagger as tagging
+from tweetnook.tagging import paid
 
 
 @pytest.mark.asyncio
@@ -26,7 +26,6 @@ async def test_token_preflight_uses_supported_developer_api_sdk_request(monkeypa
             client_args={"transport": httpx.MockTransport(count_tokens)},
         ),
     )
-    monkeypatch.setattr(tagging, "types", types)
     media_uri = "https://generativelanguage.googleapis.com/v1beta/files/test-media"
     interaction_input = [{"type": "text", "text": "A synthetic post"}]
     if media_mime:
@@ -38,7 +37,7 @@ async def test_token_preflight_uses_supported_developer_api_sdk_request(monkeypa
             }
         )
     try:
-        result = await tagging._count_request_tokens(
+        result = await paid.count_request_tokens(
             client,
             model="gemini-3.6-flash",
             system_prompt="Suggest specific tags",

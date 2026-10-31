@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -71,6 +72,32 @@ def test_later_append_does_not_perpetuate_a_missed_record(monkeypatch, tmp_path)
     assert budget["unknown"] == 3
     assert budget["reserved"] == Decimal("0.07")
     assert AIUsageLedger(tmp_path).monthly_search_count() == 5
+
+
+def test_append_after_a_rebuild_skipped_its_log_does_not_hide_that_log(monkeypatch, tmp_path):
+    ledger = AIUsageLedger(tmp_path)
+    ledger.append(unknown_record(reserve="0.01"))
+    ledger.append(unknown_record(reserve="0.02", searches=5))
+    ledger.summary_path.unlink()
+    read_bytes = Path.read_bytes
+    failures = []
+
+    def fail_once(path: Path) -> bytes:
+        if path.suffix == ".jsonl" and not failures:
+            failures.append(path)
+            raise OSError("transient read failure")
+        return read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_once)
+
+    ledger.append(unknown_record(reserve="0.04"))
+
+    assert failures
+    reopened = AIUsageLedger(tmp_path)
+    budget = reopened.daily_budget_usage()
+    assert budget["unknown"] == 3
+    assert budget["reserved"] == Decimal("0.07")
+    assert reopened.monthly_search_count() == 5
 
 
 def test_current_summary_is_not_rebuilt_on_each_read(monkeypatch, tmp_path):
