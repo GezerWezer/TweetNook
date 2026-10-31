@@ -150,4 +150,6 @@ Quote results include canonical context objects outside collections and retain p
 
 Global tag deletion captures the remaining path, including slashes inside a label. Clients encode the complete label once with `encodeURIComponent`; the server uses the decoded value without another decoding pass.
 
+The Web conversation-expansion job selects due archive targets. Its options omit `--refresh`, which the CLI reserves for explicit post targets. Unsupported run options are rejected before a job is queued.
+
 List/detail/quote payloads abbreviate raw data to fields the UI renders. The complete stored document remains available at `/api/tweets/{tweet_id}/raw`; fixtures test that abbreviated/full forms render equivalently. Highlight terms come from submitted positive text/hashtag clauses and are applied before safe HTML escaping, including quote text and Show more.

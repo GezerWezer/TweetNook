@@ -6,13 +6,49 @@ from types import SimpleNamespace
 import pytest
 from rich.console import Console
 
-from tweetnook.config import AppConfig, CheckConfig, ScheduleConfig, XDGPaths
+from tweetnook.config import AppConfig, AuthConfig, CheckConfig, ScheduleConfig, XDGPaths
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.jobs.scheduler import ScheduleManager
 from tweetnook.jobs.supervisor import JobConflictError, JobSupervisor
 from tweetnook.web.deps import server_state
 from tweetnook.web.jobs import JOBS_BY_KEY, JobOptionsError, job_cli_args
 from tweetnook.web.routes import jobs
+
+
+def test_web_thread_options_do_not_offer_targetless_refresh():
+    threads = JOBS_BY_KEY["threads"]
+    assert "refresh" not in {option.key for option in threads.options}
+    with pytest.raises(JobOptionsError, match="Unknown option"):
+        job_cli_args(threads, {"refresh": True}, AppConfig())
+
+
+@pytest.mark.parametrize(
+    "options", [{}, {"limit": 1, "reply_linked_depth": True, "max_linked_depth": 0}]
+)
+def test_web_thread_argv_passes_real_cli_and_feature_validation(paths, monkeypatch, options):
+    import httpx
+    from typer.testing import CliRunner
+
+    from tests.conftest import patch_cli
+    from tweetnook.cli import app
+    from tweetnook.storage import open_archive_store
+
+    config = AppConfig(auth=AuthConfig(auth_token="synthetic", ct0="synthetic", user_id="42"))
+    store = open_archive_store(paths, create=True, config=config)
+    store.close()
+    patch_cli(monkeypatch, "load_config", lambda: (config, paths))
+    monkeypatch.setattr(
+        httpx.AsyncClient,
+        "send",
+        lambda *args, **kwargs: pytest.fail("empty archive must not send provider requests"),
+    )
+    args = job_cli_args(JOBS_BY_KEY["threads"], options, config)
+
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 0, result.output
+    assert "--refresh" not in args
+    assert "all thread candidates already being expanded or known" in result.output
 
 
 def _paths(tmp_path) -> XDGPaths:
@@ -27,9 +63,9 @@ def test_run_options_become_the_same_cli_flags() -> None:
     # Defaults (taken from config) are left out; changed values become flags.
     assert job_cli_args(
         threads,
-        {"refresh": True, "reply_linked_depth": True, "max_linked_depth": 50, "limit": "200"},
+        {"reply_linked_depth": True, "max_linked_depth": 50, "limit": "200"},
         config,
-    ) == ["threads", "expand", "--refresh", "--reply-linked-depth", "1", "--limit", "200"]
+    ) == ["threads", "expand", "--reply-linked-depth", "1", "--limit", "200"]
     assert job_cli_args(JOBS_BY_KEY["tagging"], {"target": "123", "test": True}, config) == [
         "tag",
         "--test",

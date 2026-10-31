@@ -541,19 +541,6 @@
       "sync_step": "threads",
       "options": [
         {
-          "key": "refresh",
-          "kind": "flag",
-          "flag": "--refresh",
-          "label": "Re-fetch expanded threads",
-          "help": "Fetch threads again even if they were already expanded.",
-          "unit": "",
-          "minimum": null,
-          "maximum": null,
-          "placeholder": "",
-          "danger": false,
-          "disabled_when": []
-        },
-        {
           "key": "reply_linked_depth",
           "kind": "level",
           "flag": "--reply-linked-depth",
@@ -594,7 +581,6 @@
         }
       ],
       "defaults": {
-        "refresh": false,
         "reply_linked_depth": false,
         "max_linked_depth": 50,
         "limit": null

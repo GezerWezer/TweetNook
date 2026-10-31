@@ -83,13 +83,6 @@ JOBS: tuple[JobSpec, ...] = (
         sync_step="threads",
         options=(
             JobOption(
-                "refresh",
-                "flag",
-                "--refresh",
-                "Re-fetch expanded threads",
-                "Fetch threads again even if they were already expanded.",
-            ),
-            JobOption(
                 "reply_linked_depth",
                 "level",
                 "--reply-linked-depth",
