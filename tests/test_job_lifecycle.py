@@ -18,7 +18,7 @@ import tweetnook.importer.archive as archive_import
 import tweetnook.importer.archive_enrich as archive_enrich
 from tests.archive_import.conftest import _write_archive_dir
 from tests.collection_sync.conftest import _bookmarks_response_from_results, _save_query_ids
-from tests.conftest import patch_cli
+from tests.conftest import make_tweet_result, patch_cli
 from tests.test_process_lock_os import other_process_sees
 from tweetnook.config import AppConfig
 from tweetnook.core.exceptions import ArchiveNotFoundError, ConfigError, StaleQueryIdError
@@ -40,6 +40,8 @@ from tweetnook.sync.collection import (
     sync_all,
     sync_collection,
 )
+from tweetnook.sync.followups import plan_sync_pipeline
+from tweetnook.sync.steps import add_backfill_step, add_head_step, add_preflight_step
 
 FULL_DISK = OSError(errno.ENOSPC, "No space left on device")
 FULL_DATABASE = sqlite3.OperationalError("database or disk is full")
@@ -699,3 +701,119 @@ def test_one_collection_failing_is_one_issue_and_a_partial_run(
     failures = [issue for issue in status["issues"] if "sync failed" in issue["message"]]
     assert [issue["count"] for issue in failures] == [1]
     assert {step["state"] for step in status["steps"]} <= {"complete", "skipped", "failed"}
+
+
+def _timeline_with_cursor(_request: httpx.Request) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json=_bookmarks_response_from_results(
+            [make_tweet_result("101", "first")], cursor="cursor-page-2"
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_interrupted_head_only_sync_leaves_no_backfill_cursor(archive, config, auth_bundle):
+    _save_query_ids(archive)
+    store = open_archive_store(archive, create=False, config=config)
+    store.set_sync_state(
+        "bookmark", last_head_tweet_id=None, backfill_cursor="older", backfill_incomplete=True
+    )
+    store.close()
+
+    class Interrupted(Exception):
+        pass
+
+    async def interrupt_after_first_page(_seconds):
+        raise Interrupted
+
+    with pytest.raises(Interrupted):
+        await sync_collection(
+            "bookmarks",
+            full=False,
+            head_only=True,
+            config=config,
+            paths=archive,
+            auth_bundle=auth_bundle,
+            transport=httpx.MockTransport(_timeline_with_cursor),
+            console=Console(file=StringIO()),
+            sleep=interrupt_after_first_page,
+        )
+
+    store = open_archive_store(archive, create=False, config=config)
+    state = store.get_sync_state("bookmark")
+    store.close()
+    assert state.backfill_cursor is None
+    assert state.backfill_incomplete is False
+    assert state.last_head_tweet_id == "101"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "flags",
+    [
+        {"full": True, "head_only": True},
+        {"full": False, "backfill": True, "head_only": True},
+        {"full": True, "limit": -2},
+    ],
+)
+async def test_impossible_sync_requests_stop_before_preflight_and_writes(
+    archive, config, auth_bundle, flags
+):
+    store = open_archive_store(archive, create=False, config=config)
+    store.set_sync_state(
+        "bookmark", last_head_tweet_id="head", backfill_cursor="older", backfill_incomplete=True
+    )
+    store.close()
+
+    def no_requests(request: httpx.Request) -> httpx.Response:
+        pytest.fail(f"preflight reached {request.url}")
+
+    with pytest.raises(ConfigError):
+        await sync_collection(
+            "bookmarks",
+            config=config,
+            paths=archive,
+            auth_bundle=auth_bundle,
+            transport=httpx.MockTransport(no_requests),
+            console=Console(file=StringIO()),
+            **flags,
+        )
+    store = open_archive_store(archive, create=False, config=config)
+    state = store.get_sync_state("bookmark")
+    store.close()
+    assert (state.last_head_tweet_id, state.backfill_cursor) == ("head", "older")
+
+
+def test_planned_and_run_steps_are_the_same_steps(archive, config, auth_bundle):
+    pipeline = PipelineReporter(Console(file=StringIO()), "sync", interactive=False)
+    with pipeline:
+        plan_sync_pipeline(
+            pipeline,
+            config=config,
+            collections=["bookmarks", "tweets"],
+            followups=None,
+            head_only=False,
+        )
+        planned = [step.key for step in pipeline.steps]
+        add_preflight_step(pipeline, ["bookmarks", "tweets"])
+        for collection in ("bookmarks", "tweets"):
+            add_head_step(pipeline, collection)
+        add_backfill_step(pipeline, "tweets")
+        assert [step.key for step in pipeline.steps] == planned
+    assert planned == [
+        "preflight:bookmarks,tweets",
+        "sync:bookmarks:head",
+        "sync:tweets:head",
+        "sync:tweets:backfill",
+    ]
+
+
+def test_sync_limit_refuses_a_negative_value_before_any_request(
+    archive, config, auth_bundle, monkeypatch
+):
+    output = _capture_cli(monkeypatch, archive, config)
+    patch_cli(monkeypatch, "resolve_auth_bundle", lambda _config: auth_bundle)
+    result = CliRunner().invoke(cli.app, ["sync", "bookmarks", "--limit", "-1"])
+    assert result.exit_code == 1
+    assert "--limit cannot be negative." in output.getvalue()

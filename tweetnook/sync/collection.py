@@ -6,7 +6,8 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from enum import StrEnum
+from typing import Any, NamedTuple
 
 import httpx
 from rich.console import Console
@@ -31,8 +32,40 @@ from tweetnook.jobs.context import locked_archive_job, open_job_store
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
-from tweetnook.storage import ArchiveStore, SyncState
+from tweetnook.storage import ArchiveStore
 from tweetnook.sync.followups import SyncFollowupPlan, run_auto_followups
+from tweetnook.sync.steps import (
+    add_backfill_step,
+    add_head_step,
+    add_preflight_step,
+    backfill_step_key,
+    head_step_key,
+    history_shares_head_step,
+    preflight_step_key,
+)
+
+
+class SyncMode(StrEnum):
+    INCREMENTAL = "incremental"
+    HEAD_ONLY = "head_only"
+    BACKFILL = "backfill"
+    FULL = "full"
+
+
+def parse_sync_mode(*, full: bool, backfill: bool, head_only: bool, limit: int | None) -> SyncMode:
+    """Refuse an impossible request before preflight or any write acts on it."""
+    if head_only and (full or backfill):
+        raise ConfigError(
+            "--head-only cannot be combined with --full, --backfill, or --article-backfill."
+        )
+    if limit is not None and limit < 0:
+        raise ConfigError("--limit cannot be negative.")
+    if full:
+        return SyncMode.FULL
+    if backfill:
+        return SyncMode.BACKFILL
+    return SyncMode.HEAD_ONLY if head_only else SyncMode.INCREMENTAL
+
 
 COLLECTION_TO_OPERATION = {
     "bookmarks": "Bookmarks",
@@ -116,15 +149,8 @@ async def run_preflight(
     console: Console | None = None,
 ) -> PreflightResult:
     pipeline = current_pipeline()
-    step_key = "preflight:" + ",".join(collections)
-    pipeline.add_step(
-        step_key,
-        "Prepare",
-        total=3 + len(collections),
-        unit="checks",
-        detail=f"sign-in · archive owner · {len(collections)} collection checks",
-        rate_unit="checks/s",
-    )
+    step_key = preflight_step_key(collections)
+    add_preflight_step(pipeline, collections)
     pipeline.start_step(step_key, activity="Connecting to Twitter/X")
     console = console or Console(stderr=True)
     try:
@@ -291,12 +317,15 @@ async def _fetch_and_parse_page(
 
 def _store_state_for_page(
     *,
+    mode: SyncMode,
     prior_backfill_cursor: str | None,
     prior_backfill_incomplete: bool,
     next_cursor: str | None,
     stop_reason: str,
     is_head_pass: bool,
 ) -> tuple[str | None, bool]:
+    if mode is SyncMode.HEAD_ONLY:
+        return None, False
     if not is_head_pass:
         if stop_reason in {"empty", "backfill-complete"}:
             return None, False
@@ -336,8 +365,16 @@ def _stop_summary(reason: str) -> str:
     }.get(reason, reason)
 
 
+class PassResult(NamedTuple):
+    pages: int
+    tweets: int
+    stop_reason: str
+    head_id: str | None
+
+
 async def _run_pass(
     *,
+    mode: SyncMode,
     collection: str,
     start_cursor: str | None,
     config: AppConfig,
@@ -347,7 +384,7 @@ async def _run_pass(
     store: ArchiveStore,
     count_limit: int | None,
     stop_on_duplicate: bool,
-    previous_state: SyncState,
+    head_id: str | None,
     prior_backfill_cursor: str | None,
     prior_backfill_incomplete: bool,
     initial_seen_ids: set[str],
@@ -356,11 +393,11 @@ async def _run_pass(
     sleep: Callable[[float], Awaitable[None]],
     client: httpx.AsyncClient,
     pipeline_step_key: str | None = None,
-) -> tuple[int, int, str]:
+) -> PassResult:
     pages_fetched = 0
     tweets_seen = 0
     cursor = start_cursor
-    latest_head_id = previous_state.last_head_tweet_id
+    latest_head_id = head_id
     stop_reason = "empty"
     seen_ids = initial_seen_ids
     pipeline = current_pipeline()
@@ -411,9 +448,7 @@ async def _run_pass(
             # Imported/detail-enriched members do not prove timeline coverage.
             # The previous timeline head is the incremental sync boundary.
             duplicate_seen = any(
-                tweet.tweet_id not in seen_ids
-                and tweet.tweet_id == previous_state.last_head_tweet_id
-                for tweet in tweets
+                tweet.tweet_id not in seen_ids and tweet.tweet_id == head_id for tweet in tweets
             )
 
         if is_head_pass and tweets and pages_fetched == 0:
@@ -431,6 +466,7 @@ async def _run_pass(
             stop_reason = "continue"
 
         backfill_cursor, backfill_incomplete = _store_state_for_page(
+            mode=mode,
             prior_backfill_cursor=prior_backfill_cursor,
             prior_backfill_incomplete=prior_backfill_incomplete,
             next_cursor=next_cursor,
@@ -488,12 +524,12 @@ async def _run_pass(
             )
 
         if stop_reason != "continue":
-            return pages_fetched, tweets_seen, stop_reason
+            break
 
         cursor = next_cursor
         await sleep(config.sync.page_delay)
 
-    return pages_fetched, tweets_seen, stop_reason
+    return PassResult(pages_fetched, tweets_seen, stop_reason, latest_head_id)
 
 
 async def sync_collection(
@@ -519,6 +555,7 @@ async def sync_collection(
         paths = paths or loaded_paths
     paths = ensure_paths(paths)
     console = console or Console(stderr=True)
+    mode = parse_sync_mode(full=full, backfill=backfill, head_only=head_only, limit=limit)
 
     preflight = await run_preflight(
         config=config,
@@ -531,9 +568,7 @@ async def sync_collection(
     )
     result = await _sync_collection_ready(
         collection=collection,
-        full=full,
-        backfill=backfill,
-        head_only=head_only,
+        mode=mode,
         resume_backfill=resume_backfill,
         limit=limit,
         config=config,
@@ -559,9 +594,7 @@ async def sync_collection(
 async def _sync_collection_ready(
     *,
     collection: str,
-    full: bool,
-    backfill: bool = False,
-    head_only: bool = False,
+    mode: SyncMode,
     resume_backfill: bool = True,
     limit: int | None,
     config: AppConfig,
@@ -583,63 +616,34 @@ async def _sync_collection_ready(
         store.ensure_archive_owner_id(preflight.auth.user_id)
         initial_collection_count = store.count_export_rows(COLLECTION_TO_STORAGE[collection])
 
-        if head_only and (full or backfill):
-            raise ConfigError(
-                "--head-only cannot be combined with --full, --backfill, or --article-backfill."
-            )
-
-        if full:
+        if mode is SyncMode.FULL:
             store.reset_sync_state(COLLECTION_TO_STORAGE[collection])
 
         previous_state = store.get_sync_state(COLLECTION_TO_STORAGE[collection])
-        if head_only and previous_state.backfill_incomplete:
-            store.set_sync_state(
-                COLLECTION_TO_STORAGE[collection],
-                last_head_tweet_id=previous_state.last_head_tweet_id,
-                backfill_cursor=None,
-                backfill_incomplete=False,
-            )
-            previous_state = store.get_sync_state(COLLECTION_TO_STORAGE[collection])
         prior_backfill_cursor = (
             previous_state.backfill_cursor if previous_state.backfill_incomplete else None
         )
         prior_backfill_incomplete = previous_state.backfill_incomplete
         seen_ids: set[str] = set()
-        stop_on_dup = not full and not backfill
+        stop_on_dup = mode in {SyncMode.INCREMENTAL, SyncMode.HEAD_ONLY}
         pages_total = 0
         client = build_async_client(
             preflight.auth, timeout=config.sync.timeout, transport=transport
         )
         try:
-            head_step_key = f"sync:{collection}:head"
-            combine_pipeline_passes = pipeline.active and collection in {
-                "bookmarks",
-                "likes",
-            }
+            head_step = head_step_key(collection)
+            combine_pipeline_passes = pipeline.active and history_shares_head_step(collection)
             if pipeline.active:
-                stop_policy = (
-                    "continue through saved duplicates"
-                    if full or backfill
-                    else "stop at saved archive history"
-                )
-                pipeline.add_step(
-                    head_step_key,
-                    collection.title(),
-                    total=1,
-                    unit="current page",
-                    detail=f"head pass · {stop_policy}",
-                    show_rate=False,
-                    show_eta=False,
-                    show_progress=False,
-                )
+                add_head_step(pipeline, collection)
                 pipeline.start_step(
-                    head_step_key,
+                    head_step,
                     activity="Fetching page 1",
                     counters="0 pages · 0 tweets saved",
                 )
             else:
                 console.print(f"{collection}: starting head pass", highlight=False)
-            head_pages, head_tweets, head_reason = await _run_pass(
+            head = await _run_pass(
+                mode=mode,
                 collection=collection,
                 start_cursor=None,
                 config=config,
@@ -649,7 +653,7 @@ async def _sync_collection_ready(
                 store=store,
                 count_limit=limit,
                 stop_on_duplicate=stop_on_dup,
-                previous_state=previous_state,
+                head_id=previous_state.last_head_tweet_id,
                 prior_backfill_cursor=prior_backfill_cursor,
                 prior_backfill_incomplete=prior_backfill_incomplete,
                 initial_seen_ids=seen_ids,
@@ -657,36 +661,30 @@ async def _sync_collection_ready(
                 console=console,
                 sleep=sleep,
                 client=client,
-                pipeline_step_key=head_step_key,
+                pipeline_step_key=head_step,
             )
             if not combine_pipeline_passes:
                 pipeline.complete_step(
-                    head_step_key,
-                    f"{head_pages:,} pages · {head_tweets:,} tweets · {_stop_summary(head_reason)}",
+                    head_step,
+                    f"{head.pages:,} pages · {head.tweets:,} tweets · "
+                    f"{_stop_summary(head.stop_reason)}",
                 )
-            pages_total = head_pages
-            tweets_total = head_tweets
-            stop_reason = head_reason
-            remaining = None if limit is None else max(limit - head_pages, 0)
-
-            if head_only:
-                refreshed_state = store.get_sync_state(COLLECTION_TO_STORAGE[collection])
-                store.set_sync_state(
-                    COLLECTION_TO_STORAGE[collection],
-                    last_head_tweet_id=refreshed_state.last_head_tweet_id
-                    or previous_state.last_head_tweet_id,
-                    backfill_cursor=None,
-                    backfill_incomplete=False,
-                )
+            pages_total = head.pages
+            tweets_total = head.tweets
+            stop_reason = head.stop_reason
+            remaining = None if limit is None else max(limit - head.pages, 0)
 
             resume_saved_backfill = (
-                resume_backfill and not head_only and prior_backfill_incomplete and remaining != 0
+                resume_backfill
+                and mode is not SyncMode.HEAD_ONLY
+                and prior_backfill_incomplete
+                and remaining != 0
             )
             if resume_saved_backfill:
                 if pipeline.active:
                     if combine_pipeline_passes:
                         pipeline.update_step(
-                            head_step_key,
+                            head_step,
                             completed=0,
                             total=1,
                             activity="Fetching older page 1",
@@ -696,29 +694,20 @@ async def _sync_collection_ready(
                             ),
                             important=True,
                         )
-                        backfill_step_key = head_step_key
+                        backfill_step = head_step
                     else:
-                        backfill_step_key = f"sync:{collection}:backfill"
-                        pipeline.add_step(
-                            backfill_step_key,
-                            f"{collection.title()} history",
-                            total=1,
-                            unit="current page",
-                            detail="saved backfill cursor · older archive history",
-                            show_rate=False,
-                            show_eta=False,
-                            show_progress=False,
-                        )
+                        backfill_step = backfill_step_key(collection)
+                        add_backfill_step(pipeline, collection)
                         pipeline.start_step(
-                            backfill_step_key,
+                            backfill_step,
                             activity="Fetching older page 1",
                             counters="0 pages · 0 tweets saved",
                         )
                 else:
-                    backfill_step_key = None
+                    backfill_step = None
                     console.print(f"{collection}: resuming saved backfill pass", highlight=False)
-                refreshed_state = store.get_sync_state(COLLECTION_TO_STORAGE[collection])
-                backfill_pages, backfill_tweets, backfill_reason = await _run_pass(
+                older = await _run_pass(
+                    mode=mode,
                     collection=collection,
                     start_cursor=prior_backfill_cursor,
                     config=config,
@@ -728,7 +717,7 @@ async def _sync_collection_ready(
                     store=store,
                     count_limit=remaining,
                     stop_on_duplicate=False,
-                    previous_state=refreshed_state,
+                    head_id=head.head_id,
                     prior_backfill_cursor=prior_backfill_cursor,
                     prior_backfill_incomplete=prior_backfill_incomplete,
                     initial_seen_ids=seen_ids,
@@ -736,16 +725,16 @@ async def _sync_collection_ready(
                     console=console,
                     sleep=sleep,
                     client=client,
-                    pipeline_step_key=backfill_step_key if pipeline.active else None,
+                    pipeline_step_key=backfill_step,
                 )
-                pages_total += backfill_pages
-                tweets_total += backfill_tweets
-                stop_reason = backfill_reason
+                pages_total += older.pages
+                tweets_total += older.tweets
+                stop_reason = older.stop_reason
                 if not combine_pipeline_passes:
                     pipeline.complete_step(
-                        backfill_step_key,
-                        f"{backfill_pages:,} pages · {backfill_tweets:,} tweets · "
-                        f"{_stop_summary(backfill_reason)}",
+                        backfill_step,
+                        f"{older.pages:,} pages · {older.tweets:,} tweets · "
+                        f"{_stop_summary(older.stop_reason)}",
                     )
             if pipeline.active and combine_pipeline_passes:
                 metrics = {
@@ -759,27 +748,27 @@ async def _sync_collection_ready(
                 }
                 if resume_saved_backfill:
                     pipeline.complete_step(
-                        head_step_key,
-                        f"{head_pages:,} head pages · {head_tweets:,} tweets · "
-                        f"{backfill_pages:,} older pages · {backfill_tweets:,} tweets · "
-                        f"{_stop_summary(backfill_reason)}",
+                        head_step,
+                        f"{head.pages:,} head pages · {head.tweets:,} tweets · "
+                        f"{older.pages:,} older pages · {older.tweets:,} tweets · "
+                        f"{_stop_summary(older.stop_reason)}",
                         metrics=metrics,
                     )
                 else:
                     pipeline.complete_step(
-                        head_step_key,
-                        f"{head_pages:,} pages · {head_tweets:,} tweets · "
-                        f"{_stop_summary(head_reason)}",
+                        head_step,
+                        f"{head.pages:,} pages · {head.tweets:,} tweets · "
+                        f"{_stop_summary(head.stop_reason)}",
                         metrics=metrics,
                     )
-            elif pipeline.has_step(f"sync:{collection}:backfill") and not resume_saved_backfill:
+            elif pipeline.has_step(backfill_step_key(collection)) and not resume_saved_backfill:
                 if not prior_backfill_incomplete:
                     reason = "no saved older-history cursor"
                 elif remaining == 0:
                     reason = "the page limit being consumed by the head pass"
                 else:
                     reason = "older-history resume being disabled for this run"
-                pipeline.skip_step(f"sync:{collection}:backfill", reason)
+                pipeline.skip_step(backfill_step_key(collection), reason)
         finally:
             await client.aclose()
 
@@ -811,6 +800,7 @@ async def sync_all(
         paths = paths or loaded_paths
     paths = ensure_paths(paths)
     console = console or Console(stderr=True)
+    mode = parse_sync_mode(full=full, backfill=backfill, head_only=head_only, limit=limit)
     selected = list(config.sync.collections)
     preflight = await run_preflight(
         config=config,
@@ -825,25 +815,6 @@ async def sync_all(
             raise LocalPreflightError("sync all preflight failed on local auth/config.")
         raise RemotePreflightError("sync all preflight failed on a remote probe.")
 
-    pipeline = current_pipeline()
-    if pipeline.active:
-        stop_policy = (
-            "continue through saved duplicates"
-            if full or backfill
-            else "stop at saved archive history"
-        )
-        for collection in selected:
-            pipeline.add_step(
-                f"sync:{collection}:head",
-                collection.title(),
-                total=1,
-                unit="current page",
-                detail=f"head pass · {stop_policy}",
-                show_rate=False,
-                show_eta=False,
-                show_progress=False,
-            )
-
     results: list[SyncResult] = []
     errors: dict[str, str] = {}
     exit_code = 0
@@ -851,9 +822,7 @@ async def sync_all(
         try:
             result = await _sync_collection_ready(
                 collection=collection,
-                full=full,
-                backfill=backfill,
-                head_only=head_only,
+                mode=mode,
                 limit=limit,
                 config=config,
                 paths=paths,

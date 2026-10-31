@@ -56,6 +56,7 @@ from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_i
 from tweetnook.storage import ArchiveStore
 from tweetnook.storage.records import PageBuffer
 from tweetnook.sync.collection import sync_collection
+from tweetnook.sync.steps import head_step_key, preflight_step_key
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,7 @@ async def _run_live_reconciliation(
         for collection in ("tweets", "likes"):
             if collection in collections:
                 continue
-            for step_key in (f"preflight:{collection}", f"sync:{collection}:head"):
+            for step_key in (preflight_step_key([collection]), head_step_key(collection)):
                 if pipeline.has_step(step_key):
                     pipeline.skip_step(
                         step_key,
@@ -190,7 +191,7 @@ async def _run_live_reconciliation(
     except ConfigError as exc:
         warnings.append(f"live reconciliation skipped: {exc}")
         for collection in collections:
-            for step_key in (f"preflight:{collection}", f"sync:{collection}:head"):
+            for step_key in (preflight_step_key([collection]), head_step_key(collection)):
                 if pipeline.has_step(step_key):
                     pipeline.skip_step(step_key, "Twitter/X authentication being unavailable")
         return [], warnings, None

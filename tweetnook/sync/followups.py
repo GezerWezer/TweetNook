@@ -14,6 +14,12 @@ from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.jobs.pipeline import PipelineReporter, current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.storage import open_archive_store
+from tweetnook.sync.steps import (
+    add_backfill_step,
+    add_head_step,
+    add_preflight_step,
+    history_shares_head_step,
+)
 
 
 @dataclass(slots=True)
@@ -44,37 +50,11 @@ def plan_sync_pipeline(
     head_only: bool,
 ) -> None:
     """Declare the complete flag-relevant sync lifecycle before any work begins."""
-    pipeline.add_step(
-        "preflight:" + ",".join(collections),
-        "Prepare",
-        total=3 + len(collections),
-        unit="checks",
-        detail=f"sign-in · archive owner · {len(collections)} collection checks",
-        rate_unit="checks/s",
-    )
-    stop_policy = "head timeline pass · each page committed with its resume cursor"
+    add_preflight_step(pipeline, collections)
     for collection in collections:
-        pipeline.add_step(
-            f"sync:{collection}:head",
-            collection.title(),
-            total=1,
-            unit="current page",
-            detail=stop_policy,
-            show_rate=False,
-            show_eta=False,
-            show_progress=False,
-        )
-        if not head_only and collection not in {"bookmarks", "likes"}:
-            pipeline.add_step(
-                f"sync:{collection}:backfill",
-                f"{collection.title()} history",
-                total=1,
-                unit="current page",
-                detail="saved older-history cursor, when one exists",
-                show_rate=False,
-                show_eta=False,
-                show_progress=False,
-            )
+        add_head_step(pipeline, collection)
+        if not head_only and not history_shares_head_step(collection):
+            add_backfill_step(pipeline, collection)
 
     if followups is not None and followups.enabled:
         followup_steps = (

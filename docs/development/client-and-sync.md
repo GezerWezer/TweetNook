@@ -23,11 +23,11 @@ A collection stores a head anchor plus older-history cursor/incomplete state. A 
 | Mode | State behavior |
 | --- | --- |
 | Normal | Fetch recent posts and continue eligible older history. |
-| `--head-only` | Clear the saved backfill cursor and run the head pass only. |
+| `--head-only` | Run the head pass only. Each page's commit clears the saved backfill cursor, so stopping early leaves no older-history walk to resume. |
 | `--backfill` | Continue past known posts to repair gaps and extend history. |
 | `--full` | Reset targeted sync state before walking the collection again. |
 
-`--head-only` is incompatible with `--full`, `--backfill`, and `--article-backfill`. The other modes can be combined. A page limit bounds collection-page work, not the detail/media/tagging follow-ups. `sync` and `sync all` use `sync.collections`; individual subcommands target only their named collection.
+Requested flags become one `SyncMode` before preflight, so an impossible request stops before any request or write: `--head-only` is incompatible with `--full`, `--backfill`, and `--article-backfill`, and `--limit` can't be negative. `--full` with `--backfill` is a full run. `sync/steps.py` declares each sync step once for the plan and the runner. A page limit bounds collection-page work, not the detail/media/tagging follow-ups. `sync` and `sync all` use `sync.collections`; individual subcommands target only their named collection.
 
 ## Page writes
 

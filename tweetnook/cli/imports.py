@@ -23,6 +23,7 @@ from tweetnook.importer.archive_enrich import (
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.sync.collection import sync_all
 from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline
+from tweetnook.sync.steps import head_step_key, preflight_step_key
 
 import_app = typer.Typer(
     no_args_is_help=True, help="Import and enrich official Twitter/X archives."
@@ -84,7 +85,7 @@ def _plan_archive_import_pipeline(
     if not defer_followup:
         for collection in ("tweets", "likes"):
             pipeline.add_step(
-                f"preflight:{collection}",
+                preflight_step_key([collection]),
                 f"Prepare {collection}",
                 total=4,
                 unit="checks",
@@ -92,7 +93,7 @@ def _plan_archive_import_pipeline(
                 rate_unit="checks/s",
             )
             pipeline.add_step(
-                f"sync:{collection}:head",
+                head_step_key(collection),
                 f"Reconcile {collection}",
                 total=1,
                 unit="current page",

@@ -46,6 +46,7 @@ from tweetnook.jobs.context import (
 from tweetnook.jobs.interactive import emit_status, progress_callback
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.storage import ArchiveStore
+from tweetnook.sync.steps import head_step_key, preflight_step_key
 
 logger = logging.getLogger(__name__)
 
@@ -287,10 +288,10 @@ async def import_x_archive(
                     if not followup_requested:
                         for step_key in (
                             "archive-auth",
-                            "preflight:tweets",
-                            "sync:tweets:head",
-                            "preflight:likes",
-                            "sync:likes:head",
+                            preflight_step_key(["tweets"]),
+                            head_step_key("tweets"),
+                            preflight_step_key(["likes"]),
+                            head_step_key("likes"),
                         ):
                             if pipeline.has_step(step_key):
                                 pipeline.skip_step(
