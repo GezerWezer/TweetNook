@@ -41,6 +41,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `auth/cookies.py` | Explicit session credentials and per-collection requirements. |
 | `client/base.py`, `client/features.py` | HTTP setup, pacing, headers, feature flags and transport errors. |
 | `client/timelines.py` | X operation variables and timeline/detail requests. |
+| `client/detail.py` | Query-ID resolution and paced authenticated TweetDetail requests for enrichment passes. |
 | `client/fxtwitter.py` | Cookie-free public lookup. |
 | `query_ids/` | Operation defaults, cache and bundle discovery. |
 | `sync/collection.py` | Collection preflight and resumable pages. |
@@ -54,6 +55,8 @@ Some modules sit where their dependencies put them rather than where their name 
 | `importer/archive_enrich.py` | Live reconciliation and sparse completion, after an import or for one already saved. |
 | `importer/archive_progress.py` | Status lines and progress shared by import and enrichment. |
 | `importer/legacy_migration.py` | Explicit migration of a legacy LanceDB archive. |
+| `enrichment/detail.py` | The detail executor: typed outcomes, the focal-absence tracker and status-target parsing. |
+| `enrichment/availability.py` | Availability retry schedule and the writers of unavailable and transient results. |
 | `enrichment/threads.py`, `enrichment/media.py`, `enrichment/unfurl.py` | Conversation expansion, file downloads and link previews. |
 | `enrichment/articles.py` | Article body refresh. |
 | `enrichment/resurrection.py`, `enrichment/check.py` | Authenticated retry policy and public availability checks. |
