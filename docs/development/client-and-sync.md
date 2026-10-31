@@ -29,7 +29,7 @@ A collection stores a head anchor plus older-history cursor/incomplete state. A 
 | `--backfill` | Continue past known posts to repair gaps and extend history. |
 | `--full` | Reset targeted sync state before walking the collection again. |
 
-Requested flags become one `SyncMode` before preflight, so an impossible request stops before any request or write: `--head-only` is incompatible with `--full`, `--backfill`, and `--article-backfill`, and `--limit` can't be negative. `--full` with `--backfill` is a full run. `sync/steps.py` declares each sync step once for the plan and the runner. A page limit bounds collection-page work, not the detail/media/tagging follow-ups. `sync` and `sync all` use `sync.collections`; individual subcommands target only their named collection.
+Requested flags become one `SyncMode` before preflight, so an impossible request stops before any request or write: `--head-only` is incompatible with `--full`, `--backfill`, and `--article-backfill`, and `--limit` can't be negative. `--full` with `--backfill` is a full run. `sync/steps.py` declares each sync step once for the plan and the runner. A page limit bounds collection-page work, not the detail/media/tagging follow-ups. `sync` and `sync all` use `sync.collections`; individual subcommands target only their named collection. With a subcommand, options belong after its name (`sync likes --skip-media`); explicitly supplied parent options are rejected before configuration or job setup. Each subcommand's help lists its supported options.
 
 ## Page writes
 

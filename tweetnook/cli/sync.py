@@ -7,6 +7,8 @@ from collections.abc import Awaitable, Callable
 from typing import Annotated, Any
 
 import typer
+from click import UsageError
+from click.core import ParameterSource
 from rich.console import Console
 
 from tweetnook.auth import resolve_auth_bundle
@@ -26,7 +28,8 @@ SYNC_GROUP_HELP = (
     "Run the normal sync pass. Without a subcommand, this syncs the collections chosen in "
     "sync.collections (bookmarks and likes unless changed), then runs thread expansion, "
     "resurrection checks, article refresh, media download, URL unfurl, and configured AI "
-    "tagging unless skipped or inapplicable."
+    "tagging unless skipped or inapplicable. When using a subcommand, put its options "
+    "after its name."
 )
 SYNC_ALL_HELP = (
     "Sync the collections chosen in sync.collections (bookmarks and likes unless changed), "
@@ -231,6 +234,18 @@ def sync_default(
     reply_linked_depth: SYNC_REPLY_LINKED_DEPTH_OPTION = None,
 ) -> None:
     if ctx.invoked_subcommand is not None:
+        provided = [
+            "--" + name.replace("_", "-")
+            for name in ctx.params
+            if ctx.get_parameter_source(name) is ParameterSource.COMMANDLINE
+        ]
+        if provided:
+            raise UsageError(
+                f"Put supported options after '{ctx.invoked_subcommand}': "
+                f"{', '.join(provided)}. See 'sync {ctx.invoked_subcommand} --help' "
+                "for its options; use 'sync all' for all-collection options.",
+                ctx=ctx,
+            )
         return
     _run_sync_all_command(
         full=full,

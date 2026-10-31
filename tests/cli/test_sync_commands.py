@@ -374,3 +374,63 @@ def test_programmatic_depth_override_preserves_other_sync_settings():
     assert config.sync.reply_linked_depth == 1
     assert config.sync.timeout == 90
     assert config.sync.collections == ["tweets"]
+
+
+@pytest.mark.parametrize("subcommand", ["all", "bookmarks", "likes", "tweets"])
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--full"],
+        ["--backfill"],
+        ["--article-backfill"],
+        ["--head-only"],
+        ["--limit", "0"],
+        ["--skip-resurrection"],
+        ["--skip-articles"],
+        ["--skip-media"],
+        ["--skip-unfurl"],
+        ["--skip-threads"],
+        ["--max-linked-depth", "3"],
+        ["--reply-linked-depth", "0"],
+    ],
+)
+def test_sync_rejects_parent_modifiers_before_any_setup(monkeypatch, options, subcommand):
+    def unexpected_setup(*args, **kwargs):
+        pytest.fail("misplaced options must stop before command setup")
+
+    for name in ("load_config", "configure_logging", "resolve_auth_bundle", "web_pipeline"):
+        patch_cli(monkeypatch, name, unexpected_setup)
+
+    result = runner.invoke(cli.app, ["sync", *options, subcommand])
+
+    assert result.exit_code == 2, result.output
+    assert options[0] in result.output
+    assert "after" in result.output
+
+
+@pytest.mark.parametrize("subcommand", [[], ["all"], ["bookmarks"], ["likes"], ["tweets"]])
+def test_sync_modifiers_at_the_execution_command_are_preserved(paths, monkeypatch, subcommand):
+    _capture_console(monkeypatch, StringIO())
+    config = AppConfig()
+    patch_cli(monkeypatch, "load_config", lambda: (config, paths))
+    patch_cli(monkeypatch, "resolve_auth_bundle", lambda config: SimpleNamespace(auth_token="t"))
+    forwarded = {}
+
+    async def fake_sync(*args, **kwargs):
+        forwarded.update(kwargs)
+        if args:
+            forwarded["collection"] = args[0]
+            return SimpleNamespace(pages_fetched=0, tweets_seen=0, stop_reason="empty")
+        return SimpleNamespace(results=[], errors={}, exit_code=0)
+
+    patch_cli(monkeypatch, "sync_all", fake_sync)
+    patch_cli(monkeypatch, "sync_collection", fake_sync)
+    result = runner.invoke(cli.app, ["sync", *subcommand, "--full", "--skip-media", "--limit", "0"])
+
+    assert result.exit_code == 0, result.output
+    assert forwarded["full"] is True
+    assert forwarded["limit"] == 0
+    assert forwarded["followups"].media is False
+    assert forwarded["followups"].threads is True
+    if subcommand and subcommand != ["all"]:
+        assert forwarded["collection"] == subcommand[0]
