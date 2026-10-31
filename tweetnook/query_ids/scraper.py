@@ -113,6 +113,12 @@ async def refresh_query_ids(
     )
     try:
         discovered = await discover_query_ids(client, operations=operation_list)
+    except httpx.HTTPStatusError as exc:
+        raise QueryIdRefreshError(
+            f"Query ID discovery failed: HTTP {exc.response.status_code}."
+        ) from exc
+    except httpx.RequestError as exc:
+        raise QueryIdRefreshError(f"Query ID discovery failed: {exc.__class__.__name__}.") from exc
     finally:
         if close_client:
             await client.aclose()
@@ -140,7 +146,7 @@ async def resolve_query_ids(
         )
         try:
             await refresh_query_ids(store, operations=operations, client=client)
-        except httpx.HTTPError as error:
+        except QueryIdRefreshError as error:
             # Discovery reads X's web bundles, which can fail while the API itself still accepts
             # the IDs in hand. A rejected ID triggers its own refresh during the request.
             if missing:

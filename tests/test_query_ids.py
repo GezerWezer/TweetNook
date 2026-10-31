@@ -225,7 +225,9 @@ async def test_failed_refresh_keeps_usable_ids_and_does_not_mark_them_checked(pa
     )
     assert result == {"Bookmarks": FALLBACK_QUERY_IDS["Bookmarks"]}
     assert not store.is_fresh(operations=["Bookmarks"])
-    with pytest.raises(httpx.ConnectError):
+    from tweetnook.core.exceptions import QueryIdRefreshError
+
+    with pytest.raises(QueryIdRefreshError, match="ConnectError"):
         await scraper.resolve_query_ids(store, ["NoFallback"], force_refresh=False, transport=None)
 
 
@@ -241,3 +243,68 @@ def test_empty_save_does_not_make_the_cache_look_fetched(paths):
     store = QueryIdStore(paths)
     assert store.save({}).fetched_at is None
     assert not store.path.exists()
+
+
+@pytest.mark.parametrize("failure", ["http", "timeout"])
+async def test_refresh_normalizes_discovery_failures_and_preserves_borrowed_client(paths, failure):
+    from tweetnook.core.exceptions import QueryIdRefreshError
+    from tweetnook.query_ids.scraper import refresh_query_ids
+
+    store = QueryIdStore(paths)
+    store.save({"TweetDetail": "saved-detail"})
+    before = store.path.read_bytes()
+
+    def handler(request):
+        if failure == "timeout":
+            raise httpx.ReadTimeout("discovery timed out", request=request)
+        return httpx.Response(503)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(QueryIdRefreshError, match="503|ReadTimeout") as error:
+            await refresh_query_ids(store, operations=["TweetDetail"], client=client)
+        assert not client.is_closed
+        assert isinstance(error.value.__cause__, httpx.HTTPError)
+    assert store.path.read_bytes() == before
+
+
+@pytest.mark.parametrize("failure", ["http", "timeout"])
+def test_refresh_ids_cli_reports_discovery_failure(paths, config, monkeypatch, failure):
+    from typer.testing import CliRunner
+
+    from tweetnook.cli import app
+    from tweetnook.cli import auth as auth_cli
+    from tweetnook.query_ids import scraper
+
+    clients = []
+    real_client = httpx.AsyncClient
+
+    def handler(request):
+        if failure == "timeout":
+            raise httpx.ReadTimeout("discovery timed out", request=request)
+        return httpx.Response(503)
+
+    def client(**kwargs):
+        result = real_client(**(kwargs | {"transport": httpx.MockTransport(handler)}))
+        clients.append(result)
+        return result
+
+    monkeypatch.setattr(auth_cli, "load_config", lambda: (config, paths))
+    monkeypatch.setattr(scraper.httpx, "AsyncClient", client)
+    result = CliRunner().invoke(app, ["auth", "refresh-ids"])
+    assert result.exit_code == 2
+    assert "Query ID discovery failed" in result.output
+    assert ("503" if failure == "http" else "ReadTimeout") in result.output
+    assert len(clients) == 1 and clients[0].is_closed
+
+
+@pytest.mark.parametrize("failure", [ValueError("bad parser"), OSError("disk error")])
+async def test_refresh_keeps_local_and_programmer_errors_visible(paths, monkeypatch, failure):
+    from tweetnook.query_ids import scraper
+
+    async def discover(client, *, operations):
+        raise failure
+
+    monkeypatch.setattr(scraper, "discover_query_ids", discover)
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(type(failure), match=str(failure)):
+            await scraper.refresh_query_ids(QueryIdStore(paths), client=client)
