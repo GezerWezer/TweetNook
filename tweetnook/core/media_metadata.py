@@ -33,7 +33,11 @@ def validated_aspect_ratio(value: Any) -> list[int | float] | None:
     for component in value:
         if isinstance(component, bool) or not isinstance(component, Real):
             return None
-        if not math.isfinite(component) or component <= 0:
+        try:
+            finite = math.isfinite(component)
+        except OverflowError:
+            return None
+        if not finite or component <= 0:
             return None
         ratio.append(component)
     return ratio
