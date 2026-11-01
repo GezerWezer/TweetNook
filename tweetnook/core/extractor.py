@@ -152,6 +152,9 @@ def canonicalize_url(value: str | None) -> str | None:
     hostname = parsed.hostname.lower() if parsed.hostname else ""
     if not hostname:
         return None
+    # .hostname drops an IPv6 address's brackets, which the authority needs.
+    if ":" in hostname:
+        hostname = f"[{hostname}]"
     if port and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
         netloc = f"{hostname}:{port}"
     else:

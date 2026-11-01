@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 from io import StringIO
 from unittest.mock import MagicMock
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -424,6 +425,89 @@ async def test_remote_failures_stay_on_their_url(paths, config, answer, http_sta
         assert all(row["http_status"] == http_status for row in rows)
     finally:
         store.close()
+
+
+def _html_response(markup: str):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, text=markup, headers={"content-type": "text/html"}, request=request
+        )
+
+    return handler
+
+
+def _saved_url_row(paths) -> dict:
+    store = open_archive_store(paths, create=True)
+    try:
+        return next(row for row in store.list_url_rows(limit=10) if row.get("unfurl_state"))
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    "markup",
+    [
+        (
+            "<title>Clean &amp; tidy</title>"
+            '<link rel="canonical" href="https://dest.example/clean">'
+            '<meta name="description" content="About &amp; more">'
+            '<meta property="og:site_name" content="Dest">'
+        ),
+        (
+            "<TITLE>Clean &amp;\n  tidy</TITLE>"
+            "<link href='https://dest.example/clean' data-x='1' rel='canonical'>"
+            "<META content='About &amp; more' name='description'>"
+            "<meta content=Dest property=og:site_name>"
+        ),
+        (
+            '<script>"<title>Not this</title>"</script><title>Clean &amp; tidy</title>'
+            '<link href="/clean" rel="canonical">'
+            '<meta content="About &amp; more" property="og:description">'
+            '<meta content="Dest" name="application-name">'
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_metadata_is_read_in_any_spelling_of_the_markup(paths, config, markup: str):
+    _seed_archive(paths)
+
+    result = await _unfurl_one(paths, config, _html_response(markup))
+
+    assert result.failed == 0
+    row = _saved_url_row(paths)
+    assert row["title"] == "Clean & tidy"
+    assert row["description"] == "About & more"
+    assert row["site_name"] == "Dest"
+    assert urlsplit(row["canonical_url"]).path == "/clean"
+
+
+@pytest.mark.asyncio
+async def test_a_relative_canonical_resolves_against_the_final_url(paths, config):
+    _seed_archive(paths)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host != "final.example":
+            return httpx.Response(302, headers={"location": "https://final.example/a/b"})
+        return httpx.Response(
+            200,
+            text='<link rel="canonical" href="../clean?utm_source=x">',
+            headers={"content-type": "text/html"},
+            request=request,
+        )
+
+    await _unfurl_one(paths, config, handler)
+
+    assert _saved_url_row(paths)["canonical_url"] == "https://final.example/clean"
+
+
+@pytest.mark.asyncio
+async def test_markup_html_parser_refuses_keeps_what_came_before_it(paths, config):
+    _seed_archive(paths)
+
+    result = await _unfurl_one(paths, config, _html_response("<title>Kept</title><![bogus[ x ]]>"))
+
+    assert result.failed == 0
+    assert _saved_url_row(paths)["title"] == "Kept"
 
 
 @pytest.mark.asyncio

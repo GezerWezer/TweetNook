@@ -4,6 +4,7 @@ import pytest
 
 from tests.conftest import make_tweet_result
 from tweetnook.core.extractor import (
+    canonicalize_url,
     extract_canonical_text,
     extract_note_tweet_text,
     extract_secondary_objects,
@@ -238,3 +239,25 @@ def test_restored_visibility_result_builds_complete_storage_facing_row() -> None
     assert row.note_tweet_text == "restored canonical note"
     assert row.author_id == "author-id"
     assert row.raw_json["birdwatch_pivot"] == pivot
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://[::1]:8443/a", "https://[::1]:8443/a"),
+        ("https://[::1]/a", "https://[::1]/a"),
+        ("https://[::1]:443/a", "https://[::1]/a"),
+        ("http://[2001:DB8::1]:80/a?utm_source=x&b=1", "http://[2001:db8::1]/a?b=1"),
+        ("https://Example.com:8443/a", "https://example.com:8443/a"),
+    ],
+)
+def test_canonical_url_keeps_a_valid_authority(url: str, expected: str) -> None:
+    assert canonicalize_url(url) == expected
+    assert canonicalize_url(expected) == expected
+
+
+@pytest.mark.parametrize(
+    "url", ["http://[broken", "https://[::1/a", "https://a.example:99999/", "https://a:b/"]
+)
+def test_canonical_url_refuses_a_malformed_authority(url: str) -> None:
+    assert canonicalize_url(url) is None

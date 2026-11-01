@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import re
 from contextlib import suppress
 from dataclasses import dataclass
-from html import unescape
-from urllib.parse import urlsplit
+from html.parser import HTMLParser
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from rich.console import Console
@@ -19,15 +18,6 @@ from tweetnook.jobs.context import locked_archive_job
 from tweetnook.jobs.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs.pipeline import current_pipeline
 
-_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
-_CANONICAL_RE = re.compile(
-    r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)["\']',
-    re.IGNORECASE,
-)
-_META_RE = re.compile(
-    r'<meta[^>]+(?:name|property)=["\']([^"\']+)["\'][^>]+content=["\']([^"\']*)["\']',
-    re.IGNORECASE,
-)
 _REMOTE_FAILURES = (httpx.HTTPError, httpx.InvalidURL)
 _UPDATE_BATCH_SIZE = 100
 
@@ -57,30 +47,74 @@ def _url_host(url: object) -> str:
         return str(url)
 
 
+class _MetadataParser(HTMLParser):
+    """The first title, canonical link and value of each meta tag, in any attribute order."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.title: str | None = None
+        self.canonical: str | None = None
+        self.meta: dict[str, str] = {}
+        self._title_parts: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = {name: value for name, value in reversed(attrs) if value is not None}
+        if tag == "title" and self.title is None and self._title_parts is None:
+            self._title_parts = []
+        elif tag == "link" and self.canonical is None:
+            if "canonical" in values.get("rel", "").lower().split() and values.get("href"):
+                self.canonical = values["href"]
+        elif tag == "meta" and "content" in values:
+            key = values.get("name") or values.get("property")
+            if key:
+                self.meta.setdefault(key.strip().lower(), values["content"])
+
+    def handle_data(self, data: str) -> None:
+        if self._title_parts is not None:
+            self._title_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "title" and self._title_parts is not None:
+            self.title = "".join(self._title_parts)
+            self._title_parts = None
+
+
 def _clean_html_text(value: str | None) -> str | None:
     if not value:
         return None
-    cleaned = " ".join(unescape(value).split())
-    return cleaned or None
+    return " ".join(value.split()) or None
 
 
 def _extract_html_metadata(html: str) -> tuple[str | None, str | None, str | None, str | None]:
-    title_match = _TITLE_RE.search(html)
-    canonical_match = _CANONICAL_RE.search(html)
-    title = _clean_html_text(title_match.group(1) if title_match else None)
-    canonical_url = _clean_html_text(canonical_match.group(1) if canonical_match else None)
-    meta: dict[str, str] = {}
-    for key, value in _META_RE.findall(html):
-        lowered = key.strip().lower()
-        if lowered not in meta:
-            meta[lowered] = value
+    parser = _MetadataParser()
+    # Older html.parser versions raise on a bogus marked section in a page we don't control; what
+    # was read before it is still good.
+    with suppress(AssertionError):
+        parser.feed(html)
+        parser.close()
+    meta = parser.meta
     description = _clean_html_text(
         meta.get("description") or meta.get("og:description") or meta.get("twitter:description")
     )
     site_name = _clean_html_text(
         meta.get("og:site_name") or meta.get("application-name") or meta.get("twitter:site")
     )
-    return title, description, site_name, canonical_url
+    return (
+        _clean_html_text(parser.title),
+        description,
+        site_name,
+        _clean_html_text(parser.canonical),
+    )
+
+
+def _resolve_canonical(href: str | None, final_url: str) -> str | None:
+    """A canonical link's identity, which may be written relative to the page declaring it."""
+    if not href:
+        return None
+    try:
+        return canonicalize_url(urljoin(final_url, href))
+    except ValueError:
+        return None
 
 
 async def _fetch_destination(
@@ -110,7 +144,9 @@ async def _fetch_destination(
         description = parsed_description or description
         site_name = parsed_site_name or site_name
         canonical_url = (
-            canonicalize_url(parsed_canonical_url) or canonicalize_url(final_url) or canonical_url
+            _resolve_canonical(parsed_canonical_url, final_url)
+            or canonicalize_url(final_url)
+            or canonical_url
         )
     else:
         canonical_url = canonical_url or canonicalize_url(final_url)
