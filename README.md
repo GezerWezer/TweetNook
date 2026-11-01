@@ -4,6 +4,8 @@ TweetNook is a self-hosted archive for your Twitter/X bookmarks, likes, and twee
 
 **[Try the demo](https://gezerwezer.github.io/TweetNook/)** and browse a sample archive of real tweets.
 
+[![TweetNook on desktop and mobile, showing filtered saved posts and an open conversation](docs/images/tweetnook-preview.png)](https://gezerwezer.github.io/TweetNook/)
+
 ## Features
 
 - Import your official X archive to bring in your full history of tweets and likes, then let TweetNook fill in the details and download media the archive leaves out.
