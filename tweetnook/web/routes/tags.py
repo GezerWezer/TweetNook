@@ -1,5 +1,7 @@
 """Tag management endpoints."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -38,10 +40,10 @@ def api_update_tag(
     req: TagUpdateRequest,
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
     _auth: bool = Depends(verify_credentials),
-) -> dict[str, bool]:
+) -> dict[str, Any]:
     try:
-        store.update_media_tags(tweet_id, req.tags, description=req.description)
-        return {"success": True}
+        saved = store.update_media_tags(tweet_id, req.tags, description=req.description)
+        return {"success": True, "media_tags": saved}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

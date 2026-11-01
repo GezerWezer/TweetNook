@@ -459,9 +459,13 @@ async function main() {
     const absentTags = await request(store, 'https://example.test/api/tags/autocomplete?q=rem%20absent');
     assert.deepEqual(absentTags.body.tags, []);
 
-    await request(store, `https://example.test/api/tags/${ids.ownerRoot}`, {
+    const savedTags = await request(store, `https://example.test/api/tags/${ids.ownerRoot}`, {
         method: 'PUT',
         body: JSON.stringify({tags: ['example', 'fresh'], description: 'Changed for this session.'}),
+    });
+    assert.deepEqual(savedTags.body, {
+        success: true,
+        media_tags: {tags: ['example', 'fresh'], description: 'Changed for this session.'},
     });
     const changedTags = await request(store, 'https://example.test/api/tags/stats');
     assert.equal(changedTags.body.tags.find(tag => tag.tag === 'example').count, 1);

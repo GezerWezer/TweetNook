@@ -845,7 +845,12 @@
                     tweet.tags = Array.isArray(body.tags) ? body.tags.map(tag => String(tag).trim()).filter(Boolean) : [];
                     tweet.description = String(body.description || '').trim();
                 }
-                return jsonResponse({success: true});
+                if (method === 'DELETE') return jsonResponse({success: true});
+                return jsonResponse({
+                    success: true,
+                    media_tags: tweet.tags.length || tweet.description
+                        ? {tags: clone(tweet.tags), description: tweet.description} : null,
+                });
             }
 
             const hiddenMatch = path.match(/\/api\/tweets\/(\d+)\/hidden$/);

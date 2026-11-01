@@ -17,6 +17,7 @@ from tweetnook.storage.common import (
     HIDDEN_TWEET_IDS_SQL,
     UNCAPTURED_TWEET_IDS_SQL,
     Clause,
+    tag_key,
 )
 from tweetnook.storage.like_order import LIKE_SORTS
 
@@ -324,11 +325,17 @@ def _fact(column: str) -> str:
     )
 
 
-def _fact_list_contains(column: str, value: str) -> Clause:
-    # Lists are lowercased values wrapped in char(31); no stored value contains one.
+def _fact_list_contains(column: str, value: str, *, fold_stored: bool = False) -> Clause:
+    # Lists are values wrapped in char(31); no stored value contains one.
     if "\x1f" in value:
         return Clause("0")
-    return Clause(f"instr({_fact(column)}, char(31) || ? || char(31)) > 0", (value,))
+    stored = f"tweetnook_casefold({_fact(column)})" if fold_stored else _fact(column)
+    return Clause(f"instr({stored}, char(31) || ? || char(31)) > 0", (value,))
+
+
+def _hashtag_match(value: str) -> Clause:
+    # The fact trigger's LOWER folds only ASCII, and hashtags aren't limited to ASCII.
+    return _fact_list_contains("hashtags", value.replace("#", "").casefold(), fold_stored=True)
 
 
 def _description_match(value: str) -> str:
@@ -498,8 +505,8 @@ def _normalized_filter_expr(
             "THEN tagged.raw_json ELSE '{}' END, '$.tags') AS media_tag "
             f"WHERE tagged.record_type = '{RecordType.MEDIA_TAG}' "
             "AND media_tag.type = 'text' "
-            "AND LOWER(CAST(media_tag.value AS TEXT)) = ?",
-            (value.lower(),),
+            "AND tweetnook_tag_key(media_tag.value) = ?",
+            (tag_key(value),),
         )
     elif key == "description":
         expression = _media_tag_match(
@@ -509,7 +516,7 @@ def _normalized_filter_expr(
             (_description_match(value),),
         )
     elif key == "hashtag":
-        expression = _fact_list_contains("hashtags", value.replace("#", "").lower())
+        expression = _hashtag_match(value)
 
     if expression is None:
         return None

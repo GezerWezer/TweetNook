@@ -29,7 +29,11 @@ from .relations import RelationsMixin
 from .report_facts import ReportFactsMixin
 from .schema import SCHEMA_VERSION, MigrationReport, SchemaMixin
 from .search import SearchMixin
-from .sql_functions import register_export_functions, register_random_function
+from .sql_functions import (
+    register_export_functions,
+    register_identity_functions,
+    register_random_function,
+)
 from .stats import StatsMixin
 from .sync_state import SyncStateMixin
 from .tags import TagsMixin
@@ -109,6 +113,7 @@ class ArchiveStore(
             self.conn.row_factory = sqlite3.Row
             register_export_functions(self.conn)
             register_random_function(self.conn)
+            register_identity_functions(self.conn)
             if not read_only:
                 self.conn.execute("PRAGMA journal_mode=WAL")
                 self.conn.execute("PRAGMA recursive_triggers=ON")

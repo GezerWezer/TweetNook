@@ -22,6 +22,7 @@ test('tag editing deduplicates case-insensitively and persists response state', 
         return {
             ok: true,
             async json() {
+                if (options.method === 'PUT') return { media_tags: { tags: ['Night', 'Sky'], description: 'A moonlit view' } };
                 return { tags: [{ tag: 'Night', count: 2 }] };
             },
         };

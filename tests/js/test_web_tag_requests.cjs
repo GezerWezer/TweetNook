@@ -19,7 +19,10 @@ function pendingDialog() {
     context.clearTimeout = id => timers.delete(id);
     const requests = [];
     context.fetch = (url, options) => new Promise((resolve, reject) => {
-        requests.push({ url, options, resolve, reject });
+        requests.push({ url, options, reject, resolve: response => resolve({
+            json: async () => ({ media_tags: JSON.parse(options.body) }),
+            ...response,
+        }) });
     });
     const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     app.tweets = [
@@ -147,7 +150,7 @@ for (const method of ['saveTags', 'deleteTags']) {
     });
 }
 
-test('save completion reflects the submitted tag array even if editor state changes in flight', async () => {
+test('save completion reflects the saved response even if editor state changes in flight', async () => {
     const { app, dialog, requests, open } = pendingDialog();
     open('101');
     const pending = dialog.saveTags();
@@ -157,6 +160,36 @@ test('save completion reflects the submitted tag array even if editor state chan
     assert.deepEqual(Array.from(app.tweets[0].media_tags.tags), ['Submitted']);
     assert.deepEqual(Array.from(dialog.tagModalData.tags), ['Submitted']);
     assert.equal(dialog.tagSaving, false);
+});
+
+test('save displays the backend’s casefolded tags throughout the loaded post', async () => {
+    const { app, dialog, requests, open } = pendingDialog();
+    open('101');
+    dialog.editableTags = ['Straße', 'STRASSE', 'Σ', 'ς'];
+    const pending = dialog.saveTags();
+    requests[0].resolve({
+        ok: true,
+        json: async () => ({ media_tags: { tags: ['Straße', 'Σ'], description: 'Saved description' } }),
+    });
+    await pending;
+    assert.deepEqual(Array.from(app.tweets[0].media_tags.tags), ['Straße', 'Σ']);
+    assert.deepEqual(Array.from(dialog.tagModalData.tags), ['Straße', 'Σ']);
+    assert.deepEqual(Array.from(dialog.editableTags), ['Straße', 'Σ']);
+    assert.equal(dialog.editableDescription, 'Saved description');
+    assert.equal(dialog.tagIsDirty(), false);
+    assert.equal(dialog.isEditingTags, false);
+});
+
+test('an empty saved response clears the loaded tags and closes the dialog', async () => {
+    const { app, dialog, requests, open } = pendingDialog();
+    open('101');
+    dialog.editableTags = [];
+    dialog.editableDescription = '';
+    const pending = dialog.saveTags();
+    requests[0].resolve({ok: true, json: async () => ({media_tags: null})});
+    await pending;
+    assert.equal(app.tweets[0].media_tags, null);
+    assert.equal(dialog.tagModalOpen, false);
 });
 
 run();

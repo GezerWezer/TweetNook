@@ -17,6 +17,11 @@ def folder_key(folder_id: str | None) -> str:
     return folder_id or ""
 
 
+def tag_key(tag: str) -> str:
+    """What makes two tags the same tag; saved tags keep the spelling they were written with."""
+    return tag.strip().casefold()
+
+
 def numeric_media_id(media_key: Any) -> str | None:
     """The media id inside a key like 7_123, which sources agree on even when prefixes differ."""
     match = _NUMERIC_MEDIA_KEY.fullmatch(media_key) if isinstance(media_key, str) else None

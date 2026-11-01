@@ -26,6 +26,7 @@ class TagStore:
 
     def update_media_tags(self, tweet_id, tags, *, description=None):
         self._call("update_media_tags", tweet_id, tags, description)
+        return {"tags": ["Bird", "Night sky"], "description": "Evening birds"}
 
     def delete_global_tag(self, tag):
         self._call("delete_global_tag", tag)
@@ -76,7 +77,10 @@ def test_tag_mutations_call_store_and_return_success(
     response = request(path, json=json_body) if json_body is not None else request(path)
 
     assert response.status_code == 200
-    assert response.json() == {"success": True}
+    expected: dict[str, object] = {"success": True}
+    if method == "put":
+        expected["media_tags"] = {"tags": ["Bird", "Night sky"], "description": "Evening birds"}
+    assert response.json() == expected
     assert store.calls == [expected_call]
 
 
@@ -223,6 +227,35 @@ def test_slash_tag_deletion_reaches_real_archive(tmp_path, make_web_client):
             store.conn.execute("SELECT 1 FROM archive WHERE row_key='media_tag:202'").fetchone()
             is None
         )
+    finally:
+        store.close()
+
+
+def test_tag_update_returns_saved_unicode_identity_and_description(tmp_path, make_web_client):
+    from tweetnook.storage import ArchiveStore
+
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    try:
+        store.update_media_tags("42", ["Old"], description="Saved description")
+        client = make_web_client(tag_routes.router, store=store)
+        response = client.put(
+            "/api/tags/42", json={"tags": [" Straße ", "STRASSE", "Σ", "ς", "École", "école"]}
+        )
+        expected = {"tags": ["Straße", "Σ", "École"], "description": "Saved description"}
+        assert response.status_code == 200
+        assert response.json() == {"success": True, "media_tags": expected}
+        assert (
+            json.loads(
+                store.conn.execute(
+                    "SELECT raw_json FROM archive WHERE row_key = 'media_tag:42'"
+                ).fetchone()[0]
+            )
+            == expected
+        )
+
+        cleared = client.put("/api/tags/42", json={"tags": [], "description": ""})
+        assert cleared.status_code == 200
+        assert cleared.json() == {"success": True, "media_tags": None}
     finally:
         store.close()
 

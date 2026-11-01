@@ -358,16 +358,15 @@ function tagDialog() {
                     body: JSON.stringify({ tags, description })
                 });
                 if (!res.ok) throw new Error(`Server error: ${res.status}`);
-                const savedData = tags.length || description ? {
-                    description,
-                    tags,
-                } : null;
+                const { media_tags: savedData } = await res.json();
                 this.updateTweetTagData(tweetId, savedData);
                 // The request still updates its post, but a reopened editor owns
                 // its own data, errors and pending state, even for the same post.
                 if (generation !== dialogGeneration) return;
                 if (savedData) {
                     this.tagModalData = savedData;
+                    this.editableTags = [...savedData.tags];
+                    this.editableDescription = savedData.description || '';
                     this.isEditingTags = false;
                 } else {
                     this.closeTagModal();

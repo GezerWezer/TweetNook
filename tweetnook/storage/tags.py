@@ -9,7 +9,7 @@ from collections import defaultdict
 from collections.abc import Iterator
 from typing import Any, Literal, TypedDict
 
-from .common import clause_in
+from .common import clause_in, tag_key
 from .db import ConnectionMixin
 from .record_types import RecordType
 
@@ -290,14 +290,14 @@ class TagsMixin(ConnectionMixin):
         tags: list[str],
         *,
         description: str | None = None,
-    ) -> None:
-        """Overwrite tags and optionally the description for a specific tweet."""
+    ) -> dict[str, Any] | None:
+        """Overwrite tags and optionally the description, returning the saved payload."""
         with self.transaction():
             normalized_tags: list[str] = []
             seen: set[str] = set()
             for tag in tags:
                 cleaned = tag.strip()
-                folded = cleaned.casefold()
+                folded = tag_key(tag)
                 if not cleaned or folded in seen:
                     continue
                 seen.add(folded)
@@ -327,7 +327,7 @@ class TagsMixin(ConnectionMixin):
 
             if not normalized_tags and not data.get("description"):
                 self.delete_media_tag(tweet_id)
-                return
+                return None
 
             payload = json.dumps(data)
 
@@ -337,6 +337,7 @@ class TagsMixin(ConnectionMixin):
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (f"media_tag:{tweet_id}", "media_tag", tweet_id, payload, "done", now_ts),
             )
+            return data
 
     def set_tweet_hidden(self, tweet_id: str, hidden: bool) -> None:
         """Hide a tweet from lists and searches, or show it again."""
@@ -387,9 +388,10 @@ class TagsMixin(ConnectionMixin):
                    CASE WHEN json_valid(a.raw_json) THEN a.raw_json ELSE '{{"tags":[]}}' END,
                    '$.tags'
                  ) as t
-            WHERE a.record_type = '{RecordType.MEDIA_TAG}' AND LOWER(t.value) = LOWER(?)
+            WHERE a.record_type = '{RecordType.MEDIA_TAG}' AND tweetnook_tag_key(t.value) = ?
             """
-            rows = self.conn.execute(sql, (tag,)).fetchall()
+            deleted_key = tag_key(tag)
+            rows = self.conn.execute(sql, (deleted_key,)).fetchall()
 
             now_ts = str(time.time())
             for row in rows:
@@ -399,7 +401,11 @@ class TagsMixin(ConnectionMixin):
                 try:
                     data = json.loads(row["raw_json"])
                     if "tags" in data:
-                        data["tags"] = [t for t in data["tags"] if t.lower() != tag.lower()]
+                        data["tags"] = [
+                            t
+                            for t in data["tags"]
+                            if not isinstance(t, str) or tag_key(t) != deleted_key
+                        ]
                         if not data["tags"] and not data.get("description"):
                             self.conn.execute(
                                 f"DELETE FROM archive WHERE record_type = '{RecordType.MEDIA_TAG}' "
@@ -419,11 +425,12 @@ class TagsMixin(ConnectionMixin):
         """Merge a list of tags into a primary tag globally."""
         with self.transaction():
             primary_tag = primary_tag.strip()
+            primary_key = tag_key(primary_tag)
             normalized_merge_tags = list(
                 dict.fromkeys(
-                    tag.strip().casefold()
+                    tag_key(tag)
                     for tag in merge_tags
-                    if tag.strip() and tag.strip().casefold() != primary_tag.casefold()
+                    if tag.strip() and tag_key(tag) != primary_key
                 )
             )
             if not primary_tag or not normalized_merge_tags:
@@ -439,7 +446,8 @@ class TagsMixin(ConnectionMixin):
                    CASE WHEN json_valid(a.raw_json) THEN a.raw_json ELSE '{{"tags":[]}}' END,
                    '$.tags'
                  ) as t
-            WHERE a.record_type = '{RecordType.MEDIA_TAG}' AND LOWER(t.value) IN ({placeholders})
+            WHERE a.record_type = '{RecordType.MEDIA_TAG}'
+              AND tweetnook_tag_key(t.value) IN ({placeholders})
             """
 
             rows = self.conn.execute(sql, tuple(normalized_merge_tags)).fetchall()
@@ -460,8 +468,8 @@ class TagsMixin(ConnectionMixin):
                         for t in existing_tags:
                             if not isinstance(t, str):
                                 continue
-                            t_low = t.casefold()
-                            if t_low == primary_tag.casefold():
+                            t_low = tag_key(t)
+                            if t_low == primary_key:
                                 has_primary = True
                                 if t_low not in seen_tags:
                                     new_tags.append(t)
@@ -499,11 +507,11 @@ class TagsMixin(ConnectionMixin):
         params = []
         # Each fragment must occur in the same tag; punctuation between them
         # does not prevent a match. instr keeps %, _ and other input literal.
-        for fragment in query.lower().split():
-            sql += " AND instr(LOWER(json_each.value), ?) > 0"
+        for fragment in query.casefold().split():
+            sql += " AND instr(tweetnook_tag_key(json_each.value), ?) > 0"
             params.append(fragment)
 
-        sql += " GROUP BY LOWER(json_each.value) ORDER BY count DESC LIMIT ?"
+        sql += " GROUP BY tweetnook_tag_key(json_each.value) ORDER BY count DESC LIMIT ?"
         params.append(limit)
 
         rows = self.conn.execute(sql, tuple(params)).fetchall()

@@ -269,7 +269,7 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
         unique_tags = int(
             conn.execute(
                 f"""
-                SELECT count(DISTINCT LOWER(t.value))
+                SELECT count(DISTINCT tweetnook_tag_key(t.value))
                 FROM (
                     SELECT raw_json FROM archive
                     WHERE record_type = '{RecordType.MEDIA_TAG}'
@@ -296,14 +296,14 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
         )
         top_tags_rows = conn.execute(
             f"""
-            SELECT LOWER(t.value) AS tag, count(*) AS count
+            SELECT tweetnook_tag_key(t.value) AS tag, count(*) AS count
             FROM (
                 SELECT raw_json FROM archive
                 WHERE record_type = '{RecordType.MEDIA_TAG}'
                   AND (enrichment_state = 'done' OR enrichment_state IS NULL)
                   AND json_valid(raw_json)
             ) a, json_each(a.raw_json, '$.tags') AS t
-            GROUP BY LOWER(t.value)
+            GROUP BY tweetnook_tag_key(t.value)
             ORDER BY count DESC, tag ASC
             LIMIT 20
             """
