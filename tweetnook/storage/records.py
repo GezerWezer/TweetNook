@@ -20,27 +20,29 @@ from .schema import ARCHIVE_COLUMNS
 class PageBuffer:
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
     existing_rows: dict[str, dict[str, Any] | None] = field(default_factory=dict)
+    # tweet id -> numeric media id -> row key, including rows queued in this batch.
+    media_rows: dict[str, dict[str, str]] = field(default_factory=dict)
 
-    def checkpoint(
-        self,
-    ) -> tuple[
-        dict[str, dict[str, Any]],
-        dict[str, dict[str, Any] | None],
-    ]:
-        return self.records.copy(), self.existing_rows.copy()
+    def checkpoint(self) -> tuple[dict[str, Any], dict[str, Any], dict[str, dict[str, str]]]:
+        return (
+            self.records.copy(),
+            self.existing_rows.copy(),
+            {tweet_id: rows.copy() for tweet_id, rows in self.media_rows.items()},
+        )
 
     def restore(
-        self,
-        checkpoint: tuple[
-            dict[str, dict[str, Any]],
-            dict[str, dict[str, Any] | None],
-        ],
+        self, checkpoint: tuple[dict[str, Any], dict[str, Any], dict[str, dict[str, str]]]
     ) -> None:
-        records, existing_rows = checkpoint
-        self.records.clear()
+        records, existing_rows, media_rows = checkpoint
+        self.clear()
         self.records.update(records)
-        self.existing_rows.clear()
         self.existing_rows.update(existing_rows)
+        self.media_rows.update(media_rows)
+
+    def clear(self) -> None:
+        self.records.clear()
+        self.existing_rows.clear()
+        self.media_rows.clear()
 
 
 @dataclass(slots=True)
@@ -113,8 +115,7 @@ class RecordsMixin(ConnectionMixin):
         pending = len(buffer.records)
         with self.transaction(allow_nested=False):
             self._merge_records(list(buffer.records.values()))
-        buffer.records.clear()
-        buffer.existing_rows.clear()
+        buffer.clear()
         return pending
 
     def _row_key_for_tweet(

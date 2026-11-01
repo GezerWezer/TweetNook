@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from tweetnook.core.extractor import PLACEHOLDER_TEXT_MARKER, PLACEHOLDER_TEXT_PREFIXES
 
-from .common import parse_created_at
+from .common import SOURCE_RANK, numeric_media_id, parse_created_at
 from .db import ConnectionMixin
 from .record_types import RecordType
 
@@ -107,6 +108,24 @@ ARCHIVE_COLUMNS = [
     "key",
     "value",
 ]
+
+# Fields a merged media row takes together, keyed by the first: one file's metadata, or a blank
+# that the other source's copy can fill.
+_MEDIA_MERGE_GROUPS = (
+    ("local_path", "sha256", "byte_size", "content_type"),
+    (
+        "thumbnail_local_path",
+        "thumbnail_sha256",
+        "thumbnail_byte_size",
+        "thumbnail_content_type",
+    ),
+    ("media_url",),
+    ("thumbnail_url",),
+    ("width",),
+    ("height",),
+    ("duration_millis",),
+    ("variants_json",),
+)
 
 SCHEMA_VERSION = 13
 COLUMN_TYPES = {
@@ -269,6 +288,7 @@ class SchemaMixin(ConnectionMixin):
         """Repair derived FTS documents/triggers without copying canonical archive data."""
         with self.transaction():
             self._drop_unread_followup_columns()
+            self._merge_duplicate_media()
             self._rebuild_fts_schema()
             self._create_archive_indexes()
             expected = self.conn.execute(
@@ -295,6 +315,7 @@ class SchemaMixin(ConnectionMixin):
         """
         with self.transaction():
             self._drop_unread_followup_columns()
+            self._merge_duplicate_media()
             self._create_archive_indexes()
             expected = self.conn.execute(
                 f"SELECT COUNT(*) FROM archive WHERE record_type = '{RecordType.TWEET}' AND "
@@ -322,6 +343,71 @@ class SchemaMixin(ConnectionMixin):
         self.migration_report = MigrationReport(
             from_version=current_version, to_version=SCHEMA_VERSION
         )
+
+    def _merge_duplicate_media(self) -> None:
+        """Merge the rows sources created for one media item before they shared a row.
+
+        The higher-ranked source's row survives with its key and filenames unchanged. A file only
+        the other row saved moves over with its metadata, so nothing is downloaded again; a file
+        both saved stays on disk, unreferenced, because deleting it isn't needed to serve it once.
+        """
+        groups: dict[tuple[str, str], list[str]] = {}
+        for row in self.conn.execute(
+            f"SELECT row_key, tweet_id, media_key FROM archive "
+            f"WHERE record_type = '{RecordType.MEDIA}'"
+        ):
+            media_id = numeric_media_id(row["media_key"])
+            if media_id is not None:
+                groups.setdefault((row["tweet_id"], media_id), []).append(row["row_key"])
+        for row_keys in groups.values():
+            if len(row_keys) < 2:
+                continue
+            placeholders = ", ".join("?" for _key in row_keys)
+            rows = [
+                dict(row)
+                for row in self.conn.execute(
+                    f"SELECT rowid AS archive_rowid, * FROM archive "
+                    f"WHERE row_key IN ({placeholders})",
+                    row_keys,
+                )
+            ]
+            winner, *others = sorted(
+                rows,
+                key=lambda row: (
+                    -SOURCE_RANK.get(row["provenance_source"], 0),
+                    not row["local_path"],
+                    row["archive_rowid"],
+                ),
+            )
+            changes: dict[str, Any] = {}
+            for fields in _MEDIA_MERGE_GROUPS:
+                donor = next(
+                    (other for other in others if not winner[fields[0]] and other[fields[0]]),
+                    None,
+                )
+                if donor is not None:
+                    changes.update({field: donor[field] for field in fields})
+            merged = {**winner, **changes}
+            if merged["local_path"] and (
+                merged["media_type"] not in {"video", "animated_gif"}
+                or merged["thumbnail_local_path"]
+            ):
+                changes["download_state"] = "done"
+                changes["download_error"] = None
+            changes["downloaded_at"] = next(
+                (row["downloaded_at"] for row in (winner, *others) if row["downloaded_at"]), None
+            )
+            changes["first_seen_at"] = min(
+                (row["first_seen_at"] for row in rows if row["first_seen_at"]), default=None
+            )
+            assignments = ", ".join(f"{field} = ?" for field in changes)
+            self.conn.execute(
+                f"UPDATE archive SET {assignments} WHERE row_key = ?",
+                (*changes.values(), winner["row_key"]),
+            )
+            self.conn.executemany(
+                "DELETE FROM archive WHERE row_key = ?", [(other["row_key"],) for other in others]
+            )
 
     def _drop_unread_followup_columns(self) -> None:
         """Remove the manifest's follow-up status, which schemas before 13 hold and nothing reads.

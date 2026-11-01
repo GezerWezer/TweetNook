@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from tweetnook.core.extractor import ExtractedTweetGraph, extract_secondary_objects
 from tweetnook.core.timeline_parsing import TimelineTweet
 
-from .common import AVAILABLE_SOURCES, LIVE_SOURCE, created_at_timestamp
+from .common import AVAILABLE_SOURCES, LIVE_SOURCE, created_at_timestamp, numeric_media_id
 from .ownership import MergeMode, writes_lifecycle
 from .record_types import RecordType
 from .records import PageBuffer, RecordsMixin
@@ -227,6 +228,36 @@ class ObjectsMixin(RecordsMixin):
             ),
         )
 
+    def _saved_media_rows(
+        self, tweet_ids: Iterable[str], *, cursor: PageBuffer | None
+    ) -> dict[str, dict[str, str]]:
+        """Row keys of each tweet's media by numeric media id, read once per batch."""
+        known = cursor.media_rows if cursor is not None else {}
+        missing = [tweet_id for tweet_id in dict.fromkeys(tweet_ids) if tweet_id not in known]
+        for tweet_id in missing:
+            known[tweet_id] = {}
+        for row in self._rows_for_values(
+            RecordType.MEDIA, "tweet_id", missing, columns=["tweet_id", "media_key", "row_key"]
+        ):
+            media_id = numeric_media_id(row["media_key"])
+            if media_id is not None:
+                known[row["tweet_id"]].setdefault(media_id, row["row_key"])
+        return known
+
+    def _media_row_key(self, tweet_id: str, media_key: str, *, cursor: PageBuffer | None) -> str:
+        """One row per tweet and numeric media id, under whichever source's key came first.
+
+        The same video is keyed 7_ by X and 13_ by FxTwitter, which can't tell native uploads from
+        amplify videos, so comparing keys would keep two rows and show the video twice.
+        """
+        row_key = self._row_key_for_media(tweet_id, media_key)
+        media_id = numeric_media_id(media_key)
+        if media_id is None:
+            return row_key
+        return self._saved_media_rows([tweet_id], cursor=cursor)[tweet_id].setdefault(
+            media_id, row_key
+        )
+
     def _media_record(
         self,
         media: Any,
@@ -234,7 +265,7 @@ class ObjectsMixin(RecordsMixin):
         provenance_source: str = LIVE_SOURCE,
         cursor: PageBuffer | None = None,
     ) -> dict[str, Any]:
-        row_key = self._row_key_for_media(media.tweet_id, media.media_key)
+        row_key = self._media_row_key(media.tweet_id, media.media_key, cursor=cursor)
         context = self._record_context(row_key, cursor=cursor)
         prefer_incoming = self._prefer_incoming_source(
             context,
@@ -264,8 +295,13 @@ class ObjectsMixin(RecordsMixin):
                 media.article_id,
                 prefer_incoming=prefer_incoming,
             ),
-            position=media.position,
-            media_key=media.media_key,
+            position=self._merge_by_source_precedence(
+                context,
+                "position",
+                media.position,
+                prefer_incoming=prefer_incoming,
+            ),
+            media_key=self._existing_value(context, "media_key") or media.media_key,
             media_type=self._merge_by_source_precedence(
                 context,
                 "media_type",
@@ -533,7 +569,7 @@ class ObjectsMixin(RecordsMixin):
         force_deleted_tweet_id: str | None = None,
         cursor: PageBuffer,
     ) -> None:
-        self.prefetch_rows(self._secondary_graph_keys(graph), cursor=cursor)
+        self.prefetch_rows(self._secondary_graph_keys(graph, cursor=cursor), cursor=cursor)
         self._queue_secondary_graph(
             graph,
             source=source,
@@ -606,7 +642,10 @@ class ObjectsMixin(RecordsMixin):
             graph.merge(extract_secondary_objects(tweet.raw_json))
         self._buffer_secondary_graph(graph, source=source, cursor=cursor)
 
-    def _secondary_graph_keys(self, graph: ExtractedTweetGraph) -> list[str]:
+    def _secondary_graph_keys(
+        self, graph: ExtractedTweetGraph, *, cursor: PageBuffer | None
+    ) -> list[str]:
+        self._saved_media_rows((item.tweet_id for item in graph.media.values()), cursor=cursor)
         keys = [
             self._row_key_for_tweet_object(item.tweet_id) for item in graph.tweet_objects.values()
         ]
@@ -617,7 +656,8 @@ class ObjectsMixin(RecordsMixin):
             for item in graph.relations.values()
         )
         keys.extend(
-            self._row_key_for_media(item.tweet_id, item.media_key) for item in graph.media.values()
+            self._media_row_key(item.tweet_id, item.media_key, cursor=cursor)
+            for item in graph.media.values()
         )
         keys.extend(self._row_key_for_url(item.url_hash) for item in graph.urls.values())
         keys.extend(

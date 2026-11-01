@@ -17,6 +17,8 @@ from tests.archive_import.conftest import (
     _live_tweet,
     _write_archive_dir,
 )
+from tests.conftest import make_tweet_result
+from tests.storage.test_field_ownership import persist_from
 from tweetnook.config import AppConfig
 from tweetnook.core.exceptions import (
     ArchiveOwnerMismatchError,
@@ -24,6 +26,50 @@ from tweetnook.core.exceptions import (
 )
 from tweetnook.importer.archive import import_x_archive
 from tweetnook.storage import open_archive_store
+
+
+def _video_saved_by_fxtwitter(store, *, file_name: str) -> None:
+    media = {
+        "id_str": "500",
+        "media_key": "13_500",
+        "media_url_https": f"https://pbs.twimg.com/ext_tw_video_thumb/{file_name}.jpg",
+        "type": "video",
+        "video_info": {
+            "variants": [
+                {
+                    "bitrate": 832000,
+                    "content_type": "video/mp4",
+                    "url": f"https://video.twimg.com/ext_tw_video/{file_name}.mp4",
+                }
+            ]
+        },
+    }
+    persist_from(store, "fxtwitter", make_tweet_result("100", "saved first", media=[media]))
+
+
+def test_export_files_reach_a_video_saved_under_another_source_and_name(
+    paths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = open_archive_store(paths, create=True)
+    _video_saved_by_fxtwitter(store, file_name="fx-name")
+    store.close()
+    archive_dir = _write_archive_dir(tmp_path, media_kind="video", include_video_main_asset=True)
+    _disable_live_reconciliation(monkeypatch)
+
+    result = asyncio.run(
+        import_x_archive(archive_dir, config=AppConfig(), paths=paths, console=_console())
+    )
+
+    assert result.counts["media_files_copied"] == 2
+    assert not [warning for warning in result.warnings if "did not match" in warning]
+    store = open_archive_store(paths, create=False)
+    rows = store.list_media_rows()
+    store.close()
+    assert len(rows) == 1
+    assert rows[0]["media_url"] == "https://video.twimg.com/ext_tw_video/fx-name.mp4"
+    assert rows[0]["download_state"] == "done"
+    assert (paths.data_dir / rows[0]["local_path"]).read_bytes() == b"archive-video"
+    assert (paths.data_dir / rows[0]["thumbnail_local_path"]).read_bytes() == b"archive-photo"
 
 
 def test_archive_live_reconciliation_skips_resuming_saved_backfills(

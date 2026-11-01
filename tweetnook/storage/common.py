@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable
 from datetime import datetime
 from typing import Any, NamedTuple
 
 from .record_types import RecordType
 
+_NUMERIC_MEDIA_KEY = re.compile(r"\d+_(\d+)")
+
 
 def folder_key(folder_id: str | None) -> str:
     return folder_id or ""
+
+
+def numeric_media_id(media_key: Any) -> str | None:
+    """The media id inside a key like 7_123, which sources agree on even when prefixes differ."""
+    match = _NUMERIC_MEDIA_KEY.fullmatch(media_key) if isinstance(media_key, str) else None
+    return match[1] if match else None
 
 
 def created_at_timestamp(value: Any) -> int | None:

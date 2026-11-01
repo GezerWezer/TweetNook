@@ -239,6 +239,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             "thumbnail_sha256",
             "thumbnail_byte_size",
             "thumbnail_content_type",
+            "downloaded_at",
             "variants_json",
             "source",
         ]

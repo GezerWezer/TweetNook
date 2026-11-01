@@ -325,8 +325,10 @@ def test_live_graph_prefetch_batches_existing_secondary_rows(tmp_path):
         _, sql = _statements(
             store, lambda buffer=buffer: store._buffer_secondary_graph(graph, cursor=buffer)
         )
-        assert len(sql) == 1
-        assert "row_key IN (" in sql[0]
+        # One lookup of the post's saved media identities, then one for every row it touches.
+        assert len(sql) == 2
+        assert "record_type = 'media'" in sql[0]
+        assert "row_key IN (" in sql[1]
         assert len(buffer.records) > 5
         store.merge_rows(list(buffer.records.values()))
     store.close()

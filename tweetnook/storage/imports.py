@@ -88,8 +88,7 @@ class ImportsMixin(ObjectsMixin):
             if record["record_type"] in SECONDARY_RECORD_TYPES
         )
         self._merge_records(list(buffer.records.values()))
-        buffer.records.clear()
-        buffer.existing_rows.clear()
+        buffer.clear()
         return secondary_records
 
     def rehydrate_from_raw_json(

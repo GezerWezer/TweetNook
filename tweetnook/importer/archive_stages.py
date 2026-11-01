@@ -20,7 +20,11 @@ from tweetnook.importer.archive_manifests import (
     record_archive_capture,
     remove_archive_owned_files,
 )
-from tweetnook.importer.archive_media import copy_exported_media, slice_for_sample
+from tweetnook.importer.archive_media import (
+    copy_exported_media,
+    exported_media_names,
+    slice_for_sample,
+)
 from tweetnook.importer.archive_progress import record_debug_timing
 from tweetnook.importer.archive_rows import (
     deleted_headers_map,
@@ -445,6 +449,7 @@ def _copy_media(
         store,
         run.paths,
         data.media_directory,
+        exported_names=exported_media_names([*data.tweets, *data.deleted_tweets]),
         counts=run.counts,
         warnings=run.warnings,
         limit=run.sample_limit,

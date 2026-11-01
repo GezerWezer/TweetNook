@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -14,6 +14,7 @@ from tweetnook.core.fileio import owned_temp, publish_file
 from tweetnook.core.utils import utc_now
 from tweetnook.importer.archive_input import ArchiveInput
 from tweetnook.storage import ArchiveStore
+from tweetnook.storage.common import numeric_media_id
 
 
 def _url_basename(value: Any) -> str | None:
@@ -21,6 +22,37 @@ def _url_basename(value: Any) -> str | None:
         return None
     name = Path(urlsplit(value).path).name
     return name or None
+
+
+def exported_media_names(tweets: Iterable[Any]) -> dict[tuple[str, str], tuple[str, bool]]:
+    """Each file an export's posts name: (post id, file name) to (media id, whether it's a poster).
+
+    A saved row may keep a stronger source's URLs, whose file names differ from the export's, so
+    the export's own payloads are what say which media a file belongs to.
+    """
+    names: dict[tuple[str, str], tuple[str, bool]] = {}
+    for item in tweets:
+        tweet = item.get("tweet") if isinstance(item, dict) else None
+        if not isinstance(tweet, dict):
+            continue
+        tweet_id = str(tweet.get("id_str") or tweet.get("id") or "")
+        for block in (tweet.get("extended_entities"), tweet.get("entities")):
+            media_items = block.get("media") if isinstance(block, dict) else None
+            for media in media_items if isinstance(media_items, list) else ():
+                if not isinstance(media, dict):
+                    continue
+                media_id = media.get("id_str") or media.get("id")
+                if not media_id:
+                    continue
+                variants = (media.get("video_info") or {}).get("variants") or []
+                for variant in variants:
+                    name = _url_basename(variant.get("url")) if isinstance(variant, dict) else None
+                    if name:
+                        names[tweet_id, name] = (str(media_id), False)
+                still = _url_basename(media.get("media_url_https") or media.get("media_url"))
+                if still:
+                    names[tweet_id, still] = (str(media_id), bool(variants))
+    return names
 
 
 def _copy_file_from_archive(
@@ -61,6 +93,7 @@ def copy_exported_media(
     paths: XDGPaths,
     media_directory: str | None,
     *,
+    exported_names: dict[tuple[str, str], tuple[str, bool]],
     counts: dict[str, int],
     warnings: list[str],
     progress: Callable[[int, int], None] | None = None,
@@ -75,6 +108,7 @@ def copy_exported_media(
 
     rows = store.list_media_rows()
     row_by_asset: dict[tuple[str, str], tuple[dict[str, Any], bool]] = {}
+    row_by_media_id: dict[tuple[str, str], dict[str, Any]] = {}
     for row in rows:
         tweet_id = row.get("tweet_id")
         if not isinstance(tweet_id, str) or not tweet_id:
@@ -85,7 +119,16 @@ def copy_exported_media(
         thumbnail_name = _url_basename(row.get("thumbnail_url"))
         if thumbnail_name and thumbnail_name != media_name:
             row_by_asset[(tweet_id, thumbnail_name)] = (row, True)
+        if media_id := numeric_media_id(row.get("media_key")):
+            row_by_media_id[tweet_id, media_id] = row
+    for (tweet_id, name), (media_id, is_thumbnail) in exported_names.items():
+        row = row_by_media_id.get((tweet_id, media_id))
+        if row is not None:
+            row_by_asset.setdefault((tweet_id, name), (row, is_thumbnail))
 
+    # A video's two files can arrive either side of a flush, so each row's current state outlives
+    # the batch that wrote it.
+    current_rows: dict[str, dict[str, Any]] = {}
     pending_updates: dict[str, dict[str, Any]] = {}
     unmatched = 0
     total = len(files)
@@ -119,7 +162,7 @@ def copy_exported_media(
                         or 0
                     )
                 content_type = mimetypes.guess_type(destination.name)[0]
-                base_row = pending_updates.get(str(row["row_key"]), row)
+                base_row = current_rows.get(str(row["row_key"]), row)
                 local_path = (
                     base_row.get("local_path") if is_thumbnail else relative_dest.as_posix()
                 )
@@ -152,7 +195,7 @@ def copy_exported_media(
                     }
                 )
                 complete = _media_download_complete(paths.data_dir, updated_row)
-                pending_updates[str(row["row_key"])] = store.build_media_download_update(
+                update = store.build_media_download_update(
                     base_row,
                     download_state="done" if complete else "pending",
                     local_path=local_path,
@@ -168,6 +211,8 @@ def copy_exported_media(
                     ),
                     download_error=None,
                 )
+                current_rows[str(row["row_key"])] = update
+                pending_updates[str(row["row_key"])] = update
         if len(pending_updates) >= 100:
             updates = list(pending_updates.values())
             store.merge_rows(updates)

@@ -206,6 +206,106 @@ def test_failed_upgrade_keeps_the_columns_and_the_version(
         connection.close()
 
 
+def _insert_media(connection: sqlite3.Connection, row_key: str, **columns: object) -> None:
+    fields = {"row_key": row_key, "record_type": "media", "tweet_id": "100", **columns}
+    placeholders = ", ".join("?" for _field in fields)
+    connection.execute(
+        f"INSERT INTO archive ({', '.join(fields)}) VALUES ({placeholders})",
+        tuple(fields.values()),
+    )
+
+
+@pytest.mark.parametrize("version", sorted(RELEASED_SCHEMAS))
+def test_upgrade_merges_duplicate_media_and_keeps_saved_files(tmp_path: Path, version: int) -> None:
+    db_path = tmp_path / "released.db"
+    released_archive(db_path, version)
+    connection = sqlite3.connect(db_path)
+    try:
+        # A live video the archive import also saved, with only the import's poster on disk.
+        _insert_media(
+            connection,
+            "media:100:13_555",
+            media_key="13_555",
+            media_type="video",
+            provenance_source="fxtwitter",
+            media_url="https://video.twimg.com/fx.mp4",
+            thumbnail_url="https://pbs.twimg.com/fx.jpg",
+            duration_millis="1000",
+            download_state="pending",
+            thumbnail_local_path="media/100/13_555-poster.jpg",
+            thumbnail_sha256="poster-sha",
+            first_seen_at="2020-01-01T00:00:00+00:00",
+        )
+        _insert_media(
+            connection,
+            "media:100:7_555",
+            media_key="7_555",
+            media_type="video",
+            provenance_source="live_graphql",
+            media_url="https://video.twimg.com/live.mp4",
+            download_state="failed",
+            download_error="HTTP 503",
+            local_path="media/100/7_555.mp4",
+            sha256="main-sha",
+            first_seen_at="2021-01-01T00:00:00+00:00",
+        )
+        # The same numeric id on another post, a different media id and an Article image.
+        _insert_media(
+            connection,
+            "media:999:7_555",
+            tweet_id="999",
+            media_key="7_555",
+            provenance_source="x_archive",
+        )
+        _insert_media(
+            connection, "media:100:3_556", media_key="3_556", provenance_source="x_archive"
+        )
+        _insert_media(
+            connection,
+            "media:100:article-cover:100",
+            media_key="article-cover:100",
+            provenance_source="x_archive",
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    store = ArchiveStore(db_path, create=False)
+    try:
+        rows = {
+            row["row_key"]: dict(row)
+            for row in store.conn.execute("SELECT * FROM archive WHERE record_type = 'media'")
+        }
+        assert set(rows) == {
+            "media:100:7_555",
+            "media:999:7_555",
+            "media:100:3_556",
+            "media:100:article-cover:100",
+        }
+        merged = rows["media:100:7_555"]
+        assert merged["provenance_source"] == "live_graphql"
+        assert merged["media_url"] == "https://video.twimg.com/live.mp4"
+        assert merged["local_path"] == "media/100/7_555.mp4"
+        assert merged["sha256"] == "main-sha"
+        assert merged["thumbnail_local_path"] == "media/100/13_555-poster.jpg"
+        assert merged["thumbnail_sha256"] == "poster-sha"
+        assert merged["thumbnail_url"] == "https://pbs.twimg.com/fx.jpg"
+        assert merged["duration_millis"] == "1000"
+        assert merged["first_seen_at"] == "2020-01-01T00:00:00+00:00"
+        # Both of its files are saved now, so a failed earlier attempt no longer describes it.
+        assert merged["download_state"] == "done"
+        assert merged["download_error"] is None
+    finally:
+        store.close()
+    assert schema_of(db_path) == _fresh_schema(tmp_path)
+
+
+def _fresh_schema(tmp_path: Path) -> dict[tuple[str, str], str]:
+    fresh_path = tmp_path / "fresh.db"
+    ArchiveStore(fresh_path, create=True).close()
+    return schema_of(fresh_path)
+
+
 def test_every_released_schema_has_a_fixture() -> None:
     names = {path.name for path in FIXTURES.glob("schema_v*.sql")}
     assert names == {f"schema_v{version}.sql" for version in RELEASED_SCHEMAS}

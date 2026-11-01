@@ -47,15 +47,27 @@ class IngestionMixin(TweetsMixin):
     ) -> int:
         buffer = PageBuffer()
         keys: list[str] = []
+        if membership != "like":
+            for observation in observations:
+                if observation.graph is None:
+                    observation.graph = extract_secondary_objects(
+                        observation.timeline_tweet.raw_json
+                    )
+            self._saved_media_rows(
+                (
+                    item.tweet_id
+                    for observation in observations
+                    for item in observation.graph.media.values()
+                ),
+                cursor=buffer,
+            )
         for observation in observations:
             tweet = observation.timeline_tweet
             keys.append(self._row_key_for_tweet(tweet.tweet_id, membership))
             if membership == "like":
                 keys.append(self._row_key_for_tweet_object(tweet.tweet_id))
             else:
-                if observation.graph is None:
-                    observation.graph = extract_secondary_objects(tweet.raw_json)
-                keys.extend(self._secondary_graph_keys(observation.graph))
+                keys.extend(self._secondary_graph_keys(observation.graph, cursor=buffer))
         self.prefetch_rows(keys, cursor=buffer)
         for observation in observations:
             tweet = observation.timeline_tweet
