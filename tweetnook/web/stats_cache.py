@@ -49,7 +49,7 @@ class WebStatsCache:
         self._entries: dict[int, _CacheEntry] = {}
         self._refreshing: set[int] = set()
         self._refresh_failed: set[int] = set()
-        self._errors: dict[int, Exception] = {}
+        self._errors: dict[int, BaseException] = {}
         self._threads: dict[int, Thread] = {}
 
     @staticmethod
@@ -73,7 +73,7 @@ class WebStatsCache:
             self._threads.pop(key, None)
             self._condition.notify_all()
 
-    def _finish_failure(self, key: int, error: Exception) -> None:
+    def _finish_failure(self, key: int, error: BaseException) -> None:
         with self._condition:
             self._refreshing.discard(key)
             self._refresh_failed.add(key)
@@ -95,14 +95,20 @@ class WebStatsCache:
         self._refreshing.add(key)
         self._refresh_failed.discard(key)
         self._errors.pop(key, None)
-        thread = Thread(
-            target=self._refresh_in_background,
-            args=(key, store),
-            name="tweetnook-stats-refresh",
-            daemon=True,
-        )
-        self._threads[key] = thread
-        thread.start()
+        try:
+            thread = Thread(
+                target=self._refresh_in_background,
+                args=(key, store),
+                name="tweetnook-stats-refresh",
+                daemon=True,
+            )
+            self._threads[key] = thread
+            thread.start()
+        except BaseException as error:
+            # Admission precedes launch; failed acquisition must wake readers and leave no
+            # unstarted thread for shutdown to join. The previous report remains usable.
+            self._finish_failure(key, error)
+            raise
 
     def get(self, store: ArchiveStore) -> CachedStatsReport:
         """Return the cached report, waiting for or collecting the first one."""

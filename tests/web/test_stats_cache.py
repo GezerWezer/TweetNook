@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from threading import Event, Thread
 from types import SimpleNamespace
 
+import pytest
+
 from tweetnook.stats import StatsReport
 from tweetnook.web.stats_cache import DailyStatsRefresher, WebStatsCache, next_daily_refresh
 
@@ -169,6 +171,45 @@ def test_failed_refresh_retains_previous_report_and_can_be_retried() -> None:
     assert retrying.refreshing is True
     assert recovered.report.owner == "owner-3"
     assert recovered.refresh_failed is False
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_failed_worker_launch_allows_reads_shutdown_and_retry(monkeypatch, cached) -> None:
+    cache = WebStatsCache(builder=lambda _store: _report(1))
+    store = SimpleNamespace()
+    if cached:
+        cache.get(store)
+    with monkeypatch.context() as launch:
+        launch.setattr(Thread, "start", lambda _self: (_ for _ in ()).throw(RuntimeError("launch")))
+        with pytest.raises(RuntimeError, match="launch"):
+            cache.start_refresh(store)
+
+    read_finished = Event()
+    results = []
+
+    def read():
+        try:
+            results.append(cache.get(store))
+        finally:
+            read_finished.set()
+
+    reader = Thread(target=read)
+    reader.start()
+    try:
+        assert read_finished.wait(2), "a failed launch must not strand the first reader"
+    finally:
+        if not read_finished.is_set():
+            cache._finish_failure(id(store), RuntimeError("test cleanup"))
+        reader.join(2)
+    assert results[0].report.owner == "owner-1"
+    assert results[0].refreshing is False
+    assert results[0].refresh_failed is cached
+    cache.wait_for_refreshes()
+    cache.start_refresh(store)
+    cache.wait_for_refreshes()
+    recovered = cache.get(store)
+    assert recovered.refresh_failed is False
+    assert recovered.refreshing is False
 
 
 def test_next_daily_refresh_is_the_next_local_occurrence() -> None:
