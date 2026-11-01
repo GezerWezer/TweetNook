@@ -14,6 +14,12 @@ def folder_key(folder_id: str | None) -> str:
     return folder_id or ""
 
 
+def created_at_timestamp(value: Any) -> int | None:
+    """The epoch seconds stored beside a creation date, which search and ordering read."""
+    parsed = parse_created_at(value)
+    return int(parsed.timestamp()) if parsed is not None else None
+
+
 class Clause(NamedTuple):
     """A WHERE fragment and the values bound to its ? placeholders, in order."""
 

@@ -7,7 +7,8 @@ from typing import Any
 from tweetnook.core.extractor import ExtractedTweetGraph, extract_secondary_objects
 from tweetnook.core.timeline_parsing import TimelineTweet
 
-from .common import AVAILABLE_SOURCES, LIVE_SOURCE, parse_created_at
+from .common import AVAILABLE_SOURCES, LIVE_SOURCE, created_at_timestamp
+from .ownership import MergeMode, writes_lifecycle
 from .record_types import RecordType
 from .records import PageBuffer, RecordsMixin
 
@@ -43,15 +44,14 @@ class ObjectsMixin(RecordsMixin):
         enrichment_next_retry_at: str | None = None,
         enrichment_first_unavailable_at: str | None = None,
         enrichment_retry_eligible: bool | None = None,
-        preserve_lifecycle: bool = False,
+        mode: MergeMode = MergeMode.PROVIDER_OBSERVATION,
         cursor: PageBuffer | None = None,
     ) -> dict[str, Any]:
-        """Build a tweet_object row; ``preserve_lifecycle`` keeps an existing row's
-        enrichment and deletion fields (replaying an old capture says nothing about now)."""
+        """Build a tweet_object row; a replay keeps an existing row's lifecycle fields."""
 
         row_key = self._row_key_for_tweet_object(tweet.tweet_id)
         context = self._record_context(row_key, cursor=cursor)
-        keep_lifecycle = preserve_lifecycle and context.existing is not None
+        keep_lifecycle = not writes_lifecycle(mode) and context.existing is not None
         prefer_incoming = self._prefer_incoming_source(
             context,
             source,
@@ -143,9 +143,7 @@ class ObjectsMixin(RecordsMixin):
                     prefer_incoming=prefer_incoming,
                 )
             ),
-            created_at_ts=int(parse_created_at(merged_created_at).timestamp())
-            if parse_created_at(merged_created_at)
-            else None,
+            created_at_ts=created_at_timestamp(merged_created_at),
             deleted_at=(
                 self._existing_value(context, "deleted_at")
                 if keep_lifecycle
@@ -530,7 +528,7 @@ class ObjectsMixin(RecordsMixin):
         graph: ExtractedTweetGraph,
         *,
         source: str = LIVE_SOURCE,
-        preserve_lifecycle: bool = False,
+        mode: MergeMode = MergeMode.PROVIDER_OBSERVATION,
         deleted_at_by_tweet_id: dict[str, str] | None = None,
         force_deleted_tweet_id: str | None = None,
         cursor: PageBuffer,
@@ -539,7 +537,7 @@ class ObjectsMixin(RecordsMixin):
         self._queue_secondary_graph(
             graph,
             source=source,
-            preserve_lifecycle=preserve_lifecycle,
+            mode=mode,
             deleted_at_by_tweet_id=deleted_at_by_tweet_id,
             force_deleted_tweet_id=force_deleted_tweet_id,
             cursor=cursor,
@@ -550,7 +548,7 @@ class ObjectsMixin(RecordsMixin):
         graph: ExtractedTweetGraph,
         *,
         source: str = LIVE_SOURCE,
-        preserve_lifecycle: bool = False,
+        mode: MergeMode = MergeMode.PROVIDER_OBSERVATION,
         deleted_at_by_tweet_id: dict[str, str] | None = None,
         force_deleted_tweet_id: str | None = None,
         cursor: PageBuffer,
@@ -563,7 +561,7 @@ class ObjectsMixin(RecordsMixin):
                 self._tweet_object_record(
                     item,
                     source=source,
-                    preserve_lifecycle=preserve_lifecycle,
+                    mode=mode,
                     deleted_at=deleted_at_by_tweet_id.get(item.tweet_id),
                     enrichment_state="terminal_unavailable" if force_deleted else None,
                     enrichment_reason="archive_deleted" if force_deleted else None,

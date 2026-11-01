@@ -10,7 +10,7 @@ from tweetnook.core.extractor import extract_note_tweet_text
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.core.utils import utc_now
 
-from .common import LIVE_SOURCE, folder_key, parse_created_at
+from .common import LIVE_SOURCE, created_at_timestamp, folder_key
 from .objects import ObjectsMixin
 from .record_types import RecordType
 from .records import PageBuffer
@@ -128,9 +128,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
                     prefer_incoming=prefer_incoming,
                 )
             ),
-            created_at_ts=int(parse_created_at(merged_created_at).timestamp())
-            if parse_created_at(merged_created_at)
-            else None,
+            created_at_ts=created_at_timestamp(merged_created_at),
             deleted_at=self._merged_deleted_at(
                 context,
                 deleted_at,

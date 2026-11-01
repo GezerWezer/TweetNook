@@ -7,6 +7,7 @@ from typing import Any
 
 from tweetnook.core.utils import utc_now
 from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.common import FX_SOURCE, LIVE_SOURCE
 from tweetnook.storage.records import PageBuffer
 
 PERMANENT_REASONS = frozenset({"archive_deleted", "deleted_by_author"})
@@ -121,6 +122,7 @@ def record_unavailable(
         next_retry_at=next_retry,
         retry_count=retry_count,
         checked_at=now,
+        capture_source=FX_SOURCE if operation == "FxTwitterStatus" else LIVE_SOURCE,
         cursor=cursor,
     )
 

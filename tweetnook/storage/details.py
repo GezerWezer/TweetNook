@@ -12,7 +12,7 @@ from tweetnook.core.extractor import (
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.core.utils import utc_now
 
-from .common import FX_SOURCE, LIVE_SOURCE, SOURCE_RANK, parse_created_at
+from .common import FX_SOURCE, LIVE_SOURCE, SOURCE_RANK, created_at_timestamp
 from .record_types import RecordType
 from .records import PageBuffer
 from .tweets import TweetsMixin
@@ -107,11 +107,7 @@ class DetailsMixin(TweetsMixin):
                 row.get("author_display_name"),
             )
             updated["created_at"] = self._coalesce_value(tweet.created_at, row.get("created_at"))
-            updated["created_at_ts"] = (
-                int(parse_created_at(updated["created_at"]).timestamp())
-                if parse_created_at(updated["created_at"])
-                else None
-            )
+            updated["created_at_ts"] = created_at_timestamp(updated["created_at"])
             updated["conversation_id"] = self._coalesce_value(
                 legacy.get("conversation_id_str"),
                 row.get("conversation_id"),
@@ -234,8 +230,11 @@ class DetailsMixin(TweetsMixin):
         next_retry_at: str | None,
         retry_count: int | None = None,
         checked_at: str | None = None,
+        capture_source: str = LIVE_SOURCE,
         cursor: PageBuffer | None = None,
     ) -> None:
+        """Record an unavailable post. ``capture_source`` names the provider that answered,
+        which is a different fact from the provenance of the saved body."""
         owns_buffer = cursor is None
         buffer = cursor or PageBuffer()
         checked_at = checked_at or utc_now()
@@ -245,7 +244,7 @@ class DetailsMixin(TweetsMixin):
             None,
             http_status or 0,
             raw_json,
-            source=LIVE_SOURCE,
+            source=capture_source,
             cursor=buffer,
         )
         row_key = self._row_key_for_tweet_object(tweet_id)

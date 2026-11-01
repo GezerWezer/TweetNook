@@ -15,8 +15,9 @@ from tweetnook.core.extractor import (
 )
 from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
 
-from .common import FX_SOURCE, LIVE_SOURCE
+from .common import FX_SOURCE, LIVE_SOURCE, created_at_timestamp
 from .objects import ObjectsMixin
+from .ownership import MergeMode
 from .record_types import RecordType
 from .records import PageBuffer
 
@@ -132,6 +133,7 @@ class ImportsMixin(ObjectsMixin):
                 extract_note_tweet_text(raw),
                 updated_row.get("note_tweet_text"),
             )
+            desired_updates["created_at_ts"] = created_at_timestamp(desired_updates["created_at"])
             for key, value in desired_updates.items():
                 if updated_row.get(key) != value:
                     updated_row[key] = value
@@ -142,6 +144,7 @@ class ImportsMixin(ObjectsMixin):
             self._buffer_secondary_graph(
                 extract_secondary_objects(raw),
                 source=self._normalized_source(row.get("source")),
+                mode=MergeMode.EVIDENCE_REPLAY,
                 cursor=buffer,
             )
             if progress:
@@ -164,6 +167,7 @@ class ImportsMixin(ObjectsMixin):
             self._buffer_secondary_graph(
                 extract_thread_objects([tweet.raw_json for tweet in detail_tweets]),
                 source=self._normalized_source(row.get("source")),
+                mode=MergeMode.EVIDENCE_REPLAY,
                 cursor=buffer,
             )
             if len(buffer.records) >= batch_size:
@@ -181,12 +185,11 @@ class ImportsMixin(ObjectsMixin):
             status = payload.get("status") if isinstance(payload, dict) else None
             if not isinstance(status, dict) or status.get("type") != "status":
                 continue
-            # Lower-ranked than live captures, so this only fills gaps they left; whether
-            # the tweet is still available is up to later checks, not this old copy.
+            # Lower-ranked than live captures, so this only fills gaps they left.
             self._buffer_secondary_graph(
                 extract_secondary_objects(fx_status_to_graphql(status)),
                 source=FX_SOURCE,
-                preserve_lifecycle=True,
+                mode=MergeMode.EVIDENCE_REPLAY,
                 cursor=buffer,
             )
             if len(buffer.records) >= batch_size:

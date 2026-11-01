@@ -83,6 +83,18 @@ Use the row-key helpers in `ArchiveStore`; don't invent identifiers in callers. 
 
 `PageBuffer` collects related writes and tracks pending rows so a later item in a batch sees earlier writes. Source ranks prefer `live_graphql` over `fxtwitter` over `x_archive`. Merge code preserves better content, timestamps, downloaded files, and provenance when a weaker payload arrives.
 
+### Field ownership
+
+Every write is one of three modes, named in `storage/ownership.py`:
+
+- A **provider observation** is a response just received. It may change every family, subject to source rank.
+- A **saved-evidence replay** rebuilds rows from a capture already on disk, as `rehydrate` does. It follows the same content rules but keeps the row's lifecycle, because an old capture says nothing about now.
+- A **worker result** is the outcome of follow-up work on a row. `worker_changes` refuses a field outside that worker's list.
+
+| Family | Fields | Owner |
+|---|---|---|
+| Lifecycle | `deleted_at`, `enrichment_*` | Provider observations only. |
+
 Raw captures remain evidence of the source response. Normalized tweet text, author fields, media and relation rows can be rebuilt through `rehydrate`, but rebuilding isn't a new remote observation. Test quoted and nested content as well as the focal post when changing extraction.
 
 Tagging coverage counts eligible saved posts and their direct quotes. Tag usage and the average tags per tagged post use the same archive-wide population, including manually tagged context and unavailable posts.
