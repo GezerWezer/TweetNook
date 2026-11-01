@@ -39,7 +39,7 @@ Stylesheets are linked one per feature. Later ones override earlier ones, so a r
 
 Collection memberships answer why a post belongs in the archive. Tweet objects hold the best available content, while relation rows connect replies, quotes, and reposts. Raw captures preserve observations. Normalized fields, full-text indexes, like order, and cached statistics support fast reads.
 
-Source precedence is authenticated X, then FxTwitter, then official-archive content. A later sparse payload must not overwrite richer content. Unavailability is tracked independently from the saved content so a disappearance can be recorded without losing the prior capture.
+Source precedence is authenticated X, then FxTwitter, then official-archive content. A later sparse payload must not overwrite richer content; [field ownership](storage.md#field-ownership) gives the rule for each family. Unavailability is tracked independently from the saved content so a disappearance can be recorded without losing the prior capture.
 
 Derived data should be rebuildable from saved evidence where the model supports it. A `rehydrate` rebuild and a live refresh have different purposes: the first reapplies extraction locally; the second obtains a new observation.
 

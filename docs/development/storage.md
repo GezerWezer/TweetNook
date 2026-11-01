@@ -13,6 +13,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | `db.py` | Serialized transactions, query helpers, cache revisions, read warming, close and optimize. |
 | `schema.py` | Table layout, FTS and derived tables, `SCHEMA_VERSION`, upgrades from released schemas. |
 | `records.py` | Row construction, row keys, `PageBuffer` and source-precedence merging. |
+| `ownership.py` | Write modes and the fields each worker owns. |
 | `sync_state.py` | Sync cursors, the archive owner and import manifests. |
 | `ingestion.py` | Normalized official-import observations, membership and graph prefetch, placeholder gating and batch completion. |
 | `tweets.py` | Timeline page writes: raw captures, memberships and `persist_page`. |
@@ -48,9 +49,11 @@ Statistics collect only the requested database facts in one bounded read snapsho
 
 Random-search and legacy-export SQL callbacks register once at connection creation, before the store is shared. Reads never replace functions while another cursor is active.
 
-The schema maintains content and Community Note flags used by search, including uncaptured placeholders and note history. Migrations backfill derived data transactionally while preserving saved content.
+The schema maintains content and Community Note flags used by search, including uncaptured placeholders and note history. Migrations backfill derived data transactionally while preserving saved content. The content flag's placeholder check can't call Python, so `_saved_post_text` approximates `is_placeholder_text`: it handles tab, newline, carriage return, no-break space and curly apostrophes, but not repeated spaces, other Unicode spaces or non-ASCII case. A placeholder written with those counts as content in the flag.
 
 Schema migrations run when a writable store opens. `SCHEMA_VERSION` in `storage/schema.py` is the authoritative version. New databases receive the latest schema; migrations must preserve existing archive content and update derived structures as needed. The upgrade to schema 13 drops two manifest columns nothing read, which rewrites the table once, so the first open of a large archive afterward takes longer and needs room for the rewrite.
+
+Creation and every upgrade path run the same two steps. `_create_canonical_tables` owns saved data beside the `archive` table: `community_notes`, `tweet_checks` and `tweet_check_history`, so readers can rely on them. `_create_derived_structures` owns what can be rebuilt. It drops every trigger on `archive` and recreates each from its current definition, so a changed definition reaches existing archives; each table keeps its own backfill decision.
 
 ## Record types
 
@@ -93,9 +96,20 @@ Every write is one of three modes, named in `storage/ownership.py`:
 
 | Family | Fields | Owner |
 |---|---|---|
+| Content | Tweet and author text, note text, media and URL descriptions | The higher-ranked source, or the later copy at equal rank. A blank value never replaces a saved one. |
+| Payload | `raw_json` | The same winner, keeping what only the losing copy has: its note, Article state and the image of a matching card. Text and payload are chosen together, so a post's long text stays with the payload it came from. |
+| Provenance | `source`, `provenance_source` | The source whose copy won. An unavailable capture names the provider that answered. |
 | Lifecycle | `deleted_at`, `enrichment_*` | Provider observations only. |
+| Position | Media `position` | The winning source, because a weaker source's order can differ. |
+| Worker results | Download fields on media; fetch fields on URLs, listed in `ownership.py` | The worker. Re-ingesting a post keeps them, and a URL hint from a post only updates a URL its worker hasn't fetched. |
+
+`tests/storage/test_source_pairs.py` checks each family for every ordered pair of sources.
+
+One media item keeps one row per tweet and numeric media ID, because the same video is keyed `7_` by X and `13_` by FxTwitter. A writer finds the saved row by that ID and merges into it, keeping the key that came first, since saved filenames are built from it. The upgrade to schema 13 merges rows saved before this, taking the higher-ranked row's content and any file only the other row has. A file both rows saved stays on disk, unreferenced.
 
 Raw captures remain evidence of the source response. Normalized tweet text, author fields, media and relation rows can be rebuilt through `rehydrate`, but rebuilding isn't a new remote observation. Test quoted and nested content as well as the focal post when changing extraction.
+
+Two tags are the same tag when their stripped, casefolded text matches (`tag_key` in `storage/common.py`). Saved tags keep their spelling. SQL reaches the same rule through the registered `tweetnook_tag_key` function for selection, grouping and counts, so nothing is stored for it. Triggers can't use registered functions, because direct SQL writes must work without them, so hashtag facts are folded with `tweetnook_casefold` when a search compares them.
 
 Tagging coverage counts eligible saved posts and their direct quotes. Tag usage and the average tags per tagged post use the same archive-wide population, including manually tagged context and unavailable posts.
 

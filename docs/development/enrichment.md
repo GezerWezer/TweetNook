@@ -34,7 +34,7 @@ A row's main file and poster download independently, so one failing leaves the o
 
 ## URL unfurling
 
-`enrichment/unfurl.py` resolves expanded/canonical URLs and saves page metadata. It doesn't download preview images. Only HTTP failures, invalid URLs and a page's malformed canonical link mark a row failed; local errors reach the job. URL rows can be shared by multiple tweet references. Keep fetched metadata separate from original tweet text/entities, and don't replace a real destination with the shortened display label.
+`enrichment/unfurl.py` resolves expanded/canonical URLs and saves page metadata. It doesn't download preview images. Only HTTP failures and invalid URLs mark a row failed; local errors reach the job. Page metadata comes from the standard library's HTML parser, in any attribute order. A canonical link resolves against the final response URL, and a malformed one falls back to that URL. URL rows can be shared by multiple tweet references. Keep fetched metadata separate from original tweet text/entities, and don't replace a real destination with the shortened display label.
 
 A link-card image is presentation metadata, not an attached-photo fact for `has:image`. Browser cards, searches and detail views should use that distinction consistently.
 
