@@ -15,37 +15,6 @@ from .schema import SchemaMixin
 
 
 class ChecksMixin(SchemaMixin, RecordsMixin):
-    def ensure_check_tables(self) -> None:
-        # Called per note during a check; an existing archive must not take the write lock.
-        if self._table_exists("tweet_check_history") and self._table_exists("community_notes"):
-            return
-        with self.transaction():
-            self.conn.execute(
-                "CREATE TABLE IF NOT EXISTS tweet_checks ("
-                "tweet_id TEXT PRIMARY KEY, checked_at TEXT NOT NULL, "
-                "outcome TEXT NOT NULL, http_status INTEGER, scope TEXT, reason TEXT)"
-            )
-            self.conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_tweet_checks_checked_at "
-                "ON tweet_checks (checked_at)"
-            )
-            # One row per change in a tweet's check result, not one per night.
-            self.conn.execute(
-                "CREATE TABLE IF NOT EXISTS tweet_check_history ("
-                "tweet_id TEXT NOT NULL, checked_at TEXT NOT NULL, outcome TEXT NOT NULL, "
-                "http_status INTEGER, scope TEXT, reason TEXT, "
-                "PRIMARY KEY (tweet_id, checked_at))"
-            )
-            self._create_community_notes_table()
-
-    def _table_exists(self, name: str) -> bool:
-        return (
-            self.conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
-            ).fetchone()
-            is not None
-        )
-
     @staticmethod
     def _check_state(outcome: str | None) -> str | None:
         if outcome in {"available", "restored", "enriched"}:
@@ -120,7 +89,7 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
     def get_tweet_check_outcomes(self, tweet_ids: list[str]) -> dict[str, str]:
         """The latest recorded check outcome per tweet."""
 
-        if not tweet_ids or not self._table_exists("tweet_checks"):
+        if not tweet_ids:
             return {}
         outcomes: dict[str, str] = {}
         for start in range(0, len(tweet_ids), 500):
@@ -134,16 +103,12 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
         return outcomes
 
     def get_tweet_check(self, tweet_id: str) -> dict[str, Any] | None:
-        if not self._table_exists("tweet_checks"):
-            return None
         row = self.conn.execute(
             "SELECT * FROM tweet_checks WHERE tweet_id = ?", (tweet_id,)
         ).fetchone()
         return dict(row) if row is not None else None
 
     def list_tweet_check_history(self, tweet_id: str) -> list[dict[str, Any]]:
-        if not self._table_exists("tweet_check_history"):
-            return []
         rows = self.conn.execute(
             "SELECT * FROM tweet_check_history WHERE tweet_id = ? ORDER BY checked_at",
             (tweet_id,),
@@ -213,7 +178,6 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
 
         if limit <= 0:
             return []
-        self.ensure_check_tables()
         rows = self.conn.execute(
             f"""
             SELECT object.tweet_id FROM archive AS object
@@ -274,7 +238,6 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
         has no versions yet.
         """
 
-        self.ensure_check_tables()
         stamp = seen_at or utc_now()
         text = note.get("text") if isinstance(note, dict) else None
         if baseline is not None:
@@ -332,7 +295,6 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
             return "changed" if active_hashes else "added"
 
     def has_note_versions(self, tweet_id: str) -> bool:
-        self.ensure_check_tables()
         return (
             self.conn.execute(
                 "SELECT 1 FROM community_notes WHERE tweet_id = ? LIMIT 1", (tweet_id,)
@@ -358,8 +320,6 @@ class ChecksMixin(SchemaMixin, RecordsMixin):
         return None, None
 
     def list_community_notes(self, tweet_id: str) -> list[dict[str, Any]]:
-        if not self._table_exists("community_notes"):
-            return []
         rows = self.conn.execute(
             "SELECT tweet_id, text_hash, text, raw_json, first_seen_at, last_seen_at, removed_at "
             "FROM community_notes WHERE tweet_id = ? ORDER BY first_seen_at, text_hash",

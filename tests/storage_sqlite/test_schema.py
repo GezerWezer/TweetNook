@@ -165,18 +165,18 @@ def test_schema_v5_repairs_orphaned_fts_documents_atomically(tmp_path: Path, mon
     assert initial.conn.execute("SELECT COUNT(*) FROM archive_fts").fetchone()[0] == 2
     initial.close()
 
-    original = ArchiveStore._create_archive_indexes
+    original = ArchiveStore._create_derived_structures
 
     def fail(_store):
         raise RuntimeError("injected migration failure")
 
-    monkeypatch.setattr(ArchiveStore, "_create_archive_indexes", fail)
+    monkeypatch.setattr(ArchiveStore, "_create_derived_structures", fail)
     with pytest.raises(RuntimeError, match="injected"):
         ArchiveStore(db_path, create=False)
     with sqlite3.connect(db_path) as conn:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
         assert conn.execute("SELECT COUNT(*) FROM archive_fts").fetchone()[0] == 2
-    monkeypatch.setattr(ArchiveStore, "_create_archive_indexes", original)
+    monkeypatch.setattr(ArchiveStore, "_create_derived_structures", original)
     repaired = ArchiveStore(db_path, create=False)
     assert repaired.migration_report.from_version == 5
     assert repaired.conn.execute("SELECT COUNT(*) FROM archive_fts").fetchone()[0] == 1
@@ -243,7 +243,7 @@ def test_current_schema_open_skips_checks_repairs_and_schema_maintenance(
         "_archive_table_exists",
         "_backfill_created_at_timestamps",
         "_create_fts_schema",
-        "_create_archive_indexes",
+        "_create_derived_structures",
         "_migrate_search_index",
     ):
         monkeypatch.setattr(ArchiveStore, method_name, unexpected)

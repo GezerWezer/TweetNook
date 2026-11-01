@@ -442,7 +442,6 @@ def test_mass_404s_mark_nothing_missing(config, paths) -> None:
     ids = [str(100 + index) for index in range(60)]
     for tweet_id in ids:
         _save(store, tweet_id, f"saved {tweet_id}")
-    store.ensure_check_tables()
     # Every one 404'd last night too, so each would be a confirmed second 404.
     store.record_tweet_checks([(tweet_id, "suspect", 404, "save", None) for tweet_id in ids])
     store.close()
@@ -469,7 +468,6 @@ def test_mass_404s_undo_nothing_marked_in_earlier_chunks(config, paths, monkeypa
     ids = [str(100 + index) for index in range(60)]
     for tweet_id in ids:
         _save(store, tweet_id, f"saved {tweet_id}")
-    store.ensure_check_tables()
     # Only five 404'd last night, all in the first chunk; tonight everything 404s.
     store.record_tweet_checks([(tweet_id, "suspect", 404, "save", None) for tweet_id in ids[:5]])
     store.close()
@@ -622,7 +620,6 @@ def test_first_check_compares_with_the_note_saved_with_the_tweet(
             backfill_incomplete=False,
         )
     if prior_protected_check:
-        store.ensure_check_tables()
         store.record_tweet_checks(
             [(tweet_id, "protected", 200, "save", "protected_account") for tweet_id in ("1", "2")],
             checked_at="2000-01-01T00:00:00+00:00",
@@ -720,7 +717,6 @@ def test_check_cli_uses_context_setting_unless_skipped(config, paths, monkeypatc
 def test_check_history_records_changes_not_every_night(paths) -> None:
     store = open_archive_store(paths, create=True)
     assert store is not None
-    store.ensure_check_tables()
     nights = [
         ("available", None),
         ("available", None),
@@ -785,7 +781,6 @@ def test_feed_shows_the_note_the_check_last_saw(config, paths) -> None:
         backfill_cursor=None,
         backfill_incomplete=False,
     )
-    store.ensure_check_tables()
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_store] = lambda: store

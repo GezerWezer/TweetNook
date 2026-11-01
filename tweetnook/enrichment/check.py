@@ -433,7 +433,6 @@ async def run_check(
     if scopes:
         async with locked_archive_job(config=config, paths=paths, console=console) as job:
             store = job.store
-            store.ensure_check_tables()
             saved_ids = store.list_membership_tweet_ids() if saves else []
             unavailable_ids = (
                 [row["tweet_id"] for row in store.list_retryable_unavailable_rows()]

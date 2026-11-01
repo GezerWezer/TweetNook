@@ -164,7 +164,7 @@ class PresentationMixin(ChecksMixin):
         )
 
     def note_observations(self, tweet_ids: list[str]) -> dict[str, NoteObservation]:
-        if not tweet_ids or not self._table_exists("community_notes"):
+        if not tweet_ids:
             return {}
         observations: dict[str, NoteObservation] = {}
         for start in range(0, len(tweet_ids), 500):

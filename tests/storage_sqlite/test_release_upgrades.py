@@ -16,6 +16,7 @@ import pytest
 
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.schema import SCHEMA_VERSION
+from tweetnook.storage.search_query import search_posts
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "schemas"
 # The last release that created each schema. The change that raises SCHEMA_VERSION adds the
@@ -298,6 +299,253 @@ def test_upgrade_merges_duplicate_media_and_keeps_saved_files(tmp_path: Path, ve
     finally:
         store.close()
     assert schema_of(db_path) == _fresh_schema(tmp_path)
+
+
+@pytest.mark.parametrize("version", sorted(RELEASED_SCHEMAS))
+@pytest.mark.parametrize("media_type", ["video", "animated_gif"])
+@pytest.mark.parametrize("saved_poster", [False, True])
+def test_upgrade_fills_sparse_higher_priority_media(
+    tmp_path: Path, version: int, media_type: str, saved_poster: bool
+) -> None:
+    db_path = tmp_path / "released.db"
+    released_archive(db_path, version)
+    richer_payload = {
+        "media_key": "13_555",
+        "type": media_type,
+        "media_url_https": "https://pbs.twimg.com/poster.jpg",
+        "video_info": {
+            "aspect_ratio": [16, 9],
+            "duration_millis": 1000,
+            "variants": [{"content_type": "video/mp4", "url": "https://video.twimg.com/fx.mp4"}],
+        },
+    }
+    connection = sqlite3.connect(db_path)
+    try:
+        _insert_media(
+            connection,
+            "media:100:13_555",
+            media_key="13_555",
+            media_type=media_type,
+            source="tweet_media",
+            position="0",
+            provenance_source="fxtwitter",
+            media_url="https://video.twimg.com/fx.mp4",
+            thumbnail_url="https://pbs.twimg.com/poster.jpg",
+            width="640",
+            height="360",
+            duration_millis="1000",
+            variants_json=json.dumps(richer_payload["video_info"]["variants"]),
+            raw_json=json.dumps(richer_payload),
+            thumbnail_local_path="media/100/poster.jpg" if saved_poster else None,
+            thumbnail_sha256="poster-sha" if saved_poster else None,
+        )
+        # A released extractor could save a keyed item with no type or video info.
+        _insert_media(
+            connection,
+            "media:100:7_555",
+            media_key="7_555",
+            provenance_source="live_graphql",
+            media_url="https://video.twimg.com/live.mp4",
+            local_path="media/100/live.mp4",
+            sha256="main-sha",
+            download_state="done",
+            raw_json=json.dumps({"media_key": "7_555", "video_info": {"duration_millis": None}}),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    for _open in range(2):
+        store = ArchiveStore(db_path, create=False)
+        try:
+            rows = store.conn.execute(
+                "SELECT * FROM archive WHERE record_type = 'media'"
+            ).fetchall()
+            assert len(rows) == 1
+            merged = rows[0]
+            assert merged["row_key"] == "media:100:7_555"
+            assert merged["provenance_source"] == "live_graphql"
+            assert merged["media_type"] == media_type
+            assert merged["source"] == "tweet_media"
+            assert merged["position"] == "0"
+            assert merged["media_url"] == "https://video.twimg.com/live.mp4"
+            assert merged["local_path"] == "media/100/live.mp4"
+            assert merged["sha256"] == "main-sha"
+            assert (merged["width"], merged["height"], merged["duration_millis"]) == (
+                "640",
+                "360",
+                "1000",
+            )
+            assert json.loads(merged["variants_json"]) == richer_payload["video_info"]["variants"]
+            assert json.loads(merged["raw_json"]) == {**richer_payload, "media_key": "7_555"}
+            assert merged["download_state"] == ("done" if saved_poster else "pending")
+            assert merged["thumbnail_local_path"] == (
+                "media/100/poster.jpg" if saved_poster else None
+            )
+            assert merged["thumbnail_sha256"] == ("poster-sha" if saved_poster else None)
+            assert len(store.list_media_rows(states={"pending"})) == (0 if saved_poster else 1)
+        finally:
+            store.close()
+
+
+@pytest.mark.parametrize("version", [5, 12])
+def test_failed_upgrade_rolls_back_media_merge(tmp_path: Path, monkeypatch, version: int) -> None:
+    db_path = tmp_path / "released.db"
+    released_archive(db_path, version)
+    connection = sqlite3.connect(db_path)
+    try:
+        _insert_media(
+            connection, "media:100:7_555", media_key="7_555", provenance_source="live_graphql"
+        )
+        _insert_media(
+            connection,
+            "media:100:13_555",
+            media_key="13_555",
+            media_type="video",
+            provenance_source="fxtwitter",
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    real_merge = ArchiveStore._merge_duplicate_media
+
+    def merge_then_fail(self) -> None:
+        real_merge(self)
+        assert (
+            self.conn.execute(
+                "SELECT media_type FROM archive WHERE row_key = 'media:100:7_555'"
+            ).fetchone()[0]
+            == "video"
+        )
+        assert (
+            self.conn.execute("SELECT 1 FROM archive WHERE row_key = 'media:100:13_555'").fetchone()
+            is None
+        )
+        raise sqlite3.OperationalError("database or disk is full")
+
+    monkeypatch.setattr(ArchiveStore, "_merge_duplicate_media", merge_then_fail)
+    with pytest.raises(sqlite3.OperationalError):
+        ArchiveStore(db_path, create=False)
+
+    connection = sqlite3.connect(db_path)
+    try:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == version
+        assert connection.execute(
+            "SELECT media_key, media_type FROM archive WHERE record_type = 'media' ORDER BY row_key"
+        ).fetchall() == [("13_555", "video"), ("7_555", None)]
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("version", sorted(RELEASED_SCHEMAS))
+def test_upgrade_replaces_every_stale_trigger_body(tmp_path: Path, version: int) -> None:
+    db_path = tmp_path / "released.db"
+    released_archive(db_path, version)
+    fresh = _fresh_schema(tmp_path)
+    connection = sqlite3.connect(db_path)
+    try:
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'archive'"
+        ).fetchall():
+            connection.execute(f"DROP TRIGGER {row[0]}")
+        # A body no definition has, under the name of every trigger a fresh archive has.
+        for _type, name in fresh:
+            if _type == "trigger":
+                connection.execute(
+                    f"CREATE TRIGGER {name} AFTER UPDATE ON archive BEGIN SELECT 1; END"
+                )
+        connection.commit()
+    finally:
+        connection.close()
+
+    store = ArchiveStore(db_path, create=False)
+    store.close()
+
+    assert schema_of(db_path) == fresh
+
+
+@pytest.mark.parametrize("version", sorted(RELEASED_SCHEMAS))
+def test_refreshed_triggers_keep_working_after_upgrade(tmp_path: Path, version: int) -> None:
+    db_path = tmp_path / "released.db"
+    released_archive(db_path, version)
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute(
+            "INSERT INTO archive "
+            "(row_key, record_type, tweet_id, collection_type, sort_index, text) "
+            "VALUES ('tweet:like::1', 'tweet', '1', 'like', '5', 'first words')"
+        )
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'archive'"
+        ).fetchall():
+            connection.execute(f"DROP TRIGGER {row[0]}")
+            connection.execute(
+                f"CREATE TRIGGER {row[0]} AFTER UPDATE ON archive BEGIN SELECT 1; END"
+            )
+        connection.commit()
+    finally:
+        connection.close()
+
+    store = ArchiveStore(db_path, create=False)
+    try:
+
+        def generation() -> int:
+            return store.conn.execute(
+                "SELECT generation FROM archive_revisions WHERE scope = 'like_order'"
+            ).fetchone()[0]
+
+        before = generation()
+        store.conn.execute("UPDATE archive SET sort_index = '6' WHERE row_key = 'tweet:like::1'")
+        assert generation() == before + 1
+        # A membership's text is no part of its order.
+        store.conn.execute("UPDATE archive SET text = 'second words' WHERE tweet_id = '1'")
+        assert generation() == before + 1
+        assert [row["tweet_id"] for row in search_posts(store, "second").rows] == ["1"]
+        assert search_posts(store, "first").rows == []
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("version", sorted(RELEASED_SCHEMAS))
+def test_upgrade_keeps_check_history_a_release_created_on_demand(
+    tmp_path: Path, version: int
+) -> None:
+    db_path = tmp_path / "released.db"
+    released_archive(db_path, version)
+    connection = sqlite3.connect(db_path)
+    try:
+        # Releases created these on the first check, so some archives have them already.
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS tweet_checks ("
+            "tweet_id TEXT PRIMARY KEY, checked_at TEXT NOT NULL, "
+            "outcome TEXT NOT NULL, http_status INTEGER, scope TEXT, reason TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO tweet_checks (tweet_id, checked_at, outcome) "
+            "VALUES ('1', '2026-01-01T00:00:00+00:00', 'available')"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    store = ArchiveStore(db_path, create=False)
+    try:
+        assert store.get_tweet_check_outcomes(["1"]) == {"1": "available"}
+        assert store.list_tweet_check_history("1") == []
+        assert store.list_community_notes("1") == []
+    finally:
+        store.close()
+    assert schema_of(db_path) == _fresh_schema(tmp_path)
+
+
+def test_a_new_archive_has_its_check_tables(tmp_path: Path) -> None:
+    store = ArchiveStore(tmp_path / "fresh.db", create=True)
+    try:
+        assert store.get_tweet_check("1") is None
+        assert store.list_tweet_check_history("1") == []
+        assert store.list_community_notes("1") == []
+    finally:
+        store.close()
 
 
 def _fresh_schema(tmp_path: Path) -> dict[tuple[str, str], str]:

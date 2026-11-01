@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -119,13 +120,30 @@ _MEDIA_MERGE_GROUPS = (
         "thumbnail_byte_size",
         "thumbnail_content_type",
     ),
+    ("source",),
+    ("article_id",),
+    ("position",),
+    ("media_type",),
     ("media_url",),
     ("thumbnail_url",),
     ("width",),
     ("height",),
     ("duration_millis",),
     ("variants_json",),
+    ("added_at",),
+    ("last_seen_at",),
+    ("synced_at",),
 )
+
+
+def _fill_media_payload(winner: Any, donor: Any) -> Any:
+    if isinstance(winner, dict) and isinstance(donor, dict):
+        return {
+            **donor,
+            **{key: _fill_media_payload(value, donor.get(key)) for key, value in winner.items()},
+        }
+    return donor if winner in (None, "", [], {}) else winner
+
 
 SCHEMA_VERSION = 13
 COLUMN_TYPES = {
@@ -287,8 +305,9 @@ class SchemaMixin(ConnectionMixin):
         col_def = ", ".join(f"{name} {COLUMN_TYPES[name]}" for name in ARCHIVE_COLUMNS)
         with self.transaction():
             self.conn.execute(f"CREATE TABLE archive ({col_def})")
+            self._create_canonical_tables()
             self._create_fts_schema()
-            self._create_archive_indexes()
+            self._create_derived_structures()
             self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self.conn.execute("PRAGMA optimize=0x10002")
 
@@ -297,8 +316,9 @@ class SchemaMixin(ConnectionMixin):
         with self.transaction():
             self._drop_unread_followup_columns()
             self._merge_duplicate_media()
+            self._create_canonical_tables()
             self._rebuild_fts_schema()
-            self._create_archive_indexes()
+            self._create_derived_structures()
             expected = self.conn.execute(
                 f"SELECT COUNT(*) FROM archive WHERE record_type = '{RecordType.TWEET}'"
             ).fetchone()[0]
@@ -324,7 +344,8 @@ class SchemaMixin(ConnectionMixin):
         with self.transaction():
             self._drop_unread_followup_columns()
             self._merge_duplicate_media()
-            self._create_archive_indexes()
+            self._create_canonical_tables()
+            self._create_derived_structures()
             expected = self.conn.execute(
                 f"SELECT COUNT(*) FROM archive WHERE record_type = '{RecordType.TWEET}' AND "
                 "row_key IS NOT NULL"
@@ -355,9 +376,9 @@ class SchemaMixin(ConnectionMixin):
     def _merge_duplicate_media(self) -> None:
         """Merge the rows sources created for one media item before they shared a row.
 
-        The higher-ranked source's row survives with its key and filenames unchanged. A file only
-        the other row saved moves over with its metadata, so nothing is downloaded again; a file
-        both saved stays on disk, unreferenced, because deleting it isn't needed to serve it once.
+        The higher-ranked source's row survives with its key and filenames unchanged, filling
+        blanks from the other copies. A file only the other row saved moves over with its metadata,
+        so nothing is downloaded again; a file both saved stays on disk, unreferenced.
         """
         groups: dict[tuple[str, str], list[str]] = {}
         for row in self.conn.execute(
@@ -395,12 +416,30 @@ class SchemaMixin(ConnectionMixin):
                 )
                 if donor is not None:
                     changes.update({field: donor[field] for field in fields})
+            payload = winner["raw_json"]
+            for other in others:
+                if not payload:
+                    payload = other["raw_json"]
+                elif other["raw_json"]:
+                    try:
+                        retained = json.loads(payload)
+                        combined = _fill_media_payload(retained, json.loads(other["raw_json"]))
+                    except (TypeError, ValueError):
+                        continue
+                    if combined != retained:
+                        payload = json.dumps(combined)
+            if payload != winner["raw_json"]:
+                changes["raw_json"] = payload
             merged = {**winner, **changes}
             if merged["local_path"] and (
                 merged["media_type"] not in {"video", "animated_gif"}
                 or merged["thumbnail_local_path"]
             ):
                 changes["download_state"] = "done"
+                changes["download_error"] = None
+            elif merged["download_state"] == "done":
+                # Restoring a missing video type can reveal an unsaved poster.
+                changes["download_state"] = "pending"
                 changes["download_error"] = None
             changes["downloaded_at"] = next(
                 (row["downloaded_at"] for row in (winner, *others) if row["downloaded_at"]), None
@@ -450,6 +489,30 @@ class SchemaMixin(ConnectionMixin):
         if updates:
             self.conn.executemany("UPDATE archive SET created_at_ts = ? WHERE row_key = ?", updates)
 
+    def _create_canonical_tables(self) -> None:
+        """Saved data beside the archive table, which no rebuild of derived state may touch."""
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS community_notes ("
+            "tweet_id TEXT NOT NULL, text_hash TEXT NOT NULL, text TEXT NOT NULL, "
+            "raw_json TEXT, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, "
+            "removed_at TEXT, PRIMARY KEY (tweet_id, text_hash))"
+        )
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS tweet_checks ("
+            "tweet_id TEXT PRIMARY KEY, checked_at TEXT NOT NULL, "
+            "outcome TEXT NOT NULL, http_status INTEGER, scope TEXT, reason TEXT)"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tweet_checks_checked_at ON tweet_checks (checked_at)"
+        )
+        # One row per change in a tweet's check result, not one per night.
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS tweet_check_history ("
+            "tweet_id TEXT NOT NULL, checked_at TEXT NOT NULL, outcome TEXT NOT NULL, "
+            "http_status INTEGER, scope TEXT, reason TEXT, "
+            "PRIMARY KEY (tweet_id, checked_at))"
+        )
+
     def _create_fts_schema(self, *, populate: bool = False) -> None:
         self.conn.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS archive_fts USING fts5(
@@ -457,8 +520,19 @@ class SchemaMixin(ConnectionMixin):
                 content=''
             )
         """)
+        if populate:
+            self.conn.execute(f"""
+                INSERT INTO archive_fts(
+                    rowid, author_username, author_display_name, text, note_tweet_text
+                )
+                SELECT rowid, author_username, author_display_name, text, note_tweet_text
+                FROM archive
+                WHERE record_type = '{RecordType.TWEET}'
+            """)
+
+    def _create_fts_triggers(self) -> None:
         self.conn.execute(f"""
-        CREATE TRIGGER IF NOT EXISTS archive_ad AFTER DELETE ON archive
+        CREATE TRIGGER archive_ad AFTER DELETE ON archive
         WHEN old.record_type = '{RecordType.TWEET}' BEGIN
           INSERT INTO archive_fts(
             archive_fts, rowid, author_username, author_display_name, text, note_tweet_text
@@ -469,7 +543,7 @@ class SchemaMixin(ConnectionMixin):
         END;
         """)
         self.conn.execute(f"""
-        CREATE TRIGGER IF NOT EXISTS archive_ai AFTER INSERT ON archive
+        CREATE TRIGGER archive_ai AFTER INSERT ON archive
         WHEN new.record_type = '{RecordType.TWEET}' BEGIN
           INSERT INTO archive_fts(
             rowid, author_username, author_display_name, text, note_tweet_text
@@ -480,7 +554,7 @@ class SchemaMixin(ConnectionMixin):
         END;
         """)
         self.conn.execute(f"""
-        CREATE TRIGGER IF NOT EXISTS archive_au AFTER UPDATE ON archive
+        CREATE TRIGGER archive_au AFTER UPDATE ON archive
         WHEN (old.record_type = '{RecordType.TWEET}' OR new.record_type = '{RecordType.TWEET}')
           AND (old.record_type IS NOT new.record_type
             OR old.author_username IS NOT new.author_username
@@ -502,23 +576,26 @@ class SchemaMixin(ConnectionMixin):
           WHERE new.record_type = '{RecordType.TWEET}';
         END;
         """)
-        if populate:
-            self.conn.execute(f"""
-                INSERT INTO archive_fts(
-                    rowid, author_username, author_display_name, text, note_tweet_text
-                )
-                SELECT rowid, author_username, author_display_name, text, note_tweet_text
-                FROM archive
-                WHERE record_type = '{RecordType.TWEET}'
-            """)
 
     def _rebuild_fts_schema(self) -> None:
         for trigger in ("archive_ad", "archive_ai", "archive_au"):
             self.conn.execute(f"DROP TRIGGER IF EXISTS {trigger}")
         self.conn.execute("DROP TABLE IF EXISTS archive_fts")
         self._create_fts_schema(populate=True)
+        self._create_fts_triggers()
 
-    def _create_archive_indexes(self) -> None:
+    def _drop_derived_triggers(self) -> None:
+        """Drop every trigger on archive, all of which _create_derived_structures recreates.
+
+        Creating a trigger only if it's missing would keep an older body on an upgraded archive,
+        so a change to a trigger's definition wouldn't reach the archives that need it.
+        """
+        for row in self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'archive'"
+        ).fetchall():
+            self.conn.execute(f'DROP TRIGGER "{row["name"]}"')
+
+    def _create_derived_structures(self) -> None:
         index_sql = {
             "idx_archive_tweet_id": "tweet_id",
             "idx_archive_target_tweet_id": "target_tweet_id",
@@ -564,6 +641,8 @@ class SchemaMixin(ConnectionMixin):
             ON archive(author_id)
             WHERE author_id IS NOT NULL AND author_id != ''
         """)
+        self._drop_derived_triggers()
+        self._create_fts_triggers()
         self._create_tweet_facts()
         self._create_tweet_content()
         self._create_description_fts()
@@ -571,7 +650,6 @@ class SchemaMixin(ConnectionMixin):
 
     def _create_tweet_content(self) -> None:
         """Index captured content and notes in memberships and context objects."""
-        self._create_community_notes_table()
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS archive_tweet_content "
             "(row_key TEXT PRIMARY KEY, tweet_id TEXT, has_content INTEGER NOT NULL, "
@@ -585,9 +663,6 @@ class SchemaMixin(ConnectionMixin):
             "CREATE INDEX IF NOT EXISTS idx_tweet_content_note "
             "ON archive_tweet_content (has_note, tweet_id)"
         )
-        # Rebuilt on upgrade so older trigger bodies pick up the current capture rules.
-        for suffix in ("ai", "au", "ad"):
-            self.conn.execute(f"DROP TRIGGER IF EXISTS archive_content_{suffix}")
         columns = "row_key, tweet_id, has_content, has_note"
         types = f"('{RecordType.TWEET}', '{RecordType.TWEET_OBJECT}')"
         upsert = (
@@ -596,19 +671,19 @@ class SchemaMixin(ConnectionMixin):
             f"WHERE new.record_type IN {types} AND new.row_key IS NOT NULL;"
         )
         self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS archive_content_ai AFTER INSERT ON archive "
+            "CREATE TRIGGER archive_content_ai AFTER INSERT ON archive "
             f"WHEN new.record_type IN {types} AND new.row_key IS NOT NULL "
             f"BEGIN {upsert} END"
         )
         self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS archive_content_au "
+            "CREATE TRIGGER archive_content_au "
             "AFTER UPDATE OF row_key, record_type, tweet_id, text, raw_json ON archive "
             f"WHEN old.record_type IN {types} OR new.record_type IN {types} BEGIN "
             "DELETE FROM archive_tweet_content WHERE row_key = old.row_key; "
             f"{upsert} END"
         )
         self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS archive_content_ad AFTER DELETE ON archive "
+            "CREATE TRIGGER archive_content_ad AFTER DELETE ON archive "
             f"WHEN old.record_type IN {types} BEGIN "
             "DELETE FROM archive_tweet_content WHERE row_key = old.row_key; END"
         )
@@ -616,14 +691,6 @@ class SchemaMixin(ConnectionMixin):
             f"INSERT OR REPLACE INTO archive_tweet_content ({columns}) "
             f"SELECT content.row_key, {_tweet_content_values('content')} FROM archive AS content "
             f"WHERE content.record_type IN {types} AND content.row_key IS NOT NULL"
-        )
-
-    def _create_community_notes_table(self) -> None:
-        self.conn.execute(
-            "CREATE TABLE IF NOT EXISTS community_notes ("
-            "tweet_id TEXT NOT NULL, text_hash TEXT NOT NULL, text TEXT NOT NULL, "
-            "raw_json TEXT, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, "
-            "removed_at TEXT, PRIMARY KEY (tweet_id, text_hash))"
         )
 
     def _create_tweet_facts(self) -> None:
@@ -645,12 +712,12 @@ class SchemaMixin(ConnectionMixin):
             )
 
         self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS archive_facts_ai AFTER INSERT ON archive "
+            "CREATE TRIGGER archive_facts_ai AFTER INSERT ON archive "
             f"WHEN new.record_type = '{RecordType.TWEET}' AND new.row_key IS NOT NULL "
             f"BEGIN {upsert('new')}; END"
         )
         self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS archive_facts_au "
+            "CREATE TRIGGER archive_facts_au "
             "AFTER UPDATE OF row_key, record_type, raw_json ON archive "
             f"WHEN old.record_type = '{RecordType.TWEET}' OR new.record_type = "
             f"'{RecordType.TWEET}' BEGIN "
@@ -659,7 +726,7 @@ class SchemaMixin(ConnectionMixin):
             "NULL; END"
         )
         self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS archive_facts_ad AFTER DELETE ON archive "
+            "CREATE TRIGGER archive_facts_ad AFTER DELETE ON archive "
             f"WHEN old.record_type = '{RecordType.TWEET}' BEGIN "
             "DELETE FROM archive_tweet_facts WHERE row_key = old.row_key; END"
         )
@@ -691,11 +758,11 @@ class SchemaMixin(ConnectionMixin):
             )
 
         self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS archive_description_ai AFTER INSERT ON archive "
+            "CREATE TRIGGER archive_description_ai AFTER INSERT ON archive "
             f"WHEN new.record_type = '{RecordType.MEDIA_TAG}' BEGIN {insert('new')}; END"
         )
         self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS archive_description_au "
+            "CREATE TRIGGER archive_description_au "
             "AFTER UPDATE OF record_type, raw_json ON archive "
             f"WHEN old.record_type = '{RecordType.MEDIA_TAG}' OR new.record_type = "
             f"'{RecordType.MEDIA_TAG}' BEGIN "
@@ -703,7 +770,7 @@ class SchemaMixin(ConnectionMixin):
             f"{insert('new')}; END"
         )
         self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS archive_description_ad AFTER DELETE ON archive "
+            "CREATE TRIGGER archive_description_ad AFTER DELETE ON archive "
             f"WHEN old.record_type = '{RecordType.MEDIA_TAG}' BEGIN "
             "DELETE FROM archive_description_fts WHERE rowid = old.rowid; END"
         )
@@ -725,6 +792,14 @@ class SchemaMixin(ConnectionMixin):
             "INSERT OR IGNORE INTO archive_revisions VALUES (?, 0)",
             [("membership",), ("like_order",)],
         )
+        # What the like order reads from a membership; its text and raw payload don't affect it.
+        like_membership_columns = (
+            "record_type",
+            "tweet_id",
+            "collection_type",
+            "sort_index",
+            "source",
+        )
         scopes = {
             "membership": (
                 lambda row: f"{row}.record_type = '{RecordType.TWEET}'",
@@ -739,11 +814,7 @@ class SchemaMixin(ConnectionMixin):
                     f"{row}.record_type = '{RecordType.IMPORT_MANIFEST}'"
                 ),
                 (
-                    "record_type",
-                    "tweet_id",
-                    "collection_type",
-                    "sort_index",
-                    "source",
+                    *like_membership_columns,
                     "operation",
                     "raw_json",
                     "cursor_in",
@@ -767,10 +838,9 @@ class SchemaMixin(ConnectionMixin):
                 condition = " OR ".join(f"({relevant(row)})" for row in rows)
                 if event == "UPDATE":
                     changed = " OR ".join(f"old.{col} IS NOT new.{col}" for col in columns)
-                    # Membership content/raw payload updates do not change like order.
                     if scope == "like_order":
                         membership_changed = " OR ".join(
-                            f"old.{col} IS NOT new.{col}" for col in columns[:5]
+                            f"old.{col} IS NOT new.{col}" for col in like_membership_columns
                         )
                         changed = (
                             f"((old.record_type = '{RecordType.TWEET}' AND new.record_type = "
@@ -782,7 +852,7 @@ class SchemaMixin(ConnectionMixin):
                         )
                     condition = f"({condition}) AND ({changed})"
                 self.conn.execute(
-                    f"CREATE TRIGGER IF NOT EXISTS archive_revision_{scope}_{event.lower()} "
+                    f"CREATE TRIGGER archive_revision_{scope}_{event.lower()} "
                     f"AFTER {event} ON archive WHEN {condition} BEGIN "
                     "UPDATE archive_revisions SET generation = generation + 1 "
                     f"WHERE scope = '{scope}'; END"

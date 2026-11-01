@@ -417,7 +417,6 @@ def test_retry_predicates_seek_eligibility_and_classify_unknown_as_permanent(tmp
 def test_note_checks_do_not_take_the_write_lock_for_no_ops(tmp_path):
     store = ArchiveStore(tmp_path / "archive.db", create=True)
     try:
-        store.ensure_check_tables()
         statements = []
         store.conn.set_trace_callback(statements.append)
         assert store.record_community_note("1", None) is None
