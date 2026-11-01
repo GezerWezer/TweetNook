@@ -216,9 +216,17 @@ def _tweet_fact_values(raw: str) -> str:
 
 
 def _saved_post_text(value: str) -> str:
-    """SQL for non-empty text that is not X's placeholder, as is_placeholder_text decides."""
-    # Curly apostrophes fold to straight ones; LIKE already ignores ASCII case.
-    text = f"TRIM(REPLACE(COALESCE({value}, ''), '\u2019', ''''))"
+    """SQL for non-empty text that is not X's placeholder, close to is_placeholder_text.
+
+    This runs in triggers, which must work for direct SQL writes, so it can't call Python. It
+    treats tab, newline, carriage return and no-break space as spaces, and curly apostrophes as
+    straight ones; LIKE ignores ASCII case. It doesn't collapse repeated spaces, other Unicode
+    spaces or non-ASCII case, so a placeholder written with those still counts as content.
+    """
+    spaced = f"COALESCE({value}, '')"
+    for code in (9, 10, 13, 160):
+        spaced = f"REPLACE({spaced}, char({code}), ' ')"
+    text = f"TRIM(REPLACE({spaced}, '\u2019', ''''))"
     patterns = (f"%{PLACEHOLDER_TEXT_MARKER}%", *(f"{p}%" for p in PLACEHOLDER_TEXT_PREFIXES))
     placeholder = " OR ".join(
         f"{text} LIKE '{pattern.replace(chr(39), chr(39) * 2)}'" for pattern in patterns

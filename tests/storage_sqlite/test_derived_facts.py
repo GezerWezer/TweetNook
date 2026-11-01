@@ -12,6 +12,7 @@ from tests.storage_sqlite.conftest import (
     _membership,
     add_released_followup_columns,
 )
+from tweetnook.core.unavailability import is_placeholder_text
 from tweetnook.storage import open_archive_store
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.schema import SCHEMA_VERSION
@@ -366,3 +367,59 @@ def test_schema_v9_upgrade_backfills_the_description_index(tmp_path: Path) -> No
         row["tweet_id"] for row in search_posts(migrated, "description:sailboat").rows
     ) == ["1", "2"]
     migrated.close()
+
+
+# (text, is it X's placeholder rather than a post?), which both sides must agree on.
+_PLACEHOLDER_CASES = [
+    ("A real post", False),
+    ("This post is about being unavailable", False),
+    ("This post is unavailable.", True),
+    ("THIS POST IS UNAVAILABLE.", True),
+    ("\nThis post is unavailable.", True),
+    ("\tThis post is unavailable.", True),
+    ("\r\nThis post is unavailable.", True),
+    ("\u00a0This post is unavailable.", True),
+    ("This post\nis unavailable.", True),
+    ("This post\u00a0is unavailable.", True),
+    ("You\u2019re unable to view this Post", True),
+    ("You're unable to view this Post", True),
+    ("Learn more {learnmore}", True),
+]
+_BLANK_CASES = ["", " ", "\n", "\t\r\n", "\u00a0", " \u00a0\n "]
+# What the triggers can't see without Python, which reads as content to them alone.
+_ACCEPTED_DIFFERENCES = [
+    "This post  is unavailable.",
+    "\u2003This post is unavailable.",
+]
+
+
+def _has_content(paths, text: str) -> int:
+    store = open_archive_store(paths, create=True)
+    try:
+        store.conn.execute(
+            "INSERT OR REPLACE INTO archive (row_key, record_type, tweet_id, collection_type, text)"
+            " VALUES ('tweet:like::1', 'tweet', '1', 'like', ?)",
+            (text,),
+        )
+        return store.conn.execute(
+            "SELECT has_content FROM archive_tweet_content WHERE row_key = 'tweet:like::1'"
+        ).fetchone()[0]
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(("text", "placeholder"), _PLACEHOLDER_CASES)
+def test_capture_flag_agrees_with_the_placeholder_rule(paths, text: str, placeholder: bool) -> None:
+    assert is_placeholder_text(text) is placeholder
+    assert _has_content(paths, text) == (0 if placeholder else 1)
+
+
+@pytest.mark.parametrize("text", _BLANK_CASES)
+def test_blank_text_is_not_captured_content(paths, text: str) -> None:
+    assert _has_content(paths, text) == 0
+
+
+@pytest.mark.parametrize("text", _ACCEPTED_DIFFERENCES)
+def test_recorded_differences_from_the_placeholder_rule(paths, text: str) -> None:
+    assert is_placeholder_text(text) is True
+    assert _has_content(paths, text) == 1
