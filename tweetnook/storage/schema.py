@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import json
+import math
+import shutil
+import sqlite3
+import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from tweetnook.core.exceptions import ArchiveUpgradeError
 from tweetnook.core.unavailability import PLACEHOLDER_TEXT_MARKER, PLACEHOLDER_TEXT_PREFIXES
 
 from .common import SOURCE_RANK, numeric_media_id, parse_created_at
@@ -146,6 +152,9 @@ def _fill_media_payload(winner: Any, donor: Any) -> Any:
 
 
 SCHEMA_VERSION = 13
+# An upgrade rewrites every archive row in one transaction. The write-ahead log and SQLite's
+# temporary files together peak near twice the database size.
+MIGRATION_SPACE_FACTOR = 2
 COLUMN_TYPES = {
     field: (
         "TEXT PRIMARY KEY"
@@ -273,6 +282,18 @@ def _tweet_content_values(row: str) -> str:
     return f"{row}.tweet_id, ({captured}), ({note})"
 
 
+def _gigabytes(size: int) -> str:
+    # Rounds up, so following the advice in a message always leaves enough room.
+    return f"{math.ceil(size / 100_000_000) / 10:.1f} GB"
+
+
+def _failed_upgrade(error: Exception) -> ArchiveUpgradeError:
+    return ArchiveUpgradeError(
+        f"The archive upgrade did not finish, and your archive is unchanged: {error}. "
+        "Check the server log, then restart TweetNook."
+    )
+
+
 class SchemaMixin(ConnectionMixin):
     def _migrate_schema(self) -> None:
         current_version = self._get_schema_version()
@@ -292,14 +313,52 @@ class SchemaMixin(ConnectionMixin):
         # schema 9 (0.1.7 and 0.1.8), schema 10 (0.2.0 to 1.1.0) and schema 12 (1.2.0). Schema
         # 11 was only on development builds before 1.2.0.
         if current_version in {8, 9, 10, 11, 12}:
-            self._migrate_search_facts(current_version)
+            self._run_migration(self._migrate_search_facts, current_version)
             return
         if current_version != 5:
             raise RuntimeError(
                 f"Archive schema version {current_version} comes from a pre-release build "
                 "and cannot be upgraded."
             )
-        self._migrate_search_index(current_version)
+        self._run_migration(self._migrate_search_index, current_version)
+
+    def _run_migration(self, migrate: Callable[[int], None], current_version: int) -> None:
+        required = MIGRATION_SPACE_FACTOR * self.db_path.stat().st_size
+        available = shutil.disk_usage(self.db_path.parent).free
+        if available < required:
+            # Refuse here: an attempt fills the disk for everything else on it, then rolls back.
+            raise ArchiveUpgradeError(
+                f"Upgrading the archive needs about {_gigabytes(required)} of free disk space, "
+                f"and {self.db_path.parent} has {_gigabytes(available)}. Your archive is "
+                "unchanged. Free up space, then restart TweetNook."
+            )
+        self._announce_migration(current_version)
+        try:
+            migrate(current_version)
+        except sqlite3.OperationalError as error:
+            code = (getattr(error, "sqlite_errorcode", 0) or 0) & 0xFF
+            # Another process holding the database says nothing about the upgrade itself.
+            if code in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}:
+                raise
+            if code == sqlite3.SQLITE_FULL:
+                raise ArchiveUpgradeError(
+                    "The disk filled up while upgrading the archive, which needs about "
+                    f"{_gigabytes(required)} of free space. Your archive is unchanged. "
+                    "Free up space, then restart TweetNook."
+                ) from error
+            raise _failed_upgrade(error) from error
+        except Exception as error:
+            raise _failed_upgrade(error) from error
+
+    def _announce_migration(self, current_version: int) -> None:
+        # The Web server doesn't listen until this finishes, and a large archive takes minutes.
+        # Without a message that looks like a failed start, and stopping it wastes the work.
+        print(
+            f"Upgrading the archive from schema v{current_version} to v{SCHEMA_VERSION}. "
+            "This can take several minutes on a large archive; don't stop TweetNook.",
+            file=sys.stderr,
+            flush=True,
+        )
 
     def _create_latest_schema(self) -> None:
         col_def = ", ".join(f"{name} {COLUMN_TYPES[name]}" for name in ARCHIVE_COLUMNS)

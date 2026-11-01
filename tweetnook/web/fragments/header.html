@@ -35,10 +35,14 @@
         </header>
 
         <section x-cloak x-show="setupData && !setupForced && !archiveReady" data-feed-stage class="setup-card m-4" role="status">
-            <h2 class="text-xl font-bold" x-text="['failed', 'interrupted'].includes(setupData?.archive?.initialization_state) ? 'Archive setup needs attention' : 'Your archive is being initialized'"></h2>
+            <h2 class="text-xl font-bold" x-text="setupData?.archive?.upgrade_error ? 'Archive upgrade needs attention' : ['failed', 'interrupted'].includes(setupData?.archive?.initialization_state) ? 'Archive setup needs attention' : 'Your archive is being initialized'"></h2>
             <p class="text-sm text-[var(--text-secondary)] mt-2" x-text="setupProgressMessage"></p>
-            <p class="text-sm text-[var(--text-secondary)] mt-2">Browsing becomes available when local initialization finishes.</p>
-            <div class="flex gap-3 mt-4"><button class="setup-btn" @click="activityDrawerOpen = true">View activity</button><button class="setup-btn" @click="openSetup()">Open Setup</button></div>
+            <template x-if="!setupData?.archive?.upgrade_error">
+                <div>
+                    <p class="text-sm text-[var(--text-secondary)] mt-2">Browsing becomes available when local initialization finishes.</p>
+                    <div class="flex gap-3 mt-4"><button class="setup-btn" @click="activityDrawerOpen = true">View activity</button><button class="setup-btn" @click="openSetup()">Open Setup</button></div>
+                </div>
+            </template>
         </section>
 
         <div x-show="showArchiveEnrichmentReminder" x-cloak role="alert" data-feed-stage

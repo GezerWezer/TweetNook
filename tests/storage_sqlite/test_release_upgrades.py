@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from tweetnook.core.exceptions import ArchiveUpgradeError
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.schema import SCHEMA_VERSION
 from tweetnook.storage.search_query import search_posts
@@ -192,7 +193,7 @@ def test_failed_upgrade_keeps_the_columns_and_the_version(
 
     monkeypatch.setattr(ArchiveStore, "_drop_unread_followup_columns", drop_then_fail_next)
 
-    with pytest.raises(sqlite3.OperationalError):
+    with pytest.raises(ArchiveUpgradeError):
         ArchiveStore(db_path, create=False)
 
     assert dropped == [True]
@@ -424,7 +425,7 @@ def test_failed_upgrade_rolls_back_media_merge(tmp_path: Path, monkeypatch, vers
         raise sqlite3.OperationalError("database or disk is full")
 
     monkeypatch.setattr(ArchiveStore, "_merge_duplicate_media", merge_then_fail)
-    with pytest.raises(sqlite3.OperationalError):
+    with pytest.raises(ArchiveUpgradeError):
         ArchiveStore(db_path, create=False)
 
     connection = sqlite3.connect(db_path)

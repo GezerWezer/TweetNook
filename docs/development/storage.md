@@ -53,6 +53,8 @@ The schema maintains content and Community Note flags used by search, including 
 
 Schema migrations run when a writable store opens. `SCHEMA_VERSION` in `storage/schema.py` is the authoritative version. New databases receive the latest schema; migrations must preserve existing archive content and update derived structures as needed. The upgrade to schema 13 drops two manifest columns nothing read, which rewrites the table once, so the first open of a large archive afterward takes longer and needs room for the rewrite.
 
+An upgrade first checks for free disk space of `MIGRATION_SPACE_FACTOR` times the database size, then runs in one transaction. Any failure other than a locked database becomes `ArchiveUpgradeError`, and the archive stays on its old schema. The Web server then records the `ARCHIVE_UPGRADE_NOTICE` notice, reports the error through `/api/setup`, and doesn't try again until it restarts, because status polls reconcile and each attempt rewrites the archive. The notice stays until an archive opens, so the installer and `tweetnook update` read it to tell whether the upgrade worked, even behind a password.
+
 Creation and every upgrade path run the same two steps. `_create_canonical_tables` owns saved data beside the `archive` table: `community_notes`, `tweet_checks` and `tweet_check_history`, so readers can rely on them. `_create_derived_structures` owns what can be rebuilt. It drops every trigger on `archive` and recreates each from its current definition, so a changed definition reaches existing archives; each table keeps its own backfill decision.
 
 ## Record types

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import http.client
+import json
 import os
 import pwd
 import re
@@ -10,11 +12,15 @@ import shutil
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
+from tweetnook import __version__
+from tweetnook.config import WebConfig, resolve_paths
+from tweetnook.core.exceptions import ARCHIVE_UPGRADE_NOTICE
 from tweetnook.core.fileio import atomic_write_text
 from tweetnook.jobs.supervisor import SERVICE_STOP_TIMEOUT
 
@@ -25,6 +31,8 @@ UNIT_PATH = Path("/etc/systemd/system/tweetnook.service")
 UNIT_NAME = "tweetnook.service"
 OWNERSHIP_MARKER = "# Managed by tweetnook service install\n"
 SERVICE_STARTUP_SETTLE_SECONDS = 2.0
+# The server doesn't listen until an archive upgrade finishes, which takes minutes on a large one.
+WEB_STARTUP_TIMEOUT = 1800
 
 
 def _quote(value: str, *, expand_variables: bool = False) -> str:
@@ -255,6 +263,52 @@ def _service_version(python: str) -> str:
     return version
 
 
+def _supports_finish_update(python: str) -> bool:
+    """Whether the installed version has finish-update; a pinned older one doesn't."""
+    command = [python, "-I", "-m", "tweetnook", "service", "finish-update", "--help"]
+    try:
+        return subprocess.run(command, check=False, capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
+def _wait_for_service_web(host: str, port: int, *, alive) -> None:
+    """Check the local application, without HTTP proxies or redirects."""
+    host = host.strip()
+    probe_host = {"0.0.0.0": "127.0.0.1", "::": "::1", "[::]": "::1"}.get(host, host)
+    probe_host = probe_host.removeprefix("[").removesuffix("]")
+    deadline = time.monotonic() + WEB_STARTUP_TIMEOUT
+    while time.monotonic() < deadline:
+        connection = http.client.HTTPConnection(probe_host, port, timeout=1)
+        try:
+            connection.request("GET", "/")
+            # The login challenge also comes from TweetNook, and it only answers after startup.
+            if connection.getresponse().status in {200, 401}:
+                return
+        except (OSError, http.client.HTTPException):
+            pass
+        finally:
+            connection.close()
+        if not alive():
+            raise ValueError("The TweetNook service stopped or restarted while starting up.")
+        time.sleep(0.25)
+    raise ValueError(
+        f"The TweetNook web app did not respond on port {port} within "
+        f"{WEB_STARTUP_TIMEOUT} seconds."
+    )
+
+
+def _archive_upgrade_failure(data_dir: Path) -> str | None:
+    try:
+        notices = json.loads((data_dir / "notices.json").read_text())
+    except (OSError, ValueError):
+        return None
+    for notice in notices if isinstance(notices, list) else []:
+        if isinstance(notice, dict) and notice.get("id") == ARCHIVE_UPGRADE_NOTICE:
+            return notice.get("message")
+    return None
+
+
 def update_managed_installation() -> None:
     try:
         _systemd()
@@ -302,6 +356,14 @@ def update_managed_installation() -> None:
             typer.echo("TweetNook service restarted.")
         raise typer.Exit(1) from exc
 
+    if _supports_finish_update(python):
+        # This process still runs the old code, so the new version reports its own outcome.
+        finish = [python, "-I", "-m", "tweetnook", "service", "finish-update"]
+        code = subprocess.run([*finish, "--from-version", old_version], check=False).returncode
+        if code:
+            raise typer.Exit(code)
+        return
+
     try:
         _systemctl("start", UNIT_NAME)
         _verify_service_running()
@@ -325,6 +387,57 @@ def update_managed_installation() -> None:
         typer.echo(f"TweetNook is already up to date ({new_version}).")
     else:
         typer.echo(f"TweetNook updated: {old_version} → {new_version}")
+        typer.echo(
+            "If this version upgrades the archive, the web app returns when the upgrade finishes, "
+            "which can take several minutes on a large archive."
+        )
+    typer.echo("TweetNook service restarted.")
+
+
+@service_app.command(
+    "finish-update",
+    hidden=True,
+    help="Start the service after `tweetnook update` installed this version, and report the "
+    "outcome. The previous version's updater runs this; keep its name and options stable.",
+)
+def finish_update(
+    from_version: Annotated[
+        str, typer.Option(help="The version that was installed before this update.")
+    ],
+) -> None:
+    try:
+        _systemd(admin=True)
+        paths = resolve_paths(_service_environment())
+        _systemctl("start", UNIT_NAME)
+        _verify_service_running()
+        if from_version != __version__:
+            typer.echo(
+                "Waiting for TweetNook to start. Upgrading a large archive can take several "
+                "minutes; don't stop it."
+            )
+        try:
+            with paths.config_file.open("rb") as handle:
+                config = WebConfig.model_validate(tomllib.load(handle).get("web", {}))
+        except FileNotFoundError:
+            config = WebConfig()
+        initial = _service_runtime_state()
+        _wait_for_service_web(
+            config.host, config.port, alive=lambda: _service_runtime_state() == initial
+        )
+    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+        typer.echo(
+            f"TweetNook {__version__} is installed, but the service did not start: {exc}\n"
+            "Check the service log with `journalctl -u tweetnook -n 50 --no-pager`.",
+            err=True,
+        )
+        raise typer.Exit(1) from exc
+    if failure := _archive_upgrade_failure(paths.data_dir):
+        typer.echo(f"TweetNook {__version__} is installed, but: {failure}", err=True)
+        raise typer.Exit(1)
+    if from_version == __version__:
+        typer.echo(f"TweetNook is already up to date ({__version__}).")
+    else:
+        typer.echo(f"TweetNook updated: {from_version} → {__version__}")
     typer.echo("TweetNook service restarted.")
 
 

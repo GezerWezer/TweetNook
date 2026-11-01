@@ -806,6 +806,16 @@ test('a first feed page is shown without waiting for Setup status', async () => 
     assert.equal(gated.loads, 0);
 });
 
+test('a failed archive upgrade replaces the initializing message', () => {
+    const app = immediateComponent(loadScripts(browserContext(), appScripts(), 'tweetApp')());
+    const upgrade_error = 'Upgrading the archive needs about 2.7 GB of free disk space.';
+    app.setupData = {archive: {upgrade_error, followup_state: 'failed', ready: false}};
+    assert.equal(app.setupProgressMessage, upgrade_error);
+    const html = pageHtml();
+    assert.match(html, /upgrade_error \? 'Archive upgrade needs attention'/);
+    assert.match(html, /x-if="!setupData\?\.archive\?\.upgrade_error"[\s\S]*Open Setup/);
+});
+
 test('setup polls fill an unset archive ID without replacing a user entry', async () => {
     const context = browserContext();
     context.fetch = async () => ({ok: true, json: async () => ({

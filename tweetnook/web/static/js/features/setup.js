@@ -95,6 +95,7 @@ function setupMethods() {
         get setupProgressMessage() {
             const archive = this.setupData?.archive;
             if (!archive) return '';
+            if (archive.upgrade_error) return archive.upgrade_error;
             if (archive.initialization_state === 'running') return this.activity?.summary || 'Importing your archive locally in the background…';
             if (['failed', 'interrupted'].includes(archive.initialization_state)) return 'Archive setup needs attention. Retry the import or migration.';
             if (archive.followup_state === 'failed' || archive.enrichment_state === 'failed') return 'Saved posts are available to browse. Preparation did not finish; open Activity to review the error and resume.';

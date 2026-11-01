@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ValidationError
 
+from tweetnook.core.exceptions import ARCHIVE_UPGRADE_NOTICE, ArchiveUpgradeError
 from tweetnook.core.fileio import atomic_write_json
 from tweetnook.jobs.activity_history import latest_finished_snapshot, new_run_id, read_run
 from tweetnook.jobs.context import archive_job
@@ -65,6 +66,7 @@ class SetupCoordinator:
         self.start_scheduler = start_scheduler
         self.notices = notices
         self.lock = threading.RLock()
+        self.archive_upgrade_error: str | None = None
         try:
             self.state = SetupState.model_validate_json(paths.setup_state_file.read_text())
         except FileNotFoundError:
@@ -277,6 +279,10 @@ class SetupCoordinator:
                     return
                 clean = bool(run) and finished_cleanly(run.get("exit_code"), recorded_outcome(run))
                 self._record_initialization(clean, run, failure="interrupted")
+            # Every status poll reconciles. Trying again would rewrite the archive on each one, so
+            # a failed upgrade waits for the restart its message asks for.
+            if self.archive_upgrade_error:
+                return
             if self.state.archive_previously_ready or (
                 not init_running
                 and self.state.initialization_result not in {"failed", "interrupted"}
@@ -305,6 +311,15 @@ class SetupCoordinator:
                         or self.state.archive_previously_ready
                     ):
                         self.attach()
+                except ArchiveUpgradeError as error:
+                    logger.error("%s", error, exc_info=error.__cause__ is not None)
+                    self.archive_upgrade_error = str(error)
+                    # A notice dismissed after an earlier failure must still appear for this one.
+                    self.notices.remove(ARCHIVE_UPGRADE_NOTICE)
+                    self.notices.add(
+                        ARCHIVE_UPGRADE_NOTICE, "Archive upgrade needs attention", str(error)
+                    )
+                    return
                 except Exception:
                     logger.exception("Could not attach archive storage")
                     self.notices.add(
@@ -315,6 +330,8 @@ class SetupCoordinator:
                     )
                     return
             store = self.server.get("store")
+            if store is not None:
+                self.notices.remove(ARCHIVE_UPGRADE_NOTICE)
             if (
                 self.state.initialization_mode == "import"
                 and self.state.initialization_result == "complete"
@@ -540,6 +557,7 @@ class SetupCoordinator:
                 "archive": {
                     "database_exists": self.paths.database_path.is_file(),
                     "ready": store is not None,
+                    "upgrade_error": self.archive_upgrade_error,
                     "uploaded": archive.is_file(),
                     "filename": archive.name if archive.is_file() else None,
                     "size": archive.stat().st_size if archive.is_file() else None,

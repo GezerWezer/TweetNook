@@ -121,6 +121,10 @@ tweetnook update
 
 TweetNook updates and restarts the service, keeping your archive, settings, and installed add-ons.
 
+The first start after an update can upgrade the archive. On a large archive this takes several minutes, and the web app doesn't respond until it finishes. Don't stop TweetNook during this; the upgrade message appears in the service log (`journalctl -u tweetnook`).
+
+The upgrade needs free disk space of about twice the size of `archive.db` while it runs. With less, TweetNook leaves the archive unchanged and shows how much it needs in the web app. Free up space, then restart TweetNook to try again.
+
 You can also rerun the installer to update an installation it created or add optional features. It keeps your startup mode, paths, existing add-ons, archive, and settings. A background service is stopped and restarted for you; stop manually started TweetNook processes before updating.
 
 ```bash

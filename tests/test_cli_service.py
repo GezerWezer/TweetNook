@@ -1,9 +1,11 @@
+import json
 import subprocess
 from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
 
+from tweetnook import __version__
 from tweetnook import cli_service as service
 from tweetnook.cli import app
 from tweetnook.jobs.supervisor import WORKER_INTERRUPT_TIMEOUT, WORKER_TERMINATE_TIMEOUT
@@ -193,7 +195,7 @@ def test_update_uses_managed_service_python_in_order(tmp_path, monkeypatch, root
     def run(command, **kwargs):
         events.append(("run", command, kwargs))
         stdout = next(versions) if command[1] == "-c" else ""
-        return SimpleNamespace(stdout=stdout)
+        return SimpleNamespace(stdout=stdout, returncode=2)
 
     monkeypatch.setattr(service, "UNIT_PATH", unit_path)
     monkeypatch.setattr(service, "_systemd", systemd)
@@ -230,6 +232,19 @@ def test_update_uses_managed_service_python_in_order(tmp_path, monkeypatch, root
             ],
             {"check": True},
         ),
+        (
+            "run",
+            [
+                str(service_python),
+                "-I",
+                "-m",
+                "tweetnook",
+                "service",
+                "finish-update",
+                "--help",
+            ],
+            {"check": False, "capture_output": True},
+        ),
         ("systemctl", "start", service.UNIT_NAME),
         ("verify-service",),
         (
@@ -256,7 +271,7 @@ def test_update_reports_already_current(tmp_path, monkeypatch, root_user):
     monkeypatch.setattr(
         service.subprocess,
         "run",
-        lambda command, **kwargs: SimpleNamespace(stdout="0.0.9\n"),
+        lambda command, **kwargs: SimpleNamespace(stdout="0.0.9\n", returncode=2),
     )
 
     result = CliRunner().invoke(app, ["update"])
@@ -355,7 +370,7 @@ def test_update_does_not_claim_restart_when_service_dies_after_start(
 
     def run(command, **kwargs):
         stdout = next(versions) if command[1] == "-c" else ""
-        return SimpleNamespace(stdout=stdout)
+        return SimpleNamespace(stdout=stdout, returncode=2)
 
     monkeypatch.setattr(service, "UNIT_PATH", unit_path)
     monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
@@ -377,6 +392,173 @@ def test_update_does_not_claim_restart_when_service_dies_after_start(
     assert "managed service did not stay running" in result.output
     assert "inactive/failed" in result.output
     assert "TweetNook service restarted." not in result.output
+
+
+def prepare_handoff(tmp_path, monkeypatch, *, finish_code):
+    unit_path = tmp_path / "tweetnook.service"
+    service_python = tmp_path / "service-python"
+    service_python.touch()
+    write_managed_unit(unit_path, service_python)
+    commands = []
+    systemctl_calls = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        finishing = "finish-update" in command and "--help" not in command
+        return SimpleNamespace(stdout="0.0.9\n", returncode=finish_code if finishing else 0)
+
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    monkeypatch.setattr(service, "_systemctl", lambda *args: systemctl_calls.append(args))
+    monkeypatch.setattr(service.subprocess, "run", run)
+    return service_python, commands, systemctl_calls
+
+
+def test_update_hands_off_to_the_installed_version(tmp_path, monkeypatch, root_user):
+    service_python, commands, systemctl_calls = prepare_handoff(
+        tmp_path, monkeypatch, finish_code=0
+    )
+    result = CliRunner().invoke(app, ["update"])
+    assert result.exit_code == 0, result.output
+    assert commands[-1] == [
+        str(service_python),
+        "-I",
+        "-m",
+        "tweetnook",
+        "service",
+        "finish-update",
+        "--from-version",
+        "0.0.9",
+    ]
+    # Starting the service and reporting the result belong to the new version.
+    assert systemctl_calls == [("stop", service.UNIT_NAME)]
+    assert "TweetNook updated" not in result.output
+
+
+def test_update_returns_the_installed_versions_failure(tmp_path, monkeypatch, root_user):
+    prepare_handoff(tmp_path, monkeypatch, finish_code=1)
+    result = CliRunner().invoke(app, ["update"])
+    assert result.exit_code == 1
+    assert "TweetNook service restarted." not in result.output
+
+
+def prepare_finish(tmp_path, monkeypatch, *, states=None):
+    unit_path = tmp_path / "tweetnook.service"
+    unit_path.write_text(
+        service.OWNERSHIP_MARKER
+        + f'Environment="XDG_DATA_HOME={tmp_path}"\n'
+        + f'Environment="XDG_CONFIG_HOME={tmp_path}"\n'
+    )
+    systemctl_calls = []
+    waits = []
+    sequence = iter(states or [("active", "running", 5)] * 3)
+    monkeypatch.setattr(service, "UNIT_PATH", unit_path)
+    monkeypatch.setattr(service, "_systemd", lambda **kwargs: None)
+    monkeypatch.setattr(service, "_systemctl", lambda *args: systemctl_calls.append(args))
+    monkeypatch.setattr(service, "_verify_service_running", lambda: None)
+    monkeypatch.setattr(service, "_service_runtime_state", lambda: next(sequence))
+    monkeypatch.setattr(
+        service,
+        "_wait_for_service_web",
+        lambda host, port, alive: waits.append((host, port, alive())),
+    )
+    return tmp_path / "tweetnook", systemctl_calls, waits
+
+
+def test_finish_update_starts_the_service_and_waits_for_its_web_app(tmp_path, monkeypatch):
+    data_dir, systemctl_calls, waits = prepare_finish(tmp_path, monkeypatch)
+    data_dir.mkdir()
+    (data_dir / "config.toml").write_text('[web]\nhost = "127.0.0.1"\nport = 9123\n')
+    (data_dir / "notices.json").write_text(json.dumps([{"id": "other", "message": "Unrelated"}]))
+    result = CliRunner().invoke(app, ["service", "finish-update", "--from-version", "0.0.1"])
+    assert result.exit_code == 0, result.output
+    assert systemctl_calls == [("start", service.UNIT_NAME)]
+    assert waits == [("127.0.0.1", 9123, True)]
+    assert f"TweetNook updated: 0.0.1 → {__version__}" in result.output
+    assert "don't stop it" in result.output
+    assert "TweetNook service restarted." in result.output
+
+
+def test_finish_update_reports_a_failed_archive_upgrade(tmp_path, monkeypatch):
+    data_dir, _, _ = prepare_finish(tmp_path, monkeypatch)
+    data_dir.mkdir()
+    (data_dir / "notices.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "archive-upgrade",
+                    "message": "Upgrading the archive needs about 2.7 GB of free disk space",
+                    "dismissed": True,
+                }
+            ]
+        )
+    )
+    result = CliRunner().invoke(app, ["service", "finish-update", "--from-version", "0.0.1"])
+    assert result.exit_code == 1
+    assert "needs about 2.7 GB" in result.output
+    assert "TweetNook updated" not in result.output
+    assert "TweetNook service restarted." not in result.output
+
+
+def test_finish_update_reports_a_web_app_that_never_starts(tmp_path, monkeypatch):
+    prepare_finish(tmp_path, monkeypatch)
+
+    def unavailable(host, port, alive):
+        raise ValueError("The TweetNook web app did not respond")
+
+    monkeypatch.setattr(service, "_wait_for_service_web", unavailable)
+    result = CliRunner().invoke(app, ["service", "finish-update", "--from-version", "0.0.1"])
+    assert result.exit_code == 1
+    assert "did not respond" in result.output
+    assert "journalctl" in result.output
+
+
+def test_finish_update_help_describes_its_option():
+    wide = {"COLUMNS": "200"}
+    result = CliRunner().invoke(app, ["service", "finish-update", "--help"], env=wide)
+    assert result.exit_code == 0
+    assert "--from-version" in result.output
+    assert "before this update" in result.output
+    # Internal to the updater, so it stays out of the command list.
+    assert "finish-update" not in CliRunner().invoke(app, ["service", "--help"]).output
+
+
+@pytest.mark.parametrize("status", [200, 401])
+def test_wait_for_service_web_accepts_the_app_and_its_login_challenge(monkeypatch, status):
+    connections = []
+
+    class Connection:
+        def __init__(self, host, port, timeout):
+            connections.append((host, port))
+
+        def request(self, method, path):
+            pass
+
+        def getresponse(self):
+            return SimpleNamespace(status=status)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(service.http.client, "HTTPConnection", Connection)
+    service._wait_for_service_web("0.0.0.0", 9123, alive=lambda: pytest.fail("not needed"))
+    assert connections == [("127.0.0.1", 9123)]
+
+
+def test_wait_for_service_web_stops_when_the_service_restarts(monkeypatch):
+    class Refused:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def request(self, method, path):
+            raise OSError("connection refused")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(service.http.client, "HTTPConnection", Refused)
+    with pytest.raises(ValueError, match="stopped or restarted"):
+        service._wait_for_service_web("127.0.0.1", 9123, alive=lambda: False)
 
 
 def test_verify_service_running_reports_systemd_state(monkeypatch):

@@ -5,6 +5,7 @@ Load its functions without running the privileged entry point.
 """
 
 import http.client
+import json
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -140,6 +141,40 @@ def test_http_timeout_is_bounded_and_rejects_unrelated_responses(status, monkeyp
     assert calls.count(("close",)) == 4
 
 
+def test_waiting_web_startup_fails_as_soon_as_the_service_stops(status, monkeypatch):
+    _calls, clock = install_fake_http(status, monkeypatch, [ConnectionRefusedError()] * 3)
+    alive = iter([True, False])
+    with pytest.raises(ValueError, match="stopped or restarted"):
+        status.wait_for_web("127.0.0.1", 9123, timeout=1800, alive=lambda: next(alive))
+    assert clock["now"] == 0.25
+
+
+def test_main_waits_long_enough_for_an_archive_upgrade(status, monkeypatch, tmp_path, capsys):
+    prepare_main(status, monkeypatch, tmp_path)
+    waits = {}
+    monkeypatch.setattr(status, "wait_for_web", lambda host, port, **options: waits.update(options))
+    status.main()
+    # A 5.7 GB archive took nine and a half minutes on a real server.
+    assert waits["timeout"] >= 1200
+
+
+def test_main_fails_when_the_server_could_not_upgrade_the_archive(
+    status, monkeypatch, tmp_path, capsys
+):
+    prepare_main(status, monkeypatch, tmp_path)
+    (tmp_path / "notices.json").write_text(
+        json.dumps(
+            [
+                {"id": "other", "message": "Unrelated"},
+                {"id": "archive-upgrade", "message": "Upgrading needs 2.7 GB", "dismissed": True},
+            ]
+        )
+    )
+    with pytest.raises(SystemExit, match="Upgrading needs 2.7 GB"):
+        status.main()
+    assert capsys.readouterr().out == ""
+
+
 def prepare_main(status, monkeypatch, tmp_path, states=None):
     events = []
     config = tmp_path / "config.toml"
@@ -167,14 +202,14 @@ def prepare_main(status, monkeypatch, tmp_path, states=None):
         assert events[:3] == [("groups", "tweetnook", 998), ("gid", 998), ("uid", 999)]
         assert events[-1] == ("verify",)
         assert env == status.SERVICE_ENVIRONMENT
-        return SimpleNamespace(config_file=config)
+        return SimpleNamespace(config_file=config, data_dir=tmp_path)
 
     monkeypatch.setattr(status, "resolve_paths", paths)
     monkeypatch.setattr(status, "_verify_service_running", lambda: events.append(("verify",)))
     sequence = iter(states or [("active", "running", 123)] * 2)
     monkeypatch.setattr(status, "_service_runtime_state", lambda: next(sequence))
     monkeypatch.setattr(
-        status, "wait_for_web", lambda host, port: events.append(("web", host, port))
+        status, "wait_for_web", lambda host, port, **_: events.append(("web", host, port))
     )
     monkeypatch.setattr(address, "_discover_device_address", lambda _family: "192.168.1.42")
     return events, environment
@@ -251,7 +286,7 @@ def test_missing_config_still_requires_a_responding_web_app(status, monkeypatch,
     prepare_main(status, monkeypatch, tmp_path)
     (tmp_path / "config.toml").unlink()
 
-    def unavailable(host, port):
+    def unavailable(host, port, **_):
         assert (host, port) == ("0.0.0.0", 8000)
         raise ValueError("Web startup timed out")
 

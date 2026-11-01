@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,8 +13,10 @@ from tests.storage_sqlite.conftest import (
     _membership,
     add_released_followup_columns,
 )
+from tweetnook.core.exceptions import ArchiveUpgradeError
 from tweetnook.core.unavailability import is_placeholder_text
 from tweetnook.storage import open_archive_store
+from tweetnook.storage import schema as schema_module
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.schema import SCHEMA_VERSION
 from tweetnook.storage.search_query import search_posts
@@ -161,6 +164,111 @@ def _v10_content_archive(db_path):
     store.conn.commit()
     store.close()
     return original, notes
+
+
+def test_upgrade_announces_itself_before_the_work_starts(tmp_path, monkeypatch, capsys):
+    db_path = tmp_path / "archive.db"
+    _v10_content_archive(db_path)
+    announced = []
+    migrate = ArchiveStore._migrate_search_facts
+
+    def record_then_migrate(self, current_version):
+        announced.append(capsys.readouterr().err)
+        migrate(self, current_version)
+
+    monkeypatch.setattr(ArchiveStore, "_migrate_search_facts", record_then_migrate)
+    ArchiveStore(db_path, create=False).close()
+    assert f"from schema v10 to v{SCHEMA_VERSION}" in announced[0]
+
+
+def _archive_contents(db_path: Path) -> tuple[int, list[tuple]]:
+    connection = sqlite3.connect(db_path)
+    try:
+        return (
+            connection.execute("PRAGMA user_version").fetchone()[0],
+            [tuple(row) for row in connection.execute("SELECT * FROM archive ORDER BY row_key")],
+        )
+    finally:
+        connection.close()
+
+
+def test_upgrade_refuses_without_writing_when_the_disk_is_too_small(tmp_path, monkeypatch, capsys):
+    db_path = tmp_path / "archive.db"
+    _v10_content_archive(db_path)
+    before = _archive_contents(db_path)
+    needed = 2 * db_path.stat().st_size
+    monkeypatch.setattr(
+        schema_module.shutil, "disk_usage", lambda _path: SimpleNamespace(free=needed - 1)
+    )
+    with pytest.raises(ArchiveUpgradeError, match="Free up space") as error:
+        ArchiveStore(db_path, create=False)
+    assert str(tmp_path) in str(error.value)
+    # Nothing announced: the upgrade never started.
+    assert "Upgrading the archive from" not in capsys.readouterr().err
+    assert _archive_contents(db_path) == before
+
+
+def test_upgrade_starts_with_exactly_the_required_space(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _v10_content_archive(db_path)
+    needed = 2 * db_path.stat().st_size
+    monkeypatch.setattr(
+        schema_module.shutil, "disk_usage", lambda _path: SimpleNamespace(free=needed)
+    )
+    store = ArchiveStore(db_path, create=False)
+    assert store.migration_report.from_version == 10
+    store.close()
+
+
+def test_disk_filling_during_an_upgrade_leaves_the_archive_unchanged(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _v10_content_archive(db_path)
+    before = _archive_contents(db_path)
+    drop_columns = ArchiveStore._drop_unread_followup_columns
+
+    def fill_disk_inside_the_transaction(self):
+        # SQLite reports a real SQLITE_FULL once the file can't grow past this page count.
+        pages = self.conn.execute("PRAGMA page_count").fetchone()[0]
+        self.conn.execute(f"PRAGMA max_page_count = {pages}")
+        drop_columns(self)
+        self.conn.executemany(
+            "INSERT INTO archive (row_key, record_type, raw_json) VALUES (?, 'filler', ?)",
+            ((f"filler-{index}", "x" * 4096) for index in range(pages + 10)),
+        )
+
+    monkeypatch.setattr(
+        ArchiveStore, "_drop_unread_followup_columns", fill_disk_inside_the_transaction
+    )
+    with pytest.raises(ArchiveUpgradeError, match="disk filled up") as error:
+        ArchiveStore(db_path, create=False)
+    assert isinstance(error.value.__cause__, sqlite3.OperationalError)
+    assert _archive_contents(db_path) == before
+
+
+def test_upgrade_reports_an_unexpected_failure_as_an_upgrade_failure(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _v10_content_archive(db_path)
+
+    def fail(self):
+        raise RuntimeError("unexpected row count")
+
+    monkeypatch.setattr(ArchiveStore, "_merge_duplicate_media", fail)
+    with pytest.raises(ArchiveUpgradeError, match="unexpected row count"):
+        ArchiveStore(db_path, create=False)
+
+
+def test_a_locked_database_is_not_reported_as_a_failed_upgrade(tmp_path, monkeypatch):
+    db_path = tmp_path / "archive.db"
+    _v10_content_archive(db_path)
+    locked = sqlite3.OperationalError("database is locked")
+    locked.sqlite_errorcode = sqlite3.SQLITE_BUSY
+
+    def fail(self, _version):
+        raise locked
+
+    monkeypatch.setattr(ArchiveStore, "_migrate_search_facts", fail)
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        ArchiveStore(db_path, create=False)
 
 
 def test_v10_upgrade_backfills_content_flags_without_changing_archive_or_notes(tmp_path):

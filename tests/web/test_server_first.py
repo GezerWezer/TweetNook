@@ -14,6 +14,7 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from tweetnook.config import AppConfig, ensure_paths, resolve_paths
+from tweetnook.core.exceptions import ARCHIVE_UPGRADE_NOTICE, ArchiveUpgradeError
 from tweetnook.core.locking import ProcessLock
 from tweetnook.jobs.activity_history import mark_run_process_result, new_run_id, reserve_run
 from tweetnook.jobs.outcome import recorded_outcome
@@ -338,6 +339,48 @@ def coordinator(first_run, monkeypatch):
     coordinator = SetupCoordinator(first_run, server_state, attach, lambda: None, notices)
     supervisor.callbacks["on_complete"] = coordinator.job_completed
     return coordinator, supervisor, store
+
+
+def test_failed_archive_upgrade_waits_for_a_restart_instead_of_retrying(first_run):
+    first_run.database_path.write_bytes(b"saved archive")
+    attempts = []
+
+    def attach():
+        attempts.append(1)
+        raise ArchiveUpgradeError("Upgrading needs 2.7 GB")
+
+    server_state["job_supervisor"] = Supervisor(first_run, server_state["config"])
+    notices = NoticeStore(first_run.notices_file)
+    coord = SetupCoordinator(first_run, server_state, attach, lambda: None, notices)
+    coord.reconcile()
+    coord.reconcile()
+    coord.status()
+    assert len(attempts) == 1
+    assert coord.status()["archive"]["upgrade_error"] == "Upgrading needs 2.7 GB"
+    saved = json.loads(first_run.notices_file.read_text())
+    assert [(item["id"], item["message"]) for item in saved] == [
+        (ARCHIVE_UPGRADE_NOTICE, "Upgrading needs 2.7 GB")
+    ]
+
+    # A later start that fails again raises a notice the user had dismissed.
+    notices.dismiss(ARCHIVE_UPGRADE_NOTICE)
+    restarted = SetupCoordinator(first_run, server_state, attach, lambda: None, notices)
+    restarted.reconcile()
+    assert len(attempts) == 2
+    assert [item["dismissed"] for item in notices.list()] == [False]
+
+    # The start that succeeds clears it, which the updater and installer read as success.
+    def attached():
+        server_state["store"] = SimpleNamespace(
+            has_completed_archive_import=lambda: True,
+            count_incomplete_initial_enrichment=lambda: 0,
+        )
+
+    fixed = SetupCoordinator(first_run, server_state, attached, lambda: None, notices)
+    fixed.reconcile()
+    assert notices.list() == []
+    assert fixed.status()["archive"]["upgrade_error"] is None
+    server_state.pop("store")
 
 
 @pytest.mark.parametrize("auth_first", [True, False])

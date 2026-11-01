@@ -708,7 +708,11 @@ from tweetnook.system_install import SERVICE_ENVIRONMENT, SERVICE_HOME, SERVICE_
 from tweetnook.web.address import display_web_url
 
 
-def wait_for_web(host, port, timeout=20):
+# The server doesn't listen until an archive upgrade finishes, which takes minutes on a large one.
+WEB_STARTUP_TIMEOUT = 1800
+
+
+def wait_for_web(host, port, timeout=20, alive=None):
     """Check the local application, without HTTP proxies or redirects."""
     host = host.strip()
     probe_host = {"0.0.0.0": "127.0.0.1", "::": "::1", "[::]": "::1"}.get(host, host)
@@ -730,11 +734,25 @@ def wait_for_web(host, port, timeout=20):
             pass
         finally:
             connection.close()
+        if alive is not None and not alive():
+            raise ValueError("The TweetNook service stopped or restarted during its web startup check.")
         time.sleep(max(0, min(0.25, deadline - time.monotonic())))
     raise ValueError(
         f"The TweetNook web app did not respond on its configured port ({port}) "
         f"within {timeout} seconds. Check the service logs for the startup error."
     )
+
+
+def archive_upgrade_failure(data_dir):
+    """Return why the server couldn't upgrade the archive; it serves its pages regardless."""
+    try:
+        notices = json.loads((data_dir / "notices.json").read_text())
+    except (OSError, ValueError):
+        return None
+    for notice in notices if isinstance(notices, list) else []:
+        if isinstance(notice, dict) and notice.get("id") == "archive-upgrade":
+            return notice.get("message")
+    return None
 
 
 def setup_address(host, port):
@@ -760,19 +778,26 @@ def main():
     os.setgid(account.pw_gid)
     os.setuid(account.pw_uid)
     _verify_service_running()
-    config_file = resolve_paths(SERVICE_ENVIRONMENT).config_file
+    paths = resolve_paths(SERVICE_ENVIRONMENT)
     try:
-        with config_file.open("rb") as handle:
+        with paths.config_file.open("rb") as handle:
             config = WebConfig.model_validate(tomllib.load(handle).get("web", {}))
     except FileNotFoundError:
         # A fresh service may still be importing the app before creating config.
         # Probe the same defaults it will use, without creating files as root.
         config = WebConfig()
     initial = _service_runtime_state()
-    wait_for_web(config.host, config.port)
+    wait_for_web(
+        config.host,
+        config.port,
+        timeout=WEB_STARTUP_TIMEOUT,
+        alive=lambda: _service_runtime_state() == initial,
+    )
     final = _service_runtime_state()
     if initial != final or final[:2] != ("active", "running") or final[2] <= 0:
         raise ValueError("The TweetNook service stopped or restarted during its web startup check.")
+    if failure := archive_upgrade_failure(paths.data_dir):
+        raise SystemExit(failure)
     print(*setup_address(config.host, config.port))
 
 
@@ -797,7 +822,7 @@ version_summary() {
 finish_setup=' to finish setup'
 if [[ -n $existing ]]; then finish_setup=; fi
 if [[ $mode == service ]]; then
-    start_step 'Check web server'
+    start_step 'Check web server (upgrading a large archive can take several minutes)'
     systemctl is-active --quiet tweetnook.service >> "$log_file" 2>&1 || die 'The service did not remain active.'
     web_status=$(service_web_status 2>> "$log_file")
     read -r web_scope web_url web_port <<< "$web_status"

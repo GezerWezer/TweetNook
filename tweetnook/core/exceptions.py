@@ -51,6 +51,15 @@ class StaleQueryIdError(APIResponseError):
     """Raised when a query ID refresh still cannot satisfy an operation."""
 
 
+class ArchiveUpgradeError(TweetNookError):
+    """Raised when an archive could not move to the current schema and stays as it was."""
+
+
+# The Web server records a failed upgrade under this notice ID. The updater and the installer read
+# it, because a password can hide the server's status and only the server knows why it failed.
+ARCHIVE_UPGRADE_NOTICE = "archive-upgrade"
+
+
 class ProcessLockError(TweetNookError):
     """Raised when another sync already holds the process lock."""
 

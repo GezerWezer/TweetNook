@@ -22,6 +22,12 @@ uvx twine check dist/*
 
 Review expected artifacts in `dist/`, inspect wheel/sdist contents and install the wheel into a clean environment. Verify `tweetnook --version`, representative `--help`, server-first Setup, and optional-dependency behavior. Use temporary XDG roots so packaging checks don't change a personal archive.
 
+## Updating across versions
+
+`tweetnook update` runs the code of the version being replaced, so it can't learn anything about the new one. It stops the service, installs the package, then runs `tweetnook service finish-update --from-version OLD` from the new package. That hidden command starts the service, waits for the Web app, checks for a failed archive upgrade, and prints the result.
+
+Every later release must keep that command's name and option, because older updaters call them. Put new post-install checks inside it. Data changes still belong in schema migrations, which run in a transaction, and the command must stay safe to run twice. If the installed version doesn't have the command, the updater starts the service itself and can't report an archive upgrade.
+
 ## Automation
 
 A pushed `v*` tag triggers `.github/workflows/release.yml`:

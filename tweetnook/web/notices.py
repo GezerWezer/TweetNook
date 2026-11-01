@@ -47,6 +47,13 @@ class NoticeStore:
             self.items = self.items[-100:]
             self._save()
 
+    def remove(self, notice_id):
+        with self.lock:
+            kept = [item for item in self.items if item["id"] != notice_id]
+            if len(kept) != len(self.items):
+                self.items = kept
+                self._save()
+
     def list(self):
         with self.lock:
             return [dict(item) for item in reversed(self.items)]

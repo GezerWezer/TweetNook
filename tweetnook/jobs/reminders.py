@@ -16,8 +16,8 @@ def print_archive_migration_report(console: Console, store: ArchiveStore) -> Non
         highlight=False,
     )
     console.print(
-        "Rebuilt derived search data (the full-text index or search-filter values); "
-        "canonical archive rows were unchanged.",
+        "Updated the archive tables and rebuilt derived search data; "
+        "saved posts and collection memberships were unchanged.",
         highlight=False,
     )
 
