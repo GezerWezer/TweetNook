@@ -145,7 +145,7 @@ async def test_expand_threads_deduplicates_quoted_original_with_membership(
     config,
     auth_bundle,
 ) -> None:
-    wrapper_raw, quoted_raw, _deepest_raw = _seed_quote_archive(paths)
+    wrapper_raw, quoted_raw, deepest_raw = _seed_quote_archive(paths)
     quoted_raw.pop("quoted_status_result")
     quoted = TimelineTweet(
         tweet_id="200",
@@ -183,6 +183,10 @@ async def test_expand_threads_deduplicates_quoted_original_with_membership(
         elif '"focalTweetId":"200"' in focal:
             requests.append("200")
             result = quoted_raw
+        elif '"focalTweetId":"300"' in focal:
+            # The wrapper's capture already records 200 quoting 300.
+            requests.append("300")
+            result = deepest_raw
         else:
             raise AssertionError(f"unexpected request {request.url}")
         return httpx.Response(
@@ -198,9 +202,9 @@ async def test_expand_threads_deduplicates_quoted_original_with_membership(
         transport=httpx.MockTransport(handler),
     )
 
-    assert result.processed == 2
-    assert result.expanded == 2
-    assert requests == ["100", "200"]
+    assert result.processed == 3
+    assert result.expanded == 3
+    assert requests == ["100", "200", "300"]
 
 
 @pytest.mark.asyncio

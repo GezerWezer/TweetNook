@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -79,123 +78,6 @@ def unwrap_tweet_result(result: Any) -> dict[str, Any] | None:
     if result.get("rest_id"):
         return result
     return None
-
-
-def extract_tweet_unavailability_detail(result: dict[str, Any]) -> str | None:
-    tombstone = result.get("tombstone")
-    if isinstance(tombstone, dict):
-        tombstone_text = tombstone.get("text")
-        if isinstance(tombstone_text, str) and tombstone_text:
-            return tombstone_text
-        if isinstance(tombstone_text, dict):
-            text = tombstone_text.get("text")
-            if isinstance(text, str) and text:
-                return text
-    for key in ("reason", "message", "text"):
-        value = result.get(key)
-        if isinstance(value, str) and value:
-            return value
-        if isinstance(value, dict):
-            text = value.get("text")
-            if isinstance(text, str) and text:
-                return text
-    return None
-
-
-# X's system text for posts it will not show. Prefixes are casefolded with straight
-# apostrophes; the storage capture flags compile the same list to SQL.
-PLACEHOLDER_TEXT_MARKER = "{learnmore}"
-PLACEHOLDER_TEXT_PREFIXES = (
-    "this post is from ",
-    "this tweet is from ",
-    "this post from ",
-    "this tweet from ",
-    "this post was deleted ",
-    "this tweet was deleted ",
-    "this post is unavailable",
-    "this tweet is unavailable",
-    "this post is not available ",
-    "this tweet is not available ",
-    "this post has been withheld",
-    "this tweet has been withheld",
-    "you're unable to view this post",
-    "you're unable to view this tweet",
-)
-
-
-def is_placeholder_text(text: str | None) -> bool:
-    """Whether saved text is X's system placeholder rather than the post itself."""
-    if not text:
-        return False
-    normalized = " ".join(text.casefold().replace("\u2019", "'").split())
-    return PLACEHOLDER_TEXT_MARKER in normalized or normalized.startswith(PLACEHOLDER_TEXT_PREFIXES)
-
-
-def classify_tweet_unavailability(typename: str, text: str | None) -> str:
-    normalized = (text or "").casefold().replace("\u2019", "'").replace("\u2018", "'")
-    normalized = re.sub(r"\{[^{}]*\}", " ", normalized)
-    normalized = " ".join(normalized.split())
-    if any(
-        phrase in normalized
-        for phrase in (
-            "protected account",
-            "private account",
-            "account is protected",
-            "posts are protected",
-            "tweets are protected",
-            "confirmed followers",
-            "not authorized to see",
-            "account owner limits who can view",
-            "limits who can view their posts",
-            "unable to view this post because this account",
-        )
-    ):
-        return "protected_account"
-    if any(
-        phrase in normalized
-        for phrase in (
-            "account suspended",
-            "account is suspended",
-            "account has been suspended",
-            "account that authored this post has been suspended",
-            "suspended account",
-        )
-    ):
-        return "suspended_account"
-    if any(
-        phrase in normalized
-        for phrase in (
-            "account doesn't exist",
-            "account does not exist",
-            "account no longer exists",
-            "account that no longer exists",
-            "post is from an account that no longer exists",
-            "user not found",
-        )
-    ):
-        return "account_missing"
-    if any(
-        phrase in normalized
-        for phrase in (
-            "post was deleted by its author",
-            "post was deleted by the post author",
-            "deleted by the post author",
-            "deleted by the tweet author",
-            "author deleted this post",
-            "author deleted",
-        )
-    ):
-        return "deleted_by_author"
-    if any(
-        phrase in normalized
-        for phrase in ("withheld", "not available in your country", "legal demand")
-    ):
-        return "withheld"
-    if any(
-        phrase in normalized for phrase in ("post not found", "tweet not found", "status not found")
-    ):
-        return "not_found"
-    return "unavailable_unknown"
 
 
 def extract_author_fields(tweet: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
@@ -316,6 +198,65 @@ def _article_result(tweet: dict[str, Any]) -> dict[str, Any] | None:
     return article_result if isinstance(article_result, dict) else None
 
 
+def are_different_articles(one: dict[str, Any], other: dict[str, Any]) -> bool:
+    """Whether two payloads name different Articles; one without an id could be either."""
+    identity = one.get("rest_id") or one.get("id")
+    other_identity = other.get("rest_id") or other.get("id")
+    return bool(identity and other_identity and identity != other_identity)
+
+
+def merge_article_payloads(incoming: dict[str, Any], retained: Any) -> dict[str, Any]:
+    """An Article payload that keeps what ``retained`` holds and ``incoming`` left out.
+
+    A sparse copy often has the title and no body state, so a text body can't be kept without
+    the structured state it came from. A different Article keeps nothing from the old one.
+    """
+    if not isinstance(retained, dict):
+        return incoming
+    if are_different_articles(incoming, retained):
+        return incoming
+    if all(incoming.get(key) not in (None, "", [], {}) for key in retained):
+        return incoming
+    return {
+        **retained,
+        **{key: value for key, value in incoming.items() if value not in (None, "", [], {})},
+    }
+
+
+def retain_rich_features(tweet: dict[str, Any], donor: Any) -> bool:
+    """Copy into ``tweet`` the long-form features another copy of it has and it lacks.
+
+    Returns whether ``tweet`` changed. Text saved from a note or Article stays with the payload
+    it came from, so the two can't disagree after a sparser copy of the post arrives.
+    """
+    if not isinstance(donor, dict) or tweet.get("__typename") in {
+        "TweetTombstone",
+        "TweetUnavailable",
+    }:
+        return False
+    changed = restore_link_card_image(tweet, donor)
+    if extract_note_tweet_text(tweet) is None and extract_note_tweet_text(donor) is not None:
+        tweet["note_tweet"] = donor["note_tweet"]
+        changed = True
+    retained = _article_result(donor)
+    own = _article_result(tweet)
+    if retained is None:
+        return changed
+    if own is None:
+        for key in ("article", "article_results"):
+            if key in donor:
+                tweet[key] = donor[key]
+        return True
+    merged = merge_article_payloads(own, retained)
+    if merged is own:
+        return changed
+    if _article_result({"article": tweet.get("article")}) is own:
+        tweet["article"] = {**tweet["article"], "article_results": {"result": merged}}
+    else:
+        tweet["article_results"] = {"result": merged}
+    return True
+
+
 @dataclass(slots=True)
 class TweetObjectData:
     tweet_id: str
@@ -407,17 +348,20 @@ class ExtractedTweetGraph:
         if existing is None:
             self.tweet_objects[item.tweet_id] = item
             return
+        note_tweet_text = _coalesce(item.note_tweet_text, existing.note_tweet_text)
+        raw_json = dict(item.raw_json or existing.raw_json)
+        retain_rich_features(raw_json, existing.raw_json)
         self.tweet_objects[item.tweet_id] = TweetObjectData(
             tweet_id=item.tweet_id,
-            text=_coalesce(item.text, existing.text) or "",
+            text=note_tweet_text or _coalesce(item.text, existing.text) or "",
             author_id=_coalesce(item.author_id, existing.author_id),
             author_username=_coalesce(item.author_username, existing.author_username),
             author_display_name=_coalesce(item.author_display_name, existing.author_display_name),
             created_at=_coalesce(item.created_at, existing.created_at),
             conversation_id=_coalesce(item.conversation_id, existing.conversation_id),
             lang=_coalesce(item.lang, existing.lang),
-            note_tweet_text=_coalesce(item.note_tweet_text, existing.note_tweet_text),
-            raw_json=item.raw_json or existing.raw_json,
+            note_tweet_text=note_tweet_text,
+            raw_json=raw_json,
         )
 
     def add_relation(self, item: TweetRelationData) -> None:
@@ -484,6 +428,13 @@ class ExtractedTweetGraph:
         if existing is None:
             self.articles[item.tweet_id] = item
             return
+        if merge_article_payloads(item.raw_json, existing.raw_json) is item.raw_json and (
+            item.article_id != existing.article_id
+            and item.tweet_id not in {item.article_id, existing.article_id}
+        ):
+            # A different Article: nothing of the earlier one belongs with it.
+            self.articles[item.tweet_id] = item
+            return
         content_text = _coalesce(item.content_text, existing.content_text)
         self.articles[item.tweet_id] = ArticleData(
             tweet_id=item.tweet_id,
@@ -494,7 +445,7 @@ class ExtractedTweetGraph:
             canonical_url=_coalesce(item.canonical_url, existing.canonical_url),
             published_at=_coalesce(item.published_at, existing.published_at),
             status="body_present" if content_text else "preview_only",
-            raw_json=item.raw_json or existing.raw_json,
+            raw_json=merge_article_payloads(item.raw_json, existing.raw_json),
         )
 
     def merge(self, other: ExtractedTweetGraph) -> None:
@@ -997,14 +948,32 @@ def _article_entry(
     )
 
 
+# How far the web displays attached posts below a saved one: a quote of a quote, or a repost's
+# original and its quote. Anything displayed needs rows for its Article, card and follow-up work.
+MAX_ATTACHMENT_DEPTH = 2
+
+
+def embedded_result(raw: dict[str, Any] | None, relation_type: str) -> dict[str, Any] | None:
+    if not raw:
+        return None
+    if relation_type == "quote_of":
+        # X embeds a quoted tweet's own quote as nested_quoted_tweet_results.
+        result = (
+            raw.get("quoted_status_result") or raw.get("nested_quoted_tweet_results") or {}
+        ).get("result")
+        if result is None:
+            result = raw.get("quoted_status")
+    else:
+        legacy = raw.get("legacy") or {}
+        result = (legacy.get("retweeted_status_result") or {}).get("result")
+        if result is None:
+            result = raw.get("retweeted_status")
+    return unwrap_tweet_result(result) if isinstance(result, dict) else None
+
+
 def _attached_tweets(tweet: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
-    legacy = tweet.get("legacy") or {}
     pairs = [
-        (
-            "retweet_of",
-            unwrap_tweet_result((legacy.get("retweeted_status_result") or {}).get("result")),
-        ),
-        ("quote_of", unwrap_tweet_result((tweet.get("quoted_status_result") or {}).get("result"))),
+        (relation, embedded_result(tweet, relation)) for relation in ("retweet_of", "quote_of")
     ]
     return [
         (relation_type, item)
@@ -1014,7 +983,11 @@ def _attached_tweets(tweet: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
 
 
 def _visit_tweet(
-    tweet: dict[str, Any], graph: ExtractedTweetGraph, *, expand_attached: bool
+    tweet: dict[str, Any],
+    graph: ExtractedTweetGraph,
+    *,
+    depth: int = 0,
+    ancestors: frozenset[str] = frozenset(),
 ) -> None:
     tweet_object = _tweet_object(tweet)
     if tweet_object is None:
@@ -1055,7 +1028,7 @@ def _visit_tweet(
                 tweet, article_result, article_id=article.article_id
             ):
                 graph.add_media(item)
-    if not expand_attached:
+    if depth >= MAX_ATTACHMENT_DEPTH:
         return
     legacy = tweet.get("legacy") or {}
     for relation_type, target_id in (
@@ -1084,7 +1057,9 @@ def _visit_tweet(
                 raw_json={"relation_type": relation_type, "target_tweet_id": target_id},
             )
         )
-        _visit_tweet(attached, graph, expand_attached=False)
+        lineage = ancestors | {tweet_object.tweet_id}
+        if target_id not in lineage:
+            _visit_tweet(attached, graph, depth=depth + 1, ancestors=lineage)
 
 
 def extract_secondary_objects(root_tweet: dict[str, Any]) -> ExtractedTweetGraph:
@@ -1096,7 +1071,7 @@ def extract_secondary_objects_from_tweets(root_tweets: list[dict[str, Any]]) -> 
     for root_tweet in root_tweets:
         tweet = unwrap_tweet_result(root_tweet) or root_tweet
         if isinstance(tweet, dict):
-            _visit_tweet(tweet, graph, expand_attached=True)
+            _visit_tweet(tweet, graph)
     return graph
 
 

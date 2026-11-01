@@ -307,7 +307,8 @@ def test_extracted_tweet_graph_add_tweet_object_prefers_new_non_empty_fields() -
     )
 
     item = graph.tweet_objects["100"]
-    assert item.text == "old text"
+    # The note survives, so it supplies the text.
+    assert item.text == "old note"
     assert item.author_id == "new-author"
     assert item.author_username == "old-user"
     assert item.author_display_name == "New Name"
@@ -476,4 +477,5 @@ def test_extracted_tweet_graph_merge_coalesces_url_url_ref_and_article_records()
     assert article.canonical_url == "https://x.com/i/article/1"
     assert article.published_at == "2026-03-14T00:00:00+00:00"
     assert article.status == "body_present"
-    assert article.raw_json == {"new": True}
+    # The body survives, so the payload it came from does too.
+    assert article.raw_json == {"new": True, "old": True}

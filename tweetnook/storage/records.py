@@ -3,17 +3,26 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
 
 from tweetnook.core import fastjson
-from tweetnook.core.extractor import link_card_lacks_image, restore_link_card_image
+from tweetnook.core.extractor import (
+    are_different_articles,
+    link_card_lacks_image,
+    merge_article_payloads,
+    restore_link_card_image,
+    retain_rich_features,
+)
 from tweetnook.core.utils import utc_now
 
 from .common import AVAILABLE_SOURCES, LIVE_SOURCE, SOURCE_RANK, clause_in, folder_key
 from .db import ConnectionMixin
 from .record_types import RecordType
 from .schema import ARCHIVE_COLUMNS
+
+_RETAINED_FEATURE_MARKERS = ('"image_value"', '"note_tweet"', '"article')
 
 
 @dataclass(slots=True)
@@ -46,7 +55,7 @@ class PageBuffer:
 
 
 @dataclass(slots=True)
-class _RecordContext:
+class RecordContext:
     existing: dict[str, Any] | None
     now: str
     first_seen_at: str
@@ -242,10 +251,10 @@ class RecordsMixin(ConnectionMixin):
         row_key: str,
         *,
         cursor: PageBuffer | None = None,
-    ) -> _RecordContext:
+    ) -> RecordContext:
         now = utc_now()
         existing, first_seen_at, added_at = self._row_timestamps(row_key, cursor=cursor, now=now)
-        return _RecordContext(
+        return RecordContext(
             existing=existing,
             now=now,
             first_seen_at=first_seen_at,
@@ -253,14 +262,14 @@ class RecordsMixin(ConnectionMixin):
         )
 
     @staticmethod
-    def _existing_value(context: _RecordContext, field_name: str) -> Any:
+    def _existing_value(context: RecordContext, field_name: str) -> Any:
         if context.existing is None:
             return None
         return context.existing.get(field_name)
 
     def _record_with_context(
         self,
-        context: _RecordContext,
+        context: RecordContext,
         **overrides: Any,
     ) -> dict[str, Any]:
         return self._record(
@@ -276,7 +285,7 @@ class RecordsMixin(ConnectionMixin):
 
     def _prefer_incoming_source(
         self,
-        context: _RecordContext,
+        context: RecordContext,
         incoming_source: str,
         *,
         source_field: str = "source",
@@ -291,7 +300,7 @@ class RecordsMixin(ConnectionMixin):
 
     def _merge_by_source_precedence(
         self,
-        context: _RecordContext,
+        context: RecordContext,
         field_name: str,
         incoming: Any,
         *,
@@ -302,9 +311,25 @@ class RecordsMixin(ConnectionMixin):
             return self._coalesce_value(incoming, existing)
         return self._coalesce_value(existing, incoming)
 
+    def _merged_tweet_text(
+        self,
+        context: RecordContext,
+        text: str | None,
+        note_tweet_text: str | None,
+        *,
+        prefer_incoming: bool,
+    ) -> tuple[str | None, str | None]:
+        """A post's text and note as one choice: the note that survives supplies the text."""
+        note = self._merge_by_source_precedence(
+            context, "note_tweet_text", note_tweet_text, prefer_incoming=prefer_incoming
+        )
+        return note or self._merge_by_source_precedence(
+            context, "text", text, prefer_incoming=prefer_incoming
+        ), note
+
     def _merged_tweet_raw_json(
         self,
-        context: _RecordContext,
+        context: RecordContext,
         raw: Any,
         *,
         prefer_incoming: bool,
@@ -315,36 +340,74 @@ class RecordsMixin(ConnectionMixin):
         merged = self._merge_by_source_precedence(
             context, "raw_json", incoming, prefer_incoming=prefer_incoming
         )
-        if not isinstance(merged, str) or '"card"' not in merged:
+        if not isinstance(merged, str):
             return merged
-        # Timelines sometimes send a summary card without its images. Whichever
-        # copy wins, keep the image bindings another copy has for that card:
-        # the losing copy, then (for collection rows) the shared tweet object.
-        donors = [self._existing_value(context, "raw_json") if merged is incoming else incoming]
-        if fallback_key is not None:
-            fallback = self._lookup_row(fallback_key, cursor=cursor)
-            donors.append(fallback.get("raw_json") if fallback else None)
-        donors = [value for value in donors if isinstance(value, str) and '"image_value"' in value]
-        if not donors:
+        # Whichever copy wins, keep what the losing copy has and it lacks: a note, an Article's
+        # state, and the image bindings timelines sometimes drop from a summary card. Collection
+        # rows can also take card images from the shared tweet object, but not its note, which
+        # would disagree with the note column these rows merge separately.
+        loser = self._existing_value(context, "raw_json") if merged is incoming else incoming
+        fallback = None
+        if fallback_key is not None and '"card"' in merged:
+            fallback_row = self._lookup_row(fallback_key, cursor=cursor)
+            fallback = fallback_row.get("raw_json") if fallback_row else None
+        has_donor = (
+            isinstance(loser, str)
+            and loser != merged
+            and any(marker in loser for marker in _RETAINED_FEATURE_MARKERS)
+        )
+        has_fallback = isinstance(fallback, str) and '"image_value"' in fallback
+        if not has_donor and not has_fallback:
             return merged
         try:
             winner = fastjson.loads(merged)
         except (TypeError, ValueError):
             return merged
-        if not isinstance(winner, dict) or not link_card_lacks_image(winner):
+        if not isinstance(winner, dict):
             return merged
-        for value in donors:
-            try:
-                donor = fastjson.loads(value)
-            except (TypeError, ValueError):
-                continue
-            if restore_link_card_image(winner, donor):
-                return self._json_value(winner)
-        return merged
+        changed = False
+        if has_donor:
+            with suppress(TypeError, ValueError):
+                changed = retain_rich_features(winner, fastjson.loads(loser))
+        if has_fallback and link_card_lacks_image(winner):
+            with suppress(TypeError, ValueError):
+                changed = restore_link_card_image(winner, fastjson.loads(fallback)) or changed
+        return self._json_value(winner) if changed else merged
+
+    def _names_another_article(self, context: RecordContext, raw: Any) -> bool:
+        """Compares the payloads' own ids, as the id column falls back to the tweet's."""
+        saved = self._existing_value(context, "raw_json")
+        if not isinstance(raw, dict) or not isinstance(saved, str):
+            return False
+        try:
+            payload = fastjson.loads(saved)
+        except (TypeError, ValueError):
+            return False
+        return isinstance(payload, dict) and are_different_articles(raw, payload)
+
+    def _merged_article_raw_json(
+        self, context: RecordContext, raw: Any, *, prefer_incoming: bool
+    ) -> Any:
+        """Keep an Article's structured state beside the body text that survives from it."""
+        incoming = self._json_value(raw)
+        merged = self._merge_by_source_precedence(
+            context, "raw_json", incoming, prefer_incoming=prefer_incoming
+        )
+        loser = self._existing_value(context, "raw_json") if merged is incoming else incoming
+        if not isinstance(merged, str) or not isinstance(loser, str) or loser == merged:
+            return merged
+        try:
+            winner, donor = fastjson.loads(merged), fastjson.loads(loser)
+        except (TypeError, ValueError):
+            return merged
+        if not isinstance(winner, dict):
+            return merged
+        combined = merge_article_payloads(winner, donor)
+        return merged if combined is winner else self._json_value(combined)
 
     def _merged_source_value(
         self,
-        context: _RecordContext,
+        context: RecordContext,
         incoming_source: str,
         *,
         prefer_incoming: bool,
@@ -356,7 +419,7 @@ class RecordsMixin(ConnectionMixin):
 
     def _merged_deleted_at(
         self,
-        context: _RecordContext,
+        context: RecordContext,
         incoming_deleted_at: str | None,
         *,
         prefer_incoming: bool,

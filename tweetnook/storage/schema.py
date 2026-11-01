@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from tweetnook.core.extractor import PLACEHOLDER_TEXT_MARKER, PLACEHOLDER_TEXT_PREFIXES
+from tweetnook.core.unavailability import PLACEHOLDER_TEXT_MARKER, PLACEHOLDER_TEXT_PREFIXES
 
 from .common import SOURCE_RANK, numeric_media_id, parse_created_at
 from .db import ConnectionMixin

@@ -85,6 +85,12 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
             source,
             deleted_at=deleted_at,
         )
+        text, note_tweet_text = self._merged_tweet_text(
+            context,
+            tweet.text,
+            extract_note_tweet_text(tweet.raw_json),
+            prefer_incoming=prefer_incoming,
+        )
         return self._record_with_context(
             context,
             row_key=row_key,
@@ -96,12 +102,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
                 context, "sort_index", sort_index, prefer_incoming=prefer_incoming
             ),
             source=self._merged_source_value(context, source, prefer_incoming=prefer_incoming),
-            text=self._merge_by_source_precedence(
-                context,
-                "text",
-                tweet.text,
-                prefer_incoming=prefer_incoming,
-            ),
+            text=text,
             author_id=self._merge_by_source_precedence(
                 context,
                 "author_id",
@@ -147,12 +148,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
                 legacy.get("lang"),
                 prefer_incoming=prefer_incoming,
             ),
-            note_tweet_text=self._merge_by_source_precedence(
-                context,
-                "note_tweet_text",
-                extract_note_tweet_text(tweet.raw_json),
-                prefer_incoming=prefer_incoming,
-            ),
+            note_tweet_text=note_tweet_text,
             raw_json=self._merged_tweet_raw_json(
                 context,
                 tweet.raw_json,

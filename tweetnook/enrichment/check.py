@@ -39,8 +39,8 @@ from rich.console import Console
 from tweetnook.client import fxtwitter
 from tweetnook.client.fxtwitter import FxLookup, fx_enabled, iter_fx_statuses
 from tweetnook.config import AppConfig, XDGPaths
-from tweetnook.core.extractor import classify_tweet_unavailability
 from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
+from tweetnook.core.unavailability import classify_tweet_unavailability
 from tweetnook.core.utils import utc_now
 from tweetnook.enrichment.availability import (
     as_utc_datetime,

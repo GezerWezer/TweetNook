@@ -7,11 +7,13 @@ from enum import StrEnum
 from typing import Any
 
 from tweetnook.core.extractor import (
-    classify_tweet_unavailability,
     extract_author_fields,
     extract_canonical_text,
-    extract_tweet_unavailability_detail,
     unwrap_tweet_result,
+)
+from tweetnook.core.unavailability import (
+    classify_tweet_unavailability,
+    extract_tweet_unavailability_detail,
 )
 
 

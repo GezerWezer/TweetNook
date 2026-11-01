@@ -8,10 +8,10 @@ from collections import Counter
 from typing import Any
 
 from tests.conftest import make_tweet_result, make_video_media
-from tweetnook.core.extractor import extract_secondary_objects
+from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.importer.archive_media import copy_exported_media
 from tweetnook.storage import open_archive_store
-from tweetnook.storage.records import PageBuffer
+from tweetnook.storage.ingestion import ImportObservation
 
 
 class ExportFiles:
@@ -28,26 +28,35 @@ class ExportFiles:
 
 
 def _seed_videos(store: Any, count: int) -> None:
-    buffer = PageBuffer()
+    observations = []
     for index in range(count):
-        store._buffer_secondary_graph(
-            extract_secondary_objects(
-                make_tweet_result(
-                    str(1000 + index),
-                    "video",
-                    media=[
-                        make_video_media(
-                            f"7_{index}",
-                            f"https://pbs.twimg.com/poster{index}.jpg",
-                            bitrate_url=f"https://video.twimg.com/main{index}.mp4",
-                        )
-                    ],
+        tweet_id = str(1000 + index)
+        raw = make_tweet_result(
+            tweet_id,
+            "video",
+            media=[
+                make_video_media(
+                    f"7_{index}",
+                    f"https://pbs.twimg.com/poster{index}.jpg",
+                    bitrate_url=f"https://video.twimg.com/main{index}.mp4",
                 )
-            ),
-            source="x_archive",
-            cursor=buffer,
+            ],
         )
-    store.flush(buffer)
+        observations.append(
+            ImportObservation(
+                timeline_tweet=TimelineTweet(
+                    tweet_id=tweet_id,
+                    text="video",
+                    author_id="100",
+                    author_username="user100",
+                    author_display_name="User 100",
+                    created_at=raw["legacy"]["created_at"],
+                    sort_index=None,
+                    raw_json=raw,
+                )
+            )
+        )
+    store.ingest_import_batch(observations, membership="tweet")
 
 
 def _copy(store: Any, paths: Any, files: dict[str, bytes]) -> None:

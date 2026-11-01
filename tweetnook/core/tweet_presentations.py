@@ -4,26 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .extractor import extract_author_fields, extract_canonical_text, unwrap_tweet_result
+from .extractor import extract_author_fields, extract_canonical_text
 from .media_metadata import aspect_ratio_for_media
-
-
-def embedded_result(raw: dict[str, Any] | None, relation_type: str) -> dict[str, Any] | None:
-    if not raw:
-        return None
-    if relation_type == "quote_of":
-        # X embeds a quoted tweet's own quote as nested_quoted_tweet_results.
-        result = (
-            raw.get("quoted_status_result") or raw.get("nested_quoted_tweet_results") or {}
-        ).get("result")
-        if result is None:
-            result = raw.get("quoted_status")
-    else:
-        legacy = raw.get("legacy") or {}
-        result = (legacy.get("retweeted_status_result") or {}).get("result")
-        if result is None:
-            result = raw.get("retweeted_status")
-    return unwrap_tweet_result(result) if isinstance(result, dict) else None
 
 
 def legacy_target_id(raw: dict[str, Any] | None, relation_type: str) -> str | None:

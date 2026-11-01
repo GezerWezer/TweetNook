@@ -88,7 +88,7 @@ Use the row-key helpers in `ArchiveStore`; don't invent identifiers in callers. 
 Every write is one of three modes, named in `storage/ownership.py`:
 
 - A **provider observation** is a response just received. It may change every family, subject to source rank.
-- A **saved-evidence replay** rebuilds rows from a capture already on disk, as `rehydrate` does. It follows the same content rules but keeps the row's lifecycle, because an old capture says nothing about now.
+- A **saved-evidence replay** rebuilds rows from a capture already on disk, as `rehydrate` does. It follows the same content rules but keeps the row's lifecycle, because an old capture says nothing about now. A row it creates starts `pending`, with no status or check time, because no request was made.
 - A **worker result** is the outcome of follow-up work on a row. `worker_changes` refuses a field outside that worker's list.
 
 | Family | Fields | Owner |

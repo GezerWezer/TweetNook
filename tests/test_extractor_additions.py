@@ -4,14 +4,16 @@ import pytest
 
 from tests.conftest import make_tweet_result
 from tweetnook.core.extractor import (
-    classify_tweet_unavailability,
     extract_canonical_text,
     extract_note_tweet_text,
     extract_secondary_objects,
     extract_secondary_objects_from_tweets,
     extract_thread_objects,
-    is_placeholder_text,
     unwrap_tweet_result,
+)
+from tweetnook.core.unavailability import (
+    classify_tweet_unavailability,
+    is_placeholder_text,
 )
 
 

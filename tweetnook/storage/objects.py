@@ -11,7 +11,7 @@ from tweetnook.core.timeline_parsing import TimelineTweet
 from .common import AVAILABLE_SOURCES, LIVE_SOURCE, created_at_timestamp, numeric_media_id
 from .ownership import MergeMode, writes_lifecycle
 from .record_types import RecordType
-from .records import PageBuffer, RecordsMixin
+from .records import PageBuffer, RecordContext, RecordsMixin
 
 
 class ObjectsMixin(RecordsMixin):
@@ -48,11 +48,16 @@ class ObjectsMixin(RecordsMixin):
         mode: MergeMode = MergeMode.PROVIDER_OBSERVATION,
         cursor: PageBuffer | None = None,
     ) -> dict[str, Any]:
-        """Build a tweet_object row; a replay keeps an existing row's lifecycle fields."""
+        """Build a tweet_object row; a replay keeps an existing row's lifecycle fields.
+
+        A row a replay creates starts pending: no request was made, so nothing is known yet about
+        whether the post is available now.
+        """
 
         row_key = self._row_key_for_tweet_object(tweet.tweet_id)
         context = self._record_context(row_key, cursor=cursor)
-        keep_lifecycle = not writes_lifecycle(mode) and context.existing is not None
+        observed = writes_lifecycle(mode)
+        keep_lifecycle = not observed and context.existing is not None
         prefer_incoming = self._prefer_incoming_source(
             context,
             source,
@@ -67,7 +72,9 @@ class ObjectsMixin(RecordsMixin):
             # An unavailable tweet never captured with content holds only the error
             # payload, so any copy of the tweet itself is better.
             prefer_incoming = True
-        if source in AVAILABLE_SOURCES:
+        if not observed:
+            enrichment_state = "pending"
+        elif source in AVAILABLE_SOURCES:
             if enrichment_state is None:
                 prior_state = self._existing_value(context, "enrichment_state")
                 enrichment_state = (
@@ -105,19 +112,16 @@ class ObjectsMixin(RecordsMixin):
                 prefer_incoming=prefer_incoming,
             )
 
+        text, note_tweet_text = self._merged_tweet_text(
+            context, tweet.text, tweet.note_tweet_text, prefer_incoming=prefer_incoming
+        )
         return self._record_with_context(
             context,
             row_key=row_key,
             record_type=RecordType.TWEET_OBJECT,
             tweet_id=tweet.tweet_id,
             source=self._merged_source_value(context, source, prefer_incoming=prefer_incoming),
-            text=self._merge_by_source_precedence(
-                context,
-                "text",
-                tweet.text,
-                prefer_incoming=prefer_incoming,
-            )
-            or "",
+            text=text or "",
             author_id=self._merge_by_source_precedence(
                 context,
                 "author_id",
@@ -167,12 +171,7 @@ class ObjectsMixin(RecordsMixin):
                 tweet.lang,
                 prefer_incoming=prefer_incoming,
             ),
-            note_tweet_text=self._merge_by_source_precedence(
-                context,
-                "note_tweet_text",
-                tweet.note_tweet_text,
-                prefer_incoming=prefer_incoming,
-            ),
+            note_tweet_text=note_tweet_text,
             enrichment_state=merge_lifecycle("enrichment_state", enrichment_state),
             enrichment_checked_at=merge_lifecycle("enrichment_checked_at", enrichment_checked_at),
             enrichment_http_status=merge_lifecycle(
@@ -491,6 +490,11 @@ class ObjectsMixin(RecordsMixin):
         row_key = self._row_key_for_article(article.tweet_id)
         context = self._record_context(row_key, cursor=cursor)
         prefer_incoming = self._prefer_incoming_source(context, source)
+        if self._names_another_article(context, article.raw_json):
+            if not prefer_incoming:
+                return context.existing
+            # The saved fields describe the other Article, so none of them can fill a gap here.
+            context = RecordContext(None, context.now, context.first_seen_at, context.added_at)
         content_text = self._merge_by_source_precedence(
             context,
             "content_text",
@@ -544,11 +548,8 @@ class ObjectsMixin(RecordsMixin):
                 prefer_incoming=prefer_incoming,
             ),
             status=status,
-            raw_json=self._merge_by_source_precedence(
-                context,
-                "raw_json",
-                self._json_value(article.raw_json),
-                prefer_incoming=prefer_incoming,
+            raw_json=self._merged_article_raw_json(
+                context, article.raw_json, prefer_incoming=prefer_incoming
             ),
         )
 

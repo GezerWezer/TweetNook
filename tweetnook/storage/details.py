@@ -12,9 +12,9 @@ from tweetnook.core.extractor import (
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.core.utils import utc_now
 
-from .common import FX_SOURCE, LIVE_SOURCE, SOURCE_RANK, created_at_timestamp
+from .common import FX_SOURCE, LIVE_SOURCE, created_at_timestamp
 from .record_types import RecordType
-from .records import PageBuffer
+from .records import PageBuffer, RecordContext
 from .tweets import TweetsMixin
 
 _UNSET = object()
@@ -73,60 +73,62 @@ class DetailsMixin(TweetsMixin):
         updated = {**row, **changes}
         self._queue_record(updated, cursor=cursor)
 
-    def _refresh_tweet_records_for_detail(
+    def _refresh_tweet_record_for_detail(
         self,
+        row: dict[str, Any],
         tweet: TimelineTweet,
         *,
         cursor: PageBuffer,
-        source: str = LIVE_SOURCE,
+        source: str,
+        now: str,
     ) -> None:
+        """Bring one saved collection row up to date; detail lookups never add memberships."""
         legacy = tweet.raw_json.get("legacy") or {}
-        rows = self._rows_for_values(RecordType.TWEET, "tweet_id", [tweet.tweet_id])
-        now = utc_now()
-        for row in rows:
-            updated = dict(row)
-            existing_source = self._normalized_source(row.get("source"))
-            if source != existing_source and SOURCE_RANK.get(source, 0) < SOURCE_RANK.get(
-                existing_source, 0
-            ):
-                # A lower-ranked lookup only proves the tweet is back; keep richer content.
-                updated["deleted_at"] = None
-                updated["last_seen_at"] = now
-                if row.get("enrichment_state") == "terminal_unavailable":
-                    updated["enrichment_state"] = "resurrected"
-                cursor.records[updated["row_key"]] = updated
-                continue
-            updated["text"] = self._coalesce_value(tweet.text, row.get("text"))
-            updated["author_id"] = self._coalesce_value(tweet.author_id, row.get("author_id"))
-            updated["author_username"] = self._coalesce_value(
-                tweet.author_username,
-                row.get("author_username"),
+        updated = dict(row)
+        context = RecordContext(
+            existing=row, now=now, first_seen_at=row["first_seen_at"], added_at=row["added_at"]
+        )
+        # A lower-ranked lookup keeps richer content but still fills what the row lacks, as it
+        # does on the shared tweet object, so the two can't disagree about a recovered note.
+        prefer_incoming = self._prefer_incoming_source(context, source)
+
+        def merged(field_name: str, incoming: Any) -> Any:
+            return self._merge_by_source_precedence(
+                context, field_name, incoming, prefer_incoming=prefer_incoming
             )
-            updated["author_display_name"] = self._coalesce_value(
-                tweet.author_display_name,
-                row.get("author_display_name"),
-            )
-            updated["created_at"] = self._coalesce_value(tweet.created_at, row.get("created_at"))
-            updated["created_at_ts"] = created_at_timestamp(updated["created_at"])
-            updated["conversation_id"] = self._coalesce_value(
-                legacy.get("conversation_id_str"),
-                row.get("conversation_id"),
-            )
-            updated["lang"] = self._coalesce_value(legacy.get("lang"), row.get("lang"))
-            updated["note_tweet_text"] = self._coalesce_value(
-                extract_note_tweet_text(tweet.raw_json),
-                row.get("note_tweet_text"),
-            )
-            updated["source"] = source
-            updated["deleted_at"] = None
-            updated["raw_json"] = self._json_value(tweet.raw_json)
-            updated["last_seen_at"] = now
+
+        updated["text"], updated["note_tweet_text"] = self._merged_tweet_text(
+            context,
+            tweet.text,
+            extract_note_tweet_text(tweet.raw_json),
+            prefer_incoming=prefer_incoming,
+        )
+        updated["author_id"] = merged("author_id", tweet.author_id)
+        updated["author_username"] = merged("author_username", tweet.author_username)
+        updated["author_display_name"] = merged("author_display_name", tweet.author_display_name)
+        updated["created_at"] = merged("created_at", tweet.created_at)
+        updated["created_at_ts"] = created_at_timestamp(updated["created_at"])
+        updated["conversation_id"] = merged("conversation_id", legacy.get("conversation_id_str"))
+        updated["lang"] = merged("lang", legacy.get("lang"))
+        updated["source"] = self._merged_source_value(
+            context, source, prefer_incoming=prefer_incoming
+        )
+        updated["deleted_at"] = None
+        updated["raw_json"] = self._merged_tweet_raw_json(
+            context,
+            tweet.raw_json,
+            prefer_incoming=prefer_incoming,
+            fallback_key=self._row_key_for_tweet_object(tweet.tweet_id),
+            cursor=cursor,
+        )
+        updated["last_seen_at"] = now
+        if prefer_incoming:
             updated["synced_at"] = now
 
-            if row.get("enrichment_state") == "terminal_unavailable":
-                updated["enrichment_state"] = "resurrected"
+        if row.get("enrichment_state") == "terminal_unavailable":
+            updated["enrichment_state"] = "resurrected"
 
-            cursor.records[updated["row_key"]] = updated
+        cursor.records[updated["row_key"]] = updated
 
     def _refresh_tweet_records_for_details(
         self,
@@ -135,8 +137,24 @@ class DetailsMixin(TweetsMixin):
         cursor: PageBuffer,
         source: str = LIVE_SOURCE,
     ) -> None:
+        tweet_ids = {tweet.tweet_id for tweet in tweets}
+        # Merge against each row's latest version: one already queued in this batch is newer than
+        # what's committed, and may not be committed at all.
+        row_keys: dict[str, dict[str, dict[str, Any]]] = {}
+        for row in self._rows_for_values(RecordType.TWEET, "tweet_id", list(tweet_ids)):
+            row_keys.setdefault(row["tweet_id"], {})[row["row_key"]] = row
+        for row_key, record in cursor.records.items():
+            if (
+                record.get("record_type") == RecordType.TWEET
+                and record.get("tweet_id") in tweet_ids
+            ):
+                row_keys.setdefault(record["tweet_id"], {})[row_key] = record
+        now = utc_now()
         for tweet in tweets:
-            self._refresh_tweet_records_for_detail(tweet, cursor=cursor, source=source)
+            for row_key, row in row_keys.get(tweet.tweet_id, {}).items():
+                self._refresh_tweet_record_for_detail(
+                    cursor.records.get(row_key, row), tweet, cursor=cursor, source=source, now=now
+                )
 
     def persist_tweet_detail(
         self,

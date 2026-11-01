@@ -7,17 +7,19 @@ from typing import Any
 
 from tweetnook.core import fastjson
 from tweetnook.core.extractor import (
-    classify_tweet_unavailability,
+    embedded_result,
     extract_note_tweet_text,
-    extract_tweet_unavailability_detail,
-    is_placeholder_text,
 )
 from tweetnook.core.media_metadata import aspect_ratio_for_media
 from tweetnook.core.tweet_presentations import (
-    embedded_result,
     legacy_target_id,
     normalized_embedded_tweet,
     raw_media_payloads,
+)
+from tweetnook.core.unavailability import (
+    classify_tweet_unavailability,
+    extract_tweet_unavailability_detail,
+    is_placeholder_text,
 )
 
 UNAVAILABLE_MESSAGES = {

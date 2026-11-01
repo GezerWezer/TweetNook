@@ -34,6 +34,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `config.py` | Pydantic config, defaults, sparse TOML writes, environment overrides and UI schema. |
 | `core/` | Errors (`exceptions.py`), JSON compatibility (`fastjson.py`), process locks (`locking.py`), collection names (`collection_names.py`), redirected test requests and host isolation (`dev_replay.py`) and shared helpers (`utils.py`). |
 | `core/extractor.py`, `core/media_metadata.py` | Canonical fields, relations, Article structures and media geometry. |
+| `core/unavailability.py` | Reading X's placeholders and tombstones. |
 | `core/timeline_parsing.py` | Timeline/detail parsing and focal-result classification. |
 | `core/fxtwitter_payloads.py` | FxTwitter payload adaptation to the GraphQL tweet shape. |
 | `core/tweet_presentations.py` | Pure embedded/legacy tweet and media adaptation for normalized presentation. |
