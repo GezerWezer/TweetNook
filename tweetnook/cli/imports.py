@@ -21,7 +21,7 @@ from tweetnook.importer.archive_enrich import (
     remaining_enrichment_text,
 )
 from tweetnook.importer.archive_steps import plan_archive_import
-from tweetnook.sync.collection import sync_all
+from tweetnook.sync.collection import SyncMode, sync_all
 from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline
 
 import_app = typer.Typer(
@@ -170,7 +170,7 @@ def import_x_archive_command(
     "enrich",
     help=(
         "Process every archive TweetDetail row eligible when the command starts, "
-        "then sync the configured collections past saved tweets to fill timeline gaps."
+        "then catch up imported Likes and backfill the other configured collections."
     ),
 )
 def import_archive_enrich(
@@ -227,11 +227,10 @@ def import_archive_enrich(
                     auth_bundle=auth_bundle,
                     console=console,
                 )
-                # Walk through saved tweets to repair gaps left by archive import
-                # or an earlier short sync, without resetting archived data.
+                # A complete Likes export supplies older history; other collections
+                # still walk past known posts to fill gaps.
                 return await sync_all(
-                    full=False,
-                    backfill=True,
+                    mode=SyncMode.CATCH_UP,
                     limit=None,
                     config=config,
                     paths=paths,

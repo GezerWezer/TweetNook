@@ -183,6 +183,7 @@ async def _run_live_reconciliation(
             await sync_collection(
                 collection,
                 full=False,
+                catch_up=collection == "likes",
                 resume_backfill=False,
                 limit=None,
                 config=config,

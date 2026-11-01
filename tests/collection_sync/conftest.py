@@ -9,7 +9,53 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 from rich.console import Console
 
+from tweetnook.core.timeline_parsing import TimelineTweet
+from tweetnook.importer.archive_manifests import record_archive_capture
 from tweetnook.query_ids import QueryIdStore
+from tweetnook.storage import ArchiveStore
+from tweetnook.storage.ingestion import ImportObservation
+
+
+def _seed_like_import(
+    store: ArchiveStore,
+    ids: list[str],
+    *,
+    digest: str = "export",
+    status: str = "completed",
+    partial: bool = False,
+) -> None:
+    store.set_import_manifest(digest, archive_generation_date=None, status=status)
+    record_archive_capture(
+        store,
+        "XArchiveManifest",
+        "data/manifest.js",
+        {
+            "archiveInfo": {"isPartialArchive": partial},
+            "dataTypes": {
+                "like": {"files": [{"fileName": "data/like.js", "count": str(len(ids))}]}
+            },
+        },
+        archive_digest=digest,
+    )
+    record_archive_capture(
+        store,
+        "XArchiveLikes",
+        "data/like.js",
+        [{"like": {"tweetId": tweet_id}} for tweet_id in ids],
+        archive_digest=digest,
+    )
+    for tweet_id in ids:
+        tweet = TimelineTweet(
+            tweet_id=tweet_id,
+            text="imported",
+            author_id=None,
+            author_username=None,
+            author_display_name=None,
+            created_at=None,
+            sort_index="-1",
+            raw_json={"like": {"tweetId": tweet_id}},
+        )
+        store.ingest_import_batch([ImportObservation(tweet)], membership="like")
 
 
 def _op_and_variables(request: httpx.Request) -> tuple[str, dict[str, object]]:

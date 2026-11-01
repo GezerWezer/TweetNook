@@ -12,6 +12,48 @@ from tweetnook.cli import auth as cli_auth
 from tweetnook.cli import imports as cli_imports
 from tweetnook.cli import sync as cli_sync
 from tweetnook.config import AppConfig, AuthConfig
+from tweetnook.sync.collection import SyncMode
+
+
+@pytest.mark.parametrize("command", [[], ["all"], ["likes"]])
+def test_sync_forwards_catch_up(paths, monkeypatch, command):
+    _capture_console(monkeypatch, StringIO())
+    patch_cli(monkeypatch, "load_config", lambda: (AppConfig(), paths))
+    patch_cli(monkeypatch, "resolve_auth_bundle", lambda config: object())
+    forwarded = []
+
+    async def sync(*args, **kwargs):
+        if args:
+            forwarded.append(kwargs["catch_up"])
+            assert not kwargs["backfill"]
+        else:
+            forwarded.append(kwargs["mode"] is SyncMode.CATCH_UP)
+        return SimpleNamespace(
+            pages_fetched=2,
+            tweets_seen=40,
+            stop_reason="import-overlap",
+            results=[],
+            errors={},
+            exit_code=0,
+        )
+
+    patch_cli(monkeypatch, "sync_all", sync)
+    patch_cli(monkeypatch, "sync_collection", sync)
+    result = runner.invoke(cli.app, ["sync", *command, "--catch-up"])
+    assert result.exit_code == 0, result.output
+    assert forwarded == [True]
+
+
+@pytest.mark.parametrize("command", [[], ["all"], ["likes"]])
+@pytest.mark.parametrize("other", ["--full", "--backfill", "--article-backfill", "--head-only"])
+def test_catch_up_rejects_other_modes_before_loading_config(monkeypatch, command, other):
+    def unexpected():
+        pytest.fail("conflicting sync modes must not load config")
+
+    patch_cli(monkeypatch, "load_config", unexpected)
+    result = runner.invoke(cli.app, ["sync", *command, "--catch-up", other])
+    assert result.exit_code == 2
+    assert "--catch-up cannot be combined" in result.output
 
 
 def test_auth_check_uses_explicit_credentials(paths, monkeypatch) -> None:
@@ -83,6 +125,7 @@ def test_sync_collection_commands_forward_article_backfill(
         full,
         backfill=False,
         head_only=False,
+        catch_up=False,
         limit=None,
         config=None,
         auth_bundle=None,
@@ -131,9 +174,7 @@ def test_sync_all_forwards_article_backfill(paths, monkeypatch, subcommand) -> N
 
     async def fake_sync_all(
         *,
-        full,
-        backfill=False,
-        head_only=False,
+        mode,
         limit=None,
         config=None,
         auth_bundle=None,
@@ -142,9 +183,7 @@ def test_sync_all_forwards_article_backfill(paths, monkeypatch, subcommand) -> N
     ):
         forwarded.update(
             {
-                "full": full,
-                "backfill": backfill,
-                "head_only": head_only,
+                "mode": mode,
                 "limit": limit,
                 "followups": followups,
             }
@@ -161,9 +200,7 @@ def test_sync_all_forwards_article_backfill(paths, monkeypatch, subcommand) -> N
 
     assert result.exit_code == 2, result.output
     assert forwarded == {
-        "full": False,
-        "backfill": True,
-        "head_only": False,
+        "mode": SyncMode.BACKFILL,
         "limit": None,
         "followups": cli_imports.SyncFollowupPlan(),
     }
@@ -185,9 +222,7 @@ def test_sync_default_runs_sync_all_with_full_followups(paths, monkeypatch) -> N
 
     async def fake_sync_all(
         *,
-        full,
-        backfill=False,
-        head_only=False,
+        mode,
         limit=None,
         config=None,
         auth_bundle=None,
@@ -196,9 +231,7 @@ def test_sync_default_runs_sync_all_with_full_followups(paths, monkeypatch) -> N
     ):
         forwarded.update(
             {
-                "full": full,
-                "backfill": backfill,
-                "head_only": head_only,
+                "mode": mode,
                 "limit": limit,
                 "followups": followups,
             }
@@ -218,9 +251,7 @@ def test_sync_default_runs_sync_all_with_full_followups(paths, monkeypatch) -> N
 
     assert result.exit_code == 0
     assert forwarded == {
-        "full": False,
-        "backfill": False,
-        "head_only": False,
+        "mode": SyncMode.INCREMENTAL,
         "limit": None,
         "followups": cli_imports.SyncFollowupPlan(),
     }
@@ -242,9 +273,7 @@ def test_sync_default_skip_flags_disable_selected_followups(paths, monkeypatch) 
 
     async def fake_sync_all(
         *,
-        full,
-        backfill=False,
-        head_only=False,
+        mode,
         limit=None,
         config=None,
         auth_bundle=None,
@@ -285,6 +314,7 @@ def test_sync_likes_forwards_head_only(paths, monkeypatch) -> None:
         full,
         backfill=False,
         head_only=False,
+        catch_up=False,
         limit=None,
         config=None,
         auth_bundle=None,
@@ -428,7 +458,10 @@ def test_sync_modifiers_at_the_execution_command_are_preserved(paths, monkeypatc
     result = runner.invoke(cli.app, ["sync", *subcommand, "--full", "--skip-media", "--limit", "0"])
 
     assert result.exit_code == 0, result.output
-    assert forwarded["full"] is True
+    if subcommand in ([], ["all"]):
+        assert forwarded["mode"] is SyncMode.FULL
+    else:
+        assert forwarded["full"] is True
     assert forwarded["limit"] == 0
     assert forwarded["followups"].media is False
     assert forwarded["followups"].threads is True

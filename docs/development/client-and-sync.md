@@ -27,9 +27,14 @@ A collection stores a head anchor plus older-history cursor/incomplete state. A 
 | Normal | Fetch recent posts and continue eligible older history. |
 | `--head-only` | Run the head pass only. Each page's commit clears the saved backfill cursor, so stopping early leaves no older-history walk to resume. |
 | `--backfill` | Continue past known posts to repair gaps and extend history. |
+| `--catch-up` | Stop Likes after two consecutive nonempty pages contain only likes from complete exports. Other collections and imports without eligible export evidence backfill normally. |
 | `--full` | Reset targeted sync state before walking the collection again. |
 
 Requested flags become one `SyncMode` before preflight, so an impossible request stops before any request or write: `--head-only` is incompatible with `--full`, `--backfill`, and `--article-backfill`, and `--limit` can't be negative. `--full` with `--backfill` is a full run. `sync/steps.py` declares each sync step once for the plan and the runner. A page limit bounds collection-page work, not the detail/media/tagging follow-ups. `sync` and `sync all` use `sync.collections`; individual subcommands target only their named collection. With a subcommand, options belong after its name (`sync likes --skip-media`); explicitly supplied parent options are rejected before configuration or job setup. Each subcommand's help lists its supported options.
+
+`--catch-up` cannot be combined with another sync mode. Its imported-ID snapshot comes from immutable `XArchiveLikes` captures belonging to completed, nonpartial exports with every declared Likes part captured and its declared count matching. It intersects those IDs with saved like memberships; enrichment changing a membership's source does not remove it from the snapshot. Sampled or incomplete imports cannot establish overlap. Each qualifying page must add an ID not already seen in the run; a repeated page does not advance the streak. A page containing a nonimported like resets the streak, even if that like was fetched earlier in the run.
+
+Catch-up restarts at the head and ignores a prior head anchor, so retrying a bounded or interrupted run cannot stop at its own partial head. Reaching overlap commits the final page and clears the older-history cursor atomically, without resuming a prior backfill. Reaching a page limit before overlap retains the current continuation cursor. Subsequent normal syncs use the new head anchor. The overlap window is a heuristic; an explicit backfill remains available to search older history for gaps.
 
 ## Page writes
 

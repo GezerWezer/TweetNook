@@ -37,6 +37,7 @@ These apply to `sync`, `sync all`, and the named collection subcommands. `--head
 | --- | --- |
 | `--full` | Restart the targeted collections' saved sync progress, keeping archived posts. |
 | `--backfill` | Continue through known posts to fill gaps and older history. |
+| `--catch-up` | Stop Likes after two consecutive pages contain only likes from complete imported exports; otherwise backfill normally. Cannot be combined with other sync modes. |
 | `--head-only` | Fetch recent posts only and clear the saved older-history position. |
 | `--limit N` | Fetch at most N timeline pages per collection. |
 | `--skip-threads` | Leave conversation expansion for later. |
@@ -51,7 +52,7 @@ These apply to `sync`, `sync all`, and the named collection subcommands. `--head
 
 `tweetnook import x-archive PATH` accepts a ZIP or extracted directory. The import flags are `--offline`, `--defer-followup`, `--regen`, `--enrich`/`--no-enrich`, `--detail-lookups N`, `--sample-limit N`, and `--debug`. [Importing](importing.md#import-options) explains their effects, including which choices still contact X.
 
-`tweetnook import enrich --limit N` limits imported post completion before an unrestricted sync of the selected collections. Leave the limit out to process every imported post currently eligible for completion.
+`tweetnook import enrich --limit N` limits imported post completion before catching up Likes and backfilling the other selected collections. The limit does not bound timeline pages. Leave it out to process every imported post currently eligible for completion.
 
 ## Post details and checks
 

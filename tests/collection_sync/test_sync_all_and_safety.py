@@ -37,7 +37,6 @@ async def test_sync_all_aborts_on_failed_preflight_without_writes(paths, config:
 
     with pytest.raises(RemotePreflightError):
         await sync_all(
-            full=False,
             limit=None,
             config=config,
             paths=paths,
@@ -68,7 +67,6 @@ async def test_sync_all_reports_partial_runtime_failure(paths, config: AppConfig
         return httpx.Response(500, request=request)
 
     outcome = await sync_all(
-        full=False,
         limit=None,
         config=config,
         paths=paths,
@@ -118,7 +116,6 @@ async def test_sync_all_limit_applies_per_collection(paths, config: AppConfig) -
         raise AssertionError(f"unexpected request {operation} {cursor}")
 
     outcome = await sync_all(
-        full=False,
         limit=1,
         config=config,
         paths=paths,
@@ -157,7 +154,6 @@ async def test_sync_all_shared_preflight_probes_once_per_collection(
         raise AssertionError(f"unexpected request {operation} {cursor}")
 
     outcome = await sync_all(
-        full=False,
         limit=1,
         config=config,
         paths=paths,
@@ -184,7 +180,6 @@ async def test_sync_all_follows_the_configured_collections(paths, config: AppCon
         return httpx.Response(200, json=make_likes_response(["10"]), request=request)
 
     outcome = await sync_all(
-        full=False,
         limit=1,
         config=config,
         paths=paths,

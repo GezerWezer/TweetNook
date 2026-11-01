@@ -14,6 +14,7 @@ from tweetnook.cli import enrichment as cli_enrichment
 from tweetnook.cli import imports as cli_imports
 from tweetnook.config import AppConfig
 from tweetnook.jobs.pipeline import PipelineReporter
+from tweetnook.sync.collection import SyncMode
 
 
 @pytest.mark.parametrize(
@@ -354,8 +355,7 @@ def test_import_enrich_runs_followup_for_existing_imports(paths, monkeypatch, co
 
     async def fake_sync_all(**kwargs):
         assert captured["limit"] == 50
-        assert kwargs["backfill"] is True
-        assert kwargs["full"] is False
+        assert kwargs["mode"] is SyncMode.CATCH_UP
         assert kwargs["limit"] is None
         assert kwargs["config"].sync.collections == collections
         assert kwargs["followups"].threads

@@ -10,6 +10,17 @@ from tests.conftest import patch_cli
 from tweetnook.cli import common as cli_common
 
 
+@pytest.mark.parametrize("command", [[], ["all"], ["likes"], ["bookmarks"], ["tweets"]])
+def test_sync_catch_up_help_describes_import_overlap(command):
+    result = runner.invoke(cli.app, ["sync", *command, "--help"])
+    assert result.exit_code == 0
+    text = " ".join(result.stdout.replace("│", " ").split())
+    assert "--catch-up" in text
+    assert "complete export import" in text
+    assert "two consecutive pages" in text
+    assert "backfill normally" in text
+
+
 def test_version_option_prints_version_text(monkeypatch: pytest.MonkeyPatch) -> None:
     patch_cli(
         monkeypatch,
@@ -182,7 +193,7 @@ def test_import_enrich_help_describes_unbounded_limit() -> None:
     assert "eligible when the command starts" in " ".join(result.stdout.split())
     assert "--limit" in result.stdout
     assert "Omit to process every currently eligible row" in " ".join(result.stdout.split())
-    assert "then sync the configured collections past saved tweets" in " ".join(
+    assert "then catch up imported Likes and backfill the other configured collections" in " ".join(
         result.stdout.split()
     )
 

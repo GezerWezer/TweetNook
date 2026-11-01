@@ -36,7 +36,7 @@ If import enrichment or media fails or stops after local ingest, the saved archi
 
 ## Resuming imports
 
-`import enrich` takes a stable command-start set of eligible rows. With no limit it processes that set; a limit bounds only detail completion. Afterward it calls a backfill-enabled sync of `config.sync.collections` with no page limit to repair gaps. A bounded detail invocation can therefore still lead to substantial timeline work.
+`import enrich` takes a stable command-start set of eligible rows. With no limit it processes that set; a limit bounds only detail completion. Afterward it calls a catch-up sync of `config.sync.collections` with no page limit: complete Likes exports supply the overlap boundary, while other collections and incomplete imports retain the full history walk. Ordinary CLI import reconciliation also uses catch-up for Likes. A bounded detail invocation can therefore still lead to substantial timeline work.
 
 `run_import_followup` saves the enrichment counts on its manifests however it ends, for both a fresh import and `import enrich`. Interruption preserves completed rows and reports remaining incomplete work. Aborted or inaccessible detail results retain reasons and retry eligibility. Authentication and repeated-focal-absence errors stop the relevant work without turning transport failures into unavailable posts.
 

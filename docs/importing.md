@@ -67,6 +67,8 @@ tweetnook import enrich
 
 Both Enrich archive and Sync now require X credentials. `import enrich --limit 100` completes at most 100 eligible imported posts before syncing your configured collections; the limit doesn't cap that sync. Without credentials, you can continue browsing and downloading media. A deferred import can also fill public details through FxTwitter, but posts needing account access must wait until you connect.
 
+After a complete export import, the first Likes sync catches up newer likes and stops after two consecutive pages contain only imported likes. This overlap is a heuristic; use `tweetnook sync likes --backfill` to look for gaps deeper in history. You can request the shortcut explicitly with `tweetnook sync likes --catch-up`. Partial or sampled exports and other collections keep the full history walk.
+
 ## After importing
 
 Some posts may remain incomplete, protected or unavailable. TweetNook keeps what it has; an unavailable post doesn't mean the whole import failed. Later runs can add details when they're accessible.

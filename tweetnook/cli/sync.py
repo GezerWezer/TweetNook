@@ -21,7 +21,7 @@ from tweetnook.cli.common import (
 )
 from tweetnook.config import initialize_config as load_config
 from tweetnook.core.exceptions import ConfigError, TweetNookError
-from tweetnook.sync.collection import sync_all, sync_collection
+from tweetnook.sync.collection import SyncMode, parse_sync_mode, sync_all, sync_collection
 from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline
 
 SYNC_GROUP_HELP = (
@@ -48,6 +48,11 @@ HEAD_ONLY_HELP = (
     "Clear any saved backfill cursor for the targeted collection and run only the head pass. "
     "Does not resume older historical backfill state."
 )
+CATCH_UP_HELP = (
+    "Catch up Likes after a complete export import; stop after two consecutive pages "
+    "of imported likes. Otherwise, including other collections, backfill normally."
+)
+SYNC_CATCH_UP_OPTION = Annotated[bool, typer.Option("--catch-up", help=CATCH_UP_HELP)]
 SYNC_LIMIT_HELP = "Maximum number of pages to fetch for this run."
 SYNC_SKIP_RESURRECTION_HELP = (
     "Skip bounded unavailable-tweet resurrection checks after sync. Sync only runs them "
@@ -83,6 +88,20 @@ SYNC_SKIP_UNFURL_OPTION = Annotated[
 SYNC_SKIP_THREADS_OPTION = Annotated[
     bool, typer.Option("--skip-threads", help="Skip thread expansion pass.")
 ]
+
+
+def _requested_mode(
+    *, full: bool, backfill: bool, head_only: bool, catch_up: bool, limit: int | None
+) -> SyncMode:
+    try:
+        return parse_sync_mode(
+            full=full, backfill=backfill, head_only=head_only, catch_up=catch_up, limit=limit
+        )
+    except ConfigError as exc:
+        if catch_up:
+            raise UsageError(str(exc)) from exc
+        configure_logging().print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
 
 
 def _run_sync_command(
@@ -146,9 +165,7 @@ def _sync_followup_plan(
 
 def _run_sync_all_command(
     *,
-    full: bool,
-    backfill: bool,
-    head_only: bool,
+    mode: SyncMode,
     limit: int | None,
     skip_resurrection: bool,
     skip_articles: bool,
@@ -168,16 +185,14 @@ def _run_sync_all_command(
     console, outcome = _run_sync_command(
         collections=None,
         followups=followups,
-        head_only=head_only,
+        head_only=mode is SyncMode.HEAD_ONLY,
         runner=lambda config, auth_bundle, runner_console: _run_with_depth(
             config,
             auth_bundle,
             runner_console,
             max_linked_depth,
             reply_linked_depth,
-            full,
-            backfill,
-            head_only,
+            mode,
             limit,
             followups,
         ),
@@ -195,17 +210,13 @@ def _run_with_depth(
     runner_console,
     max_linked_depth,
     reply_linked_depth,
-    full,
-    backfill,
-    head_only,
+    mode,
     limit,
     followups,
 ):
     apply_sync_depth_options(config, max_linked_depth, reply_linked_depth)
     return sync_all(
-        full=full,
-        backfill=backfill,
-        head_only=head_only,
+        mode=mode,
         limit=limit,
         config=config,
         auth_bundle=auth_bundle,
@@ -224,6 +235,7 @@ def sync_default(
     ] = False,
     article_backfill: SYNC_ARTICLE_BACKFILL_OPTION = False,
     head_only: SYNC_HEAD_ONLY_OPTION = False,
+    catch_up: SYNC_CATCH_UP_OPTION = False,
     limit: Annotated[int | None, typer.Option("--limit", help=SYNC_LIMIT_HELP)] = None,
     skip_resurrection: SYNC_SKIP_RESURRECTION_OPTION = False,
     skip_articles: SYNC_SKIP_ARTICLES_OPTION = False,
@@ -248,9 +260,13 @@ def sync_default(
             )
         return
     _run_sync_all_command(
-        full=full,
-        backfill=backfill or article_backfill,
-        head_only=head_only,
+        mode=_requested_mode(
+            full=full,
+            backfill=backfill or article_backfill,
+            head_only=head_only,
+            catch_up=catch_up,
+            limit=limit,
+        ),
         limit=limit,
         skip_resurrection=skip_resurrection,
         skip_articles=skip_articles,
@@ -277,6 +293,7 @@ def _register_sync_collection_command(collection: str):
         ] = False,
         article_backfill: SYNC_ARTICLE_BACKFILL_OPTION = False,
         head_only: SYNC_HEAD_ONLY_OPTION = False,
+        catch_up: SYNC_CATCH_UP_OPTION = False,
         limit: Annotated[int | None, typer.Option("--limit", help=SYNC_LIMIT_HELP)] = None,
         skip_resurrection: SYNC_SKIP_RESURRECTION_OPTION = False,
         skip_articles: SYNC_SKIP_ARTICLES_OPTION = False,
@@ -284,6 +301,13 @@ def _register_sync_collection_command(collection: str):
         skip_unfurl: SYNC_SKIP_UNFURL_OPTION = False,
         skip_threads: SYNC_SKIP_THREADS_OPTION = False,
     ) -> None:
+        _requested_mode(
+            full=full,
+            backfill=backfill or article_backfill,
+            head_only=head_only,
+            catch_up=catch_up,
+            limit=limit,
+        )
         followups = _sync_followup_plan(
             skip_resurrection=skip_resurrection,
             skip_articles=skip_articles,
@@ -300,6 +324,7 @@ def _register_sync_collection_command(collection: str):
                 full=full,
                 backfill=backfill or article_backfill,
                 head_only=head_only,
+                catch_up=catch_up,
                 limit=limit,
                 config=config,
                 auth_bundle=auth_bundle,
@@ -330,6 +355,7 @@ def sync_everything(
     ] = False,
     article_backfill: SYNC_ARTICLE_BACKFILL_OPTION = False,
     head_only: SYNC_HEAD_ONLY_OPTION = False,
+    catch_up: SYNC_CATCH_UP_OPTION = False,
     limit: Annotated[int | None, typer.Option("--limit", help=SYNC_LIMIT_HELP)] = None,
     skip_resurrection: SYNC_SKIP_RESURRECTION_OPTION = False,
     skip_articles: SYNC_SKIP_ARTICLES_OPTION = False,
@@ -340,9 +366,13 @@ def sync_everything(
     reply_linked_depth: SYNC_REPLY_LINKED_DEPTH_OPTION = None,
 ) -> None:
     _run_sync_all_command(
-        full=full,
-        backfill=backfill or article_backfill,
-        head_only=head_only,
+        mode=_requested_mode(
+            full=full,
+            backfill=backfill or article_backfill,
+            head_only=head_only,
+            catch_up=catch_up,
+            limit=limit,
+        ),
         limit=limit,
         skip_resurrection=skip_resurrection,
         skip_articles=skip_articles,

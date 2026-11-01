@@ -135,6 +135,8 @@ Like order derives from immutable live/archive observations rather than invented
 
 `completed_manifests()` selects completed imports for deferred enrichment. Rehydration exposes its membership work total through `rehydration_work_total()`; callers do not choose record predicates or count detail captures as membership progress.
 
+`get_complete_import_like_ids()` reads immutable export manifests and Likes captures to snapshot imported membership for catch-up sync. Only completed, nonpartial exports with every declared Likes part saved and its declared count matching qualify. A later source upgrade does not change this import evidence.
+
 ## Maintenance
 
 `db check` uses SQLite's quick check; `db check --full` uses its integrity check. `optimize` handles SQLite space/query/index maintenance. Jobs do not perform automatic mid-run or interrupt compaction. Explicit optimization and close-time planner maintenance are separate from job progress.

@@ -34,6 +34,7 @@ from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 from tweetnook.storage import ArchiveStore
+from tweetnook.storage.like_order import page_observations
 from tweetnook.sync.followups import SyncFollowupPlan, run_auto_followups
 from tweetnook.sync.steps import (
     add_backfill_step,
@@ -49,15 +50,23 @@ from tweetnook.sync.steps import (
 class SyncMode(StrEnum):
     INCREMENTAL = "incremental"
     HEAD_ONLY = "head_only"
+    CATCH_UP = "catch_up"
     BACKFILL = "backfill"
     FULL = "full"
 
 
-def parse_sync_mode(*, full: bool, backfill: bool, head_only: bool, limit: int | None) -> SyncMode:
+def parse_sync_mode(
+    *, full: bool, backfill: bool, head_only: bool, limit: int | None, catch_up: bool = False
+) -> SyncMode:
     """Refuse an impossible request before preflight or any write acts on it."""
     if head_only and (full or backfill):
         raise ConfigError(
             "--head-only cannot be combined with --full, --backfill, or --article-backfill."
+        )
+    if catch_up and (full or backfill or head_only):
+        raise ConfigError(
+            "--catch-up cannot be combined with --full, --backfill, --article-backfill, "
+            "or --head-only."
         )
     if limit is not None and limit < 0:
         raise ConfigError("--limit cannot be negative.")
@@ -65,6 +74,8 @@ def parse_sync_mode(*, full: bool, backfill: bool, head_only: bool, limit: int |
         return SyncMode.FULL
     if backfill:
         return SyncMode.BACKFILL
+    if catch_up:
+        return SyncMode.CATCH_UP
     return SyncMode.HEAD_ONLY if head_only else SyncMode.INCREMENTAL
 
 
@@ -327,6 +338,10 @@ def _store_state_for_page(
 ) -> tuple[str | None, bool]:
     if mode is SyncMode.HEAD_ONLY:
         return None, False
+    if mode is SyncMode.CATCH_UP:
+        if stop_reason in {"import-overlap", "empty", "head-complete"}:
+            return None, False
+        return next_cursor, bool(next_cursor)
     if not is_head_pass:
         if stop_reason in {"empty", "backfill-complete"}:
             return None, False
@@ -358,6 +373,7 @@ def _rate_limit_context(response: httpx.Response) -> str:
 def _stop_summary(reason: str) -> str:
     return {
         "duplicate": "archive is up to date",
+        "import-overlap": "reached two consecutive pages of imported likes",
         "empty": "Twitter/X returned no tweets",
         "head-complete": "reached the end of the collection",
         "backfill-complete": "older history is complete",
@@ -393,6 +409,7 @@ async def _run_pass(
     console: Console,
     sleep: Callable[[float], Awaitable[None]],
     client: httpx.AsyncClient,
+    imported_like_ids: frozenset[str] = frozenset(),
     pipeline_step_key: str | None = None,
 ) -> PassResult:
     pages_fetched = 0
@@ -401,6 +418,7 @@ async def _run_pass(
     latest_head_id = head_id
     stop_reason = "empty"
     seen_ids = initial_seen_ids
+    imported_pages = 0
     pipeline = current_pipeline()
 
     while True:
@@ -445,6 +463,14 @@ async def _run_pass(
             ),
         )
         duplicate_seen = False
+        if mode is SyncMode.CATCH_UP:
+            # Re-liked export posts can occur among new likes. Require sustained
+            # overlap, and never count posts learned during this run as imported.
+            known_page = bool(tweets) and all(
+                tweet_id in imported_like_ids for tweet_id, _, _ in page_observations(payload)
+            )
+            fresh_page = any(tweet.tweet_id not in seen_ids for tweet in tweets)
+            imported_pages = imported_pages + 1 if known_page and fresh_page else 0
         if is_head_pass and stop_on_duplicate:
             # Imported/detail-enriched members do not prove timeline coverage.
             # The previous timeline head is the incremental sync boundary.
@@ -459,6 +485,8 @@ async def _run_pass(
             stop_reason = "empty"
         elif duplicate_seen:
             stop_reason = "duplicate"
+        elif imported_pages >= 2:
+            stop_reason = "import-overlap"
         elif next_cursor is None:
             stop_reason = "head-complete" if is_head_pass else "backfill-complete"
         elif count_limit is not None and pages_fetched + 1 >= count_limit:
@@ -539,6 +567,7 @@ async def sync_collection(
     full: bool,
     backfill: bool = False,
     head_only: bool = False,
+    catch_up: bool = False,
     resume_backfill: bool = True,
     limit: int | None = None,
     config: AppConfig | None = None,
@@ -556,7 +585,9 @@ async def sync_collection(
         paths = paths or loaded_paths
     paths = ensure_paths(paths)
     console = console or Console(stderr=True)
-    mode = parse_sync_mode(full=full, backfill=backfill, head_only=head_only, limit=limit)
+    mode = parse_sync_mode(
+        full=full, backfill=backfill, head_only=head_only, catch_up=catch_up, limit=limit
+    )
 
     preflight = await run_preflight(
         config=config,
@@ -615,6 +646,14 @@ async def _sync_collection_ready(
     async with locked_archive_job(config=config, paths=paths, console=console, create=True) as job:
         store = job.store
         store.ensure_archive_owner_id(preflight.auth.user_id)
+        imported_like_ids = frozenset()
+        if mode is SyncMode.CATCH_UP:
+            if collection == "likes":
+                imported_like_ids = store.get_complete_import_like_ids()
+            # Only a complete Likes export supports the shortcut. Other collections
+            # and incomplete imports retain the import follow-up's history walk.
+            if not imported_like_ids:
+                mode = SyncMode.BACKFILL
         initial_collection_count = store.count_export_rows(COLLECTION_TO_STORAGE[collection])
 
         if mode is SyncMode.FULL:
@@ -662,6 +701,7 @@ async def _sync_collection_ready(
                 console=console,
                 sleep=sleep,
                 client=client,
+                imported_like_ids=imported_like_ids,
                 pipeline_step_key=head_step,
             )
             if not combine_pipeline_passes:
@@ -678,6 +718,7 @@ async def _sync_collection_ready(
             resume_saved_backfill = (
                 resume_backfill
                 and mode is not SyncMode.HEAD_ONLY
+                and mode is not SyncMode.CATCH_UP
                 and prior_backfill_incomplete
                 and remaining != 0
             )
@@ -783,9 +824,7 @@ async def _sync_collection_ready(
 
 async def sync_all(
     *,
-    full: bool,
-    backfill: bool = False,
-    head_only: bool = False,
+    mode: SyncMode = SyncMode.INCREMENTAL,
     limit: int | None,
     config: AppConfig | None = None,
     paths: XDGPaths | None = None,
@@ -801,7 +840,8 @@ async def sync_all(
         paths = paths or loaded_paths
     paths = ensure_paths(paths)
     console = console or Console(stderr=True)
-    mode = parse_sync_mode(full=full, backfill=backfill, head_only=head_only, limit=limit)
+    if limit is not None and limit < 0:
+        raise ConfigError("--limit cannot be negative.")
     selected = list(config.sync.collections)
     preflight = await run_preflight(
         config=config,
