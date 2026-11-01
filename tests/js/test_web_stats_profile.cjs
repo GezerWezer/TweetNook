@@ -396,6 +396,27 @@ test('analytics markup exposes the Archive status cards and reason breakdown', (
     assert.match(statsWatcher, /this\.unlockModalScroll\(\);/);
 });
 
+test('collection summary labels and links survive a blocked analytics script URL', () => {
+    const context = browserContext();
+    const allowed = pageScripts().filter(name => !/analytics\.js$/.test(name));
+    const { nookCollectionLabel, nookCollectionRange, nookOpenCollection } = loadScripts(
+        context,
+        allowed,
+        '({nookCollectionLabel, nookCollectionRange, nookOpenCollection})',
+    );
+    const row = { collection: 'Authored Tweets', raw_type: 'tweet', oldest: '-', newest: '-' };
+    assert.equal(nookCollectionLabel(row), 'Your tweets');
+    assert.equal(nookCollectionLabel({ collection: 'Likes' }), 'Likes');
+    assert.equal(nookCollectionRange(row), 'Nothing saved yet');
+    const actions = [];
+    context.window.scrollTo = () => {};
+    nookOpenCollection({
+        closeStatsModal: () => actions.push('closed'),
+        selectFeedOption: (...args) => actions.push(args),
+    }, row);
+    assert.deepEqual(actions, ['closed', ['collection', 'tweets']]);
+});
+
 test('reply-recipient markup opens profile cards on every tweet surface', () => {
     const html = pageHtml();
 

@@ -1,4 +1,4 @@
-// Analytics modal helpers: collection links, tag shortcuts, scrolling.
+// Archive summary helpers: collection links, tag shortcuts, scrolling.
 // Reads the stats snapshot and calls app actions only.
 const NOOK_COLLECTION_FEEDS = { bookmark: 'bookmarks', like: 'likes', tweet: 'tweets', Bookmarks: 'bookmarks', Likes: 'likes', 'Authored Tweets': 'tweets' };
 
