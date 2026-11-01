@@ -995,9 +995,10 @@ class PipelineReporter:
         header.add_column(ratio=1)
         header.add_column(justify="right", no_wrap=True)
         active = self.active_step
+        succeeded = self._outcome is not None and self._outcome.ok
         if self._finished:
-            status = "complete" if self._success else "failed"
-            status_style = "green" if self._success else "red"
+            status = "complete" if succeeded else "failed"
+            status_style = "green" if succeeded else "red"
         elif active is not None:
             active_index = self.steps.index(active) + 1
             status = f"step {active_index}/{len(self.steps)}"
@@ -1057,6 +1058,6 @@ class PipelineReporter:
 
         parts: list[RenderableType] = [header, Text(), steps]
         if self._finished and self._final_summary:
-            style = "green" if self._success else "red"
+            style = "green" if succeeded else "red"
             parts.extend((Text(), Text(self._final_summary, style=style)))
         return _ResponsivePipeline(Group(*parts), self._issues_panel())

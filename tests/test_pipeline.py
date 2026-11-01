@@ -46,6 +46,19 @@ def test_only_critical_step_failures_override_run_success(tmp_path, recoverable,
     assert snapshot["steps"][1]["reason"] == "Could not finish"
 
 
+@pytest.mark.parametrize(("success", "status"), [(True, "complete"), (False, "failed")])
+def test_terminal_display_draws_the_finished_run(success, status):
+    output = StringIO()
+    console = Console(file=output, force_terminal=True, color_system=None, width=100)
+    with PipelineReporter(console, "sync", interactive=True) as run:
+        run.add_step("media", "Media", total=1, unit="items")
+        run.complete_step("media", "Saved media")
+        run.finish("All finished" if success else "Could not finish", success=success)
+    rendered = output.getvalue()
+    assert status in rendered
+    assert ("All finished" if success else "Could not finish") in rendered
+
+
 def test_fatal_error_after_recoverable_step_still_fails_run(tmp_path):
     path = tmp_path / "activity-status.json"
     with pytest.raises(RuntimeError, match="writer stopped"):
