@@ -15,6 +15,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from tweetnook.config import ScheduleConfig, config_error_message
+from tweetnook.core.process_identity import ProcessIdentity
 from tweetnook.jobs.activity_history import (
     latest_finished_snapshot,
     list_runs,
@@ -164,8 +165,16 @@ def activity_status_payload(
                 last_snapshot = fallback
     return {
         "active": snapshot is not None,
-        "snapshot": snapshot,
-        "last_snapshot": last_snapshot,
+        "snapshot": (
+            {key: value for key, value in snapshot.items() if key != "process_identity"}
+            if snapshot is not None
+            else None
+        ),
+        "last_snapshot": (
+            {key: value for key, value in last_snapshot.items() if key != "process_identity"}
+            if last_snapshot is not None
+            else None
+        ),
         "schedule": _schedule_status(),
     }
 
@@ -238,10 +247,12 @@ def stop_activity(
         )
     try:
         pid = int(snapshot["pid"])
-        if snapshot.get("origin") in {"web", "schedule"} and hasattr(os, "killpg"):
-            os.killpg(pid, signal.SIGINT)
-        else:
-            os.kill(pid, signal.SIGINT)
+        identity = ProcessIdentity.from_record(snapshot.get("process_identity"))
+        if identity is None or identity.pid != pid:
+            raise ValueError("The worker identity is not recorded.")
+        identity.send_signal(
+            signal.SIGINT, process_group=snapshot.get("origin") in {"web", "schedule"}
+        )
     except (KeyError, TypeError, ValueError, ProcessLookupError, PermissionError, OSError) as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

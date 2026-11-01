@@ -17,6 +17,9 @@ import tweetnook.cli.web as cli_web
 import tweetnook.web.address as web_address
 from tests.conftest import patch_cli
 from tweetnook.config import AppConfig, XDGPaths
+from tweetnook.core import process_identity as process_ids
+from tweetnook.core.process_identity import ProcessIdentity
+from tweetnook.web import processes as web_processes
 
 runner = CliRunner()
 
@@ -37,6 +40,29 @@ def _stub_start_prerequisites(monkeypatch, config: AppConfig, paths: XDGPaths) -
     monkeypatch.setattr(cli_web, "_require_web_dependencies", lambda _console: None)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "_find_pid_by_port", lambda _port: None)
+    monkeypatch.setattr(cli_web, "process_identity", lambda pid: ProcessIdentity(pid, "birth", pid))
+
+
+def _record_process(monkeypatch, paths, pid):
+    identity = ProcessIdentity(pid, "birth", pid)
+
+    def inspect(actual):
+        return identity if actual == pid else None
+
+    monkeypatch.setattr(cli_web, "process_identity", inspect)
+    monkeypatch.setattr(process_ids, "process_identity", inspect)
+    monkeypatch.setattr(web_processes, "process_identity", inspect)
+    monkeypatch.setattr(
+        process_ids.os, "pidfd_open", lambda _pid: os.open(os.devnull, os.O_RDONLY), raising=False
+    )
+    monkeypatch.setattr(
+        process_ids.signal,
+        "pidfd_send_signal",
+        lambda _fd, sig: os.kill(pid, sig),
+        raising=False,
+    )
+    web_processes.record_web_process(paths.data_dir, identity, 8000)
+    return identity
 
 
 def test_default_web_host_accepts_lan_connections() -> None:
@@ -105,6 +131,7 @@ def test_is_running_rejects_nonpositive_pids_without_signaling(monkeypatch, pid:
 
 
 def test_is_running_checks_positive_pid_with_signal_zero(monkeypatch) -> None:
+    monkeypatch.setattr(cli_web, "process_has_exited", lambda _pid: False)
     calls: list[tuple[int, int]] = []
     monkeypatch.setattr(
         cli_web.os,
@@ -125,6 +152,8 @@ def test_is_running_checks_positive_pid_with_signal_zero(monkeypatch) -> None:
     ],
 )
 def test_is_running_interprets_signal_errors(monkeypatch, error, expected: bool) -> None:
+    monkeypatch.setattr(cli_web, "process_has_exited", lambda _pid: False)
+
     def fail(_pid, _sig):
         raise error
 
@@ -238,6 +267,7 @@ def test_start_returns_success_when_recorded_server_is_running(monkeypatch, tmp_
     config, paths = _configured(tmp_path, archive=True)
     _stub_start_prerequisites(monkeypatch, config, paths)
     cli_web._get_pid_file(paths.data_dir).write_text("4321")
+    _record_process(monkeypatch, paths, 4321)
     monkeypatch.setattr(cli_web, "_is_running", lambda pid: pid == 4321)
     monkeypatch.setattr(
         cli_web.subprocess,
@@ -507,6 +537,7 @@ def test_status_reports_recorded_running_server(monkeypatch, tmp_path: Path) -> 
     config.web.port = 9123
     pid_file = cli_web._get_pid_file(paths.data_dir)
     pid_file.write_text("123")
+    _record_process(monkeypatch, paths, 123)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "_is_running", lambda pid: pid == 123)
     monkeypatch.setattr(
@@ -554,8 +585,9 @@ def test_status_reports_stopped_and_cleans_stale_pid(
     assert not pid_file.exists()
 
 
-def test_status_falls_back_to_running_port_process(monkeypatch, tmp_path: Path) -> None:
+def test_status_discovers_recorded_foreground_server(monkeypatch, tmp_path: Path) -> None:
     config, paths = _configured(tmp_path)
+    _record_process(monkeypatch, paths, 456)
     cli_web._get_pid_file(paths.data_dir).write_text("stale")
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "_find_pid_by_port", lambda _port: 456)
@@ -573,6 +605,8 @@ def test_stop_cleans_stale_pid_without_signaling(monkeypatch, tmp_path: Path) ->
     pid_file.write_text("123")
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "_running_pid", lambda *_args: None)
+    monkeypatch.setattr(cli_web, "_is_running", lambda _pid: False)
+    monkeypatch.setattr(cli_web, "_find_pid_by_port", lambda _port: None)
     monkeypatch.setattr(
         cli_web.os,
         "kill",
@@ -590,6 +624,8 @@ def test_stop_sends_term_and_stops_without_waiting(monkeypatch, tmp_path: Path) 
     config, paths = _configured(tmp_path)
     pid_file = cli_web._get_pid_file(paths.data_dir)
     pid_file.write_text("123")
+    _record_process(monkeypatch, paths, 123)
+    monkeypatch.setattr(cli_web, "_wait_for_exit", lambda *_args: True)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "_running_pid", lambda *_args: 123)
     signals: list[tuple[int, signal.Signals]] = []
@@ -617,23 +653,29 @@ def test_stop_waits_then_force_kills_unresponsive_process(monkeypatch, tmp_path:
     config, paths = _configured(tmp_path)
     pid_file = cli_web._get_pid_file(paths.data_dir)
     pid_file.write_text("123")
+    _record_process(monkeypatch, paths, 123)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "_running_pid", lambda *_args: 123)
     signals: list[tuple[int, signal.Signals]] = []
-    sleeps: list[float] = []
+    waits = []
+
+    def wait_for_exit(identity, timeout):
+        waits.append((identity.pid, timeout))
+        return len(waits) == 2
+
+    monkeypatch.setattr(cli_web, "_wait_for_exit", wait_for_exit)
     monkeypatch.setattr(
         cli_web.os,
         "kill",
         lambda pid, sig: signals.append((pid, sig)),
     )
     monkeypatch.setattr(cli_web, "_is_running", lambda _pid: True)
-    monkeypatch.setattr(cli_web.time, "sleep", sleeps.append)
 
     result = runner.invoke(cli_web.web_app, ["stop"])
 
     assert result.exit_code == 0
     assert signals == [(123, signal.SIGTERM), (123, signal.SIGKILL)]
-    assert sleeps == [0.1] * (cli_web.WEB_STOP_TIMEOUT * 10) + [0.5]
+    assert waits == [(123, cli_web.WEB_STOP_TIMEOUT), (123, cli_web.WORKER_KILL_TIMEOUT)]
     assert not pid_file.exists()
 
 
@@ -641,6 +683,7 @@ def test_stop_treats_process_lookup_race_as_success(monkeypatch, tmp_path: Path)
     config, paths = _configured(tmp_path)
     pid_file = cli_web._get_pid_file(paths.data_dir)
     pid_file.write_text("123")
+    _record_process(monkeypatch, paths, 123)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "_running_pid", lambda *_args: 123)
     monkeypatch.setattr(
@@ -660,6 +703,7 @@ def test_stop_reports_signal_error_with_nonzero_exit(monkeypatch, tmp_path: Path
     config, paths = _configured(tmp_path)
     pid_file = cli_web._get_pid_file(paths.data_dir)
     pid_file.write_text("123")
+    _record_process(monkeypatch, paths, 123)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "_running_pid", lambda *_args: 123)
     monkeypatch.setattr(
@@ -672,7 +716,8 @@ def test_stop_reports_signal_error_with_nonzero_exit(monkeypatch, tmp_path: Path
 
     assert result.exit_code == 1
     assert "Error stopping server: denied" in result.stdout
-    assert not pid_file.exists()
+    assert pid_file.read_text() == "123"
+    assert web_processes.recorded_web_process(paths.data_dir, 123) is not None
 
 
 def test_restart_preflights_then_stops_and_starts(monkeypatch, tmp_path: Path) -> None:

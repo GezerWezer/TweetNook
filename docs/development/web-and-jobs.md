@@ -50,7 +50,9 @@ The browser receives live activity over an event stream, with polling as a fallb
 
 Stop requests cooperatively interrupt the owned worker. Shutdown stops scheduling new work, asks the worker to finish, waits within the supervisor's grace period, then tears down background readers and closes the store. The personal-web and system-service timeouts allow that sequence to complete.
 
-Keep process identities scoped to TweetNook. Service updates need to stop/restart the right unit and any owned workers; personal web commands must not mistake a client connection for the listening server.
+`core/process_identity.py` identifies a process by its kernel birth time, including the boot ID on Linux. Personal, foreground and service servers publish archive-scoped `.web-process-PID.json` records; `.web.pid` keeps its plain PID format for service tooling. Personal commands verify the recorded lifetime before signalling and retain the records if stopping fails. A port listener or legacy PID alone cannot authorize a stop: use the original terminal or service manager to stop an unverified server, then start this version.
+
+Activity snapshots carry the worker's kernel identity for fallback Stop requests after a server restart. A legacy snapshot remains readable but cannot authorize signalling. Group interrupts additionally require the verified worker to lead that group. Linux single-process signals use a PID descriptor when the kernel supports it; other signals recheck the lifetime immediately before signalling.
 
 ## Developer replay
 

@@ -1,6 +1,7 @@
 """FastAPI Web server for TweetNook."""
 
 import hashlib
+import os
 import re
 import threading
 from contextlib import ExitStack, asynccontextmanager, suppress
@@ -30,6 +31,7 @@ from tweetnook.web.avatar_cache import AvatarCacheManager
 from tweetnook.web.deps import WebSessionMiddleware, server_state, verify_credentials
 from tweetnook.web.notices import NoticeStore
 from tweetnook.web.page import assemble_page
+from tweetnook.web.processes import forget_web_process, record_web_process
 from tweetnook.web.routes.activity import router as activity_router
 from tweetnook.web.routes.automated_tagging import router as automated_tagging_router
 from tweetnook.web.routes.avatars import router as avatars_router
@@ -469,6 +471,8 @@ def run_server(
 ) -> None:
     import uvicorn
 
+    from tweetnook.core.process_identity import process_identity
+
     host = normalize_listener_host(host)
     upgrade_config(paths)
     server_state["config"] = config
@@ -476,4 +480,12 @@ def run_server(
     server_state["password_hash"] = password_hash
     # Persistent SSE clients must not keep Uvicorn waiting forever before it
     # enters lifespan shutdown and stops the worker (up to another 70 seconds).
-    uvicorn.run(app, host=host, port=port, log_level="info", timeout_graceful_shutdown=5)
+    identity = process_identity(os.getpid())
+    if identity is None:
+        raise RuntimeError("Cannot read the Web server's process identity.")
+    record_web_process(paths.data_dir, identity, port)
+    try:
+        uvicorn.run(app, host=host, port=port, log_level="info", timeout_graceful_shutdown=5)
+    finally:
+        with suppress(OSError):
+            forget_web_process(paths.data_dir, identity)

@@ -23,6 +23,7 @@ from rich.table import Table
 from rich.text import Text
 
 from tweetnook.core.fileio import atomic_write_text
+from tweetnook.core.process_identity import ProcessIdentity, process_identity
 from tweetnook.jobs.outcome import Outcome
 from tweetnook.jobs.resource_failure import STORAGE_RECOVERY, is_storage_exhausted
 
@@ -354,6 +355,7 @@ class PipelineReporter:
     _finished_at_unix: float | None = field(default=None, init=False)
     _run_writer: Any | None = field(default=None, init=False)
     _command_lock: Any | None = field(default=None, init=False)
+    _process_identity: ProcessIdentity | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         if self.spinner_name is None:
@@ -387,6 +389,7 @@ class PipelineReporter:
         try:
             self._started_at = time.monotonic()
             self._started_at_unix = time.time()
+            self._process_identity = process_identity(os.getpid())
             if self.state_path is not None:
                 try:
                     from tweetnook.jobs.activity_history import ActivityRunWriter
@@ -909,10 +912,14 @@ class PipelineReporter:
     def _write_state_snapshot(self, snapshot: dict[str, object] | None = None) -> None:
         if self.state_path is None or self._started_at is None:
             return
+        snapshot = dict(snapshot or self._state_snapshot())
+        snapshot["process_identity"] = (
+            self._process_identity.record() if self._process_identity is not None else None
+        )
         try:
             atomic_write_text(
                 self.state_path,
-                json.dumps(snapshot or self._state_snapshot(), separators=(",", ":")),
+                json.dumps(snapshot, separators=(",", ":")),
                 # Rewritten on every progress update and only ever describes the live command.
                 fsync=False,
                 follow_umask=True,

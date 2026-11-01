@@ -32,7 +32,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `cli/` | User commands, option definitions and terminal reports: one module per command group, with root commands registered in `cli/__init__.py`. |
 | `cli/web.py`, `cli_service.py`, `system_install.py` | Personal server, systemd integration, managed installs and updates. |
 | `config.py` | Pydantic config, defaults, sparse TOML writes, environment overrides and UI schema. |
-| `core/` | Errors (`exceptions.py`), JSON compatibility (`fastjson.py`), process locks (`locking.py`), collection names (`collection_names.py`), redirected test requests and host isolation (`dev_replay.py`) and shared helpers (`utils.py`). |
+| `core/` | Errors (`exceptions.py`), JSON compatibility (`fastjson.py`), process locks (`locking.py`), kernel process identities (`process_identity.py`), collection names (`collection_names.py`), redirected test requests and host isolation (`dev_replay.py`) and shared helpers (`utils.py`). |
 | `core/extractor.py`, `core/media_metadata.py` | Canonical fields, relations, Article structures and media geometry. |
 | `core/unavailability.py` | Reading X's placeholders and tombstones. |
 | `core/timeline_parsing.py` | Timeline/detail parsing and focal-result classification. |
@@ -76,6 +76,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `jobs/supervisor.py`, `jobs/scheduler.py` | Worker/queue ownership and scheduled submission. |
 | `jobs/reminders.py`, `jobs/interactive.py` | Notices and terminal interaction. |
 | `web/server.py`, `web/deps.py` | FastAPI lifecycle, shared state, sessions and archive readiness. |
+| `web/processes.py` | Archive-scoped process records used by personal Web commands and server startup. |
 | `web/runtime_config.py` | Apply saved settings to running services under the shared lifecycle lock. |
 | `web/setup_coordinator.py`, `web/jobs.py` | Setup transitions and validated job-to-CLI mapping. |
 | `web/availability.py`, `web/cards.py`, `web/articles.py`, `web/history.py` | Read presentation and observed history. |
