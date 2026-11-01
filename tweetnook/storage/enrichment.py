@@ -24,6 +24,7 @@ from .common import (
     state_filter,
 )
 from .objects import ObjectsMixin
+from .ownership import worker_changes
 from .record_types import RecordType
 from .records import PageBuffer
 
@@ -53,6 +54,15 @@ def _captured_link_card_tweets(raw_json: Any, wanted: set[str]) -> dict[str, dic
 
 
 class EnrichmentMixin(ChecksMixin, ObjectsMixin):
+    def _worker_result(
+        self, record_type: RecordType, row_key: str, changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        """A complete row carrying one worker's result over everything it doesn't own."""
+        full_row = self._get_row(row_key)
+        if full_row is None:
+            raise KeyError(f"{record_type} row not found: {row_key}")
+        return {**full_row, **worker_changes(record_type, changes), "updated_at": utc_now()}
+
     def backfill_link_card_media(self) -> int:
         """Queue saved card images once, without refetching tweets or rehydrating content."""
         key = "link_card_media_v1"
@@ -267,11 +277,9 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         downloaded_at: str | None,
         download_error: str | None,
     ) -> dict[str, Any]:
-        full_row = self._get_row(row["row_key"])
-        if full_row is None:
-            raise KeyError(f"Media row not found: {row['row_key']}")
-        updated = dict(full_row)
-        updated.update(
+        return self._worker_result(
+            RecordType.MEDIA,
+            row["row_key"],
             {
                 "download_state": download_state,
                 "local_path": local_path,
@@ -284,10 +292,8 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
                 "thumbnail_content_type": thumbnail_content_type,
                 "downloaded_at": downloaded_at,
                 "download_error": download_error,
-                "updated_at": utc_now(),
-            }
+            },
         )
-        return updated
 
     def list_url_rows(
         self,
@@ -338,16 +344,14 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         last_fetched_at: str | None,
         download_error: str | None,
     ) -> dict[str, Any]:
-        full_row = self._get_row(row["row_key"])
-        if full_row is None:
-            raise KeyError(f"URL row not found: {row['row_key']}")
-        updated = dict(full_row)
-        updated.update(
+        return self._worker_result(
+            RecordType.URL,
+            row["row_key"],
             {
                 "http_status": http_status,
                 "final_url": final_url,
                 "canonical_url": canonical_url,
-                "url": canonical_url or updated.get("url"),
+                "url": canonical_url or row.get("url"),
                 "title": title,
                 "description": description,
                 "site_name": site_name,
@@ -355,10 +359,8 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
                 "unfurl_state": unfurl_state,
                 "last_fetched_at": last_fetched_at,
                 "download_error": download_error,
-                "updated_at": utc_now(),
-            }
+            },
         )
-        return updated
 
     def get_article_tweet_ids(
         self,

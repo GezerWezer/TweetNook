@@ -6,8 +6,15 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import make_tweet_detail_response, make_tweet_result, make_video_media
+from tests.conftest import (
+    make_tweet_detail_response,
+    make_tweet_result,
+    make_url_entity,
+    make_video_media,
+)
 from tweetnook.core.extractor import (
+    ExtractedTweetGraph,
+    UrlData,
     extract_author_fields,
     extract_canonical_text,
     extract_secondary_objects,
@@ -257,4 +264,141 @@ def test_export_keeps_each_video_with_its_own_geometry_after_a_weaker_copy(paths
     media = store.export_rows("all")[0]["media"]
     assert [item["media_key"] for item in media] == ["7_1", "7_2"]
     assert [item["aspect_ratio"] for item in media] == [[16, 9], [9, 16]]
+    store.close()
+
+
+URL_ENTITY = make_url_entity(
+    "https://t.co/a", "https://example.com/story", display_url="example.com/story"
+)
+
+
+def _url_row(store: Any) -> dict[str, Any]:
+    return store.list_url_rows()[0]
+
+
+def _store_with_unfurl_result(paths, *, failed: bool) -> Any:
+    store = open_archive_store(paths, create=True)
+    persist_like_page(store, make_tweet_result("100", "linked", urls=[URL_ENTITY]))
+    store.merge_rows(
+        [
+            store.build_url_unfurl_update(
+                _url_row(store),
+                http_status=503 if failed else 200,
+                final_url=None if failed else "https://www.example.com/final",
+                canonical_url=_url_row(store)["canonical_url"]
+                if failed
+                else "https://www.example.com/clean",
+                title=None if failed else "Fetched title",
+                description=None if failed else "Fetched description",
+                site_name=None if failed else "Fetched site",
+                content_type=None if failed else "text/html",
+                unfurl_state="failed" if failed else "done",
+                last_fetched_at="2026-05-01T00:00:00+00:00",
+                download_error="HTTP 503" if failed else None,
+            )
+        ]
+    )
+    return store
+
+
+def _reingest(store: Any, source: str) -> None:
+    buffer = PageBuffer()
+    store._buffer_secondary_graph(
+        extract_secondary_objects(make_tweet_result("100", "linked", urls=[URL_ENTITY])),
+        source=source,
+        cursor=buffer,
+    )
+    store.flush(buffer)
+
+
+UNFURL_FIELDS = (
+    "url",
+    "final_url",
+    "canonical_url",
+    "http_status",
+    "title",
+    "description",
+    "site_name",
+    "content_type",
+    "unfurl_state",
+)
+
+
+@pytest.mark.parametrize("source", ["live_graphql", "fxtwitter", "x_archive"])
+def test_reingesting_a_post_keeps_a_finished_unfurl(paths, source: str) -> None:
+    store = _store_with_unfurl_result(paths, failed=False)
+    expected = {field: _url_row(store)[field] for field in UNFURL_FIELDS}
+    assert expected["final_url"] == "https://www.example.com/final"
+    assert str(expected["http_status"]) == "200"
+    url_hash = _url_row(store)["url_hash"]
+
+    _reingest(store, source)
+
+    row = _url_row(store)
+    assert {field: row[field] for field in UNFURL_FIELDS} == expected
+    assert row["url_hash"] == url_hash
+    store.close()
+
+
+@pytest.mark.parametrize("source", ["live_graphql", "x_archive"])
+def test_reingesting_a_post_keeps_a_failed_unfurls_evidence(paths, source: str) -> None:
+    store = _store_with_unfurl_result(paths, failed=True)
+
+    _reingest(store, source)
+
+    row = store.conn.execute(
+        "SELECT unfurl_state, http_status, download_error FROM archive WHERE record_type = 'url'"
+    ).fetchone()
+    assert (row["unfurl_state"], str(row["http_status"]), row["download_error"]) == (
+        "failed",
+        "503",
+        "HTTP 503",
+    )
+    store.close()
+
+
+def test_entity_hints_update_only_a_url_the_worker_has_not_fetched(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    persist_like_page(store, make_tweet_result("100", "linked", urls=[URL_ENTITY]))
+    row = _url_row(store)
+
+    def hint(title: str) -> None:
+        graph = ExtractedTweetGraph()
+        graph.add_url(
+            UrlData(
+                url_hash=row["url_hash"],
+                canonical_url=row["canonical_url"],
+                expanded_url=None,
+                host=None,
+                raw_json={},
+                title=title,
+            )
+        )
+        buffer = PageBuffer()
+        store._buffer_secondary_graph(graph, cursor=buffer)
+        store.flush(buffer)
+
+    hint("First hint")
+    hint("Second hint")
+    assert _url_row(store)["title"] == "Second hint"
+
+    store.merge_rows(
+        [
+            store.build_url_unfurl_update(
+                _url_row(store),
+                http_status=200,
+                final_url=row["canonical_url"],
+                canonical_url=row["canonical_url"],
+                title="Fetched title",
+                description=None,
+                site_name=None,
+                content_type="text/html",
+                unfurl_state="done",
+                last_fetched_at="2026-05-01T00:00:00+00:00",
+                download_error=None,
+            )
+        ]
+    )
+    hint("Later hint")
+    assert _url_row(store)["title"] == "Fetched title"
     store.close()

@@ -376,12 +376,22 @@ class ObjectsMixin(RecordsMixin):
         row_key = self._row_key_for_url(url.url_hash)
         context = self._record_context(row_key, cursor=cursor)
         prefer_incoming = self._prefer_incoming_source(context, source)
+        # Once the unfurl worker has fetched a URL, its results outrank what any post's entities
+        # say about it, so hints only fill what the fetch left empty.
+        prefer_hint = prefer_incoming and not self._existing_value(context, "last_fetched_at")
+
+        def hinted(field_name: str, incoming: Any) -> Any:
+            return self._merge_by_source_precedence(
+                context, field_name, incoming, prefer_incoming=prefer_hint
+            )
+
+        canonical_url = hinted("canonical_url", url.canonical_url)
         return self._record_with_context(
             context,
             row_key=row_key,
             record_type=RecordType.URL,
             url_hash=url.url_hash,
-            url=url.canonical_url,
+            url=hinted("url", url.canonical_url),
             source=self._merged_source_value(context, source, prefer_incoming=prefer_incoming),
             expanded_url=self._merge_by_source_precedence(
                 context,
@@ -389,37 +399,20 @@ class ObjectsMixin(RecordsMixin):
                 url.expanded_url,
                 prefer_incoming=prefer_incoming,
             ),
-            final_url=self._merge_by_source_precedence(
-                context,
-                "final_url",
-                url.final_url,
-                prefer_incoming=prefer_incoming,
-            ),
-            canonical_url=url.canonical_url,
+            final_url=hinted("final_url", url.final_url),
+            canonical_url=canonical_url,
             url_host=self._merge_by_source_precedence(
                 context,
                 "url_host",
                 url.host,
                 prefer_incoming=prefer_incoming,
             ),
-            title=self._merge_by_source_precedence(
-                context,
-                "title",
-                url.title,
-                prefer_incoming=prefer_incoming,
-            ),
-            description=self._merge_by_source_precedence(
-                context,
-                "description",
-                url.description,
-                prefer_incoming=prefer_incoming,
-            ),
-            site_name=self._merge_by_source_precedence(
-                context,
-                "site_name",
-                url.site_name,
-                prefer_incoming=prefer_incoming,
-            ),
+            title=hinted("title", url.title),
+            description=hinted("description", url.description),
+            site_name=hinted("site_name", url.site_name),
+            http_status=self._existing_value(context, "http_status"),
+            content_type=self._existing_value(context, "content_type"),
+            download_error=self._existing_value(context, "download_error"),
             unfurl_state=self._coalesce_value(
                 self._existing_value(context, "unfurl_state"),
                 "pending",
