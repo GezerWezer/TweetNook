@@ -14,6 +14,7 @@ from tweetnook.config import DatabaseConfig, XDGPaths
 
 from .authors import AuthorsMixin
 from .checks import ChecksMixin
+from .connection import SerializedConnection
 from .conversations import ConversationsMixin
 from .db import ConnectionMixin
 from .details import DetailsMixin
@@ -108,7 +109,12 @@ class ArchiveStore(
             # Shared Web readers can race CPython's prepared-statement cache even
             # with serialized SQLite (python/cpython#118172). Keep the database page
             # cache, but prepare independent statements for concurrent cursors.
-            self.conn = sqlite3.connect(db_file, check_same_thread=False, cached_statements=0)
+            self.conn = sqlite3.connect(
+                db_file,
+                check_same_thread=False,
+                cached_statements=0,
+                factory=SerializedConnection,
+            )
         try:
             self.conn.row_factory = sqlite3.Row
             register_export_functions(self.conn)

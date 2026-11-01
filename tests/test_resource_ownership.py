@@ -7,6 +7,7 @@ import pytest
 
 from tweetnook.client.fxtwitter import fetch_fx_statuses, iter_fx_statuses
 from tweetnook.storage.backend import ArchiveStore
+from tweetnook.storage.connection import SerializedConnection
 from tweetnook.tagging import sdk
 
 
@@ -70,7 +71,7 @@ def test_store_constructor_closes_connection_when_setup_fails(tmp_path, monkeypa
     connections = []
     connect = sqlite3.connect
 
-    class SetupFailure(sqlite3.Connection):
+    class SetupFailure(SerializedConnection):
         closed = False
 
         def execute(self, sql, *args):
@@ -83,7 +84,7 @@ def test_store_constructor_closes_connection_when_setup_fails(tmp_path, monkeypa
             return super().close()
 
     def open_connection(*args, **kwargs):
-        connection = connect(*args, **kwargs, factory=SetupFailure)
+        connection = connect(*args, **{**kwargs, "factory": SetupFailure})
         connections.append(connection)
         return connection
 
