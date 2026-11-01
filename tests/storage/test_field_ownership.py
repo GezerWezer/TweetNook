@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -401,4 +402,94 @@ def test_entity_hints_update_only_a_url_the_worker_has_not_fetched(paths) -> Non
     )
     hint("Later hint")
     assert _url_row(store)["title"] == "Fetched title"
+    store.close()
+
+
+def _card(url: str, *, image: str | None) -> dict[str, Any]:
+    bindings: list[dict[str, Any]] = [
+        {"key": "title", "value": {"string_value": "A story"}},
+        {"key": "card_url", "value": {"string_value": url}},
+    ]
+    if image:
+        bindings.append(
+            {
+                "key": "thumbnail_image_original",
+                "value": {"image_value": {"url": image, "width": 1200, "height": 628}},
+            }
+        )
+    return {"legacy": {"name": "summary_large_image", "binding_values": bindings}}
+
+
+def _with_card(card: dict[str, Any]) -> dict[str, Any]:
+    return {**make_tweet_result("100", "carded"), "card": card}
+
+
+def _save_detail_capture(store: Any, raw: dict[str, Any]) -> None:
+    store.append_raw_capture("TweetDetail", "100", None, 200, make_tweet_detail_response([raw]))
+
+
+def _saved_card_images(store: Any) -> list[str]:
+    return [
+        row["media_url"]
+        for row in store.conn.execute(
+            "SELECT media_url FROM archive WHERE record_type = 'media' AND source = 'link_card'"
+        )
+    ]
+
+
+def test_card_restoration_finds_an_older_capture_of_the_same_card(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    store.backfill_link_card_media()
+    persist_like_page(store, _with_card(_card("https://a.example/story", image=None)))
+    _save_detail_capture(
+        store, _with_card(_card("https://a.example/story", image="https://pbs.twimg.com/a.jpg"))
+    )
+    # Captured later, but of a different card.
+    _save_detail_capture(
+        store, _with_card(_card("https://b.example/story", image="https://pbs.twimg.com/b.jpg"))
+    )
+
+    assert store.restore_link_card_images() == 1
+
+    assert _saved_card_images(store) == ["https://pbs.twimg.com/a.jpg"]
+    store.close()
+
+
+def test_card_restoration_gives_each_saved_copy_its_own_cards_image(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    store.backfill_link_card_media()
+    persist_like_page(store, _with_card(_card("https://a.example/story", image=None)))
+    # The canonical object moved on to another card, also without its image.
+    store.conn.execute(
+        "UPDATE archive SET raw_json = ? WHERE row_key = 'tweet_object:100'",
+        (json.dumps(_with_card(_card("https://b.example/story", image=None))),),
+    )
+    store.conn.commit()
+    _save_detail_capture(
+        store, _with_card(_card("https://a.example/story", image="https://pbs.twimg.com/a.jpg"))
+    )
+    _save_detail_capture(
+        store, _with_card(_card("https://b.example/story", image="https://pbs.twimg.com/b.jpg"))
+    )
+
+    assert store.restore_link_card_images() == 2
+
+    assert sorted(_saved_card_images(store)) == [
+        "https://pbs.twimg.com/a.jpg",
+        "https://pbs.twimg.com/b.jpg",
+    ]
+    store.close()
+
+
+def test_card_restoration_rejects_another_cards_image(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    store.backfill_link_card_media()
+    persist_like_page(store, _with_card(_card("https://a.example/story", image=None)))
+    _save_detail_capture(
+        store, _with_card(_card("https://b.example/story", image="https://pbs.twimg.com/b.jpg"))
+    )
+
+    assert store.restore_link_card_images() == 0
+
+    assert _saved_card_images(store) == []
     store.close()

@@ -812,6 +812,15 @@ def _link_card_identity(card: dict[str, Any], values: dict[str, Any]) -> str | N
     return url if isinstance(url, str) and url else None
 
 
+def link_card_identity(tweet: Any) -> str | None:
+    """The URL that says which card a tweet carries, whether or not it has its image."""
+    if not isinstance(tweet, dict):
+        return None
+    card = tweet.get("card")
+    values = _link_card_values(card)
+    return _link_card_identity(card, values) if values is not None else None
+
+
 def link_card_lacks_image(tweet: Any) -> bool:
     """Whether a tweet's summary card arrived without its image bindings.
 

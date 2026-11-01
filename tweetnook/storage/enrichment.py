@@ -8,6 +8,7 @@ from tweetnook.core import fastjson
 from tweetnook.core.extractor import (
     extract_secondary_objects,
     link_card_has_image,
+    link_card_identity,
     link_card_lacks_image,
     restore_link_card_image,
 )
@@ -31,22 +32,26 @@ from .records import PageBuffer
 _DETAIL_OPERATIONS = ("ThreadExpandDetail", "TweetDetail", "TweetDetailResurrection")
 
 
-def _captured_link_card_tweets(raw_json: Any, wanted: set[str]) -> dict[str, dict[str, Any]]:
-    """Tweets in one raw capture, among ``wanted``, whose summary card has an image."""
+def _captured_link_card_tweets(
+    raw_json: Any, wanted: dict[str, set[str]]
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Copies in one raw capture with an image for a wanted (tweet, card identity)."""
     if not isinstance(raw_json, str) or '"image_value"' not in raw_json:
         return {}
     try:
         payload = fastjson.loads(raw_json)
     except (TypeError, ValueError):
         return {}
-    found: dict[str, dict[str, Any]] = {}
+    found: dict[tuple[str, str], dict[str, Any]] = {}
     stack = [payload]
     while stack:
         node = stack.pop()
         if isinstance(node, dict):
             rest_id = node.get("rest_id")
             if rest_id in wanted and link_card_has_image(node):
-                found[rest_id] = node
+                identity = link_card_identity(node)
+                if identity in wanted[rest_id]:
+                    found[(rest_id, identity)] = node
             stack.extend(node.values())
         elif isinstance(node, list):
             stack.extend(node)
@@ -129,7 +134,8 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         marker = self._row_key_for_metadata(key)
         if self._get_row(marker) is not None:
             return 0
-        stripped: set[str] = set()
+        # Card by card, because a tweet's newest image may belong to a card it has since replaced.
+        stripped: dict[str, set[str]] = {}
         after = 0
         while True:
             rows = self.conn.execute(
@@ -147,17 +153,22 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
                     raw = fastjson.loads(row["raw_json"])
                 except (TypeError, ValueError):
                     continue
-                if row["tweet_id"] and link_card_lacks_image(raw):
-                    stripped.add(str(row["tweet_id"]))
-        donors: dict[str, dict[str, Any]] = {}
-        for tweet_id in stripped:
+                identity = link_card_identity(raw)
+                if row["tweet_id"] and identity and link_card_lacks_image(raw):
+                    stripped.setdefault(str(row["tweet_id"]), set()).add(identity)
+        donors: dict[tuple[str, str], dict[str, Any]] = {}
+        for tweet_id, identities in stripped.items():
             # Newest first: a tweet's own detail captures are indexed by its id.
             for capture in reversed(self.list_target_captures(tweet_id, _DETAIL_OPERATIONS)):
-                found = _captured_link_card_tweets(capture["raw_json"], {tweet_id})
-                if tweet_id in found:
-                    donors[tweet_id] = found[tweet_id]
+                wanted = {tweet_id: {i for i in identities if (tweet_id, i) not in donors}}
+                if not wanted[tweet_id]:
                     break
-        missing = stripped - donors.keys()
+                donors.update(_captured_link_card_tweets(capture["raw_json"], wanted))
+        missing = {
+            tweet_id: remaining
+            for tweet_id, identities in stripped.items()
+            if (remaining := {i for i in identities if (tweet_id, i) not in donors})
+        }
         if missing:
             # Timeline pages hold many tweets; read them once, newest last.
             rows = self.conn.execute(
@@ -171,7 +182,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         stamp = utc_now()
         buffer = PageBuffer()
         with self.transaction():
-            for tweet_id, donor in donors.items():
+            for tweet_id in {tweet_id for tweet_id, _identity in donors}:
                 rows = self.conn.execute(
                     "SELECT row_key, raw_json, source FROM archive "
                     f"WHERE tweet_id = ? AND record_type IN ('{RecordType.TWEET_OBJECT}', "
@@ -183,6 +194,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
                         raw = fastjson.loads(row["raw_json"])
                     except (TypeError, ValueError):
                         continue
+                    donor = donors.get((tweet_id, link_card_identity(raw)))
                     if not isinstance(raw, dict) or not restore_link_card_image(raw, donor):
                         continue
                     self.conn.execute(
