@@ -41,7 +41,7 @@ its password; never guess or reuse one from history.
 ### Static demo
 
 ```bash
-uv run python scripts/build_pages_demo.py --output "$SCRATCH/demo"
+uv run python scripts/build_pages_demo.py --output "$SCRATCH/demo" --base-path /
 python3 -m http.server 8790 --bind 127.0.0.1 --directory "$SCRATCH/demo"
 ```
 
