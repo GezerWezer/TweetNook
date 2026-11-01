@@ -19,6 +19,10 @@ from tests.conftest import (
     make_bookmarks_response,
 )
 from tweetnook.config import AppConfig
+from tweetnook.enrichment.articles import ArticleRefreshResult
+from tweetnook.enrichment.media import MediaDownloadResult
+from tweetnook.enrichment.threads import ThreadExpandResult
+from tweetnook.enrichment.unfurl import UrlUnfurlResult
 from tweetnook.jobs.activity_history import mark_run_process_result, read_run
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.jobs.resource_failure import StorageExhaustedError
@@ -396,19 +400,19 @@ async def test_run_auto_followups_continues_after_task_failure(
 
     async def ok_threads(**_kwargs):
         calls.append("threads")
-        return SimpleNamespace(processed=1, expanded=1, skipped=0, failed=0)
+        return ThreadExpandResult(processed=1, expanded=1)
 
     async def ok_articles(**_kwargs):
         calls.append("articles")
-        return SimpleNamespace(processed=1, updated=1, failed=0)
+        return ArticleRefreshResult(processed=1, updated=1)
 
     async def ok_media(**_kwargs):
         calls.append("media")
-        return SimpleNamespace(processed=1, downloaded=1, skipped=0, failed=0)
+        return MediaDownloadResult(processed=1, downloaded=1)
 
     async def ok_unfurl(**_kwargs):
         calls.append("unfurl")
-        return SimpleNamespace(processed=1, updated=1, failed=0)
+        return UrlUnfurlResult(processed=1, updated=1)
 
     import tweetnook.enrichment.resurrection as resurrection_module
 
@@ -434,6 +438,9 @@ async def test_run_auto_followups_continues_after_task_failure(
     assert "sync follow-up: running resurrection checks" in output
     assert "sync follow-up resurrection failed" in output
     assert "sync follow-up: threads: 1 processed, 1 expanded, 0 skipped, 0 failed" in output
+    assert "sync follow-up: articles: 1 processed, 1 refreshed, 0 failed" in output
+    assert "sync follow-up: media: 1 processed, 1 downloaded, 0 failed" in output
+    assert "sync follow-up: unfurl: 1 processed, 1 updated, 0 failed" in output
 
 
 @pytest.mark.asyncio

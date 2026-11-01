@@ -338,7 +338,6 @@ async def run_auto_followups(
                 "media: "
                 f"{result.processed} processed, "
                 f"{result.downloaded} downloaded, "
-                f"{result.skipped} skipped, "
                 f"{result.failed} failed",
             )
 
