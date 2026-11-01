@@ -124,13 +124,13 @@
 }
 /* X's desktop web, measured in October 2026. Phones keep their own app rules. */
 @media (min-width: 641px) {
-    /* Light desktop card/media outlines use the stronger control color;
-       feed separators keep their pale border color. */
-    .light .quote-card,
-    .light .quote-thumbnail,
-    .light .media-frame,
-    .light .media-carousel-tile,
-    .light [data-lightbox-media].grid {
+    /* Desktop card/media outlines use each theme's stronger control color;
+       feed separators keep their regular border color. */
+    .quote-card,
+    .quote-thumbnail,
+    .media-frame,
+    .media-carousel-tile,
+    [data-lightbox-media].grid {
         border-color: var(--input-border);
     }
     /* Posts without text show 4px dashes under the name, 12px wide (22px for
