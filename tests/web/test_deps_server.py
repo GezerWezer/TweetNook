@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import time
+from http.cookies import SimpleCookie
 from pathlib import Path
 
 import pytest
@@ -94,6 +96,37 @@ def test_auth_rejects_missing_or_incorrect_password(password: str) -> None:
     assert response.status_code == 401
     assert response.json() == {"detail": "Incorrect password"}
     assert response.headers["www-authenticate"] == "Basic"
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "².signature",
+        f"{int(time.time())}.é",
+        "9" * 4400 + "." + "a" * 64,
+        "1234567890." + "a" * 63,
+        "1234567890." + "a" * 64 + ".extra",
+    ],
+    ids=[
+        "unicode-digit",
+        "unicode-signature",
+        "oversized-timestamp",
+        "short-signature",
+        "extra-dot",
+    ],
+)
+def test_invalid_session_cookie_returns_an_authentication_result(token: str) -> None:
+    server_state["password_hash"] = hashlib.sha256(b"correct").hexdigest()
+    assert deps.session_age(token, server_state["password_hash"]) is None
+
+    cookie = SimpleCookie()
+    cookie[SESSION_COOKIE] = token
+    headers = {"Cookie": cookie.output(header="").strip()}
+    with TestClient(_auth_app(), raise_server_exceptions=False) as client:
+        assert client.get("/protected", headers=headers).status_code == 401
+        assert (
+            client.get("/protected", headers=headers, auth=("user", "correct")).status_code == 200
+        )
 
 
 def test_auth_accepts_correct_password_independent_of_username() -> None:

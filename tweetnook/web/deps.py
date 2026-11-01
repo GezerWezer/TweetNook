@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -74,9 +75,11 @@ def create_session_token(password_hash: str) -> str:
 
 def session_age(token: str | None, password_hash: str) -> int | None:
     """Return a valid session token's age in seconds, or None."""
-    issued_text, _, signature = (token or "").partition(".")
-    if not issued_text.isdigit():
+    # Cookies are untrusted: Unicode digits and non-ASCII signatures can raise before
+    # password authentication gets its chance to recover the request.
+    if not token or re.fullmatch(r"[0-9]{1,20}\.[0-9a-f]{64}", token) is None:
         return None
+    issued_text, _, signature = token.partition(".")
     issued = int(issued_text)
     age = int(time.time()) - issued
     if not 0 <= age < SESSION_MAX_AGE:
@@ -111,7 +114,7 @@ def verify_credentials(
     age = session_age(request.cookies.get(SESSION_COOKIE), expected_hash)
     if age is not None:
         if age >= SESSION_RENEW_AGE:
-            setattr(request.state, _ISSUE_SESSION, True)
+            setattr(request.state, _ISSUE_SESSION, expected_hash)
         return True
 
     if credentials is None:
@@ -135,13 +138,14 @@ def verify_credentials(
             raise HTTPException(status_code=401, detail="Incorrect password")
         if password_needs_rehash(expected_hash) and (paths := server_state.get("paths")):
             _rehash_saved_password(paths, expected_hash, credentials.password)
-    setattr(request.state, _ISSUE_SESSION, True)
+        setattr(request.state, _ISSUE_SESSION, server_state.get("password_hash"))
     return True
 
 
 def remember_web_session(request: Request) -> None:
     """Issue a login cookie after an authenticated password change or initial setup."""
-    setattr(request.state, _ISSUE_SESSION, True)
+    with config_lock:
+        setattr(request.state, _ISSUE_SESSION, server_state.get("password_hash"))
 
 
 def _session_cookie(password_hash: str, scheme: str | None) -> bytes:
@@ -166,12 +170,16 @@ class WebSessionMiddleware:
         state = scope.setdefault("state", {})
 
         async def send_with_session(message: Message) -> None:
-            password_hash = server_state.get("password_hash")
-            if message["type"] == "http.response.start" and state.get(_ISSUE_SESSION):
-                if password_hash:
-                    cookie = _session_cookie(password_hash, scope.get("scheme"))
-                    headers = [*message.get("headers", []), (b"set-cookie", cookie)]
-                    message = {**message, "headers": headers}
+            if message["type"] == "http.response.start":
+                # A pending response may outlive password rotation. Only the request that
+                # committed the change may issue a cookie for the new generation.
+                with config_lock:
+                    password_hash = state.get(_ISSUE_SESSION)
+                    current = server_state.get("password_hash")
+                    if password_hash and password_hash == current:
+                        cookie = _session_cookie(password_hash, scope.get("scheme"))
+                        headers = [*message.get("headers", []), (b"set-cookie", cookie)]
+                        message = {**message, "headers": headers}
             await send(message)
 
         await self.app(scope, receive, send_with_session)

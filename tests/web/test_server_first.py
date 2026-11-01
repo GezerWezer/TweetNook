@@ -5,9 +5,12 @@ import io
 import json
 import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from types import SimpleNamespace
 
 import pytest
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from tweetnook.config import AppConfig, ensure_paths, resolve_paths
@@ -16,8 +19,13 @@ from tweetnook.jobs.activity_history import mark_run_process_result, new_run_id,
 from tweetnook.jobs.outcome import recorded_outcome
 from tweetnook.jobs.supervisor import JobCompletion, JobConflictError
 from tweetnook.storage import open_archive_store
-from tweetnook.web import server, setup_coordinator
-from tweetnook.web.deps import SESSION_COOKIE, server_state
+from tweetnook.web import deps, server, setup_coordinator
+from tweetnook.web.deps import (
+    SESSION_COOKIE,
+    WebSessionMiddleware,
+    server_state,
+    verify_credentials,
+)
 from tweetnook.web.notices import NoticeStore
 from tweetnook.web.setup_coordinator import SetupCoordinator
 
@@ -193,6 +201,56 @@ def test_setup_password_change_keeps_only_the_current_browser_authenticated(firs
         client.cookies.set(SESSION_COOKIE, previous_session)
         assert client.get("/api/setup").status_code == 401
         assert submit(endpoint, json=body).status_code == 401
+
+
+@pytest.mark.parametrize("login", ["cookie", "basic"])
+def test_pending_login_cannot_renew_across_password_rotation(first_run, monkeypatch, login):
+    authenticated = Event()
+    release_response = Event()
+    pending_app = FastAPI()
+    pending_app.add_middleware(WebSessionMiddleware)
+
+    @pending_app.get("/pending")
+    def pending(_auth: bool = Depends(verify_credentials)):
+        authenticated.set()
+        assert release_response.wait(2)
+        return {"ok": True}
+
+    with TestClient(server.app) as owner, TestClient(pending_app) as other:
+        assert owner.post("/api/setup/archive/empty").status_code == 200
+        assert (
+            owner.put(
+                "/api/setup/password",
+                json={"skip_auth": True, "password": "first", "confirm_password": "first"},
+            ).status_code
+            == 200
+        )
+        now = time.time()
+        with monkeypatch.context() as issued:
+            issued.setattr(deps.time, "time", lambda: now - deps.SESSION_RENEW_AGE - 10)
+            old_cookie = deps.create_session_token(server_state["password_hash"])
+        credentials = (
+            {"headers": {"Cookie": f"{SESSION_COOKIE}={old_cookie}"}}
+            if login == "cookie"
+            else {"auth": ("user", "first")}
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            response = executor.submit(other.get, "/pending", **credentials)
+            try:
+                assert authenticated.wait(2)
+                changed = owner.put(
+                    "/api/setup/password",
+                    json={"password": "second", "confirm_password": "second"},
+                )
+                assert changed.status_code == 200
+                assert "set-cookie" in changed.headers
+                assert owner.get("/api/setup").status_code == 200
+            finally:
+                release_response.set()
+            finished = response.result(timeout=2)
+        assert finished.status_code == 200
+        assert "set-cookie" not in finished.headers
+        assert other.get("/pending", **credentials).status_code == 401
 
 
 def test_upgrade_recognizes_existing_sqlite(first_run):
