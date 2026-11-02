@@ -311,7 +311,6 @@ if [[ $mode == service ]]; then
         # Never turn an existing personal install into a different, empty archive.
         [[ $existing == service || -z $(command -v tweetnook || true) ]] || die 'TweetNook is already on PATH. Keep using that installation; do not install a second copy.'
         command -v sudo >/dev/null 2>&1 || die 'Run service installation as root or install sudo.'
-        [[ -f $0 ]] || die 'Download install.sh to a file before requesting sudo.'
         needs_sudo=true
     fi
     $install_dir_option || install_dir=/opt/tweetnook
@@ -369,7 +368,16 @@ if $needs_sudo; then
     say 'Requesting administrator access...'
     # This marker only avoids repeating the reviewed UI; explicit flags already
     # skip prompts. The elevated process repeats every installation safety check.
-    exec sudo env TWEETNOOK_INSTALL_REVIEWED=1 bash "$0" "${original_args[@]}"
+    # The documented command runs from a string, with no file to hand over. Passing the
+    # string to sudo would copy the whole script into its log, so write it down instead.
+    elevated_source=$(mktemp "${TMPDIR:-/tmp}/tweetnook-install-source.XXXXXX")
+    trap 'rm -f -- "$elevated_source"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    printf '%s\n' "$BASH_EXECUTION_STRING" > "$elevated_source"
+    elevated_status=0
+    sudo env TWEETNOOK_INSTALL_REVIEWED=1 bash "$elevated_source" "${original_args[@]}" || elevated_status=$?
+    exit "$elevated_status"
 fi
 
 log_file=$(mktemp "${TMPDIR:-/tmp}/tweetnook-install.XXXXXX")

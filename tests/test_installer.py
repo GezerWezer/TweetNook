@@ -1140,9 +1140,33 @@ def test_outer_and_embedded_installer_bash_syntax():
         assert result.returncode == 0, result.stderr
 
 
-def test_non_root_service_paste_requires_a_file_before_sudo(installation):
+def test_non_root_service_paste_elevates_without_a_file(installation, tmp_path):
     result = installation.pasted(TEST_OS="Linux", TEST_SYSTEMD="yes")
-    assert "Download install.sh to a file before requesting sudo" in result.stderr
-    assert "PARENT_ALIVE:1:" in result.stdout
-    assert not installation.admin_events()
+    assert "Requesting administrator access" in result.stdout
+    assert "sudo" in installation.admin_events()
+    assert (
+        installation.system_runtime / ".tweetnook-installer"
+    ).read_text().strip() == "tweetnook-system-installer-v1"
+    assert "PARENT_ALIVE:0:" in result.stdout
+    assert not list(tmp_path.glob("tweetnook-install-source.*"))
+
+
+def test_interrupt_during_elevation_does_not_claim_nothing_changed(installation, tmp_path):
+    # The elevated install may already have changed the system when Ctrl-C arrives.
+    (tmp_path / "commands/sudo").write_text('#!/bin/bash\nkill -INT "$PPID"\nexit 130\n')
+    result = installation.run(TEST_OS="Linux", TEST_SYSTEMD="yes")
+    assert result.returncode == 130
+    assert "No changes made" not in result.stdout
+    assert not list(tmp_path.glob("tweetnook-install-source.*"))
+
+
+@pytest.mark.parametrize("run", ["run", "pasted"])
+def test_refused_sudo_stops_the_install_and_removes_the_handoff(installation, tmp_path, run):
+    (tmp_path / "commands/sudo").write_text("#!/bin/bash\nexit 7\n")
+    result = getattr(installation, run)(TEST_OS="Linux", TEST_SYSTEMD="yes")
+    if run == "run":
+        assert result.returncode == 7
+    else:
+        assert "PARENT_ALIVE:7:" in result.stdout
     assert not installation.system_runtime.exists()
+    assert not list(tmp_path.glob("tweetnook-install-source.*"))
