@@ -168,7 +168,7 @@
 .video-button[data-video-action="fullscreen"] svg { width: 18.75px; height: 18.75px; }
 .video-button:hover { background: rgba(255, 255, 255, .1); }
 .video-button:disabled { cursor: default; }
-.video-button:focus-visible, .video-seek:focus-visible, .video-volume:focus-visible,
+.video-button:focus-visible, .video-volume:focus-visible,
 .media-video-player:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
 .video-time {
     margin: 0 4px 0 auto;
@@ -213,7 +213,8 @@
     background: transparent;
     touch-action: none;
 }
-.video-seek { width: calc(100% - 8px); height: 20px; margin: 0 4px; --video-progress: 0%; }
+/* Focus belongs on the thumb, not the full-width seek hit area. */
+.video-seek { width: calc(100% - 8px); height: 20px; margin: 0 4px; outline: none; --video-progress: 0%; }
 .video-seek:disabled { cursor: default; opacity: .5; }
 .video-seek::-webkit-slider-runnable-track {
     height: 2px;
@@ -238,6 +239,8 @@
 .video-seek:active::-webkit-slider-thumb { opacity: 1; }
 .video-seek:hover::-moz-range-thumb, .video-seek:focus-visible::-moz-range-thumb,
 .video-seek:active::-moz-range-thumb { opacity: 1; }
+.video-seek:focus-visible::-webkit-slider-thumb { outline: 2px solid #fff; outline-offset: 3px; }
+.video-seek:focus-visible::-moz-range-thumb { outline: 2px solid #fff; outline-offset: 3px; }
 .video-volume-group { display: flex; align-items: center; position: relative; }
 .video-volume {
     position: absolute;
