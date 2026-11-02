@@ -3,7 +3,7 @@
     'use strict';
 
     const nativeFetch = typeof global.fetch === 'function' ? global.fetch.bind(global) : null;
-    const {parseQuery, searchableText, matchesQuery, sortedTweets} = global.TweetNookDemoSearch;
+    const {parseQuery, searchableText, matchesQuery, search} = global.TweetNookDemoSearch;
     function clone(value) {
         return JSON.parse(JSON.stringify(value));
     }
@@ -132,6 +132,7 @@
                     conversation_id_str: source.conversation_id,
                     in_reply_to_status_id_str: source.reply_to_id,
                     in_reply_to_screen_name: source.reply_to_username,
+                    retweeted_status_id_str: source.retweeted_tweet_id || null,
                     quoted_status_id_str: source.quoted_tweet_id,
                     is_quote_status: Boolean(source.quoted_tweet_id),
                     quoted_status_permalink: source.quote_short_url ? {url: source.quote_short_url} : undefined,
@@ -191,10 +192,13 @@
                 qt_media_tags: null,
                 hidden: Boolean(source.hidden),
                 uncaptured: Boolean(source.uncaptured),
+                enrichment_state: source.enrichment_state || null,
                 note_history: Boolean(source.note_history),
                 raw_json: raw,
                 _demo: {
                     liked_order: source.liked_order,
+                    note_tweet_text: source.note_tweet_text || null,
+                    card_name: source.card_name || null,
                     verified: Boolean(author.verified),
                     engagement: clone(engagement),
                     hashtags: [...(source.hashtags || [])],
@@ -490,45 +494,12 @@
             }
 
             if ((path.endsWith('/api/tweets') || path.endsWith('/api/tweets/count')) && method === 'GET') {
-                const collectionMap = {likes: 'like', bookmarks: 'bookmark', tweets: 'tweet'};
-                const collection = collectionMap[url.searchParams.get('collection')] || null;
-                const groups = parseQuery(url.searchParams.get('q') || '');
-                const page = Math.max(1, Number(url.searchParams.get('page') || 1));
-                const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit') || 20)));
-                let tweets = currentTweets().filter(tweet => collection
-                    ? tweet.collections.includes(collection)
-                    : tweet.collections.length > 0);
-                // Hidden tweets stay out of results unless the query mentions is:hidden.
-                const namesHidden = groups.some(group => group.some(token => (
-                    token.kind === 'filter' && token.key === 'is' && token.value.toLowerCase() === 'hidden'
-                )));
-                const namesUncaptured = groups.some(group => group.some(token => (
-                    token.kind === 'filter' && token.key === 'is' && token.value.toLowerCase() === 'uncaptured'
-                )));
-                tweets = tweets.filter(tweet => (namesHidden || !tweet.hidden)
-                    && (namesUncaptured || !tweet.uncaptured) && matchesQuery(tweet, groups));
-                if (path.endsWith('/count')) return jsonResponse({total: tweets.length});
-                tweets = sortedTweets(
-                    tweets,
-                    url.searchParams.get('sort') || 'default',
-                    groups,
-                    url.searchParams.get('random_seed') || 0,
-                );
-                const total = tweets.length;
-                const start = (page - 1) * limit;
-                return jsonResponse({
-                    tweets: tweets.slice(start, start + limit),
-                    total,
-                    page,
-                    pages: Math.max(1, Math.ceil(total / limit)),
-                    has_more: start + limit < total,
-                    truncated: false,
-                    highlight_terms: groups.flat().filter(token => !token.negated && (
-                        token.kind === 'text' || token.key === 'hashtag'
-                    )).map(token => token.kind === 'text'
-                        ? (token.phrase ? `"${token.value}"` : token.value)
-                        : `#${token.value}`),
-                });
+                try {
+                    return jsonResponse(search(currentTweets(), url.searchParams, path.endsWith('/count')));
+                } catch (error) {
+                    if (error.status) return errorResponse(error.message, error.status);
+                    throw error;
+                }
             }
 
             const quotesMatch = path.match(/\/api\/tweets\/(\d+)\/quotes$/);

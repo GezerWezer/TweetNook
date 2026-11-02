@@ -27,6 +27,8 @@ All images, posters, videos, GIFs and avatars must resolve to approved `demo/med
 
 `demo-api.js` handles supported read requests against the fixture. Search, sorts, collection views and detail/Article presentation should be exercised against the same contracts as the server where supported. Appearance preferences can remain local to the visiting browser.
 
+`search.js` implements the server's query grouping, filters, FTS5 phrase/prefix matching and BM25 ranking against fixture memberships. Search counts are separate from text result pages, and cursors bind the query, collection and ordering. `search-unicode.js` contains generated SQLite unicode61 and Python casefold tables; regenerate it with `python scripts/build_demo_search_unicode.py` when those text rules change.
+
 The Jobs panel offers local Sync and Availability check replays based on representative runs. Sync follows the sample log's step timings: one second each for Prepare and Bookmarks, an immediate Likes pass, 148 seconds for conversations and two seconds for media. It shows seven expanded and 150 already-known conversations. Check runs in 30 seconds, covering 113 saved posts, three unavailable posts and two login lookups.
 
 Steps, counters, elapsed time, rates, estimates, saved results and logs share the same playback clock. Visitors can stop a replay or queue the other job. Sync follows the selected collections; schedule settings preview the next time without launching background work. Other job names and options come from the production definitions, with their run actions disabled. Automated tagging is omitted from Jobs and replay history; saved tags remain available while browsing.
@@ -36,8 +38,9 @@ No real import, sync, check or Gemini requests run in the static demo. Playback 
 ## Tests
 
 ```bash
-uv run pytest tests/test_pages_demo.py tests/test_demo_content.py
+uv run pytest tests/test_pages_demo.py tests/test_demo_content.py tests/test_demo_search.py
 node tests/js/test_demo_api.cjs
+node tests/js/test_demo_search.cjs
 ```
 
 Also check direct post links, refresh on a detail page, media playback, Article views, empty searches and operation under a non-root base path. The static demo is separate from [developer replay](../docs/development/web-and-jobs.md#developer-replay), which uses a second running TweetNook installation.

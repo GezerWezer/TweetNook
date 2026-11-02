@@ -31,6 +31,7 @@ const context = vm.createContext({
     TextDecoder,
 });
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'jobs-replay.js'), 'utf8'), context, {filename: 'jobs-replay.js'});
+vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'search-unicode.js'), 'utf8'), context, {filename: 'search-unicode.js'});
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'search.js'), 'utf8'), context, {filename: 'search.js'});
 vm.runInContext(source, context, {filename: 'demo-api.js'});
 
@@ -249,7 +250,9 @@ async function main() {
     const mixedSearch = await request(store, 'https://example.test/api/tweets?collection=all&q=gif%20is:reply');
     const mixedCount = await request(store, 'https://example.test/api/tweets/count?collection=all&q=gif%20is:reply');
     assert.deepEqual(mixedSearch.body.highlight_terms, ['gif']);
-    assert.equal(mixedCount.body.total, mixedSearch.body.total);
+    assert.equal(mixedSearch.body.total, null);
+    assert.equal(mixedSearch.body.pages, null);
+    assert.equal(mixedCount.body.total, mixedSearch.body.tweets.length);
     assert.equal(
         allTweets.body.tweets.some(tweet => tweet.tweet_id === '202602050028'),
         false,
@@ -258,7 +261,7 @@ async function main() {
     assert.deepEqual(await resultIds(store, '"something I tweeted"'), [ids.ownerRoot]);
     assert.deepEqual(await resultIds(store, 'tag:anything'), []);
     const fishDescriptions = await resultIds(store, 'description:"Board fish"');
-    assert.deepEqual(fishDescriptions, [ids.gifQuotesVideo]);
+    assert.deepEqual(fishDescriptions, [ids.gifQuotesVideo, ids.textQuotesNestedMedia]);
     assert.deepEqual(await resultIds(store, 'description:fis*'), fishDescriptions);
     assert.deepEqual(await resultIds(store, 'description:"fish cat"'), []);
     assert.equal((await resultIds(store, '-description:fish')).includes(ids.gifQuotesVideo), false);

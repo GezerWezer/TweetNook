@@ -263,6 +263,7 @@ def test_static_builder_creates_subpath_safe_public_artifact(tmp_path: Path) -> 
         "static/js/themes.js",
         "static/js/autocomplete.js",
         "static/js/app.js",
+        "demo/search-unicode.js",
         "demo/search.js",
         "demo/demo-api.js",
         "demo/jobs-replay.js",
