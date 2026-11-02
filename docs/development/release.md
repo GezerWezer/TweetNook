@@ -38,7 +38,7 @@ A pushed `v*` tag triggers `.github/workflows/release.yml`:
 4. Create a GitHub Release with distributions and `install.sh`.
 5. Build and deploy the static demonstration site to GitHub Pages.
 
-Release notes are extracted from the matching changelog version's Added, Changed and Fixed sections. The workflow rejects an empty extraction and doesn't publish a Highlights section. Include a comparison link to the preceding tag when one exists.
+Release notes are extracted from the matching changelog version's Upgrade notes, Added, Changed and Fixed sections. The workflow rejects an empty extraction and doesn't publish a Highlights section. Include a comparison link to the preceding tag when one exists.
 
 ## After publishing
 

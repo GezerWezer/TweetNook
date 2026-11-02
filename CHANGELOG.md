@@ -3,6 +3,60 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning.
 
+## [1.3.0] - 2026-11-02
+
+### Upgrade notes
+
+- The first start after upgrading migrates your archive database (`archive.db`) to a new format. Downloaded media is stored separately and doesn't count toward the space or time needed. This can't be undone: to go back to 1.2.0, you'll need to restore a backup of the database, so make one before upgrading.
+- The migration needs free disk space of about twice the database's size. If there isn't enough, TweetNook reports the problem and leaves the database unchanged. Free up space, then restart TweetNook to try again.
+- The first start can take several minutes on a large database, and TweetNook isn't available until the migration finishes. Don't stop the server while it's running.
+- If you run `tweetnook update` from 1.2.0, it reports success before the migration finishes, so the web app may not respond for a while afterward.
+
+### Added
+
+- Added `tweetnook sync likes --catch-up` to fetch newer likes after importing a complete X export. It stops after two consecutive pages contain only imported likes. Import follow-ups and `import enrich` use this automatically; partial or sampled exports and other collections keep the full history walk. Use `tweetnook sync likes --backfill` to check for gaps deeper in history.
+
+### Changed
+
+- Video autoplay follows the most prominent visible clip and prepares nearby videos while you scroll. Small movements keep the current video stable, and only one feed video controls the audio.
+- The fullscreen viewer preserves each video's playback position when swiping between media. Closing it returns to the selected clip in the feed. Portrait videos fill the viewer, with a fit control to show the complete picture.
+- Web passwords now use salted scrypt hashes. Existing passwords continue to work, and successful login upgrades older hashes while keeping the current browser signed in. Other sessions may need to sign in again.
+- Media attachments use the same identity across live syncs and imports. The database upgrade merges duplicate media records while preserving saved files and poster metadata.
+- Reorganized the Python backend and browser UI by feature, splitting large shared files into dedicated modules, page fragments, and stylesheets. CI now checks package boundaries and file sizes.
+
+### Fixed
+
+- Concurrent archive requests no longer freeze the web server, including while typing tag searches.
+- Later syncs and imports preserve complete long-form text, Article content, structured post data, and nested quotes when incoming copies contain less detail.
+- Community Notes appear consistently on quoted and reposted posts. Note history is recorded independently of availability checks, and sparse copies preserve fuller saved notes.
+- Replaying saved captures preserves current availability and keeps normalized timestamps consistent with their source dates. FxTwitter rate limits, server errors, and responses about another post no longer count as evidence that a post is unavailable.
+- Media downloads retry missing files and video posters independently. A failed poster download preserves the saved video, and malformed remote URLs no longer stop downloads for other items.
+- Link previews retain fetched destinations and metadata when their posts are saved again. Missing card images are restored from captures of the matching card.
+- Link-preview extraction handles HTML attributes in different orders, relative canonical URLs, and IPv6 addresses.
+- Feeds and searches use consistent chronological ordering, with undated posts last. Mixed post and Article searches combine results before applying the final limit.
+- Invalid numeric filters and empty quoted search phrases produce clear errors. Timestamp filters retain fractional seconds, and invalid CLI limits or sort options fail before opening the archive.
+- Author suggestions rank exact and prefix matches before substring matches and treat wildcard characters literally.
+- Tag editing, search, merging, and deletion use consistent Unicode matching. Labels containing slashes can be deleted, and removing labels preserves separately saved descriptions.
+- Delayed tag saves and deletions stay attached to their original post when another editor opens. Saved results reflect what the server accepted, and removing the last tag keeps the input focused.
+- Automated tagging isolates unreadable media to the affected post, accepts one usable result per post, and preserves saved tags and descriptions after a failed retag.
+- Paid-tagging cost calculations use the processing tier Gemini actually serves. Usage summaries recover from stale or incomplete updates, and requests cancelled after dispatch retain a billing estimate when the charge is unknown.
+- Jobs reports one final outcome consistently across progress, history, Setup, and the browser. Startup and cleanup failures preserve the original error and release job resources.
+- Failed queued launches no longer stall later jobs. Scheduled launch failures are reported and retried after a delay, and a failed sync launch does not prevent an availability check from running.
+- Schedules handle repeated and skipped clock hours without starting the same occurrence twice.
+- Collapsed Jobs keeps failed on-demand work visible, and progress retains its stage between updates. Removed the unsupported refresh option from the conversation-expansion job.
+- Jobs finds outcomes across the full retained history. Loading the end of a large log no longer reads the entire file.
+- Conflicting sync modes and misplaced subcommand options fail before work starts. `--head-only` clears saved older-history progress with each committed page, including limited or interrupted runs.
+- Query-ID discovery retains usable fallback IDs after refresh failures. Malformed retry headers no longer break recovery, and temporary rate-limit pacing expires with its quota window.
+- Imports reject malformed archive containers instead of reporting an empty success. ZIP and extracted exports handle media listings consistently, and imported videos retain both file and poster progress across batches.
+- Settings saves are atomic and serialized, preventing overlapping updates from restoring older settings. Configuration files use private permissions, and empty environment overrides preserve saved X credentials.
+- Failed or interrupted file publication preserves existing exports, downloads, and cache files. Regeneration keeps cleanup within the media directory; pruning retains failed deletions for retry and checks surviving file references before removal.
+- Analytics reads related statistics from one archive snapshot, uses a consistent population for tag averages, and recovers after a refresh worker fails to start.
+- Rendered feed cards escape saved values and validate links. Malformed session cookies are rejected safely, and session renewal cannot carry an old password's authentication across a password change.
+- Content blockers no longer break collection labels and navigation by blocking the local archive-summary script. Quote bylines open author profiles, and avatars remain available if their cache entry is evicted before delivery.
+- Desktop quote and media outlines follow every theme. Safari's header colors and Jobs overlay shading remain consistent.
+- The documented Linux install command can request sudo when run directly from the downloaded script text. Installer startup checks wait for long archive upgrades and report migration failures.
+- Server startup and readiness checks handle IPv6 listener addresses consistently. Stop and restart actions verify process identity before signalling a server or job.
+
 ## [1.2.0] - 2026-10-25
 
 ### Added
@@ -705,6 +759,7 @@ semantic-style versioning.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[1.3.0]: https://github.com/gezerwezer/tweetnook/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/gezerwezer/tweetnook/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/gezerwezer/tweetnook/compare/v1.0.3...v1.1.0
 [1.0.3]: https://github.com/gezerwezer/tweetnook/compare/v1.0.2...v1.0.3
