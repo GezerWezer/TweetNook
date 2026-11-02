@@ -249,6 +249,7 @@ test('demo hides captured media and quote links while preserving ordinary links'
     const context = browserContext();
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'jobs-replay.js'), 'utf8'), context);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'search.js'), 'utf8'), context);
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'demo-api.js'), 'utf8'), context);
     const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo', 'data.json'), 'utf8'));
     const store = context.window.TweetNookDemo.createStore(fixture);

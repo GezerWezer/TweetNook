@@ -264,6 +264,7 @@ def render_index(source: str, *, base_path: str, version: str) -> str:
         f"window.TWEETNOOK_DEMO_CONFIG_URL = "
         f"{json.dumps(f'demo/config.json?v={asset_version}')};</script>\n"
         '    <script src="demo/jobs-replay.js"></script>\n'
+        '    <script src="demo/search.js"></script>\n'
         '    <script src="demo/demo-api.js"></script>\n'
     )
     _require("<head>" in source, "production index is missing <head>")
@@ -322,6 +323,7 @@ def build_pages_demo(output: Path, *, version: str, base_path: str) -> Path:
         json.dumps(fixture, indent=2, ensure_ascii=True) + "\n"
     )
     shutil.copy2(DEMO_CONFIG, output / "demo" / "config.json")
+    shutil.copy2(DEMO_ROOT / "search.js", output / "demo" / "search.js")
     shutil.copy2(DEMO_ROOT / "demo-api.js", output / "demo" / "demo-api.js")
     shutil.copy2(DEMO_ROOT / "jobs-replay.js", output / "demo" / "jobs-replay.js")
     media_paths = fixture_media_paths(fixture)
@@ -343,6 +345,7 @@ def build_pages_demo(output: Path, *, version: str, base_path: str) -> Path:
         output / "static" / "js" / "app.js",
         output / "demo" / "data.json",
         output / "demo" / "config.json",
+        output / "demo" / "search.js",
         output / "demo" / "demo-api.js",
         output / "demo" / "jobs-replay.js",
     ]

@@ -25,7 +25,7 @@ async function main() {
     const demoContext = vm.createContext({
         window, URL, Request, Response, JSON, Math, Date, Promise, setTimeout, clearTimeout,
     });
-    for (const file of ['demo/jobs-replay.js', 'demo/demo-api.js']) {
+    for (const file of ['demo/jobs-replay.js', 'demo/search.js', 'demo/demo-api.js']) {
         vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), demoContext, {filename: file});
     }
     const fixture = JSON.parse(fs.readFileSync(path.join(root, 'tests/fixtures/demo-synthetic.json'), 'utf8'));

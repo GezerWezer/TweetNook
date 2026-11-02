@@ -31,6 +31,7 @@ const context = vm.createContext({
     TextDecoder,
 });
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'jobs-replay.js'), 'utf8'), context, {filename: 'jobs-replay.js'});
+vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'search.js'), 'utf8'), context, {filename: 'search.js'});
 vm.runInContext(source, context, {filename: 'demo-api.js'});
 
 const api = window.TweetNookDemo;

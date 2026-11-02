@@ -101,6 +101,7 @@ test('demo reply metadata keeps body mentions out of the automatic recipient lab
     const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
     context.window.TWEETNOOK_DEMO = false;
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'jobs-replay.js'), 'utf8'), context);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'search.js'), 'utf8'), context);
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'demo', 'demo-api.js'), 'utf8'), context);
     const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo', 'data.json'), 'utf8'));
     const store = context.window.TweetNookDemo.createStore(fixture);
