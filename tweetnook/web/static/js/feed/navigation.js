@@ -102,7 +102,13 @@ function navigationMethods() {
         },
 
         shouldUseSplitPanel() {
-            return this.splitPanel && window.innerWidth >= 1024;
+            if (!this.splitPanel) return false;
+            // Read the full column sizes even while the panel is hidden or the feed
+            // is narrowed to a phone viewport. Exclude any viewport scrollbar.
+            const feedWidth = parseFloat(getComputedStyle(document.querySelector('.app-column')).maxWidth);
+            const panelWidth = parseFloat(getComputedStyle(document.querySelector('.nook-detail-panel')).width);
+            const availableWidth = document.documentElement.clientWidth || window.innerWidth;
+            return availableWidth >= feedWidth + panelWidth;
         },
 
         pushRoute(route) {

@@ -87,7 +87,9 @@ test('tweet counts use compact detail precision and whole feed units', () => {
         const at = page.indexOf(`class="tweet-timestamp`, page.indexOf(`renderCommunityNote(${prefix}.raw_json, false, true)`));
         const end = page.indexOf(`renderActionBar(${prefix}, true)`, at);
         const timestamp = page.slice(at, end);
-        assert.match(timestamp, new RegExp(`formatCompactCount\\(${prefix}\\.raw_json\\.views\\.count\\)`));
+        const count = prefix === 'panelThreadData.main'
+            ? 'panelThreadData?.main?.raw_json?.views?.count' : 'threadData.main.raw_json.views.count';
+        assert.ok(timestamp.includes(`formatCompactCount(${count})`));
         assert.match(timestamp, /<span>Views<\/span>/);
         assert.match(timestamp, /tweet-timestamp-meta[\s\S]*?roll-wrapper[\s\S]*?tweet-detail-views/);
         assert.match(timestamp, /tweet-detail-quotes/);

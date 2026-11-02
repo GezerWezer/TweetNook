@@ -44,6 +44,94 @@ test('single-column thread quote count tolerates route teardown', () => {
     assert.match(html, /threadData\?\.main\?\.local_quote_count > 0/);
 });
 
+test('split-panel view counts tolerate conversation teardown during resize', () => {
+    const html = pageHtml();
+    for (const attribute of ['x-if', 'x-text']) {
+        const expression = html.match(new RegExp(`${attribute}="([^"]*panelThreadData\\?\\.main\\?\\.raw_json\\?\\.views\\?\\.count[^"]*)"`))[1];
+        assert.doesNotThrow(() => vm.runInNewContext(expression, {
+            panelThreadData: null,
+            formatCompactCount: value => String(value || 0),
+        }));
+    }
+});
+
+test('split view needs room for both columns, excluding the viewport scrollbar', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    for (const [viewport, available, expected] of [
+        [1280, 1280, true],
+        [1200, 1200, true],
+        [1199, 1199, false],
+        [1100, 1100, false],
+        [1024, 1024, false],
+        [390, 390, false],
+        [1200, 1185, false],
+    ]) {
+        context.window.innerWidth = viewport;
+        context.document.documentElement.clientWidth = available;
+        assert.equal(app.shouldUseSplitPanel(), expected, `${available}px available`);
+    }
+    context.document.documentElement.clientWidth = 1280;
+    context.__state.layoutStyles.feed.maxWidth = '700px';
+    context.__state.layoutStyles.panel.width = '650px';
+    assert.equal(app.shouldUseSplitPanel(), false, 'larger columns need more room');
+    context.document.documentElement.clientWidth = 1350;
+    assert.equal(app.shouldUseSplitPanel(), true);
+    context.__state.layoutStyles.feed.maxWidth = '450px';
+    context.__state.layoutStyles.panel.width = '400px';
+    context.document.documentElement.clientWidth = 850;
+    assert.equal(app.shouldUseSplitPanel(), true, 'smaller columns fit below the old breakpoint');
+    app.splitPanel = false;
+    assert.equal(app.shouldUseSplitPanel(), false);
+});
+
+test('resizing an open split conversation switches layouts before either column clips', async () => {
+    for (const viewMode of ['thread', 'quotes']) {
+        const context = browserContext();
+        context.fetch = async () => ({
+            ok: true,
+            async json() {
+                return viewMode === 'thread'
+                    ? { main: { tweet_id: '123' }, parents: [], children: [] }
+                    : { tweets: [], total: 0, limit: 20 };
+            },
+        });
+        const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
+        const app = immediateComponent(tweetApp());
+        app.archiveResourcesLoaded = true;
+        app.$refs.detailPanel = { scrollTop: 0 };
+        app.listenForNavigation();
+        if (viewMode === 'thread') await app.openThread('123');
+        else await app.openQuotes('123');
+        assert.equal(app.panelMode, viewMode);
+        const url = context.window.location.pathname;
+        const depth = app.navigationDepth;
+        const applyRoute = app.applyRoute.bind(app);
+        let transition;
+        app.applyRoute = (...args) => (transition = applyRoute(...args));
+
+        for (const width of [1199, 1200, 1100, 1280]) {
+            context.window.innerWidth = width;
+            await context.window.dispatchEvent({ type: 'resize' });
+            await transition;
+            const split = width >= 1200;
+            assert.equal(app.routeUsesPanel, split);
+            assert.equal(app.viewMode, split ? 'list' : viewMode);
+            assert.equal(app.panelMode, split ? viewMode : null);
+            if (viewMode === 'thread') {
+                assert.equal((split ? app.panelThreadData : app.threadData).main.tweet_id, '123');
+            } else {
+                assert.equal(split ? app.panelQuotesTweetId : app.quotesTweetId, '123');
+            }
+            assert.equal(context.window.location.pathname, url);
+            assert.equal(app.navigationDepth, depth);
+            assert.equal(app.splitPanel, true);
+        }
+        assert.equal(context.localStorage.getItem('tvx-split-panel'), null);
+    }
+});
+
 test('initialization preserves direct detail paths without adding history entries', () => {
     for (const [pathname, viewMode] of [['/post/123', 'thread'], ['/post/123/quotes', 'quotes']]) {
         const context = browserContext(pathname);

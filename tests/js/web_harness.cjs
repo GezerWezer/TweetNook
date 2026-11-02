@@ -23,6 +23,7 @@ function browserContext(pathname = '/') {
     const scrollCalls = [];
     const appendedLinks = [];
     const videos = [];
+    const layoutStyles = { feed: { maxWidth: '600px' }, panel: { width: '600px' } };
     const themeColor = {
         content: '#000000',
         setAttribute(name, value) { this[name] = value; },
@@ -50,6 +51,7 @@ function browserContext(pathname = '/') {
         encodeURIComponent,
         decodeURIComponent,
         confirm: () => true,
+        getComputedStyle: element => element.computedStyle || {},
         alert() {},
         CustomEvent: class CustomEvent {
             constructor(type, options = {}) {
@@ -132,6 +134,8 @@ function browserContext(pathname = '/') {
                 },
             },
             querySelector(selector) {
+                if (selector === '.app-column') return { computedStyle: layoutStyles.feed };
+                if (selector === '.nook-detail-panel') return { computedStyle: layoutStyles.panel };
                 if (selector === 'meta[name="theme-color"]') return themeColor;
                 if (selector.startsWith('link[data-font=')) {
                     return appendedLinks.find(link => selector.includes(link.dataset.font)) || null;
@@ -219,6 +223,7 @@ function browserContext(pathname = '/') {
         appendedLinks,
         videos,
         themeColor,
+        layoutStyles,
     };
     vm.createContext(context);
     return context;
