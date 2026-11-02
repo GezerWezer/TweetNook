@@ -93,16 +93,15 @@ function detailTransitionStyles(offset, width) {
     };
 }
 
-// How visible the post's top bar and the bar beneath it are, measured from X:
-// pulling a post back, its bar is half gone 9% of the way and gone by 32%; the
-// one beneath stays hidden until 60% and is in by 80%. An opening post's bar
-// shows from its first frame.
-function detailBarOpacities(offset, width, opening) {
-    if (opening) return { top: 1, beneath: 0 };
-    const pulled = width ? offset / width : 0;
+// Crossfade the stationary headers across the whole slide, so neither title
+// waits until the end of the motion or appears at full strength on opening.
+// The same curve follows a drag and reverses smoothly when it springs back.
+function detailBarOpacities(offset, width) {
+    const pulled = Math.min(1, Math.max(0, width ? offset / width : 0));
+    const beneath = pulled * pulled * (3 - 2 * pulled);
     return {
-        top: Math.max(0, 1 - pulled / 0.32) ** 2,
-        beneath: Math.min(1, Math.max(0, (pulled - 0.6) / 0.2)),
+        top: 1 - beneath,
+        beneath,
     };
 }
 

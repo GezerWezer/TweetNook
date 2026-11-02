@@ -257,7 +257,7 @@ function navigationMethods() {
             parts.layer.style.transform = styles.layer;
             parts.under.forEach(element => { element.style.transform = styles.under; });
             parts.shade.style.opacity = styles.shade;
-            const bars = detailBarOpacities(offset, parts.width, parts.opening);
+            const bars = detailBarOpacities(offset, parts.width);
             if (parts.bars.top) parts.bars.top.style.opacity = String(bars.top);
             // A variable, so tabs tucked away by scrolling stay hidden (header.css).
             parts.bars.beneath?.style.setProperty('--detail-beneath', String(bars.beneath));
@@ -344,7 +344,6 @@ function navigationMethods() {
                 // Paint the post in place, all but transparent, before sliding it in:
                 // iOS paints nothing off screen, and painting it in the slide's first
                 // frame stalls that frame for 100ms while the clock runs on.
-                parts.opening = true;
                 this.beginDetailMotion(parts);
                 this.setDetailOffset(parts, parts.width);
                 layer.style.opacity = '0.01';

@@ -926,14 +926,13 @@ test('the post layer moves as X does: spring in, follow the finger, spring back 
     assert.deepEqual({ ...detailSettle(63, 430, 37 / 16.7, 1000, true, 430) }, { offset: 430, done: true });
     // What it covers drifts 30% of the post's travel under a shade reaching 40% black.
     assert.deepEqual({ ...detailTransitionStyles(0, 430) }, { layer: 'translate3d(0px, 0, 0)', under: 'translate3d(-129px, 0, 0)', shade: '0.4' });
-    // Top bars stay put: pulled back, the post's is gone by a third of the way and the
-    // feed's appears only near the end; an opening post's bar shows at once.
-    const bars = pulled => ({ ...detailBarOpacities(pulled * 430, 430, false) });
+    // Stationary headers crossfade throughout the slide in either direction.
+    const bars = pulled => ({ ...detailBarOpacities(pulled * 430, 430) });
     assert.deepEqual(bars(0), { top: 1, beneath: 0 });
-    assert.ok(bars(0.09).top > 0.4 && bars(0.09).top < 0.6);
-    assert.deepEqual(bars(0.5), { top: 0, beneath: 0 });
-    assert.deepEqual(bars(0.8), { top: 0, beneath: 1 });
-    assert.deepEqual({ ...detailBarOpacities(300, 430, true) }, { top: 1, beneath: 0 });
+    assert.ok(bars(0.1).beneath > 0 && bars(0.1).beneath < 0.1, 'the list header starts appearing early');
+    assert.deepEqual(bars(0.5), { top: 0.5, beneath: 0.5 });
+    assert.ok(bars(0.9).top > 0 && bars(0.9).top < 0.1, 'the opening post header starts appearing early');
+    assert.deepEqual(bars(1), { top: 0, beneath: 1 });
     assert.deepEqual({ ...detailTransitionStyles(430, 430) }, { layer: 'translate3d(430px, 0, 0)', under: 'translate3d(0px, 0, 0)', shade: '0' });
 });
 
