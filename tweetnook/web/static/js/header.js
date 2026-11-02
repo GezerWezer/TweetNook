@@ -216,7 +216,7 @@ const NOOK_JOB_ICONS = {
   stop: 'M5 7c0-1.1.9-2 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z',
   play: 'M6 17.93V6.07a2 2 0 0 1 3.05-1.7l9.67 5.92a2 2 0 0 1 0 3.42l-9.67 5.92A2 2 0 0 1 6 17.93',
   remove: 'M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z',
-  history: 'M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5 m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z',
+  history: 'M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5 M13 11.59l3.2 3.2-1.4 1.42-3.8-3.8V8h2z',
 };
 const NOOK_JOB_VERBS = { sync: 'Syncing', check: 'Checking', threads: 'Expanding conversations', articles: 'Refreshing articles', media: 'Downloading media', urls: 'Refreshing link previews', tagging: 'Tagging posts', import: 'Importing archive', enrich: 'Enriching archive' };
 // A run's headline is computed by the panel's own caption logic against that run.
