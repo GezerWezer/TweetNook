@@ -551,6 +551,10 @@ class SearchMixin(ReadsMixin, TagsMixin):
                 "candidate_ids JOIN archive AS archive INDEXED BY idx_archive_tweet_id "
                 "ON archive.tweet_id = candidate_ids.tweet_id"
             )
+        elif author_groups:
+            # Some SQLite planners prefer a broad record-type index here despite
+            # the required author filters constraining this index's leading key.
+            from_sql = "archive AS archive INDEXED BY idx_archive_search_author"
         else:
             from_sql = "archive AS archive"
 
