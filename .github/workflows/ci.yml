@@ -41,6 +41,9 @@ jobs:
   python:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    env:
+      # Captured CLI output is asserted as text, including supervised workers.
+      _TYPER_FORCE_DISABLE_TERMINAL: "1"
     strategy:
       fail-fast: false
       matrix:
