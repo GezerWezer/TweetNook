@@ -674,7 +674,8 @@ def search_posts(
         limit=limit,
         offset=offset,
         random_seed=random_seed,
-        include_total=not parsed.has_text,
+        # A continuation page leaves the total to the first page, which already counted it.
+        include_total=not parsed.has_text and not cursor,
         exclude_hidden=exclude_hidden,
         exclude_uncaptured=exclude_uncaptured,
         **cursor_options,

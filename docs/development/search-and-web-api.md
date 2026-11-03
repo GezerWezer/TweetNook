@@ -134,7 +134,7 @@ Routes and request/response models are defined in `web/routes/`. The [documentat
 
 Chronological feed cursors seek through indexed date/sort/ID boundaries; liked-order cursors seek sequence positions and carry an input revision. Other complex search cursors can retain offsets, so deep paging isn't universally constant-time. Treat cursor data as opaque and retain query, collection, sort, seed and limit between requests. An empty `cursor=` starts cursor paging.
 
-Text results can omit totals/pages while `/api/tweets/count` computes exact deduplicated matches on a private reader. Filter-only/feed totals can be returned immediately. Positive text drives relevance by default; filter-only queries default to newest. Hidden exclusion is relaxed when any `is:hidden` clause is present, then the compiler evaluates its positive/negative/OR predicate normally.
+Text results can omit totals/pages while `/api/tweets/count` computes exact deduplicated matches on a private reader. Filter-only/feed totals can be returned immediately. A continuation page (a non-empty `cursor`) returns a null total and pages; the first page's count stands for the whole list. Positive text drives relevance by default; filter-only queries default to newest. Hidden exclusion is relaxed when any `is:hidden` clause is present, then the compiler evaluates its positive/negative/OR predicate normally.
 
 Numeric query filters validate once during parsing. ID and engagement bounds must fit SQLite's signed 64-bit integer domain. Unix timestamp bounds must be finite and retain fractional seconds in comparisons. Invalid numeric clauses produce `SearchQueryError` and HTTP 400 for both list and count endpoints.
 

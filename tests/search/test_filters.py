@@ -373,7 +373,8 @@ def test_uncaptured_default_preserves_feed_cursor_paging_and_updates(tmp_path):
     cursor = ""
     while cursor is not None:
         page = search_posts(store, None, limit=1, cursor=cursor)
-        assert page.total == 4
+        # Continuation pages leave the count to the first page.
+        assert page.total == (4 if cursor == "" else None)
         seen.extend(row["tweet_id"] for row in page.rows)
         cursor = page.next_cursor
     assert seen == ["6", "5", "3", "1"]
