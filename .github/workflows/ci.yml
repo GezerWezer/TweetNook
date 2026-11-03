@@ -99,11 +99,9 @@ jobs:
           done
           exit "$status"
 
-  reports:
-    name: Reports (not blocking)
+  types:
+    name: Type check
     runs-on: ubuntu-latest
-    # Pyright still reports errors in existing code; this becomes blocking at zero.
-    continue-on-error: true
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -115,8 +113,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Pyright checks the tagging modules too, so their optional SDK must resolve.
       - name: Install dependencies
-        run: uv sync --locked --group dev
+        run: uv sync --locked --group dev --extra automated-tagging
 
       - name: Pyright
         run: uv run --with pyright==1.1.403 pyright tweetnook
