@@ -3,6 +3,24 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning.
 
+## [1.3.1] - 2026-11-03
+
+### Changed
+
+- Updated icons across navigation, search, menus, setup, settings, and job
+  status and history to use a consistent X Design System style.
+
+### Fixed
+
+- Long feeds stay responsive by unloading distant cards while preserving media
+  playback and carousel positions when those cards return.
+- Split conversations collapse before their columns clip at narrower widths.
+- Mobile feed and post headers crossfade smoothly throughout swipe transitions.
+- Video seeking keeps its focus indicator on the slider thumb.
+- Deferred scheduled runs appear correctly in job history, and schedule changes
+  clear stale deferral state.
+- Run history clock hands stay inside the icon.
+
 ## [1.3.0] - 2026-11-02
 
 ### Upgrade notes
@@ -759,6 +777,7 @@ semantic-style versioning.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[1.3.1]: https://github.com/gezerwezer/tweetnook/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/gezerwezer/tweetnook/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/gezerwezer/tweetnook/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/gezerwezer/tweetnook/compare/v1.0.3...v1.1.0
