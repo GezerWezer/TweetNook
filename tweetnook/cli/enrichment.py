@@ -255,7 +255,9 @@ def check_command(
         raise typer.Exit(2) from exc
 
 
-@media_app.command("download", help="Download archived tweet media files.")
+@media_app.command(
+    "download", help="Download archived tweet media files and avatars for saved posts."
+)
 def media_download(
     limit: MEDIA_LIMIT_OPTION = None,
     photos_only: PHOTOS_ONLY_OPTION = False,

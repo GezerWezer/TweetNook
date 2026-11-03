@@ -245,7 +245,7 @@ def test_media_download_help_describes_flags() -> None:
     result = runner.invoke(cli.app, ["media", "download", "--help"])
 
     assert result.exit_code == 0
-    assert "Download archived tweet media files." in result.stdout
+    assert "Download archived tweet media files and avatars for saved posts." in result.stdout
     assert "Maximum number of media items" in result.stdout
     assert "poster file" in result.stdout
     assert "Only download photo rows and skip video or" in result.stdout

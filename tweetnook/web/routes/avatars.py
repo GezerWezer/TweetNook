@@ -16,16 +16,18 @@ from tweetnook.config import XDGPaths
 from tweetnook.core.dev_replay import client_transport
 from tweetnook.enrichment.avatars import (
     AVATAR_CANDIDATE_LIMIT,
+    AVATAR_FETCH_BUDGET_SECONDS,
+    avatar_cache_paths,
     avatar_format,
     avatar_variant_urls,
     cache_avatar,
+    core_avatar_dir,
 )
 from tweetnook.web.avatar_cache import mark_avatar_accessed
 from tweetnook.web.deps import get_server_state, require_store, verify_credentials
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-AVATAR_FETCH_BUDGET_SECONDS = 20.0
 # Avatars rarely change; reuse them for a day, then refresh in the background.
 AVATAR_CACHE_HEADERS = {"Cache-Control": "private, max-age=86400, stale-while-revalidate=604800"}
 TRANSPARENT_CACHE_HEADERS = {"Cache-Control": "no-store, max-age=0"}
@@ -75,7 +77,12 @@ def _avatar_response(user_id: str, store: Any):
         headers = TRANSPARENT_CACHE_HEADERS if fetch else DISABLED_CACHE_HEADERS
         return Response(content=TRANSPARENT_PNG, media_type="image/png", headers=headers)
     if avatar.cache_path is not None:
-        if config and config.web.avatar_cache_limit_enabled:
+        # Only the on-demand cache is evicted by last use; core avatars are kept regardless.
+        if (
+            config
+            and config.web.avatar_cache_limit_enabled
+            and avatar.cache_path.parent == avatars_dir
+        ):
             mark_avatar_accessed(avatar.cache_path)
         headers = AVATAR_CACHE_HEADERS
     else:
@@ -94,9 +101,10 @@ def load_avatar(avatars_dir: Path, user_id: str, store: Any, *, fetch: bool) -> 
     """Own the image bytes independently of cache eviction or publication failure."""
     if "\x00" in user_id or "/" in user_id or "\\" in user_id or user_id in {"", ".", ".."}:
         return None
-    cache_paths = [
-        avatars_dir / f"{user_id}{suffix}" for suffix in (".jpg", ".png", ".gif", ".webp")
-    ]
+    # Core avatars, saved by sync for posts in collections, win over the on-demand cache.
+    cache_paths = avatar_cache_paths(core_avatar_dir(avatars_dir), user_id) + avatar_cache_paths(
+        avatars_dir, user_id
+    )
     for avatar_path in cache_paths:
         try:
             with avatar_path.open("rb") as cached:

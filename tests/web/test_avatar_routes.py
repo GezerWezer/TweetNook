@@ -112,6 +112,34 @@ def test_cached_avatar_is_returned_without_store_or_network(
     assert avatar_path.stat().st_mtime > 1_000.0
 
 
+def test_core_avatar_wins_over_cache_and_is_not_touched(
+    monkeypatch, make_web_client, tmp_path: Path
+) -> None:
+    paths = _paths(tmp_path)
+    avatars_dir = paths.media_dir / "avatars"
+    core_path = avatars_dir / "core" / "42.png"
+    core_path.parent.mkdir(parents=True)
+    core_path.write_bytes(_alpha_png())
+    os.utime(core_path, (1_000.0, 1_000.0))
+    (avatars_dir / "42.jpg").write_bytes(JPEG)
+    server_state.update({"paths": paths, "config": AppConfig()})
+    monkeypatch.setattr(
+        avatars,
+        "mark_avatar_accessed",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("core avatars are not tracked for eviction")
+        ),
+    )
+    client = make_web_client(avatars.router, store=AvatarStore())
+
+    response = client.get("/api/avatar/42")
+
+    assert response.status_code == 200
+    assert response.content == _alpha_png()
+    assert response.headers["content-type"] == "image/png"
+    assert core_path.stat().st_mtime == 1_000.0
+
+
 def test_cached_avatar_does_not_refresh_mtime_when_limit_is_disabled(
     monkeypatch, make_web_client, tmp_path: Path
 ) -> None:

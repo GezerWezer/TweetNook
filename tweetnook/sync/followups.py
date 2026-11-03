@@ -338,7 +338,8 @@ async def run_auto_followups(
                 "media: "
                 f"{result.processed} processed, "
                 f"{result.downloaded} downloaded, "
-                f"{result.failed} failed",
+                f"{result.failed} failed, "
+                f"{result.avatars_downloaded} avatars",
             )
 
     skip_previews = bool(config.replay.url and config.replay.skip_link_previews)

@@ -74,6 +74,26 @@ def test_cleanup_removes_oldest_avatars_until_cache_fits(tmp_path: Path) -> None
     assert unrelated.exists()
 
 
+def test_cleanup_neither_counts_nor_evicts_core_avatars(tmp_path: Path) -> None:
+    avatars_dir = tmp_path / "avatars"
+    core = _avatar(avatars_dir / "core", "1.jpg", 900_000, 1.0)
+    cached = _avatar(avatars_dir, "2.jpg", 400_000, 100.0)
+
+    result = cleanup_avatar_cache(avatars_dir, 500_000)
+
+    assert result.deleted_files == 0
+    assert result.remaining_files == 1
+    assert result.remaining_bytes == 400_000
+    assert core.exists()
+    assert cached.exists()
+
+    result = cleanup_avatar_cache(avatars_dir, 0)
+
+    assert result.deleted_files == 1
+    assert core.exists()
+    assert not cached.exists()
+
+
 def test_cleanup_uses_name_as_stable_tiebreaker(tmp_path: Path) -> None:
     avatars_dir = tmp_path / "avatars"
     first = _avatar(avatars_dir, "a.jpg", 2, 100.0)

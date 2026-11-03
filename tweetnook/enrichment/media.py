@@ -18,6 +18,11 @@ from tweetnook.config import DEFAULT_USER_AGENT, AppConfig, XDGPaths
 from tweetnook.core.dev_replay import client_transport
 from tweetnook.core.fileio import owned_temp, publish_file
 from tweetnook.core.utils import utc_now
+from tweetnook.enrichment.avatars import (
+    CoreAvatarState,
+    download_core_avatar,
+    prepare_core_avatars,
+)
 from tweetnook.jobs.context import locked_archive_job
 from tweetnook.jobs.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs.pipeline import current_pipeline
@@ -34,6 +39,7 @@ _CONTENT_TYPE_EXTENSIONS = {
 _UPDATE_BATCH_SIZE = 100
 _REMOTE_FAILURES = (httpx.HTTPError, httpx.InvalidURL)
 _URL_EXTENSION = re.compile(r"\.[a-z0-9]{1,16}")
+_AVATAR_ACTIVITY = "Downloading avatars"
 
 
 @dataclass(slots=True)
@@ -42,6 +48,8 @@ class MediaDownloadResult:
     downloaded: int = 0
     failed: int = 0
     downloaded_bytes: int = 0
+    avatars_downloaded: int = 0
+    avatars_failed: int = 0
 
 
 def _pipeline_outcomes(result: MediaDownloadResult, *, final: bool = False) -> str:
@@ -50,6 +58,10 @@ def _pipeline_outcomes(result: MediaDownloadResult, *, final: bool = False) -> s
         parts.append(f"{result.downloaded} downloaded")
     if result.failed:
         parts.append(f"{result.failed} failed")
+    if result.avatars_downloaded:
+        parts.append(f"{result.avatars_downloaded} avatars")
+    if result.avatars_failed:
+        parts.append(f"{result.avatars_failed} avatars unavailable")
     if result.downloaded_bytes:
         parts.append(f"{result.downloaded_bytes / (1024 * 1024):.1f} MiB")
     return " · ".join(parts)
@@ -260,8 +272,22 @@ async def download_media(
         media_types = {"photo"} if photos_only else None
         emit_status(status, "loading pending media rows")
         rows = store.list_media_rows(states=states, media_types=media_types, limit=limit)
+        # Core avatars are part of the media step whatever web.fetch_avatars says; that
+        # setting governs only the route's on-demand downloads.
+        avatars_dir = paths.media_dir / "avatars"
+        emit_status(status, "checking avatars for saved and quoted posts")
+        avatar_state = CoreAvatarState.load(paths.core_avatar_state_file)
+        avatar_plan = prepare_core_avatars(store, avatars_dir, avatar_state)
+        avatar_targets = avatar_plan.targets
+        if avatar_plan.adopted:
+            emit_status(status, f"kept {avatar_plan.adopted} cached avatars")
+        if avatar_plan.released:
+            emit_status(status, f"returned {avatar_plan.released} avatars to the cache")
+        total = len(rows) + len(avatar_targets)
         result = MediaDownloadResult()
-        if not rows:
+        if not total:
+            with suppress(OSError):
+                avatar_state.save(paths.core_avatar_state_file)
             emit_status(status, "no media items pending download")
             pipeline.skip_step(step_key, "no media items requiring download")
             return result
@@ -273,21 +299,25 @@ async def download_media(
         filter_suffix = f" ({', '.join(filters)})" if filters else ""
         limit_suffix = "" if limit is None else f" (limit {limit})"
         emit_status(status, f"downloading {len(rows)} media items{filter_suffix}{limit_suffix}")
+        if avatar_targets:
+            emit_status(status, f"downloading {len(avatar_targets)} avatars")
         if pipeline.active:
             scope = "pending media items"
             if filters:
                 scope += f" · {', '.join(filters)}"
+            if avatar_targets:
+                scope += " and avatars"
             pipeline.add_step(
                 step_key,
                 "Media",
-                total=len(rows),
+                total=total,
                 unit="items",
                 detail=scope,
                 rate_unit="items/s",
             )
             pipeline.start_step(
                 step_key,
-                activity=_media_activity(rows[0]),
+                activity=_media_activity(rows[0]) if rows else _AVATAR_ACTIVITY,
             )
 
         async with httpx.AsyncClient(
@@ -309,7 +339,7 @@ async def download_media(
                 with progress_callback(
                     console,
                     label="media download",
-                    total=len(rows),
+                    total=total,
                     unit="items",
                 ) as progress:
                     for index, row in enumerate(rows, start=1):
@@ -349,14 +379,47 @@ async def download_media(
                                 counters=_pipeline_outcomes(result),
                             )
                             if progress is not None:
-                                progress(index, len(rows))
+                                progress(index, total)
 
-                flush_updates()
+                    flush_updates()
+                    for index, target in enumerate(avatar_targets, start=len(rows) + 1):
+                        try:
+                            result.processed += 1
+                            pipeline.update_step(
+                                step_key,
+                                completed=index - 1,
+                                activity=_AVATAR_ACTIVITY,
+                                counters=_pipeline_outcomes(result),
+                            )
+                            outcome = await download_core_avatar(client, avatars_dir, target)
+                            if outcome.saved:
+                                result.avatars_downloaded += 1
+                                result.downloaded_bytes += outcome.content_bytes
+                                avatar_state.saved[target.author_id] = target.source_urls[0]
+                                avatar_state.unavailable.pop(target.author_id, None)
+                            else:
+                                # Deleted and suspended accounts are expected here, so a
+                                # missing avatar is counted rather than raised as an issue.
+                                result.avatars_failed += 1
+                                if outcome.unavailable:
+                                    avatar_state.unavailable[target.author_id] = target.source_urls[
+                                        0
+                                    ]
+                        finally:
+                            pipeline.update_step(
+                                step_key,
+                                completed=index,
+                                counters=_pipeline_outcomes(result),
+                            )
+                            if progress is not None:
+                                progress(index, total)
             finally:
                 # Rows already finished stay true when a later one stops the job. The store
                 # may be what failed, and that must not replace the real error.
                 with suppress(Exception):
                     flush_updates()
+                with suppress(OSError):
+                    avatar_state.save(paths.core_avatar_state_file)
         pipeline.complete_step(
             step_key,
             _pipeline_outcomes(result, final=True),
@@ -364,6 +427,8 @@ async def download_media(
                 "downloaded": result.downloaded,
                 "downloaded_bytes": result.downloaded_bytes,
                 "failed": result.failed,
+                "avatars_downloaded": result.avatars_downloaded,
+                "avatars_failed": result.avatars_failed,
             },
         )
         return result

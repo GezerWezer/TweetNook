@@ -439,7 +439,7 @@ async def test_run_auto_followups_continues_after_task_failure(
     assert "sync follow-up resurrection failed" in output
     assert "sync follow-up: threads: 1 processed, 1 expanded, 0 skipped, 0 failed" in output
     assert "sync follow-up: articles: 1 processed, 1 refreshed, 0 failed" in output
-    assert "sync follow-up: media: 1 processed, 1 downloaded, 0 failed" in output
+    assert "sync follow-up: media: 1 processed, 1 downloaded, 0 failed, 0 avatars" in output
     assert "sync follow-up: unfurl: 1 processed, 1 updated, 0 failed" in output
 
 

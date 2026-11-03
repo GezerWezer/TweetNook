@@ -71,7 +71,7 @@ The installer's global Linux command runs archive operations as the `tweetnook` 
 
 ### Storage and jobs
 
-Avatar settings control whether profile pictures are downloaded and how much cache space they may use. The default limit is 512 MiB. Analytics has a daily refresh time, 05:00 by default. Activity-log retention defaults to 200 runs and 180 days; it doesn't control how long posts are kept.
+Avatar settings control whether profile pictures are downloaded and how much cache space they may use. Media downloads, including the one after each sync, save and refresh the avatars of authors of your saved posts and the posts they quote, whatever the download setting says; those don't count toward the cache limit and are never removed by it. The default limit is 512 MiB. Analytics has a daily refresh time, 05:00 by default. Activity-log retention defaults to 200 runs and 180 days; it doesn't control how long posts are kept.
 
 Web saves update the running server's settings immediately, including avatar downloads, cache limits, schedules and the Analytics refresh time. Active jobs keep the settings they started with; later jobs use the saved values. Host and port changes still need a restart.
 

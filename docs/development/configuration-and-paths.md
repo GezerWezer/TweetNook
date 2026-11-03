@@ -26,8 +26,8 @@ A service installed with the manual service command can use `--config-home`, `--
 | Data | `archive.db`, managed `media/`, exports, lock/activity files and web session key. |
 | Data/Setup | `setup/archive.zip` and `setup/state.json`. |
 | Data/activity | Run records/logs and AI-usage history. |
-| Data | `schedule-state.json`, `notices.json`, `avatar-cache-state.json`. |
-| Data/media | Downloaded avatar cache under `media/avatars/`. |
+| Data | `schedule-state.json`, `notices.json`, `avatar-cache-state.json`, `core-avatar-state.json`. |
+| Data/media | Downloaded avatar cache under `media/avatars/`, with core avatars saved by the media step in `media/avatars/core/`. |
 | Cache | Discovered query IDs. |
 
 Backups need archive data/media and private configuration. Don't commit any of these runtime files. See [file locations](../maintenance.md#file-locations) for the platform-specific paths used in normal administration.
@@ -100,8 +100,8 @@ Defaults are defined by `AppConfig` in `config.py`; the [documentation checks](t
 | `password_hash` | `unset` | Web password digest; set through the password command or Setup. |
 | `host` | `"0.0.0.0"` | Listen address; changes require restart. |
 | `port` | `8000` | Listen port, 1 through 65535; changes require restart. |
-| `fetch_avatars` | `true` | Permit downloading profile pictures. |
-| `avatar_cache_limit_enabled` | `true` | Enable avatar cache eviction by size. |
+| `fetch_avatars` | `true` | Permit the route to download profile pictures on demand. The media step's core avatars don't depend on it. |
+| `avatar_cache_limit_enabled` | `true` | Enable avatar cache eviction by size. Core avatars are exempt. |
 | `avatar_cache_limit_mb` | `512` | Avatar cache size allowance in MiB. |
 | `analytics_refresh_time` | `"05:00"` | Daily analytics snapshot refresh clock. |
 | `dev_replay_source` | `false` | Allow this server to supply a developer replay archive. |

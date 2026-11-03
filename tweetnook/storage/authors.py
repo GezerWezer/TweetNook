@@ -34,6 +34,35 @@ class AuthorsMixin(ConnectionMixin):
         ).fetchall()
         return [row[0] for row in rows]
 
+    def core_author_ids(self) -> list[str]:
+        """Return authors of saved posts and of the posts those quote, retweet or link to.
+
+        Their avatars are the ones every saved card shows; authors seen only in conversation
+        context are left to the on-demand avatar cache.
+        """
+        rows = self.conn.execute(
+            f"""
+            WITH core_tweets(tweet_id) AS (
+                SELECT tweet_id FROM archive
+                WHERE record_type = '{RecordType.TWEET}' AND tweet_id IS NOT NULL
+                UNION
+                SELECT relation.target_tweet_id
+                FROM archive AS membership
+                JOIN archive AS relation ON relation.tweet_id = membership.tweet_id
+                WHERE membership.record_type = '{RecordType.TWEET}'
+                    AND relation.record_type = '{RecordType.TWEET_RELATION}'
+                    AND relation.relation_type IN ('quote_of', 'retweet_of', 'links_to_status')
+                    AND relation.target_tweet_id IS NOT NULL
+            )
+            SELECT DISTINCT archive.author_id
+            FROM core_tweets JOIN archive ON archive.tweet_id = core_tweets.tweet_id
+            WHERE archive.record_type IN ('{RecordType.TWEET}', '{RecordType.TWEET_OBJECT}')
+                AND archive.author_id IS NOT NULL AND archive.author_id != ''
+            ORDER BY archive.author_id
+            """
+        ).fetchall()
+        return [row[0] for row in rows]
+
     def resolve_author_id(self, username: str) -> str | None:
         """Return the author ID behind a saved tweet's handle, using the author index."""
         row = self.conn.execute(

@@ -27,7 +27,7 @@ Existing failures should be recorded with their command and scope. Targeted test
 | Import and deferred Setup work | Archive-import, Setup routes and server-first suites |
 | Storage and search | SQLite storage, search, pagination, like order and database-performance suites |
 | Availability and note history | FxTwitter, check, resurrection and web availability suites |
-| Enrichment and local assets | `tests/threads/`, `tests/test_articles.py`, `tests/test_media.py`, `tests/test_unfurl.py`, `tests/test_resource_failure.py` |
+| Enrichment and local assets | `tests/threads/`, `tests/test_articles.py`, `tests/test_media.py`, `tests/test_core_avatars.py`, `tests/test_unfurl.py`, `tests/test_resource_failure.py` |
 | Gemini | Optional tagging, SDK, prompts, media tags, RPD and web tagging suites |
 | Jobs and schedules | Supervisor, pipeline, activity-history, scheduler and jobs-route suites; `tests/test_job_resource_ownership.py` |
 | Browser presentation | Python asset assertions and `tests/js/` harnesses |

@@ -384,6 +384,10 @@ class XDGPaths(BaseModel):
         return self.data_dir / "avatar-cache-state.json"
 
     @property
+    def core_avatar_state_file(self) -> Path:
+        return self.data_dir / "core-avatar-state.json"
+
+    @property
     def activity_runs_dir(self) -> Path:
         return self.data_dir / "activity" / "runs"
 
@@ -1004,11 +1008,14 @@ def get_config_ui_schema() -> dict[str, Any]:
             ),
             "web.fetch_avatars": (
                 "When a profile picture isn't saved yet, the server downloads it from X the "
-                "first time it's shown and keeps a copy. When off, only saved avatars appear."
+                "first time it's shown and keeps a copy. When off, only saved avatars appear. "
+                "Media downloads save avatars for your saved posts and the posts they quote "
+                "either way."
             ),
             "web.avatar_cache_limit_enabled": (
                 "Each week, remove the least recently used avatars once the cache is over its "
-                "limit. Changes to the limit apply when you save."
+                "limit. Avatars for your saved posts and the posts they quote don't count "
+                "and are kept. Changes to the limit apply when you save."
             ),
             "web.avatar_cache_limit_mb": "",
             "web.analytics_refresh_time": (
