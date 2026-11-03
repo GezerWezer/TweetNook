@@ -23,7 +23,7 @@
                                                     </span>
                                                 </span>
                                                 <span class="nook-theme-label"><span x-text="item.theme._name"></span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></span>
                                             </button>
                                         </template>
@@ -37,7 +37,7 @@
                             <div class="nook-accent-choices" role="radiogroup" aria-label="Accent color">
                                 <template x-for="a in THEMES[currentTheme]._accents || []" :key="currentTheme + a.color">
                                     <button type="button" role="radio" :aria-label="a.name" :aria-checked="currentAccent === a.color" @click="setAccent(a)" class="nook-accent-choice" :style="'--swatch:' + a.color + ';--swatch-text:' + a.text"><span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button>
                                 </template>
                             </div>
@@ -61,7 +61,7 @@
                                         @keydown.arrow-up.prevent="openFontPicker('last')"
                                         class="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--input-border)] bg-[var(--bg-primary)] px-3 py-2 text-left text-[var(--text-primary)]">
                                     <span id="selected-font-label" class="truncate" :style="{ fontFamily: selectedFontChoice().family }" x-text="selectedFontChoice().label"></span>
-                                    <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="m5 7 5 5 5-5H5Z"/></svg>
+                                    <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" /></svg>
                                 </button>
                                 <div id="font-options" x-ref="fontOptions" x-show="fontPickerOpen" x-cloak
                                      role="listbox" aria-labelledby="font-picker-label"
@@ -89,10 +89,10 @@
                             <h3>Desktop layout</h3>
                             <div role="radiogroup" aria-label="Desktop layout">
                                 <button type="button" role="radio" class="nook-choice-row" aria-label="Single column" :aria-checked="!splitPanel" @click="toggleSplitPanel(false)"><span><strong>Single column</strong><span>Open tweets in the main feed.</span></span><span class="nook-radio-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button>
                                 <button type="button" role="radio" class="nook-choice-row" aria-label="Split panel" :aria-checked="splitPanel" @click="toggleSplitPanel(true)"><span><strong>Split panel</strong><span>Keep the feed beside an open tweet.</span></span><span class="nook-radio-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button>
                             </div>
                         </section>
@@ -103,19 +103,19 @@
                                 <button type="button" role="radio" class="nook-theme-tile nook-media-tile" aria-label="Grid" :aria-checked="mediaGallery === 'grid'" @click="setMediaGallery('grid')">
                                     <span class="nook-theme-sample nook-media-sample" aria-hidden="true"><span class="cms-media is-grid"><span></span><span></span><span></span><span></span></span></span>
                                     <span class="nook-theme-label"><span>Grid</span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></span>
                                 </button>
                                 <button type="button" role="radio" class="nook-theme-tile nook-media-tile" aria-label="Carousel" :aria-checked="mediaGallery === 'carousel'" @click="setMediaGallery('carousel')">
                                     <span class="nook-theme-sample nook-media-sample" aria-hidden="true"><span class="cms-media is-carousel"><span></span><span></span></span></span>
                                     <span class="nook-theme-label"><span>Carousel</span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></span>
                                 </button>
                                 <button type="button" role="radio" class="nook-theme-tile nook-media-tile" aria-label="By post date" aria-describedby="media-date-description" :aria-checked="mediaGallery === 'date'" @click="setMediaGallery('date')">
                                     <span class="nook-theme-sample nook-media-sample" aria-hidden="true"><span class="cms-media is-date"><span class="cms-media is-grid"><span></span><span></span><span></span><span></span></span><span class="cms-media is-carousel"><span></span><span></span></span></span></span>
                                     <span class="nook-theme-label"><span>By post date</span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></span>
                                     <span class="nook-media-tile-help" id="media-date-description">Grid for tweets posted before July 10, 2026; carousel from then on.</span>
                                 </button>

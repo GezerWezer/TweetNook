@@ -189,7 +189,7 @@
         const dialog = document.createElement('dialog');
         dialog.className = 'article-focus';
         dialog.setAttribute('aria-label', 'Article focus mode');
-        dialog.innerHTML = `<div class="article-focus-toolbar"><button type="button" autofocus aria-label="Exit article focus mode">${icon('M16.697 5.89l1.414 1.42L13.414 12l4.697 4.69-1.414 1.42L12 13.41l-4.697 4.7-1.414-1.42L10.586 12 5.89 7.31l1.414-1.42L12 10.59l4.697-4.7z')}</button></div><div class="article-focus-content">${render(app, tweet, true, false, true)}</div>`;
+        dialog.innerHTML = `<div class="article-focus-toolbar"><button type="button" autofocus aria-label="Exit article focus mode">${icon('M18.7 6.7 13.42 12l5.3 5.3-1.42 1.4-5.3-5.29-5.28 5.3-1.42-1.42L10.6 12 5.3 6.7l1.42-1.4L12 10.58l5.3-5.3z')}</button></div><div class="article-focus-content">${render(app, tweet, true, false, true)}</div>`;
         activeFocus = {dialog, opener, savedOverflow: document.body.style.overflow};
         dialog.addEventListener('close', () => {
             if (activeFocus?.dialog === dialog) closeFocus();

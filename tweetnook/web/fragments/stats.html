@@ -18,7 +18,7 @@
                     <span x-text="statsRefreshing ? 'Refreshing' : 'Refresh'"></span>
                 </button>
                 <button type="button" @click="closeStatsModal()" class="nook-icon-button" aria-label="Close analytics"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z" />
+  <path d="M18.7 6.7 13.42 12l5.3 5.3-1.42 1.4-5.3-5.29-5.28 5.3-1.42-1.42L10.6 12 5.3 6.7l1.42-1.4L12 10.58l5.3-5.3z" />
 </svg></button>
             </div>
         </div>
@@ -270,8 +270,8 @@
                                                                  x-text="seg.percent + '%'"></div>
                                                         </div>
                                                         <svg x-show="storageDetailedView" viewBox="0 0 24 24" class="w-4 h-4 fill-current text-[var(--text-secondary)] transition-transform duration-300"
-                                                             :class="expandedStorageId === seg.id ? 'rotate-180' : ''">
-                                                            <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"></path>
+                                                             :class="expandedStorageId === seg.id ? 'rotate-180' : ''" fill="currentColor">
+                                                            <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
                                                         </svg>
                                                     </div>
                                                 </div>

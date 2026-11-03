@@ -54,7 +54,7 @@ function feedCardMethods() {
             const header = retweet
                 ? html`${[
                     html`<div class="tweet-repost-context text-[13px] text-[var(--text-secondary)] font-bold mb-1 flex items-center space-x-2 ml-8">`,
-                    html`<svg viewBox="0 0 24 24" class="w-4 h-4 fill-current"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"></path></svg>`,
+                    html`<svg viewBox="0 0 24 24" class="w-4 h-4 fill-current" fill="currentColor"><path d="M13.1 4q1.65-.01 2.71.06c.73.06 1.37.18 1.96.48a5 5 0 0 1 2.19 2.19 5 5 0 0 1 .48 1.96q.08 1.06.06 2.71v5.05l2.07-1.93 1.36 1.46-4.43 4.14-4.43-4.14 1.36-1.46 2.07 1.93V11.4c0-1.14 0-1.93-.05-2.55a3 3 0 0 0-.27-1.21 3 3 0 0 0-1.32-1.31 3 3 0 0 0-1.21-.28C15.03 6 14.24 6 13.1 6H11V4zM8.93 8.02 7.57 9.48 5.5 7.55v5.05c0 1.14 0 1.93.05 2.55.05.6.15.95.28 1.21a3 3 0 0 0 1.31 1.31c.26.14.61.23 1.22.28s1.4.05 2.54.05H13v2h-2.1q-1.64.02-2.7-.06a5 5 0 0 1-1.97-.48 5 5 0 0 1-2.18-2.19 5 5 0 0 1-.49-1.96q-.08-1.06-.06-2.7V7.54L1.43 9.48.07 8.02 4.5 3.88z" /></svg>`,
                     html`<span>${`${tweetObj.author?.display_name || 'Unknown'} Reposted`}</span></div>`,
                 ]}`
                 : '';
@@ -78,7 +78,7 @@ function feedCardMethods() {
                 html`<div class="tweet-menu-trigger">`,
                 rawHTML(missing),
                 html`<button type="button" class="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)] select-none touch-manipulation${menuOpen ? ' opacity-0' : ''}" aria-label="More actions" aria-haspopup="menu" aria-expanded="${String(menuOpen)}" title="More actions (hold for Tags)" data-action="menu">`,
-                html`<svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>`,
+                html`<svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>`,
                 html`</button></div></div>`,
             ]}`;
 

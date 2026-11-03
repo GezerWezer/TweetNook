@@ -3,7 +3,7 @@
             <div class="nook-search-wrap relative" x-data="searchAutocomplete()" @click.away="showDropdown = false">
                 <div class="nook-search-field relative w-full">
                     <span class="nook-search-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M10.25 3.75c-3.59 0-6.5 2.91-6.5 6.5s2.91 6.5 6.5 6.5c1.795 0 3.419-.726 4.596-1.904 1.178-1.177 1.904-2.801 1.904-4.596 0-3.59-2.91-6.5-6.5-6.5zm-8.5 6.5c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5c0 1.986-.682 3.815-1.824 5.262l4.781 4.781-1.414 1.414-4.781-4.781c-1.447 1.142-3.276 1.824-5.262 1.824-4.694 0-8.5-3.806-8.5-8.5z" />
+  <path d="M10.75 1.75a9 9 0 0 1 7.03 14.62l4.43 4.42-1.42 1.42-4.42-4.43a9 9 0 1 1-5.62-16.03m0 2a7 7 0 1 0 0 14 7 7 0 0 0 0-14" />
 </svg></span>
                     <div contenteditable="true" spellcheck="false" autocorrect="off"
                          @input="handleInput" 
@@ -28,7 +28,7 @@
                          :aria-activedescendant="showDropdown && options.length && !options[0].isDatePicker ? 'nook-suggest-' + selectedIndex : null" 
                          class="nook-search-input rich-search-input w-full bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full py-2 pl-4 pr-10 focus:outline-none focus:ring-1 focus:ring-[var(--accent-color)] border border-[var(--input-border)] whitespace-pre-wrap overflow-hidden block min-h-[38px] leading-relaxed"></div>
                     <button type="button" aria-label="Clear search" x-show="searchQuery" @click="searchQuery = ''; $refs.searchInput.innerHTML = ''; search()" class="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-[var(--text-secondary)] rounded-full hover:bg-[var(--text-primary)] transition z-10">
-                        <svg viewBox="0 0 24 24" class="w-3 h-3 fill-[var(--bg-primary)]"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.023-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.023 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
+                        <svg viewBox="0 0 24 24" class="w-3 h-3 fill-[var(--bg-primary)]" fill="currentColor"><path d="M17.7 7.7 13.42 12l4.3 4.3-1.42 1.4-4.3-4.28-4.3 4.3-1.4-1.42 4.28-4.3-4.3-4.3L7.7 6.3l4.3 4.28 4.3-4.3z" /></svg>
                     </button>
                 </div>
                 
@@ -121,14 +121,14 @@
                     <div class="feed-picker">
                         <button type="button" class="feed-picker-trigger nook-sort" id="feed-trigger-sort" aria-controls="feed-menu-sort" :aria-label="'Sort: ' + feedLabel('sort')" aria-haspopup="menu" :aria-expanded="feedMenu === 'sort'" @click="feedMenu === 'sort' ? closeFeedMenu() : openFeedMenu('sort', $el)" @keydown.arrow-down.prevent="openFeedMenu('sort', $el)" @keydown.arrow-up.prevent="openFeedMenu('sort', $el)">
                             <span x-text="feedLabel('sort')"></span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg>
                         </button>
                         <div x-cloak x-show="feedMenu === 'sort'" x-transition.opacity.duration.100ms class="feed-picker-menu nook-sort-menu" id="feed-menu-sort" data-feed-menu="sort" role="menu" aria-labelledby="feed-trigger-sort" @keydown.tab="closeFeedMenu()">
                             <template x-for="(option, index) in feedOptions('sort')" :key="option.value">
                                 <button type="button" class="feed-picker-option" role="menuitemradio" tabindex="-1" :aria-checked="sortOrder === option.value" @click="selectFeedOption('sort', option.value)" @keydown.arrow-down.prevent="focusFeedOption('sort', index + 1)" @keydown.arrow-up.prevent="focusFeedOption('sort', index - 1)" @keydown.home.prevent="focusFeedOption('sort', 0)" @keydown.end.prevent="focusFeedOption('sort', feedOptions('sort').length - 1)">
                                     <span x-text="option.label"></span>
-                                    <svg viewBox="0 0 24 24" aria-hidden="true" :class="{ 'is-selected': sortOrder === option.value }"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" :class="{ 'is-selected': sortOrder === option.value }" fill="currentColor"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg>
                                 </button>
                             </template>
                         </div>
@@ -163,12 +163,12 @@
                      @click.outside="closeTweetMenu(listMenu.key)" @keydown.escape.window="closeTweetMenu(listMenu.key)">
                     <button type="button" role="menuitem" @click.stop="openTagsFromTweetMenu(listMenu.tweet.tweet_id, listMenu.tweet.media_tags)"
                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
-                        <svg class="w-5 h-5 flex-shrink-0"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18.5 7c0-.72 0-1.2-.03-1.56a2 2 0 0 0-.13-.62 1.5 1.5 0 0 0-.66-.66c-.1-.05-.26-.1-.62-.13S16.22 4 15.5 4h-7c-.72 0-1.2 0-1.56.03s-.52.08-.62.13a1.5 1.5 0 0 0-.66.66c-.05.1-.1.26-.13.62-.03.37-.03.84-.03 1.56v11.33l6.5-3.46 6.5 3.46zm2 14.67L12 17.13l-8.5 4.54V7q-.01-1.03.04-1.72c.04-.48.12-.94.34-1.37a3.5 3.5 0 0 1 1.53-1.53c.43-.22.89-.3 1.37-.34q.7-.05 1.72-.04h7q1.02-.01 1.72.04c.48.04.94.12 1.37.34.66.34 1.2.87 1.53 1.53.22.43.3.89.34 1.37q.05.7.04 1.72z"/></svg>
+                        <svg class="w-5 h-5 flex-shrink-0"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4" /><path d="M7.04 2a3.5 3.5 0 0 0-2.48 1.03L3.03 4.56A3.5 3.5 0 0 0 2 7.04v4.92c0 .93.37 1.82 1.03 2.48l6.43 6.44a5 5 0 0 0 7.08 0l4.34-4.34a5 5 0 0 0 0-7.08l-6.44-6.43A3.5 3.5 0 0 0 11.96 2zm4.92 2q.62.01 1.07.44l6.43 6.44a3 3 0 0 1 0 4.24l-4.34 4.34a3 3 0 0 1-4.24 0l-6.44-6.43A1.5 1.5 0 0 1 4 11.96V7.04q.01-.62.44-1.07l1.53-1.53A1.5 1.5 0 0 1 7.04 4z" /></svg>
                         <span>Tags</span>
                     </button>
                     <button type="button" role="menuitem" @click.stop="copyRawTweet(listMenu.tweet)"
                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
-                        <svg class="w-5 h-5 flex-shrink-0"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="m10.85 10.5-3.11 3.42-1.48-1.34 1.89-2.08-1.89-2.08 1.48-1.34z"/><path d="M14.1 2.5q1.65-.02 2.7.06c.74.06 1.38.18 1.97.48a5 5 0 0 1 2.19 2.19c.3.6.42 1.23.48 1.96q.08 1.06.06 2.71v4.2q.02 1.65-.06 2.7a5 5 0 0 1-.48 1.97 5 5 0 0 1-2.19 2.19c-.6.3-1.23.42-1.96.48q-1.06.08-2.71.06H9.9q-1.65.02-2.7-.06a5 5 0 0 1-1.97-.48 5 5 0 0 1-2.19-2.19c-.3-.6-.42-1.23-.48-1.96q-.07-1.06-.06-2.71V9.9q-.02-1.65.06-2.7c.06-.74.18-1.38.48-1.97a5 5 0 0 1 2.19-2.19c.6-.3 1.23-.42 1.96-.48q1.06-.07 2.71-.06zm-4.2 2c-1.14 0-1.93 0-2.55.05-.6.05-.95.14-1.21.28a3 3 0 0 0-1.31 1.3 3 3 0 0 0-.28 1.22c-.05.62-.05 1.41-.05 2.55v4.2c0 1.14 0 1.93.05 2.55.05.6.14.95.28 1.21a3 3 0 0 0 1.3 1.31c.27.14.62.23 1.22.28.62.05 1.41.05 2.55.05h4.2c1.14 0 1.93 0 2.55-.05.6-.05.95-.14 1.21-.28a3 3 0 0 0 1.31-1.3c.14-.27.23-.62.28-1.22.05-.62.05-1.41.05-2.55V9.9c0-1.14 0-1.93-.05-2.55a3 3 0 0 0-.28-1.21 3 3 0 0 0-1.3-1.31 3 3 0 0 0-1.22-.28c-.62-.05-1.41-.05-2.55-.05z"/></svg>
+                        <svg class="w-5 h-5 flex-shrink-0"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="m15.45 4.3-5 16-1.9-.6 5-16zM6.78 7.63 3.28 12l3.5 4.38-1.56 1.25L.72 12l4.5-5.62zM23.28 12l-4.5 5.63-1.56-1.25 3.5-4.38-3.5-4.37 1.56-1.25z" /></svg>
                         <span>Copy raw</span>
                     </button>
                     <button type="button" role="menuitem" @click.stop="openTweetHistory(listMenu.key.slice('list:'.length))"
@@ -178,13 +178,13 @@
                     </button>
                     <button type="button" role="menuitem" x-show="hasNoteHistory(listMenu.tweet)" @click.stop="openNoteHistory(listMenu.key.slice('list:'.length))"
                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
-                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg>
+                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a6 6 0 0 1 6 6v2H6v-2a6 6 0 0 1 6-6m-6.24 1A8 8 0 0 0 4 18v1H0v-1a5 5 0 0 1 5-5zM19 13a5 5 0 0 1 5 5v1h-4v-1c0-1.9-.66-3.63-1.76-5zM4.25 5.5a3 3 0 1 1 0 6 3 3 0 0 1 0-6m15.5 0a3 3 0 1 1 0 6 3 3 0 0 1 0-6M12 3.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7" /></svg>
                         <span>Community notes</span>
                     </button>
                     <button type="button" role="menuitem" @click.stop="setTweetHidden(listMenu.key.slice('list:'.length), !listMenu.hidden)"
                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
-                        <svg class="w-5 h-5 flex-shrink-0" x-show="!listMenu.hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10"/></svg>
-                        <svg class="w-5 h-5 flex-shrink-0" x-show="listMenu.hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5"/><path fill-rule="evenodd" d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0"/></svg>
+                        <svg class="w-5 h-5 flex-shrink-0" x-show="!listMenu.hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10" /></svg>
+                        <svg class="w-5 h-5 flex-shrink-0" x-show="listMenu.hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5" /><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0" /></svg>
                         <span x-text="listMenu.hidden ? 'Unhide' : 'Hide'"></span>
                     </button>
                 </div>
@@ -193,9 +193,8 @@
             <!-- Infinite Scroll Sentinel -->
             <div x-show="!loading && hasMore" x-ref="feedSentinel" x-intersect.margin.1200px="loadMore()" class="p-6 text-center text-[var(--accent-color)] flex justify-center">
                 <button x-show="!loadingMore" @click="loadMore()" class="hover:underline" x-text="error ? 'Retry loading more' : 'Load more'"></button>
-                <svg x-show="loadingMore" aria-label="Loading more tweets" class="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg x-show="loadingMore" aria-label="Loading more tweets" class="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M21.45 13A9.5 9.5 0 0 1 5 18.42V21H3v-5.96L2.99 15H9v2H6.41a7.5 7.5 0 0 0 13.02-4zM12 2.5a9.5 9.5 0 0 1 7 3.08V3h2v5.96l.01.04H15V7h2.59a7.5 7.5 0 0 0-13.02 4H2.55A9.5 9.5 0 0 1 12 2.5" />
                 </svg>
             </div>
         </div>

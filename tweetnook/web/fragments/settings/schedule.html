@@ -8,7 +8,9 @@
                                 <!-- Like X's "Will send on …" line: a quiet glyph-led summary, not a card. -->
                                 <p class="nook-schedule-summary" :class="{ 'is-dirty': scheduleHasChanges() }" aria-live="polite">
                                     <span class="nook-schedule-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M6 3V2h2v1h6V2h2v1h1.5C18.88 3 20 4.119 20 5.5v2h-2v-2c0-.276-.22-.5-.5-.5H16v1h-2V5H8v1H6V5H4.5c-.28 0-.5.224-.5.5v12c0 .276.22.5.5.5h3v2h-3C3.12 20 2 18.881 2 17.5v-12C2 4.119 3.12 3 4.5 3H6zm9.5 8c-2.49 0-4.5 2.015-4.5 4.5s2.01 4.5 4.5 4.5 4.5-2.015 4.5-4.5-2.01-4.5-4.5-4.5zM9 15.5C9 11.91 11.91 9 15.5 9s6.5 2.91 6.5 6.5-2.91 6.5-6.5 6.5S9 19.09 9 15.5zm5.5-2.5h2v2.086l1.71 1.707-1.42 1.414-2.29-2.293V13z" />
+  <path d="m17.3 15.17 1.77 1.76-1.14 1.14-2.23-2.24V13h1.6z" />
+  <path d="M16.5 9a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13m0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9" />
+  <path d="M8 3.5h8V2h2v1.5h3.5V8h-2V5.5h-15V8H9v2H4.5v4.5c0 1.47.01 1.98.13 2.37a3 3 0 0 0 2 2c.39.12.9.13 2.37.13v2c-1.32 0-2.2.01-2.95-.21a5 5 0 0 1-3.34-3.34c-.22-.74-.21-1.63-.21-2.95v-11H6V2h2z" />
 </svg></span>
                                     <span class="nook-schedule-copy">
                                         <span class="nook-schedule-when" x-text="nookScheduleHeadline($data)"></span>
@@ -25,13 +27,13 @@
                                     <h3 id="nook-sync-what-title">What to sync</h3>
                                     <div role="group" aria-labelledby="nook-sync-what-title">
                                         <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('bookmarks')" @click="nookToggleSyncCollection($data, 'bookmarks')"><span><strong>Bookmarks</strong><span>Posts you’ve bookmarked</span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button>
                                         <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('likes')" @click="nookToggleSyncCollection($data, 'likes')"><span><strong>Likes</strong><span>Posts you’ve liked</span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button>
                                         <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('tweets')" @click="nookToggleSyncCollection($data, 'tweets')"><span><strong>Your tweets</strong><span>Posts you’ve written</span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button>
                                     </div>
                                 </section>
@@ -52,7 +54,7 @@
                     <span class="nook-select-label" x-text="label"></span>
                     <span class="nook-select-value" x-text="currentLabel()"></span>
                     <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
                 <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
@@ -62,7 +64,7 @@
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
                                 <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
                         </template>
@@ -88,7 +90,7 @@
                     <span class="nook-select-label" x-text="label"></span>
                     <span class="nook-select-value" x-text="currentLabel()"></span>
                     <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
                 <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
@@ -98,7 +100,7 @@
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
                                 <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
                         </template>
@@ -120,7 +122,7 @@
                     <span class="nook-select-label" x-text="label"></span>
                     <span class="nook-select-value" x-text="currentLabel()"></span>
                     <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
                 <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
@@ -130,7 +132,7 @@
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
                                 <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
                         </template>
@@ -146,7 +148,7 @@
                     <span class="nook-select-label" x-text="label"></span>
                     <span class="nook-select-value" x-text="currentLabel()"></span>
                     <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
                 <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
@@ -156,7 +158,7 @@
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
                                 <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
                         </template>
@@ -177,7 +179,7 @@
                     <span class="nook-select-label" x-text="label"></span>
                     <span class="nook-select-value" x-text="currentLabel()"></span>
                     <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
                 <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
@@ -191,7 +193,7 @@
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
                                 <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
                         </template>
@@ -216,7 +218,7 @@
                     <span class="nook-select-label" x-text="label"></span>
                     <span class="nook-select-value" x-text="currentLabel()"></span>
                     <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
                 <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
@@ -226,7 +228,7 @@
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
                                 <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
                         </template>
@@ -242,7 +244,7 @@
                     <span class="nook-select-label" x-text="label"></span>
                     <span class="nook-select-value" x-text="currentLabel()"></span>
                     <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M3.543 8.96l1.414-1.42L12 14.59l7.043-7.05 1.414 1.42L12 17.41 3.543 8.96z" />
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
                 <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
@@ -252,7 +254,7 @@
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
                                 <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" />
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
                         </template>

@@ -11,7 +11,7 @@
                                         <span class="nook-log-meta"><span x-text="originLabel(run.origin)"></span> · <span class="nook-log-state" :class="'is-' + statusKind(run)" x-text="statusLabel(run)"></span> · <span x-text="whenLabel(run.started_at)"></span><span x-show="durationLabel(run)" x-text="' · ' + durationLabel(run)"></span></span>
                                     </span>
                                     <span class="nook-category-arrow"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M14.586 12L7.543 4.96l1.414-1.42L17.414 12l-8.457 8.46-1.414-1.42L14.586 12z" />
+  <path d="M15.91 12 10 17.91 8.59 16.5l4.5-4.5-4.5-4.5L10 6.09z" />
 </svg></span>
                                 </button>
                             </template>
@@ -41,7 +41,7 @@
                                         <div>
                                             <template x-if="item.type === 'fold'">
                                                 <button type="button" class="nook-log-fold" @click="toggleFold(item.id)" :aria-expanded="openFolds.includes(item.id)"><span aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M14.586 12L7.543 4.96l1.414-1.42L17.414 12l-8.457 8.46-1.414-1.42L14.586 12z" />
+  <path d="M15.91 12 10 17.91 8.59 16.5l4.5-4.5-4.5-4.5L10 6.09z" />
 </svg></span><span x-text="foldLabel(item)"></span></button>
                                             </template>
                                             <template x-if="item.type === 'line'">

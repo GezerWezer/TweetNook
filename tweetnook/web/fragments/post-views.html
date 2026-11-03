@@ -79,7 +79,7 @@
                                         @pointercancel.stop="cancelTweetMenuPress()"
                                         @pointerleave="cancelTweetMenuPress()"
                                         @click.stop="toggleTweetMenu('detail:' + threadData.main.tweet_id)">
-                                    <svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
+                                    <svg viewBox="0 0 24 24" class="w-[18px] h-[18px] fill-current" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
                                 </button>
                                 <div x-show="tweetMenuOpen === 'detail:' + threadData.main.tweet_id" x-cloak
                                      x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
@@ -88,12 +88,12 @@
                                      role="menu">
                                     <button type="button" role="menuitem" @click.stop="openTagsFromTweetMenu(threadData.main.tweet_id, threadData.main.media_tags)"
                                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
-                                        <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M20.95 13.05 10.9 3H3v7.9l10.05 10.05a1.5 1.5 0 0 0 2.12 0l5.78-5.78a1.5 1.5 0 0 0 0-2.12ZM7.5 9A1.5 1.5 0 1 1 7.5 6a1.5 1.5 0 0 1 0 3Z"></path></svg>
+                                        <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true" fill="currentColor"><path d="M9 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4" /><path d="M7.04 2a3.5 3.5 0 0 0-2.48 1.03L3.03 4.56A3.5 3.5 0 0 0 2 7.04v4.92c0 .93.37 1.82 1.03 2.48l6.43 6.44a5 5 0 0 0 7.08 0l4.34-4.34a5 5 0 0 0 0-7.08l-6.44-6.43A3.5 3.5 0 0 0 11.96 2zm4.92 2q.62.01 1.07.44l6.43 6.44a3 3 0 0 1 0 4.24l-4.34 4.34a3 3 0 0 1-4.24 0l-6.44-6.43A1.5 1.5 0 0 1 4 11.96V7.04q.01-.62.44-1.07l1.53-1.53A1.5 1.5 0 0 1 7.04 4z" /></svg>
                                         <span>Tags</span>
                                     </button>
                                     <button type="button" role="menuitem" @click.stop="copyRawTweet(threadData.main)"
                                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
-                                        <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true"><path d="M8 7V3h13v13h-4v5H3V7h5Zm2 0h7v7h2V5h-9v2Zm5 2H5v10h10V9Z"></path></svg>
+                                        <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current flex-shrink-0" aria-hidden="true" fill="currentColor"><path d="m15.45 4.3-5 16-1.9-.6 5-16zM6.78 7.63 3.28 12l3.5 4.38-1.56 1.25L.72 12l4.5-5.62zM23.28 12l-4.5 5.63-1.56-1.25 3.5-4.38-3.5-4.37 1.56-1.25z" /></svg>
                                         <span>Copy raw</span>
                                     </button>
                                     <button type="button" role="menuitem" @click.stop="openTweetHistory(threadData.main.tweet_id)"
@@ -103,13 +103,13 @@
                     </button>
                     <button type="button" role="menuitem" x-show="hasNoteHistory(threadData.main)" @click.stop="openNoteHistory(threadData.main.tweet_id)"
                                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
-                                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM15.75 9.75a3 3 0 116 0 3 3 0 01-6 0zM2.25 9.75a3 3 0 116 0 3 3 0 01-6 0zM6.31 15.117A6.745 6.745 0 0112 12a6.745 6.745 0 016.709 7.498.75.75 0 01-.372.568A12.696 12.696 0 0112 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 01-.372-.568 6.787 6.787 0 011.019-4.38z" clip-rule="evenodd" /><path d="M5.082 14.254a8.287 8.287 0 00-1.308 5.135 9.687 9.687 0 01-1.764-.44l-.115-.04a.563.563 0 01-.373-.487l-.01-.121a3.75 3.75 0 016.576-3.036c.32.338.608.708.857 1.103a6.732 6.732 0 00-3.863 1.341 6.772 6.772 0 01-.004-3.456z" /><path d="M18.918 14.254a8.287 8.287 0 011.308 5.135 9.687 9.687 0 001.764-.44l.115-.04a.563.563 0 00.373-.487l-.01-.121a3.75 3.75 0 00-6.576-3.036c-.32.338-.608.708-.857 1.103a6.732 6.732 0 013.863 1.341 6.772 6.772 0 00.004-3.456z" /></svg>
+                                        <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a6 6 0 0 1 6 6v2H6v-2a6 6 0 0 1 6-6m-6.24 1A8 8 0 0 0 4 18v1H0v-1a5 5 0 0 1 5-5zM19 13a5 5 0 0 1 5 5v1h-4v-1c0-1.9-.66-3.63-1.76-5zM4.25 5.5a3 3 0 1 1 0 6 3 3 0 0 1 0-6m15.5 0a3 3 0 1 1 0 6 3 3 0 0 1 0-6M12 3.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7" /></svg>
                                         <span>Community notes</span>
                                     </button>
                                     <button type="button" role="menuitem" @click.stop="setTweetHidden(threadData.main.tweet_id, !threadData.main.hidden)"
                                             class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
-                                        <svg x-show="!threadData.main.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.2M6.6 6.6C3.7 8.5 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"></path></svg>
-                                        <svg x-show="threadData.main.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                        <svg x-show="!threadData.main.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="currentColor" aria-hidden="true" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10" /></svg>
+                                        <svg x-show="threadData.main.hidden" viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="currentColor" aria-hidden="true" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5" /><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0" /></svg>
                                         <span x-text="threadData.main.hidden ? 'Unhide' : 'Hide'"></span>
                                     </button>
                                 </div>
@@ -429,13 +429,13 @@
         <header x-cloak x-show="detailLayer && detailLayerOpen" data-video-occluder class="nook-header detail-layer-header">
             <div class="nook-title-row">
                 <button @click="goBack()" class="nook-icon-button nook-back" type="button" aria-label="Back"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M7.414 13l5.043 5.04-1.414 1.42L3.586 12l7.457-7.46 1.414 1.42L7.414 11H21v2H7.414z" />
+  <path d="m12.41 6-5 5H20v2H7.41l5 5L11 19.41 3.59 12 11 4.59z" />
 </svg></button>
                 <div class="nook-title-block">
                     <div class="nook-title-line"><h2 class="detail-layer-title" x-text="viewMode === 'quotes' ? 'Quote tweets' : (articleForTweet(threadData?.main) ? 'Article' : 'Tweet')"></h2></div>
                 </div>
                 <div class="nook-utilities">
-                    <button x-cloak x-show="viewMode === 'thread' && articleForTweet(threadData?.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3h8v8h-2V6.41l-5.043 5.05-1.414-1.42L17.586 5H13V3zm-1.543 10.96L6.414 19H11v2H3v-8h2v4.59l5.043-5.05 1.414 1.42z"></path></svg><span class="article-focus-label">Focus mode</span></button>
+                    <button x-cloak x-show="viewMode === 'thread' && articleForTweet(threadData?.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M11.46 13.96 6.4 19H11v2H3v-8h2v4.59l5.04-5.05zM21 11h-2V6.41l-5.04 5.05-1.42-1.42L17.6 5H13V3h8z" /></svg><span class="article-focus-label">Focus mode</span></button>
                 </div>
             </div>
         </header>

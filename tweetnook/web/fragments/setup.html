@@ -11,7 +11,7 @@
                     <!-- Focused first-run setup in its own Twitter/X-style modal -->
                     <div class="setup-modal-header" x-show="showSetupModal">
                         <button x-show="!setupForced" @click="closeSetup()" class="setup-modal-close" aria-label="Close setup">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.023-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293s.512-.098.707-.293c.39-.39.39-1.023 0-1.414L13.414 12z"></path></svg>
+                            <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M18.7 6.7 13.42 12l5.3 5.3-1.42 1.4-5.3-5.29-5.28 5.3-1.42-1.42L10.6 12 5.3 6.7l1.42-1.4L12 10.58l5.3-5.3z" /></svg>
                         </button>
                         <h1 id="setup-modal-title" class="setup-modal-heading">Setup</h1>
                         <span x-show="setupReplayConnected" x-cloak class="nook-demo-badge setup-replay-badge">Replay mode</span>
@@ -19,7 +19,7 @@
                     </div>
                     <div class="setup-desktop-required" role="note">
                         <div class="setup-desktop-required-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24"><path d="M4 4.75A2.75 2.75 0 0 1 6.75 2h10.5A2.75 2.75 0 0 1 20 4.75v10.5A2.75 2.75 0 0 1 17.25 18h-4.5v2H16a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3.25v-2h-4.5A2.75 2.75 0 0 1 4 15.25V4.75ZM6.75 4a.75.75 0 0 0-.75.75v10.5c0 .414.336.75.75.75h10.5a.75.75 0 0 0 .75-.75V4.75a.75.75 0 0 0-.75-.75H6.75Z"></path></svg>
+                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.5 3A3.5 3.5 0 0 1 22 6.5v9h1.5v2A3.5 3.5 0 0 1 20 21H4a3.5 3.5 0 0 1-3.5-3.5v-2H2v-9A3.5 3.5 0 0 1 5.5 3zm-16 14.5c0 .83.67 1.5 1.5 1.5h16c.83 0 1.5-.67 1.5-1.5h-6.26l-1 .5H9.76l-1-.5zM5.5 5C4.67 5 4 5.67 4 6.5v9h5.24l1 .5h3.52l1-.5H20v-9c0-.83-.67-1.5-1.5-1.5z" /></svg>
                         </div>
                         <h2>Continue setup on desktop</h2>
                         <p>Open TweetNook on a desktop computer to import your archive, connect Twitter/X, and finish setup.</p>
@@ -71,7 +71,7 @@
                                                 @dragover.prevent="$el.classList.add('is-dragover')"
                                                 @dragleave.prevent="$el.classList.remove('is-dragover')"
                                                 @drop.prevent="$el.classList.remove('is-dragover'); if($event.dataTransfer.files.length){const input=$refs.setupArchiveInput; const dt=new DataTransfer(); dt.items.add($event.dataTransfer.files[0]); input.files=dt.files; input.dispatchEvent(new Event('change'))}">
-                                            <span class="setup-upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.59l5.7 5.7-1.41 1.42L13 6.41V16h-2V6.41l-3.3 3.3-1.41-1.42L12 2.59zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z"></path></svg></span>
+                                            <span class="setup-upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 16c0 .72 0 1.2.03 1.56s.08.52.13.62q.23.43.66.66c.1.05.26.1.62.13.37.03.84.03 1.56.03h8c.72 0 1.2 0 1.56-.03s.52-.08.62-.13q.43-.23.66-.66c.05-.1.1-.26.13-.62.03-.37.03-.84.03-1.56v-2h2v2q.01 1.02-.04 1.72a4 4 0 0 1-.34 1.37 3.5 3.5 0 0 1-1.53 1.53c-.43.22-.89.3-1.37.34q-.7.05-1.72.04H8q-1.03.01-1.72-.04a4 4 0 0 1-1.37-.34 3.5 3.5 0 0 1-1.53-1.53 4 4 0 0 1-.34-1.37Q2.99 17.02 3 16v-2h2z" /><path d="m17.7 8.04-1.4 1.42-3.3-3.3V16h-2V6.16l-3.3 3.3-1.4-1.42 5.7-5.7z" /></svg></span>
                                             <span class="setup-upload-title" x-text="setupData.archive.ready ? 'Import your archive.zip' : 'Choose your archive.zip'"></span>
                                             <span class="setup-upload-hint" x-text="setupData.archive.ready ? 'Adds your full history to this archive. Drop it here or browse your files.' : 'Drop it here or browse your files'"></span>
                                         </button>
@@ -91,7 +91,7 @@
                                             <button type="button" class="setup-icon-btn is-destructive" x-show="!setupUploading && !['importing'].includes(setupArchiveStatus)"
                                                     :disabled="!!activity"
                                                     @click="clearSetupArchive()" aria-label="Remove uploaded archive" title="Remove uploaded archive">
-                                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6V4.5C16 3.12 14.88 2 13.5 2h-3C9.11 2 8 3.12 8 4.5V6H3v2h1.06l.81 11.21C4.98 20.78 6.28 22 7.86 22h8.27c1.58 0 2.88-1.22 3-2.79L19.93 8H21V6h-5zm-6-1.5c0-.28.22-.5.5-.5h3c.27 0 .5.22.5.5V6h-4V4.5zm7.13 14.57c-.04.52-.47.93-1 .93H7.86c-.53 0-.96-.41-1-.93L6.07 8h11.85l-.79 11.07zM9 17v-6h2v6H9zm4 0v-6h2v6h-2z"></path></svg>
+                                                <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M11 17H9v-6h2zm4 0h-2v-6h2z" /><path d="M13.12 2a3.5 3.5 0 0 1 3.36 2.54L16.9 6H21v2h-1.07l-.77 10.75A3.5 3.5 0 0 1 15.67 22H8.33a3.5 3.5 0 0 1-3.5-3.25L4.08 8H3V6h4.1l.42-1.46A3.5 3.5 0 0 1 10.9 2zM6.07 8l.76 10.6c.06.8.71 1.4 1.5 1.4h7.34c.79 0 1.44-.6 1.5-1.4L17.93 8zm4.82-4a1.5 1.5 0 0 0-1.45 1.09L9.18 6h5.64l-.26-.91A1.5 1.5 0 0 0 13.12 4z" /></svg>
                                             </button>
                                         </div>
 
@@ -144,8 +144,8 @@
                                                         <input id="setup-replay-password" :type="shown ? 'text' : 'password'" autocomplete="off" x-model="setupReplayForm.password" @input="setupReplayError = ''">
                                                     </div>
                                                     <button type="button" class="setup-field-toggle" :aria-label="shown ? 'Hide password' : 'Show password'" :aria-pressed="shown" @click="shown = !shown">
-                                                        <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5"/><path fill-rule="evenodd" d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0"/></svg>
-                                                        <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10"/></svg>
+                                                        <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5" /><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0" /></svg>
+                                                        <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10" /></svg>
                                                     </button>
                                                 </div>
                                             </form>
@@ -212,13 +212,13 @@
                                                     </div>
                                                     <button type="button" class="setup-field-toggle" x-show="setupAuth[field.key] !== '********'"
                                                             :aria-label="(shown ? 'Hide ' : 'Show ') + field.label" :aria-pressed="shown" @click="shown = !shown">
-                                                        <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5"/><path fill-rule="evenodd" d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0"/></svg>
-                                                        <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10"/></svg>
+                                                        <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5" /><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0" /></svg>
+                                                        <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10" /></svg>
                                                     </button>
                                                     <button type="button" class="setup-field-toggle" x-show="setupAuth[field.key] === '********'"
                                                             :aria-label="'Clear saved ' + field.label" title="Clear saved value"
                                                             @click="setupAuth[field.key] = ''; editSetupAuth(); $nextTick(() => document.getElementById(field.id)?.focus())">
-                                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z"/></svg>
+                                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M17.7 7.7 13.42 12l4.3 4.3-1.42 1.4-4.3-4.28-4.3 4.3-1.4-1.42 4.28-4.3-4.3-4.3L7.7 6.3l4.3 4.28 4.3-4.3z" /></svg>
                                                     </button>
                                                 </div>
                                             </template>
@@ -242,7 +242,7 @@
                                             <h3 id="setup-options-title-2">Not ready to connect?</h3>
                                             <button type="button" class="setup-option-row" :disabled="setupSavingAuth || setupAuthSuccessPending" @click="skipSetupAuth()">
                                                 <span class="setup-option-copy"><strong>Continue without connecting</strong><span>Browse your imported archive now and connect later in Settings. Import, enrichment and media downloads keep running; syncing needs a connection.</span></span>
-                                                <svg class="setup-option-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.586 12L7.543 4.96l1.414-1.42L17.414 12l-8.457 8.46-1.414-1.42L14.586 12z"/></svg>
+                                                <svg class="setup-option-chevron" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M15.91 12 10 17.91 8.59 16.5l4.5-4.5-4.5-4.5L10 6.09z" /></svg>
                                             </button>
                                         </section>
                                     </div>
@@ -278,7 +278,7 @@
                                                             {key: 'likes', label: 'Likes', detail: 'Posts you’ve liked'},
                                                             {key: 'tweets', label: 'Your tweets', detail: 'Posts you’ve written'},
                                                         ]" :key="item.key">
-                                                            <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes(item.key)" @click="nookToggleSyncCollection($data, item.key)"><span><strong x-text="item.label"></strong><span x-text="item.detail"></span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" /></svg></span></button>
+                                                            <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes(item.key)" @click="nookToggleSyncCollection($data, item.key)"><span><strong x-text="item.label"></strong><span x-text="item.detail"></span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg></span></button>
                                                         </template>
                                                     </div>
                                                 </section>
@@ -316,7 +316,7 @@
                                                                     </span>
                                                                 </span>
                                                             </span>
-                                                            <span class="nook-theme-label"><span x-text="item.theme._name"></span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" /></svg></span></span>
+                                                            <span class="nook-theme-label"><span x-text="item.theme._name"></span><span class="nook-theme-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg></span></span>
                                                         </button>
                                                     </template>
                                                 </div>
@@ -326,7 +326,7 @@
                                             <div class="nook-section-title"><h3 id="setup-accent-label">Accent color</h3><span x-text="THEMES[currentTheme]?._accents?.find(a => a.color === currentAccent)?.name"></span></div>
                                             <div class="nook-accent-choices" role="radiogroup" aria-labelledby="setup-accent-label">
                                                 <template x-for="a in THEMES[currentTheme]._accents || []" :key="currentTheme + a.color">
-                                                    <button type="button" role="radio" :aria-label="a.name" :aria-checked="currentAccent === a.color" @click="setAccent(a)" class="nook-accent-choice" :style="'--swatch:' + a.color + ';--swatch-text:' + a.text"><span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z" /></svg></span></button>
+                                                    <button type="button" role="radio" :aria-label="a.name" :aria-checked="currentAccent === a.color" @click="setAccent(a)" class="nook-accent-choice" :style="'--swatch:' + a.color + ';--swatch-text:' + a.text"><span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg></span></button>
                                                 </template>
                                             </div>
                                         </section>
@@ -360,8 +360,8 @@
                                                     <input id="setup-password" :type="shown ? 'text' : 'password'" autocomplete="new-password" x-model="setupPassword">
                                                 </div>
                                                 <button type="button" class="setup-field-toggle" :aria-label="shown ? 'Hide password' : 'Show password'" :aria-pressed="shown" @click="shown = !shown">
-                                                    <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5"/><path fill-rule="evenodd" d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0"/></svg>
-                                                    <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10"/></svg>
+                                                    <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5" /><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0" /></svg>
+                                                    <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10" /></svg>
                                                 </button>
                                             </div>
                                             <div>
@@ -382,7 +382,7 @@
                                             <h3 id="setup-options-title-5">Don't need a password?</h3>
                                             <button type="button" class="setup-option-row" :aria-pressed="setupNoPassword" @click="setupNoPassword = !setupNoPassword">
                                                 <span class="setup-option-copy"><strong>Continue without a password</strong><span x-text="setupNoPasswordWarning"></span></span>
-                                                <svg class="setup-option-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>
+                                                <svg class="setup-option-check" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 11.1a.9.9 0 0 1 .9 1.02l-.37 2.73h.72v1.8H11.5a.9.9 0 0 1-.9-1.02l.37-2.73h-.72v-1.8zm0-3.7a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4" /><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16" /></svg>
                                             </button>
                                         </section>
                                     </div>
@@ -410,7 +410,7 @@
                                     </div>
                                     <p class="setup-completion-note" x-show="setupCompletion.note" x-text="setupCompletion.note" role="status" aria-live="polite"></p>
                                     <section class="setup-completion-expectations" aria-labelledby="setup-completion-expectations-title">
-                                        <svg data-icon="clock" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.75c-4.55 0-8.25 3.69-8.25 8.25s3.7 8.25 8.25 8.25 8.25-3.69 8.25-8.25S16.56 3.75 12 3.75zM1.75 12C1.75 6.34 6.34 1.75 12 1.75S22.25 6.34 22.25 12 17.66 22.25 12 22.25 1.75 17.66 1.75 12zM11 6h2v5.28l3.82 1.27-.63 1.9L11 12.72V6z"/></svg>
+                                        <svg data-icon="clock" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="m13 11.32 4.37 1.75-.74 1.86L11 12.68V6.5h2z" /><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16" /></svg>
                                         <div>
                                             <h3 id="setup-completion-expectations-title" x-text="setupCompletion.title"></h3>
                                             <p x-text="setupCompletion.time"></p>
@@ -458,7 +458,7 @@
                         <div class="nook-sheet setup-help-sheet" role="dialog" aria-modal="true" aria-labelledby="setup-help-title" @keydown.tab="nookTrapFocus($event, $event.currentTarget)">
                             <div class="nook-sheet-header">
                                 <button type="button" class="setup-modal-close" aria-label="Close instructions" @click="closeSetupHelp()">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.59 12L4.54 5.96l1.42-1.42L12 10.59l6.04-6.05 1.42 1.42L13.41 12l6.05 6.04-1.42 1.42L12 13.41l-6.04 6.05-1.42-1.42L10.59 12z"/></svg>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M18.7 6.7 13.42 12l5.3 5.3-1.42 1.4-5.3-5.29-5.28 5.3-1.42-1.42L10.6 12 5.3 6.7l1.42-1.4L12 10.58l5.3-5.3z" /></svg>
                                 </button>
                                 <h3 id="setup-help-title">Find your cookies</h3>
                             </div>

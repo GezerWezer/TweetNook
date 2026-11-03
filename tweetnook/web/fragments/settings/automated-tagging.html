@@ -131,8 +131,8 @@
                                                 <option value="month">Month</option>
                                                 <option value="year">Year</option>
                                             </select>
-                                            <svg viewBox="0 0 24 24" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 fill-current text-[var(--text-secondary)]">
-                                                <path d="M7 10l5 5 5-5z"></path>
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 fill-current text-[var(--text-secondary)]" fill="currentColor">
+                                                <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
                                             </svg>
                                         </label>
                                     </div>
@@ -177,7 +177,7 @@
                                         <span class="relative inline-flex shrink-0 items-center rounded-lg">
                                             <input type="checkbox" x-model="automatedTagging.google_search" :disabled="automatedTagging.api_mode === 'free'" class="sr-only">
                                             <span :class="automatedTagging.google_search ? 'border-[var(--accent-color)] bg-[var(--accent-color)] text-white border-[3px]' : 'border-[var(--text-secondary)] bg-transparent text-transparent'" class="flex h-6 w-6 items-center justify-center rounded-lg border-2 transition">
-                                                <svg viewBox="0 0 24 24" aria-hidden="true" class="h-5 w-5 fill-current"><g><path d="M9.64 18.952l-5.55-4.861 1.317-1.504 3.951 3.459 8.459-10.948L19.4 6.32 9.64 18.952z"></path></g></svg>
+                                                <svg viewBox="0 0 24 24" aria-hidden="true" class="h-5 w-5 fill-current" fill="currentColor"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg>
                                             </span>
                                         </span>
                                     </label>
@@ -194,7 +194,7 @@
                                                 <div class="relative group flex items-center rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-1 pr-8 text-sm font-medium text-[var(--text-primary)]">
                                                     <span x-text="item"></span>
                                                     <button type="button" @click="removeAutomatedTaggingContext(item)" class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-[var(--text-secondary)] hover:text-[var(--destructive-color)]" :aria-label="`Remove ${item}`">
-                                                        <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-.39-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.024-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.023 0 1.414.195.195.45.293.707.293s.512-.098.707-.293L12 13.414l5.793 5.793c.195.195.45.293.707.293.39-.39 1.024-1.024 0-1.414L13.414 12z"></path></svg>
+                                                        <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current" fill="currentColor"><path d="M17.7 7.7 13.42 12l4.3 4.3-1.42 1.4-4.3-4.28-4.3 4.3-1.4-1.42 4.28-4.3-4.3-4.3L7.7 6.3l4.3 4.28 4.3-4.3z" /></svg>
                                                     </button>
                                                 </div>
                                             </template>
@@ -219,7 +219,7 @@
                                             <div class="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
                                                 <span class="min-w-0 break-words text-sm text-[var(--text-primary)]" x-text="item"></span>
                                                 <button type="button" @click="removeAutomatedTaggingInstruction(item)" class="shrink-0 rounded-full p-1 text-[var(--text-secondary)] hover:text-[var(--destructive-color)]" :aria-label="`Remove ${item}`">
-                                                    <svg viewBox="0 0 24 24" aria-hidden="true" class="h-4 w-4 fill-current"><path d="M13.414 12l5.793-5.793c.39-.39.39-1.023 0-1.414s-1.024-1.024-1.414 0L12 10.586 6.207 4.793c-.39-.39-1.024-.39-1.414 0s-.39 1.024 0 1.414L10.586 12l-5.793 5.793c-.39.39-.39 1.024 0 1.414s1.024.39 1.414 0L12 13.414l5.793 5.793c.39.39 1.024.39 1.414 0s.39-1.024 0-1.414L13.414 12z"></path></svg>
+                                                    <svg viewBox="0 0 24 24" aria-hidden="true" class="h-4 w-4 fill-current" fill="currentColor"><path d="M17.7 7.7 13.42 12l4.3 4.3-1.42 1.4-4.3-4.28-4.3 4.3-1.4-1.42 4.28-4.3-4.3-4.3L7.7 6.3l4.3 4.28 4.3-4.3z" /></svg>
                                                 </button>
                                             </div>
                                         </template>
