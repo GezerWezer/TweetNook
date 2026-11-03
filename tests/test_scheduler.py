@@ -351,6 +351,78 @@ def test_scheduler_records_conflicting_run_as_skipped(tmp_path) -> None:
     ]
 
 
+def test_sync_due_during_the_check_waits_for_it_then_runs(tmp_path) -> None:
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    config = AppConfig(schedule=ScheduleConfig(enabled=True, cadence="daily", timezone="UTC"))
+
+    class Supervisor:
+        def __init__(self):
+            self.config = config
+            self.active_run_id = "check-run"
+            self.active_kind = "check"
+
+        def start(self, **_kwargs):
+            if self.active_kind is not None:
+                raise JobConflictError("busy")
+            return {"run_id": "scheduled-run"}
+
+    supervisor = Supervisor()
+    manager = ScheduleManager(
+        paths,
+        config,
+        supervisor,
+        on_job_conflict=lambda _context: pytest.fail("waiting for the check is not a conflict"),
+    )
+    manager._state["next_run_at"] = 1_000.0
+    manager.tick(now=1_001.0)
+
+    assert manager.sync_deferred() is True
+    assert manager._state["next_run_at"] == 1_001.0 + 15 * 60
+
+    supervisor.active_kind = None
+    manager.tick(now=1_001.0 + 15 * 60)
+
+    assert manager._state["last_run_id"] == "scheduled-run"
+    assert manager.sync_deferred() is False
+
+
+def test_a_new_schedule_replaces_waiting_sync_and_check_retries(tmp_path) -> None:
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    config = AppConfig.model_validate(
+        {
+            "schedule": {"enabled": True, "cadence": "daily", "timezone": "UTC"},
+            "check": {"enabled": True},
+            "fxtwitter": {"enabled": True},
+        }
+    )
+
+    class Supervisor:
+        def __init__(self):
+            self.config = config
+            self.active_run_id = "check-run"
+            self.active_kind = "check"
+
+        def start(self, **_kwargs):
+            raise JobConflictError("busy")
+
+    manager = ScheduleManager(paths, config, Supervisor())
+    manager._state["next_run_at"] = 1_000.0
+    manager._state["check_next_run_at"] = 1_000.0
+    manager.tick(now=1_001.0)
+    assert manager.sync_deferred() is True
+    assert manager.check_status()["deferred"] is True
+
+    # Saving the schedule picks fresh run times, so neither retry is pending anymore.
+    manager.reload(config=config)
+
+    assert manager.sync_deferred() is False
+    assert manager.check_status()["deferred"] is False
+
+
 def test_scheduler_conflict_consumes_randomized_daily_occurrence(tmp_path) -> None:
     paths = XDGPaths(
         config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"

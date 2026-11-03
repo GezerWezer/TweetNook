@@ -297,6 +297,7 @@ class ScheduleManager:
             return
         if float(next_at) > timestamp:
             return
+        self._state["sync_deferred"] = False
         try:
             result = self.supervisor.start(
                 kind="sync",
@@ -311,6 +312,7 @@ class ScheduleManager:
                 # The check runs at most once a day, so a sync due during it waits
                 # for it instead of losing its slot.
                 self._state["last_result"] = "deferred: waiting for the availability check"
+                self._state["sync_deferred"] = True
                 self._state["next_run_at"] = timestamp + CHECK_CONFLICT_RETRY_SECONDS
                 self._save_state()
                 return
@@ -347,12 +349,11 @@ class ScheduleManager:
 
         with self._lock:
             next_at = self._state.get("check_next_run_at") if self._check_on() else None
-            last_result = str(self._state.get("check_last_result") or "")
             return {
                 "on": self._check_on(),
                 "next_run_at": next_at,
                 # A due check that found another command running retries every 15 minutes.
-                "deferred": bool(next_at) and last_result.startswith("deferred"),
+                "deferred": bool(next_at) and bool(self._state.get("check_deferred")),
                 "last_run_at": self._state.get("check_last_run_at"),
             }
 
@@ -360,9 +361,7 @@ class ScheduleManager:
         """Whether a due scheduled sync is waiting for the availability check."""
 
         with self._lock:
-            return str(self._state.get("last_result") or "").startswith(
-                "deferred: waiting for the availability check"
-            )
+            return bool(self._state.get("sync_deferred"))
 
     def skip_deferred_check(self, *, now: float | None = None) -> bool:
         """Drop the deferred check; the next one runs at its usual time."""
@@ -376,6 +375,7 @@ class ScheduleManager:
                 datetime.fromtimestamp(timestamp, UTC),
             ).timestamp()
             self._state["check_last_result"] = "skipped: removed from the queue"
+            self._state["check_deferred"] = False
             self._save_state()
             return True
 
@@ -423,6 +423,7 @@ class ScheduleManager:
                 self._check_schedule(check),
                 datetime.fromtimestamp(timestamp, UTC),
             ).timestamp()
+            self._state["check_deferred"] = False
             self._state["check_fingerprint"] = fingerprint
             self._save_state()
 
@@ -436,6 +437,7 @@ class ScheduleManager:
             return
         if float(next_at) > timestamp:
             return
+        self._state["check_deferred"] = False
         try:
             result = self.supervisor.start(
                 kind="check",
@@ -446,6 +448,7 @@ class ScheduleManager:
         except JobConflictError:
             # Unlike a missed sync, a due check waits for the running command.
             self._state["check_last_result"] = "deferred: another command was running"
+            self._state["check_deferred"] = True
             self._state["check_next_run_at"] = timestamp + CHECK_CONFLICT_RETRY_SECONDS
         except OSError as exc:
             logger.exception("Could not start the scheduled availability check")
@@ -480,6 +483,7 @@ class ScheduleManager:
                 schedule,
                 datetime.fromtimestamp(timestamp, UTC),
             ).timestamp()
+            self._state["sync_deferred"] = False
             self._state["fingerprint"] = fingerprint
             self._save_state()
 
