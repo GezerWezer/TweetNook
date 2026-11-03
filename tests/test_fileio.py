@@ -8,12 +8,12 @@ import pytest
 from rich.console import Console
 
 from tweetnook.core.fileio import atomic_write_text, owned_temp
+from tweetnook.enrichment.avatars import cache_avatar
 from tweetnook.enrichment.media import _download_file
 from tweetnook.importer.archive_media import _copy_file_from_archive
 from tweetnook.jobs.activity_history import _atomic_json
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.tagging.accounting import AIUsageLedger
-from tweetnook.web.routes.avatars import _cache_avatar
 
 
 def test_atomic_write_permissions_and_replacement(tmp_path):
@@ -89,7 +89,7 @@ async def test_media_files_follow_the_umask(tmp_path):
         _copy_file_from_archive(source, "asset.jpg", imported)
 
         avatar = tmp_path / "avatar.jpg"
-        _cache_avatar(avatar, b"avatar")
+        cache_avatar(avatar, b"avatar")
 
         transport = httpx.MockTransport(lambda request: httpx.Response(200, content=b"media"))
         async with httpx.AsyncClient(transport=transport) as client:

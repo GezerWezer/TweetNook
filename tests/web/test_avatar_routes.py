@@ -529,7 +529,7 @@ def test_cache_publication_is_atomic(monkeypatch, tmp_path):
         return original_replace(temporary, target)
 
     monkeypatch.setattr(Path, "replace", replace)
-    avatars._cache_avatar(path, content)
+    avatars.cache_avatar(path, content)
 
     assert replacements == [path]
     assert path.read_bytes() == content

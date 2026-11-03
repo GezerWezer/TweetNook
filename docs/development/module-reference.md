@@ -60,6 +60,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `enrichment/availability.py` | Availability retry schedule and the writers of unavailable and transient results. |
 | `enrichment/threads.py`, `enrichment/media.py`, `enrichment/unfurl.py` | Conversation expansion, file downloads and link previews. |
 | `enrichment/articles.py` | Article body refresh. |
+| `enrichment/avatars.py` | Profile-picture format checks, size variants and cache publication, shared by the avatar route. |
 | `enrichment/resurrection.py`, `enrichment/check.py` | Authenticated retry policy and public availability checks. |
 | `enrichment/prune.py`, `enrichment/prune_files.py` | Reachability policy and recoverable context/media cleanup; storage owns the row inventory and deletion. |
 | `export/` | JSON output and export file names. |

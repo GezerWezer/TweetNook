@@ -2,14 +2,11 @@
 
 import asyncio
 import logging
-import re
-import struct
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
-from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, Depends
@@ -17,13 +14,17 @@ from fastapi.responses import Response
 
 from tweetnook.config import XDGPaths
 from tweetnook.core.dev_replay import client_transport
-from tweetnook.core.fileio import atomic_write_bytes
+from tweetnook.enrichment.avatars import (
+    AVATAR_CANDIDATE_LIMIT,
+    avatar_format,
+    avatar_variant_urls,
+    cache_avatar,
+)
 from tweetnook.web.avatar_cache import mark_avatar_accessed
 from tweetnook.web.deps import get_server_state, require_store, verify_credentials
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-AVATAR_CANDIDATE_LIMIT = 8
 AVATAR_FETCH_BUDGET_SECONDS = 20.0
 # Avatars rarely change; reuse them for a day, then refresh in the background.
 AVATAR_CACHE_HEADERS = {"Cache-Control": "private, max-age=86400, stale-while-revalidate=604800"}
@@ -42,66 +43,6 @@ TRANSPARENT_PNG = (
     b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
     b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
 )
-
-
-def _is_placeholder(content: bytes) -> bool:
-    """Recognize one-pixel PNG fallbacks without rejecting real alpha images."""
-    return (
-        content.startswith(b"\x89PNG\r\n\x1a\n")
-        and len(content) >= 24
-        and content[12:16] == b"IHDR"
-        and struct.unpack(">II", content[16:24]) == (1, 1)
-    )
-
-
-def _avatar_format(content: bytes) -> tuple[str, str] | None:
-    """Identify supported image headers without decoding or flattening alpha."""
-    if _is_placeholder(content):
-        return None
-    if (
-        len(content) >= 33
-        and content.startswith(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
-        and all(struct.unpack(">II", content[16:24]))
-    ):
-        return ".png", "image/png"
-    if len(content) >= 12 and content.startswith(b"\xff\xd8\xff"):
-        return ".jpg", "image/jpeg"
-    if (
-        len(content) >= 13
-        and content[:6] in (b"GIF87a", b"GIF89a")
-        and all(struct.unpack("<HH", content[6:10]))
-    ):
-        return ".gif", "image/gif"
-    if (
-        len(content) >= 20
-        and content[:4] == b"RIFF"
-        and content[8:12] == b"WEBP"
-        and content[12:16] in (b"VP8 ", b"VP8L", b"VP8X")
-    ):
-        return ".webp", "image/webp"
-    return None
-
-
-def _cache_avatar(path: Path, content: bytes) -> None:
-    """Publish complete files so concurrent requests cannot see a partial write."""
-    atomic_write_bytes(path, content, fsync=False, follow_umask=True)
-
-
-def _avatar_urls(url: str) -> list[str]:
-    """Prefer the large variant, then the captured size and original image."""
-    try:
-        parts = urlsplit(url)
-    except ValueError:
-        return []
-    suffix = re.search(r"_(normal|400x400)(?=\.[^./]+$)", parts.path)
-    if suffix is None:
-        return [url]
-    paths = [
-        parts.path[: suffix.start()] + "_400x400" + parts.path[suffix.end() :],
-        parts.path,
-        parts.path[: suffix.start()] + parts.path[suffix.end() :],
-    ]
-    return list(dict.fromkeys(urlunsplit(parts._replace(path=path)) for path in paths))
 
 
 def _fetch_avatar(url: str, *, timeout: float) -> httpx.Response:
@@ -160,7 +101,7 @@ def load_avatar(avatars_dir: Path, user_id: str, store: Any, *, fetch: bool) -> 
         try:
             with avatar_path.open("rb") as cached:
                 content = cached.read()
-            image_format = _avatar_format(content)
+            image_format = avatar_format(content)
         except (OSError, ValueError):
             continue
         if image_format is None:
@@ -178,7 +119,7 @@ def load_avatar(avatars_dir: Path, user_id: str, store: Any, *, fetch: bool) -> 
     attempted_urls: set[str] = set()
     deadline = time.monotonic() + AVATAR_FETCH_BUDGET_SECONDS
     for source_url in urls:
-        for url in _avatar_urls(source_url):
+        for url in avatar_variant_urls(source_url):
             if url in attempted_urls:
                 continue
             attempted_urls.add(url)
@@ -190,13 +131,13 @@ def load_avatar(avatars_dir: Path, user_id: str, store: Any, *, fetch: bool) -> 
             except (httpx.HTTPError, ValueError):
                 # Stale variants and network errors must not block other sources.
                 continue
-            image_format = _avatar_format(resp.content)
+            image_format = avatar_format(resp.content)
             if resp.status_code != 200 or image_format is None:
                 continue
             suffix, media_type = image_format
             avatar_path = avatars_dir / f"{user_id}{suffix}"
             try:
-                _cache_avatar(avatar_path, resp.content)
+                cache_avatar(avatar_path, resp.content)
             except OSError as exc:
                 logger.warning("Could not cache avatar: %s", exc)
                 return AvatarImage(resp.content, media_type, None)
