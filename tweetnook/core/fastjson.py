@@ -4,25 +4,29 @@ from __future__ import annotations
 
 import json
 import math
-import re
 from typing import Any
 
 import orjson
 
-# A number token of 19 digits or more, the shortest that can exceed 64 bits. Bounding it by JSON
-# punctuation leaves out the digit runs in ID strings and status URLs, which nearly every saved
-# post has. Text inside a string can still look like this; that only costs a slower parse.
-_WIDE_INTEGER = r"(?:^|[:,\[\s])-?\d{19,}(?=[,\]}\s]|$)"
-_WIDE_INTEGER_TEXT = re.compile(_WIDE_INTEGER)
-_WIDE_INTEGER_BYTES = re.compile(_WIDE_INTEGER.encode())
+# orjson parses integers within the signed or unsigned 64-bit range exactly. Anything wider has at
+# least 20 digits, or 19 after a minus sign. Mapping every ASCII digit to "0" turns that test into
+# two substring searches, which run at C speed; a regular expression for digit runs costs several
+# times the parse itself on a saved post. Digit runs inside strings can match too, which only
+# costs a slower parse; the 19-digit post IDs in ID strings and status URLs don't.
+_DIGITS_AS_ZERO = bytes.maketrans(b"0123456789", b"0000000000")
+_WIDE_POSITIVE = b"0" * 20
+_WIDE_NEGATIVE = b"-" + b"0" * 19
 
 
 def _may_hold_wide_integer(value: Any) -> bool:
     if isinstance(value, str):
-        return _WIDE_INTEGER_TEXT.search(value) is not None
-    if isinstance(value, bytes | bytearray | memoryview):
-        return _WIDE_INTEGER_BYTES.search(value) is not None
-    return False
+        value = value.encode("utf-8", "surrogatepass")
+    elif isinstance(value, memoryview):
+        value = value.tobytes()
+    elif not isinstance(value, bytes | bytearray):
+        return False
+    digits = value.translate(_DIGITS_AS_ZERO)
+    return _WIDE_POSITIVE in digits or _WIDE_NEGATIVE in digits
 
 
 def loads(value: str | bytes) -> Any:
