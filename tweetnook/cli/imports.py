@@ -127,7 +127,7 @@ def import_x_archive_command(
                 import_x_archive(
                     archive,
                     offline=offline,
-                    **({"defer_followup": True} if defer_followup else {}),
+                    defer_followup=defer_followup,
                     regen=regen,
                     enrich=enrich,
                     detail_lookups=detail_lookups,

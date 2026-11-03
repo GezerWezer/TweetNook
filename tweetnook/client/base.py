@@ -246,7 +246,7 @@ def format_rate_limit_info(info: RateLimitInfo, *, now: float | None = None) -> 
     elif info.remaining is not None:
         parts.append(f"remaining {info.remaining}")
     reset_datetime = _reset_datetime(info.reset_at)
-    if reset_datetime is not None:
+    if info.reset_at is not None and reset_datetime is not None:
         reset_time = reset_datetime.strftime("%Y-%m-%d %H:%M:%S UTC")
         reset_delay = max(info.reset_at - reference_now, 0.0)
         parts.append(f"reset in {reset_delay:.1f}s")
@@ -304,7 +304,7 @@ async def request_with_backoff(
         if is_rate_limit(response):
             info = get_rate_limit_info(response)
             header_delay = compute_rate_limit_wait(info) if info is not None else None
-            if header_delay is not None:
+            if info is not None and header_delay is not None:
                 if status:
                     message = f"rate limited (HTTP 429), waiting {header_delay:.1f}s before retry"
                     summary = format_rate_limit_info(info)

@@ -43,8 +43,10 @@ def resolve_auth_bundle(
     auth, sources = resolve_auth_config(config, env=env)
     auth_token, ct0, user_id = auth.auth_token, auth.ct0, auth.user_id
 
-    missing = [name for name, value in {"auth_token": auth_token, "ct0": ct0}.items() if not value]
-    if missing:
+    if not auth_token or not ct0:
+        missing = [
+            name for name, value in {"auth_token": auth_token, "ct0": ct0}.items() if not value
+        ]
         raise AuthResolutionError(
             f"Missing Twitter/X session cookies: {', '.join(missing)}. Set "
             "TWEETNOOK_AUTH_TOKEN/TWEETNOOK_CT0 or add them in Settings → Setup."

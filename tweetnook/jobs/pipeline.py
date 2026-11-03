@@ -274,7 +274,7 @@ class _ResponsivePipeline:
         self.pipeline = pipeline
         self.issues = issues
 
-    def __rich_console__(self, _console: Console, options: ConsoleOptions) -> RenderResult:
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         if options.max_width >= 104:
             sidebar_width = min(42, max(34, options.max_width // 3))
             layout = Table.grid(expand=True, padding=(0, 2))

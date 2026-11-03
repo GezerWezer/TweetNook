@@ -34,6 +34,11 @@ class ImportObservation:
     deleted_at: str | None = None
     graph: ExtractedTweetGraph | None = None
 
+    def secondary_graph(self) -> ExtractedTweetGraph:
+        if self.graph is None:
+            self.graph = extract_secondary_objects(self.timeline_tweet.raw_json)
+        return self.graph
+
 
 class IngestionMixin(TweetsMixin):
     def ingest_import_batch(
@@ -48,16 +53,11 @@ class IngestionMixin(TweetsMixin):
         buffer = PageBuffer()
         keys: list[str] = []
         if membership != "like":
-            for observation in observations:
-                if observation.graph is None:
-                    observation.graph = extract_secondary_objects(
-                        observation.timeline_tweet.raw_json
-                    )
             self._saved_media_rows(
                 (
                     item.tweet_id
                     for observation in observations
-                    for item in observation.graph.media.values()
+                    for item in observation.secondary_graph().media.values()
                 ),
                 cursor=buffer,
             )
@@ -67,7 +67,9 @@ class IngestionMixin(TweetsMixin):
             if membership == "like":
                 keys.append(self._row_key_for_tweet_object(tweet.tweet_id))
             else:
-                keys.extend(self._secondary_graph_keys(observation.graph, cursor=buffer))
+                keys.extend(
+                    self._secondary_graph_keys(observation.secondary_graph(), cursor=buffer)
+                )
         self.prefetch_rows(keys, cursor=buffer)
         for observation in observations:
             tweet = observation.timeline_tweet
@@ -95,9 +97,8 @@ class IngestionMixin(TweetsMixin):
                         cursor=buffer,
                     )
             else:
-                assert observation.graph is not None
                 self._queue_secondary_graph(
-                    observation.graph,
+                    observation.secondary_graph(),
                     source=ARCHIVE_SOURCE,
                     deleted_at_by_tweet_id=(
                         {tweet.tweet_id: observation.deleted_at} if observation.deleted_at else {}

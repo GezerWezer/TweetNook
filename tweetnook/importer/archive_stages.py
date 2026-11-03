@@ -82,6 +82,13 @@ class ImportRun:
     def sampled(self) -> bool:
         return self.sample_limit is not None
 
+    @property
+    def owner(self) -> ArchiveIdentity:
+        # Inspection resolves the owner before any stage that claims it or writes rows.
+        if self.identity is None:
+            raise RuntimeError("The archive owner was read before inspection resolved it.")
+        return self.identity
+
     def record_timing(
         self, label: str, started: float, *, processed: int | None, unit: str
     ) -> None:
@@ -182,12 +189,12 @@ def inspect_archive(run: ImportRun, archive_path: Path) -> None:
 
 def claim_archive_owner(run: ImportRun, store: ArchiveStore) -> None:
     existing_owner = store.get_archive_owner_id()
-    if run.identity.account_id is None and existing_owner is not None:
+    if run.owner.account_id is None and existing_owner is not None:
         raise ArchiveOwnerMismatchError(
             "Archive owner could not be determined, but the local archive already "
             f"belongs to Twitter/X user {existing_owner}."
         )
-    store.ensure_archive_owner_id(run.identity.account_id)
+    store.ensure_archive_owner_id(run.owner.account_id)
 
 
 def clear_previous_import(run: ImportRun, store: ArchiveStore) -> None:
@@ -413,7 +420,7 @@ def _write_authored(
     import_authored_tweets(
         store,
         data.tweets,
-        run.identity,
+        run.owner,
         deleted_headers=data.deleted_headers,
         counts=run.counts,
         force_deleted=False,
@@ -427,7 +434,7 @@ def _write_deleted(
     import_authored_tweets(
         store,
         data.deleted_tweets,
-        run.identity,
+        run.owner,
         deleted_headers=data.deleted_headers,
         counts=run.counts,
         force_deleted=True,

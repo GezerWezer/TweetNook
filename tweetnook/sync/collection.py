@@ -722,6 +722,7 @@ async def _sync_collection_ready(
                 and prior_backfill_incomplete
                 and remaining != 0
             )
+            older: PassResult | None = None
             if resume_saved_backfill:
                 if pipeline.active:
                     if combine_pipeline_passes:
@@ -772,7 +773,7 @@ async def _sync_collection_ready(
                 pages_total += older.pages
                 tweets_total += older.tweets
                 stop_reason = older.stop_reason
-                if not combine_pipeline_passes:
+                if not combine_pipeline_passes and backfill_step is not None:
                     pipeline.complete_step(
                         backfill_step,
                         f"{older.pages:,} pages · {older.tweets:,} tweets · "
@@ -788,7 +789,7 @@ async def _sync_collection_ready(
                     "tweets_seen": tweets_total,
                     "pages": pages_total,
                 }
-                if resume_saved_backfill:
+                if older is not None:
                     pipeline.complete_step(
                         head_step,
                         f"{head.pages:,} head pages · {head.tweets:,} tweets · "

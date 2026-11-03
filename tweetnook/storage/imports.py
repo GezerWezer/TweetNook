@@ -92,7 +92,7 @@ class ImportsMixin(ObjectsMixin):
         return secondary_records
 
     def rehydrate_from_raw_json(
-        self, *, progress: Callable[[int], None] | None = None
+        self, *, progress: Callable[[int], object] | None = None
     ) -> RehydrateResult:
         """Rebuild normalized tweet fields and secondary rows from stored raw_json."""
         rows = self._query(expr=f"record_type = '{RecordType.TWEET}'")

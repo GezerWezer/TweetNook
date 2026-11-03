@@ -239,8 +239,7 @@ class ConversationsMixin(ConnectionMixin):
             offset=offset,
             indexed_by="idx_archive_target_tweet_id",
         )
-        paginated_ids = [r.get("tweet_id") for r in rows if r.get("tweet_id")]
-        return paginated_ids
+        return [row_id for r in rows if (row_id := r.get("tweet_id"))]
 
     def stored_tweet_json(self, tweet_id: str) -> str | None:
         rows = self._query(

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from numbers import Real
 from typing import Any
 
 
@@ -31,7 +30,7 @@ def validated_aspect_ratio(value: Any) -> list[int | float] | None:
         return None
     ratio: list[int | float] = []
     for component in value:
-        if isinstance(component, bool) or not isinstance(component, Real):
+        if isinstance(component, bool) or not isinstance(component, int | float):
             return None
         try:
             finite = math.isfinite(component)

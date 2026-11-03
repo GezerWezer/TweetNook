@@ -507,7 +507,7 @@ def upgrade_config(paths: XDGPaths | None = None) -> None:
 def _ensure_auth_skeleton(raw: dict[str, Any]) -> bool:
     auth = raw.get("auth")
     changed = not isinstance(auth, dict)
-    if changed:
+    if not isinstance(auth, dict):
         auth = {}
         raw["auth"] = auth
     for key in LEGACY_BROWSER_AUTH_FIELDS:
@@ -660,6 +660,8 @@ def _valid_config_paths() -> set[str]:
     return {
         f"{section}.{field}"
         for section, model_field in AppConfig.model_fields.items()
+        if isinstance(model_field.annotation, type)
+        and issubclass(model_field.annotation, BaseModel)
         for field in model_field.annotation.model_fields
     }
 

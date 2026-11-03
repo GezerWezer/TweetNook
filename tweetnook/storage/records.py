@@ -351,13 +351,17 @@ class RecordsMixin(ConnectionMixin):
         if fallback_key is not None and '"card"' in merged:
             fallback_row = self._lookup_row(fallback_key, cursor=cursor)
             fallback = fallback_row.get("raw_json") if fallback_row else None
-        has_donor = (
-            isinstance(loser, str)
+        donor = (
+            loser
+            if isinstance(loser, str)
             and loser != merged
             and any(marker in loser for marker in _RETAINED_FEATURE_MARKERS)
+            else None
         )
-        has_fallback = isinstance(fallback, str) and '"image_value"' in fallback
-        if not has_donor and not has_fallback:
+        card_fallback = (
+            fallback if isinstance(fallback, str) and '"image_value"' in fallback else None
+        )
+        if donor is None and card_fallback is None:
             return merged
         try:
             winner = fastjson.loads(merged)
@@ -366,12 +370,12 @@ class RecordsMixin(ConnectionMixin):
         if not isinstance(winner, dict):
             return merged
         changed = False
-        if has_donor:
+        if donor is not None:
             with suppress(TypeError, ValueError):
-                changed = retain_rich_features(winner, fastjson.loads(loser))
-        if has_fallback and link_card_lacks_image(winner):
+                changed = retain_rich_features(winner, fastjson.loads(donor))
+        if card_fallback is not None and link_card_lacks_image(winner):
             with suppress(TypeError, ValueError):
-                changed = restore_link_card_image(winner, fastjson.loads(fallback)) or changed
+                changed = restore_link_card_image(winner, fastjson.loads(card_fallback)) or changed
         return self._json_value(winner) if changed else merged
 
     def _names_another_article(self, context: RecordContext, raw: Any) -> bool:

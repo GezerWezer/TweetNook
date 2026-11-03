@@ -134,12 +134,12 @@ def _fetch_models(
     opener: PricingOpener | None = None,
     timeout: float = 10.0,
 ) -> Any:
-    opener = opener or request.urlopen
+    open_request = opener or request.urlopen
     req = request.Request(
         OPENROUTER_MODELS_URL,
         headers={"Accept": "application/json", "User-Agent": "TweetNook"},
     )
-    with opener(req, timeout=timeout) as handle:
+    with open_request(req, timeout=timeout) as handle:
         return json.loads(handle.read().decode("utf-8"))
 
 

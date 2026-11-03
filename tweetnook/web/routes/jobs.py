@@ -42,11 +42,11 @@ def list_jobs(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, 
     )
     # The archive Setup staged for import (uploaded through /api/setup/archive).
     staged = getattr(paths, "staged_archive_file", None)
-    uploaded = bool(staged and staged.is_file())
+    uploaded = staged if staged is not None and staged.is_file() else None
     payload["archive"] = {
-        "uploaded": uploaded,
-        "filename": staged.name if uploaded else None,
-        "size": staged.stat().st_size if uploaded else None,
+        "uploaded": uploaded is not None,
+        "filename": uploaded.name if uploaded is not None else None,
+        "size": uploaded.stat().st_size if uploaded is not None else None,
     }
     return payload
 

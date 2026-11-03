@@ -405,7 +405,7 @@ class _EnrichRun:
             self.step_key,
             completed=self.done,
             counters=counters,
-            **({"activity": activity} if activity else {}),
+            activity=activity or None,
         )
 
     def _save_fx_lookup(self, lookup: fxtwitter.FxLookup) -> None:

@@ -772,7 +772,9 @@ def link_card_identity(tweet: Any) -> str | None:
         return None
     card = tweet.get("card")
     values = _link_card_values(card)
-    return _link_card_identity(card, values) if values is not None else None
+    if not isinstance(card, dict) or values is None:
+        return None
+    return _link_card_identity(card, values)
 
 
 def link_card_lacks_image(tweet: Any) -> bool:
@@ -806,7 +808,9 @@ def restore_link_card_image(tweet: dict[str, Any], donor: Any) -> bool:
     card = tweet["card"]
     donor_card = donor.get("card")
     donor_values = _link_card_values(donor_card)
-    if donor_values is None or _link_card_image(donor_values) is None:
+    if not isinstance(donor_card, dict) or donor_values is None:
+        return False
+    if _link_card_image(donor_values) is None:
         return False
     identity = _link_card_identity(card, _link_card_values(card) or {})
     if identity is None or identity != _link_card_identity(donor_card, donor_values):

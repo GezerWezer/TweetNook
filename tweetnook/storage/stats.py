@@ -162,11 +162,11 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
                 continue
             raw_created_at = row.get("created_at")
             parsed_created_at = parse_created_at(raw_created_at)
-            if parsed_created_at is None:
+            if parsed_created_at is None or not isinstance(raw_created_at, str):
                 continue
             overall_dates.add(raw_created_at, parsed_created_at)
             if collection is not None:
-                collection_dates.setdefault(collection_type, DateBounds()).add(
+                collection_dates.setdefault(collection.collection_type, DateBounds()).add(
                     raw_created_at, parsed_created_at
                 )
         for collection_type, dates in collection_dates.items():

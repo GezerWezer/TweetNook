@@ -574,7 +574,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         id_order = {tid: i for i, tid in enumerate(tweet_ids)}
         rows.sort(
             key=lambda row: (
-                id_order.get(row.get("tweet_id"), 999999),
+                id_order.get(row.get("tweet_id", ""), 999999),
                 row["row_key"],
             )
         )

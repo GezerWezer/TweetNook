@@ -264,6 +264,10 @@ def usage_from_interaction(
     actual_model = str(_attribute(interaction, "model", None) or requested_model)
     actual_tier = _service_tier(_attribute(interaction, "service_tier", None) or service_tier)
     usage_known = has_usable_interaction_usage(usage)
+    # The tier that served the request prices it. The requested tier only stands in when
+    # the provider didn't say, so the recorded tier and multiplier can't disagree.
+    effective_multiplier = tier_pricing_multiplier(actual_tier)
+    cost: Decimal | None = None
     if usage_known:
         prompt = _usage_value(
             usage,
@@ -288,23 +292,17 @@ def usage_from_interaction(
             "thoughts_token_count",
         )
         tool_tokens = _usage_value(usage, "total_tool_tokens", "tool_tokens", "tool_token_count")
+        if pricing is not None:
+            cost = calculate_estimated_cost_usd(
+                pricing,
+                input_tokens=prompt,
+                cached_tokens=cached,
+                output_tokens=output,
+                thinking_tokens=thinking,
+                multiplier=effective_multiplier,
+            )
     else:
         prompt = cached = output = thinking = tool_tokens = None
-    # The tier that served the request prices it. The requested tier only stands in when
-    # the provider didn't say, so the recorded tier and multiplier can't disagree.
-    effective_multiplier = tier_pricing_multiplier(actual_tier)
-    cost = (
-        calculate_estimated_cost_usd(
-            pricing,
-            input_tokens=prompt,
-            cached_tokens=cached,
-            output_tokens=output,
-            thinking_tokens=thinking,
-            multiplier=effective_multiplier,
-        )
-        if pricing is not None and usage_known
-        else None
-    )
     search = interaction_search_accounting(interaction, search_enabled=search_enabled)
     metadata = request_metadata or {}
     actual = {

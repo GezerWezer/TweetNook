@@ -18,7 +18,7 @@ from tweetnook.core.timeline_parsing import extract_tweet_results_from_content
 from .record_types import RecordType
 
 if TYPE_CHECKING:
-    from .backend import ArchiveStore
+    from .records import RecordsMixin
 
 LIKE_SORTS = frozenset({"liked_latest", "liked_earliest"})
 T = TypeVar("T")
@@ -202,10 +202,13 @@ def _page_ids(page: PageObservations, members: set[str]) -> list[str]:
         if requires_membership and tweet_id not in members:
             continue
         observations.setdefault(tweet_id, sort_index)
-    indices = list(observations.values())
-    if all(index is not None and index >= 0 for index in indices):
-        if len(set(indices)) == len(indices):
-            return sorted(observations, key=lambda tweet_id: observations[tweet_id], reverse=True)
+    ranked = {
+        tweet_id: index
+        for tweet_id, index in observations.items()
+        if index is not None and index >= 0
+    }
+    if len(ranked) == len(observations) and len(set(ranked.values())) == len(ranked):
+        return sorted(ranked, key=ranked.__getitem__, reverse=True)
     return list(observations)
 
 
@@ -222,7 +225,7 @@ class LikeOrder:
 
 
 def _capture_pages(
-    store: ArchiveStore, captures: list[Any]
+    store: RecordsMixin, captures: list[Any]
 ) -> dict[tuple[str, str | None], PageObservations | None]:
     """Parse only captures not seen by an earlier rebuild on this store.
 
@@ -250,7 +253,7 @@ def _capture_pages(
     return pages
 
 
-def load_like_order(store: ArchiveStore) -> LikeOrder:
+def load_like_order(store: RecordsMixin) -> LikeOrder:
     """Recover captures only when like-order inputs change, including external writes."""
     signature = store.cache_revision("like_order")
     cached = store._like_order_cache

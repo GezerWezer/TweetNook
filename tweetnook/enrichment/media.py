@@ -9,6 +9,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
@@ -166,7 +167,7 @@ async def _obtain_missing_assets(
     client: httpx.AsyncClient,
     row: dict[str, object],
     base_dir: Path,
-) -> tuple[dict[str, object], int, str | None]:
+) -> tuple[dict[str, Any], int, str | None]:
     """Download whichever of a row's main file and poster aren't saved yet.
 
     The two files fail independently: a provider that has stopped serving one must not block
@@ -176,7 +177,7 @@ async def _obtain_missing_assets(
     the job.
     """
 
-    state: dict[str, object] = {
+    state: dict[str, Any] = {
         "local_path": row.get("local_path"),
         "sha256": row.get("sha256"),
         "byte_size": row.get("byte_size"),
@@ -225,7 +226,7 @@ async def _obtain_missing_assets(
 
 
 def _row_update(
-    store: ArchiveStore, row: dict[str, object], state: dict[str, object], error: str | None
+    store: ArchiveStore, row: dict[str, Any], state: dict[str, Any], error: str | None
 ) -> dict[str, object]:
     return store.build_media_download_update(
         row,

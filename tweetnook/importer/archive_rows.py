@@ -29,7 +29,7 @@ _T = TypeVar("_T")
 
 def _media_key_for_archive_item(item: dict[str, Any], *, position: int) -> str:
     media_id = item.get("id_str") or item.get("id")
-    media_type = item.get("type")
+    media_type = item.get("type", "")
     # X keys GIFs 16_ and videos 7_, so an imported row starts out with the key a live one has.
     prefix = {"photo": "3", "animated_gif": "16"}.get(media_type, "7")
     if media_id:

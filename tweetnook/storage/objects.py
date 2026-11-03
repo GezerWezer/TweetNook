@@ -490,7 +490,7 @@ class ObjectsMixin(RecordsMixin):
         row_key = self._row_key_for_article(article.tweet_id)
         context = self._record_context(row_key, cursor=cursor)
         prefer_incoming = self._prefer_incoming_source(context, source)
-        if self._names_another_article(context, article.raw_json):
+        if context.existing is not None and self._names_another_article(context, article.raw_json):
             if not prefer_incoming:
                 return context.existing
             # The saved fields describe the other Article, so none of them can fill a gap here.

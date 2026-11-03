@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import suppress
 from dataclasses import dataclass
 from html.parser import HTMLParser
+from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 import httpx
@@ -121,7 +122,7 @@ async def _fetch_destination(
     client: httpx.AsyncClient,
     request_url: str,
     row: dict[str, object],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Fetch a URL and read what it says about itself, falling back to the saved values."""
 
     response = await client.get(request_url)

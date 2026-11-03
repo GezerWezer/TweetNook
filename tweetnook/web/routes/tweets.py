@@ -61,7 +61,8 @@ def _reply_body(legacy: dict) -> str:
 def _is_mention_only_reply(tweet: dict, op_username: str | None) -> bool:
     """True for a low-like reply whose text only @mentions accounts other than OP."""
     raw = tweet.get("raw_json")
-    legacy = raw.get("legacy") if isinstance(raw, dict) else None
+    raw = raw if isinstance(raw, dict) else {}
+    legacy = raw.get("legacy")
     if not isinstance(legacy, dict) or tweet.get("media"):
         return False
     try:
@@ -335,7 +336,7 @@ def api_tweet_thread(
 
         annotate_web_tweets(store, list(formatted.values()))
 
-        main_tweet = formatted.get(tweet_id)
+        main_tweet = formatted[tweet_id]
 
         main_tweet["local_quote_count"] = store.quote_count(tweet_id)
 

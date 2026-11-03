@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 from typing import Any
 
@@ -78,12 +78,9 @@ def _progress(rows: Iterable[tuple[str, float, str]], *, style: str = ACCENT) ->
         auto_refresh=False,
     )
     for label, percent, summary in rows:
-        progress.add_task(
-            label,
-            total=100,
-            completed=max(0.0, min(100.0, percent)),
-            summary=summary,
-        )
+        task = progress.add_task(label, total=100, summary=summary)
+        # add_task only takes whole units; update keeps the fractional percentage.
+        progress.update(task, completed=max(0.0, min(100.0, percent)))
     return progress
 
 
@@ -110,7 +107,7 @@ def _tile(
 
 def _print_tiles(
     console: Console,
-    tiles: list[tuple[RenderableType, int]],
+    tiles: Sequence[tuple[RenderableType, int]],
 ) -> None:
     """Print one bento row, stacking it when the terminal is narrow."""
     if len(tiles) == 1 or console.width < 100:
@@ -128,17 +125,17 @@ def _print_tiles(
 
 def _print_masonry(
     console: Console,
-    left: list[RenderableType],
-    right: list[RenderableType],
+    left: Sequence[RenderableType],
+    right: Sequence[RenderableType],
     *,
-    narrow_order: list[RenderableType],
+    narrow_order: Sequence[RenderableType],
 ) -> None:
     """Pack tiles into independent columns so shorter tiles leave no row gap."""
     if console.width < 100:
         _print_tiles(console, [(tile, 1) for tile in narrow_order])
         return
 
-    def column(tiles: list[RenderableType]) -> Group:
+    def column(tiles: Sequence[RenderableType]) -> Group:
         renderables: list[RenderableType] = []
         for index, tile in enumerate(tiles):
             if index:

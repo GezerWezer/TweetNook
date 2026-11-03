@@ -194,8 +194,10 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
                         raw = fastjson.loads(row["raw_json"])
                     except (TypeError, ValueError):
                         continue
-                    donor = donors.get((tweet_id, link_card_identity(raw)))
-                    if not isinstance(raw, dict) or not restore_link_card_image(raw, donor):
+                    identity = link_card_identity(raw)
+                    if identity is None or not isinstance(raw, dict):
+                        continue
+                    if not restore_link_card_image(raw, donors.get((tweet_id, identity))):
                         continue
                     self.conn.execute(
                         "UPDATE archive SET raw_json = ?, updated_at = ? WHERE row_key = ?",

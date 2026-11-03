@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, TypeGuard
 
 from tweetnook.core import fastjson
 from tweetnook.core.extractor import (
@@ -82,7 +82,8 @@ def _has_archived_copy(tweet: dict[str, Any]) -> bool:
     raw = _json_dict(tweet.get("raw_json")) or {}
     if _direct_tombstone(raw) is not None:
         raw = {}
-    legacy = raw.get("legacy") if isinstance(raw.get("legacy"), dict) else {}
+    legacy = raw.get("legacy")
+    legacy = legacy if isinstance(legacy, dict) else {}
     media = (legacy.get("extended_entities") or {}).get("media") or (
         legacy.get("entities") or {}
     ).get("media")
@@ -112,9 +113,10 @@ def availability_for_tweet(
     relation_only: bool = False,
 ) -> dict[str, Any]:
     """Return a stable availability contract without trusting display text as primary state."""
-    enrichment_state = object_row.get("enrichment_state") if object_row else None
+    row = object_row or {}
+    enrichment_state = row.get("enrichment_state")
     if enrichment_state == "terminal_unavailable":
-        reason = str(object_row.get("enrichment_reason") or "unavailable_unknown")
+        reason = str(row.get("enrichment_reason") or "unavailable_unknown")
         if reason not in UNAVAILABLE_MESSAGES:
             reason = "unavailable_unknown"
         return {
@@ -124,8 +126,8 @@ def availability_for_tweet(
             "message": UNAVAILABLE_MESSAGES[reason],
             "placeholder": not _has_archived_copy(tweet),
             "confirmed": True,
-            "retryable": bool(object_row.get("enrichment_retry_eligible")),
-            "checked_at": object_row.get("enrichment_checked_at"),
+            "retryable": bool(row.get("enrichment_retry_eligible")),
+            "checked_at": row.get("enrichment_checked_at"),
         }
 
     if enrichment_state in {"done", "resurrected"}:
@@ -137,7 +139,7 @@ def availability_for_tweet(
             "placeholder": False,
             "confirmed": True,
             "retryable": False,
-            "checked_at": object_row.get("enrichment_checked_at"),
+            "checked_at": row.get("enrichment_checked_at"),
         }
 
     inferred_reason = _fallback_unavailable_reason(tweet)
@@ -150,7 +152,7 @@ def availability_for_tweet(
             "placeholder": not _has_archived_copy(tweet),
             "confirmed": False,
             "retryable": None,
-            "checked_at": object_row.get("enrichment_checked_at") if object_row else None,
+            "checked_at": row.get("enrichment_checked_at"),
         }
 
     if relation_only and not _has_archived_copy(tweet):
@@ -175,7 +177,7 @@ def availability_for_tweet(
             "placeholder": not has_content,
             "confirmed": False,
             "retryable": None,
-            "checked_at": object_row.get("enrichment_checked_at") if object_row else None,
+            "checked_at": row.get("enrichment_checked_at"),
         }
 
     return {
@@ -186,7 +188,7 @@ def availability_for_tweet(
         "placeholder": False,
         "confirmed": False,
         "retryable": False,
-        "checked_at": object_row.get("enrichment_checked_at") if object_row else None,
+        "checked_at": row.get("enrichment_checked_at"),
     }
 
 
@@ -247,7 +249,9 @@ def _normalized_object_tweet(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _use_canonical_object_content(object_row: dict[str, Any] | None, tweet: dict[str, Any]) -> bool:
+def _use_canonical_object_content(
+    object_row: dict[str, Any] | None, tweet: dict[str, Any]
+) -> TypeGuard[dict[str, Any]]:
     if object_row is None:
         return False
     if object_row.get("enrichment_state") in {"done", "resurrected"}:
@@ -357,7 +361,7 @@ def _overlay_community_notes(store: Any, tweets: list[dict[str, Any]]) -> None:
         for tweet in tweets_for_id:
             raw = _json_dict(tweet.get("raw_json"))
             pivot = raw.get("birdwatch_pivot") if raw is not None else None
-            if tweet.get("note_history") and isinstance(pivot, dict):
+            if tweet.get("note_history") and raw is not None and isinstance(pivot, dict):
                 tweet["raw_json"] = {**raw, "birdwatch_pivot": {**pivot, "note_history": True}}
 
 

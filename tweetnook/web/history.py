@@ -131,7 +131,7 @@ def _archive_events(store: ArchiveStore, tweet_id: str) -> list[dict[str, Any]]:
                 _event(observation.saved_at, "Added as a related tweet", "Archive", "info")
             )
         else:
-            collection = COLLECTION_LABELS.get(observation.collection, observation.collection)
+            collection = COLLECTION_LABELS.get(observation.collection or "", observation.collection)
             events.append(_event(observation.saved_at, f"Saved to {collection}", "Archive", "info"))
     return events
 

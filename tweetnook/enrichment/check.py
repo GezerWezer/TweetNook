@@ -212,8 +212,8 @@ class _CheckApplier:
         note = lookup.status.get("community_note")
         # An availability outcome can precede every note observation, so the saved
         # note seeds history whenever the tweet has no versions yet.
-        baseline = (
-            None
+        saved_text, saved_at = (
+            (None, None)
             if self.store.has_note_versions(lookup.tweet_id)
             else self.store.stored_community_note(lookup.tweet_id)
         )
@@ -221,7 +221,7 @@ class _CheckApplier:
             lookup.tweet_id,
             note if isinstance(note, dict) else None,
             seen_at=self.now,
-            baseline=baseline if baseline and baseline[0] else None,
+            baseline=(saved_text, saved_at) if saved_text else None,
         )
         if change == "added":
             self.result.notes_added += 1

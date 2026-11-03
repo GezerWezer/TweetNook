@@ -874,7 +874,9 @@ def test_note_check_reads_the_saved_baseline_only_before_any_version(
     lookup = SimpleNamespace(tweet_id="1", status={"community_note": {"text": "v1"}})
     baseline_reads = []
     monkeypatch.setattr(
-        store, "stored_community_note", lambda tweet_id: (baseline_reads.append(tweet_id), None)[1]
+        store,
+        "stored_community_note",
+        lambda tweet_id: (baseline_reads.append(tweet_id), (None, None))[1],
     )
     try:
         _CheckApplier._record_note(applier, lookup)

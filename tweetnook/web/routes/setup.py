@@ -152,7 +152,7 @@ def _archive_payload() -> dict[str, object]:
     store = server_state.get("store")
     archive = paths.staged_archive_file
     imported = bool(store and store.has_completed_archive_import())
-    pending = store.count_incomplete_initial_enrichment() if imported else 0
+    pending = store.count_incomplete_initial_enrichment() if store and imported else 0
     return {
         "ready": store is not None,
         "uploaded": archive.is_file(),

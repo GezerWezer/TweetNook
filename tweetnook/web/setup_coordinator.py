@@ -203,7 +203,9 @@ class SetupCoordinator:
                 self._record_initialization(completion.clean, self._run(completion.run_id))
             self.reconcile()
 
-    def _record_initialization(self, clean, run, *, failure="failed"):
+    def _record_initialization(
+        self, clean, run, *, failure: Literal["failed", "interrupted"] = "failed"
+    ):
         saved = clean or (
             self.state.initialization_mode == "import" and _saved_before_enrichment(run)
         )
@@ -354,7 +356,7 @@ class SetupCoordinator:
                 and self.state.initialization_mode == "import"
                 and self.state.initialization_result == "complete"
             )
-            if not init_running and self._initial_followup_failed(run):
+            if not init_running and run is not None and self._initial_followup_failed(run):
                 # Also cancel first-sync intent persisted by older versions after failure.
                 if self.state.auto_enrich_requested:
                     self.state.auto_enrich_requested = False
@@ -512,17 +514,15 @@ class SetupCoordinator:
                 media_steps = ((media_run or {}).get("snapshot") or {}).get("steps") or []
                 media_step = next((step for step in media_steps if step.get("key") == "media"), {})
                 # An explicit sync/enrichment can finish the media left by a failed import.
+                followup = followup_run or {}
                 resumed_media = next(
                     (
                         step
-                        for step in ((followup_run or {}).get("snapshot") or {}).get("steps", [])
+                        for step in (followup.get("snapshot") or {}).get("steps", [])
                         if step.get("key") == "media"
                         and (
                             step.get("state") in {"complete", "failed"}
-                            or (
-                                step.get("state") == "skipped"
-                                and followup_run.get("success") is True
-                            )
+                            or (step.get("state") == "skipped" and followup.get("success") is True)
                         )
                     ),
                     None,

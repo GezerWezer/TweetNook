@@ -224,11 +224,14 @@ async def count_request_tokens(
     if total is None:
         total = getattr(response, "totalTokenCount", None)
     try:
-        return max(int(total), 1), True
+        count = int(total) if total is not None else None
     except (TypeError, ValueError):
+        count = None
+    if count is None:
         if console is not None:
             console.print(Text("Token preflight unavailable: invalid token count.", style="yellow"))
         return None, False
+    return max(count, 1), True
 
 
 async def create_interaction(client: Any, **kwargs: Any) -> Any:
@@ -484,9 +487,10 @@ class PaidRequest:
             or getattr(error, "response", None)
             or getattr(error, "result", None)
         )
-        if callable(getattr(failure, "json", None)):
+        read_json = getattr(failure, "json", None)
+        if callable(read_json):
             try:
-                body = failure.json()
+                body = read_json()
                 if isinstance(body, dict):
                     failure = body
             except (ValueError, TypeError):

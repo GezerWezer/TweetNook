@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import math
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -82,8 +82,8 @@ def _retry_after(response: httpx.Response, attempt: int) -> float:
 
 def classify_fx_response(tweet_id: str, http_status: int, payload: Any) -> FxLookup:
     status = payload.get("status") if isinstance(payload, dict) else None
-    status = status if isinstance(status, dict) else None
-    status_type = status.get("type") if status else None
+    status = status if isinstance(status, dict) else {}
+    status_type = status.get("type")
     if http_status == 200 and status_type == "status" and status.get("id") == tweet_id:
         return FxLookup(tweet_id, "available", http_status, status=status, payload=payload)
     if status_type == "tombstone" and http_status in FX_TOMBSTONE_HTTP_STATUSES:
@@ -159,7 +159,7 @@ async def iter_fx_statuses(
     *,
     concurrency: int,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-) -> AsyncIterator[FxLookup]:
+) -> AsyncGenerator[FxLookup]:
     """Yield lookups as each finishes, with at most ``concurrency`` requests in flight."""
 
     semaphore = asyncio.Semaphore(max(concurrency, 1))

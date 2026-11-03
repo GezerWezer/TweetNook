@@ -156,7 +156,7 @@ class AvatarCacheManager:
 
         timestamp = time.time() if now is None else now
         last_run_at = self._state.get("last_run_at")
-        if last_run_at is not None and not self._force_cleanup:
+        if isinstance(last_run_at, int | float | str) and not self._force_cleanup:
             try:
                 if timestamp - float(last_run_at) < AVATAR_CLEANUP_INTERVAL_SECONDS:
                     return None

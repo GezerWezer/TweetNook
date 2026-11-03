@@ -48,6 +48,11 @@ from tweetnook.tagging.sdk import (
     load_gemini,
 )
 
+# The SDK is an optional extra and load_gemini() fills these in later, so they're untyped
+# like its return value.
+genai: Any
+types: Any
+Image: Any
 try:  # Optional extra: importing this module must remain safe in base installations.
     from google import genai
     from google.genai import types

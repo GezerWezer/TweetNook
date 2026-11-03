@@ -31,7 +31,7 @@ from tweetnook.core.timeline_parsing import (
     parse_tweet_detail_response,
 )
 from tweetnook.enrichment.availability import FOCAL_ABSENT_REASON, record_transient
-from tweetnook.jobs.pipeline import PipelineReporter, current_pipeline
+from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.records import PageBuffer
 
@@ -170,7 +170,7 @@ def detail_reporters(
 ) -> tuple[Callable[[str, str], None], Callable[[str], None]]:
     """Build a pass's retry and pacing messages: to its status line, or else its step."""
 
-    pipeline: PipelineReporter = current_pipeline()
+    pipeline = current_pipeline()
 
     def report(message: str) -> None:
         if status is not None:

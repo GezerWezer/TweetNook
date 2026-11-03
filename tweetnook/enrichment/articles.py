@@ -136,7 +136,7 @@ async def refresh_articles(
                 unit="tweets",
             ) as progress:
 
-                async def targets() -> AsyncIterator[str]:
+                async def pending_ids() -> AsyncIterator[str]:
                     for index, tweet_id in enumerate(tweet_ids):
                         result.processed += 1
                         pipeline.update_step(
@@ -179,7 +179,7 @@ async def refresh_articles(
                     if progress is not None:
                         progress(result.processed, len(tweet_ids))
 
-                await executor.run(targets(), tweet_id_of=str, record=record)
+                await executor.run(pending_ids(), tweet_id_of=str, record=record)
         finally:
             await client.aclose()
         pipeline.complete_step(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable, Coroutine
 from typing import Annotated, Any
 
 import typer
@@ -106,7 +106,7 @@ def _requested_mode(
 
 def _run_sync_command(
     *,
-    runner: Callable[[Any, Any, Console], Awaitable[Any]],
+    runner: Callable[[Any, Any, Console], Coroutine[Any, Any, Any]],
     collections: tuple[str, ...] | None,
     followups: SyncFollowupPlan,
     head_only: bool,

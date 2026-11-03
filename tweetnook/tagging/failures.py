@@ -11,6 +11,8 @@ def provider_error_code(error: BaseException) -> int | None:
         getattr(error, "code", None),
         getattr(getattr(error, "response", None), "status_code", None),
     ):
+        if raw is None:
+            continue
         try:
             code = int(raw)
         except (ValueError, TypeError):

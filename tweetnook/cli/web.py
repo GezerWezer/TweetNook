@@ -8,7 +8,7 @@ import time
 from contextlib import suppress
 from importlib import import_module
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 from rich.console import Console
@@ -106,7 +106,7 @@ def _unverified_process(pid_file: Path, port: int) -> int | None:
     return None
 
 
-def _refuse_unverified_process(console: Console, pid: int) -> None:
+def _refuse_unverified_process(console: Console, pid: int) -> NoReturn:
     console.print(
         f"Cannot verify the server identity (PID: {pid}). Stop it from its original "
         "terminal or service manager, then start this version.",
@@ -182,6 +182,7 @@ def start_web(dev_tools: Annotated[bool, DEV_TOOLS_OPTION] = False) -> None:
         console.print(f"[red]Failed to start web server: {exc}[/red]")
         raise typer.Exit(1) from exc
 
+    identity: ProcessIdentity | None = None
     try:
         identity = process_identity(process.pid)
         if identity is None:

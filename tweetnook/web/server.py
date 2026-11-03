@@ -6,7 +6,7 @@ import re
 import threading
 from contextlib import ExitStack, asynccontextmanager, suppress
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi import Path as PathParameter
@@ -112,7 +112,7 @@ def start_scheduler_if_ready() -> None:
         scheduler.start()
 
 
-def _record_schedule_skip(context: dict[str, object]) -> None:
+def _record_schedule_skip(context: dict[str, Any]) -> None:
     notices = server_state.get("notices")
     if notices is None:
         return
