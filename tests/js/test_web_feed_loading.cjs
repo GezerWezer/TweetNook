@@ -486,6 +486,69 @@ test('feed list replaces pages, appends only new tweets, and ignores stale respo
     assert.deepEqual(ids(), []);
 });
 
+test('distant feed cards give way to placeholders and return with their scroll and video positions', () => {
+    const context = browserContext();
+    const { app, list } = feedListApp(context);
+    // Each card carries a carousel and a player, the state a fresh render would lose.
+    app.renderFeedCard = tweet => `<div class="feed-card" data-tweet-id="${tweet.tweet_id}"><div class="media-carousel-track"></div><video src="/media/${tweet.tweet_id}.mp4"></video></div>`;
+    app.tweets = ['1', '2', '3'].map(id => ({ tweet_id: id }));
+    app.renderFeedList(app.tweets);
+    const evict = context.intersectionObservers.find(observer => observer.options.rootMargin === '6000px 0px');
+    const restore = context.intersectionObservers.find(observer => observer.options.rootMargin === '3000px 0px');
+    assert.deepEqual(evict.observed, list.children);
+    const timers = [];
+    context.setTimeout = (callback, delay) => timers.push({ callback, delay });
+
+    const [first, second, third] = list.children;
+    for (const card of list.children) {
+        card.rect = { top: -9000, bottom: -8680, height: 320 };
+        card.computedStyle = { paddingTop: '12px', paddingBottom: '12px', borderTopWidth: '0px', borderBottomWidth: '1px' };
+    }
+    first.querySelector('.media-carousel-track').scrollLeft = 240;
+    first.querySelector('video').currentTime = 7.5;
+    // A card with an open menu stays, and so does every card under a conversation.
+    app.tweetMenuOpen = 'list:2';
+    evict.callback([first, second].map(target => ({ target, isIntersecting: false })));
+    assert.deepEqual(list.children.map(child => child.getAttribute('class')), ['feed-card-placeholder', 'feed-card', 'feed-card']);
+    const placeholder = list.children[0];
+    assert.equal(placeholder.dataset.tweetId, '1');
+    assert.equal(placeholder.getAttribute('style'), 'height: 320px');
+    assert.deepEqual(restore.observed, [placeholder]);
+    assert.deepEqual(evict.observed, [second, third]);
+    app.viewMode = 'thread';
+    evict.callback([{ target: third, isIntersecting: false }]);
+    assert.equal(list.children[2], third);
+
+    // Held cards are observed again later, which reports where they are by then.
+    assert.deepEqual(timers.map(timer => timer.delay), [2000]);
+    evict.observed = [];
+    timers[0].callback();
+    assert.deepEqual(evict.observed, [second, third]);
+
+    app.viewMode = 'list';
+    restore.callback([{ target: placeholder, isIntersecting: true }]);
+    const returned = list.children[0];
+    assert.notEqual(returned, first);
+    assert.equal(returned.dataset.tweetId, '1');
+    assert.equal(returned.querySelector('.media-carousel-track').scrollLeft, 240);
+    assert.equal(returned.querySelector('video').currentTime, 7.5);
+    assert.equal(returned.style.containIntrinsicSize, 'auto 295px');
+    assert.deepEqual(restore.observed, []);
+    assert.ok(evict.observed.includes(returned));
+
+    // A post removed from the list while it was away leaves no gap.
+    evict.callback([{ target: third, isIntersecting: false }]);
+    app.tweets = app.tweets.filter(tweet => tweet.tweet_id !== '3');
+    restore.callback([{ target: list.children[2], isIntersecting: true }]);
+    assert.deepEqual(list.children.map(child => child.dataset.tweetId), ['1', '2']);
+
+    // A full render starts both observers over with the new cards.
+    evict.callback([{ target: list.children[1], isIntersecting: false }]);
+    app.renderFeedList(app.tweets);
+    assert.deepEqual(restore.observed, []);
+    assert.deepEqual(evict.observed, list.children);
+});
+
 test('profile search replaces feed cards after its Alpine template closes', async () => {
     const context = browserContext();
     const pending = [];

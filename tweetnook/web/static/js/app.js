@@ -402,6 +402,7 @@ function tweetApp() {
         lightboxMethods(),
         threadMethods(),
         navigationMethods(),
+        feedEvictionMethods(),
         feedMethods(),
     ]) {
         Object.defineProperties(app, Object.getOwnPropertyDescriptors(part));

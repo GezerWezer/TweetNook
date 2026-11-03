@@ -87,7 +87,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `web/index.html`, `web/fragments/`, `web/page.py` | The page shell and per-feature markup, assembled when served. |
 | `web/static/js/app.js` | `tweetApp()`, the page's Alpine component: shared state and the merge of the feature method factories. See [architecture](architecture.md#browser-ui). |
 | `web/static/js/core/html.js` | The escaping `html` template, `rawHTML` and `escapeHTML`. |
-| `web/static/js/feed/` | The post list, routes and navigation, conversations and quotes; `render/` builds feed card markup. |
+| `web/static/js/feed/` | The post list, evicting distant cards, routes and navigation, conversations and quotes; `render/` builds feed card markup. |
 | `web/static/js/media/` | Feed video playback and players, the media viewer, and the motion of the viewer and phone post layer. |
 | `web/static/js/features/` | One file per feature: Jobs and activity, Stats, tags, Setup (`setup.js` in the app, `setup-dialog.js` the dialog), Configuration, Schedule, Appearance, notices, automated tagging, the tweet menu and the profile card. |
 | `web/static/js/*.js` | The header, the Settings shell, Analytics helpers, Articles, search autocomplete, themes and the setup completion icons. |

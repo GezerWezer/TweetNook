@@ -322,11 +322,13 @@ function feedMethods() {
             // A new list closes the menu first, so no new card renders as its opener.
             if (!append && this.tweetMenuOpen === this.listMenu.key) this.closeTweetMenu(this.listMenu.key);
             const html = tweets.map(tweet => this.renderFeedCard(tweet)).join('');
+            const start = append ? list.children.length : 0;
             outsideAlpine(() => {
                 if (append) list.insertAdjacentHTML('beforeend', html);
                 else list.innerHTML = html;
             });
             this.measureTextClamps(list);
+            this.trackFeedCards([...list.children].slice(start), { reset: !append });
         },
 
         isPhoneLayout() {

@@ -169,14 +169,23 @@ function browserContext(pathname = '/') {
             },
         },
         IntersectionObserver: class IntersectionObserver {
-            constructor(callback) {
+            constructor(callback, options = {}) {
                 this.callback = callback;
+                this.options = options;
                 this.observed = [];
+                context.intersectionObservers.push(this);
             }
             observe(node) {
-                this.observed.push(node);
+                if (!this.observed.includes(node)) this.observed.push(node);
+            }
+            unobserve(node) {
+                this.observed = this.observed.filter(observed => observed !== node);
+            }
+            disconnect() {
+                this.observed = [];
             }
         },
+        intersectionObservers: [],
         MutationObserver: class MutationObserver {
             constructor(callback) {
                 this.callback = callback;
@@ -350,6 +359,8 @@ class FakeElement {
         this.listeners = [];
         this.rect = null;
         this.connected = false;
+        const values = new Map();
+        this.style = {setProperty: (name, value) => values.set(name, value), getPropertyValue: name => values.get(name) || '', removeProperty: name => values.delete(name)};
     }
 
     get children() { return this.childNodes.filter(node => node instanceof FakeElement); }
@@ -416,8 +427,6 @@ class FakeElement {
     cloneNode() {
         const clone = new FakeElement(this.tagName, [...this.attributeMap]);
         clone.rect = this.rect;
-        const values = new Map();
-        clone.style = {setProperty: (name, value) => values.set(name, value), getPropertyValue: name => values.get(name) || '', removeProperty: name => values.delete(name)};
         return clone;
     }
     appendChild(node) { node.remove(); this.append([node]); return node; }

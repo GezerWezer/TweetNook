@@ -281,6 +281,13 @@ function feedVideoMethods() {
             video.load?.();
         },
 
+        // Where a player stands, including one whose source was released at a distance.
+        feedVideoPosition(video) {
+            const released = releasedVideoSources.get(video);
+            if (released) return {src: released.src, time: released.time};
+            return {src: video.getAttribute?.('src') || '', time: video.currentTime || 0};
+        },
+
         restoreVideoResource(video) {
             const resource = releasedVideoSources.get(video);
             if (!resource) return;
