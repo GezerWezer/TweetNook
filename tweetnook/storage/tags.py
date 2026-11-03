@@ -9,7 +9,7 @@ from collections import defaultdict
 from collections.abc import Iterator
 from typing import Any, Literal, TypedDict
 
-from .common import clause_in, tag_key
+from .common import clause_in, tag_key, uncaptured_tweet_sql
 from .db import ConnectionMixin
 from .record_types import RecordType
 
@@ -360,21 +360,40 @@ class TagsMixin(ConnectionMixin):
                     (tweet_id,),
                 )
 
-    def _excluded_member_count(self, collection: str, excluded_ids: str) -> int:
-        """Count excluded IDs that belong to this collection, deduplicating overlap."""
-        membership = (
-            f"member.record_type = '{RecordType.TWEET}' AND member.tweet_id = excluded.tweet_id"
+    def _excluded_member_count(self, collection: str, *, hidden: bool, uncaptured: bool) -> int:
+        """Count the hidden or uncaptured posts in this collection, deduplicating overlap.
+
+        Only rows that can be excluded are read: hidden markers and posts without
+        captured content, each checked for membership in the collection.
+        """
+        member = (
+            "EXISTS (SELECT 1 FROM archive AS member INDEXED BY idx_archive_membership "
+            f"WHERE member.record_type = '{RecordType.TWEET}' AND member.tweet_id = {{}}"
+            + (" AND member.collection_type = ?)" if collection != "all" else ")")
         )
-        params: tuple[str, ...] = ()
-        if collection != "all":
-            membership += " AND member.collection_type = ?"
-            params = (collection,)
+        member_params: tuple[str, ...] = (collection,) if collection != "all" else ()
+        selects: list[str] = []
+        params: list[str] = []
+        if hidden:
+            selects.append(
+                "SELECT hidden.tweet_id FROM archive AS hidden "
+                f"WHERE hidden.record_type = '{RecordType.TWEET_HIDDEN}' "
+                f"AND hidden.tweet_id IS NOT NULL AND {member.format('hidden.tweet_id')}"
+            )
+            params.extend(member_params)
+        if uncaptured:
+            selects.append(
+                "SELECT candidate.tweet_id FROM archive_tweet_content AS candidate "
+                "WHERE candidate.has_content = 0 AND candidate.tweet_id IS NOT NULL "
+                f"AND {member.format('candidate.tweet_id')} "
+                f"AND {uncaptured_tweet_sql('candidate.tweet_id')}"
+            )
+            params.extend(member_params)
+        if not selects:
+            return 0
         return int(
             self.conn.execute(
-                f"SELECT COUNT(*) FROM ({excluded_ids}) AS excluded "
-                "WHERE EXISTS (SELECT 1 FROM archive AS member "
-                f"INDEXED BY idx_archive_membership WHERE {membership})",
-                params,
+                f"SELECT COUNT(*) FROM ({' UNION '.join(selects)})", params
             ).fetchone()[0]
         )
 

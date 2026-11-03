@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING, Any
 from .common import (
     HIDDEN_TWEET_IDS_SQL,
     SEARCH_COLLECTION_ORDER,
-    UNCAPTURED_TWEET_IDS_SQL,
     Clause,
     and_clauses,
     clause_in,
     join_clauses,
+    listed_tweet_sql,
 )
 from .ordering import chronological_order, representative_membership, sort_chronologically
 from .record_types import RecordType
@@ -378,13 +378,11 @@ class SearchMixin(ReadsMixin, TagsMixin):
         if count_only:
             include_total = True
             sort = "newest"  # Counts need neither BM25 nor like-order rebuilding.
-        excluded_ids = []
-        if exclude_hidden:
-            excluded_ids.append(HIDDEN_TWEET_IDS_SQL)
-        if exclude_uncaptured:
-            excluded_ids.append(UNCAPTURED_TWEET_IDS_SQL)
-        excluded_sql = " UNION ".join(excluded_ids)
-        excluded_expr = f"archive.tweet_id NOT IN ({excluded_sql})" if excluded_sql else ""
+        excluded_expr = listed_tweet_sql(
+            "archive.tweet_id",
+            exclude_hidden=exclude_hidden,
+            exclude_uncaptured=exclude_uncaptured,
+        )
 
         if limit < 1:
             raise ValueError("limit must be at least 1")
@@ -406,8 +404,10 @@ class SearchMixin(ReadsMixin, TagsMixin):
                 filter_expr += " AND collection_type = ?"
                 filter_params = (collection,)
             total = self.count_export_rows(collection) if include_total else None
-            if total is not None and excluded_sql:
-                total -= self._excluded_member_count(collection, excluded_sql)
+            if total is not None and excluded_expr:
+                total -= self._excluded_member_count(
+                    collection, hidden=exclude_hidden, uncaptured=exclude_uncaptured
+                )
             if count_only:
                 return [], total
             if sort in {"liked_latest", "liked_earliest"}:

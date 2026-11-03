@@ -9,10 +9,7 @@ from typing import TYPE_CHECKING, Any
 from tweetnook.core import fastjson
 from tweetnook.core.media_metadata import aspect_ratio_for_media
 
-from .common import (
-    HIDDEN_TWEET_IDS_SQL,
-    UNCAPTURED_TWEET_IDS_SQL,
-)
+from .common import listed_tweet_sql
 from .ordering import chronological_columns, chronological_order
 from .record_types import RecordType
 from .records import RecordsMixin
@@ -208,10 +205,12 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             where.append("candidate.collection_type = ?")
             duplicate_where.append("duplicate.collection_type = ?")
             params.extend([collection, collection])
-        if exclude_hidden:
-            where.append(f"candidate.tweet_id NOT IN ({HIDDEN_TWEET_IDS_SQL})")
-        if exclude_uncaptured:
-            where.append(f"candidate.tweet_id NOT IN ({UNCAPTURED_TWEET_IDS_SQL})")
+        if listed := listed_tweet_sql(
+            "candidate.tweet_id",
+            exclude_hidden=exclude_hidden,
+            exclude_uncaptured=exclude_uncaptured,
+        ):
+            where.append(listed)
 
         order_by = (
             "RANDOM()"

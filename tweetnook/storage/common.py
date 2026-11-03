@@ -130,13 +130,13 @@ HIDDEN_TWEET_IDS_SQL = (
     "SELECT hidden.tweet_id FROM archive AS hidden "
     f"WHERE hidden.record_type = '{RecordType.TWEET_HIDDEN}' AND hidden.tweet_id IS NOT NULL"
 )
-UNCAPTURED_TWEET_IDS_SQL = (
-    "SELECT DISTINCT content.tweet_id FROM archive_tweet_content AS content "
-    "WHERE content.has_content = 0 AND content.tweet_id IS NOT NULL "
-    "AND NOT EXISTS (SELECT 1 FROM archive_tweet_content AS captured "
+# A post is uncaptured when no copy holds its text or JSON and none of its secondary
+# content was saved either: an official archive or partial capture can store useful
+# media or an Article without post text/JSON. Uses indexed IDs and scalar columns, not
+# raw JSON. The conditions apply to a has_content = 0 row aliased `content`.
+_UNCAPTURED_CONDITIONS = (
+    "NOT EXISTS (SELECT 1 FROM archive_tweet_content AS captured "
     "WHERE captured.tweet_id = content.tweet_id AND captured.has_content = 1) "
-    # An official archive or partial capture can store useful secondary content
-    # without post text/JSON. Use indexed IDs and scalar columns, not raw JSON.
     "AND NOT EXISTS (SELECT 1 FROM archive AS saved "
     "WHERE saved.tweet_id = content.tweet_id AND ("
     f"(saved.record_type = '{RecordType.MEDIA}' AND ("
@@ -147,6 +147,40 @@ UNCAPTURED_TWEET_IDS_SQL = (
     "COALESCE(saved.title, '') != '' OR COALESCE(saved.summary_text, '') != '' OR "
     "COALESCE(saved.content_text, '') != ''))))"
 )
+UNCAPTURED_TWEET_IDS_SQL = (
+    "SELECT DISTINCT content.tweet_id FROM archive_tweet_content AS content "
+    "WHERE content.has_content = 0 AND content.tweet_id IS NOT NULL "
+    f"AND {_UNCAPTURED_CONDITIONS}"
+)
+
+
+def uncaptured_tweet_sql(column: str) -> str:
+    """True when the post ID in `column` is uncaptured, probing the index once per row.
+
+    `column NOT IN (UNCAPTURED_TWEET_IDS_SQL)` builds the whole set before the first row,
+    which costs as much as a page of results; a list page tests only the rows it reads.
+    """
+    return (
+        "EXISTS (SELECT 1 FROM archive_tweet_content AS content "
+        f"WHERE content.has_content = 0 AND content.tweet_id = {column} "
+        f"AND {_UNCAPTURED_CONDITIONS})"
+    )
+
+
+def listed_tweet_sql(column: str, *, exclude_hidden: bool, exclude_uncaptured: bool) -> str:
+    """The condition Web lists put on the post ID in `column`, or "" for none.
+
+    Hidden posts are few, so their set is built once per statement; uncaptured posts
+    are probed per row (uncaptured_tweet_sql), which also leaves out NULL IDs.
+    """
+    conditions = []
+    if exclude_hidden:
+        conditions.append(f"{column} NOT IN ({HIDDEN_TWEET_IDS_SQL})")
+    if exclude_uncaptured:
+        conditions.append(f"{column} IS NOT NULL AND NOT {uncaptured_tweet_sql(column)}")
+    return " AND ".join(conditions)
+
+
 COMMUNITY_NOTE_TWEET_IDS_SQL = (
     "SELECT tweet_id FROM archive_tweet_content WHERE has_note = 1 "
     "UNION SELECT tweet_id FROM community_notes"
