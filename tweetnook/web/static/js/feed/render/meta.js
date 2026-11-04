@@ -2,30 +2,41 @@
  * What surrounds a post's content: dates, counts, Community Notes and the action bar.
  */
 
+// toLocaleDateString with options builds a new ICU formatter on every call, which
+// is most of the cost of a card's dates. Formatters for fixed options are reused.
+const dateFormats = new Map();
+function formatDateParts(date, options) {
+    const key = JSON.stringify(options);
+    let format = dateFormats.get(key);
+    if (!format) dateFormats.set(key, format = new Intl.DateTimeFormat('en-US', options));
+    return format.format(date);
+}
+const SHORT_DAY = { month: 'short', day: 'numeric' };
+const SHORT_DAY_YEAR = { month: 'short', day: 'numeric', year: 'numeric' };
+const NUMERIC_DAY = { month: 'numeric', day: 'numeric', year: '2-digit' };
+const CLOCK_TIME = { hour: 'numeric', minute: '2-digit' };
+
 function tweetMetaMethods() {
     return {
         formatSyncDate(tweet) {
             let synced = tweet.synced_at || (tweet.collection ? tweet.collection.synced_at : null);
             if (!synced) return 'Archived';
             let dS = new Date(synced);
-            return `Synced ${dS.toLocaleDateString('en-US', {month:'short', day:'numeric'})}`;
+            return `Synced ${formatDateParts(dS, SHORT_DAY)}`;
         },
 
         formatDate(dateStr, includeTime = false) {
             if (!dateStr) return '';
             const d = new Date(dateStr);
             if (includeTime) {
-                return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + ' · ' + 
-                       d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                return formatDateParts(d, CLOCK_TIME) + ' · ' + formatDateParts(d, SHORT_DAY_YEAR);
             }
             const now = new Date();
             const diff = (now - d) / 1000;
             if (diff < 60) return 'Just now';
             if (diff < 3600) return Math.floor(diff/60) + 'm';
             if (diff < 86400) return Math.floor(diff/3600) + 'h';
-            const options = { month: 'short', day: 'numeric' };
-            if (d.getFullYear() !== now.getFullYear()) options.year = 'numeric';
-            return d.toLocaleDateString('en-US', options);
+            return formatDateParts(d, d.getFullYear() !== now.getFullYear() ? SHORT_DAY_YEAR : SHORT_DAY);
         },
 
         // X's apps: age in s/m/h/d inside a week, then a numeric date (10/9/26).
@@ -33,8 +44,8 @@ function tweetMetaMethods() {
             if (!dateStr) return '';
             const d = new Date(dateStr);
             if (Number.isNaN(d.getTime())) return '';
-            const numeric = d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
-            if (includeTime) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + ' · ' + numeric;
+            const numeric = formatDateParts(d, NUMERIC_DAY);
+            if (includeTime) return formatDateParts(d, CLOCK_TIME) + ' · ' + numeric;
             const diff = Math.max(0, (new Date() - d) / 1000);
             if (diff < 60) return Math.floor(diff) + 's';
             if (diff < 3600) return Math.floor(diff / 60) + 'm';

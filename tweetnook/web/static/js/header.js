@@ -550,7 +550,8 @@ function nookSyncPanel() {
         if (job && !job.scheduled) return { left: `${job.name} hasn’t run yet`, right: '', sub: job.description || '', detailLabel: 'Status', status: 'Choose run options to get started.', detail: '' };
         return { left: 'Your archive hasn’t been synced yet', right: '', sub: 'A sync will check your collections and update the archive.', detailLabel: 'Status', status: 'Choose Sync now to get started.', detail: '' };
       }
-      const metric = label => Number(String(this.activitySummaryMetrics().find(item => item.label === label)?.value || 0).replace(/,/g, '')) || 0;
+      const metrics = this.activitySummaryMetrics();
+      const metric = label => Number(String(metrics.find(item => item.label === label)?.value || 0).replace(/,/g, '')) || 0;
       const bookmarks = metric('New bookmarks'), likes = metric('New liked tweets'), tweets = metric('New tweets');
       const parts = [bookmarks && `${bookmarks.toLocaleString()} bookmark${bookmarks === 1 ? '' : 's'}`, likes && `${likes.toLocaleString()} like${likes === 1 ? '' : 's'}`, tweets && `${tweets.toLocaleString()} tweet${tweets === 1 ? '' : 's'}`].filter(Boolean);
       const issues = this.activityIssueCount();
