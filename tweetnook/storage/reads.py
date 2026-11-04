@@ -408,16 +408,25 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         url_rows = self._rows_for_values(RecordType.URL, "url_hash", url_hashes, columns=url_cols)
 
         media_by_tweet: dict[str, list[dict[str, Any]]] = {}
+        # Each saved post is parsed at most once: for the export when asked, and for
+        # the playback geometry of its videos and GIFs, which only the payload holds.
+        playable_ids = {
+            row["tweet_id"]
+            for row in media_rows
+            if row.get("media_type") in {"video", "animated_gif"} and row.get("tweet_id")
+        }
+        parsed_raw: list[Any] = [None] * len(sorted_rows)
         raw_tweet_by_id: dict[str, dict[str, Any]] = {}
-        for row in sorted_rows:
+        for index, row in enumerate(sorted_rows):
+            playable = row.get("tweet_id") in playable_ids
             raw_json = row.get("raw_json")
-            if not isinstance(raw_json, str) or not raw_json:
+            if not (include_raw_json or playable) or not isinstance(raw_json, str) or not raw_json:
                 continue
             try:
-                raw_tweet = fastjson.loads(raw_json)
+                raw_tweet = parsed_raw[index] = fastjson.loads(raw_json)
             except (TypeError, json.JSONDecodeError):
                 continue
-            if isinstance(raw_tweet, dict) and row.get("tweet_id"):
+            if playable and isinstance(raw_tweet, dict):
                 raw_tweet_by_id[row["tweet_id"]] = raw_tweet
         for row in sorted(
             media_rows,
@@ -482,7 +491,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
                 tags_by_tweet[row["tweet_id"]] = tag_payload
 
         exported = []
-        for row in sorted_rows:
+        for index, row in enumerate(sorted_rows):
             tweet_media = media_by_tweet.get(row["tweet_id"], [])
             article = articles_by_tweet.get(row["tweet_id"])
             if article is not None:
@@ -516,7 +525,12 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
                     "qt_media_tags": tags_by_tweet.get(
                         quoted_tweet_by_source.get(row["tweet_id"], "")
                     ),
-                    "raw_json": fastjson.loads(row["raw_json"])
+                    # A payload that failed to parse above raises here, as it always has.
+                    "raw_json": (
+                        parsed_raw[index]
+                        if parsed_raw[index] is not None
+                        else fastjson.loads(row["raw_json"])
+                    )
                     if include_raw_json and row.get("raw_json")
                     else None,
                 }
