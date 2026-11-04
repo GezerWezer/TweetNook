@@ -136,22 +136,35 @@ class AuthorsMixin(ConnectionMixin):
         if not query:
             return []
 
+        # A handle shows its latest row. Ranking every handle's rows to find those
+        # sorts the whole collection on each keystroke, so the handles with any
+        # matching row are found first; the latest row of each is a seek on
+        # idx_archive_search_author, and it must still match.
+        author_filter = "author_username IS NOT NULL AND author_id IS NOT NULL AND author_id != ''"
+        match = (
+            "(LOWER(author_username) LIKE LOWER(?) ESCAPE '\\' "
+            "OR LOWER(author_display_name) LIKE LOWER(?) ESCAPE '\\')"
+        )
         sql = f"""
-            WITH authors AS (
-                SELECT author_id, author_username, author_display_name,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY LOWER(author_username) ORDER BY created_at_ts DESC
-                    ) AS position
+            WITH matched AS (
+                SELECT DISTINCT LOWER(COALESCE(author_username, '')) AS name_key
                 FROM archive
-                WHERE record_type = '{RecordType.TWEET}' AND author_username IS NOT NULL
-                    AND author_id IS NOT NULL AND author_id != ''
+                WHERE record_type = '{RecordType.TWEET}' AND {author_filter} AND {match}
+            ),
+            latest AS (
+                SELECT (
+                    SELECT row_key FROM archive INDEXED BY idx_archive_search_author
+                    WHERE record_type = '{RecordType.TWEET}'
+                        AND LOWER(COALESCE(author_username, '')) = matched.name_key
+                        AND {author_filter}
+                    ORDER BY created_at_ts DESC
+                    LIMIT 1
+                ) AS row_key
+                FROM matched
             )
             SELECT author_id, author_username, author_display_name
-            FROM authors
-            WHERE position = 1 AND (
-                LOWER(author_username) LIKE LOWER(?) ESCAPE '\\'
-                OR LOWER(author_display_name) LIKE LOWER(?) ESCAPE '\\'
-            )
+            FROM latest JOIN archive USING (row_key)
+            WHERE {match}
             ORDER BY CASE
                 WHEN LOWER(author_username) = LOWER(?) THEN 0
                 WHEN LOWER(author_username) LIKE LOWER(?) ESCAPE '\\' THEN 1
@@ -161,7 +174,9 @@ class AuthorsMixin(ConnectionMixin):
         """
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
-        rows = self.conn.execute(sql, (pattern, pattern, query, f"{escaped}%", limit)).fetchall()
+        rows = self.conn.execute(
+            sql, (pattern, pattern, pattern, pattern, query, f"{escaped}%", limit)
+        ).fetchall()
         return [
             {
                 "id": r["author_id"],
