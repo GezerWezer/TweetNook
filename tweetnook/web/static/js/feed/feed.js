@@ -20,6 +20,9 @@ function feedMethods() {
     let boundFeedList = null;
     // Roots waiting for the next frame's clamp measurement (measureTextClamps).
     const clampRoots = new Set();
+    // tweet_id -> loaded tweet, for the tweets array it was built from (feedTweetById).
+    let indexedTweets = null;
+    const tweetIndex = new Map();
 
     return {
         tweets: [],
@@ -462,6 +465,20 @@ function feedMethods() {
                 if (card.dataset.tweetId === tweetId) return card;
             }
             return null;
+        },
+
+        // The plain (unproxied) loaded tweet with this id. Scrolling back through a long
+        // list restores many cards a frame; searching the reactive array for each one
+        // went through Alpine's proxy for every tweet it passed. The list is replaced,
+        // never changed in place, so a new array means a new index.
+        feedTweetById(tweetId) {
+            const tweets = globalThis.Alpine?.raw ? Alpine.raw(this.tweets) : this.tweets;
+            if (tweets !== indexedTweets) {
+                tweetIndex.clear();
+                for (const tweet of tweets) tweetIndex.set(String(tweet.tweet_id), tweet);
+                indexedTweets = tweets;
+            }
+            return tweetIndex.get(String(tweetId)) || null;
         },
 
         // The displayed tweet (a retweet's original) of the card containing an element.

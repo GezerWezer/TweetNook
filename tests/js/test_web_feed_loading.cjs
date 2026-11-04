@@ -541,6 +541,12 @@ test('distant feed cards give way to placeholders and return with their scroll a
     app.tweets = app.tweets.filter(tweet => tweet.tweet_id !== '3');
     restore.callback([{ target: list.children[2], isIntersecting: true }]);
     assert.deepEqual(list.children.map(child => child.dataset.tweetId), ['1', '2']);
+    // Restoring looks posts up by id: appended pages and edits in place are seen.
+    app.tweets = [...app.tweets, { tweet_id: '4' }];
+    app.tweets[0].hidden = true;
+    assert.equal(app.feedTweetById('4').tweet_id, '4');
+    assert.equal(app.feedTweetById(1).hidden, true);
+    assert.equal(app.feedTweetById('3'), null);
 
     // A full render starts both observers over with the new cards.
     evict.callback([{ target: list.children[1], isIntersecting: false }]);

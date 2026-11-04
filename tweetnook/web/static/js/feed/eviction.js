@@ -115,7 +115,7 @@ function feedEvictionMethods() {
             const state = savedCards.get(placeholder);
             if (!placeholder.isConnected || !state) return;
             const tweetId = placeholder.dataset.tweetId;
-            const tweetObj = this.tweets.find(tweet => String(tweet.tweet_id) === tweetId);
+            const tweetObj = this.feedTweetById(tweetId);
             if (!tweetObj) {
                 outsideAlpine(() => placeholder.remove());
                 return;
