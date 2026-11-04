@@ -65,6 +65,7 @@ function reconcileActivityValue(current, next) {
 function tweetApp() {
     // Settles when the startup request for the first page does (see afterStartupFeed).
     let startupFeedSettled = Promise.resolve();
+    const mountedDialogs = new Set();
 
     const app = {
         isDemo: window.TWEETNOOK_DEMO === true,
@@ -357,6 +358,14 @@ function tweetApp() {
             const wasOpen = this.showSettingsModal;
             this.showSettingsModal = false;
             if (wasOpen) this.$nextTick(() => nookSettingsRestoreFocus());
+        },
+
+        // Large dialogs mount the first time they open and then stay mounted, which
+        // keeps their state and closing transitions. Alpine binds every mounted
+        // element at startup, and these held a third of the page's markup.
+        dialogMounted(name, open) {
+            if (open) mountedDialogs.add(name);
+            return mountedDialogs.has(name);
         },
 
         openSettings() {

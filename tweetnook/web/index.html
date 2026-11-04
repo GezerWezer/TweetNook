@@ -96,11 +96,17 @@
 
         <!-- include history.html -->
 
+        <template x-if="dialogMounted('settings', showSettingsModal)">
         <!-- include settings.html -->
+        </template>
 
+        <template x-if="dialogMounted('setup', showSetupModal)">
         <!-- include setup.html -->
+        </template>
 
+        <template x-if="dialogMounted('spend-history', showAutomatedTaggingSpendModal)">
         <!-- include spend-history.html -->
+        </template>
 
         <!-- include stats.html -->
 
