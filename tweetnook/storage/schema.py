@@ -151,10 +151,16 @@ def _fill_media_payload(winner: Any, donor: Any) -> Any:
     return donor if winner in (None, "", [], {}) else winner
 
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 # An upgrade rewrites every archive row in one transaction. The write-ahead log and SQLite's
 # temporary files together peak near twice the database size.
 MIGRATION_SPACE_FACTOR = 2
+# From schema 13 an upgrade rewrites only derived tables and indexes, a few percent of
+# the archive, and none of its rows.
+DERIVED_MIGRATION_SPACE_FACTOR = 0.1
+# Indexes whose definition changed after a release. CREATE INDEX IF NOT EXISTS keeps an old
+# definition, so upgrades drop these before recreating the derived structures.
+REDEFINED_INDEXES = ("idx_archive_search_attachment", "idx_archive_membership")
 COLUMN_TYPES = {
     field: (
         "TEXT PRIMARY KEY"
@@ -282,7 +288,7 @@ def _tweet_content_values(row: str) -> str:
     return f"{row}.tweet_id, ({captured}), ({note})"
 
 
-def _gigabytes(size: int) -> str:
+def _gigabytes(size: float) -> str:
     # Rounds up, so following the advice in a message always leaves enough room.
     return f"{math.ceil(size / 100_000_000) / 10:.1f} GB"
 
@@ -310,8 +316,15 @@ class SchemaMixin(ConnectionMixin):
             return
 
         # Releases shipped schema 5 (0.0.9 and 0.1.0), schema 8 (0.1.1 to 0.1.6),
-        # schema 9 (0.1.7 and 0.1.8), schema 10 (0.2.0 to 1.1.0) and schema 12 (1.2.0). Schema
-        # 11 was only on development builds before 1.2.0.
+        # schema 9 (0.1.7 and 0.1.8), schema 10 (0.2.0 to 1.1.0), schema 12 (1.2.0) and
+        # schema 13 (1.3.0 and 1.3.1). Schema 11 was only on development builds before 1.2.0.
+        if current_version == 13:
+            self._run_migration(
+                self._migrate_search_facts,
+                current_version,
+                space_factor=DERIVED_MIGRATION_SPACE_FACTOR,
+            )
+            return
         if current_version in {8, 9, 10, 11, 12}:
             self._run_migration(self._migrate_search_facts, current_version)
             return
@@ -322,8 +335,14 @@ class SchemaMixin(ConnectionMixin):
             )
         self._run_migration(self._migrate_search_index, current_version)
 
-    def _run_migration(self, migrate: Callable[[int], None], current_version: int) -> None:
-        required = MIGRATION_SPACE_FACTOR * self.db_path.stat().st_size
+    def _run_migration(
+        self,
+        migrate: Callable[[int], None],
+        current_version: int,
+        *,
+        space_factor: float = MIGRATION_SPACE_FACTOR,
+    ) -> None:
+        required = space_factor * self.db_path.stat().st_size
         available = shutil.disk_usage(self.db_path.parent).free
         if available < required:
             # Refuse here: an attempt fills the disk for everything else on it, then rolls back.
@@ -377,6 +396,7 @@ class SchemaMixin(ConnectionMixin):
             self._merge_duplicate_media()
             self._create_canonical_tables()
             self._rebuild_fts_schema()
+            self._drop_redefined_indexes()
             self._create_derived_structures()
             expected = self.conn.execute(
                 f"SELECT COUNT(*) FROM archive WHERE record_type = '{RecordType.TWEET}'"
@@ -398,12 +418,15 @@ class SchemaMixin(ConnectionMixin):
 
         v8 lacks the search-filter facts; v8 and v9 lack the description index.
         v10 lacks the content/note flags used to filter uncaptured tweets and notes;
-        v11 computed those flags from an incomplete list of placeholder texts.
+        v11 computed those flags from an incomplete list of placeholder texts. v13 and
+        older lack the covering membership and attachment indexes.
         """
         with self.transaction():
-            self._drop_unread_followup_columns()
+            if current_version < 13:
+                self._drop_unread_followup_columns()
             self._merge_duplicate_media()
             self._create_canonical_tables()
+            self._drop_redefined_indexes()
             self._create_derived_structures()
             expected = self.conn.execute(
                 f"SELECT COUNT(*) FROM archive WHERE record_type = '{RecordType.TWEET}' AND "
@@ -431,6 +454,10 @@ class SchemaMixin(ConnectionMixin):
         self.migration_report = MigrationReport(
             from_version=current_version, to_version=SCHEMA_VERSION
         )
+
+    def _drop_redefined_indexes(self) -> None:
+        for name in REDEFINED_INDEXES:
+            self.conn.execute(f"DROP INDEX IF EXISTS {name}")
 
     def _merge_duplicate_media(self) -> None:
         """Merge the rows sources created for one media item before they shared a row.
@@ -675,20 +702,11 @@ class SchemaMixin(ConnectionMixin):
         }
         for name, columns in index_sql.items():
             self.conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON archive({columns})")
-        self.conn.execute(f"""
-            CREATE INDEX IF NOT EXISTS idx_archive_search_attachment
-            ON archive(record_type, tweet_id, media_type)
-            WHERE record_type IN ('{RecordType.MEDIA}', '{RecordType.URL_REF}')
-        """)
+        self._create_search_indexes()
         self.conn.execute(f"""
             CREATE INDEX IF NOT EXISTS idx_archive_media_tag_lookup
             ON archive(tweet_id, raw_json)
             WHERE record_type = '{RecordType.MEDIA_TAG}'
-        """)
-        self.conn.execute(f"""
-            CREATE INDEX IF NOT EXISTS idx_archive_membership
-            ON archive(tweet_id, row_key, collection_type)
-            WHERE record_type = '{RecordType.TWEET}'
         """)
         self.conn.execute(f"""
             CREATE INDEX IF NOT EXISTS idx_archive_search_author
@@ -706,6 +724,26 @@ class SchemaMixin(ConnectionMixin):
         self._create_tweet_content()
         self._create_description_fts()
         self._create_cache_revisions()
+
+    def _create_search_indexes(self) -> None:
+        """Indexes that hold every column search reads from memberships and attachments.
+
+        Search touches every membership and attachment its filters consider. Read from
+        the table, each one costs a page of a large row, which made the first search after
+        a start take seconds; these partial indexes are small enough to stay cached.
+        record_type is a column although the WHERE fixes it: SQLite only answers a query
+        from an index alone when the index holds every column the query names.
+        """
+        self.conn.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_archive_search_attachment
+            ON archive(record_type, tweet_id, media_type, source)
+            WHERE record_type IN ('{RecordType.MEDIA}', '{RecordType.URL_REF}')
+        """)
+        self.conn.execute(f"""
+            CREATE INDEX IF NOT EXISTS idx_archive_membership
+            ON archive(tweet_id, row_key, collection_type, created_at_ts, sort_index, record_type)
+            WHERE record_type = '{RecordType.TWEET}'
+        """)
 
     def _create_tweet_content(self) -> None:
         """Index captured content and notes in memberships and context objects."""

@@ -392,7 +392,7 @@ def test_schema_v8_upgrade_backfills_search_facts_and_reports(tmp_path: Path) ->
 
     migrated = ArchiveStore(db_path, create=False)
 
-    assert migrated.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 13
+    assert migrated.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 14
     assert migrated.migration_report.from_version == 8
     assert [row["tweet_id"] for row in search_posts(migrated, "is:reply").rows] == ["1"]
     assert [row["tweet_id"] for row in search_posts(migrated, "-is:reply").rows] == ["2"]

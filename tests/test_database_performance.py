@@ -301,7 +301,7 @@ def test_selective_text_author_driver_preserves_ranking_and_all_matches(tmp_path
     query = next(
         statement for statement in sql if statement.startswith("WITH structured_candidates")
     )
-    assert "INDEXED BY idx_archive_tweet_id" in query
+    assert "INDEXED BY idx_archive_membership" in query
     assert "archive.tweet_id IN (SELECT tweet_id FROM structured_candidates)" in query
     # A popular author must fall back to full FTS execution, with no 200/1000 cap.
     with store.conn:

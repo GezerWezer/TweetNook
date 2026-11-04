@@ -538,8 +538,10 @@ class SearchMixin(ReadsMixin, TagsMixin):
             # Reuse the already-deduplicated text relation directly, avoiding a
             # second copy of the same candidate IDs and a redundant self-join.
             driver_alias = driver_group[0]["alias"]
+            # The membership index holds every column most filters read, so matching
+            # never reads the large archive rows (see _create_search_indexes).
             from_sql = (
-                f"{driver_alias} JOIN archive AS archive INDEXED BY idx_archive_tweet_id "
+                f"{driver_alias} JOIN archive AS archive INDEXED BY idx_archive_membership "
                 f"ON archive.tweet_id = {driver_alias}.tweet_id"
             )
         elif driver_group is not None:
@@ -548,7 +550,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
             )
             ctes.append(f"candidate_ids(tweet_id) AS MATERIALIZED ({union})")
             from_sql = (
-                "candidate_ids JOIN archive AS archive INDEXED BY idx_archive_tweet_id "
+                "candidate_ids JOIN archive AS archive INDEXED BY idx_archive_membership "
                 "ON archive.tweet_id = candidate_ids.tweet_id"
             )
         elif author_groups:
@@ -556,7 +558,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
             # the required author filters constraining this index's leading key.
             from_sql = "archive AS archive INDEXED BY idx_archive_search_author"
         else:
-            from_sql = "archive AS archive"
+            from_sql = "archive AS archive INDEXED BY idx_archive_membership"
 
         joins: list[str] = []
         group_conditions: list[Clause] = []
@@ -632,8 +634,13 @@ class SearchMixin(ReadsMixin, TagsMixin):
                 page_params.append(after["like_position"])
         elif sort in {"oldest", "newest"}:
             representative = representative_membership("matches.tweet_id", collections)
+            # Matching the membership on its index keys reads the ordering columns
+            # from the index, not from each post's row.
             page_from = (
-                f"matches JOIN archive AS ordering ON ordering.row_key = {representative.sql}"
+                "matches JOIN archive AS ordering INDEXED BY idx_archive_membership "
+                f"ON ordering.record_type = '{RecordType.TWEET}' "
+                "AND ordering.tweet_id = matches.tweet_id "
+                f"AND ordering.row_key = {representative.sql}"
             )
             page_params.extend(representative.params)
             ordering_columns = (

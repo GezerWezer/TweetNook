@@ -11,10 +11,12 @@ import json
 import re
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from tweetnook.core.exceptions import ArchiveUpgradeError
+from tweetnook.storage import schema as schema_module
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.schema import SCHEMA_VERSION
 from tweetnook.storage.search_query import search_posts
@@ -22,7 +24,16 @@ from tweetnook.storage.search_query import search_posts
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "schemas"
 # The last release that created each schema. The change that raises SCHEMA_VERSION adds the
 # fixture for the schema the latest release ships, from that release's tag.
-RELEASED_SCHEMAS = {5: "v0.1.0", 8: "v0.1.6", 9: "v0.1.8", 10: "v1.1.0", 12: "v1.2.0"}
+RELEASED_SCHEMAS = {
+    5: "v0.1.0",
+    8: "v0.1.6",
+    9: "v0.1.8",
+    10: "v1.1.0",
+    12: "v1.2.0",
+    13: "v1.3.1",
+}
+# Schema 13 had already dropped the follow-up columns and merged duplicate media.
+BEFORE_SCHEMA_13 = sorted(version for version in RELEASED_SCHEMAS if version < 13)
 
 
 def schema_of(db_path: Path) -> dict[tuple[str, str], str]:
@@ -155,7 +166,7 @@ def _archive_columns(db_path: Path) -> set[str]:
         connection.close()
 
 
-@pytest.mark.parametrize("version", sorted(RELEASED_SCHEMAS))
+@pytest.mark.parametrize("version", BEFORE_SCHEMA_13)
 def test_upgrade_drops_the_followup_columns_and_keeps_the_manifest(
     tmp_path: Path, version: int
 ) -> None:
@@ -208,6 +219,58 @@ def test_failed_upgrade_keeps_the_columns_and_the_version(
         connection.close()
 
 
+def _index_sql(db_path: Path, name: str) -> str:
+    return schema_of(db_path)[("index", name)]
+
+
+def test_schema_13_upgrade_rebuilds_indexes_with_little_free_space(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "released.db"
+    released_archive(db_path, 13)
+    # Far below what rewriting every row needs; schema 13 rewrites only derived data.
+    free = SimpleNamespace(free=db_path.stat().st_size // 2)
+    monkeypatch.setattr(schema_module.shutil, "disk_usage", lambda _path: free)
+
+    store = ArchiveStore(db_path, create=False)
+    try:
+        assert store.migration_report.from_version == 13
+        assert [row["tweet_id"] for row in search_posts(store, "sentinel").rows] == ["100"]
+    finally:
+        store.close()
+
+    assert "created_at_ts, sort_index, record_type" in _index_sql(db_path, "idx_archive_membership")
+    assert "media_type, source" in _index_sql(db_path, "idx_archive_search_attachment")
+
+
+def test_failed_index_upgrade_keeps_the_old_indexes_and_the_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "released.db"
+    released_archive(db_path, 13)
+    old_membership = _index_sql(db_path, "idx_archive_membership")
+    real_create = ArchiveStore._create_search_indexes
+    created = []
+
+    def create_then_fail(self) -> None:
+        real_create(self)
+        created.append(True)
+        raise sqlite3.OperationalError("database or disk is full")
+
+    monkeypatch.setattr(ArchiveStore, "_create_search_indexes", create_then_fail)
+
+    with pytest.raises(ArchiveUpgradeError):
+        ArchiveStore(db_path, create=False)
+
+    assert created == [True]
+    assert _index_sql(db_path, "idx_archive_membership") == old_membership
+    connection = sqlite3.connect(db_path)
+    try:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 13
+    finally:
+        connection.close()
+
+
 def _insert_media(connection: sqlite3.Connection, row_key: str, **columns: object) -> None:
     fields = {"row_key": row_key, "record_type": "media", "tweet_id": "100", **columns}
     placeholders = ", ".join("?" for _field in fields)
@@ -217,7 +280,7 @@ def _insert_media(connection: sqlite3.Connection, row_key: str, **columns: objec
     )
 
 
-@pytest.mark.parametrize("version", sorted(RELEASED_SCHEMAS))
+@pytest.mark.parametrize("version", BEFORE_SCHEMA_13)
 def test_upgrade_merges_duplicate_media_and_keeps_saved_files(tmp_path: Path, version: int) -> None:
     db_path = tmp_path / "released.db"
     released_archive(db_path, version)
