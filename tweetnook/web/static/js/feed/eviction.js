@@ -29,9 +29,7 @@ function feedEvictionMethods() {
             if (typeof globalThis.IntersectionObserver !== 'function') return;
             if (!evictObserver) {
                 evictObserver = new IntersectionObserver(entries => {
-                    for (const entry of entries) {
-                        if (!entry.isIntersecting) this.evictFeedCard(entry.target);
-                    }
+                    this.evictFeedCards(entries.filter(entry => !entry.isIntersecting).map(entry => entry.target));
                 }, { rootMargin: `${FEED_EVICT_MARGIN_PX}px 0px` });
                 restoreObserver = new IntersectionObserver(entries => {
                     for (const entry of entries) {
@@ -56,34 +54,43 @@ function feedEvictionMethods() {
             return ![...card.querySelectorAll('video')].some(video => video.paused === false);
         },
 
-        evictFeedCard(card) {
-            if (!card.isConnected) {
+        // A fast scroll reports many distant cards at once. Every card is measured
+        // before any is replaced: a replacement invalidates layout, so measuring
+        // after it would force a style and layout pass per card.
+        evictFeedCards(cards) {
+            const evicted = [];
+            for (const card of cards) {
+                if (!card.isConnected) {
+                    evictObserver.unobserve(card);
+                    continue;
+                }
+                if (!this.canEvictFeedCard(card)) {
+                    this.deferFeedEviction(card);
+                    continue;
+                }
                 evictObserver.unobserve(card);
-                return;
+                deferredCards.delete(card);
+                const style = getComputedStyle(card);
+                const height = card.getBoundingClientRect().height;
+                evicted.push([card, {
+                    height,
+                    // contain-intrinsic-size sizes the content box.
+                    contentHeight: height - ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
+                        .reduce((total, name) => total + (parseFloat(style[name]) || 0), 0),
+                    tracks: [...card.querySelectorAll('.media-carousel-track')].map(track => track.scrollLeft),
+                    // Keyed by source: the audible decoder pool can move players between cards.
+                    videos: [...card.querySelectorAll('video')].map(video => this.feedVideoPosition(video)),
+                }]);
             }
-            if (!this.canEvictFeedCard(card)) {
-                this.deferFeedEviction(card);
-                return;
-            }
-            evictObserver.unobserve(card);
-            deferredCards.delete(card);
-            const style = getComputedStyle(card);
-            const height = card.getBoundingClientRect().height;
-            const state = {
-                height,
-                // contain-intrinsic-size sizes the content box.
-                contentHeight: height - ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
-                    .reduce((total, name) => total + (parseFloat(style[name]) || 0), 0),
-                tracks: [...card.querySelectorAll('.media-carousel-track')].map(track => track.scrollLeft),
-                // Keyed by source: the audible decoder pool can move players between cards.
-                videos: [...card.querySelectorAll('video')].map(video => this.feedVideoPosition(video)),
-            };
+            if (!evicted.length) return;
             outsideAlpine(() => {
-                card.insertAdjacentHTML('beforebegin', String(html`<div class="feed-card-placeholder" data-tweet-id="${card.dataset.tweetId}" style="height: ${state.height}px"></div>`));
-                const placeholder = card.previousElementSibling;
-                savedCards.set(placeholder, state);
-                card.remove();
-                restoreObserver.observe(placeholder);
+                for (const [card, state] of evicted) {
+                    card.insertAdjacentHTML('beforebegin', String(html`<div class="feed-card-placeholder" data-tweet-id="${card.dataset.tweetId}" style="height: ${state.height}px"></div>`));
+                    const placeholder = card.previousElementSibling;
+                    savedCards.set(placeholder, state);
+                    card.remove();
+                    restoreObserver.observe(placeholder);
+                }
             });
         },
 

@@ -130,6 +130,7 @@ function feedVideoMethods() {
             });
 
             this.mediaPrefetchObserver = new IntersectionObserver((entries) => {
+                let prefetched = false;
                 entries.forEach(e => {
                     // Lay out and paint a bounded ring of cards ahead of scrolling.
                     // Otherwise content-visibility can reveal their media a frame
@@ -139,8 +140,12 @@ function feedVideoMethods() {
                     }
                     if (e.isIntersecting) this.mediaPrefetchObserver.unobserve(e.target);
                     if (!e.isIntersecting) return;
-                    this.prefetchMedia(e.target);
+                    this.prefetchMedia(e.target, false);
+                    prefetched = true;
                 });
+                // Choosing warmups measures every candidate. Doing that once, after
+                // all of this batch's writes, avoids a style and layout pass per card.
+                if (prefetched) this.updateVideoWarmup();
             }, { rootMargin: `${MEDIA_PREFETCH_MARGIN_PX}px 0px` });
         },
 
@@ -180,7 +185,7 @@ function feedVideoMethods() {
 
         // Load and decode ahead of time, so the image paints with its card instead
         // of a frame or more after it.
-        prefetchMedia(target) {
+        prefetchMedia(target, warm = true) {
             const images = target.tagName === 'IMG' ? [target] : target.querySelectorAll('img[loading="lazy"]');
             images.forEach(image => {
                 image.loading = 'eager';
@@ -206,7 +211,7 @@ function feedVideoMethods() {
                     videoWarmupCandidates.add(video);
                 }
             });
-            this.updateVideoWarmup();
+            if (warm) this.updateVideoWarmup();
         },
 
         updateVideoWarmup() {

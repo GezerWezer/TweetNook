@@ -18,6 +18,8 @@ function feedMethods() {
     let feedPrefetchScheduled = false;
     // The list element whose delegated listeners are bound.
     let boundFeedList = null;
+    // Roots waiting for the next frame's clamp measurement (measureTextClamps).
+    const clampRoots = new Set();
 
     return {
         tweets: [],
@@ -336,17 +338,25 @@ function feedMethods() {
         },
 
         // Mark clamped post text that really overflows, so only it shows Show more.
+        // Cards restored during one scroll frame share one measurement, and every
+        // clamp is read before any is marked, so layout is computed once per frame.
         measureTextClamps(root) {
             if (!this.isPhoneLayout()) return;
             const measure = () => {
-                for (const clamp of root.querySelectorAll?.('.tweet-text-clamp') || []) {
-                    if ('measured' in clamp.dataset) continue;
+                const roots = [...clampRoots];
+                clampRoots.clear();
+                const clamps = [...new Set(roots.flatMap(item => [...(item.querySelectorAll?.('.tweet-text-clamp') || [])]))]
+                    .filter(clamp => !('measured' in clamp.dataset));
+                const clamped = clamps.map(clamp => clamp.scrollHeight > clamp.clientHeight + 1);
+                clamps.forEach((clamp, index) => {
                     clamp.dataset.measured = '';
-                    clamp.classList.toggle('is-clamped', clamp.scrollHeight > clamp.clientHeight + 1);
-                }
+                    clamp.classList.toggle('is-clamped', clamped[index]);
+                });
             };
-            if (typeof globalThis.requestAnimationFrame === 'function') globalThis.requestAnimationFrame(measure);
-            else measure();
+            const scheduled = clampRoots.size > 0;
+            clampRoots.add(root);
+            if (typeof globalThis.requestAnimationFrame !== 'function') measure();
+            else if (!scheduled) globalThis.requestAnimationFrame(measure);
         },
 
         bindFeedList(list) {
