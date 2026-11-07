@@ -8,6 +8,7 @@
 // during playback, and almost immediately once the pointer leaves the video.
 const VIDEO_UI_IDLE_MS = 3000;
 const VIDEO_UI_LEAVE_MS = 300;
+const VIDEO_UI_POINTER_REFRESH_MS = 250;
 const videoUiHideTimers = new WeakMap();
 const videoScrubStates = new WeakMap();
 let videoTapBlockedUntil = 0;
@@ -212,7 +213,9 @@ function tweetNookStartVideoScrub(video, event = null) {
     video.pause();
     if (pointerControlled) {
         event.preventDefault?.();
-        seek.focus?.({preventScroll: true});
+        // Focus keeps arrow-key seeking after a click, but script focus after a
+        // prevented pointerdown counts as keyboard focus in WebKit and rings the thumb.
+        seek.focus?.({preventScroll: true, focusVisible: false});
         seek.setPointerCapture?.(state.pointerId);
         move(event);
     }
@@ -560,9 +563,17 @@ function tweetNookInitVideoPlayer(video) {
     player.tabIndex = 0;
     player.setAttribute('role', 'group');
     player.setAttribute('aria-label', 'Video player');
+    let pointerShownAt = -Infinity;
     for (const name of ['pointermove', 'pointerenter']) player.addEventListener(name, event => {
         const video = player.querySelector('video');
-        if (event.pointerType !== 'touch' && !isMobileFullscreenVideo(video)) tweetNookShowVideoUi(video);
+        if (event.pointerType === 'touch' || isMobileFullscreenVideo(video)) return;
+        // Pointer moves arrive at the display's refresh rate or faster, and each show
+        // re-syncs every control. While the controls are up, pushing the hide timer
+        // back a few times a second is enough.
+        const shown = videoUiHideTimers.has(player) && !player.classList.contains('is-native-ui-hidden');
+        if (event.type === 'pointermove' && shown && event.timeStamp - pointerShownAt < VIDEO_UI_POINTER_REFRESH_MS) return;
+        pointerShownAt = event.timeStamp;
+        tweetNookShowVideoUi(video);
     });
     player.addEventListener('focusin', event => {
         const video = player.querySelector('video');
