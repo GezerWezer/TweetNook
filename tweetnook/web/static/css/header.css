@@ -40,8 +40,9 @@
 .nook-search-input:focus { border-color: var(--accent-color) !important; background: var(--bg-primary) !important; box-shadow: 0 0 0 1px var(--accent-color) !important; }
 .nook-search-field:focus-within .nook-search-icon { color: var(--accent-color); }
 /* Search suggestions follow the design.md menu recipe with the Sort menu's shadow. */
-.nook-suggest { position: absolute; top: 100%; left: 16px; right: 16px; z-index: 50; margin-top: 4px; padding: 4px 0; max-height: min(440px, 60vh); overflow-y: auto; overscroll-behavior: contain; border-radius: 12px; color: var(--text-primary); background: var(--dropdown-bg); box-shadow: 0 0 15px 0 color-mix(in srgb, var(--text-secondary) 20%, transparent), 0 0 3px 1px color-mix(in srgb, var(--text-secondary) 15%, transparent); }
-.nook-suggest.is-calendar { right: auto; width: 320px; max-width: calc(100% - 32px); padding-bottom: 8px; }
+.nook-suggest { position: absolute; top: 100%; left: 16px; right: 16px; z-index: 50; margin-top: 4px; max-height: min(440px, 60vh); overflow-y: auto; overscroll-behavior: contain; border-radius: 12px; color: var(--text-primary); background: var(--dropdown-bg); box-shadow: 0 0 15px 0 color-mix(in srgb, var(--text-secondary) 20%, transparent), 0 0 3px 1px color-mix(in srgb, var(--text-secondary) 15%, transparent); }
+/* Rows run edge to edge so the highlight meets the rounded corners; the calendar keeps its inset. */
+.nook-suggest.is-calendar { right: auto; width: 320px; max-width: calc(100% - 32px); padding: 4px 0 8px; }
 .nook-suggest-row { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 12px 16px; font-size: var(--font-size-base); line-height: 20px; cursor: pointer; }
 .nook-suggest-row[aria-selected="true"] { background: var(--bg-tertiary); }
 .nook-suggest-glyph { flex: 0 0 18.75px; display: flex; color: var(--text-secondary); }

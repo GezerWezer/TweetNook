@@ -854,6 +854,15 @@ function searchAutocomplete() {
             if (pickerOpen || /^-?(since|until):/.test(word)) this.handleInput();
         },
 
+        // The button sits inside the search wrap, so click.away never closes the
+        // dropdown; refocus and re-read the empty input so it shows the full filter list.
+        clearSearch() {
+            this.$refs.searchInput.innerHTML = '';
+            this.$refs.searchInput.focus();
+            this.handleInput();
+            this.search();
+        },
+
         handleEscape() {
             const current = this.caretFilterBox();
             if (current && current.inValue) this.leaveFilterBox(current.box);
