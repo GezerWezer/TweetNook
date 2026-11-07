@@ -2,7 +2,8 @@
  * Search autocomplete component for the TweetNook Web UI.
  */
 
-// Suggestions are requested once typing pauses this long.
+// The first keystroke asks for suggestions at once; while typing continues,
+// the next request waits for a pause this long, so a burst sends one more.
 const SUGGESTION_DELAY_MS = 100;
 
 // Filters whose value is edited inside its capsule, so spaces stay part of the
@@ -45,6 +46,7 @@ function searchAutocomplete() {
     return {
         suggestionRequest: 0,
         suggestionTimer: null,
+        suggestionPending: null,
         showDropdown: false,
         selectedIndex: 0,
         options: [],
@@ -135,14 +137,28 @@ function searchAutocomplete() {
             return cursor + text.substring(cursor).match(/^[^\s"]*/)[0].length;
         },
 
+        // Capsule validation and the suggestion list can ask about the same text,
+        // so they share one request per query. Both endpoints ignore case.
+        lookupSuggestions(path, query) {
+            const url = `${path}?q=${encodeURIComponent(query.toLowerCase())}`;
+            if (!this.suggestionLookups) this.suggestionLookups = new Map();
+            let pending = this.suggestionLookups.get(url);
+            if (!pending) {
+                pending = fetch(url).then(res => res.ok ? res.json() : {});
+                this.suggestionLookups.set(url, pending);
+                const forget = () => this.suggestionLookups.delete(url);
+                pending.then(forget, forget);
+            }
+            return pending;
+        },
+
         // A response that arrives after newer input is discarded instead of
         // replacing the current suggestions.
-        fetchSuggestions(url, toOptions, emptyNote = null) {
+        fetchSuggestions(path, query, toOptions, emptyNote = null) {
             const request = ++this.suggestionRequest;
-            clearTimeout(this.suggestionTimer);
-            this.suggestionTimer = setTimeout(() => {
-                fetch(url)
-                    .then(res => res.ok ? res.json() : {})
+            const send = () => {
+                if (request !== this.suggestionRequest) return;
+                this.lookupSuggestions(path, query)
                     .then(data => {
                         if (request !== this.suggestionRequest) return;
                         this.options = toOptions(data || {});
@@ -157,12 +173,24 @@ function searchAutocomplete() {
                         this.options = [];
                         this.showDropdown = false;
                     });
+            };
+            if (this.suggestionTimer) {
+                this.suggestionPending = send;
+            } else {
+                this.suggestionPending = null;
+                send();
+            }
+            clearTimeout(this.suggestionTimer);
+            this.suggestionTimer = setTimeout(() => {
+                const pending = this.suggestionPending;
+                this.suggestionTimer = null;
+                this.suggestionPending = null;
+                if (pending) pending();
             }, SUGGESTION_DELAY_MS);
         },
 
         handleInput() {
             this.suggestionRequest++;
-            clearTimeout(this.suggestionTimer);
             const input = this.$refs.searchInput;
             
             // The rich input is read back with its caret marked, so the query and
@@ -213,10 +241,12 @@ function searchAutocomplete() {
                     }];
                 } else if (basePrefix === 'from:' || basePrefix === 'to:') {
                     if (val.length > 0) {
-                        this.fetchSuggestions(`/api/authors/search?q=${encodeURIComponent(val)}`, data => {
+                        this.fetchSuggestions('/api/authors/search', val, data => {
                             const authorsList = data.authors || [];
                             if (!this.knownAuthors) this.knownAuthors = new Set();
                             authorsList.forEach(a => this.knownAuthors.add(a.username.toLowerCase()));
+                            // The capsule being typed is validated by this reply.
+                            if (this.knownAuthors.has(val)) this.refreshEditor();
                             return authorsList.map(a => ({
                                 isAuthor: true,
                                 prefix: rawPrefix,
@@ -231,10 +261,11 @@ function searchAutocomplete() {
                         this.showDropdown = false;
                     }
                 } else if (basePrefix === 'tag:') {
-                    this.fetchSuggestions(`/api/tags/autocomplete?q=${encodeURIComponent(val)}`, data => {
+                    this.fetchSuggestions('/api/tags/autocomplete', val, data => {
                         const tags = data.tags || [];
                         if (!this.knownTags) this.knownTags = new Set();
                         tags.forEach(t => this.knownTags.add(t.tag.toLowerCase()));
+                        if (this.knownTags.has(val)) this.refreshEditor();
                         return tags.map(t => ({
                             isTag: true,
                             prefix: rawPrefix,
@@ -681,7 +712,8 @@ function searchAutocomplete() {
                 classes += ' is-empty';
             } else if (part.key === 'tag' && !this.isKnownTag(part.value)) {
                 classes += ' is-unknown';
-                this.validateTagAsync(part.value.trim());
+                // A value still being typed is checked by its suggestion reply.
+                if (part.caret !== part.value.length) this.validateTagAsync(part.value.trim());
             }
             // An empty value has no text node, so its caret goes right after the colon.
             const keyCaret = part.caret !== -1 && !part.value ? SEARCH_CARET : '';
@@ -730,7 +762,8 @@ function searchAutocomplete() {
                                 isValid = true;
                             } else {
                                 isValid = false;
-                                if (cleanValue.length > 0) {
+                                // A value still being typed is checked by its suggestion reply.
+                                if (cleanValue.length > 0 && !trailingCaret) {
                                     this.validateAuthorAsync(cleanValue);
                                 }
                             }
@@ -923,51 +956,24 @@ function searchAutocomplete() {
 
         validateTagAsync(tag) {
             if (!this.knownTags) this.knownTags = new Set();
-            if (!this.pendingTagValidations) this.pendingTagValidations = new Set();
-
             const lower = tag.toLowerCase();
-            if (this.pendingTagValidations.has(lower)) return;
-            this.pendingTagValidations.add(lower);
-
-            fetch(`/api/tags/autocomplete?q=${encodeURIComponent(tag)}`)
-                .then(res => res.ok ? res.json() : null)
+            this.lookupSuggestions('/api/tags/autocomplete', tag)
                 .then(data => {
-                    const tags = (data && data.tags) || [];
-                    tags.forEach(t => this.knownTags.add(t.tag.toLowerCase()));
+                    (data.tags || []).forEach(t => this.knownTags.add(t.tag.toLowerCase()));
                     if (this.knownTags.has(lower)) this.refreshEditor();
                 })
-                .catch(() => {})
-                .finally(() => {
-                    this.pendingTagValidations.delete(lower);
-                });
+                .catch(() => {});
         },
 
         validateAuthorAsync(username) {
             if (!this.knownAuthors) this.knownAuthors = new Set();
-            if (!this.pendingAuthorValidations) this.pendingAuthorValidations = new Set();
-
             const lower = username.toLowerCase();
-            if (this.pendingAuthorValidations.has(lower)) return;
-            this.pendingAuthorValidations.add(lower);
-
-            fetch(`/api/authors/search?q=${encodeURIComponent(username)}`)
-                .then(res => res.ok ? res.json() : null)
+            this.lookupSuggestions('/api/authors/search', username)
                 .then(data => {
-                    let found = false;
-                    if (data && data.authors) {
-                        data.authors.forEach(a => {
-                            this.knownAuthors.add(a.username.toLowerCase());
-                            if (a.username.toLowerCase() === lower) found = true;
-                        });
-                    }
-                    if (found) {
-                        this.refreshEditor();
-                    }
+                    (data.authors || []).forEach(a => this.knownAuthors.add(a.username.toLowerCase()));
+                    if (this.knownAuthors.has(lower)) this.refreshEditor();
                 })
-                .catch(() => {})
-                .finally(() => {
-                    this.pendingAuthorValidations.delete(lower);
-                });
+                .catch(() => {});
         },
 
         initDatePicker(val) {

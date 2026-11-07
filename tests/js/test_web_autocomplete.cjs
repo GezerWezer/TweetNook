@@ -460,13 +460,16 @@ test('autocomplete fetches author and tag suggestions with encoded queries', asy
     assert.equal(component.options[0].value, 'Night Sky');
     assert.equal(component.options[0].count, '1,200');
 
-    // Fast typing sends one request, and a late response never replaces newer input.
+    // The first keystroke asks at once and the rest of a burst sends one request
+    // after typing pauses. Only the reply for the newest input is shown, whatever
+    // order the replies arrive in.
     calls.length = 0;
-    let release;
+    const releases = [];
     context.fetch = url => {
         calls.push(url);
+        const tag = decodeURIComponent(url.split('q=')[1]);
         return new Promise(resolve => {
-            release = () => resolve({ ok: true, json: async () => ({ tags: [{ tag: 'Stale', count: 1 }] }) });
+            releases.push(() => resolve({ ok: true, json: async () => ({ tags: [{ tag: `Reply ${tag}`, count: 1 }] }) }));
         });
     };
     for (const query of ['tag:n', 'tag:ni', 'tag:nig']) {
@@ -474,14 +477,59 @@ test('autocomplete fetches author and tag suggestions with encoded queries', asy
         component.cursorPos = query.length;
         component.handleInput();
     }
+    assert.deepEqual(calls, ['/api/tags/autocomplete?q=n']);
     await new Promise(resolve => setTimeout(resolve, 150));
-    assert.deepEqual(calls, ['/api/tags/autocomplete?q=nig']);
+    assert.deepEqual(calls, ['/api/tags/autocomplete?q=n', '/api/tags/autocomplete?q=nig']);
+    releases[1]();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(component.options[0].value, 'Reply nig');
+    releases[0]();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(component.options[0].value, 'Reply nig');
+
+    // Once typing has paused, the next keystroke asks at once again.
+    calls.length = 0;
+    releases.length = 0;
+    component.searchQuery = 'tag:nigh';
+    component.cursorPos = component.searchQuery.length;
+    component.handleInput();
+    assert.deepEqual(calls, ['/api/tags/autocomplete?q=nigh']);
+    releases[0]();
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    // A reply that arrives after the input moved to a local filter is dropped too.
+    calls.length = 0;
+    releases.length = 0;
+    component.searchQuery = 'tag:nights';
+    component.cursorPos = component.searchQuery.length;
+    component.handleInput();
     component.searchQuery = 'has:';
     component.cursorPos = component.searchQuery.length;
     component.handleInput();
-    release();
+    releases[0]();
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.equal(component.options[0].value, 'media');
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    // Capsule validation of the typed handle shares the suggestion request.
+    calls.length = 0;
+    releases.length = 0;
+    context.fetch = url => {
+        calls.push(url);
+        return new Promise(resolve => {
+            releases.push(() => resolve({ ok: true, json: async () => ({ authors: [{ username: 'Alice', display_name: 'Alice A', id: '1' }] }) }));
+        });
+    };
+    component.refreshEditor = () => { component.refreshed = true; };
+    component.validateAuthorAsync('ALICE');
+    component.searchQuery = 'from:alice';
+    component.cursorPos = component.searchQuery.length;
+    component.handleInput();
+    assert.deepEqual(calls, ['/api/authors/search?q=alice']);
+    releases[0]();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(component.options[0].value, 'Alice');
+    assert.ok(component.refreshed);
 });
 
 test('autocomplete calendar handles leap years and month boundaries', () => {
