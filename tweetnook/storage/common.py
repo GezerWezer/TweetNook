@@ -117,15 +117,6 @@ class DateBounds:
             self.newest, self._newest_dt = raw, parsed
 
 
-def valid_date_bounds(values: Iterable[str | None]) -> tuple[str | None, str | None]:
-    bounds = DateBounds()
-    for raw in values:
-        parsed = parse_created_at(raw)
-        if parsed is not None:
-            bounds.add(raw, parsed)
-    return bounds.oldest, bounds.newest
-
-
 LIVE_SOURCE = "live_graphql"
 ARCHIVE_SOURCE = "x_archive"
 FX_SOURCE = "fxtwitter"

@@ -109,7 +109,7 @@ def _storage_store(tmp_path: Path) -> ArchiveStore:
                 None,
                 None,
                 None,
-                "thread-json",
+                "thread-jsön",
                 None,
                 None,
                 None,
@@ -190,6 +190,10 @@ def test_storage_breakdown_accounts_for_database_media_and_avatars(
     assert by_id["avatars"]["count"] == 1
     assert by_id["core_db"]["count"] == 1
     assert by_id["threads"]["count"] == 1
+    # Exact byte sums: "thread-jsön" is 11 characters but 12 UTF-8 bytes.
+    assert by_id["threads"]["bytes"] == len("thread-jsön".encode()) == 12
+    assert by_id["articles"]["bytes"] == len("article") + len("summary")
+    assert by_id["tags"]["bytes"] == len('{"tags":["bird"]}')
     assert by_id["articles"]["count"] == 1
     assert by_id["tags"]["count"] == 1
     assert by_id["user_profiles"]["count"] == 2
@@ -234,9 +238,10 @@ def test_storage_breakdown_reads_media_once_and_probes_relations_by_tweet_id(
     assert len(relation_reads) == 1
     assert "INDEXED BY idx_archive_tweet_id" in relation_reads[0]
     assert all("NOT IN" not in statement for statement in statements)
-    payload_samples = [statement for statement in statements if "sum(payload_bytes)" in statement]
-    assert len(payload_samples) == 5
-    assert all("LIMIT 4096" in statement for statement in payload_samples)
+    # Payload sizes are exact sums over every row of each record type, not samples.
+    payload_reads = [statement for statement in statements if "AS BLOB" in statement]
+    assert len(payload_reads) == 5
+    assert all("LIMIT" not in statement for statement in payload_reads)
 
 
 def test_storage_breakdown_falls_back_to_database_media_counts(

@@ -100,6 +100,7 @@ function statsMethods() {
 // and polls a background refresh until it finishes or the dialog closes.
 function statsDialog() {
     return {
+        ...statsInsightMethods(),
         statsSummary: null,
         loadingStatsSummary: false,
         statsCollections: [],
@@ -153,6 +154,7 @@ function statsDialog() {
             this.statsHealth = snapshot.health;
             this.storageData = snapshot.storage;
             this.statsTags = snapshot.tags;
+            this.applyInsights(snapshot.insights);
             this.statsGeneratedAt = snapshot.generated_at;
             this.statsRefreshing = Boolean(snapshot.refreshing);
             this.statsRefreshFailed = Boolean(snapshot.refresh_failed);

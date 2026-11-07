@@ -10,8 +10,8 @@ from .common import (
     RESURRECTION_ELIGIBLE_SQL,
     RESURRECTION_PERMANENT_SQL,
     SEARCH_COLLECTION_ORDER,
-    valid_date_bounds,
 )
+from .insight_facts import InsightFacts, InsightFactsMixin
 from .record_types import RecordType
 from .stats import ArchiveCollectionStats, StatsMixin
 from .tags import TagsMixin
@@ -32,6 +32,8 @@ class OverviewFacts:
     latest_sync: str | None
     archive_tweets: int
     missing_archive_tweets: int
+    # Post objects kept only as conversation context: parents, replies and quotes.
+    context_posts: int
 
 
 @dataclass(slots=True)
@@ -85,9 +87,17 @@ class StatisticsFacts:
     health: HealthFacts | None = None
     tagging: TaggingFacts | None = None
     storage: StorageFacts | None = None
+    insights: InsightFacts | None = None
 
 
-class ReportFactsMixin(StatsMixin, TagsMixin):
+def _iso_date(timestamp: int | None) -> str | None:
+    # created_at_ts is the parsed created_at, so the ISO form names the same instant.
+    if timestamp is None:
+        return None
+    return datetime.fromtimestamp(int(timestamp), tz=UTC).isoformat()
+
+
+class ReportFactsMixin(InsightFactsMixin, StatsMixin, TagsMixin):
     def statistics_facts(self, include: set[str]) -> StatisticsFacts:
         return StatisticsFacts(
             owner=self.get_archive_owner_id(),
@@ -96,6 +106,7 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
             health=self.health_facts() if "archive_status" in include else None,
             tagging=self.tagging_coverage() if "tagging" in include else None,
             storage=self.storage_facts() if "storage" in include else None,
+            insights=self.insight_facts() if "insights" in include else None,
         )
 
     def enrichment_incomplete_count(self) -> int:
@@ -153,12 +164,15 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
             WHERE author_id IS NOT NULL AND author_id != ''
             """
         )
-        oldest_post, newest_post = valid_date_bounds(
-            row[0]
-            for row in conn.execute(
-                f"SELECT created_at FROM archive WHERE record_type = '{RecordType.TWEET}'"
-            )
-        )
+        # created_at_ts holds the parsed created_at, so its bounds are the valid date bounds.
+        bounds = conn.execute(
+            f"""
+            SELECT min(created_at_ts), max(created_at_ts)
+            FROM archive INDEXED BY idx_archive_record_page
+            WHERE record_type = '{RecordType.TWEET}' AND created_at_ts IS NOT NULL
+            """
+        ).fetchone()
+        oldest_post, newest_post = _iso_date(bounds[0]), _iso_date(bounds[1])
         latest_capture_row = conn.execute(
             f"SELECT max(captured_at) FROM archive WHERE record_type = '{RecordType.RAW_CAPTURE}'"
         ).fetchone()
@@ -168,6 +182,16 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
         latest_capture = latest_capture_row[0] if latest_capture_row else None
         latest_sync = latest_sync_row[0] if latest_sync_row else None
         archive_tweets, missing_archive_tweets = self.availability_counts()
+        context_posts = count(
+            f"""
+            SELECT count(*) FROM archive
+            WHERE record_type = '{RecordType.TWEET_OBJECT}'
+              AND tweet_id NOT IN (
+                  SELECT tweet_id FROM archive INDEXED BY idx_archive_membership
+                  WHERE record_type = '{RecordType.TWEET}'
+              )
+            """
+        )
         return OverviewFacts(
             unique_posts,
             collection_memberships,
@@ -182,24 +206,25 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
             latest_sync,
             archive_tweets,
             missing_archive_tweets,
+            context_posts,
         )
 
     def collection_facts(self) -> list[ArchiveCollectionStats]:
-        rows = self._query(
-            f"record_type = '{RecordType.TWEET}'", cols=["collection_type", "created_at"]
-        )
         collections = {name: ArchiveCollectionStats(name) for name in SEARCH_COLLECTION_ORDER}
-        dates: dict[str, list[str | None]] = {}
-        for row in rows:
-            name = row.get("collection_type")
+        for name, count, oldest, newest in self.conn.execute(
+            f"""
+            SELECT collection_type, count(*), min(created_at_ts), max(created_at_ts)
+            FROM archive INDEXED BY idx_archive_record_collection_page
+            WHERE record_type = '{RecordType.TWEET}'
+            GROUP BY collection_type
+            """
+        ):
             if not isinstance(name, str) or not name:
                 continue
             collection = collections.setdefault(name, ArchiveCollectionStats(name))
-            collection.post_count += 1
-            dates.setdefault(name, []).append(row.get("created_at"))
-        for name, values in dates.items():
-            collection = collections[name]
-            collection.oldest_created_at, collection.newest_created_at = valid_date_bounds(values)
+            collection.post_count = int(count)
+            collection.oldest_created_at = _iso_date(oldest)
+            collection.newest_created_at = _iso_date(newest)
         for row in self._query(
             f"record_type = '{RecordType.SYNC_STATE}'",
             cols=["collection_type", "updated_at", "backfill_cursor", "backfill_incomplete"],
@@ -266,35 +291,8 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
     def tagging_coverage(self) -> TaggingFacts:
         conn = self.conn
         eligible_tweets, tagged_tweets = self.get_tagging_coverage_counts()
-        unique_tags = int(
-            conn.execute(
-                f"""
-                SELECT count(DISTINCT tweetnook_tag_key(t.value))
-                FROM (
-                    SELECT raw_json FROM archive
-                    WHERE record_type = '{RecordType.MEDIA_TAG}'
-                      AND (enrichment_state = 'done' OR enrichment_state IS NULL)
-                      AND json_valid(raw_json)
-                ) a, json_each(a.raw_json, '$.tags') AS t
-                """
-            ).fetchone()[0]
-            or 0
-        )
-        total_tag_instances = int(
-            conn.execute(
-                f"""
-                SELECT count(t.value)
-                FROM (
-                    SELECT raw_json FROM archive
-                    WHERE record_type = '{RecordType.MEDIA_TAG}'
-                      AND (enrichment_state = 'done' OR enrichment_state IS NULL)
-                      AND json_valid(raw_json)
-                ) a, json_each(a.raw_json, '$.tags') AS t
-                """
-            ).fetchone()[0]
-            or 0
-        )
-        top_tags_rows = conn.execute(
+        # One pass over the tag arrays yields the distinct count, the total and the top tags.
+        tag_counts = conn.execute(
             f"""
             SELECT tweetnook_tag_key(t.value) AS tag, count(*) AS count
             FROM (
@@ -303,11 +301,16 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
                   AND (enrichment_state = 'done' OR enrichment_state IS NULL)
                   AND json_valid(raw_json)
             ) a, json_each(a.raw_json, '$.tags') AS t
+            WHERE t.value IS NOT NULL
             GROUP BY tweetnook_tag_key(t.value)
-            ORDER BY count DESC, tag ASC
-            LIMIT 20
             """
         ).fetchall()
+        unique_tags = sum(1 for row in tag_counts if row[0] is not None)
+        total_tag_instances = sum(int(row[1]) for row in tag_counts)
+        top_tags_rows = sorted(
+            (row for row in tag_counts if row[0] is not None),
+            key=lambda row: (-int(row[1]), str(row[0])),
+        )[:20]
         top_tags = [{"tag": row[0], "count": row[1]} for row in top_tags_rows]
         usage_tagged_tweets = int(
             self.conn.execute(
@@ -329,36 +332,19 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
         )
 
     def storage_facts(self) -> StorageFacts:
-        payload_sample_limit = 4096
-
-        def get_db_stats(record_type: str, payload_expression: str) -> tuple[int, int]:
-            count = int(
-                self.conn.execute(
-                    """
-                    SELECT count(*)
-                    FROM archive INDEXED BY idx_archive_record_page
-                    WHERE record_type = ?
-                    """,
-                    (record_type,),
-                ).fetchone()[0]
-                or 0
-            )
-            if count == 0:
-                return 0, 0
-            sample_count, sample_bytes = self.conn.execute(
+        def get_db_stats(record_type: str, *columns: str) -> tuple[int, int]:
+            # Exact UTF-8 byte totals: length() of a blob counts bytes, where length() of
+            # text counts characters.
+            payload = " + ".join(f"ifnull(length(CAST({column} AS BLOB)), 0)" for column in columns)
+            count, payload_bytes = self.conn.execute(
                 f"""
-                SELECT count(*), sum(payload_bytes)
-                FROM (
-                    SELECT {payload_expression} AS payload_bytes
-                    FROM archive INDEXED BY idx_archive_record_page
-                    WHERE record_type = ?
-                    LIMIT ?
-                )
+                SELECT count(*), sum({payload})
+                FROM archive INDEXED BY idx_archive_record_page
+                WHERE record_type = ?
                 """,
-                (record_type, payload_sample_limit),
+                (record_type,),
             ).fetchone()
-            estimated_bytes = round((int(sample_bytes or 0) / int(sample_count or 1)) * count)
-            return count, estimated_bytes
+            return int(count or 0), int(payload_bytes or 0)
 
         core_tweet_ids = {
             str(row[0])
@@ -394,25 +380,12 @@ class ReportFactsMixin(StatsMixin, TagsMixin):
             WHERE record_type = '{RecordType.MEDIA}'
             """
         ).fetchall()
-        core_db_count, core_db_bytes = get_db_stats(
-            "tweet",
-            "ifnull(length(raw_json), 0) + ifnull(length(text), 0)",
-        )
-        threads_count, threads_bytes = get_db_stats(
-            "tweet_object",
-            "ifnull(length(raw_json), 0)",
-        )
-        articles_count, articles_bytes = get_db_stats(
-            "article",
-            "ifnull(length(content_text), 0) + ifnull(length(summary_text), 0)",
-        )
-        tags_count, tags_bytes = get_db_stats(
-            "media_tag",
-            "ifnull(length(raw_json), 0)",
-        )
+        core_db_count, core_db_bytes = get_db_stats("tweet", "raw_json", "text")
+        threads_count, threads_bytes = get_db_stats("tweet_object", "raw_json")
+        articles_count, articles_bytes = get_db_stats("article", "content_text", "summary_text")
+        tags_count, tags_bytes = get_db_stats("media_tag", "raw_json")
         _tweet_count, profiles_bytes = get_db_stats(
-            "tweet",
-            "ifnull(length(author_username), 0) + ifnull(length(author_display_name), 0)",
+            "tweet", "author_username", "author_display_name"
         )
         profiles_count = int(
             self.conn.execute(

@@ -130,7 +130,7 @@ Routes and request/response models are defined in `web/routes/`. The [documentat
 
 ## Response details
 
-`/api/stats/report` returns ordered sections with `id`, `title`, `data`, `columns` and `rows`. Section data supplies the values; table columns describe collection rows. The CLI and web snapshot own their labels and grouping. Collections appear once in `rows`, with an empty `data` object.
+`/api/stats/report` returns ordered sections with `id`, `title`, `data`, `columns` and `rows`. Section data supplies the values; table columns describe collection rows. The CLI and web snapshot own their labels and grouping. Collections appear once in `rows`, with an empty `data` object. The `insights` section feeds the Analytics highlights; the CLI doesn't draw it, so `tweetnook stats` doesn't collect it. Its posting times are UTC, and the browser shifts the week grid into local time.
 
 Chronological feed cursors seek through indexed date/sort/ID boundaries; liked-order cursors seek sequence positions and carry an input revision. Other complex search cursors can retain offsets, so deep paging isn't universally constant-time. Treat cursor data as opaque and retain query, collection, sort, seed and limit between requests. An empty `cursor=` starts cursor paging.
 

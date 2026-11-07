@@ -114,14 +114,14 @@ test('avatar initials preserve emoji and combining graphemes across author surfa
 test('all avatar templates expose load and error handling, including reply and profile initials', () => {
     const html = pageHtml();
     const images = html.match(/<img\b[^>]*:src="avatarUrl\([^>]*>/g) || [];
-    assert.equal(images.length, 20);
+    assert.equal(images.length, 23);
     for (const image of images) {
         assert.ok(image.includes('@load="avatarLoaded($el)"'));
         assert.ok(image.includes('@error="avatarFailed($el)"'));
         assert.ok(image.includes('class="avatar-image '));
     }
     const initialPairs = html.match(/<span[^>]*x-text="(?:getInitial\([^\"]*|getQuoteAuthor\([^\"]*\.initial|profileCard\?\.initial|avatarInitial\([^\"]*)"[^>]*><\/span>\s*<img[^>]*:src="avatarUrl/g) || [];
-    assert.equal(initialPairs.length, 16);
+    assert.equal(initialPairs.length, 19);
     for (const pair of initialPairs) assert.ok(pair.includes('class="avatar-initial"'));
     // Feed cards (main and quote avatars) render in app.js; capture listeners on the
     // list handle their load and error events.

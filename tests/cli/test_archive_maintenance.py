@@ -198,8 +198,10 @@ def test_stats_archive_builds_a_fresh_report_on_every_invocation(paths, monkeypa
     patch_cli(monkeypatch, "configure_logging", lambda: object())
     patch_cli(monkeypatch, "open_store_for_read", lambda _console: (store, paths))
 
-    def build(store_arg):
+    def build(store_arg, *, include):
         assert store_arg is store
+        # The CLI skips the Web-only highlights it doesn't draw.
+        assert "insights" not in include
         report = object()
         reports.append(report)
         return report

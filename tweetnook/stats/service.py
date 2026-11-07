@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,6 +16,7 @@ from tweetnook.stats.models import (
     TableColumn,
 )
 from tweetnook.storage import ArchiveStore
+from tweetnook.storage.insight_facts import ActivitySeries, ContextFacts, GoneFacts
 from tweetnook.storage.report_facts import HealthFacts, StatisticsFacts
 
 UNAVAILABLE_REASON_LABELS = (
@@ -130,6 +133,7 @@ def _collect_overview(context: _StatsContext, spec: StatsSectionSpec) -> StatsSe
         "archive_tweets": archive_tweets,
         "missing_archive_tweets": missing_archive_tweets,
         "missing_archive_pct": missing_pct,
+        "context_posts": facts.context_posts,
         "oldest_post": oldest_post,
         "newest_post": newest_post,
         "latest_capture": latest_capture,
@@ -242,6 +246,32 @@ def _collect_tags(context: _StatsContext, spec: StatsSectionSpec) -> StatsSectio
     )
 
 
+def _base_name(path: str) -> str:
+    return os.path.basename(str(path).rstrip("/"))
+
+
+def _media_files(media_dir: Path) -> Iterator[tuple[str, int, bool]]:
+    """Yield (name, size, under avatars/) for every file below the media folder.
+
+    A large archive holds hundreds of thousands of files; scandir entries carry their
+    type and pathlib's per-file objects dominated the time this walk took.
+    """
+    pending = [(str(media_dir), False)]
+    while pending:
+        folder, in_avatars = pending.pop()
+        try:
+            entries = os.scandir(folder)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        with entries:
+            for entry in entries:
+                if entry.is_dir(follow_symlinks=False):
+                    nested = in_avatars or (folder == str(media_dir) and entry.name == "avatars")
+                    pending.append((entry.path, nested))
+                elif entry.is_file():
+                    yield entry.name, entry.stat().st_size, in_avatars
+
+
 def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
     store = context.store
     segments: list[dict[str, Any]] = []
@@ -250,49 +280,44 @@ def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSec
     core_tweet_ids, media_rows = facts.core_tweet_ids, facts.media_rows
     core_media_rows = [row for row in media_rows if row[0] in core_tweet_ids]
     context_media_rows = [row for row in media_rows if row[0] not in core_tweet_ids]
-    core_primary_types = {Path(row[1]).name: row[3] for row in core_media_rows if row[1]}
-    context_primary_types = {Path(row[1]).name: row[3] for row in context_media_rows if row[1]}
-    supplementary_file_names = {Path(row[2]).name for row in media_rows if row[2]}
+    core_primary_types = {_base_name(row[1]): row[3] for row in core_media_rows if row[1]}
+    context_primary_types = {_base_name(row[1]): row[3] for row in context_media_rows if row[1]}
+    supplementary_file_names = {_base_name(row[2]) for row in media_rows if row[2]}
 
-    def is_supplementary(path: Path) -> bool:
-        stem = path.stem.lower()
-        return path.name in supplementary_file_names or stem.endswith(
+    def is_supplementary(name: str) -> bool:
+        stem = os.path.splitext(name)[0].lower()
+        return name in supplementary_file_names or stem.endswith(
             ("-poster", "_poster", "-thumbnail", "_thumbnail", "-thumb", "_thumb")
         )
 
     media_dir = store.db_path.parent / "media"
-    avatars_dir = media_dir / "avatars"
     core_photos = core_videos = core_bytes = 0
     context_photos = context_videos = context_bytes = 0
     supplementary_count = supplementary_bytes = 0
     avatars_count = avatars_file_bytes = 0
-    if media_dir.exists():
-        for path in media_dir.rglob("*"):
-            if not path.is_file():
-                continue
-            if avatars_dir in path.parents or path.parent == avatars_dir:
-                avatars_count += 1
-                avatars_file_bytes += path.stat().st_size
-                continue
-            size = path.stat().st_size
-            if is_supplementary(path):
-                supplementary_count += 1
-                supplementary_bytes += size
-                continue
-            if path.name in core_primary_types:
-                is_video = core_primary_types[path.name] in {"video", "animated_gif"}
-                core_bytes += size
-                core_videos += int(is_video)
-                core_photos += int(not is_video)
-            else:
-                media_type = context_primary_types.get(path.name)
-                is_video = media_type in {"video", "animated_gif"} or (
-                    media_type is None
-                    and path.suffix.lower() in {".mp4", ".mov", ".m3u8", ".ts", ".webm"}
-                )
-                context_bytes += size
-                context_videos += int(is_video)
-                context_photos += int(not is_video)
+    for name, size, in_avatars in _media_files(media_dir):
+        if in_avatars:
+            avatars_count += 1
+            avatars_file_bytes += size
+            continue
+        if is_supplementary(name):
+            supplementary_count += 1
+            supplementary_bytes += size
+            continue
+        if name in core_primary_types:
+            is_video = core_primary_types[name] in {"video", "animated_gif"}
+            core_bytes += size
+            core_videos += int(is_video)
+            core_photos += int(not is_video)
+        else:
+            media_type = context_primary_types.get(name)
+            is_video = media_type in {"video", "animated_gif"} or (
+                media_type is None
+                and os.path.splitext(name)[1].lower() in {".mp4", ".mov", ".m3u8", ".ts", ".webm"}
+            )
+            context_bytes += size
+            context_videos += int(is_video)
+            context_photos += int(not is_video)
     if core_photos == 0 and core_videos == 0 and core_media_rows:
         for row in core_media_rows:
             core_videos += int(row[3] in {"video", "animated_gif"})
@@ -355,7 +380,7 @@ def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSec
                 "bytes": core_db_bytes,
                 "count": core_db_count,
                 "unit": "tweets",
-                "description": "Estimated payload size for saved tweet records and raw data.",
+                "description": "Stored size of saved tweet records and raw data.",
             },
             {
                 "id": "threads",
@@ -364,7 +389,7 @@ def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSec
                 "bytes": threads_bytes,
                 "count": threads_count,
                 "unit": "objects",
-                "description": "Estimated payload size for fetched conversation context.",
+                "description": "Stored size of fetched conversation context.",
             },
             {
                 "id": "articles",
@@ -373,7 +398,7 @@ def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSec
                 "bytes": articles_bytes,
                 "count": articles_count,
                 "unit": "articles",
-                "description": "Estimated payload size for article bodies, previews, and cards.",
+                "description": "Stored size of article bodies, previews, and cards.",
             },
             {
                 "id": "tags",
@@ -382,7 +407,7 @@ def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSec
                 "bytes": tags_bytes,
                 "count": tags_count,
                 "unit": "tags",
-                "description": "Estimated payload size for search tags and topic metadata.",
+                "description": "Stored size of search tags and topic metadata.",
             },
             {
                 "id": "user_profiles",
@@ -391,7 +416,7 @@ def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSec
                 "bytes": profiles_bytes,
                 "count": profiles_count,
                 "unit": "profiles",
-                "description": "Estimated payload size for stored author names and handles.",
+                "description": "Stored size of author names and handles.",
             },
             {
                 "id": "avatars",
@@ -468,7 +493,6 @@ def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSec
     data = {
         "total_bytes": total_bytes,
         "formatted_total": format_bytes(total_bytes),
-        "database_component_bytes_estimated": True,
         "segments": segments,
         "simplified_segments": simplified_segments,
     }
@@ -479,12 +503,89 @@ def _collect_storage(context: _StatsContext, spec: StatsSectionSpec) -> StatsSec
     )
 
 
+def _activity_payload(series: ActivitySeries) -> dict[str, Any]:
+    return {
+        "total": series.total,
+        "by_year": [
+            {"year": year, "count": series.by_year[year]} for year in sorted(series.by_year)
+        ],
+        "week_hours": series.week_hours,
+        # [day, count] pairs, days since 1970-01-01 in UTC, for the calendar.
+        "days": [[day, series.days[day]] for day in sorted(series.days)],
+    }
+
+
+def _gone_payload(gone: GoneFacts) -> dict[str, Any]:
+    # Listed under "Why they're gone", where "Unknown availability" would read oddly.
+    labels = {**dict(UNAVAILABLE_REASON_LABELS), "unavailable_unknown": "Reason unknown"}
+    reasons = sorted(gone.reasons.items(), key=lambda item: (-item[1], item[0]))
+    return {
+        "saved": gone.saved,
+        "context": gone.context,
+        "resurrected": gone.resurrected,
+        "reasons": [
+            {
+                "reason": reason,
+                "label": labels.get(reason, reason.replace("_", " ").capitalize()),
+                "count": count,
+            }
+            for reason, count in reasons
+        ],
+    }
+
+
+def _collect_insights(context: _StatsContext, spec: StatsSectionSpec) -> StatsSection:
+    facts = context.facts.insights
+    assert facts is not None
+    streak_days, streak_start, streak_end = facts.longest_streak
+    data = {
+        # Posting times are UTC; browsers shift the week grid into local time.
+        "activity": {name: _activity_payload(series) for name, series in facts.activity.items()},
+        "busiest_day": (
+            {"date": facts.busiest_day[0], "count": facts.busiest_day[1]}
+            if facts.busiest_day
+            else None
+        ),
+        "longest_streak": {"days": streak_days, "start": streak_start, "end": streak_end},
+        "top_authors": facts.top_authors,
+        "authors": {
+            "total": facts.author_count,
+            "one_time": facts.one_time_authors,
+            "regulars": facts.regular_authors,
+        },
+        "post_mix": facts.post_mix,
+        "likes_on_x": facts.likes_on_x,
+        "hashtags": [{"tag": tag, "count": count} for tag, count in facts.hashtags],
+        "mentions": [{"username": name, "count": count} for name, count in facts.mentions],
+        "media_types": facts.media_types,
+        "video_seconds": facts.video_seconds,
+        "words": facts.words,
+        "saved_twice": facts.saved_twice,
+        "viral": facts.viral,
+        "gone": _gone_payload(facts.gone),
+        "context": _context_payload(facts.context),
+    }
+    return StatsSection(id=spec.id, title=spec.title, data=data)
+
+
+def _context_payload(context: ContextFacts) -> dict[str, Any]:
+    return {
+        "posts": context.posts,
+        "words": context.words,
+        "media_types": context.media_types,
+        "video_seconds": context.video_seconds,
+        "activity": _activity_payload(context.activity),
+        "reply_authors": context.reply_authors,
+    }
+
+
 STATS_SECTION_SPECS = (
     StatsSectionSpec("overview", "Overview"),
     StatsSectionSpec("collections", "Collections"),
     StatsSectionSpec("archive_status", "Archive status"),
     StatsSectionSpec("storage", "Storage"),
     StatsSectionSpec("tagging", "Tagging & search"),
+    StatsSectionSpec("insights", "Highlights"),
 )
 
 _COLLECTORS = {
@@ -493,6 +594,7 @@ _COLLECTORS = {
     "archive_status": _collect_archive_status,
     "storage": _collect_storage,
     "tagging": _collect_tags,
+    "insights": _collect_insights,
 }
 
 

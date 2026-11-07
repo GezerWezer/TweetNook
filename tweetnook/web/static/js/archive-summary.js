@@ -15,11 +15,14 @@ function nookOpenCollection(app, row) {
   if (feed) app.selectFeedOption('collection', feed);
   window.scrollTo({ top: 0 });
 }
-function nookShowTag(app, name) {
+function nookSearch(app, query, collection = 'all') {
   app.closeStatsModal();
-  app.collectionFilter = 'all';
-  app.searchQuery = 'tag:' + (name.includes(' ') ? `"${name}"` : name);
+  app.collectionFilter = collection;
+  app.searchQuery = query;
   app.search();
+}
+function nookShowTag(app, name) {
+  nookSearch(app, 'tag:' + (name.includes(' ') ? `"${name}"` : name));
 }
 function nookManageTags(app) {
   app.closeStatsModal();

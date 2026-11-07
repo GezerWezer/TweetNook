@@ -1,45 +1,291 @@
-/* Analytics modal: cards and sections with clear hover states, neutral controls,
-   and visible labels. Scoped to the stats modal. */
+/* Analytics dialog, scoped to .nook-stats. stats.css holds the shared card basics; this file
+   follows design.md and the XDS recipes: flat filled tiles, icon wells beside the copy, thin
+   one-hue marks in the accent color, and hover feedback only on things that do something. */
+.nook-stats { --nook-tile:var(--bg-secondary); --nook-mark:var(--accent-color); --nook-track:color-mix(in srgb,var(--text-secondary) 14%,transparent); }
 .nook-stats .stats-modal-header { gap:12px; }
 .nook-stats-heading { min-width:0; }
 .nook-stats-heading .stats-modal-title { margin:0; line-height:24px; }
 .nook-stats-heading > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-secondary); font-size:13px; line-height:16px; }
+.nook-stats-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
 .nook-stats .nook-refresh { gap:8px; }
-.nook-stats .nook-refresh .nook-log-spinner { width:14px; height:14px; }
-.nook-stats button:focus-visible,.nook-stats a:focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
+.nook-refresh-icon { display:inline-flex; width:18px; height:18px; }
+.nook-refresh-icon svg,.nook-section-icon svg,.nook-inline-icon svg,.nook-icon-well svg,.nook-collection-go svg,.nook-row-chevron svg { width:100%; height:100%; }
+.nook-refresh-icon.is-spinning { animation:nook-spin .9s linear infinite; }
+.nook-stats button:focus-visible,.nook-stats a:focus-visible,.nook-stats [role="button"]:focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
 
-/* Only cards that do something react to hover. */
-.nook-stats .stats-card:hover { border-color:var(--border-color); }
-.nook-stats .stats-card.nook-stats-link { display:block; color:inherit; text-decoration:none; cursor:pointer; transition:background-color 120ms ease, border-color 120ms ease; }
-.nook-stats .stats-card.nook-stats-link:hover { border-color:color-mix(in srgb,var(--text-secondary) 50%,var(--border-color)); background:var(--bg-tertiary); }
-.nook-stats-flag { margin-top:8px; color:var(--text-primary); font-size:12px; font-weight:700; }
+.nook-stats .stats-modal-scroll { padding:8px 16px 32px; }
+@media (min-width:768px) { .nook-stats .stats-modal-scroll { padding:8px 24px 40px; } }
+.nook-stats-section { padding-top:24px; }
+.nook-stats-section + .nook-stats-section { margin-top:8px; border-top:1px solid var(--border-color); }
+.nook-section-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; margin-bottom:16px; }
+.nook-stats .stats-section-title { display:flex; align-items:center; gap:10px; margin:0; font-size:20px; line-height:24px; font-weight:800; letter-spacing:-.01em; }
+.nook-section-icon { display:inline-flex; width:22px; height:22px; color:var(--text-primary); }
+.nook-section-note { margin:0; color:var(--text-secondary); font-size:13px; line-height:16px; }
+@media (max-width:520px) {
+  .nook-section-head .nook-segmented { width:100%; }
+  .nook-section-tools { width:100%; }
+  .nook-section-tools .nook-scope { width:100%; margin-left:0; }
+  .nook-section-tools .nook-scope button { flex:1 1 0; }
+  .nook-section-head .nook-segmented button { flex:1 1 auto; padding:0 8px; font-size:13px; }
+}
+.nook-inline-icon { display:inline-flex; flex-shrink:0; width:16px; height:16px; color:var(--text-secondary); }
+/* A quieter line under a figure: the overview's conversation count, or a card that counts saved posts only. */
+.nook-context { display:flex; align-items:flex-start; gap:6px; margin-top:6px; color:var(--text-secondary); font-size:13px; line-height:16px; }
+.nook-context .nook-inline-icon { width:14px; height:14px; margin-top:1px; }
+.nook-stats .stats-label { gap:6px; line-height:16px; }
+/* XDS subtext2 for helper copy; the shared 12px sits off the XDS type scale. */
+.nook-stats .stats-subtitle { font-size:13px; line-height:16px; }
+.nook-stack { display:grid; gap:12px; }
+.nook-grid-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+@media (max-width:767px) { .nook-grid-3 { grid-template-columns:minmax(0,1fr); } }
+
+/* Cards: XDS tiles are filled; the outline stays faint so the fill carries the shape. */
+.nook-stats .stats-card { background:var(--nook-tile); border-color:transparent; }
+.nook-stats .stats-card:hover { border-color:transparent; }
+.nook-stats .stats-card.nook-stats-link { display:block; width:100%; color:inherit; font:inherit; text-align:left; text-decoration:none; cursor:pointer; transition:background-color 120ms ease, border-color 120ms ease; }
+.nook-stats .stats-card.nook-stats-link:hover { background:var(--bg-tertiary); border-color:var(--border-color); }
+.nook-stats-flag { margin-top:8px; color:var(--text-primary); font-size:13px; line-height:16px; font-weight:700; }
+.nook-skeleton { animation:nook-pulse 1.4s ease-in-out infinite; }
+@keyframes nook-pulse { 50% { opacity:.55; } }
+
+.nook-icon-well { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:40px; height:40px; padding:10px; border-radius:9999px; background:color-mix(in srgb,var(--accent-color) 14%,transparent); color:var(--accent-color); }
 
 .nook-stats-switch { display:flex; align-items:center; gap:4px; color:var(--text-primary); font-size:14px; font-weight:600; cursor:pointer; }
-
-.nook-stats-chip { display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:0 12px; border:1px solid var(--border-color); border-radius:9999px; background:var(--bg-primary); color:var(--text-primary); font-size:13px; font-weight:700; cursor:pointer; }
+.nook-section-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px 12px; }
+/* Which posts a section counts: separate outlined pills with an inverted selection (XDS
+   chips), so the choice reads apart from the gray segmented collection filter beside it. */
+.nook-scope { display:inline-flex; gap:8px; margin-left:auto; }
+.nook-scope button { min-height:32px; padding:0 14px; border:1px solid var(--border-color); border-radius:9999px; background:transparent; color:var(--text-primary); font-size:14px; line-height:16px; font-weight:600; white-space:nowrap; cursor:pointer; transition:background-color 100ms ease, transform 100ms ease; }
+.nook-scope button:hover { background:var(--bg-secondary); }
+.nook-scope button:active { transform:scale(.97); }
+.nook-scope button[aria-checked="true"] { border-color:var(--text-primary); background:var(--text-primary); color:var(--bg-primary); }
+.nook-scope button:focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
+/* Selections search saved posts only, so they do nothing while conversations are included. */
+/* Conversations belong to no collection: the filter stays in place, so the head doesn't reflow, but rests. */
+.nook-segmented.is-disabled { opacity:.45; }
+.nook-segmented.is-disabled button { cursor:default; }
+.nook-years.is-static .nook-year,.nook-cal-grid.is-static .nook-cal-day { cursor:default; }
+.nook-chips { display:flex; flex-wrap:wrap; gap:8px; }
+.nook-chips-label { margin-bottom:12px; }
+.nook-stats-chip { display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:0 12px; border:1px solid var(--border-color); border-radius:9999px; background:var(--bg-primary); color:var(--text-primary); font-size:13px; font-weight:700; cursor:pointer; transition:background-color 120ms ease; }
 .nook-stats-chip:hover { background:var(--bg-tertiary); }
 .nook-stats-chip span + span { color:var(--text-secondary); font-weight:500; }
-
-@media (prefers-reduced-motion:reduce) { .nook-stats .stats-card.nook-stats-link { transition:none; } }
 
 /* Archive overview: a lead card (total + date span) and a strip of supporting counts. */
 .nook-overview-lead { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:0; padding:0; overflow:hidden; }
 .nook-overview-total,.nook-overview-range { padding:18px 20px; }
 .nook-overview-range { border-left:1px solid var(--border-color); }
-.nook-overview-value { margin-top:4px; color:var(--text-primary); font-size:40px; line-height:44px; font-weight:800; letter-spacing:-.02em; }
-.nook-overview-dates { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; margin-top:8px; color:var(--text-primary); font-size:18px; line-height:24px; font-weight:800; }
+.nook-overview-value { margin-top:4px; color:var(--text-primary); font-size:34px; line-height:40px; font-weight:800; letter-spacing:-.01em; }
+.nook-overview-dates { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; margin-top:8px; color:var(--text-primary); font-size:17px; line-height:20px; font-weight:700; }
 .nook-overview-arrow { color:var(--text-secondary); font-size:14px; font-weight:500; }
-.nook-overview-note { grid-column:1 / -1; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:4px 12px; padding:12px 20px; border-top:1px solid var(--border-color); color:var(--text-secondary); font-size:13px; line-height:18px; text-decoration:none; }
-.nook-overview-note:hover { background:var(--bg-tertiary); }
-.nook-overview-note-link { color:var(--accent-color); font-weight:700; white-space:nowrap; }
 .nook-overview-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); margin:0; padding:0; overflow:hidden; }
 .nook-overview-strip > div { padding:14px 20px; border-left:1px solid var(--border-color); }
 .nook-overview-strip > div:first-child { border-left:0; }
-.nook-overview-strip dd { margin:4px 0 0; color:var(--text-primary); font-size:22px; line-height:26px; font-weight:800; letter-spacing:-.01em; }
+.nook-overview-strip dd { margin:4px 0 0; color:var(--text-primary); font-size:23px; line-height:28px; font-weight:800; }
 @media (max-width:640px) {
   .nook-overview-lead { grid-template-columns:minmax(0,1fr); }
   .nook-overview-range { border-left:0; border-top:1px solid var(--border-color); }
   .nook-overview-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .nook-overview-strip > div:nth-child(odd) { border-left:0; }
   .nook-overview-strip > div:nth-child(n+3) { border-top:1px solid var(--border-color); }
+}
+
+/* Collections: icon, count, range and a sparkline of posts per year. */
+.nook-collection-top { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:12px; }
+.nook-collection-go { display:inline-flex; width:18px; height:18px; color:var(--text-secondary); opacity:0; transform:translateX(-2px); transition:opacity 120ms ease, transform 200ms cubic-bezier(.4,0,.2,1); }
+.nook-collection:hover .nook-collection-go,.nook-collection:focus-visible .nook-collection-go { opacity:1; transform:none; }
+.nook-spark { display:flex; align-items:flex-end; gap:2px; height:28px; margin-top:12px; }
+.nook-spark span { flex:1 1 0; min-height:2px; border-radius:2px 2px 0 0; background:var(--nook-mark); opacity:.75; }
+
+/* Highlights: horizontal icon-and-copy tiles, then three record posts. */
+.nook-facts { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; }
+.nook-stats .stats-card.nook-fact { display:flex; align-items:flex-start; gap:14px; padding:16px; }
+.nook-fact-body { min-width:0; }
+.nook-fact-value { margin-top:2px; overflow-wrap:anywhere; color:var(--text-primary); font-size:20px; line-height:24px; font-weight:800; letter-spacing:-.01em; }
+/* Headline numbers */
+.nook-numbers { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:12px; }
+.nook-stats .stats-card.nook-number { display:flex; flex-direction:column; gap:4px; padding:16px; }
+.nook-number .stats-label { display:flex; align-items:center; gap:6px; }
+/* One line, so a longer figure (a duration) can't make its card taller than the others. */
+.nook-number-value { overflow:hidden; color:var(--text-primary); font-size:30px; line-height:36px; font-weight:800; letter-spacing:-.01em; font-variant-numeric:tabular-nums; text-overflow:ellipsis; white-space:nowrap; }
+.nook-number .stats-subtitle { margin-bottom:4px; }
+@media (max-width:520px) {
+  .nook-numbers { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .nook-stats .stats-card.nook-number { padding:14px; }
+  .nook-number-value { font-size:20px; line-height:24px; }
+}
+/* Gone from X */
+.nook-stats .stats-card.nook-gone { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:24px; margin-bottom:12px; padding:20px; }
+.nook-gone-lead { display:flex; align-items:flex-start; gap:14px; min-width:0; }
+.nook-gone-body { display:flex; flex-direction:column; align-items:flex-start; gap:6px; min-width:0; }
+.nook-gone-value { color:var(--text-primary); font-size:30px; line-height:36px; font-weight:800; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
+.nook-gone-unit { color:var(--text-secondary); font-size:15px; line-height:20px; font-weight:600; letter-spacing:0; }
+.nook-gone-body .stats-subtitle span + span::before { content:" "; }
+.nook-gone-search { display:inline-flex; align-items:center; gap:6px; margin-top:4px; min-height:36px; padding:0 16px; border:1px solid var(--border-color); border-radius:9999px; background:transparent; color:var(--text-primary); font:inherit; font-size:14px; font-weight:700; cursor:pointer; transition:background-color 120ms ease; }
+.nook-gone-search:hover { background:var(--bg-tertiary); }
+.nook-gone-reasons { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.nook-gone-reason { display:flex; flex-direction:column; gap:6px; }
+.nook-gone-reason-top { display:flex; justify-content:space-between; gap:12px; color:var(--text-primary); font-size:14px; line-height:16px; font-weight:700; }
+.nook-gone-share { margin-left:6px; color:var(--text-secondary); font-weight:500; }
+@media (max-width:640px) { .nook-stats .stats-card.nook-gone { grid-template-columns:minmax(0,1fr); gap:18px; padding:16px; } }
+/* Story tiles: an odd last tile spans the row instead of leaving a hole. Counted by type,
+   because the x-for template stays in the grid as its first child. */
+.nook-fact-avatar { width:40px; height:40px; font-size:16px; }
+@media (min-width:600px) {
+  .nook-facts { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .nook-facts > div.nook-fact:last-of-type:nth-of-type(odd) { grid-column:1 / -1; }
+}
+
+.nook-avatar { position:relative; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:32px; height:32px; overflow:hidden; border-radius:9999px; background:var(--gray-700); color:var(--white-icon); font-size:14px; font-weight:700; text-transform:uppercase; }
+.nook-avatar-image { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+
+/* Activity: posts per year as bars, then a week-by-hour grid in local time. */
+.nook-activity { padding:16px 20px 20px; overflow:visible; container-type:inline-size; }
+.nook-chart-head { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; margin-bottom:12px; }
+.nook-chart-head-spaced { margin-top:28px; }
+.nook-years { display:flex; align-items:stretch; height:180px; padding-top:8px; }
+.nook-year { position:relative; flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:stretch; padding:0; border:0; background:transparent; color:inherit; cursor:pointer; }
+.nook-year-track { position:relative; flex:1 1 auto; display:flex; align-items:flex-end; justify-content:center; padding:0 2px; border-bottom:1px solid var(--border-color); }
+.nook-year-bar { width:min(100%,28px); border-radius:4px 4px 0 0; background:var(--nook-mark); transition:opacity 120ms ease, height 300ms cubic-bezier(.4,0,.2,1); }
+.nook-years:hover .nook-year-bar { opacity:.45; }
+.nook-years .nook-year:hover .nook-year-bar,.nook-year:focus-visible .nook-year-bar { opacity:1; }
+.nook-year-label { height:20px; padding-top:6px; overflow:visible; color:var(--text-secondary); font-size:11px; line-height:14px; text-align:center; white-space:nowrap; }
+.nook-years.is-months .nook-year-track { padding:0 1px; }
+/* A month's year label starts at January and runs over the months after it. */
+.nook-years.is-months .nook-year-label { text-align:left; }
+
+.nook-heatmap { display:grid; gap:3px; }
+.nook-heat-row { display:grid; grid-template-columns:36px repeat(24,minmax(0,1fr)); gap:3px; align-items:center; }
+.nook-heat-hours { margin-bottom:2px; }
+.nook-heat-hour { color:var(--text-secondary); font-size:11px; line-height:14px; white-space:nowrap; }
+.nook-heat-day { color:var(--text-secondary); font-size:11px; line-height:12px; }
+/* Wide cells keep a fixed height so the grid stays a strip; phones keep them square. */
+.nook-heat-cell { position:relative; display:block; height:14px; min-width:6px; border-radius:3px; background:var(--nook-track); }
+.nook-heat-cell[data-level="1"] { background:color-mix(in srgb,var(--nook-mark) 28%,var(--nook-tile)); }
+.nook-heat-cell[data-level="2"] { background:color-mix(in srgb,var(--nook-mark) 52%,var(--nook-tile)); }
+.nook-heat-cell[data-level="3"] { background:color-mix(in srgb,var(--nook-mark) 76%,var(--nook-tile)); }
+.nook-heat-cell[data-level="4"] { background:var(--nook-mark); }
+.nook-heatmap .nook-heat-row .nook-heat-cell:hover { outline:2px solid var(--text-primary); outline-offset:1px; z-index:1; }
+.nook-heat-legend { display:flex; align-items:center; justify-content:flex-end; gap:3px; margin-top:8px; color:var(--text-secondary); font-size:11px; line-height:14px; }
+.nook-heat-legend .nook-heat-cell { width:12px; min-width:12px; height:12px; }
+.nook-heat-legend span:first-child { margin-right:4px; }
+.nook-heat-legend span:last-child { margin-left:4px; }
+.nook-text-button { padding:0; border:0; background:none; color:var(--accent-color); font:inherit; cursor:pointer; }
+.nook-text-button:hover { text-decoration:underline; }
+.nook-cal-title { display:flex; align-items:center; gap:8px; }
+.nook-year-stepper { display:inline-flex; align-items:center; gap:2px; }
+.nook-year-current { min-width:40px; color:var(--text-primary); font-size:14px; font-weight:700; line-height:20px; text-align:center; font-variant-numeric:tabular-nums; }
+.nook-stats .nook-icon-button { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:0; border-radius:9999px; background:transparent; color:var(--text-primary); cursor:pointer; transition:background-color 120ms ease; }
+.nook-stats .nook-icon-button svg { width:18px; height:18px; }
+.nook-stats .nook-icon-button:hover:not(:disabled) { background:var(--bg-tertiary); }
+.nook-stats .nook-icon-button:disabled { color:var(--text-secondary); opacity:.4; cursor:default; }
+/* GitHub-style year of days: weeks run left to right, weekdays top to bottom. */
+.nook-calendar { display:grid; grid-template-columns:28px minmax(0,1fr); grid-template-rows:auto auto; gap:4px 6px; }
+.nook-cal-months { grid-column:2; display:grid; grid-template-columns:repeat(var(--weeks),minmax(0,1fr)); gap:3px; color:var(--text-secondary); font-size:11px; line-height:14px; white-space:nowrap; }
+.nook-cal-weekdays { grid-column:1; display:grid; grid-template-rows:repeat(7,1fr); gap:3px; color:var(--text-secondary); font-size:11px; }
+.nook-cal-weekdays span { display:flex; align-items:center; line-height:1; }
+.nook-cal-grid { grid-column:2; display:grid; grid-template-columns:repeat(var(--weeks),minmax(0,1fr)); grid-template-rows:repeat(7,auto); grid-auto-flow:column; gap:3px; }
+.nook-cal-day { position:relative; display:block; aspect-ratio:1; min-width:0; padding:0; border:0; border-radius:3px; background:var(--nook-track); cursor:pointer; }
+.nook-cal-day:disabled { cursor:default; }
+.nook-cal-day.is-outside { visibility:hidden; }
+.nook-cal-day.is-future { background:transparent; box-shadow:inset 0 0 0 1px var(--nook-track); }
+.nook-cal-day[data-level="1"] { background:color-mix(in srgb,var(--nook-mark) 28%,var(--nook-tile)); }
+.nook-cal-day[data-level="2"] { background:color-mix(in srgb,var(--nook-mark) 52%,var(--nook-tile)); }
+.nook-cal-day[data-level="3"] { background:color-mix(in srgb,var(--nook-mark) 76%,var(--nook-tile)); }
+.nook-cal-day[data-level="4"] { background:var(--nook-mark); }
+.nook-cal-day:hover,.nook-cal-day:focus-visible { outline:2px solid var(--text-primary); outline-offset:1px; z-index:1; }
+.nook-cal-day:hover > .nook-tip,.nook-cal-day:focus-visible > .nook-tip { display:block; }
+/* The charts follow the card's width, not the window's, so a narrow window gets the same
+   layout as a phone. Each chart has a narrow form in the markup that these rules swap in. */
+.nook-cal-year,.nook-heatmap-tall { display:none; }
+/* Too narrow for 53 legible weeks: twelve small months, a week per row, in 3, 4 or 6
+   columns so the months always fill whole rows. */
+.nook-cal-year { grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px 12px; }
+@container (min-width:420px) { .nook-cal-year { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@container (min-width:540px) { .nook-cal-year { grid-template-columns:repeat(6,minmax(0,1fr)); } }
+.nook-cal-month-name { margin-bottom:6px; color:var(--text-secondary); font-size:12px; line-height:14px; font-weight:600; }
+.nook-cal-month-days { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:2px; }
+.nook-cal-month-days .nook-cal-day { border-radius:2px; }
+.nook-cal-month-days.is-static .nook-cal-day { cursor:default; }
+@container (max-width:759px) {
+  .nook-calendar-wide { display:none; }
+  .nook-cal-year { display:grid; }
+}
+/* Too narrow for a strip of 24 hours: an hour per row and a day per column. */
+.nook-heatmap-tall { gap:2px; max-width:420px; }
+.nook-tall-row { display:grid; grid-template-columns:48px repeat(7,minmax(0,1fr)); gap:3px; align-items:center; }
+.nook-tall-days { margin-bottom:2px; }
+.nook-tall-days span { color:var(--text-secondary); font-size:11px; line-height:14px; text-align:center; }
+.nook-tall-row .nook-heat-cell { height:11px; border-radius:2px; }
+.nook-tall-row .nook-heat-cell:hover { outline:2px solid var(--text-primary); outline-offset:1px; z-index:1; }
+@container (max-width:419px) {
+  .nook-heatmap { display:none; }
+  .nook-heatmap-tall { display:grid; }
+  .nook-heatmap-tall + .nook-heat-legend { justify-content:flex-start; }
+  .nook-years { height:140px; }
+}
+@media (max-width:520px) { .nook-activity { padding:16px 12px; } }
+
+/* One tooltip recipe for bars and cells, shown on hover or keyboard focus. Hidden tips stay
+   out of layout; positioned but invisible ones would still widen the scroll area. */
+.nook-tip { position:absolute; bottom:calc(100% + 6px); left:50%; z-index:5; display:none; padding:4px 8px; border-radius:8px; background:var(--text-primary); color:var(--bg-primary); font-size:13px; line-height:16px; font-weight:500; white-space:nowrap; pointer-events:none; transform:translateX(-50%); }
+.is-start > .nook-tip { left:0; transform:none; }
+.is-end > .nook-tip { left:auto; right:0; transform:none; }
+.nook-year:hover > .nook-tip,.nook-year:focus-visible > .nook-tip,.nook-heat-cell:hover > .nook-tip { display:block; }
+.nook-year > .nook-tip { bottom:auto; top:-24px; }
+
+/* Ranked lists: name, a thin accent meter, and the count. */
+.nook-list-card { padding:8px 0; }
+.nook-activity + .nook-list-card { margin-top:12px; }
+.nook-list-title { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:2px 12px; padding:8px 20px 8px; }
+.nook-rank-row { display:flex; align-items:center; gap:12px; width:100%; min-height:52px; padding:8px 20px; border:0; background:transparent; color:inherit; font:inherit; text-align:left; }
+button.nook-rank-row { cursor:pointer; transition:background-color 120ms ease; }
+button.nook-rank-row:hover:not(:disabled) { background:var(--bg-tertiary); }
+button.nook-rank-row:disabled { cursor:default; }
+.nook-rank-compact { min-height:44px; }
+.nook-rank-index { width:18px; flex-shrink:0; color:var(--text-secondary); font-size:13px; font-weight:700; text-align:right; }
+.nook-rank-main { display:flex; flex:1 1 auto; flex-direction:column; gap:6px; min-width:0; }
+.nook-rank-name { display:flex; align-items:baseline; gap:6px; min-width:0; overflow:hidden; color:var(--text-primary); font-size:15px; line-height:20px; font-weight:700; white-space:nowrap; text-overflow:ellipsis; }
+.nook-rank-name > span:first-child { overflow:hidden; text-overflow:ellipsis; }
+.nook-rank-handle { flex-shrink:1; overflow:hidden; text-overflow:ellipsis; color:var(--text-secondary); font-size:13px; font-weight:400; }
+.nook-rank-value { display:flex; flex-direction:column; align-items:flex-end; flex-shrink:0; color:var(--text-primary); font-size:15px; line-height:20px; font-weight:700; text-align:right; }
+.nook-rank-value span + span { color:var(--text-secondary); font-size:13px; line-height:16px; font-weight:400; }
+.nook-rank-sub { display:none; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--text-secondary); font-size:13px; line-height:16px; }
+/* Phones give the breakdown its own line so long names keep the row width. */
+@media (max-width:520px) { .nook-rank-sub { display:block; } .nook-rank-value .nook-rank-wide { display:none; } }
+.nook-meter { display:block; height:4px; overflow:hidden; border-radius:9999px; background:var(--nook-track); }
+.nook-meter > span { display:block; height:100%; border-radius:9999px; background:var(--nook-mark); }
+.nook-meter-spaced { margin:10px 0 2px; }
+.nook-people { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start; }
+@media (max-width:767px) { .nook-people { grid-template-columns:minmax(0,1fr); } }
+.nook-people .nook-chips { padding:4px 20px 12px; }
+
+/* Archive status and storage: a total with a segmented bar, then rows. */
+.nook-bar-line { display:flex; align-items:center; gap:16px; min-width:0; margin-top:4px; }
+.nook-bar-line .stats-value { flex-shrink:0; margin-top:0; }
+.nook-bar-divider { flex-shrink:0; width:1px; height:32px; background:var(--border-color); }
+.nook-segments { display:flex; flex:1 1 auto; gap:3px; min-width:0; height:28px; transition:gap 250ms ease; }
+.nook-segments.is-joined { gap:0; }
+.nook-segment { height:100%; border-radius:3px; background:var(--text-secondary); opacity:.35; transition:width 500ms ease-out, opacity 120ms ease, background-color 120ms ease; }
+.nook-segment:first-child { border-top-left-radius:8px; border-bottom-left-radius:8px; }
+.nook-segment:last-child { border-top-right-radius:8px; border-bottom-right-radius:8px; }
+.nook-segment.is-active { background:var(--nook-mark); opacity:1; }
+.nook-segment.is-clickable { cursor:pointer; }
+.nook-rows-card { padding:0; overflow:hidden; }
+.nook-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 20px; }
+.nook-rows-card > * + * > .nook-row,.nook-rows-card > .nook-row + .nook-row { border-top:1px solid var(--border-color); }
+.nook-row.is-clickable { cursor:pointer; }
+.nook-row.is-active,.storage-row.is-active { background:var(--bg-tertiary); }
+.nook-row-main { min-width:0; padding-right:16px; }
+.nook-row-side { flex-shrink:0; margin-left:auto; text-align:right; }
+.nook-row-name { color:var(--text-primary); font-size:15px; line-height:20px; font-weight:700; }
+.nook-row-detail { margin-top:2px; color:var(--text-secondary); font-size:13px; line-height:16px; }
+.is-active .nook-row-share { color:var(--accent-color); }
+.nook-row-chevron { display:inline-flex; flex-shrink:0; width:16px; height:16px; color:var(--text-secondary); transition:transform 200ms cubic-bezier(.4,0,.2,1); }
+.nook-row-chevron.is-open { transform:rotate(180deg); }
+.nook-row-description { padding:0 20px 14px; color:var(--text-secondary); font-size:13px; line-height:18px; }
+.nook-row-empty { padding:16px 20px; color:var(--text-secondary); font-size:14px; }
+
+@media (prefers-reduced-motion:reduce) {
+  .nook-stats *,.nook-stats *::before { transition:none !important; animation:none !important; }
 }

@@ -87,8 +87,10 @@ def test_overview_and_collections_share_valid_date_bounds(tmp_path):
         report = build_stats_report(store, include={"overview", "collections"})
         overview = report.section("overview").data
         like = next(row for row in report.section("collections").rows if row["raw_type"] == "like")
-        assert (overview["oldest_post"], overview["newest_post"]) == (valid, valid)
-        assert (like["oldest"], like["newest"]) == (valid, valid)
+        # Bounds come back as ISO strings for the same instant as the saved date.
+        expected = "2026-03-14T00:00:00+00:00"
+        assert (overview["oldest_post"], overview["newest_post"]) == (expected, expected)
+        assert (like["oldest"], like["newest"]) == (expected, expected)
     finally:
         store.close()
 

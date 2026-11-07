@@ -98,6 +98,8 @@ def test_summary_reports_counts_ranges_owner_and_latest_sync(tmp_path, make_web_
         [
             ("tweet_object", "t1", "done"),
             ("tweet_object", "t2", "terminal_unavailable"),
+            # A parent kept only as conversation context.
+            ("tweet_object", "t3", "done"),
         ],
     )
     store.conn.commit()
@@ -117,9 +119,10 @@ def test_summary_reports_counts_ranges_owner_and_latest_sync(tmp_path, make_web_
         "media_rows": 1,
         "urls": 1,
         "profiles": 2,
-        "archive_tweets": 2,
+        "archive_tweets": 3,
         "missing_archive_tweets": 1,
-        "missing_archive_pct": 50.0,
+        "missing_archive_pct": 33.3,
+        "context_posts": 1,
         "oldest_post": "Nov 14, 2023",
         "newest_post": "Jan 15, 2027",
         "latest_sync": "Jun 15, 2025",
@@ -142,6 +145,7 @@ def test_summary_uses_empty_defaults(tmp_path, make_web_client) -> None:
         "archive_tweets": 0,
         "missing_archive_tweets": 0,
         "missing_archive_pct": 0.0,
+        "context_posts": 0,
         "oldest_post": None,
         "newest_post": None,
         "latest_sync": None,

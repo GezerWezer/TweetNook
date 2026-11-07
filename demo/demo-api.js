@@ -375,6 +375,121 @@
             };
         }
 
+        // The Highlights payload, following the server's rules: saved posts count once,
+        // conversation context is totalled apart, the owner's own posts are left out of
+        // accounts, and times are UTC.
+        function insightsSnapshot() {
+            const saved = state.tweets.filter(tweet => tweet.collections.length);
+            const author = tweet => authors.get(String(tweet.author_id)) || {};
+            const series = () => ({total: 0, by_year: new Map(), week_hours: Array(168).fill(0), days: new Map()});
+            const activity = {all: series()};
+            const days = new Map();
+            const tweetDays = new Set();
+            for (const tweet of saved) {
+                const at = new Date(tweet.created_at);
+                if (Number.isNaN(at.getTime())) continue;
+                const year = at.getUTCFullYear();
+                const bucket = at.getUTCDay() * 24 + at.getUTCHours();
+                const day = Math.floor(at.getTime() / 86400000);
+                for (const name of ['all', ...tweet.collections]) {
+                    const target = activity[name] ||= series();
+                    target.total += 1;
+                    target.by_year.set(year, (target.by_year.get(year) || 0) + 1);
+                    target.week_hours[bucket] += 1;
+                    target.days.set(day, (target.days.get(day) || 0) + 1);
+                }
+                days.set(day, (days.get(day) || 0) + 1);
+                if (tweet.collections.includes('tweet')) tweetDays.add(day);
+            }
+            const isoDay = day => new Date(day * 86400000).toISOString().slice(0, 10);
+            const busiest = [...days].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+            let streak = {days: 0, start: null, end: null};
+            for (const day of tweetDays) {
+                if (tweetDays.has(day - 1)) continue;
+                let end = day;
+                while (tweetDays.has(end + 1)) end += 1;
+                if (end - day + 1 > streak.days) streak = {days: end - day + 1, start: isoDay(day), end: isoDay(end)};
+            }
+            const byAuthor = new Map();
+            for (const tweet of saved) {
+                if (String(tweet.author_id) === String(fixture.owner_user_id)) continue;
+                const row = byAuthor.get(tweet.author_id) || {author_id: String(tweet.author_id), username: author(tweet).username || '',
+                    display_name: author(tweet).display_name || author(tweet).username || '', count: 0, likes: 0, bookmarks: 0};
+                row.count += 1;
+                row.likes += tweet.collections.includes('like') ? 1 : 0;
+                row.bookmarks += tweet.collections.includes('bookmark') ? 1 : 0;
+                byAuthor.set(tweet.author_id, row);
+            }
+            const authorRows = [...byAuthor.values()];
+            const top = (counter) => [...counter].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 10);
+            const tally = (values) => {
+                const counter = new Map();
+                for (const value of values) counter.set(value, (counter.get(value) || 0) + 1);
+                return counter;
+            };
+            const likes = tweet => tweet.engagement?.likes || 0;
+            const allMedia = saved.flatMap(tweet => tweet.media || []);
+            const wordsIn = pool => pool.reduce((sum, tweet) => sum + (tweet.text?.trim() ? tweet.text.trim().split(' ').length : 0), 0);
+            const videoSeconds = media => Math.floor(media.filter(item => item.type === 'video')
+                .reduce((sum, item) => sum + (item.duration_millis || 0), 0) / 1000);
+            const context = state.tweets.filter(tweet => !tweet.collections.length);
+            const contextActivity = series();
+            for (const tweet of context) {
+                const at = new Date(tweet.created_at);
+                if (Number.isNaN(at.getTime())) continue;
+                const day = Math.floor(at.getTime() / 86400000);
+                contextActivity.total += 1;
+                contextActivity.by_year.set(at.getUTCFullYear(), (contextActivity.by_year.get(at.getUTCFullYear()) || 0) + 1);
+                contextActivity.week_hours[at.getUTCDay() * 24 + at.getUTCHours()] += 1;
+                contextActivity.days.set(day, (contextActivity.days.get(day) || 0) + 1);
+            }
+            const activityPayload = value => ({total: value.total,
+                by_year: [...value.by_year].sort((a, b) => a[0] - b[0]).map(([year, count]) => ({year, count})),
+                week_hours: value.week_hours, days: [...value.days].sort((a, b) => a[0] - b[0])});
+            const contextMedia = context.flatMap(tweet => tweet.media || []);
+            const authorOf = new Map(state.tweets.map(tweet => [String(tweet.tweet_id), tweet.author_id]));
+            const repliers = new Map();
+            for (const tweet of context) {
+                if (!tweet.reply_to_id || String(tweet.author_id) === String(fixture.owner_user_id)) continue;
+                // Continuing your own thread isn't replying.
+                if ([tweet.reply_to_id, tweet.conversation_id].some(id => id && String(authorOf.get(String(id))) === String(tweet.author_id))) continue;
+                const row = repliers.get(tweet.author_id) || {author_id: String(tweet.author_id), username: author(tweet).username || '',
+                    display_name: author(tweet).display_name || author(tweet).username || '', count: 0};
+                row.count += 1;
+                repliers.set(tweet.author_id, row);
+            }
+            return {
+                activity: Object.fromEntries(Object.entries(activity).map(([name, value]) => [name, activityPayload(value)])),
+                busiest_day: busiest ? {date: isoDay(busiest[0]), count: busiest[1]} : null,
+                longest_streak: streak,
+                top_authors: authorRows.sort((a, b) => b.count - a.count || a.username.toLowerCase().localeCompare(b.username.toLowerCase())).slice(0, 10),
+                authors: {total: authorRows.length, one_time: authorRows.filter(row => row.count === 1).length,
+                    regulars: authorRows.filter(row => row.count >= 10).length},
+                post_mix: {total: saved.length, replies: saved.filter(tweet => tweet.reply_to_id).length,
+                    quotes: saved.filter(tweet => tweet.quoted_tweet_id).length, reposts: 0,
+                    verified: saved.filter(tweet => author(tweet).verified).length,
+                    with_media: saved.filter(tweet => tweet.media?.length).length, with_links: saved.filter(tweet => tweet.urls?.length).length},
+                likes_on_x: saved.reduce((sum, tweet) => sum + likes(tweet), 0),
+                hashtags: top(tally(saved.flatMap(tweet => [...new Set((tweet.hashtags || []).map(tag => tag.toLowerCase()))])))
+                    .map(([tag, count]) => ({tag, count})),
+                mentions: top(tally(saved.flatMap(tweet => [...new Set((tweet.mentions || []).map(name => name.toLowerCase()))])))
+                    .map(([username, count]) => ({username, count})),
+                media_types: Object.fromEntries(tally(allMedia.map(media => media.type || 'photo'))),
+                video_seconds: videoSeconds(allMedia),
+                words: wordsIn(saved),
+                saved_twice: saved.filter(tweet => tweet.collections.includes('like') && tweet.collections.includes('bookmark')).length,
+                viral: saved.filter(tweet => likes(tweet) >= 100000).length,
+                // The demo records no availability checks.
+                gone: {saved: 0, context: 0, resurrected: 0, reasons: []},
+                context: {posts: context.length, words: wordsIn(context),
+                    media_types: Object.fromEntries(tally(contextMedia.map(media => media.type || 'photo'))),
+                    video_seconds: videoSeconds(contextMedia),
+                    activity: activityPayload(contextActivity),
+                    reply_authors: [...repliers.values()]
+                        .sort((a, b) => b.count - a.count || a.username.toLowerCase().localeCompare(b.username.toLowerCase())).slice(0, 10)},
+            };
+        }
+
         function statsSnapshot() {
             const tweets = currentTweets();
             const metadata = fixture.demo_metadata || {};
@@ -454,6 +569,7 @@
                     profiles: uniqueAuthors.size, oldest_post: dateLabel(tweets.map(tweet => tweet.created_at)),
                     newest_post: latestLabel(tweets.map(tweet => tweet.created_at)), latest_sync: latestLabel(tweets.map(tweet => tweet.synced_at)),
                     missing_archive_tweets: 0, missing_archive_pct: 0,
+                    context_posts: tweets.filter(tweet => !tweet.collections.length).length,
                 },
                 collections: collectionRows,
                 health: {
@@ -463,7 +579,7 @@
                             delayed: 0, permanent: 0, reasons: []}},
                 },
                 storage: {
-                    total_bytes: totalBytes, formatted_total: sizeLabel(totalBytes), database_component_bytes_estimated: false,
+                    total_bytes: totalBytes, formatted_total: sizeLabel(totalBytes),
                     media_sizes_measured: Boolean(metadata.asset_bytes), segments: segments.map(formatSegment),
                     simplified_segments: [
                         formatSegment({id: 'media', name: 'Media Files & Avatars', bytes: mediaBytes, count: counted.size,
@@ -479,6 +595,7 @@
                     avg_tags_per_tweet: tagged.length ? Number((instances / tagged.length).toFixed(1)) : 0,
                     top_tags: tags.slice(0, 20), generation: metadata.tagging || null,
                 },
+                insights: insightsSnapshot(),
             };
         }
 

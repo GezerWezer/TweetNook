@@ -23,7 +23,7 @@ from tweetnook.core.collection_names import display_collection_name, normalize_c
 from tweetnook.export import export_json_archive
 from tweetnook.export.common import default_export_path
 from tweetnook.stats import build_stats_report
-from tweetnook.stats.render_cli import render_stats_report
+from tweetnook.stats.render_cli import CLI_SECTIONS, render_stats_report
 from tweetnook.storage.search_query import SearchQueryError, parse_search_query, search_posts
 
 export_app = typer.Typer(no_args_is_help=True, help="Export the local archive.")
@@ -294,7 +294,9 @@ def stats_archive(
     console = configure_logging()
     store, _paths = open_store_for_read(console)
     try:
-        render_stats_report(console, build_stats_report(store), detailed=detailed)
+        render_stats_report(
+            console, build_stats_report(store, include=set(CLI_SECTIONS)), detailed=detailed
+        )
     finally:
         store.close()
 

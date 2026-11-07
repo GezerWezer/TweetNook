@@ -16,6 +16,9 @@ from rich.text import Text
 from tweetnook.stats.models import ColumnFormat, StatsReport, StatsSection
 from tweetnook.stats.service import format_bytes
 
+# The sections this renderer draws; the Web-only highlights are not collected for it.
+CLI_SECTIONS = frozenset({"overview", "collections", "archive_status", "storage", "tagging"})
+
 ACCENT = "#1d9bf0"
 ACCENT_SOFT = "#8ecdf7"
 MUTED = "grey62"

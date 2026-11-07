@@ -1,350 +1,607 @@
-        <!-- Stats Modal (Twitter/X Analytics Style) -->
+        <!-- Analytics dialog -->
         <div x-data="statsDialog()" x-show="showStatsModal"
              @keydown.window.escape="closeStatsModal()"
-             class="fixed inset-0 z-[100] bg-black/60 flex justify-center items-center p-4 md:p-6" 
-             x-cloak 
+             class="fixed inset-0 z-[100] bg-black/60 flex justify-center items-center p-4 md:p-6"
+             x-cloak
              @click.self="closeStatsModal()">
             <div role="dialog" aria-modal="true" aria-labelledby="nook-stats-title" class="nook-stats bg-[var(--bg-primary)] rounded-2xl w-full h-full md:h-[85vh] md:max-w-5xl flex flex-col overflow-hidden shadow-2xl relative border border-[var(--border-color)]">
-                
-                <!-- Modal Header -->
+
         <div class="stats-modal-header">
             <div class="nook-stats-heading">
                 <h2 id="nook-stats-title" class="stats-modal-title">Analytics</h2>
                 <span x-show="statsGeneratedAt" role="status" x-text="statsAgeLabel()"></span>
             </div>
-            <div class="flex items-center gap-1 flex-shrink-0">
+            <div class="nook-stats-actions">
                 <button type="button" class="nook-secondary-button nook-refresh" @click="refreshStats()" :disabled="statsRefreshing || loadingStatsSnapshot">
-                    <span class="nook-log-spinner" x-show="statsRefreshing" aria-hidden="true"></span>
+                    <span class="nook-refresh-icon" :class="statsRefreshing && 'is-spinning'" x-html="statsIcon('refresh')"></span>
+                    <span class="sr-only" x-show="statsRefreshing">Refreshing analytics</span>
                     <span x-text="statsRefreshing ? 'Refreshing' : 'Refresh'"></span>
                 </button>
-                <button type="button" @click="closeStatsModal()" class="nook-icon-button" aria-label="Close analytics"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M18.7 6.7 13.42 12l5.3 5.3-1.42 1.4-5.3-5.29-5.28 5.3-1.42-1.42L10.6 12 5.3 6.7l1.42-1.4L12 10.58l5.3-5.3z" />
-</svg></button>
+                <button type="button" @click="closeStatsModal()" class="nook-icon-button" aria-label="Close analytics" x-html="statsIcon('close')"></button>
             </div>
         </div>
 
-        <!-- Scrollable Content -->
-                <div class="stats-modal-scroll flex-1 overflow-y-auto p-4 md:p-6 space-y-8">
+                <div class="stats-modal-scroll flex-1 overflow-y-auto">
 
-                    <!-- ── Archive Overview ─────────────────────────────────── -->
-                    <div>
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="stats-section-title">Archive overview</h3>
-                            <span x-show="lastSyncFormatted" class="text-xs text-[var(--text-secondary)]" x-text="'Last synced ' + lastSyncFormatted"></span>
+                    <!-- Archive overview -->
+                    <section class="nook-stats-section" aria-labelledby="nook-stats-overview">
+                        <div class="nook-section-head">
+                            <h3 id="nook-stats-overview" class="stats-section-title"><span class="nook-section-icon" x-html="statsIcon('barChart')"></span>Archive overview</h3>
+                            <span x-show="lastSyncFormatted" class="nook-section-note" x-text="'Last synced ' + lastSyncFormatted"></span>
                         </div>
 
-                        <!-- Loading skeleton -->
                         <template x-if="loadingStatsSummary">
-                    <div class="space-y-3" aria-hidden="true">
-                        <div class="stats-card animate-pulse h-[132px]"></div>
-                        <div class="stats-card animate-pulse h-[76px]"></div>
-                    </div>
-                </template>
+                            <div class="nook-stack" aria-hidden="true">
+                                <div class="stats-card nook-skeleton" style="height:132px"></div>
+                                <div class="stats-card nook-skeleton" style="height:76px"></div>
+                            </div>
+                        </template>
 
                         <template x-if="!loadingStatsSummary && statsSummary">
-                    <div class="space-y-3">
-                        <div class="stats-card nook-overview-lead">
-                            <div class="nook-overview-total">
-                                <div class="stats-label">Tweets in archive</div>
-                                <div class="nook-overview-value" x-text="statsSummary.unique_posts.toLocaleString()"></div>
-                                <div class="stats-subtitle">Your likes, bookmarks, and tweets, plus the conversations around them.</div>
+                            <div class="nook-stack">
+                                <div class="stats-card nook-overview-lead">
+                                    <div class="nook-overview-total">
+                                        <div class="stats-label">Tweets in archive</div>
+                                        <div class="nook-overview-value" x-text="statsSummary.unique_posts.toLocaleString()"></div>
+                                        <div class="stats-subtitle">Your likes, bookmarks, and tweets</div>
+                                        <div class="nook-context" x-show="insightContextNote()"><span class="nook-inline-icon" x-html="statsIcon('reply')"></span><span x-text="insightContextNote()"></span></div>
+                                    </div>
+                                    <div class="nook-overview-range">
+                                        <div class="stats-label">Posted between</div>
+                                        <div class="nook-overview-dates"><span x-text="statsSummary.oldest_post || 'N/A'"></span><span class="nook-overview-arrow" aria-label="to">→</span><span x-text="statsSummary.newest_post || 'N/A'"></span></div>
+                                        <div class="stats-subtitle" x-text="nookSpanLabel(statsSummary.oldest_post, statsSummary.newest_post)"></div>
+                                    </div>
+                                </div>
+                                </div>
+                                <dl class="stats-card nook-overview-strip">
+                                    <div><dt class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('people')"></span>Authors</dt><dd x-text="statsSummary.profiles.toLocaleString()"></dd></div>
+                                    <div><dt class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('photo')"></span>Photos &amp; videos</dt><dd x-text="statsSummary.media_rows.toLocaleString()"></dd></div>
+                                    <div><dt class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('link')"></span>Links</dt><dd x-text="statsSummary.urls.toLocaleString()"></dd></div>
+                                    <div><dt class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('articles')"></span>Articles</dt><dd x-text="statsSummary.articles.toLocaleString()"></dd></div>
+                                </dl>
                             </div>
-                            <div class="nook-overview-range">
-                                <div class="stats-label">Posted between</div>
-                                <div class="nook-overview-dates"><span x-text="statsSummary.oldest_post || 'N/A'"></span><span class="nook-overview-arrow" aria-label="to">→</span><span x-text="statsSummary.newest_post || 'N/A'"></span></div>
-                                <div class="stats-subtitle" x-text="nookSpanLabel(statsSummary.oldest_post, statsSummary.newest_post)"></div>
-                            </div>
-                            <a href="#nook-stats-unavailable" class="nook-overview-note" x-show="statsSummary.missing_archive_tweets > 0" @click.prevent="nookScrollTo('nook-stats-unavailable')">
-                                <span x-text="statsSummary.missing_archive_tweets.toLocaleString() + (statsSummary.missing_archive_tweets === 1 ? ' imported tweet is' : ' imported tweets are') + ' no longer on X'"></span>
-                                <span class="nook-overview-note-link">View in Archive status</span>
-                            </a>
-                        </div>
-                        <dl class="stats-card nook-overview-strip">
-                            <div><dt class="stats-label">Authors</dt><dd x-text="statsSummary.profiles.toLocaleString()"></dd></div>
-                            <div><dt class="stats-label">Photos &amp; videos</dt><dd x-text="statsSummary.media_rows.toLocaleString()"></dd></div>
-                            <div><dt class="stats-label">Links</dt><dd x-text="statsSummary.urls.toLocaleString()"></dd></div>
-                            <div><dt class="stats-label">Articles</dt><dd x-text="statsSummary.articles.toLocaleString()"></dd></div>
-                        </dl>
-                    </div>
-                </template>
-                    </div>
+                        </template>
+                    </section>
 
-                    <!-- ── Collections ──────────────────────────────────────── -->
-                    <div>
-                        <h3 class="stats-section-title mb-4">Collections</h3>
+                    <!-- Collections -->
+                    <section class="nook-stats-section" aria-labelledby="nook-stats-collections">
+                        <div class="nook-section-head">
+                            <h3 id="nook-stats-collections" class="stats-section-title"><span class="nook-section-icon" x-html="statsIcon('layers')"></span>Collections</h3>
+                        </div>
 
                         <template x-if="loadingStatsCollections">
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div class="nook-grid-3" aria-hidden="true">
                                 <template x-for="i in 3">
-                                    <div class="stats-card animate-pulse">
-                                        <div class="h-3 bg-[var(--bg-tertiary)] rounded w-1/3 mb-3"></div>
-                                        <div class="h-7 bg-[var(--bg-tertiary)] rounded w-1/2"></div>
-                                    </div>
+                                    <div class="stats-card nook-skeleton" style="height:132px"></div>
                                 </template>
                             </div>
                         </template>
 
                         <template x-if="!loadingStatsCollections && statsCollections.length">
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div class="nook-grid-3">
                                 <template x-for="c in statsCollections" :key="c.collection">
-                            <a href="#" class="stats-card nook-stats-link" @click.prevent="nookOpenCollection($data, c)" :aria-label="'Browse ' + nookCollectionLabel(c)">
-                                <div class="stats-label" x-text="nookCollectionLabel(c)"></div>
-                                <div class="stats-value" x-text="c.count.toLocaleString()"></div>
-                                <div class="stats-subtitle" x-text="nookCollectionRange(c)"></div>
-                                <div class="nook-stats-flag" x-show="nookCollectionBehind(c)">Older tweets still to fetch</div>
-                            </a>
-                        </template>
+                                    <a href="#" class="stats-card nook-stats-link nook-collection" @click.prevent="nookOpenCollection($data, c)" :aria-label="'Browse ' + nookCollectionLabel(c)">
+                                        <div class="nook-collection-top">
+                                            <span class="nook-icon-well" x-html="statsIcon(insightCollectionIcon(c.raw_type))"></span>
+                                            <span class="nook-collection-go" x-html="statsIcon('arrowRight')"></span>
+                                        </div>
+                                        <div class="stats-label" x-text="nookCollectionLabel(c)"></div>
+                                        <div class="stats-value" x-text="c.count.toLocaleString()"></div>
+                                        <div class="stats-subtitle" x-text="nookCollectionRange(c)"></div>
+                                        <div class="nook-spark" aria-hidden="true" x-show="(insightSparklines[c.raw_type] || []).length > 1">
+                                            <template x-for="bar in (insightSparklines[c.raw_type] || [])" :key="bar.year">
+                                                <span :style="'height:' + bar.height + '%'"></span>
+                                            </template>
+                                        </div>
+                                        <div class="nook-stats-flag" x-show="nookCollectionBehind(c)">Older tweets still to fetch</div>
+                                    </a>
+                                </template>
                             </div>
                         </template>
-                    </div>
+                    </section>
 
-                    <!-- ── Archive Status ───────────────────────────────────── -->
-                    <div>
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="stats-section-title">Archive status</h3>
-                            <label class="nook-stats-switch">
-                        <span>Show all reasons</span>
-                        <button type="button" role="switch" class="nook-switch-button" :aria-checked="showEmptyUnavailableReasons" @click="showEmptyUnavailableReasons = !showEmptyUnavailableReasons"><span class="nook-switch-track"><span></span></span></button>
-                    </label>
+                    <!-- Highlights -->
+                    <section class="nook-stats-section" aria-labelledby="nook-stats-highlights" x-show="loadingStatsSnapshot || insightNumbers.length || insightTiles.length">
+                        <div class="nook-section-head">
+                            <h3 id="nook-stats-highlights" class="stats-section-title"><span class="nook-section-icon" x-html="statsIcon('sparkles')"></span>Highlights</h3>
+                            <span class="nook-section-note">Fun facts from everything you've saved</span>
+                            <div class="nook-scope" role="radiogroup" aria-label="Posts counted in this section" x-show="insightHasConversations">
+                                <button type="button" role="radio" :aria-checked="!insightConversations" @click="setInsightConversations(false)">Saved</button>
+                                <button type="button" role="radio" :aria-checked="insightConversations" @click="setInsightConversations(true)">With conversations</button>
+                            </div>
                         </div>
 
-                        <template x-if="loadingStatsHealth">
-                            <div class="space-y-3">
-                                <div class="stats-grid">
-                                    <template x-for="i in 4">
-                                        <div class="stats-card animate-pulse">
-                                            <div class="h-3 bg-[var(--bg-tertiary)] rounded w-2/3 mb-3"></div>
-                                            <div class="h-7 bg-[var(--bg-tertiary)] rounded w-1/3"></div>
+                        <template x-if="loadingStatsSnapshot && !statsInsights">
+                            <div class="nook-facts" aria-hidden="true">
+                                <template x-for="i in 6">
+                                    <div class="stats-card nook-skeleton" style="height:96px"></div>
+                                </template>
+                            </div>
+                        </template>
+
+                        <div class="nook-numbers" x-show="insightNumbers.length">
+                            <template x-for="number in insightNumbers" :key="number.id">
+                                <div class="stats-card nook-number" :class="number.action && 'nook-stats-link'"
+                                     :role="number.action ? 'button' : null" :tabindex="number.action ? 0 : null"
+                                     @click="runInsightAction(number.action)"
+                                     @keydown.enter.prevent="runInsightAction(number.action)"
+                                     @keydown.space.prevent="runInsightAction(number.action)">
+                                    <div class="stats-label"><span class="nook-inline-icon" x-html="statsIcon(number.icon)"></span><span x-text="number.label"></span></div>
+                                    <div class="nook-number-value" x-text="number.value"></div>
+                                    <div class="stats-subtitle" x-text="number.detail"></div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <template x-if="insightGone">
+                            <div class="stats-card nook-gone" id="nook-stats-gone">
+                                <div class="nook-gone-lead">
+                                    <span class="nook-icon-well" x-html="statsIcon('eyeOff')"></span>
+                                    <div class="nook-gone-body">
+                                        <div class="stats-label">Gone from X, still in your archive</div>
+                                        <div class="nook-gone-value"><span x-text="insightNumber(insightGone.total)"></span> <span class="nook-gone-unit" x-text="insightGone.total === 1 ? 'post' : 'posts'"></span></div>
+                                        <p class="stats-subtitle">
+                                            <span>X can't show these anymore, but your archive kept them.</span>
+                                            <span x-show="insightGone.resurrected" x-text="insightNumber(insightGone.resurrected) + (insightGone.resurrected === 1 ? ' saved post' : ' saved posts') + ' came back after going missing.'"></span>
+                                        </p>
+                                        <button type="button" class="nook-gone-search" x-show="insightGone.saved" @click="runInsightAction({ kind: 'search', query: 'is:missing' })">
+                                            <span>Browse them</span><span class="nook-inline-icon" x-html="statsIcon('arrowRight')"></span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="nook-gone-reasons" x-show="insightGone.reasons.length">
+                                    <div class="stats-label">Why they're gone</div>
+                                    <template x-for="reason in insightGone.reasons" :key="reason.reason">
+                                        <div class="nook-gone-reason">
+                                            <div class="nook-gone-reason-top"><span x-text="reason.label"></span><span><span x-text="insightNumber(reason.count)"></span><span class="nook-gone-share" x-text="reason.share"></span></span></div>
+                                            <span class="nook-meter"><span :style="'width:' + reason.width + '%'"></span></span>
                                         </div>
                                     </template>
                                 </div>
-                                <div class="stats-card h-20 animate-pulse"></div>
+                            </div>
+                        </template>
+
+                        <div class="nook-facts" x-show="insightTiles.length">
+                            <template x-for="tile in insightTiles" :key="tile.id">
+                                <div class="stats-card nook-fact" :class="tile.action && 'nook-stats-link'"
+                                     :role="tile.action ? 'button' : null" :tabindex="tile.action ? 0 : null"
+                                     @click="runInsightAction(tile.action)"
+                                     @keydown.enter.prevent="runInsightAction(tile.action)"
+                                     @keydown.space.prevent="runInsightAction(tile.action)">
+                                    <template x-if="tile.avatar">
+                                        <span class="avatar nook-avatar nook-fact-avatar" aria-hidden="true"><span class="avatar-initial" x-text="avatarInitial(tile.avatar.name)"></span><img :src="avatarUrl(tile.avatar.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image nook-avatar-image" alt="" loading="lazy"></span>
+                                    </template>
+                                    <span class="nook-icon-well" x-show="!tile.avatar" x-html="tile.icon ? statsIcon(tile.icon) : ''"></span>
+                                    <div class="nook-fact-body">
+                                        <div class="stats-label" x-text="tile.label"></div>
+                                        <div class="nook-fact-value" x-text="tile.value"></div>
+                                        <div class="stats-subtitle" x-text="tile.detail"></div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                    </section>
+
+                    <!-- Activity -->
+                    <section class="nook-stats-section" aria-labelledby="nook-stats-activity" x-show="insightSeriesOptions.length">
+                        <div class="nook-section-head">
+                            <h3 id="nook-stats-activity" class="stats-section-title"><span class="nook-section-icon" x-html="statsIcon('timeline')"></span>When they were posted</h3>
+                            <div class="nook-section-tools">
+                                <div class="nook-segmented" role="radiogroup" aria-label="Collection shown in the activity charts" :class="{ 'is-disabled': insightConversations }">
+                                    <template x-for="option in insightSeriesOptions" :key="option.id">
+                                        <button type="button" role="radio" :aria-checked="insightSeries === option.id" :disabled="insightConversations" @click="selectInsightSeries(option.id)" x-text="option.label"></button>
+                                    </template>
+                                </div>
+                                <div class="nook-scope" role="radiogroup" aria-label="Posts counted in this section" x-show="insightHasConversations">
+                                <button type="button" role="radio" :aria-checked="!insightConversations" @click="setInsightConversations(false)">Saved</button>
+                                <button type="button" role="radio" :aria-checked="insightConversations" @click="setInsightConversations(true)">With conversations</button>
+                            </div>
+                            </div>
+                        </div>
+
+                        <div class="stats-card nook-activity">
+                            <div class="nook-chart-head">
+                                <div class="stats-label" x-text="insightYearUnit === 'month' ? 'Posts by month' : 'Posts by year'"></div>
+                            </div>
+                            <div class="nook-years" :class="{ 'is-months': insightYearUnit === 'month', 'is-static': insightConversations }">
+                                <template x-for="(bar, index) in insightYears" :key="bar.key">
+                                    <button type="button" class="nook-year" :aria-label="bar.label" @click="insightYearSearch(bar)"
+                                            :class="{ 'is-start': index < 3, 'is-end': index > insightYears.length - 4 }">
+                                        <span class="nook-year-track"><span class="nook-year-bar" :style="'height:' + bar.height + '%'"></span></span>
+                                        <span class="nook-year-label" x-text="bar.showLabel ? bar.year : ''"></span>
+                                        <span class="nook-tip" aria-hidden="true" x-text="bar.label"></span>
+                                    </button>
+                                </template>
+                            </div>
+
+                            <template x-if="insightCalendar">
+                                <div>
+                                    <div class="nook-chart-head nook-chart-head-spaced">
+                                        <div class="nook-cal-title">
+                                            <div class="stats-label">Posting days</div>
+                                            <div class="nook-year-stepper">
+                                                <button type="button" class="nook-icon-button" @click="stepInsightCalendar(-1)" :disabled="!insightCalendarCanStep(-1)" aria-label="Previous year with posts" x-html="statsIcon('chevronLeft')"></button>
+                                                <span class="nook-year-current" aria-live="polite" x-text="insightCalendar.year"></span>
+                                                <button type="button" class="nook-icon-button" @click="stepInsightCalendar(1)" :disabled="!insightCalendarCanStep(1)" aria-label="Next year with posts" x-html="statsIcon('chevronRight')"></button>
+                                            </div>
+                                        </div>
+                                        <div class="stats-subtitle" x-text="insightCalendarSummary()"></div>
+                                    </div>
+                                    <div class="nook-calendar-wide">
+                                        <div class="nook-calendar" :style="'--weeks:' + insightCalendar.weeks" role="group" :aria-label="'Posts per day in ' + insightCalendar.year + ', dates in UTC'">
+                                            <div class="nook-cal-months" aria-hidden="true">
+                                                <template x-for="month in insightCalendar.months" :key="month.key">
+                                                    <span :style="'grid-column:' + month.column + ' / span 3'" x-text="month.label"></span>
+                                                </template>
+                                            </div>
+                                            <div class="nook-cal-weekdays" aria-hidden="true">
+                                                <template x-for="weekday in insightCalendar.weekdays" :key="weekday.key"><span x-text="weekday.label"></span></template>
+                                            </div>
+                                            <div class="nook-cal-grid" :class="{ 'is-static': insightConversations }">
+                                                <template x-for="cell in insightCalendar.cells" :key="cell.key">
+                                                    <button type="button" class="nook-cal-day" :data-level="cell.level" :disabled="cell.outside || !cell.count"
+                                                            :class="{ 'is-outside': cell.outside, 'is-future': cell.future, 'is-start': cell.edge === 'start', 'is-end': cell.edge === 'end' }"
+                                                            :aria-label="cell.label" @click="insightDaySearch(cell)">
+                                                        <span class="nook-tip" aria-hidden="true" x-text="cell.label" x-show="!cell.outside"></span>
+                                                    </button>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="nook-cal-year" role="group" :aria-label="'Posts per day in ' + insightCalendar.year + ', dates in UTC'">
+                                        <template x-for="month in insightCalendar.monthGrid" :key="month.key">
+                                            <div class="nook-cal-month">
+                                                <div class="nook-cal-month-name" x-text="month.label"></div>
+                                                <div class="nook-cal-month-days" :class="{ 'is-static': insightConversations }">
+                                                    <template x-for="(cell, index) in month.cells" :key="cell.key">
+                                                        <button type="button" class="nook-cal-day" :data-level="cell.level" :disabled="!cell.count"
+                                                                :style="index === 0 ? 'grid-column-start:' + (month.offset + 1) : ''"
+                                                                :class="{ 'is-future': cell.future, 'is-start': cell.edge === 'start', 'is-end': cell.edge === 'end' }"
+                                                                :aria-label="cell.label" @click="insightDaySearch(cell)">
+                                                            <span class="nook-tip" aria-hidden="true" x-text="cell.label"></span>
+                                                        </button>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <div class="nook-chart-head nook-chart-head-spaced">
+                                <div class="stats-label">Posting hours</div>
+                                <div class="stats-subtitle" x-text="insightActivitySummary()"></div>
+                            </div>
+                            <template x-if="insightWeek">
+                                <div class="nook-hours">
+                                    <div class="nook-heatmap" role="table" aria-label="Posts by weekday and hour, in your local time">
+                                        <div class="nook-heat-row nook-heat-hours" aria-hidden="true">
+                                            <span></span>
+                                            <template x-for="h in insightWeek.hourLabels" :key="h.hour">
+                                                <span class="nook-heat-hour" :style="'grid-column:' + (h.hour + 2) + ' / span 6'" x-text="h.label"></span>
+                                            </template>
+                                        </div>
+                                        <template x-for="row in insightWeek.rows" :key="row.day">
+                                            <div class="nook-heat-row" role="row">
+                                                <span class="nook-heat-day" role="rowheader" x-text="row.label"></span>
+                                                <template x-for="(cell, hour) in row.cells" :key="cell.key">
+                                                    <span class="nook-heat-cell" role="cell" :data-level="cell.level" :aria-label="cell.label"
+                                                          :class="{ 'is-start': hour < 8, 'is-end': hour > 15 }">
+                                                        <span class="nook-tip" aria-hidden="true" x-text="cell.label"></span>
+                                                    </span>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <div class="nook-heatmap-tall" role="table" aria-label="Posts by hour and weekday, in your local time">
+                                        <div class="nook-tall-row nook-tall-days" aria-hidden="true">
+                                            <span></span>
+                                            <template x-for="day in insightWeek.dayInitials" :key="day.key"><span x-text="day.label"></span></template>
+                                        </div>
+                                        <template x-for="row in insightWeek.hours" :key="row.hour">
+                                            <div class="nook-tall-row" role="row">
+                                                <span class="nook-heat-day" role="rowheader" x-text="row.label"></span>
+                                                <template x-for="cell in row.cells" :key="cell.key">
+                                                    <span class="nook-heat-cell" role="cell" :data-level="cell.level" :aria-label="cell.label"
+                                                          :class="{ 'is-start': cell.edge === 'start', 'is-end': cell.edge === 'end' }">
+                                                        <span class="nook-tip" aria-hidden="true" x-text="cell.label"></span>
+                                                    </span>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <div class="nook-heat-legend" aria-hidden="true">
+                                        <span>Fewer</span>
+                                        <span class="nook-heat-cell" data-level="0"></span><span class="nook-heat-cell" data-level="1"></span><span class="nook-heat-cell" data-level="2"></span><span class="nook-heat-cell" data-level="3"></span><span class="nook-heat-cell" data-level="4"></span>
+                                        <span>More</span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="stats-card nook-list-card" x-show="insightMix.length">
+                            <div class="nook-list-title">
+                                <div class="stats-label">What you saved</div>
+                                <div class="stats-subtitle">Shares of all saved posts; a post can count in several rows</div>
+                            </div>
+                            <template x-for="row in insightMix" :key="row.key">
+                                <button type="button" class="nook-rank-row" @click="runInsightAction({ kind: 'search', query: row.query })" :aria-label="row.label + ', ' + row.share + ', search these posts'">
+                                    <span class="nook-inline-icon" x-html="statsIcon(row.icon)"></span>
+                                    <span class="nook-rank-main">
+                                        <span class="nook-rank-name" x-text="row.label"></span>
+                                        <span class="nook-meter"><span :style="'width:' + row.width + '%'"></span></span>
+                                    </span>
+                                    <span class="nook-rank-value"><span x-text="row.share"></span><span x-text="insightNumber(row.count)"></span></span>
+                                </button>
+                            </template>
+                        </div>
+                    </section>
+
+                    <!-- People & topics -->
+                    <section class="nook-stats-section" aria-labelledby="nook-stats-people" x-show="insightAuthors.length || insightHashtags.length || insightMentions.length || insightRepliers.length">
+                        <div class="nook-section-head">
+                            <h3 id="nook-stats-people" class="stats-section-title"><span class="nook-section-icon" x-html="statsIcon('people')"></span>People &amp; topics</h3>
+                        </div>
+                        <div class="nook-people">
+                            <div class="stats-card nook-list-card" x-show="insightAuthors.length">
+                                <div class="nook-list-title">
+                                    <div class="stats-label">Accounts you save most</div>
+                                    <div class="stats-subtitle">Your own tweets aren't counted</div>
+                                </div>
+                                <template x-for="(author, index) in insightAuthors" :key="author.key">
+                                    <button type="button" class="nook-rank-row" @click="runInsightAction({ kind: 'search', query: 'from:' + author.username })" :disabled="!author.username" :aria-label="insightAuthorLabel(author) + ', ' + insightNumber(author.count) + ' posts, search them'">
+                                        <span class="nook-rank-index" x-text="index + 1"></span>
+                                        <span class="avatar nook-avatar" aria-hidden="true"><span class="avatar-initial" x-text="avatarInitial(author.display_name || author.username)"></span><img :src="avatarUrl(author.author_id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image nook-avatar-image" alt="" loading="lazy"></span>
+                                        <span class="nook-rank-main">
+                                            <span class="nook-rank-name"><span x-text="insightAuthorLabel(author)"></span><span class="nook-rank-handle" x-show="author.username" x-text="'@' + author.username"></span></span>
+                                            <span class="nook-meter"><span :style="'width:' + author.width + '%'"></span></span>
+                                            <span class="nook-rank-sub" x-text="insightCollectionsLabel(author)"></span>
+                                        </span>
+                                        <span class="nook-rank-value"><span x-text="insightNumber(author.count)"></span><span class="nook-rank-wide" x-text="insightCollectionsLabel(author)"></span></span>
+                                    </button>
+                                </template>
+                            </div>
+
+                            <div class="stats-card nook-list-card" x-show="insightRepliers.length">
+                                <div class="nook-list-title">
+                                    <div class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('reply')"></span>Most active in replies</div>
+                                    <div class="stats-subtitle">Replies in the conversations around your saved posts</div>
+                                </div>
+                                <template x-for="(author, index) in insightRepliers" :key="author.key">
+                                    <div class="nook-rank-row">
+                                        <span class="nook-rank-index" x-text="index + 1"></span>
+                                        <span class="avatar nook-avatar" aria-hidden="true"><span class="avatar-initial" x-text="avatarInitial(author.display_name || author.username)"></span><img :src="avatarUrl(author.author_id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image nook-avatar-image" alt="" loading="lazy"></span>
+                                        <span class="nook-rank-main">
+                                            <span class="nook-rank-name"><span x-text="insightAuthorLabel(author)"></span><span class="nook-rank-handle" x-show="author.username" x-text="'@' + author.username"></span></span>
+                                            <span class="nook-meter"><span :style="'width:' + author.width + '%'"></span></span>
+                                        </span>
+                                        <span class="nook-rank-value"><span x-text="insightNumber(author.count)"></span><span class="nook-rank-wide" x-text="author.count === 1 ? 'reply' : 'replies'"></span></span>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <div class="stats-card nook-list-card" x-show="insightHashtags.length">
+                                <div class="nook-list-title"><div class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('hash')"></span>Hashtags</div></div>
+                                <div class="nook-chips">
+                                    <template x-for="t in insightHashtags" :key="t.tag">
+                                        <button type="button" class="nook-stats-chip" @click="runInsightAction({ kind: 'search', query: 'hashtag:' + t.tag })" :aria-label="'Search #' + t.tag + ', ' + insightNumber(t.count) + ' posts'">
+                                            <span x-text="'#' + t.tag"></span><span x-text="insightNumber(t.count)"></span>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <div class="stats-card nook-list-card" x-show="insightMentions.length">
+                                <div class="nook-list-title"><div class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('at')"></span>Mentioned most</div></div>
+                                <template x-for="m in insightMentions.slice(0, 5)" :key="m.key">
+                                    <button type="button" class="nook-rank-row nook-rank-compact" @click="runInsightAction({ kind: 'search', query: 'mentions:' + m.username })" :aria-label="'Search posts mentioning @' + m.username">
+                                        <span class="nook-rank-main"><span class="nook-rank-name" x-text="'@' + m.username"></span><span class="nook-meter"><span :style="'width:' + m.width + '%'"></span></span></span>
+                                        <span class="nook-rank-value"><span x-text="insightNumber(m.count)"></span></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Archive status -->
+                    <section class="nook-stats-section" aria-labelledby="nook-stats-status">
+                        <div class="nook-section-head">
+                            <h3 id="nook-stats-status" class="stats-section-title"><span class="nook-section-icon" x-html="statsIcon('shield')"></span>Archive status</h3>
+                            <label class="nook-stats-switch">
+                                <span>Show all reasons</span>
+                                <button type="button" role="switch" class="nook-switch-button" :aria-checked="showEmptyUnavailableReasons" @click="showEmptyUnavailableReasons = !showEmptyUnavailableReasons"><span class="nook-switch-track"><span></span></span></button>
+                            </label>
+                        </div>
+
+                        <template x-if="loadingStatsHealth">
+                            <div class="nook-stack" aria-hidden="true">
+                                <div class="stats-grid">
+                                    <template x-for="i in 4">
+                                        <div class="stats-card nook-skeleton" style="height:96px"></div>
+                                    </template>
+                                </div>
+                                <div class="stats-card nook-skeleton" style="height:80px"></div>
                             </div>
                         </template>
 
                         <template x-if="!loadingStatsHealth && statsHealth">
-                            <div class="space-y-3">
+                            <div class="nook-stack">
                                 <div class="stats-grid">
                                     <div class="stats-card">
-                                        <div class="stats-label">Full details</div>
+                                        <div class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('checkmarkCircle')"></span>Full details</div>
                                         <div class="stats-value" x-text="statsHealth.enrichment.done.toLocaleString()"></div>
-                                <div class="stats-subtitle" x-text="statsHealth.enrichment.details_description || 'Fetched from X'"></div>
+                                        <div class="stats-subtitle" x-text="statsHealth.enrichment.details_description || 'Fetched from X'"></div>
                                     </div>
                                     <div class="stats-card">
-                                        <div class="stats-label">Conversations</div>
+                                        <div class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('chat')"></span>Conversations</div>
                                         <div class="stats-value" x-text="statsHealth.threads_expanded.toLocaleString()"></div>
                                         <div class="stats-subtitle">Threads expanded around tweets</div>
                                     </div>
                                     <div class="stats-card">
-                                        <div class="stats-label">Waiting for details</div>
+                                        <div class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('clock')"></span>Waiting for details</div>
                                         <div class="stats-value" x-text="statsHealth.enrichment.incomplete.toLocaleString()"></div>
                                         <div class="stats-subtitle" x-text="statsHealth.enrichment.pending.toLocaleString() + ' pending · ' + statsHealth.enrichment.transient.toLocaleString() + ' retrying'"></div>
                                     </div>
                                     <div class="stats-card">
-                                        <div class="stats-label">Came back on X</div>
+                                        <div class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('starRising')"></span>Came back on X</div>
                                         <div class="stats-value" x-text="statsHealth.enrichment.resurrected.toLocaleString()"></div>
                                         <div class="stats-subtitle">Available again</div>
                                     </div>
                                 </div>
 
                                 <div class="stats-card" id="nook-stats-unavailable">
-                                    <div class="stats-label">Unavailable on X</div>
-                                    <div class="flex items-center gap-4 mt-1 min-w-0">
-                                        <div class="stats-value !mt-0 flex-shrink-0" x-text="statsHealth.enrichment.unavailable.total.toLocaleString()"></div>
-                                        <div class="w-px h-8 flex-shrink-0 bg-[var(--border-color)]" aria-hidden="true"></div>
-                                        <div class="flex-1 min-w-0 h-[31px] flex gap-1">
+                                    <div class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('eyeOff')"></span>Unavailable on X</div>
+                                    <div class="nook-bar-line">
+                                        <div class="stats-value" x-text="statsHealth.enrichment.unavailable.total.toLocaleString()"></div>
+                                        <div class="nook-bar-divider" aria-hidden="true"></div>
+                                        <div class="nook-segments">
                                             <template x-for="(reason, i) in getUnavailableBarReasons()" :key="reason.reason">
-                                                <div :style="'width: ' + getUnavailableSegmentWidth(reason) + '%'"
-                                                     :class="{
-                                                         'bg-[var(--accent-color)] border-[var(--accent-color)] opacity-100 shadow-[0_0_12px_rgba(var(--accent-rgb),0.35)]': hoveredUnavailableReason === reason.reason,
-                                                         'bg-[var(--text-secondary)] border-[var(--text-secondary)] opacity-40': hoveredUnavailableReason !== reason.reason,
-                                                         'rounded-l-lg': i === 0,
-                                                         'rounded-r-lg': i === getUnavailableBarReasons().length - 1
-                                                     }"
-                                                     class="archive-status-bar-seg h-full rounded-sm border shadow-sm"
+                                                <div class="nook-segment archive-status-bar-seg" :style="'width: ' + getUnavailableSegmentWidth(reason) + '%'"
+                                                     :class="{ 'is-active': hoveredUnavailableReason === reason.reason }"
                                                      @mouseenter="hoveredUnavailableReason = reason.reason"
-                                                     @mouseleave="hoveredUnavailableReason = null">
-                                                </div>
+                                                     @mouseleave="hoveredUnavailableReason = null"></div>
                                             </template>
                                         </div>
                                     </div>
-                                    <div class="stats-subtitle" x-text="statsHealth.enrichment.unavailable.percent_of_archive.toFixed(1) + '% of imported archive tweets'"></div>
+                                    <div class="stats-subtitle" x-text="statsHealth.enrichment.unavailable.percent_of_archive.toFixed(1) + '% of archived posts, including conversation context'"></div>
                                 </div>
 
-                                <div class="stats-card" style="padding: 0; overflow: hidden;">
+                                <div class="stats-card nook-rows-card">
                                     <template x-if="getUnavailableReasons().length === 0">
-                                        <div class="px-5 py-4 text-[14px] text-[var(--text-secondary)]">No unavailable tweets.</div>
+                                        <div class="nook-row-empty">No unavailable tweets.</div>
                                     </template>
                                     <template x-for="(reason, i) in getUnavailableReasons()" :key="reason.reason">
-                                        <div class="archive-status-reason-row"
-                                             :class="hoveredUnavailableReason === reason.reason ? 'bg-[var(--bg-tertiary)]' : ''"
+                                        <div class="nook-row archive-status-reason-row" :class="{ 'is-active': hoveredUnavailableReason === reason.reason }"
                                              @mouseenter="hoveredUnavailableReason = reason.reason"
                                              @mouseleave="hoveredUnavailableReason = null">
-                                            <div class="flex items-center justify-between px-5 py-3.5"
-                                                 :class="i > 0 ? 'border-t border-[var(--border-color)]' : ''">
-                                                <div class="min-w-0 pr-4">
-                                                    <div class="text-[14px] font-semibold text-[var(--text-primary)]" x-text="reason.label"></div>
-                                                    <div class="text-[12px] text-[var(--text-secondary)] mt-0.5" x-text="getUnavailableReasonStatus(reason)"></div>
-                                                </div>
-                                                <div class="text-right flex-shrink-0">
-                                                    <div class="text-[14px] font-semibold text-[var(--text-primary)]" x-text="reason.count.toLocaleString()"></div>
-                                                    <div class="text-[12px] font-medium text-[var(--text-secondary)]"
-                                                         :class="hoveredUnavailableReason === reason.reason ? 'text-[var(--accent-color)]' : ''"
-                                                         x-text="reason.percent_of_missing.toFixed(1) + '%'"></div>
-                                                </div>
+                                            <div class="nook-row-main">
+                                                <div class="nook-row-name" x-text="reason.label"></div>
+                                                <div class="nook-row-detail" x-text="getUnavailableReasonStatus(reason)"></div>
+                                            </div>
+                                            <div class="nook-row-side">
+                                                <div class="nook-row-name" x-text="reason.count.toLocaleString()"></div>
+                                                <div class="nook-row-detail nook-row-share" x-text="reason.percent_of_missing.toFixed(1) + '%'"></div>
                                             </div>
                                         </div>
                                     </template>
                                 </div>
                             </div>
                         </template>
-                    </div>
+                    </section>
 
-                    <!-- ── Storage ──────────────────────────────────────────── -->
-                    <div>
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="stats-section-title">Storage</h3>
+                    <!-- Storage -->
+                    <section class="nook-stats-section" aria-labelledby="nook-stats-storage">
+                        <div class="nook-section-head">
+                            <h3 id="nook-stats-storage" class="stats-section-title"><span class="nook-section-icon" x-html="statsIcon('database')"></span>Storage</h3>
                             <div class="nook-segmented" role="radiogroup" aria-label="Storage detail">
-                        <button type="button" role="radio" :aria-checked="!storageDetailedView" @click="storageDetailedView && toggleStorageDetailView()">Simplified</button>
-                        <button type="button" role="radio" :aria-checked="storageDetailedView" @click="!storageDetailedView && toggleStorageDetailView()">Detailed</button>
-                    </div>
+                                <button type="button" role="radio" :aria-checked="!storageDetailedView" @click="storageDetailedView && toggleStorageDetailView()">Simplified</button>
+                                <button type="button" role="radio" :aria-checked="storageDetailedView" @click="!storageDetailedView && toggleStorageDetailView()">Detailed</button>
+                            </div>
                         </div>
 
                         <template x-if="storageLoading">
-                            <div class="stats-card py-12 text-center animate-pulse text-[var(--text-secondary)]">
-                                Computing disk space and database breakdown...
-                            </div>
+                            <div class="stats-card nook-skeleton nook-row-empty">Computing disk space and database breakdown...</div>
                         </template>
 
                         <template x-if="!storageLoading && storageData">
-                            <div>
-                                <!-- Total Storage hero card with inline segmented bar -->
-                                <div class="stats-card mb-3">
+                            <div class="nook-stack">
+                                <div class="stats-card">
                                     <div class="stats-label">Total</div>
-                                    <div class="flex items-center gap-4 mt-1 min-w-0">
-                                        <div class="stats-value !mt-0 flex-shrink-0" x-text="storageData.formatted_total"></div>
-                                        <div class="w-px h-8 flex-shrink-0 bg-[var(--border-color)]" aria-hidden="true"></div>
-                                        <div class="flex-1 min-w-0 h-[31px] flex transition-all duration-300 ease-in-out"
-                                             :class="storageGapsCollapsed ? 'gap-0' : 'gap-1'">
+                                    <div class="nook-bar-line">
+                                        <div class="stats-value" x-text="storageData.formatted_total"></div>
+                                        <div class="nook-bar-divider" aria-hidden="true"></div>
+                                        <div class="nook-segments" :class="storageGapsCollapsed && 'is-joined'">
                                             <template x-for="(seg, i) in getActiveStorageSegments()" :key="seg.id">
-                                                <div :style="'width: ' + getSegmentWidth(seg) + '%'"
-                                                     :class="{
-                                                         'bg-[var(--accent-color)] border-[var(--accent-color)] opacity-100 shadow-[0_0_12px_rgba(var(--accent-rgb),0.35)]': hoveredStorageId === seg.id,
-                                                         'bg-[var(--text-secondary)] border-[var(--text-secondary)] opacity-40': hoveredStorageId !== seg.id,
-                                                         'rounded-l-lg': i === 0,
-                                                         'rounded-r-lg': i === getActiveStorageSegments().length - 1
-                                                     }"
-                                                     class="storage-bar-seg h-full rounded-sm transition-[width] duration-500 ease-out cursor-pointer border shadow-sm"
+                                                <div class="nook-segment storage-bar-seg" :style="'width: ' + getSegmentWidth(seg) + '%'"
+                                                     :class="{ 'is-active': hoveredStorageId === seg.id, 'is-clickable': storageDetailedView }"
                                                      @mouseenter="setHoveredStorage(seg.id)"
                                                      @mouseleave="clearHoveredStorage()"
-                                                     @click="toggleExpandStorage(seg.id)">
-                                                </div>
+                                                     @click="toggleExpandStorage(seg.id)"></div>
                                             </template>
                                         </div>
                                     </div>
                                 </div>
 
-                                <!-- Category list inside a single card -->
-                                <div class="stats-card" style="padding: 0; overflow: hidden;">
-                                        <template x-for="(seg, i) in getActiveStorageSegments()" :key="seg.id">
-                                            <div class="storage-row"
-                                                 :class="hoveredStorageId === seg.id ? 'bg-[var(--bg-tertiary)]' : ''"
-                                                 @mouseenter="setHoveredStorage(seg.id)" 
-                                                 @mouseleave="clearHoveredStorage()">
-                                                
-                                                <!-- Row content -->
-                                                <div class="storage-row-header flex items-center justify-between cursor-pointer px-5 py-3.5"
-                                                     :class="i > 0 ? 'border-t border-[var(--border-color)]' : ''"
-                                                     @click="toggleExpandStorage(seg.id)">
-                                                    <div class="flex items-center gap-3 min-w-0">
-                                                        <div class="min-w-0">
-                                                            <div class="text-[14px] font-semibold text-[var(--text-primary)]" x-text="seg.name"></div>
-                                                            <div class="text-[12px] text-[var(--text-secondary)] mt-0.5" x-text="seg.formatted_count || (seg.count.toLocaleString() + ' ' + seg.unit)"></div>
-                                                        </div>
-                                                    </div>
-                                                    <div class="flex items-center gap-3 flex-shrink-0">
-                                                        <div class="text-right">
-                                                            <div class="text-[14px] font-semibold text-[var(--text-primary)]" x-text="seg.formatted_size"></div>
-                                                            <div class="text-[12px] font-medium text-[var(--text-secondary)]"
-                                                                 :class="hoveredStorageId === seg.id ? 'text-[var(--accent-color)]' : ''"
-                                                                 x-text="seg.percent + '%'"></div>
-                                                        </div>
-                                                        <svg x-show="storageDetailedView" viewBox="0 0 24 24" class="w-4 h-4 fill-current text-[var(--text-secondary)] transition-transform duration-300"
-                                                             :class="expandedStorageId === seg.id ? 'rotate-180' : ''" fill="currentColor">
-                                                            <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
-                                                        </svg>
-                                                    </div>
+                                <div class="stats-card nook-rows-card">
+                                    <template x-for="(seg, i) in getActiveStorageSegments()" :key="seg.id">
+                                        <div class="storage-row" :class="{ 'is-active': hoveredStorageId === seg.id }"
+                                             @mouseenter="setHoveredStorage(seg.id)"
+                                             @mouseleave="clearHoveredStorage()">
+                                            <div class="nook-row" :class="storageDetailedView && 'is-clickable'" @click="toggleExpandStorage(seg.id)">
+                                                <div class="nook-row-main">
+                                                    <div class="nook-row-name" x-text="seg.name"></div>
+                                                    <div class="nook-row-detail" x-text="seg.formatted_count || (seg.count.toLocaleString() + ' ' + seg.unit)"></div>
                                                 </div>
-
-                                                <!-- Expandable Description -->
-                                                <div x-show="storageDetailedView && expandedStorageId === seg.id" x-collapse>
-                                                    <div class="px-5 pb-3.5">
-                                                        <div class="text-[13px] leading-relaxed text-[var(--text-secondary)]" x-text="seg.description"></div>
-                                                    </div>
+                                                <div class="nook-row-side">
+                                                    <div class="nook-row-name" x-text="seg.formatted_size"></div>
+                                                    <div class="nook-row-detail nook-row-share" x-text="seg.percent + '%'"></div>
                                                 </div>
-
+                                                <span x-show="storageDetailedView" class="nook-row-chevron" :class="expandedStorageId === seg.id && 'is-open'" x-html="statsIcon('chevronDown')"></span>
                                             </div>
-                                        </template>
+                                            <div x-show="storageDetailedView && expandedStorageId === seg.id" x-collapse>
+                                                <div class="nook-row-description" x-text="seg.description"></div>
+                                            </div>
+                                        </div>
+                                    </template>
                                 </div>
                             </div>
                         </template>
-                    </div>
+                    </section>
 
-                    <!-- ── Tagging & Search ─────────────────────────────────── -->
-                    <div>
-                        <h3 class="stats-section-title mb-4">Tagging &amp; search</h3>
+                    <!-- Tagging & search -->
+                    <section class="nook-stats-section" aria-labelledby="nook-stats-tagging">
+                        <div class="nook-section-head">
+                            <h3 id="nook-stats-tagging" class="stats-section-title"><span class="nook-section-icon" x-html="statsIcon('tag')"></span>Tagging &amp; search</h3>
+                            <button type="button" class="nook-text-button" @click="nookManageTags($data)">Manage tags</button>
+                        </div>
 
                         <template x-if="loadingStatsTags">
-                            <div class="stats-grid">
+                            <div class="nook-grid-3" aria-hidden="true">
                                 <template x-for="i in 3">
-                                    <div class="stats-card animate-pulse">
-                                        <div class="h-3 bg-[var(--bg-tertiary)] rounded w-2/3 mb-3"></div>
-                                        <div class="h-7 bg-[var(--bg-tertiary)] rounded w-1/3"></div>
-                                    </div>
+                                    <div class="stats-card nook-skeleton" style="height:96px"></div>
                                 </template>
                             </div>
                         </template>
 
                         <template x-if="!loadingStatsTags && statsTags">
-                            <div class="space-y-3">
-                                <p x-show="statsTags.scope" x-text="statsTags.scope" class="text-sm text-[var(--text-secondary)]"></p>
-                                <!-- Metric cards row -->
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div class="nook-stack">
+                                <p x-show="statsTags.scope" x-text="statsTags.scope" class="nook-section-note"></p>
+                                <div class="nook-grid-3">
                                     <div class="stats-card">
                                         <div class="stats-label">Coverage</div>
                                         <div class="stats-value" x-text="statsTags.coverage_pct + '%'"></div>
+                                        <div class="nook-meter nook-meter-spaced"><span :style="'width:' + Math.min(100, statsTags.coverage_pct) + '%'"></span></div>
                                         <div class="stats-subtitle" x-text="statsTags.tagged_tweets.toLocaleString() + ' / ' + statsTags.eligible_tweets.toLocaleString() + ' eligible'"></div>
                                     </div>
                                     <div class="stats-card">
                                         <div class="stats-label">Different tags</div>
                                         <div class="stats-value" x-text="statsTags.unique_tags.toLocaleString()"></div>
+                                        <div class="stats-subtitle" x-text="(statsTags.avg_tags_per_tweet || 0) + ' tags per tagged tweet on average'"></div>
                                     </div>
                                     <div class="stats-card">
                                         <div class="stats-label">Tagged tweets</div>
                                         <div class="stats-value" x-text="statsTags.tagged_tweets.toLocaleString()"></div>
+                                        <div class="stats-subtitle" x-text="(statsTags.untagged_eligible || 0).toLocaleString() + ' eligible tweets not tagged yet'"></div>
                                     </div>
                                 </div>
 
-                                <!-- Most used tags -->
-                        <div class="stats-card">
-                            <div class="flex items-center justify-between gap-3 mb-3">
-                                <div class="stats-label">Most used tags</div>
-                                <button type="button" class="nook-text-button" @click="nookManageTags($data)">Manage tags</button>
-                            </div>
-                            <div class="flex flex-wrap gap-2">
-                                <template x-for="t in statsTags.top_tags" :key="t.tag">
-                                    <button type="button" class="nook-stats-chip" @click="nookShowTag($data, t.tag)" :aria-label="'Show tweets tagged ' + t.tag + ', ' + t.count.toLocaleString()">
-                                        <span x-text="t.tag"></span><span x-text="t.count.toLocaleString()"></span>
-                                    </button>
-                                </template>
-                                <template x-if="!statsTags.top_tags || !statsTags.top_tags.length">
-                                    <span class="text-sm text-[var(--text-secondary)]">No tags yet.</span>
-                                </template>
-                            </div>
-                        </div>
+                                <div class="stats-card">
+                                    <div class="stats-label nook-chips-label">Most used tags</div>
+                                    <div class="nook-chips">
+                                        <template x-for="t in statsTags.top_tags" :key="t.tag">
+                                            <button type="button" class="nook-stats-chip" @click="nookShowTag($data, t.tag)" :aria-label="'Show tweets tagged ' + t.tag + ', ' + t.count.toLocaleString()">
+                                                <span x-text="t.tag"></span><span x-text="t.count.toLocaleString()"></span>
+                                            </button>
+                                        </template>
+                                        <template x-if="!statsTags.top_tags || !statsTags.top_tags.length">
+                                            <span class="nook-section-note">No tags yet.</span>
+                                        </template>
+                                    </div>
+                                </div>
                             </div>
                         </template>
-                    </div>
+                    </section>
 
                 </div>
             </div>

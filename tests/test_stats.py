@@ -88,6 +88,7 @@ def test_report_follows_registry_and_serializes_all_sections(tmp_path) -> None:
         ("archive_status", "Archive status"),
         ("storage", "Storage"),
         ("tagging", "Tagging & search"),
+        ("insights", "Highlights"),
     ]
     actual = [(section.id, section.title) for section in report.sections]
     assert actual == expected

@@ -103,6 +103,7 @@ def _cached_snapshot_payload(cached: CachedStatsReport) -> dict[str, Any]:
         "health": _legacy_health(report.section("archive_status").data),
         "storage": report.section("storage").data,
         "tags": report.section("tagging").data,
+        "insights": report.section("insights").data,
     }
 
 

@@ -102,6 +102,20 @@ async function main() {
     assert.equal(publicStats.tags.tagged_tweets, 11);
     assert.equal(publicStats.tags.coverage_pct, 100);
     assert.equal((await request(publicStore, 'https://example.test/api/stats/latest-sync')).body.latest_sync, publicStats.summary.latest_sync);
+    // Highlights over the 15 saved demo posts, counted by hand from demo/data.json.
+    const insights = publicStats.insights;
+    assert.equal(insights.activity.all.total, 15);
+    assert.equal(insights.activity.all.by_year.reduce((sum, row) => sum + row.count, 0), 15);
+    assert.equal(insights.activity.all.week_hours.reduce((sum, count) => sum + count, 0), 15);
+    assert.equal(insights.post_mix.total, 15);
+    assert.equal(insights.likes_on_x, 676714);
+    assert.equal(insights.saved_twice, 0);
+    // 366 posts, 15 of them saved: the rest are conversation context.
+    assert.equal(publicStats.summary.context_posts, 351);
+    // Six attachments sit on saved posts; the other demo media belongs to context.
+    assert.equal(Object.values(insights.media_types).reduce((sum, count) => sum + count, 0), 6);
+    assert.ok(insights.top_authors.every(author => author.author_id !== publicFixture.owner_user_id));
+    assert.deepEqual([insights.top_authors[0].author_id, insights.top_authors[0].count], ['910000000000000002', 3]);
     const taggingMetadata = measured.tagging;
     const pricedStore = api.createStore(publicFixture, {now: () => Date.parse(taggingMetadata.completed_at) / 1000});
     const paid = (await request(pricedStore, 'https://example.test/api/automated-tagging')).body.accounting;

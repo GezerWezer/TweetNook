@@ -28,6 +28,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | `authors.py` | Avatar URLs, handle resolution, profile snapshots and handle search. |
 | `reads.py` | Feed pagination, like order, ID fetches and export hydration. |
 | `stats.py`, `report_facts.py` | Counts, the archive summary and typed database facts for requested report sections. |
+| `insight_facts.py` | Facts behind the Analytics highlights: posting times, top accounts, hashtags, posts no longer on X, and the accounts most active in replies. |
 | `prune.py` | Context graph projections, scoped row and media inventories, prune deletion. |
 | `imports.py` | Official-archive import cleanup and rehydration from raw captures. |
 | `search.py` | Full-text and structured search. |
@@ -45,7 +46,7 @@ Writable connections use WAL and recursive triggers. Database configuration sets
 
 `transaction()` serializes mutations and nests helpers through savepoints. If SQLite aborts the entire transaction or savepoint rollback fails, further mutations are refused until the outer scope exits, and that scope cannot report success. The original database failure still propagates from the failing helper.
 
-Statistics collect only the requested database facts in one bounded read snapshot, then release it before filesystem measurement and presentation. Collection-only reports avoid health graphs; owner-only access reads archive metadata directly. Overview and collections use the same valid-date bounds and ignore malformed dates. A caller with pending writes borrows its existing transaction without committing or rolling it back.
+Statistics collect only the requested database facts in one bounded read snapshot, then release it before filesystem measurement and presentation. Collection-only reports avoid health graphs; owner-only access reads archive metadata directly. Overview and collections use the same valid-date bounds and ignore malformed dates. Highlights count a post saved to several collections or bookmark folders once. Their figures describe saved posts. Conversation context (post objects that aren't saved themselves) is totalled separately for words, media, video time, posting times and unavailable posts, so the page can add it on request without mixing it into the saved figures. Context posts whose conversation started elsewhere count as replies, which rank the accounts most active in replies; a reply to a conversation or post the same account wrote continues its own thread and doesn't count. Like counts, hashtags and mentions have no context totals, because they would mean parsing every context post's raw JSON. The saved count of posts no longer on X, and its reasons, match what `is:missing` finds, so they skip hidden and uncaptured posts. The overview's media, link and author counts cover the whole archive, context included. A caller with pending writes borrows its existing transaction without committing or rolling it back.
 
 Random-search and legacy-export SQL callbacks register once at connection creation, before the store is shared. Reads never replace functions while another cursor is active.
 
