@@ -60,7 +60,7 @@ Use a post's menu to open it on X or hide it. Hiding removes the post from ordin
 
 ## Appearance
 
-Settings > Appearance has themes, accent colors, text sizes, and fonts. Desktop layout controls the single-column and split-panel views. Media layout can use a grid, a carousel, or choose by post date: a grid before July 10, 2026, and a carousel from that date onward.
+Settings > Appearance has themes, accent colors, text sizes, and fonts. Desktop layout controls the single-column and split-panel views. Media layout can use a grid, a carousel, or choose by post date: a grid before July 10, 2026, and a carousel from that date onward. Posts with more than four attachments always use a carousel, since the grid only fits four.
 
 You can turn muted video autoplay on or off. Videos start when about a quarter of the picture is visible, accounting for sticky headers. When several are visible, playback follows the picture occupying more of the screen, including sideways swipes through a post's videos. Small movements keep the current video stable; without a replacement, it keeps playing until less than a tenth remains. Videos can start while you are scrolling; nearby clips keep preparing playback without waiting for scrolling to stop. One feed video owns the audio at a time. Appearance choices are kept by the browser, so your phone can have different preferences from your desktop.
 

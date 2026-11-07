@@ -86,6 +86,22 @@
 .quote-thumbnail-cell:first-child:nth-last-child(3) {
     grid-row: span 2;
 }
+.quote-thumbnail-more {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.5);
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+}
+.quote-nested .quote-thumbnail-more {
+    font-size: 11px;
+}
 .quote-thumbnail svg {
     width: 28px;
     height: 28px;

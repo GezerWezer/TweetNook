@@ -205,9 +205,14 @@ test('media quoting media is compact in lists and flush in the detail view', () 
         pair,
         /^<div class="quote-thumbnail quote-thumbnail-grid"><div class="quote-thumbnail-cell"><img src="\/media\/p\.jpg"[^>]*><\/div><div class="quote-thumbnail-cell"><img src="\/media\/q\.jpg"[^>]*><\/div><\/div>$/,
     );
-    const videos = app.renderQuoteThumbnail(Array(5).fill(video));
+    const four = app.renderQuoteThumbnail(Array(4).fill(video));
+    assert.doesNotMatch(four, /quote-thumbnail-more/);
+    // Past four, the fourth cell counts the items it leaves out.
+    const videos = app.renderQuoteThumbnail(Array(7).fill(video));
     assert.equal((videos.match(/class="quote-thumbnail-cell"/g) || []).length, 4);
     assert.doesNotMatch(videos, /quote-thumbnail-badge/);
+    assert.equal((videos.match(/quote-thumbnail-more/g) || []).length, 1);
+    assert.match(videos, /<span class="quote-thumbnail-more" aria-label="3 more">\+3<\/span><\/div><\/div>$/);
     const gif = app.renderQuoteThumbnail([{ type: 'animated_gif', download: { local_path: 'media/g.mp4' } }]);
     assert.match(gif, /<video src="\/media\/g\.mp4#t=0\.1" preload="metadata" muted playsinline><\/video><span class="quote-thumbnail-badge">GIF<\/span>/);
     assert.doesNotMatch(gif, /autoplay|controls/);
@@ -739,6 +744,27 @@ test('optional carousel preserves original indices, placeholders, GIFs, and sing
     assert.match(html, /M12\.957 4\.54L20\.414 12/, 'use the native arrow with a stem');
     app.mediaGallery = 'grid';
     assert.equal(app.renderMediaGrid([photo, video]), original);
+    assert.doesNotMatch(app.renderMediaGrid([photo, gif, video, missing]), /media-carousel/);
+});
+
+test('galleries of more than four items use a carousel even when grid is chosen', () => {
+    const context = browserContext();
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
+    const photo = n => ({type:'photo', width:480, height:480, download:{local_path:`media/p${n}.jpg`}});
+    const five = [1, 2, 3, 4, 5].map(photo);
+    const old = {created_at:'2020-01-01T00:00:00Z'};
+    for (const style of ['grid', 'date', 'carousel']) {
+        app.mediaGallery = style;
+        for (const context of ['feed', 'quote', 'detail']) {
+            const html = app.renderMediaGrid(five, context, old);
+            assert.equal((html.match(/class="media-carousel-item"/g) || []).length, 5, `${style} ${context}`);
+            assert.doesNotMatch(html, /grid-cols-2/);
+            assert.match(html, /aria-label="Media 5 of 5"/);
+            assert.match(html, /tweetNookOpenLightbox\(this, 4\)/);
+        }
+    }
+    app.mediaGallery = 'grid';
+    assert.match(app.renderMediaGrid(five.slice(0, 4), 'feed', old), /grid-cols-2 grid-rows-2/);
 });
 
 run();
