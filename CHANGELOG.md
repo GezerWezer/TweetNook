@@ -3,6 +3,59 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning.
 
+## [1.4.0] - 2026-11-07
+
+### Upgrade notes
+
+- The first start after upgrading updates your archive database (`archive.db`) to a new format, rebuilding two search indexes. Saved posts and downloaded media aren't rewritten. To go back to 1.3.1, you'll need to restore a backup of the database, so make one before upgrading.
+- The first start can take a minute or two on a large database, and TweetNook isn't available until the update finishes. Don't stop the server while it's running.
+- `tweetnook update` says when it's upgrading the archive, and reports success only once TweetNook is running again.
+
+### Added
+
+- Redesigned Analytics around what your archive holds: headline numbers, posts
+  by year or month, a posting-days calendar, a weekday-by-hour grid, post kinds,
+  the accounts you saved most and the most active repliers, hashtags, mentions,
+  and how many saved posts X no longer shows and why.
+- The media step (during a sync or `tweetnook media download`) now saves avatars
+  for the authors of saved posts and of the posts they quote, retweet or link to.
+  These avatars are kept apart from the on-demand cache, so the weekly size
+  cleanup never removes them. They refresh when a newer picture is captured.
+  `web.fetch_avatars` now controls only the on-demand cache.
+
+### Changed
+
+- Search is faster: the first search after a start takes about 0.4 s instead of
+  3-6 s on a large archive, and later text searches are about 4.5x faster.
+- Feed pages load about 2.8x faster on the server, author suggestions are about
+  twice as fast, and the first author and tag suggestions appear without waiting
+  for a pause in typing.
+- Fast scrolling on phones is smoother. It does far less style recalculation,
+  and cards are measured before they change.
+- The page starts with about half as many elements because Settings, Setup and
+  spend history load the first time they're opened.
+- A sync's Tweets step now includes older history, as Bookmarks and Likes
+  already did, and shows a new-post count. The separate "Tweets history" step is
+  gone.
+- `tweetnook update` warns about an archive upgrade only when the new version
+  performs one, and names the schema versions involved.
+- On phones the top bar is solid instead of frosted.
+- The back-to-top button uses the theme's accent color.
+
+### Fixed
+
+- Reloading the page no longer flashes the default colors or the Demo badge
+  before your saved theme appears.
+- The seek bar no longer shows a focus outline after a click. Moving the pointer
+  over a playing video no longer causes jank.
+- Clearing the search box refreshes the suggestions instead of keeping ones for
+  the cleared text, and highlighted rows reach the dropdown's edges.
+- The `has:note` search suggestion uses an outline icon like the other
+  suggestions.
+- The Replay mode badge fits beside the Settings title.
+- `tweetnook web start` cleans up properly if it can't identify a running
+  process.
+
 ## [1.3.1] - 2026-11-03
 
 ### Changed
@@ -777,6 +830,7 @@ semantic-style versioning.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[1.4.0]: https://github.com/gezerwezer/tweetnook/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/gezerwezer/tweetnook/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/gezerwezer/tweetnook/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/gezerwezer/tweetnook/compare/v1.1.0...v1.2.0
