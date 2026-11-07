@@ -6,6 +6,8 @@
 .nook-settings-header h2 { flex:1; min-width:0; font-size:20px; line-height:24px; font-weight:800; margin:0; outline:none; }
 .nook-master-header h2 { flex:0 1 auto; }
 .nook-master-header .nook-demo-badge { margin-right:auto; margin-left:-6px; font-size:20px; }
+/* "Replay mode" at title size doesn't fit beside "Settings" in the 260px column. */
+.nook-master-header .nook-replay-badge { margin-left:0; font-size:13px; line-height:16px; font-weight:700; white-space:nowrap; }
 /* X dialog header: close at the left, then the title; the commit action sits at the far right. */
 .nook-master-header { gap:12px; padding-left:8px; }
 @media (min-width:800px) { .nook-settings-exit { display:none; } }
