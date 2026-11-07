@@ -92,6 +92,9 @@
 .nook-icon-button:focus-visible, .nook-tab:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -3px; }
 .settings-fab { display: none !important; }
 @media (max-width: 640px) {
+  /* Solid on phones: layer the header tint over the page color so themes with their own
+     header shade keep it, without the blur showing scrolled content through. */
+  .nook-header::before { background: linear-gradient(var(--bg-header), var(--bg-header)), var(--bg-primary); backdrop-filter: none; -webkit-backdrop-filter: none; }
   .nook-tab { font-size: calc(var(--font-size-base) * .933333); padding: 0 12px; }
   .nook-sort { min-height: 44px !important; }
   .nook-search-input { font-size: max(16px, var(--font-size-base)); }
