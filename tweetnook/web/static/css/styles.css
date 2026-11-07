@@ -100,10 +100,10 @@ body {
     width: 44px;
     height: 44px;
     padding: 0;
-    border: 1px solid var(--input-border);
+    border: 0;
     border-radius: 9999px;
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
+    background-color: var(--accent-color);
+    color: var(--accent-text);
     box-shadow: 0 0 15px 0 rgba(101, 119, 134, .2), 0 0 3px 1px rgba(101, 119, 134, .15);
     cursor: pointer;
     transition: background-color 150ms ease;
@@ -111,7 +111,7 @@ body {
 
 .scroll-to-top:hover,
 .scroll-to-top:active {
-    background-color: var(--bg-secondary);
+    background-color: var(--accent-hover);
 }
 
 .scroll-to-top:focus-visible {
