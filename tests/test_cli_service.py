@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import subprocess
 from types import SimpleNamespace
 
@@ -9,6 +10,7 @@ from tweetnook import __version__
 from tweetnook import cli_service as service
 from tweetnook.cli import app
 from tweetnook.jobs.supervisor import WORKER_INTERRUPT_TIMEOUT, WORKER_TERMINATE_TIMEOUT
+from tweetnook.storage.schema import SCHEMA_VERSION
 
 
 def account():
@@ -475,8 +477,48 @@ def test_finish_update_starts_the_service_and_waits_for_its_web_app(tmp_path, mo
     assert systemctl_calls == [("start", service.UNIT_NAME)]
     assert waits == [("127.0.0.1", 9123, True)]
     assert f"TweetNook updated: 0.0.1 → {__version__}" in result.output
-    assert "don't stop it" in result.output
+    # No archive yet, so nothing is upgraded.
+    assert "Upgrading the archive" not in result.output
     assert "TweetNook service restarted." in result.output
+
+
+def write_archive(path, version):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE archive (row_key TEXT)")
+    conn.execute(f"PRAGMA user_version = {version}")
+    conn.commit()
+    conn.close()
+
+
+def test_finish_update_announces_a_pending_archive_upgrade(tmp_path, monkeypatch):
+    data_dir, systemctl_calls, _ = prepare_finish(tmp_path, monkeypatch)
+    write_archive(data_dir / "archive.db", 13)
+    result = CliRunner().invoke(app, ["service", "finish-update", "--from-version", "1.3.1"])
+    assert result.exit_code == 0, result.output
+    assert f"Upgrading the archive from schema v13 to v{SCHEMA_VERSION}." in result.output
+    assert "don't stop TweetNook" in result.output
+    assert systemctl_calls == [("start", service.UNIT_NAME)]
+
+
+def test_finish_update_skips_the_notice_for_a_current_archive(tmp_path, monkeypatch):
+    data_dir, _, _ = prepare_finish(tmp_path, monkeypatch)
+    write_archive(data_dir / "archive.db", SCHEMA_VERSION)
+    result = CliRunner().invoke(app, ["service", "finish-update", "--from-version", "0.0.1"])
+    assert result.exit_code == 0, result.output
+    assert "Upgrading the archive" not in result.output
+    assert "don't stop" not in result.output
+    assert f"TweetNook updated: 0.0.1 → {__version__}" in result.output
+
+
+def test_finish_update_warns_generically_when_the_archive_is_unreadable(tmp_path, monkeypatch):
+    data_dir, _, _ = prepare_finish(tmp_path, monkeypatch)
+    data_dir.mkdir()
+    (data_dir / "archive.db").write_bytes(b"not a database" * 16)
+    result = CliRunner().invoke(app, ["service", "finish-update", "--from-version", "0.0.1"])
+    assert result.exit_code == 0, result.output
+    assert "If it upgrades the archive" in result.output
+    assert "don't stop TweetNook" in result.output
 
 
 def test_finish_update_reports_a_failed_archive_upgrade(tmp_path, monkeypatch):

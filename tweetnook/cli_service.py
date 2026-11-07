@@ -9,6 +9,7 @@ import pwd
 import re
 import shlex
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -23,6 +24,7 @@ from tweetnook.config import WebConfig, resolve_paths
 from tweetnook.core.exceptions import ARCHIVE_UPGRADE_NOTICE
 from tweetnook.core.fileio import atomic_write_text
 from tweetnook.jobs.supervisor import SERVICE_STOP_TIMEOUT
+from tweetnook.storage.schema import archive_upgrade_message, pending_upgrade_version
 
 service_app = typer.Typer(
     no_args_is_help=True, help="Install and manage the Linux systemd service."
@@ -408,13 +410,19 @@ def finish_update(
     try:
         _systemd(admin=True)
         paths = resolve_paths(_service_environment())
+        # Read before starting the service, whose first open runs the upgrade.
+        try:
+            upgrade_from = pending_upgrade_version(paths.database_path)
+            upgrade_notice = None if upgrade_from is None else archive_upgrade_message(upgrade_from)
+        except sqlite3.Error:
+            upgrade_notice = (
+                "Waiting for TweetNook to start. If it upgrades the archive, this can take "
+                "several minutes on a large archive; don't stop TweetNook."
+            )
         _systemctl("start", UNIT_NAME)
         _verify_service_running()
-        if from_version != __version__:
-            typer.echo(
-                "Waiting for TweetNook to start. Upgrading a large archive can take several "
-                "minutes; don't stop it."
-            )
+        if upgrade_notice:
+            typer.echo(upgrade_notice)
         try:
             with paths.config_file.open("rb") as handle:
                 config = WebConfig.model_validate(tomllib.load(handle).get("web", {}))

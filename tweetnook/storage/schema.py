@@ -9,7 +9,9 @@ import sqlite3
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from tweetnook.core.exceptions import ArchiveUpgradeError
 from tweetnook.core.unavailability import PLACEHOLDER_TEXT_MARKER, PLACEHOLDER_TEXT_PREFIXES
@@ -161,6 +163,34 @@ DERIVED_MIGRATION_SPACE_FACTOR = 0.1
 # Indexes whose definition changed after a release. CREATE INDEX IF NOT EXISTS keeps an old
 # definition, so upgrades drop these before recreating the derived structures.
 REDEFINED_INDEXES = ("idx_archive_search_attachment", "idx_archive_membership")
+
+
+def archive_upgrade_message(current_version: int) -> str:
+    return (
+        f"Upgrading the archive from schema v{current_version} to v{SCHEMA_VERSION}. "
+        "This can take several minutes on a large archive; don't stop TweetNook."
+    )
+
+
+def pending_upgrade_version(db_path: Path) -> int | None:
+    """The schema version the archive at db_path will be upgraded from, or None.
+
+    None means opening it starts no upgrade: there is no archive yet, or it is current.
+    Reads without opening an ArchiveStore, which would run the upgrade itself.
+    """
+    if not db_path.exists():
+        return None
+    conn = sqlite3.connect(f"file:{quote(str(db_path))}?mode=ro", uri=True)
+    try:
+        has_archive = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'archive'"
+        ).fetchone()
+        version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    finally:
+        conn.close()
+    return version if has_archive and version < SCHEMA_VERSION else None
+
+
 COLUMN_TYPES = {
     field: (
         "TEXT PRIMARY KEY"
@@ -373,8 +403,7 @@ class SchemaMixin(ConnectionMixin):
         # The Web server doesn't listen until this finishes, and a large archive takes minutes.
         # Without a message that looks like a failed start, and stopping it wastes the work.
         print(
-            f"Upgrading the archive from schema v{current_version} to v{SCHEMA_VERSION}. "
-            "This can take several minutes on a large archive; don't stop TweetNook.",
+            archive_upgrade_message(current_version),
             file=sys.stderr,
             flush=True,
         )
