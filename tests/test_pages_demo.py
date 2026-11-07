@@ -362,7 +362,7 @@ def test_production_frontend_only_exposes_demo_behavior_behind_explicit_flag() -
 
     assert "window.TWEETNOOK_DEMO = true" not in html
     assert "window.TWEETNOOK_DEMO === true" in app
-    assert '<span x-show="isDemo" class="nook-demo-badge">Demo</span>' in html
+    assert '<span x-show="isDemo" x-cloak class="nook-demo-badge">Demo</span>' in html
     assert ':disabled="isDemo">Run setup again</button>' in html
     # Setup needs a local installation; Configuration and Activity logs are served by the adapter.
     assert "if (!this.isDemo) this.fetchSetup()" in app

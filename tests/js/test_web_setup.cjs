@@ -830,7 +830,7 @@ test('setup polls fill an unset archive ID without replacing a user entry', asyn
     await app.fetchSetup();
     assert.equal(app.setupAuth.user_id, '5151');
     const markup = pageHtml();
-    assert.match(markup, /Settings<\/h2><span x-show="isDemo"/);
+    assert.match(markup, /Settings<\/h2><span x-show="isDemo" x-cloak/);
     assert.doesNotMatch(markup, /Filled from your imported archive when available/);
 });
 

@@ -57,32 +57,10 @@ function appearanceMethods() {
             const theme = THEMES[key];
             if (!theme) return;
             this.currentTheme = key;
-            const root = document.documentElement;
-            for (const [prop, val] of Object.entries(theme)) {
-                if (prop.startsWith('--')) root.style.setProperty(prop, val);
-            }
-            const bgHex = theme['--bg-primary'] || '#000000';
-            const r = parseInt(bgHex.slice(1,3),16), g = parseInt(bgHex.slice(3,5),16), b = parseInt(bgHex.slice(5,7),16);
-            this.darkMode = (r*0.299 + g*0.587 + b*0.114) < 128;
-            if (this.darkMode) { root.classList.remove('light'); } else { root.classList.add('light'); }
-            root.style.setProperty('color-scheme', this.darkMode ? 'dark' : 'light');
+            const painted = paintTheme(key);
+            this.darkMode = painted.darkMode;
+            this.currentAccent = painted.accent;
             this.updateBrowserTheme();
-
-            // Restore saved accent for this theme (if it has selectable accents)
-            if (theme._accents) {
-                const saved = localStorage.getItem('tvx-accent-' + key);
-                const accent = saved ? theme._accents.find(a => a.color === saved) : null;
-                if (accent) {
-                    this.currentAccent = accent.color;
-                    root.style.setProperty('--accent-color', accent.color);
-                    root.style.setProperty('--accent-hover', accent.hover);
-                    root.style.setProperty('--accent-text', accent.text);
-                } else {
-                    this.currentAccent = theme['--accent-color'];
-                }
-            } else {
-                this.currentAccent = theme['--accent-color'];
-            }
 
             if (persist) localStorage.setItem('tvx-theme', key);
             this.updateFavicon();

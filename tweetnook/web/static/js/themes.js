@@ -392,3 +392,53 @@ const THEMES = {};
 for (const [key, seed] of Object.entries(THEME_SEEDS)) {
     THEMES[key] = { _name: seed._name, ..._generateTheme(seed) };
 }
+
+// ── Paint the theme onto the root element ─────────────────────────────
+
+// Sets the theme's variables, the saved accent and the light/dark scheme on
+// <html>. Returns what the app component tracks about the painted theme.
+function paintTheme(key) {
+    const theme = THEMES[key];
+    const root = document.documentElement;
+    for (const [prop, val] of Object.entries(theme)) {
+        if (prop.startsWith('--')) root.style.setProperty(prop, val);
+    }
+    const bgHex = theme['--bg-primary'] || '#000000';
+    const r = parseInt(bgHex.slice(1, 3), 16), g = parseInt(bgHex.slice(3, 5), 16), b = parseInt(bgHex.slice(5, 7), 16);
+    const darkMode = (r * 0.299 + g * 0.587 + b * 0.114) < 128;
+    if (darkMode) root.classList.remove('light'); else root.classList.add('light');
+    root.style.setProperty('color-scheme', darkMode ? 'dark' : 'light');
+
+    let accent = theme['--accent-color'];
+    if (theme._accents) {
+        const saved = localStorage.getItem('tvx-accent-' + key);
+        const match = saved ? theme._accents.find(a => a.color === saved) : null;
+        if (match) {
+            accent = match.color;
+            root.style.setProperty('--accent-color', match.color);
+            root.style.setProperty('--accent-hover', match.hover);
+            root.style.setProperty('--accent-text', match.text);
+        }
+    }
+    return { darkMode, accent };
+}
+
+// The theme initApp settles on: the saved one, else the system scheme in the
+// demo, else classic light.
+function startupThemeKey() {
+    const saved = localStorage.getItem('tvx-theme') || localStorage.getItem('theme');
+    if (saved && THEMES[saved]) return saved;
+    if (window.TWEETNOOK_DEMO === true) {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'classic-dark' : 'classic-light';
+    }
+    return 'classic-light';
+}
+
+// This script runs in <head> before the body is parsed, while the app only
+// applies the theme once Alpine starts after the deferred scripts. Painting
+// here keeps the stylesheet's black defaults off the first frames of a load.
+try {
+    const key = startupThemeKey();
+    paintTheme(key);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEMES[key]['--bg-primary']);
+} catch { /* Storage can be blocked; initApp still applies the theme. */ }
