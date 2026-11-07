@@ -393,20 +393,28 @@ async def test_sync_user_tweets_end_to_end_and_resume(
             return httpx.Response(200, json=make_user_tweets_response(["12"]), request=request)
         raise AssertionError(f"unexpected request cursor {cursor}")
 
-    second = await sync_collection(
-        "tweets",
-        full=False,
-        limit=None,
-        config=config,
-        paths=paths,
-        auth_bundle=auth_bundle,
-        query_ids={"UserTweets": "qid-user-tweets"},
-        transport=httpx.MockTransport(second_handler),
-        console=_console(),
-        sleep=lambda _: asyncio.sleep(0),
-    )
+    console = Console(file=StringIO(), force_terminal=False, color_system=None)
+    reporter = PipelineReporter(console, "sync", interactive=False)
+    with reporter:
+        second = await sync_collection(
+            "tweets",
+            full=False,
+            limit=None,
+            config=config,
+            paths=paths,
+            auth_bundle=auth_bundle,
+            query_ids={"UserTweets": "qid-user-tweets"},
+            transport=httpx.MockTransport(second_handler),
+            console=console,
+            sleep=lambda _: asyncio.sleep(0),
+        )
 
     assert second.pages_fetched == 3
+    # Like Bookmarks and Likes, the resumed older history reports inside the one Tweets step.
+    assert [step.key for step in reporter.steps] == ["preflight:tweets", "sync:tweets:head"]
+    head_step = reporter._step_by_key["sync:tweets:head"]
+    assert head_step.summary.startswith("1 head pages · 2 tweets · 2 older pages · 2 tweets")
+    assert head_step.metrics == {"new_tweets": 3, "tweets_seen": 4, "pages": 3}
     assert [item for item in seen if item[2] == 20][:2] == [
         ("UserTweets", None, 20),
         ("UserTweets", "c1", 20),

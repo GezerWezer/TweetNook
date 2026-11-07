@@ -109,7 +109,6 @@ def _run_sync_command(
     runner: Callable[[Any, Any, Console], Coroutine[Any, Any, Any]],
     collections: tuple[str, ...] | None,
     followups: SyncFollowupPlan,
-    head_only: bool,
     summarize: Callable[[Any], str] | None = None,
 ) -> tuple[Console, Any]:
     console = configure_logging()
@@ -122,7 +121,6 @@ def _run_sync_command(
                 # None means the collections chosen in Settings (sync.collections).
                 collections=collections if collections is not None else config.sync.collections,
                 followups=followups,
-                head_only=head_only,
             )
             auth_bundle = resolve_auth_bundle(config)
             result = asyncio.run(runner(config, auth_bundle, console))
@@ -185,7 +183,6 @@ def _run_sync_all_command(
     console, outcome = _run_sync_command(
         collections=None,
         followups=followups,
-        head_only=mode is SyncMode.HEAD_ONLY,
         runner=lambda config, auth_bundle, runner_console: _run_with_depth(
             config,
             auth_bundle,
@@ -318,7 +315,6 @@ def _register_sync_collection_command(collection: str):
         console, result = _run_sync_command(
             collections=(collection,),
             followups=followups,
-            head_only=head_only,
             runner=lambda config, auth_bundle, runner_console: sync_collection(
                 collection,
                 full=full,

@@ -23,15 +23,6 @@ def head_step_key(collection: str) -> str:
     return f"sync:{collection}:head"
 
 
-def backfill_step_key(collection: str) -> str:
-    return f"sync:{collection}:backfill"
-
-
-def history_shares_head_step(collection: str) -> bool:
-    """Bookmarks and Likes show older history inside their one step; others list it separately."""
-    return collection in {"bookmarks", "likes"}
-
-
 def add_preflight_step(
     pipeline: PipelineReporter | NullPipeline, collections: Sequence[str]
 ) -> None:
@@ -50,14 +41,5 @@ def add_head_step(pipeline: PipelineReporter | NullPipeline, collection: str) ->
         head_step_key(collection),
         collection.title(),
         detail="head timeline pass · each page committed with its resume cursor",
-        **_PAGE_STEP,
-    )
-
-
-def add_backfill_step(pipeline: PipelineReporter | NullPipeline, collection: str) -> None:
-    pipeline.add_step(
-        backfill_step_key(collection),
-        f"{collection.title()} history",
-        detail="saved older-history cursor, when one exists",
         **_PAGE_STEP,
     )

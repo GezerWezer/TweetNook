@@ -52,7 +52,7 @@ from tweetnook.sync.collection import (
     sync_collection,
 )
 from tweetnook.sync.followups import plan_sync_pipeline
-from tweetnook.sync.steps import add_backfill_step, add_head_step, add_preflight_step
+from tweetnook.sync.steps import add_head_step, add_preflight_step
 
 FULL_DISK = OSError(errno.ENOSPC, "No space left on device")
 FULL_DATABASE = sqlite3.OperationalError("database or disk is full")
@@ -924,19 +924,16 @@ def test_planned_and_run_steps_are_the_same_steps(archive, config, auth_bundle):
             config=config,
             collections=["bookmarks", "tweets"],
             followups=None,
-            head_only=False,
         )
         planned = [step.key for step in pipeline.steps]
         add_preflight_step(pipeline, ["bookmarks", "tweets"])
         for collection in ("bookmarks", "tweets"):
             add_head_step(pipeline, collection)
-        add_backfill_step(pipeline, "tweets")
         assert [step.key for step in pipeline.steps] == planned
     assert planned == [
         "preflight:bookmarks,tweets",
         "sync:bookmarks:head",
         "sync:tweets:head",
-        "sync:tweets:backfill",
     ]
 
 

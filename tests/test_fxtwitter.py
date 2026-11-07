@@ -588,7 +588,6 @@ def test_sync_retries_unavailable_tweets_only_while_the_check_cannot() -> None:
             config=config,
             collections=[],
             followups=SyncFollowupPlan(threads=False, articles=False, media=False, unfurl=False),
-            head_only=False,
         )
         return [step.key for step in reporter.steps]
 

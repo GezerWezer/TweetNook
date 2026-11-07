@@ -15,10 +15,8 @@ from tweetnook.jobs.pipeline import PipelineReporter, current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
 from tweetnook.storage import open_archive_store
 from tweetnook.sync.steps import (
-    add_backfill_step,
     add_head_step,
     add_preflight_step,
-    history_shares_head_step,
 )
 
 
@@ -47,14 +45,11 @@ def plan_sync_pipeline(
     config: AppConfig,
     collections: Sequence[str],
     followups: SyncFollowupPlan | None,
-    head_only: bool,
 ) -> None:
     """Declare the complete flag-relevant sync lifecycle before any work begins."""
     add_preflight_step(pipeline, collections)
     for collection in collections:
         add_head_step(pipeline, collection)
-        if not head_only and not history_shares_head_step(collection):
-            add_backfill_step(pipeline, collection)
 
     if followups is not None and followups.enabled:
         followup_steps = (

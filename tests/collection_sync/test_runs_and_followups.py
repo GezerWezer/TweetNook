@@ -77,7 +77,7 @@ async def test_replay_can_skip_only_link_previews(
     )
     reporter = PipelineReporter(_console(), "sync", interactive=False)
     with reporter:
-        plan_sync_pipeline(reporter, config=config, collections=[], followups=plan, head_only=False)
+        plan_sync_pipeline(reporter, config=config, collections=[], followups=plan)
         await followups_module.run_auto_followups(
             plan=plan,
             config=config,
@@ -109,7 +109,6 @@ def test_sync_pipeline_is_fully_planned_before_work_and_filters_disabled_followu
         config=config,
         collections=("bookmarks", "likes"),
         followups=followups,
-        head_only=False,
     )
 
     assert [step.key for step in reporter.steps] == [
@@ -355,7 +354,7 @@ async def test_followup_outcomes_preserve_success_except_fatal_storage(
     reporter = PipelineReporter(_console(), "sync", interactive=False, state_path=path)
     expected = pytest.raises(StorageExhaustedError) if disk_full else nullcontext()
     with expected, reporter:
-        plan_sync_pipeline(reporter, config=config, collections=[], followups=plan, head_only=False)
+        plan_sync_pipeline(reporter, config=config, collections=[], followups=plan)
         await followups_module.run_auto_followups(
             plan=plan,
             config=config,

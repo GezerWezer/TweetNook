@@ -213,7 +213,6 @@ def import_archive_enrich(
                 config=config,
                 collections=config.sync.collections,
                 followups=followups,
-                head_only=False,
             )
             pipeline.start_step("archive-auth", activity="Resolving Twitter/X authentication")
             auth_bundle = resolve_auth_bundle(config)

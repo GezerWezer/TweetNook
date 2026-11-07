@@ -37,12 +37,9 @@ from tweetnook.storage import ArchiveStore
 from tweetnook.storage.like_order import page_observations
 from tweetnook.sync.followups import SyncFollowupPlan, run_auto_followups
 from tweetnook.sync.steps import (
-    add_backfill_step,
     add_head_step,
     add_preflight_step,
-    backfill_step_key,
     head_step_key,
-    history_shares_head_step,
     preflight_step_key,
 )
 
@@ -672,7 +669,6 @@ async def _sync_collection_ready(
         )
         try:
             head_step = head_step_key(collection)
-            combine_pipeline_passes = pipeline.active and history_shares_head_step(collection)
             if pipeline.active:
                 add_head_step(pipeline, collection)
                 pipeline.start_step(
@@ -704,12 +700,6 @@ async def _sync_collection_ready(
                 imported_like_ids=imported_like_ids,
                 pipeline_step_key=head_step,
             )
-            if not combine_pipeline_passes:
-                pipeline.complete_step(
-                    head_step,
-                    f"{head.pages:,} pages · {head.tweets:,} tweets · "
-                    f"{_stop_summary(head.stop_reason)}",
-                )
             pages_total = head.pages
             tweets_total = head.tweets
             stop_reason = head.stop_reason
@@ -724,30 +714,18 @@ async def _sync_collection_ready(
             )
             older: PassResult | None = None
             if resume_saved_backfill:
+                # The older-history pass reports inside the collection's one step.
                 if pipeline.active:
-                    if combine_pipeline_passes:
-                        pipeline.update_step(
-                            head_step,
-                            completed=0,
-                            total=1,
-                            activity="Fetching older page 1",
-                            counters="0 pages · 0 tweets saved",
-                            detail=(
-                                "older-history pass · each page is committed with its resume cursor"
-                            ),
-                            important=True,
-                        )
-                        backfill_step = head_step
-                    else:
-                        backfill_step = backfill_step_key(collection)
-                        add_backfill_step(pipeline, collection)
-                        pipeline.start_step(
-                            backfill_step,
-                            activity="Fetching older page 1",
-                            counters="0 pages · 0 tweets saved",
-                        )
+                    pipeline.update_step(
+                        head_step,
+                        completed=0,
+                        total=1,
+                        activity="Fetching older page 1",
+                        counters="0 pages · 0 tweets saved",
+                        detail="older-history pass · each page is committed with its resume cursor",
+                        important=True,
+                    )
                 else:
-                    backfill_step = None
                     console.print(f"{collection}: resuming saved backfill pass", highlight=False)
                 older = await _run_pass(
                     mode=mode,
@@ -768,18 +746,12 @@ async def _sync_collection_ready(
                     console=console,
                     sleep=sleep,
                     client=client,
-                    pipeline_step_key=backfill_step,
+                    pipeline_step_key=head_step,
                 )
                 pages_total += older.pages
                 tweets_total += older.tweets
                 stop_reason = older.stop_reason
-                if not combine_pipeline_passes and backfill_step is not None:
-                    pipeline.complete_step(
-                        backfill_step,
-                        f"{older.pages:,} pages · {older.tweets:,} tweets · "
-                        f"{_stop_summary(older.stop_reason)}",
-                    )
-            if pipeline.active and combine_pipeline_passes:
+            if pipeline.active:
                 metrics = {
                     "new_tweets": max(
                         store.count_export_rows(COLLECTION_TO_STORAGE[collection])
@@ -804,14 +776,6 @@ async def _sync_collection_ready(
                         f"{_stop_summary(head.stop_reason)}",
                         metrics=metrics,
                     )
-            elif pipeline.has_step(backfill_step_key(collection)) and not resume_saved_backfill:
-                if not prior_backfill_incomplete:
-                    reason = "no saved older-history cursor"
-                elif remaining == 0:
-                    reason = "the page limit being consumed by the head pass"
-                else:
-                    reason = "older-history resume being disabled for this run"
-                pipeline.skip_step(backfill_step_key(collection), reason)
         finally:
             await client.aclose()
 
