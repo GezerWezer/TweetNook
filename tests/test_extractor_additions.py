@@ -261,3 +261,22 @@ def test_canonical_url_keeps_a_valid_authority(url: str, expected: str) -> None:
 )
 def test_canonical_url_refuses_a_malformed_authority(url: str) -> None:
     assert canonicalize_url(url) is None
+
+
+def test_media_falls_back_to_entities_when_extended_entities_lists_none() -> None:
+    tweet = make_tweet_result("1", "photo")
+    tweet["legacy"]["extended_entities"] = {"media": []}
+    tweet["legacy"]["entities"] = {
+        "media": [
+            {
+                "media_key": "3_1",
+                "type": "photo",
+                "media_url_https": "https://pbs.twimg.com/media/a.jpg",
+                "sizes": {"medium": {"w": 1200, "h": 800}},
+            }
+        ]
+    }
+
+    media = list(extract_secondary_objects(tweet).media.values())
+
+    assert [(item.media_key, item.width, item.height) for item in media] == [("3_1", 1200, 800)]

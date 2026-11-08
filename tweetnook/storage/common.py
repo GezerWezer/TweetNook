@@ -8,6 +8,8 @@ from collections.abc import Iterable
 from datetime import datetime
 from typing import Any, NamedTuple
 
+from tweetnook.core.unavailability import PERMANENT_REASONS
+
 from .record_types import RecordType
 
 _NUMERIC_MEDIA_KEY = re.compile(r"\d+_(\d+)")
@@ -192,9 +194,9 @@ COMMUNITY_NOTE_TWEET_IDS_SQL = (
 # predicate NULL for unknown eligibility, so its complement must be IS NOT TRUE.
 RESURRECTION_ELIGIBLE_SQL = (
     "(deleted_at IS NULL AND enrichment_retry_eligible = 1 "
-    "AND COALESCE(enrichment_reason, '') NOT IN ('archive_deleted', 'deleted_by_author'))"
+    "AND COALESCE(enrichment_reason, '') NOT IN "
+    f"({', '.join(repr(reason) for reason in sorted(PERMANENT_REASONS))}))"
 )
-_PERMANENT_UNAVAILABLE_REASONS = frozenset({"archive_deleted", "deleted_by_author"})
 
 
 def is_resurrection_candidate(row: dict[str, Any]) -> bool:
@@ -204,7 +206,7 @@ def is_resurrection_candidate(row: dict[str, Any]) -> bool:
         row.get("enrichment_state") == "terminal_unavailable"
         and row.get("deleted_at") is None
         and row.get("enrichment_retry_eligible") == 1
-        and row.get("enrichment_reason") not in _PERMANENT_UNAVAILABLE_REASONS
+        and row.get("enrichment_reason") not in PERMANENT_REASONS
     )
 
 

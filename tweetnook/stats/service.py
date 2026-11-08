@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tweetnook.core.unavailability import UNAVAILABLE_REASONS
 from tweetnook.stats.models import (
     StatsReport,
     StatsSection,
@@ -19,16 +20,7 @@ from tweetnook.storage import ArchiveStore
 from tweetnook.storage.insight_facts import ActivitySeries, ContextFacts, GoneFacts
 from tweetnook.storage.report_facts import HealthFacts, StatisticsFacts
 
-UNAVAILABLE_REASON_LABELS = (
-    ("protected_account", "Protected account"),
-    ("suspended_account", "Suspended account"),
-    ("account_missing", "Missing account"),
-    ("withheld", "Withheld"),
-    ("not_found", "Not found"),
-    ("unavailable_unknown", "Unknown availability"),
-    ("deleted_by_author", "Deleted by author"),
-    ("archive_deleted", "Deleted in archive"),
-)
+UNAVAILABLE_REASON_LABELS = tuple((reason.key, reason.label) for reason in UNAVAILABLE_REASONS)
 
 
 @dataclass(slots=True)

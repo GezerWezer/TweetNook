@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from tweetnook.core import fastjson
 from tweetnook.core.timeline_parsing import extract_tweet_results_from_content
+from tweetnook.core.unavailability import is_tombstone
 
 from .record_types import RecordType
 
@@ -22,7 +23,6 @@ if TYPE_CHECKING:
 
 LIKE_SORTS = frozenset({"liked_latest", "liked_earliest"})
 T = TypeVar("T")
-_UNAVAILABLE_TYPENAMES = frozenset({"TweetTombstone", "TweetUnavailable"})
 
 # One capture's ordered (tweet_id, sort_index, requires_membership) observations.
 PageObservations = tuple[tuple[str, int | None, bool], ...]
@@ -182,7 +182,7 @@ def page_observations(payload: dict[str, Any]) -> PageObservations:
             sort_index = _integer(nested.get("sortIndex"))
             for result in extract_tweet_results_from_content(nested.get("content", {})):
                 tweet_id = result.get("rest_id")
-                if result.get("__typename") in _UNAVAILABLE_TYPENAMES or not tweet_id:
+                if is_tombstone(result) or not tweet_id:
                     continue
                 if tweet_id not in seen:
                     seen.add(tweet_id)

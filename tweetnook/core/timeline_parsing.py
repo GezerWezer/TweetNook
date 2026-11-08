@@ -14,6 +14,7 @@ from tweetnook.core.extractor import (
 from tweetnook.core.unavailability import (
     classify_tweet_unavailability,
     extract_tweet_unavailability_detail,
+    is_tombstone,
 )
 
 
@@ -149,7 +150,7 @@ def _extract_cursor(entry: dict[str, Any]) -> str | None:
 
 
 def _tweet_from_result(result: dict[str, Any], *, sort_index: str | None) -> TimelineTweet | None:
-    if result.get("__typename") in {"TweetTombstone", "TweetUnavailable"}:
+    if is_tombstone(result):
         return None
     legacy = result.get("legacy") or {}
     tweet_id = result.get("rest_id")
@@ -186,15 +187,8 @@ def parse_timeline_response(data: dict[str, Any]) -> tuple[list[TimelineTweet], 
 
 
 def parse_tweet_detail_tweets(data: dict[str, Any]) -> list[TimelineTweet]:
-    tweets: list[TimelineTweet] = []
-    seen_ids: set[str] = set()
-    for entry in _iter_entries(data):
-        sort_index = entry.get("sortIndex")
-        for result in extract_tweet_results_from_content(entry.get("content", {})):
-            tweet = _tweet_from_result(result, sort_index=sort_index)
-            if tweet and tweet.tweet_id not in seen_ids:
-                seen_ids.add(tweet.tweet_id)
-                tweets.append(tweet)
+    """Every available tweet in a TweetDetail conversation; its entries parse like a timeline's."""
+    tweets, _cursor = parse_timeline_response(data)
     return tweets
 
 

@@ -17,21 +17,14 @@ from tweetnook.core.tweet_presentations import (
     raw_media_payloads,
 )
 from tweetnook.core.unavailability import (
+    TOMBSTONE_TYPENAMES,
+    UNAVAILABLE_REASONS,
     classify_tweet_unavailability,
     extract_tweet_unavailability_detail,
     is_placeholder_text,
 )
 
-UNAVAILABLE_MESSAGES = {
-    "protected_account": "This tweet is from a protected account.",
-    "suspended_account": "This tweet is from a suspended account.",
-    "account_missing": "This tweet is from an account that no longer exists.",
-    "deleted_by_author": "This tweet was deleted by its author.",
-    "archive_deleted": "This tweet was deleted from Twitter/X.",
-    "withheld": "This tweet is unavailable in your location.",
-    "not_found": "This tweet could not be found.",
-    "unavailable_unknown": "This tweet is unavailable.",
-}
+UNAVAILABLE_MESSAGES = {reason.key: reason.message for reason in UNAVAILABLE_REASONS}
 
 
 def _json_dict(value: Any) -> dict[str, Any] | None:
@@ -50,7 +43,7 @@ def _direct_tombstone(raw: dict[str, Any] | None) -> dict[str, Any] | None:
     if not raw:
         return None
     typename = raw.get("__typename") or raw.get("__typename__")
-    if typename in {"TweetTombstone", "TweetUnavailable"} or raw.get("__tombstone__") is True:
+    if typename in TOMBSTONE_TYPENAMES or raw.get("__tombstone__") is True:
         return raw
     return None
 

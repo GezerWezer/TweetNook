@@ -5,12 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from tweetnook.core.unavailability import PERMANENT_REASONS
 from tweetnook.core.utils import utc_now
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.common import FX_SOURCE, LIVE_SOURCE
 from tweetnook.storage.records import PageBuffer
 
-PERMANENT_REASONS = frozenset({"archive_deleted", "deleted_by_author"})
 REASON_CONFIDENCE = {
     "unavailable_unknown": 0,
     "not_found": 20,

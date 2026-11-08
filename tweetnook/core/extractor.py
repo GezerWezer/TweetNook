@@ -8,6 +8,9 @@ from hashlib import sha256
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from tweetnook.core.media_metadata import raw_tweet_media
+from tweetnook.core.unavailability import TOMBSTONE_TYPENAMES, is_tombstone
+
 _TRACKING_QUERY_KEYS = {
     "fbclid",
     "gclid",
@@ -73,7 +76,7 @@ def unwrap_tweet_result(result: Any) -> dict[str, Any] | None:
         if isinstance(unwrapped, dict) and "birdwatch_pivot" in result:
             unwrapped["birdwatch_pivot"] = result["birdwatch_pivot"]
         return unwrapped
-    if typename in {"TweetTombstone", "TweetUnavailable"}:
+    if typename in TOMBSTONE_TYPENAMES:
         return result
     if result.get("rest_id"):
         return result
@@ -232,10 +235,7 @@ def retain_rich_features(tweet: dict[str, Any], donor: Any) -> bool:
     Returns whether ``tweet`` changed. Text saved from a note or Article stays with the payload
     it came from, so the two can't disagree after a sparser copy of the post arrives.
     """
-    if not isinstance(donor, dict) or tweet.get("__typename") in {
-        "TweetTombstone",
-        "TweetUnavailable",
-    }:
+    if not isinstance(donor, dict) or is_tombstone(tweet):
         return False
     changed = restore_link_card_image(tweet, donor)
     if extract_note_tweet_text(tweet) is None and extract_note_tweet_text(donor) is not None:
@@ -467,7 +467,7 @@ class ExtractedTweetGraph:
 
 
 def _tweet_object(tweet: dict[str, Any]) -> TweetObjectData | None:
-    if tweet.get("__typename") in {"TweetTombstone", "TweetUnavailable"}:
+    if is_tombstone(tweet):
         return None
     tweet_id = tweet.get("rest_id")
     if not tweet_id:
@@ -611,7 +611,8 @@ def _url_entries(tweet: dict[str, Any]) -> tuple[list[UrlRefData], list[UrlData]
     return refs, urls
 
 
-def _media_dimensions(item: dict[str, Any]) -> tuple[int | None, int | None]:
+def media_dimensions(item: dict[str, Any]) -> tuple[int | None, int | None]:
+    """Full-size pixel dimensions, falling back to the largest listed rendition."""
     original = item.get("original_info") or {}
     width = _as_int(original.get("width"))
     height = _as_int(original.get("height"))
@@ -669,18 +670,13 @@ def _media_entries(tweet: dict[str, Any]) -> list[MediaData]:
     tweet_id = tweet.get("rest_id")
     if not tweet_id:
         return []
-    legacy = tweet.get("legacy") or {}
-    entities = legacy.get("extended_entities") or legacy.get("entities") or {}
-    media_items = entities.get("media")
-    if not isinstance(media_items, list):
-        return []
     records: list[MediaData] = []
-    for position, item in enumerate(media_items):
+    for position, item in enumerate(raw_tweet_media(tweet)):
         if not isinstance(item, dict):
             continue
         media_key = item.get("media_key") or f"idx-{position}"
         variants = _video_variants(item)
-        width, height = _media_dimensions(item)
+        width, height = media_dimensions(item)
         records.append(
             MediaData(
                 tweet_id=tweet_id,
@@ -985,7 +981,7 @@ def _attached_tweets(tweet: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     return [
         (relation_type, item)
         for relation_type, item in pairs
-        if item is not None and item.get("__typename") not in {"TweetTombstone", "TweetUnavailable"}
+        if item is not None and not is_tombstone(item)
     ]
 
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .extractor import extract_author_fields, extract_canonical_text
-from .media_metadata import aspect_ratio_for_media
+from .extractor import extract_author_fields, extract_canonical_text, media_dimensions
+from .media_metadata import aspect_ratio_for_media, raw_tweet_media
 
 
 def legacy_target_id(raw: dict[str, Any] | None, relation_type: str) -> str | None:
@@ -18,26 +18,16 @@ def legacy_target_id(raw: dict[str, Any] | None, relation_type: str) -> str | No
 
 
 def raw_media_payloads(raw: dict[str, Any] | None) -> list[dict[str, Any]]:
-    if not raw:
-        return []
-    legacy = raw.get("legacy") or {}
-    extended = legacy.get("extended_entities") or {}
-    entities = legacy.get("entities") or {}
-    raw_media = extended.get("media") or entities.get("media") or []
-    if not isinstance(raw_media, list):
-        return []
-
     media: list[dict[str, Any]] = []
-    for position, item in enumerate(raw_media):
+    for position, item in enumerate(raw_tweet_media(raw)):
         if not isinstance(item, dict):
             continue
-        original = item.get("original_info") or {}
-        large = (item.get("sizes") or {}).get("large") or {}
+        width, height = media_dimensions(item)
         video_info = item.get("video_info") or {}
         payload = {
             "type": item.get("type"),
-            "width": original.get("width") or large.get("w"),
-            "height": original.get("height") or large.get("h"),
+            "width": width,
+            "height": height,
             "duration_millis": video_info.get("duration_millis"),
             "download": {
                 "local_path": None,

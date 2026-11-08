@@ -3,7 +3,56 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
+
+# The GraphQL result types X returns in place of a post it won't show.
+TOMBSTONE_TYPENAMES = frozenset({"TweetTombstone", "TweetUnavailable"})
+
+
+def is_tombstone(result: Any) -> bool:
+    return isinstance(result, dict) and result.get("__typename") in TOMBSTONE_TYPENAMES
+
+
+@dataclass(frozen=True, slots=True)
+class UnavailableReason:
+    key: str
+    label: str
+    message: str
+
+
+# Every reason classify_tweet_unavailability or the archive import can record, in the
+# order reports list them.
+UNAVAILABLE_REASONS = (
+    UnavailableReason(
+        "protected_account", "Protected account", "This tweet is from a protected account."
+    ),
+    UnavailableReason(
+        "suspended_account", "Suspended account", "This tweet is from a suspended account."
+    ),
+    UnavailableReason(
+        "account_missing",
+        "Missing account",
+        "This tweet is from an account that no longer exists.",
+    ),
+    UnavailableReason("withheld", "Withheld", "This tweet is unavailable in your location."),
+    UnavailableReason("not_found", "Not found", "This tweet could not be found."),
+    UnavailableReason("unavailable_unknown", "Unknown availability", "This tweet is unavailable."),
+    UnavailableReason(
+        "deleted_by_author", "Deleted by author", "This tweet was deleted by its author."
+    ),
+    UnavailableReason(
+        "archive_deleted", "Deleted in archive", "This tweet was deleted from Twitter/X."
+    ),
+)
+# A deletion is final, so these are never retried.
+PERMANENT_REASONS = frozenset({"archive_deleted", "deleted_by_author"})
+
+
+def _normalize_system_text(text: str) -> str:
+    # Only the right single quote is folded: the SQL capture flags fold the same one, and
+    # placeholder detection must agree with them.
+    return " ".join(text.casefold().replace("\u2019", "'").split())
 
 
 def extract_tweet_unavailability_detail(result: dict[str, Any]) -> str | None:
@@ -52,14 +101,14 @@ def is_placeholder_text(text: str | None) -> bool:
     """Whether saved text is X's system placeholder rather than the post itself."""
     if not text:
         return False
-    normalized = " ".join(text.casefold().replace("\u2019", "'").split())
+    normalized = _normalize_system_text(text)
     return PLACEHOLDER_TEXT_MARKER in normalized or normalized.startswith(PLACEHOLDER_TEXT_PREFIXES)
 
 
 def classify_tweet_unavailability(typename: str, text: str | None) -> str:
-    normalized = (text or "").casefold().replace("\u2019", "'").replace("\u2018", "'")
-    normalized = re.sub(r"\{[^{}]*\}", " ", normalized)
-    normalized = " ".join(normalized.split())
+    # Drop X's {learnmore}-style link markers, which split phrases apart.
+    stripped = re.sub(r"\{[^{}]*\}", " ", text or "").replace("\u2018", "'")
+    normalized = _normalize_system_text(stripped)
     if any(
         phrase in normalized
         for phrase in (
