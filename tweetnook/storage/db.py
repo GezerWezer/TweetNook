@@ -49,7 +49,6 @@ class ConnectionMixin:
     migration_report: MigrationReport | None
     _closed: bool
     _warm_cancelled: bool
-    _like_order_lock: threading.RLock
     _transaction_lock: threading.RLock
     _like_order_cache: tuple[int, LikeOrder] | None
     _like_capture_pages: dict[tuple[str, str | None], PageObservations | None]

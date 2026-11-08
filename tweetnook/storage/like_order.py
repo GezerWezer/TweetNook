@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from .records import RecordsMixin
 
 LIKE_SORTS = frozenset({"liked_latest", "liked_earliest"})
+# The connection-local TEMP table that pages liked tweets by position.
+LIKE_ORDER_TABLE = "tweetnook_like_order"
 T = TypeVar("T")
 
 # One capture's ordered (tweet_id, sort_index, requires_membership) observations.

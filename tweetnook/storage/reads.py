@@ -10,6 +10,7 @@ from tweetnook.core import fastjson
 from tweetnook.core.media_metadata import aspect_ratio_for_media
 
 from .common import listed_tweet_sql
+from .like_order import LIKE_ORDER_TABLE
 from .ordering import chronological_columns, chronological_order
 from .record_types import RecordType
 from .records import RecordsMixin
@@ -109,18 +110,19 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         """Return the derived order independently of tweet content/source updates."""
         from tweetnook.storage.like_order import load_like_order
 
-        with self._like_order_lock:
+        with self._transaction_lock:
             return load_like_order(self)
 
     def warm_like_order(self) -> None:
         """Rebuild the derived like sequence and its paging table before a request needs it."""
-        with self._like_order_lock:
+        with self._transaction_lock:
             self._ensure_like_order_table()
 
     def _ensure_like_order_table(self) -> None:
         """Index the immutable derived sequence once per input revision/connection.
 
-        Call under _like_order_lock. A savepoint preserves any caller transaction;
+        Call under _transaction_lock: the TEMP table shares the connection's transaction
+        state with archive writes. A savepoint preserves any caller transaction;
         temporary rows never become part of the on-disk archive or backups.
         """
         order = self.get_like_order()
@@ -129,16 +131,16 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         self.conn.execute("SAVEPOINT like_order_index")
         try:
             self.conn.execute(
-                "CREATE TEMP TABLE IF NOT EXISTS tweetnook_like_order "
+                f"CREATE TEMP TABLE IF NOT EXISTS {LIKE_ORDER_TABLE} "
                 "(tweet_id TEXT PRIMARY KEY, latest_position INTEGER UNIQUE, "
                 "earliest_position INTEGER UNIQUE)"
             )
-            self.conn.execute("DELETE FROM temp.tweetnook_like_order")
+            self.conn.execute(f"DELETE FROM temp.{LIKE_ORDER_TABLE}")
             earliest = {
                 tweet_id: i for i, tweet_id in enumerate(order.ordered_ids("liked_earliest"))
             }
             self.conn.executemany(
-                "INSERT INTO temp.tweetnook_like_order VALUES (?, ?, ?)",
+                f"INSERT INTO temp.{LIKE_ORDER_TABLE} VALUES (?, ?, ?)",
                 ((tweet_id, i, earliest[tweet_id]) for i, tweet_id in enumerate(order.ids)),
             )
         except BaseException:
@@ -164,11 +166,11 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         an HTTP parameter. Position ranges use the temporary sequence index.
         """
         position = "earliest_position" if sort == "liked_earliest" else "latest_position"
-        with self._like_order_lock:
+        with self._transaction_lock:
             self._ensure_like_order_table()
             rows = self.conn.execute(
                 f"SELECT ordering.tweet_id, ordering.{position} AS like_position "
-                "FROM temp.tweetnook_like_order AS ordering "
+                f"FROM temp.{LIKE_ORDER_TABLE} AS ordering "
                 f"WHERE ordering.{position} > ? AND EXISTS "
                 "(SELECT 1 FROM archive INDEXED BY idx_archive_tweet_id "
                 f"WHERE archive.tweet_id = ordering.tweet_id AND ({filter_expr})) "

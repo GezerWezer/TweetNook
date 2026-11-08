@@ -15,6 +15,7 @@ from .common import (
     join_clauses,
     listed_tweet_sql,
 )
+from .like_order import LIKE_ORDER_TABLE, LIKE_SORTS
 from .ordering import chronological_order, representative_membership, sort_chronologically
 from .record_types import RecordType
 
@@ -410,7 +411,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
                 )
             if count_only:
                 return [], total
-            if sort in {"liked_latest", "liked_earliest"}:
+            if sort in LIKE_SORTS:
                 rows = self.query_like_order_ids(
                     f"{filter_expr} AND {excluded_expr}" if excluded_expr else filter_expr,
                     filter_params,
@@ -621,10 +622,10 @@ class SearchMixin(ReadsMixin, TagsMixin):
         page_where = ""
         page_extra = ""
         ordering_columns = "matches.created_at_ts, matches.sort_index"
-        if sort in {"liked_latest", "liked_earliest"}:
+        if sort in LIKE_SORTS:
             position = "earliest_position" if sort == "liked_earliest" else "latest_position"
             page_from = (
-                "matches JOIN temp.tweetnook_like_order AS like_order "
+                f"matches JOIN temp.{LIKE_ORDER_TABLE} AS like_order "
                 "ON like_order.tweet_id = matches.tweet_id"
             )
             order_by = f"like_order.{position}, matches.tweet_id"
@@ -666,10 +667,10 @@ class SearchMixin(ReadsMixin, TagsMixin):
             f"FROM {page_from} {page_where} ORDER BY {order_by} LIMIT ? OFFSET ?"
         )
         page_params.extend([limit + 1, offset])
-        like_sort = sort in {"liked_latest", "liked_earliest"}
+        like_sort = sort in LIKE_SORTS
         rows = []
         if not count_only:
-            with self._like_order_lock if like_sort else nullcontext():
+            with self._transaction_lock if like_sort else nullcontext():
                 if like_sort:
                     self._ensure_like_order_table()
                 rows = [dict(row) for row in self.conn.execute(page_sql, page_params).fetchall()]
