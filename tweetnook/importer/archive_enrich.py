@@ -231,9 +231,7 @@ async def _run_archive_followup(
             resolved_auth = _resolve_archive_followup_auth(
                 config,
                 auth_bundle,
-                optional=account_optional
-                or fxtwitter.fx_enabled(config)
-                or bool(config.replay.url),
+                optional=account_optional or config.fx_enabled or bool(config.replay.url),
             )
         except ConfigError as exc:
             warnings.append(f"detail enrichment skipped: {exc}")
@@ -248,7 +246,7 @@ async def _run_archive_followup(
             ct0_source="replay",
         )
     enrichment_result = ArchiveEnrichResult()
-    if resolved_auth is not None or fxtwitter.fx_enabled(config):
+    if resolved_auth is not None or config.fx_enabled:
         enrichment_result = await _enrich_pending_rows(
             limit=detail_limit,
             config=config,
@@ -616,7 +614,7 @@ async def _enrich_pending_rows(
             # FxTwitter answers most lookups without the login; TweetDetail handles the rest.
             fx_client=(
                 fxtwitter.build_fx_client(config, transport=fx_transport)
-                if fxtwitter.fx_enabled(config)
+                if config.fx_enabled
                 else None
             ),
         )

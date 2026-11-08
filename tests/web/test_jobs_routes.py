@@ -7,11 +7,11 @@ import pytest
 from rich.console import Console
 
 from tweetnook.config import AppConfig, AuthConfig, CheckConfig, ScheduleConfig, XDGPaths
+from tweetnook.jobs.catalog import JOBS, JOBS_BY_KEY, JobOptionsError, job_cli_args
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.jobs.scheduler import ScheduleManager
 from tweetnook.jobs.supervisor import JobConflictError, JobSupervisor
 from tweetnook.web.deps import server_state
-from tweetnook.web.jobs import JOBS_BY_KEY, JobOptionsError, job_cli_args
 from tweetnook.web.routes import jobs
 
 
@@ -49,6 +49,25 @@ def test_web_thread_argv_passes_real_cli_and_feature_validation(paths, monkeypat
     assert result.exit_code == 0, result.output
     assert "--refresh" not in args
     assert "all thread candidates already being expanded or known" in result.output
+
+
+@pytest.mark.parametrize("job", JOBS, ids=lambda job: job.key)
+def test_every_job_names_a_real_command_and_its_flags(job):
+    import click
+    import typer.main
+
+    from tweetnook.cli import app
+
+    command = typer.main.get_command(app)
+    for word in job.cli:
+        assert isinstance(command, click.Group), f"{job.title}: {word} is not a subcommand"
+        command = command.commands[word]
+    flags = {opt for param in command.params for opt in (*param.opts, *param.secondary_opts)}
+    for option in job.options:
+        if option.flag is not None:
+            assert option.flag in flags, f"{job.title} has no {option.flag}"
+    if any(option.flag is None for option in job.options):
+        assert any(isinstance(param, click.Argument) for param in command.params), job.title
 
 
 def _paths(tmp_path) -> XDGPaths:

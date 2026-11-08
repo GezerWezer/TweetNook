@@ -21,6 +21,7 @@ from tweetnook.cli.common import (
 )
 from tweetnook.config import initialize_config as load_config
 from tweetnook.core.exceptions import ConfigError, TweetNookError
+from tweetnook.jobs.catalog import JOBS_BY_KEY
 from tweetnook.sync.collection import SyncMode, parse_sync_mode, sync_all, sync_collection
 from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline
 
@@ -114,7 +115,7 @@ def _run_sync_command(
     console = configure_logging()
     try:
         config, paths = load_config()
-        with web_pipeline(console, "tweetnook sync", paths) as pipeline:
+        with web_pipeline(console, JOBS_BY_KEY["sync"].title, paths) as pipeline:
             plan_sync_pipeline(
                 pipeline,
                 config=config,

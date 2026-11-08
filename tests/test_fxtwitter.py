@@ -186,12 +186,12 @@ def test_fetch_fx_status_caps_retry_after_and_skips_the_last_wait() -> None:
 
 def test_fx_is_off_for_replay_installs() -> None:
     config = AppConfig()
-    assert fxtwitter.fx_enabled(config)
+    assert config.fx_enabled
     config.replay.url = "http://replay.test"
-    assert not fxtwitter.fx_enabled(config)
+    assert not config.fx_enabled
     config.replay.url = None
     config.fxtwitter.enabled = False
-    assert not fxtwitter.fx_enabled(config)
+    assert not config.fx_enabled
 
 
 def test_rebuilt_status_feeds_the_extractor_like_graphql() -> None:
@@ -575,11 +575,7 @@ def test_check_is_off_by_default_and_never_scheduled(tmp_path) -> None:
 
 def test_sync_retries_unavailable_tweets_only_while_the_check_cannot() -> None:
     from tweetnook.jobs.pipeline import PipelineReporter
-    from tweetnook.sync.followups import (
-        SyncFollowupPlan,
-        check_owns_resurrection,
-        plan_sync_pipeline,
-    )
+    from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline
 
     def steps(config: AppConfig) -> list[str]:
         reporter = PipelineReporter(Console(file=StringIO()), "sync", interactive=False)
@@ -592,13 +588,13 @@ def test_sync_retries_unavailable_tweets_only_while_the_check_cannot() -> None:
         return [step.key for step in reporter.steps]
 
     config = AppConfig()
-    assert not check_owns_resurrection(config)
+    assert not config.check_runs
     assert "resurrection" in steps(config)
     config.check.enabled = True
-    assert check_owns_resurrection(config)
+    assert config.check_runs
     assert "resurrection" not in steps(config)
     config.fxtwitter.enabled = False
-    assert not check_owns_resurrection(config)
+    assert not config.check_runs
     assert "resurrection" in steps(config)
 
 

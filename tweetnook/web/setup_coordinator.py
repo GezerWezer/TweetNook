@@ -11,6 +11,7 @@ from pydantic import BaseModel, ValidationError
 from tweetnook.core.exceptions import ARCHIVE_UPGRADE_NOTICE, ArchiveUpgradeError
 from tweetnook.core.fileio import atomic_write_json
 from tweetnook.jobs.activity_history import latest_finished_snapshot, new_run_id, read_run
+from tweetnook.jobs.catalog import JOBS_BY_KEY, command_title
 from tweetnook.jobs.context import archive_job
 from tweetnook.jobs.outcome import Outcome, finished_cleanly, recorded_outcome
 from tweetnook.jobs.supervisor import JobConflictError
@@ -109,7 +110,7 @@ class SetupCoordinator:
     def _followup_result(self):
         run = self._run(self.state.auto_enrich_run_id)
         latest = latest_finished_snapshot(
-            self.paths.data_dir, titles={"tweetnook sync", "tweetnook import enrich"}
+            self.paths.data_dir, titles={JOBS_BY_KEY["sync"].title, JOBS_BY_KEY["enrich"].title}
         )
         initialization = self._run(self.state.archive_init_run_id)
         if (
@@ -134,11 +135,12 @@ class SetupCoordinator:
             supervisor = self.server["job_supervisor"]
             if self.server.get("shutting_down"):
                 raise JobConflictError("The server is stopping.")
-            args = (
-                ["import", "x-archive", str(self.paths.staged_archive_file), "--defer-followup"]
-                if mode == "import"
-                else ["migrate"]
-            )
+            if mode == "import":
+                cli = JOBS_BY_KEY["import"].cli
+                args = [*cli, str(self.paths.staged_archive_file), "--defer-followup"]
+            else:
+                cli = ("migrate",)
+                args = list(cli)
             # Persist intent and the exact run ID before spawning; restart cannot lose the chain.
             previous = self.state
             run_id = new_run_id()
@@ -156,7 +158,7 @@ class SetupCoordinator:
                     kind=mode,
                     cli_args=args,
                     origin="web",
-                    title="tweetnook " + " ".join(args[:2]),
+                    title=command_title(cli),
                     run_id=run_id,
                 )
             except (JobConflictError, OSError):
@@ -234,11 +236,12 @@ class SetupCoordinator:
             logger.exception("Could not record the first sync")
             return
         try:
+            enrich = JOBS_BY_KEY["enrich"]
             supervisor.start(
-                kind="enrich",
-                cli_args=["import", "enrich"],
+                kind=enrich.key,
+                cli_args=list(enrich.cli),
                 origin="web",
-                title="tweetnook import enrich",
+                title=enrich.title,
                 run_id=run_id,
             )
         except JobConflictError:

@@ -74,12 +74,13 @@ Some modules sit where their dependencies put them rather than where their name 
 | `tagging/accounting.py`, `tagging/pricing.py`, `tagging/rpd.py` | Local spend, Search usage and request allowances. |
 | `jobs/context.py`, `jobs/resource_failure.py` | Locked job context and storage-failure handling. |
 | `jobs/pipeline.py`, `jobs/outcome.py`, `jobs/activity_history.py`, `jobs/worker_logging.py` | Progress stages, the typed job outcome, durable run records and timestamped logs. |
+| `jobs/catalog.py` | Every runnable job: its command, run title and options, shared by the CLI, Web, scheduler and Setup. |
 | `jobs/supervisor.py`, `jobs/scheduler.py` | Worker/queue ownership and scheduled submission. |
 | `jobs/reminders.py`, `jobs/interactive.py` | Notices and terminal interaction. |
 | `web/server.py`, `web/deps.py` | FastAPI lifecycle, shared state, sessions and archive readiness. |
 | `web/processes.py` | Archive-scoped process records used by personal Web commands and server startup. |
 | `web/runtime_config.py` | Apply saved settings to running services under the shared lifecycle lock. |
-| `web/setup_coordinator.py`, `web/jobs.py` | Setup transitions and validated job-to-CLI mapping. |
+| `web/setup_coordinator.py`, `web/jobs.py` | Setup transitions and the Web jobs list's state, last and next runs. |
 | `web/availability.py`, `web/cards.py`, `web/articles.py`, `web/history.py` | Read presentation and observed history. |
 | `web/avatar_cache.py`, `web/stats_cache.py`, `web/warmup.py` | Background caches and archive preparation. |
 | `web/activity_stream.py`, `web/notices.py` | Live activity snapshots and durable notifications. |

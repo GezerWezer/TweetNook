@@ -21,6 +21,7 @@ from tweetnook.importer.archive_enrich import (
     remaining_enrichment_text,
 )
 from tweetnook.importer.archive_steps import plan_archive_import
+from tweetnook.jobs.catalog import JOBS_BY_KEY
 from tweetnook.sync.collection import SyncMode, sync_all
 from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline
 
@@ -113,7 +114,7 @@ def import_x_archive_command(
     console = configure_logging()
     try:
         config, paths = load_config()
-        with web_pipeline(console, "tweetnook import x-archive", paths) as pipeline:
+        with web_pipeline(console, JOBS_BY_KEY["import"].title, paths) as pipeline:
             plan_archive_import(
                 pipeline,
                 regen=regen,
@@ -189,7 +190,7 @@ def import_archive_enrich(
     console = configure_logging()
     try:
         config, paths = load_config()
-        with web_pipeline(console, "tweetnook import enrich", paths) as pipeline:
+        with web_pipeline(console, JOBS_BY_KEY["enrich"].title, paths) as pipeline:
             pipeline.add_step(
                 "archive-auth",
                 "Authentication",

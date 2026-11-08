@@ -50,11 +50,6 @@ class FxLookup:
     payload: Any = None
 
 
-def fx_enabled(config: AppConfig) -> bool:
-    # Replay installs must never reach a host other than their replay source.
-    return config.fxtwitter.enabled and not config.replay.url
-
-
 def build_fx_client(
     config: AppConfig,
     *,

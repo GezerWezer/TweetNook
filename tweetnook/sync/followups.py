@@ -31,14 +31,6 @@ class SyncFollowupPlan:
     tagging: bool = True
 
 
-def check_owns_resurrection(config: AppConfig) -> bool:
-    """The check retries unavailable tweets when it runs with FxTwitter; otherwise
-    sync keeps doing it, as before the check existed."""
-    from tweetnook.client.fxtwitter import fx_enabled
-
-    return config.check.enabled and fx_enabled(config)
-
-
 def plan_sync_pipeline(
     pipeline: PipelineReporter,
     *,
@@ -55,7 +47,7 @@ def plan_sync_pipeline(
         followup_steps = (
             (followups.threads, "threads", "Threads", "candidates"),
             (
-                followups.resurrection and not check_owns_resurrection(config),
+                followups.resurrection and not config.check_runs,
                 "resurrection",
                 "Unavailable tweets",
                 "tweets",
@@ -248,7 +240,7 @@ async def run_auto_followups(
                 f"{result.failed} failed",
             )
 
-    if plan.enabled and plan.resurrection and not check_owns_resurrection(config):
+    if plan.enabled and plan.resurrection and not config.check_runs:
         _log_sync_followup(console, "running resurrection checks")
         try:
             from tweetnook.enrichment.resurrection import (

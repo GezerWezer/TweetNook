@@ -24,6 +24,7 @@ from tweetnook.jobs.activity_history import (
     runs_root,
     terminal_snapshot,
 )
+from tweetnook.jobs.catalog import JOBS
 from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.web.activity_stream import ActivityStream
 from tweetnook.web.deps import server_state, verify_credentials
@@ -31,17 +32,7 @@ from tweetnook.web.runtime_config import save_server_config
 
 router = APIRouter(prefix="/api/activity", tags=["activity"])
 # Every job the Web jobs list can run reports through the same pipeline.
-ARCHIVE_PIPELINE_TITLES = {
-    "tweetnook sync",
-    "tweetnook check",
-    "tweetnook import enrich",
-    "tweetnook import x-archive",
-    "tweetnook threads expand",
-    "tweetnook articles refresh",
-    "tweetnook media download",
-    "tweetnook unfurl",
-    "tweetnook tag",
-}
+ARCHIVE_PIPELINE_TITLES = {job.title for job in JOBS}
 
 
 def _process_is_running(pid: Any) -> bool:

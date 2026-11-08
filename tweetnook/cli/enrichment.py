@@ -22,6 +22,7 @@ from tweetnook.enrichment.articles import refresh_articles
 from tweetnook.enrichment.media import download_media
 from tweetnook.enrichment.threads import expand_threads
 from tweetnook.enrichment.unfurl import unfurl_urls
+from tweetnook.jobs.catalog import JOBS_BY_KEY
 from tweetnook.jobs.pipeline import current_pipeline
 
 article_app = typer.Typer(no_args_is_help=True, help="Refresh archived article bodies.")
@@ -78,7 +79,7 @@ def refresh_archived_articles(
     console = configure_logging()
     try:
         config, paths = load_config()
-        with web_pipeline(console, "tweetnook articles refresh", paths) as pipeline:
+        with web_pipeline(console, JOBS_BY_KEY["articles"].title, paths) as pipeline:
             pipeline.add_step(
                 "articles",
                 "Articles",
@@ -137,7 +138,7 @@ def expand_archive_threads(
     console = configure_logging()
     try:
         config, paths = load_config()
-        with web_pipeline(console, "tweetnook threads expand", paths) as pipeline:
+        with web_pipeline(console, JOBS_BY_KEY["threads"].title, paths) as pipeline:
             pipeline.add_step(
                 "threads",
                 "Threads",
@@ -217,7 +218,7 @@ def check_command(
     console = configure_logging()
     try:
         config, paths = load_config()
-        with web_pipeline(console, "tweetnook check", paths) as pipeline:
+        with web_pipeline(console, JOBS_BY_KEY["check"].title, paths) as pipeline:
             result = asyncio.run(
                 run_check(
                     config=config,
@@ -266,7 +267,7 @@ def media_download(
     console = configure_logging()
     try:
         config, paths = load_config()
-        with web_pipeline(console, "tweetnook media download", paths) as pipeline:
+        with web_pipeline(console, JOBS_BY_KEY["media"].title, paths) as pipeline:
             pipeline.add_step(
                 "media",
                 "Media",
@@ -308,7 +309,7 @@ def unfurl_archive(
     console = configure_logging()
     try:
         config, paths = load_config()
-        with web_pipeline(console, "tweetnook unfurl", paths) as pipeline:
+        with web_pipeline(console, JOBS_BY_KEY["urls"].title, paths) as pipeline:
             pipeline.add_step(
                 "urls",
                 "Link previews",
@@ -435,7 +436,7 @@ def tag_archive(
                     dry_run=test,
                 )
 
-        with web_pipeline(console, "tweetnook tag", paths) as pipeline:
+        with web_pipeline(console, JOBS_BY_KEY["tagging"].title, paths) as pipeline:
             pipeline.add_step(
                 "tagging",
                 "Automated tags",

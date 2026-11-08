@@ -15,9 +15,9 @@ from threading import Thread
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from tweetnook.client.fxtwitter import fx_enabled
 from tweetnook.config import AppConfig, CheckConfig, ScheduleConfig, XDGPaths, load_config
 from tweetnook.core.fileio import atomic_write_text
+from tweetnook.jobs.catalog import JOBS_BY_KEY, JobSpec
 from tweetnook.jobs.supervisor import JobConflictError, JobSupervisor
 
 logger = logging.getLogger(__name__)
@@ -299,12 +299,7 @@ class ScheduleManager:
             return
         self._state["sync_deferred"] = False
         try:
-            result = self.supervisor.start(
-                kind="sync",
-                cli_args=["sync"],
-                origin="schedule",
-                title="tweetnook sync",
-            )
+            result = self._start(JOBS_BY_KEY["sync"])
             self._state["last_result"] = "started"
             self._state["last_run_id"] = result["run_id"]
         except JobConflictError:
@@ -348,9 +343,9 @@ class ScheduleManager:
         """The check's schedule for the Web jobs list."""
 
         with self._lock:
-            next_at = self._state.get("check_next_run_at") if self._check_on() else None
+            next_at = self._state.get("check_next_run_at") if self.config.check_runs else None
             return {
-                "on": self._check_on(),
+                "on": self.config.check_runs,
                 "next_run_at": next_at,
                 # A due check that found another command running retries every 15 minutes.
                 "deferred": bool(next_at) and bool(self._state.get("check_deferred")),
@@ -379,9 +374,10 @@ class ScheduleManager:
             self._save_state()
             return True
 
-    def _check_on(self) -> bool:
-        # The check is FxTwitter lookups; with FxTwitter off, sync owns the retries.
-        return self.config.check.enabled and fx_enabled(self.config)
+    def _start(self, job: JobSpec) -> dict[str, Any]:
+        return self.supervisor.start(
+            kind=job.key, cli_args=list(job.cli), origin="schedule", title=job.title
+        )
 
     def _check_schedule(self, check: CheckConfig) -> ScheduleConfig:
         # Checks have their own cadence/time, in the sync schedule's time zone.
@@ -398,7 +394,7 @@ class ScheduleManager:
         return json.dumps(
             {
                 "check": self.config.check.model_dump(),
-                "fxtwitter": fx_enabled(self.config),
+                "fxtwitter": self.config.fx_enabled,
                 "timezone": self.config.schedule.timezone,
             },
             sort_keys=True,
@@ -408,7 +404,7 @@ class ScheduleManager:
     def _ensure_next_check(self, *, reset: bool, now: float | None = None) -> None:
         check = self.config.check
         fingerprint = self._check_fingerprint()
-        if not self._check_on():
+        if not self.config.check_runs:
             self._state["check_next_run_at"] = None
             self._state["check_fingerprint"] = fingerprint
             self._save_state()
@@ -429,7 +425,7 @@ class ScheduleManager:
 
     def _tick_check(self, timestamp: float) -> None:
         check = self.config.check
-        if not self._check_on():
+        if not self.config.check_runs:
             return
         next_at = self._state.get("check_next_run_at")
         if next_at is None:
@@ -439,12 +435,7 @@ class ScheduleManager:
             return
         self._state["check_deferred"] = False
         try:
-            result = self.supervisor.start(
-                kind="check",
-                cli_args=["check"],
-                origin="schedule",
-                title="tweetnook check",
-            )
+            result = self._start(JOBS_BY_KEY["check"])
         except JobConflictError:
             # Unlike a missed sync, a due check waits for the running command.
             self._state["check_last_result"] = "deferred: another command was running"

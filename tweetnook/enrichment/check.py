@@ -37,7 +37,7 @@ import httpx
 from rich.console import Console
 
 from tweetnook.client import fxtwitter
-from tweetnook.client.fxtwitter import FxLookup, fx_enabled, iter_fx_statuses
+from tweetnook.client.fxtwitter import FxLookup, iter_fx_statuses
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
 from tweetnook.core.unavailability import classify_tweet_unavailability
@@ -406,7 +406,7 @@ async def run_check(
     budget = config.check.detail_budget if detail_budget is None else detail_budget
     now = utc_now()
 
-    if not fx_enabled(config):
+    if not config.fx_enabled:
         # Without FxTwitter, sync's resurrection step owns the login retries.
         result.warnings.append("FxTwitter is off, so the check didn't run.")
         return result

@@ -300,6 +300,17 @@ class AppConfig(BaseModel):
     tagging: TaggingConfig = Field(default_factory=TaggingConfig)
     replay: ReplayConfig = Field(default_factory=ReplayConfig)
 
+    @property
+    def fx_enabled(self) -> bool:
+        # Replay installs must never reach a host other than their replay source.
+        return self.fxtwitter.enabled and not self.replay.url
+
+    @property
+    def check_runs(self) -> bool:
+        """The availability check is FxTwitter lookups, so it runs only while FxTwitter is on.
+        While it runs it owns retrying unavailable tweets; otherwise sync does that."""
+        return self.check.enabled and self.fx_enabled
+
 
 def resolve_auth_config(
     config: AppConfig, *, env: Mapping[str, str] | None = None
