@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 from rich.console import Console
@@ -13,7 +14,15 @@ from tweetnook.auth import ResolvedAuthBundle
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.jobs.pipeline import PipelineReporter, current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
-from tweetnook.jobs.steps import ARTICLES, MEDIA, RESURRECTION, TAGGING, THREADS, URLS
+from tweetnook.jobs.steps import (
+    ARTICLES,
+    MEDIA,
+    RESURRECTION,
+    TAGGING,
+    THREADS,
+    URLS,
+    StepSpec,
+)
 from tweetnook.storage import open_archive_store
 from tweetnook.sync.steps import (
     add_head_step,
@@ -23,13 +32,184 @@ from tweetnook.sync.steps import (
 
 @dataclass(slots=True)
 class SyncFollowupPlan:
-    enabled: bool = True
+    """Which follow-ups a sync runs. Tagging also needs it enabled in config."""
+
     resurrection: bool = True
     articles: bool = True
     media: bool = True
     unfurl: bool = True
     threads: bool = True
-    tagging: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class _FollowupContext:
+    config: AppConfig
+    paths: XDGPaths
+    auth_bundle: ResolvedAuthBundle
+    transport: httpx.AsyncBaseTransport | None
+    console: Console
+    sleep: Callable[[float], Awaitable[None]]
+
+
+async def _expand_threads(ctx: _FollowupContext) -> Any:
+    from tweetnook.enrichment.threads import expand_threads
+
+    replay = ctx.config.replay
+    return await expand_threads(
+        limit=None,
+        skip_quotes=bool(replay.url and replay.skip_quote_expansion),
+        config=ctx.config,
+        paths=ctx.paths,
+        auth_bundle=ctx.auth_bundle,
+        transport=ctx.transport,
+        console=ctx.console,
+        sleep=ctx.sleep,
+    )
+
+
+async def _resurrect(ctx: _FollowupContext) -> Any:
+    from tweetnook.enrichment.resurrection import (
+        DEFAULT_RESURRECTION_BUDGET,
+        resurrect_due_tweets,
+    )
+
+    return await resurrect_due_tweets(
+        budget=DEFAULT_RESURRECTION_BUDGET,
+        config=ctx.config,
+        paths=ctx.paths,
+        auth_bundle=ctx.auth_bundle,
+        transport=ctx.transport,
+        console=ctx.console,
+        sleep=ctx.sleep,
+    )
+
+
+async def _refresh_articles(ctx: _FollowupContext) -> Any:
+    from tweetnook.enrichment.articles import refresh_articles
+
+    return await refresh_articles(
+        targets=None,
+        preview_only=True,
+        limit=None,
+        config=ctx.config,
+        paths=ctx.paths,
+        auth_bundle=ctx.auth_bundle,
+        transport=ctx.transport,
+        console=ctx.console,
+        sleep=ctx.sleep,
+    )
+
+
+async def _download_media(ctx: _FollowupContext) -> Any:
+    from tweetnook.enrichment.media import download_media
+
+    return await download_media(
+        limit=None,
+        photos_only=False,
+        retry_failed=False,
+        config=ctx.config,
+        paths=ctx.paths,
+        console=ctx.console,
+    )
+
+
+async def _unfurl(ctx: _FollowupContext) -> Any:
+    from tweetnook.enrichment.unfurl import unfurl_urls
+
+    return await unfurl_urls(
+        limit=None, retry_failed=False, config=ctx.config, paths=ctx.paths, console=ctx.console
+    )
+
+
+async def _tag(ctx: _FollowupContext) -> Any:
+    from tweetnook.jobs.context import locked_archive_job
+    from tweetnook.tagging.tagger import tag_pending_media_tweets
+
+    async with locked_archive_job(config=ctx.config, paths=ctx.paths, console=ctx.console) as job:
+        return await tag_pending_media_tweets(
+            store=job.store, config=ctx.config, paths=ctx.paths, console=ctx.console
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _Followup:
+    step: StepSpec
+    running: str  # "running <this>" in console output
+    label: str  # "<this> failed"
+    command: str | None  # the command to run it later by hand, when it fails
+    run: Callable[[_FollowupContext], Awaitable[Any]]
+    summary: Callable[[Any], str]
+
+
+_THREADS = _Followup(
+    THREADS,
+    "threads expand",
+    "threads expand",
+    "tweetnook threads expand",
+    _expand_threads,
+    lambda r: f"threads: {r.processed} processed, {r.expanded} expanded, "
+    f"{r.skipped} skipped, {r.failed} failed",
+)
+_RESURRECTION = _Followup(
+    RESURRECTION,
+    "resurrection checks",
+    "resurrection",
+    None,
+    _resurrect,
+    lambda r: f"resurrection: {r.attempted} checked, {r.resurrected} returned, "
+    f"{r.still_unavailable} still unavailable, {r.transient_failures} transient failures, "
+    f"{r.remaining_due} due",
+)
+_ARTICLES = _Followup(
+    ARTICLES,
+    "articles refresh",
+    "articles refresh",
+    "tweetnook articles refresh",
+    _refresh_articles,
+    lambda r: f"articles: {r.processed} processed, {r.updated} refreshed, {r.failed} failed",
+)
+_MEDIA = _Followup(
+    MEDIA,
+    "media download",
+    "media download",
+    "tweetnook media download",
+    _download_media,
+    lambda r: f"media: {r.processed} processed, {r.downloaded} downloaded, "
+    f"{r.failed} failed, {r.avatars_downloaded} avatars",
+)
+_UNFURL = _Followup(
+    URLS,
+    "unfurl",
+    "unfurl",
+    "tweetnook unfurl",
+    _unfurl,
+    lambda r: f"unfurl: {r.processed} processed, {r.updated} updated, {r.failed} failed",
+)
+_TAGGING = _Followup(
+    TAGGING,
+    "media tagging",
+    "tagging",
+    "tweetnook tag",
+    _tag,
+    lambda r: f"tagging: {r.tagged} tagged",
+)
+
+
+def _selected_followups(plan: SyncFollowupPlan, config: AppConfig) -> list[_Followup]:
+    """The follow-ups this sync runs, in order; the plan and the run both use this list."""
+    return [
+        followup
+        for followup, wanted in (
+            (_THREADS, plan.threads),
+            # While the availability check runs, it owns retrying unavailable tweets.
+            (_RESURRECTION, plan.resurrection and not config.check_runs),
+            (_ARTICLES, plan.articles),
+            (_MEDIA, plan.media),
+            (_UNFURL, plan.unfurl),
+            (_TAGGING, config.tagging.enabled),
+        )
+        if wanted
+    ]
 
 
 def plan_sync_pipeline(
@@ -43,143 +223,27 @@ def plan_sync_pipeline(
     add_preflight_step(pipeline, collections)
     for collection in collections:
         add_head_step(pipeline, collection)
-
-    if followups is not None and followups.enabled:
-        for enabled, step in (
-            (followups.threads, THREADS),
-            (followups.resurrection and not config.check_runs, RESURRECTION),
-            (followups.articles, ARTICLES),
-            (followups.media, MEDIA),
-            (followups.unfurl, URLS),
-        ):
-            if enabled:
-                step.declare(pipeline)
-        if followups.tagging and config.tagging.enabled:
-            TAGGING.declare(pipeline, detail=config.tagging.model)
+    if followups is not None:
+        for followup in _selected_followups(followups, config):
+            detail = config.tagging.model if followup is _TAGGING else None
+            followup.step.declare(pipeline, detail=detail)
 
 
-def _log_embedding_warning(
-    console: Console | None, message: str, *, step_key: str | None = None
-) -> None:
+def _followup_failed(console: Console, followup: _Followup, error: Exception) -> None:
+    later = f"; run '{followup.command}' later" if followup.command else ""
+    message = f"sync follow-up {followup.label} failed{later} ({error})"
     pipeline = current_pipeline()
-    if pipeline.active:
-        if step_key is not None and pipeline.has_step(step_key):
-            pipeline.fail_step(step_key, message, recoverable=True)
-        else:
-            active = pipeline.active_step
-            if active is not None and active.state == "active":
-                pipeline.fail_step(active.key, message, recoverable=True)
-        pipeline.issue(message, dedupe_key=f"followup:{message.split(':', 1)[0]}")
-    elif console is not None:
+    if not pipeline.active:
         console.print(f"[yellow]{message}[/yellow]")
-
-
-def _log_sync_followup(console: Console | None, message: str) -> None:
-    if current_pipeline().active:
         return
-    if console is not None:
+    if pipeline.has_step(followup.step.key):
+        pipeline.fail_step(followup.step.key, message, recoverable=True)
+    pipeline.issue(message, dedupe_key=f"followup:{followup.step.key}")
+
+
+def _log_sync_followup(console: Console, message: str) -> None:
+    if not current_pipeline().active:
         console.print(f"sync follow-up: {message}", highlight=False)
-
-
-async def _run_followup_threads(
-    *,
-    config: AppConfig,
-    paths: XDGPaths,
-    auth_bundle: ResolvedAuthBundle,
-    transport: httpx.AsyncBaseTransport | None,
-    console: Console,
-    sleep: Callable[[float], Awaitable[None]],
-):
-    from tweetnook.enrichment.threads import expand_threads
-
-    return await expand_threads(
-        limit=None,
-        skip_quotes=bool(config.replay.url and config.replay.skip_quote_expansion),
-        config=config,
-        paths=paths,
-        auth_bundle=auth_bundle,
-        transport=transport,
-        console=console,
-        sleep=sleep,
-    )
-
-
-async def _run_followup_articles(
-    *,
-    config: AppConfig,
-    paths: XDGPaths,
-    auth_bundle: ResolvedAuthBundle,
-    transport: httpx.AsyncBaseTransport | None,
-    console: Console,
-    sleep: Callable[[float], Awaitable[None]],
-):
-    from tweetnook.enrichment.articles import refresh_articles
-
-    return await refresh_articles(
-        targets=None,
-        preview_only=True,
-        limit=None,
-        config=config,
-        paths=paths,
-        auth_bundle=auth_bundle,
-        transport=transport,
-        console=console,
-        sleep=sleep,
-    )
-
-
-async def _run_followup_media(
-    *,
-    config: AppConfig,
-    paths: XDGPaths,
-    console: Console,
-):
-    from tweetnook.enrichment.media import download_media
-
-    return await download_media(
-        limit=None,
-        photos_only=False,
-        retry_failed=False,
-        config=config,
-        paths=paths,
-        console=console,
-    )
-
-
-async def _run_followup_unfurl(
-    *,
-    config: AppConfig,
-    paths: XDGPaths,
-    console: Console,
-):
-    from tweetnook.enrichment.unfurl import unfurl_urls
-
-    return await unfurl_urls(
-        limit=None,
-        retry_failed=False,
-        config=config,
-        paths=paths,
-        console=console,
-    )
-
-
-async def _run_followup_tagging(
-    *,
-    config: AppConfig,
-    paths: XDGPaths,
-    console: Console,
-):
-    from tweetnook.jobs.context import locked_archive_job
-    from tweetnook.tagging.tagger import tag_pending_media_tweets
-
-    async with locked_archive_job(config=config, paths=paths, console=console) as job:
-        result = await tag_pending_media_tweets(
-            store=job.store,
-            config=config,
-            paths=paths,
-            console=console,
-        )
-        return result.tagged
 
 
 async def run_auto_followups(
@@ -192,174 +256,24 @@ async def run_auto_followups(
     console: Console,
     sleep: Callable[[float], Awaitable[None]],
 ) -> None:
-    if plan.enabled and plan.threads:
-        _log_sync_followup(console, "running threads expand")
+    """Run each selected follow-up in turn. One failing doesn't stop the rest or fail the
+    sync, except running out of storage, which stops everything."""
+    ctx = _FollowupContext(config, paths, auth_bundle, transport, console, sleep)
+    for followup in _selected_followups(plan, config):
+        if followup is _UNFURL and config.replay.url and config.replay.skip_link_previews:
+            pipeline = current_pipeline()
+            if pipeline.has_step(URLS.key):
+                pipeline.skip_step(URLS.key, "link previews being disabled for this replay sync")
+            _log_sync_followup(console, "link previews skipped by developer replay setting")
+            continue
+        _log_sync_followup(console, f"running {followup.running}")
         try:
-            result = await _run_followup_threads(
-                config=config,
-                paths=paths,
-                auth_bundle=auth_bundle,
-                transport=transport,
-                console=console,
-                sleep=sleep,
-            )
+            result = await followup.run(ctx)
         except Exception as exc:
             raise_if_storage_exhausted(exc)
-            _log_embedding_warning(
-                console,
-                "sync follow-up threads expand failed; "
-                f"run 'tweetnook threads expand' later ({exc})",
-                step_key=THREADS.key,
-            )
+            _followup_failed(console, followup, exc)
         else:
-            _log_sync_followup(
-                console,
-                "threads: "
-                f"{result.processed} processed, "
-                f"{result.expanded} expanded, "
-                f"{result.skipped} skipped, "
-                f"{result.failed} failed",
-            )
-
-    if plan.enabled and plan.resurrection and not config.check_runs:
-        _log_sync_followup(console, "running resurrection checks")
-        try:
-            from tweetnook.enrichment.resurrection import (
-                DEFAULT_RESURRECTION_BUDGET,
-                resurrect_due_tweets,
-            )
-
-            result = await resurrect_due_tweets(
-                budget=DEFAULT_RESURRECTION_BUDGET,
-                config=config,
-                paths=paths,
-                auth_bundle=auth_bundle,
-                transport=transport,
-                console=console,
-                sleep=sleep,
-            )
-        except Exception as exc:
-            raise_if_storage_exhausted(exc)
-            _log_embedding_warning(
-                console,
-                f"sync follow-up resurrection failed ({exc})",
-                step_key=RESURRECTION.key,
-            )
-        else:
-            _log_sync_followup(
-                console,
-                "resurrection: "
-                f"{result.attempted} checked, "
-                f"{result.resurrected} returned, "
-                f"{result.still_unavailable} still unavailable, "
-                f"{result.transient_failures} transient failures, "
-                f"{result.remaining_due} due",
-            )
-
-    if plan.enabled and plan.articles:
-        _log_sync_followup(console, "running articles refresh")
-        try:
-            result = await _run_followup_articles(
-                config=config,
-                paths=paths,
-                auth_bundle=auth_bundle,
-                transport=transport,
-                console=console,
-                sleep=sleep,
-            )
-        except Exception as exc:
-            raise_if_storage_exhausted(exc)
-            _log_embedding_warning(
-                console,
-                "sync follow-up articles refresh failed; "
-                f"run 'tweetnook articles refresh' later ({exc})",
-                step_key=ARTICLES.key,
-            )
-        else:
-            _log_sync_followup(
-                console,
-                "articles: "
-                f"{result.processed} processed, "
-                f"{result.updated} refreshed, "
-                f"{result.failed} failed",
-            )
-
-    if plan.enabled and plan.media:
-        _log_sync_followup(console, "running media download")
-        try:
-            result = await _run_followup_media(
-                config=config,
-                paths=paths,
-                console=console,
-            )
-        except Exception as exc:
-            raise_if_storage_exhausted(exc)
-            _log_embedding_warning(
-                console,
-                "sync follow-up media download failed; "
-                f"run 'tweetnook media download' later ({exc})",
-                step_key=MEDIA.key,
-            )
-        else:
-            _log_sync_followup(
-                console,
-                "media: "
-                f"{result.processed} processed, "
-                f"{result.downloaded} downloaded, "
-                f"{result.failed} failed, "
-                f"{result.avatars_downloaded} avatars",
-            )
-
-    skip_previews = bool(config.replay.url and config.replay.skip_link_previews)
-    if plan.enabled and plan.unfurl and skip_previews:
-        pipeline = current_pipeline()
-        if pipeline.has_step(URLS.key):
-            pipeline.skip_step(URLS.key, "link previews being disabled for this replay sync")
-        _log_sync_followup(console, "link previews skipped by developer replay setting")
-    if plan.enabled and plan.unfurl and not skip_previews:
-        _log_sync_followup(console, "running unfurl")
-        try:
-            result = await _run_followup_unfurl(
-                config=config,
-                paths=paths,
-                console=console,
-            )
-        except Exception as exc:
-            raise_if_storage_exhausted(exc)
-            _log_embedding_warning(
-                console,
-                f"sync follow-up unfurl failed; run 'tweetnook unfurl' later ({exc})",
-                step_key=URLS.key,
-            )
-        else:
-            _log_sync_followup(
-                console,
-                "unfurl: "
-                f"{result.processed} processed, "
-                f"{result.updated} updated, "
-                f"{result.failed} failed",
-            )
-
-    if plan.enabled and plan.tagging and config.tagging.enabled:
-        _log_sync_followup(console, "running media tagging")
-        try:
-            tagged_count = await _run_followup_tagging(
-                config=config,
-                paths=paths,
-                console=console,
-            )
-        except Exception as exc:
-            raise_if_storage_exhausted(exc)
-            _log_embedding_warning(
-                console,
-                f"sync follow-up tagging failed; run 'tweetnook tag' later ({exc})",
-                step_key=TAGGING.key,
-            )
-        else:
-            _log_sync_followup(
-                console,
-                f"tagging: {tagged_count} tagged",
-            )
+            _log_sync_followup(console, followup.summary(result))
 
     if not current_pipeline().active:
         from tweetnook.jobs.reminders import print_pending_archive_enrichment_reminder

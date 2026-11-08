@@ -30,6 +30,10 @@ from tweetnook.storage import open_archive_store
 from tweetnook.sync.collection import sync_collection
 from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline
 
+NO_FOLLOWUPS = SyncFollowupPlan(
+    threads=False, resurrection=False, articles=False, media=False, unfurl=False
+)
+
 
 @pytest.mark.parametrize(
     "connected,skip,expected", [(True, True, True), (True, False, False), (False, True, False)]
@@ -43,10 +47,11 @@ async def test_sync_skips_only_quote_expansion_when_replay_option_is_enabled(
 
     async def expand(**kwargs):
         calls.append(kwargs)
-        return SimpleNamespace(processed=1)
+        return ThreadExpandResult(processed=1)
 
     monkeypatch.setattr("tweetnook.enrichment.threads.expand_threads", expand)
-    await followups_module._run_followup_threads(
+    await followups_module.run_auto_followups(
+        plan=SyncFollowupPlan(resurrection=False, articles=False, media=False, unfurl=False),
         config=config,
         paths=paths,
         auth_bundle=auth_bundle,
@@ -71,10 +76,8 @@ async def test_replay_can_skip_only_link_previews(
         calls.append("previews")
         return SimpleNamespace(processed=1, updated=1, failed=0)
 
-    monkeypatch.setattr(followups_module, "_run_followup_unfurl", previews)
-    plan = SyncFollowupPlan(
-        threads=False, resurrection=False, articles=False, media=False, tagging=False
-    )
+    monkeypatch.setattr("tweetnook.enrichment.unfurl.unfurl_urls", previews)
+    plan = SyncFollowupPlan(threads=False, resurrection=False, articles=False, media=False)
     reporter = PipelineReporter(_console(), "sync", interactive=False)
     with reporter:
         plan_sync_pipeline(reporter, config=config, collections=[], followups=plan)
@@ -339,16 +342,20 @@ async def test_followup_outcomes_preserve_success_except_fatal_storage(
             raise OSError(errno.ENOSPC, "Disk full")
         raise RuntimeError("Provider unavailable")
 
-    if stage == "resurrection":
-        monkeypatch.setattr("tweetnook.enrichment.resurrection.resurrect_due_tweets", fail)
-    else:
-        monkeypatch.setattr(followups_module, f"_run_followup_{stage}", fail)
-    config.tagging.enabled = True
+    targets = {
+        "threads": "tweetnook.enrichment.threads.expand_threads",
+        "resurrection": "tweetnook.enrichment.resurrection.resurrect_due_tweets",
+        "articles": "tweetnook.enrichment.articles.refresh_articles",
+        "media": "tweetnook.enrichment.media.download_media",
+        "unfurl": "tweetnook.enrichment.unfurl.unfurl_urls",
+        "tagging": "tweetnook.tagging.tagger.tag_pending_media_tweets",
+    }
+    monkeypatch.setattr(targets[stage], fail)
+    if stage == "tagging":
+        open_archive_store(paths, create=True, config=config).close()
+    config.tagging.enabled = stage == "tagging"
     plan = SyncFollowupPlan(
-        **{
-            key: key == stage
-            for key in ("threads", "resurrection", "articles", "media", "unfurl", "tagging")
-        }
+        **{key: key == stage for key in ("threads", "resurrection", "articles", "media", "unfurl")}
     )
     path = paths.data_dir / "activity-status.json"
     reporter = PipelineReporter(_console(), "sync", interactive=False, state_path=path)
@@ -416,10 +423,10 @@ async def test_run_auto_followups_continues_after_task_failure(
     import tweetnook.enrichment.resurrection as resurrection_module
 
     monkeypatch.setattr(resurrection_module, "resurrect_due_tweets", fail_resurrection)
-    monkeypatch.setattr(followups_module, "_run_followup_threads", ok_threads)
-    monkeypatch.setattr(followups_module, "_run_followup_articles", ok_articles)
-    monkeypatch.setattr(followups_module, "_run_followup_media", ok_media)
-    monkeypatch.setattr(followups_module, "_run_followup_unfurl", ok_unfurl)
+    monkeypatch.setattr("tweetnook.enrichment.threads.expand_threads", ok_threads)
+    monkeypatch.setattr("tweetnook.enrichment.articles.refresh_articles", ok_articles)
+    monkeypatch.setattr("tweetnook.enrichment.media.download_media", ok_media)
+    monkeypatch.setattr("tweetnook.enrichment.unfurl.unfurl_urls", ok_unfurl)
 
     await followups_module.run_auto_followups(
         plan=SyncFollowupPlan(),
@@ -452,7 +459,8 @@ async def test_sync_remains_successful_when_automated_tagging_followup_fails(
     async def fail_tagging(**_kwargs):
         raise RuntimeError("Gemini unavailable")
 
-    monkeypatch.setattr(followups_module, "_run_followup_tagging", fail_tagging)
+    monkeypatch.setattr("tweetnook.tagging.tagger.tag_pending_media_tweets", fail_tagging)
+    open_archive_store(paths, create=True, config=config).close()
     enabled_tagging = config.tagging.model_copy(update={"enabled": True, "api_key": "test-key"})
     active_config = config.model_copy(update={"tagging": enabled_tagging})
     buffer = StringIO()
@@ -460,12 +468,7 @@ async def test_sync_remains_successful_when_automated_tagging_followup_fails(
 
     await followups_module.run_auto_followups(
         plan=SyncFollowupPlan(
-            resurrection=False,
-            articles=False,
-            media=False,
-            unfurl=False,
-            threads=False,
-            tagging=True,
+            resurrection=False, articles=False, media=False, unfurl=False, threads=False
         ),
         config=active_config,
         paths=paths,
@@ -500,7 +503,7 @@ async def test_run_auto_followups_only_reminds_about_incomplete_initial_enrichme
     console = Console(file=buffer, force_terminal=False, color_system=None)
 
     await followups_module.run_auto_followups(
-        plan=SyncFollowupPlan(enabled=False),
+        plan=NO_FOLLOWUPS,
         config=config,
         paths=paths,
         auth_bundle=auth_bundle,
@@ -525,7 +528,7 @@ async def test_run_auto_followups_does_not_add_archive_queue_note_to_pipeline(
 
     with reporter:
         await followups_module.run_auto_followups(
-            plan=SyncFollowupPlan(enabled=False),
+            plan=NO_FOLLOWUPS,
             config=config,
             paths=paths,
             auth_bundle=auth_bundle,

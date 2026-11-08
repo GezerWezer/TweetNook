@@ -312,8 +312,8 @@ async def test_storage_exhaustion_stops_followups_before_link_previews(
         calls.append("urls")
         pytest.fail("link previews must not run on a full volume")
 
-    monkeypatch.setattr(followups_module, "_run_followup_media", full_media)
-    monkeypatch.setattr(followups_module, "_run_followup_unfurl", unfurl)
+    monkeypatch.setattr("tweetnook.enrichment.media.download_media", full_media)
+    monkeypatch.setattr("tweetnook.enrichment.unfurl.unfurl_urls", unfurl)
     with pytest.raises(StorageExhaustedError, match="Free or add disk space"):
         await followups_module.run_auto_followups(
             plan=SyncFollowupPlan(threads=False, resurrection=False, articles=False),
