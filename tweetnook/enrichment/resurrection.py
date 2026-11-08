@@ -31,6 +31,7 @@ from tweetnook.enrichment.detail import (
 )
 from tweetnook.jobs.context import locked_archive_job, resolve_job_context
 from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.jobs.steps import RESURRECTION
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.records import PageBuffer
 
@@ -136,7 +137,7 @@ class _ResurrectionRun:
     budget: int
     queue: deque[dict[str, Any]]
     result: ResurrectionResult
-    step_key: str = "resurrection"
+    step_key: str = RESURRECTION.key
     buffer: PageBuffer = field(default_factory=PageBuffer)
     buffered_attempts: int = 0
     queued_ids: set[str] = field(default_factory=set)
@@ -229,7 +230,7 @@ class _ResurrectionRun:
                 row,
                 outcome,
                 label="Resurrection",
-                issue_key="resurrection",
+                issue_key=RESURRECTION.key,
                 cursor=self.buffer,
             )
             self.result.transient_failures += 1
@@ -334,15 +335,8 @@ async def resurrect_due_tweets(
     console = console or Console(stderr=True)
     pipeline = current_pipeline()
     result = ResurrectionResult()
-    step_key = "resurrection"
-    pipeline.add_step(
-        step_key,
-        "Unavailable tweets",
-        total=1,
-        unit="tweets",
-        detail=f"due unavailable tweets · {budget}-request ceiling",
-        rate_unit="tweets/s",
-    )
+    step_key = RESURRECTION.key
+    RESURRECTION.declare(pipeline, detail=f"due unavailable tweets · {budget}-request ceiling")
     if budget <= 0:
         async with locked_archive_job(config=config, paths=paths, console=console) as job:
             result.remaining_due = job.store.count_due_resurrection_tweets()
@@ -357,13 +351,8 @@ async def resurrect_due_tweets(
             pipeline.skip_step(step_key, "no due retryable unavailable tweets")
             return result
 
-        pipeline.add_step(
-            step_key,
-            "Unavailable tweets",
-            total=len(candidates),
-            unit="tweets",
-            detail=(f"{len(candidates)} due selected"),
-            rate_unit="tweets/s",
+        RESURRECTION.declare(
+            pipeline, total=len(candidates), detail=f"{len(candidates)} due selected"
         )
         pipeline.start_step(
             step_key,

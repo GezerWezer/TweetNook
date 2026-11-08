@@ -14,6 +14,7 @@ from tweetnook.jobs.activity_history import latest_finished_snapshot, new_run_id
 from tweetnook.jobs.catalog import JOBS_BY_KEY, command_title
 from tweetnook.jobs.context import archive_job
 from tweetnook.jobs.outcome import Outcome, finished_cleanly, recorded_outcome
+from tweetnook.jobs.steps import ARCHIVE_AUTH, ARCHIVE_ENRICH, MEDIA
 from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.storage import open_archive_store
 
@@ -37,7 +38,7 @@ class SetupState(BaseModel):
 
 
 # Steps after the local import; stopping in one of them still leaves a usable archive.
-_FOLLOWUP_STEPS = {"archive-auth", "archive-enrich", "media"}
+_FOLLOWUP_STEPS = {ARCHIVE_AUTH.key, ARCHIVE_ENRICH.key, MEDIA.key}
 
 
 def _saved_before_enrichment(run) -> bool:
@@ -515,14 +516,16 @@ class SetupCoordinator:
             if self.state.initialization_mode == "import":
                 media_run = self._run(self.state.media_run_id) or initialization
                 media_steps = ((media_run or {}).get("snapshot") or {}).get("steps") or []
-                media_step = next((step for step in media_steps if step.get("key") == "media"), {})
+                media_step = next(
+                    (step for step in media_steps if step.get("key") == MEDIA.key), {}
+                )
                 # An explicit sync/enrichment can finish the media left by a failed import.
                 followup = followup_run or {}
                 resumed_media = next(
                     (
                         step
                         for step in (followup.get("snapshot") or {}).get("steps", [])
-                        if step.get("key") == "media"
+                        if step.get("key") == MEDIA.key
                         and (
                             step.get("state") in {"complete", "failed"}
                             or (step.get("state") == "skipped" and followup.get("success") is True)

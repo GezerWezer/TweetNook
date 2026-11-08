@@ -32,18 +32,17 @@ from tweetnook.importer.archive_rows import (
     import_likes,
 )
 from tweetnook.importer.archive_steps import (
+    ARCHIVE_MEDIA,
     DELETED,
     INSPECT,
     LIKES,
-    MEDIA,
     REGEN,
     SOURCE,
     TWEETS,
-    ArchiveStep,
-    add_archive_step,
 )
 from tweetnook.jobs.interactive import emit_status, progress_callback
 from tweetnook.jobs.pipeline import NullPipeline, PipelineReporter
+from tweetnook.jobs.steps import StepSpec
 from tweetnook.storage import ArchiveStore
 
 _SOURCE_DATASET_KEYS = (
@@ -124,9 +123,8 @@ def inspect_archive(run: ImportRun, archive_path: Path) -> None:
         if (run.debug or run.console.is_terminal or pipeline.active)
         else None
     )
-    add_archive_step(
+    INSPECT.declare(
         pipeline,
-        INSPECT,
         total=max(digest_total_bytes or 0, 1),
         detail=f"{archive_path.name} · {INSPECT.detail}",
     )
@@ -199,7 +197,7 @@ def claim_archive_owner(run: ImportRun, store: ArchiveStore) -> None:
 
 def clear_previous_import(run: ImportRun, store: ArchiveStore) -> None:
     pipeline = run.pipeline
-    add_archive_step(pipeline, REGEN)
+    REGEN.declare(pipeline)
     pipeline.start_step(REGEN.key, activity="Clearing the previous import owned by this archive")
     emit_status(run.status, "clearing previously imported archive-owned rows...")
     regen_started = perf_counter()
@@ -299,7 +297,7 @@ def load_datasets(run: ImportRun, store: ArchiveStore) -> ArchiveDatasets:
         first_source_file = next(
             filename for key in _SOURCE_DATASET_KEYS for filename in source.dataset_files(key)
         )
-        add_archive_step(pipeline, SOURCE, total=source_part_total * 2)
+        SOURCE.declare(pipeline, total=source_part_total * 2)
         pipeline.start_step(
             SOURCE.key,
             activity=f"Parsing {first_source_file}",
@@ -472,7 +470,7 @@ def _imported_counters(done: int, _written: int) -> str:
 class _WriteStage:
     """One bulk write and how its pipeline step, progress bar and debug timing describe it."""
 
-    step: ArchiveStep
+    step: StepSpec
     total: Callable[[ArchiveDatasets], int]
     write: Callable[..., None]
     count_keys: tuple[str, ...]
@@ -526,7 +524,7 @@ _WRITE_STAGES = (
 )
 
 _MEDIA_STAGE = _WriteStage(
-    step=MEDIA,
+    step=ARCHIVE_MEDIA,
     total=lambda data: data.media_total,
     write=_copy_media,
     count_keys=("media_files_copied",),
@@ -589,12 +587,12 @@ def declare_write_steps(run: ImportRun, data: ArchiveDatasets) -> None:
         TWEETS.key: "the authored-tweet dataset being empty",
         DELETED.key: "the deleted-tweet dataset being empty",
         LIKES.key: "the likes dataset being empty",
-        MEDIA.key: "the archive containing no exported media",
+        ARCHIVE_MEDIA.key: "the archive containing no exported media",
     }
     stages = (*_WRITE_STAGES, _MEDIA_STAGE)
     for stage in stages:
         if total := stage.total(data):
-            add_archive_step(pipeline, stage.step, total=total)
+            stage.step.declare(pipeline, total=total)
     for stage in stages:
         if not stage.total(data):
             pipeline.skip_step(stage.step.key, empty_reasons[stage.step.key])

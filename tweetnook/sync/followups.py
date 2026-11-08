@@ -13,6 +13,7 @@ from tweetnook.auth import ResolvedAuthBundle
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.jobs.pipeline import PipelineReporter, current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
+from tweetnook.jobs.steps import ARTICLES, MEDIA, RESURRECTION, TAGGING, THREADS, URLS
 from tweetnook.storage import open_archive_store
 from tweetnook.sync.steps import (
     add_head_step,
@@ -44,37 +45,17 @@ def plan_sync_pipeline(
         add_head_step(pipeline, collection)
 
     if followups is not None and followups.enabled:
-        followup_steps = (
-            (followups.threads, "threads", "Threads", "candidates"),
-            (
-                followups.resurrection and not config.check_runs,
-                "resurrection",
-                "Unavailable tweets",
-                "tweets",
-            ),
-            (followups.articles, "articles", "Articles", "tweets"),
-            (followups.media, "media", "Media", "items"),
-            (followups.unfurl, "urls", "Link previews", "URLs"),
-        )
-        for enabled, key, title, unit in followup_steps:
+        for enabled, step in (
+            (followups.threads, THREADS),
+            (followups.resurrection and not config.check_runs, RESURRECTION),
+            (followups.articles, ARTICLES),
+            (followups.media, MEDIA),
+            (followups.unfurl, URLS),
+        ):
             if enabled:
-                pipeline.add_step(
-                    key,
-                    title,
-                    total=1,
-                    unit=unit,
-                    detail="pending archive work is selected at this step",
-                )
+                step.declare(pipeline)
         if followups.tagging and config.tagging.enabled:
-            pipeline.add_step(
-                "tagging",
-                "Automated tags",
-                total=1,
-                unit="tweets",
-                detail=config.tagging.model,
-                show_rate=False,
-                show_eta=False,
-            )
+            TAGGING.declare(pipeline, detail=config.tagging.model)
 
 
 def _log_embedding_warning(
@@ -228,7 +209,7 @@ async def run_auto_followups(
                 console,
                 "sync follow-up threads expand failed; "
                 f"run 'tweetnook threads expand' later ({exc})",
-                step_key="threads",
+                step_key=THREADS.key,
             )
         else:
             _log_sync_followup(
@@ -262,7 +243,7 @@ async def run_auto_followups(
             _log_embedding_warning(
                 console,
                 f"sync follow-up resurrection failed ({exc})",
-                step_key="resurrection",
+                step_key=RESURRECTION.key,
             )
         else:
             _log_sync_followup(
@@ -292,7 +273,7 @@ async def run_auto_followups(
                 console,
                 "sync follow-up articles refresh failed; "
                 f"run 'tweetnook articles refresh' later ({exc})",
-                step_key="articles",
+                step_key=ARTICLES.key,
             )
         else:
             _log_sync_followup(
@@ -317,7 +298,7 @@ async def run_auto_followups(
                 console,
                 "sync follow-up media download failed; "
                 f"run 'tweetnook media download' later ({exc})",
-                step_key="media",
+                step_key=MEDIA.key,
             )
         else:
             _log_sync_followup(
@@ -332,8 +313,8 @@ async def run_auto_followups(
     skip_previews = bool(config.replay.url and config.replay.skip_link_previews)
     if plan.enabled and plan.unfurl and skip_previews:
         pipeline = current_pipeline()
-        if pipeline.has_step("urls"):
-            pipeline.skip_step("urls", "link previews being disabled for this replay sync")
+        if pipeline.has_step(URLS.key):
+            pipeline.skip_step(URLS.key, "link previews being disabled for this replay sync")
         _log_sync_followup(console, "link previews skipped by developer replay setting")
     if plan.enabled and plan.unfurl and not skip_previews:
         _log_sync_followup(console, "running unfurl")
@@ -348,7 +329,7 @@ async def run_auto_followups(
             _log_embedding_warning(
                 console,
                 f"sync follow-up unfurl failed; run 'tweetnook unfurl' later ({exc})",
-                step_key="urls",
+                step_key=URLS.key,
             )
         else:
             _log_sync_followup(
@@ -372,7 +353,7 @@ async def run_auto_followups(
             _log_embedding_warning(
                 console,
                 f"sync follow-up tagging failed; run 'tweetnook tag' later ({exc})",
-                step_key="tagging",
+                step_key=TAGGING.key,
             )
         else:
             _log_sync_followup(

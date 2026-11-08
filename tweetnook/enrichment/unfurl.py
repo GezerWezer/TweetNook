@@ -18,6 +18,7 @@ from tweetnook.core.utils import utc_now
 from tweetnook.jobs.context import locked_archive_job
 from tweetnook.jobs.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.jobs.steps import URLS
 
 _REMOTE_FAILURES = (httpx.HTTPError, httpx.InvalidURL)
 _UPDATE_BATCH_SIZE = 100
@@ -174,15 +175,8 @@ async def unfurl_urls(
     console = console or Console(stderr=True)
     pipeline = current_pipeline()
     status = None if pipeline.active else status_printer(console, "unfurl")
-    step_key = "urls"
-    pipeline.add_step(
-        step_key,
-        "Link previews",
-        total=1,
-        unit="URLs",
-        detail="saved URLs selected for redirect and canonical metadata refresh",
-        rate_unit="URLs/s",
-    )
+    step_key = URLS.key
+    URLS.declare(pipeline)
     async with locked_archive_job(config=config, paths=paths, console=console) as job:
         config = job.config
         store = job.store
@@ -214,14 +208,7 @@ async def unfurl_urls(
                 or "unknown URL"
             )
             first_host = _url_host(first_url)
-            pipeline.add_step(
-                step_key,
-                "Link previews",
-                total=len(rows),
-                unit="URLs",
-                detail=scope,
-                rate_unit="URLs/s",
-            )
+            URLS.declare(pipeline, total=len(rows), detail=scope)
             pipeline.start_step(
                 step_key,
                 activity=f"Fetching {first_host}",

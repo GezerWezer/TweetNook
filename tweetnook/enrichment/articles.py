@@ -24,6 +24,7 @@ from tweetnook.enrichment.detail import (
 from tweetnook.jobs.context import locked_archive_job, resolve_job_context
 from tweetnook.jobs.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.jobs.steps import ARTICLES
 
 
 @dataclass(slots=True)
@@ -62,15 +63,8 @@ async def refresh_articles(
     console = console or Console(stderr=True)
     pipeline = current_pipeline()
     status = None if pipeline.active else status_printer(console, "articles refresh")
-    step_key = "articles"
-    pipeline.add_step(
-        step_key,
-        "Articles",
-        total=1,
-        unit="tweets",
-        detail="archived article rows selected for TweetDetail refresh",
-        rate_unit="tweets/s",
-    )
+    step_key = ARTICLES.key
+    ARTICLES.declare(pipeline)
 
     async with locked_archive_job(config=config, paths=paths, console=console) as job:
         store = job.store
@@ -93,13 +87,8 @@ async def refresh_articles(
             if targets
             else ("preview-only article rows" if preview_only else "all article rows")
         )
-        pipeline.add_step(
-            step_key,
-            "Articles",
-            total=len(tweet_ids),
-            unit="tweets",
-            detail=f"{mode} · TweetDetail adaptive pacing",
-            rate_unit="tweets/s",
+        ARTICLES.declare(
+            pipeline, total=len(tweet_ids), detail=f"{mode} · TweetDetail adaptive pacing"
         )
         pipeline.start_step(
             step_key,

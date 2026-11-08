@@ -74,6 +74,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `tagging/accounting.py`, `tagging/pricing.py`, `tagging/rpd.py` | Local spend, Search usage and request allowances. |
 | `jobs/context.py`, `jobs/resource_failure.py` | Locked job context and storage-failure handling. |
 | `jobs/pipeline.py`, `jobs/outcome.py`, `jobs/activity_history.py`, `jobs/worker_logging.py` | Progress stages, the typed job outcome, durable run records and timestamped logs. |
+| `jobs/steps.py` | Pipeline steps more than one job runs (follow-ups, archive auth and enrichment), each declared once. |
 | `jobs/catalog.py` | Every runnable job: its command, run title and options, shared by the CLI, Web, scheduler and Setup. |
 | `jobs/supervisor.py`, `jobs/scheduler.py` | Worker/queue ownership and scheduled submission. |
 | `jobs/reminders.py`, `jobs/interactive.py` | Notices and terminal interaction. |

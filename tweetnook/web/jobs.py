@@ -3,18 +3,11 @@
 from __future__ import annotations
 
 import time
-from dataclasses import asdict
 from typing import Any
 
 from tweetnook.config import AppConfig
 from tweetnook.jobs.activity_history import list_runs, read_run
-from tweetnook.jobs.catalog import JOBS, JOBS_BY_TITLE, JobOption, option_defaults
-
-
-def _option_payload(option: JobOption) -> dict[str, Any]:
-    payload = asdict(option)
-    payload.pop("config_default")
-    return payload
+from tweetnook.jobs.catalog import JOBS, JOBS_BY_TITLE, option_defaults
 
 
 def _run_record(run: dict[str, Any]) -> dict[str, Any]:
@@ -121,7 +114,7 @@ def jobs_payload(
                 "key": job.key,
                 "name": job.name,
                 "description": job.description,
-                "command": " ".join(("tweetnook", *job.cli)),
+                "command": job.title,
                 "scheduled": job.scheduled,
                 "state": state,
                 "available": available,
@@ -130,7 +123,7 @@ def jobs_payload(
                 "last_snapshot": snapshot,
                 "next": next_info,
                 "queue": queue_info,
-                "options": [_option_payload(option) for option in job.options],
+                "options": [option.as_dict() for option in job.options],
                 "defaults": option_defaults(job, config),
             }
         )

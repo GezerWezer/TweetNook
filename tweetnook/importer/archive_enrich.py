@@ -41,6 +41,7 @@ from tweetnook.importer.archive_progress import (
     archive_status_printer,
     runner_console_for,
 )
+from tweetnook.importer.archive_steps import FOLLOWUP_COLLECTIONS
 from tweetnook.jobs.context import (
     locked_archive_job,
     resolve_job_context,
@@ -48,10 +49,11 @@ from tweetnook.jobs.context import (
 from tweetnook.jobs.interactive import emit_status, progress_callback
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
+from tweetnook.jobs.steps import ARCHIVE_AUTH, ARCHIVE_ENRICH
 from tweetnook.storage import ArchiveStore
 from tweetnook.storage.records import PageBuffer
 from tweetnook.sync.collection import sync_collection
-from tweetnook.sync.steps import head_step_key, preflight_step_key
+from tweetnook.sync.steps import sync_step_keys
 
 logger = logging.getLogger(__name__)
 
@@ -115,17 +117,11 @@ def _resolve_archive_followup_auth(
     optional: bool = False,
 ) -> ResolvedAuthBundle | None:
     pipeline = current_pipeline()
-    step_key = "archive-auth"
+    step_key = ARCHIVE_AUTH.key
     if auth_bundle is not None and pipeline.step_state(step_key) == "complete":
         return auth_bundle
-    pipeline.add_step(
-        step_key,
-        "Authentication",
-        total=1,
-        unit="session",
-        detail="resolve the configured Twitter/X session values for live follow-up",
-        show_rate=False,
-        show_eta=False,
+    ARCHIVE_AUTH.declare(
+        pipeline, detail="resolve the configured Twitter/X session values for live follow-up"
     )
     pipeline.start_step(
         step_key,
@@ -157,10 +153,10 @@ async def _run_live_reconciliation(
     warnings: list[str] = []
     pipeline = current_pipeline()
     if pipeline.active:
-        for collection in ("tweets", "likes"):
+        for collection in FOLLOWUP_COLLECTIONS:
             if collection in collections:
                 continue
-            for step_key in (preflight_step_key([collection]), head_step_key(collection)):
+            for step_key in sync_step_keys(collection):
                 if pipeline.has_step(step_key):
                     pipeline.skip_step(
                         step_key,
@@ -171,7 +167,7 @@ async def _run_live_reconciliation(
     except ConfigError as exc:
         warnings.append(f"live reconciliation skipped: {exc}")
         for collection in collections:
-            for step_key in (preflight_step_key([collection]), head_step_key(collection)):
+            for step_key in sync_step_keys(collection):
                 if pipeline.has_step(step_key):
                     pipeline.skip_step(step_key, "Twitter/X authentication being unavailable")
         return [], warnings, None
@@ -261,8 +257,8 @@ async def _run_archive_followup(
         async with locked_archive_job(config=config, paths=paths) as job:
             enrichment_result = _archive_enrich_counts(job.store)
         pipeline = current_pipeline()
-        if pipeline.has_step("archive-enrich"):
-            pipeline.skip_step("archive-enrich", "Twitter/X authentication being unavailable")
+        if pipeline.has_step(ARCHIVE_ENRICH.key):
+            pipeline.skip_step(ARCHIVE_ENRICH.key, "Twitter/X authentication being unavailable")
     enrichment_result.warnings = warnings
     enrichment_result.reconciled_collections = reconciled_collections
     pipeline = current_pipeline()
@@ -369,7 +365,7 @@ class _EnrichRun:
     console: Console
     signed_in: bool
     fx_client: httpx.AsyncClient | None
-    step_key: str = "archive-enrich"
+    step_key: str = ARCHIVE_ENRICH.key
     buffer: PageBuffer = field(default_factory=PageBuffer)
     buffered_writes: int = 0
     # Rows finished so far, in whatever order FxTwitter answers, so progress never jumps.
@@ -501,7 +497,7 @@ class _EnrichRun:
                 row,
                 outcome,
                 label="Enrichment",
-                issue_key="archive-enrich",
+                issue_key=ARCHIVE_ENRICH.key,
                 cursor=self.buffer,
             )
             self.transient += 1
@@ -554,7 +550,7 @@ async def _enrich_pending_rows(
     fx_transport: httpx.AsyncBaseTransport | None = None,
 ) -> ArchiveEnrichResult:
     pipeline = current_pipeline()
-    step_key = "archive-enrich"
+    step_key = ARCHIVE_ENRICH.key
     if limit is not None and limit <= 0:
         async with locked_archive_job(config=config, paths=paths, console=console) as job:
             result = _archive_enrich_counts(job.store)
@@ -582,16 +578,11 @@ async def _enrich_pending_rows(
                 )
             return result
         queue_counts = _archive_enrich_counts(store, now=selection_started_at)
-        pipeline.add_step(
-            step_key,
-            "Enrich",
+        ARCHIVE_ENRICH.declare(
+            pipeline,
             total=len(rows),
-            unit="tweets",
-            detail=(
-                f"stable command-start snapshot · {queue_counts.transient_delayed} "
-                f"delayed outside this run · {_DETAIL_ENRICH_WRITE_BATCH}-attempt checkpoints"
-            ),
-            rate_unit="tweets/s",
+            detail=f"stable command-start snapshot · {queue_counts.transient_delayed} "
+            f"delayed outside this run · {_DETAIL_ENRICH_WRITE_BATCH}-attempt checkpoints",
         )
         pipeline.start_step(
             step_key,

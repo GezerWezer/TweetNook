@@ -16,6 +16,7 @@ from tweetnook.jobs.activity_history import new_run_id
 from tweetnook.jobs.outcome import Outcome
 from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.jobs.resource_failure import raise_if_storage_exhausted
+from tweetnook.jobs.steps import TAGGING
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.tagging.accounting import (
     AIUsageLedger,
@@ -550,8 +551,8 @@ async def tag_tweets(
 ) -> TaggingOutcome:
     """Tag specific tweets: plan their requests, then run each through its stages."""
     pipeline = current_pipeline()
-    if pipeline.has_step("tagging") and not request.dry_run:
-        console = pipeline.capture_console("tagging")  # type: ignore[assignment]
+    if pipeline.has_step(TAGGING.key) and not request.dry_run:
+        console = pipeline.capture_console(TAGGING.key)  # type: ignore[assignment]
     tag_config = config.tagging
     if not tag_config.enabled or not tag_config.api_key:
         console.print("[yellow]Tagging is disabled or missing API key.[/yellow]")
@@ -651,21 +652,25 @@ def finish_tagging_step(
     metrics = {"tagged": outcome.tagged, "requests": outcome.attempts}
     reason = outcome.reason or "tagging could not finish"
     if outcome.status is Outcome.PAUSED:
-        pipeline.update_step("tagging", completed=processed)
+        pipeline.update_step(TAGGING.key, completed=processed)
         pipeline.fail_step(
-            "tagging", f"Paused: {reason}", metrics=metrics, reason=reason, paused=True
+            TAGGING.key, f"Paused: {reason}", metrics=metrics, reason=reason, paused=True
         )
     elif outcome.status is Outcome.FAILED:
-        pipeline.update_step("tagging", completed=processed)
+        pipeline.update_step(TAGGING.key, completed=processed)
         pipeline.fail_step(
-            "tagging", f"No tags saved: {reason}", metrics=metrics, reason=reason, recoverable=True
+            TAGGING.key,
+            f"No tags saved: {reason}",
+            metrics=metrics,
+            reason=reason,
+            recoverable=True,
         )
     elif processed == 0:
-        pipeline.skip_step("tagging", "no eligible tweets or available quota/spend")
+        pipeline.skip_step(TAGGING.key, "no eligible tweets or available quota/spend")
     elif outcome.status is Outcome.PARTIAL:
-        pipeline.complete_step("tagging", f"{summary} · some requests failed", metrics=metrics)
+        pipeline.complete_step(TAGGING.key, f"{summary} · some requests failed", metrics=metrics)
     else:
-        pipeline.complete_step("tagging", summary, metrics=metrics)
+        pipeline.complete_step(TAGGING.key, summary, metrics=metrics)
 
 
 def _step_counters(tagged: int, requests: int) -> str:
@@ -696,17 +701,17 @@ async def tag_pending_media_tweets(
     pipeline = current_pipeline()
     tag_config = config.tagging
     if not tag_config.enabled or not tag_config.api_key:
-        if pipeline.has_step("tagging"):
+        if pipeline.has_step(TAGGING.key):
             pipeline.skip_step(
-                "tagging",
+                TAGGING.key,
                 "tagging being disabled in configuration"
                 if not tag_config.enabled
                 else "no Gemini API key being configured",
             )
         return TaggingRunResult()
     if not _ensure_optional_dependencies():
-        if pipeline.has_step("tagging"):
-            pipeline.skip_step("tagging", "the automated-tagging extra not being installed")
+        if pipeline.has_step(TAGGING.key):
+            pipeline.skip_step(TAGGING.key, "the automated-tagging extra not being installed")
         else:
             console.print(
                 "[yellow]Automated tagging is not installed; continuing without it.[/yellow]"
@@ -722,22 +727,18 @@ async def tag_pending_media_tweets(
             if tag_config.api_mode == "free"
             else (f"Paid · {tag_config.processing_tier.title()} · sequential processing")
         )
-        pipeline.add_step(
-            "tagging",
-            "Automated tags",
+        TAGGING.declare(
+            pipeline,
             total=max_requests
             or (free_batch_size if tag_config.api_mode == "free" else PAID_CONCURRENCY),
-            unit="tweets",
             detail=mode_detail,
-            show_rate=False,
-            show_eta=False,
         )
         pipeline.start_step(
-            "tagging",
+            TAGGING.key,
             activity="Selecting tweets",
         )
-    if pipeline.has_step("tagging") and not dry_run:
-        console = pipeline.capture_console("tagging")  # type: ignore[assignment]
+    if pipeline.has_step(TAGGING.key) and not dry_run:
+        console = pipeline.capture_console(TAGGING.key)  # type: ignore[assignment]
 
     run = _new_run(store, config, paths, console, TagRequest([], model_override, dry_run=dry_run))
     processed = requests = 0
@@ -767,7 +768,7 @@ async def tag_pending_media_tweets(
         }
 
         pipeline.update_step(
-            "tagging",
+            TAGGING.key,
             completed=processed,
             total=max(max_requests or processed + len(tweet_ids), 1),
             activity=(
@@ -793,7 +794,7 @@ async def tag_pending_media_tweets(
             requests += len(dispatched_ids) if run.paid else 1
         attempted_ids.update(dispatched_ids)
         pipeline.update_step(
-            "tagging",
+            TAGGING.key,
             completed=processed,
             total=max(max_requests or processed, processed, 1),
             counters=_step_counters(total.tagged, total.attempts),

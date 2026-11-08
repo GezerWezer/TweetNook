@@ -27,6 +27,7 @@ from tweetnook.enrichment.detail import (
 )
 from tweetnook.jobs.context import locked_archive_job, resolve_job_context
 from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.jobs.steps import THREADS
 from tweetnook.storage import ArchiveStore
 
 _SCAN_PROGRESS_EVERY = 100
@@ -277,15 +278,8 @@ async def expand_threads(
     _log_threads(console, "preparing archive expansion job")
     if refresh and not targets:
         raise ConfigError("--refresh requires one or more explicit thread targets.")
-    step_key = "threads"
-    pipeline.add_step(
-        step_key,
-        "Threads",
-        total=1,
-        unit="candidates",
-        detail="membership and reachable linked-status candidates",
-        rate_unit="candidates/s",
-    )
+    step_key = THREADS.key
+    THREADS.declare(pipeline)
     pipeline.start_step(
         step_key,
         activity="Selecting candidates",

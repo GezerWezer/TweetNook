@@ -51,6 +51,7 @@ from tweetnook.enrichment.availability import (
 from tweetnook.enrichment.resurrection import ResurrectionResult
 from tweetnook.jobs.context import locked_archive_job, resolve_job_context
 from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.jobs.steps import RESURRECTION
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.records import PageBuffer
 
@@ -422,14 +423,7 @@ async def run_check(
     for _, step, title in scopes:
         pipeline.add_step(step, title, total=1, unit="tweets", rate_unit="tweets/s")
     if budget > 0:
-        pipeline.add_step(
-            "resurrection",
-            "Unavailable tweets",
-            total=1,
-            unit="tweets",
-            detail=f"due unavailable tweets · {budget}-request ceiling",
-            rate_unit="tweets/s",
-        )
+        RESURRECTION.declare(pipeline, detail=f"due unavailable tweets · {budget}-request ceiling")
     if scopes:
         async with locked_archive_job(config=config, paths=paths, console=console) as job:
             store = job.store
@@ -598,7 +592,7 @@ async def _run_detail_fallback(
         auth_bundle = resolve_auth_bundle(config)
     except AuthResolutionError as exc:
         result.warnings.append(f"Skipped login lookups: {exc}")
-        pipeline.skip_step("resurrection", "login credentials being unavailable")
+        pipeline.skip_step(RESURRECTION.key, "login credentials being unavailable")
         return None
     try:
         return await resurrect_due_tweets(
@@ -613,5 +607,5 @@ async def _run_detail_fallback(
     except AuthExpiredError as exc:
         # FxTwitter results are already saved; an expired login only skips this part.
         result.warnings.append(f"Skipped login lookups: {exc}")
-        pipeline.skip_step("resurrection", "the login having expired")
+        pipeline.skip_step(RESURRECTION.key, "the login having expired")
         return None

@@ -8,10 +8,11 @@ run history finds a job's runs by that title.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 from tweetnook.config import AppConfig
+from tweetnook.jobs.steps import ARTICLES, MEDIA, TAGGING, THREADS, URLS
 
 
 def command_title(cli: Sequence[str]) -> str:
@@ -45,6 +46,12 @@ class JobOption:
     disabled_when: tuple[tuple[str, Any], ...] = ()
     # The CLI's own default when it comes from config rather than the flag's off state.
     config_default: Callable[[AppConfig], Any] | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        """The option as the Web jobs list describes it."""
+        payload = asdict(self)
+        payload.pop("config_default")
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +94,7 @@ JOBS: tuple[JobSpec, ...] = (
         "Expand conversations",
         "Replies and quotes for saved posts",
         ("threads", "expand"),
-        sync_step="threads",
+        sync_step=THREADS.key,
         options=(
             JobOption(
                 "reply_linked_depth",
@@ -115,7 +122,7 @@ JOBS: tuple[JobSpec, ...] = (
         "Refresh articles",
         "Article text and covers",
         ("articles", "refresh"),
-        sync_step="articles",
+        sync_step=ARTICLES.key,
         options=(
             JobOption(
                 "all",
@@ -132,7 +139,7 @@ JOBS: tuple[JobSpec, ...] = (
         "Download media",
         "Photos, GIFs and videos",
         ("media", "download"),
-        sync_step="media",
+        sync_step=MEDIA.key,
         options=(
             JobOption(
                 "photos_only", "flag", "--photos-only", "Photos only", "Skip videos and GIFs."
@@ -155,7 +162,7 @@ JOBS: tuple[JobSpec, ...] = (
         "Link previews",
         "Titles and cards for saved links",
         ("unfurl",),
-        sync_step="urls",
+        sync_step=URLS.key,
         options=(
             JobOption(
                 "retry_failed",
@@ -172,7 +179,7 @@ JOBS: tuple[JobSpec, ...] = (
         "Automated tags",
         "Suggest tags for new posts",
         ("tag",),
-        sync_step="tagging",
+        sync_step=TAGGING.key,
         options=(
             JobOption(
                 "target",

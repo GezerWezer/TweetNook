@@ -2,7 +2,7 @@
 
 `importer/archive.py` ingests an official X ZIP or extracted directory, and `importer/archive_enrich.py` completes it from live data. Local ingest and live completion are separate phases, which lets Setup load a large archive while the user configures the connection and collection choices.
 
-`import_x_archive` coordinates and holds no stage's implementation. The stages in `importer/archive_stages.py` share one `ImportRun`, the bulk writes run from one table through one stage runner, and each pipeline step is declared once in `importer/archive_steps.py`. Every exit closes through one function that prints the debug summary, writes the final note and builds the result. The coordinator also raises the ingest's warnings as issues as soon as the ingest finishes, so a follow-up that stops the run doesn't lose them.
+`import_x_archive` coordinates and holds no stage's implementation. The stages in `importer/archive_stages.py` share one `ImportRun`, the bulk writes run from one table through one stage runner, and each import-only pipeline step is declared once in `importer/archive_steps.py`; steps other jobs also run (authentication, enrichment, media) come from `jobs/steps.py`, and the live reconciliation steps from `sync/steps.py`. Every exit closes through one function that prints the debug summary, writes the final note and builds the result. The coordinator also raises the ingest's warnings as issues as soon as the ingest finishes, so a follow-up that stops the run doesn't lose them.
 
 ## Archive identity
 

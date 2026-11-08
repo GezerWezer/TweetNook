@@ -24,6 +24,7 @@ from tweetnook.enrichment.threads import expand_threads
 from tweetnook.enrichment.unfurl import unfurl_urls
 from tweetnook.jobs.catalog import JOBS_BY_KEY
 from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.jobs.steps import ARTICLES, MEDIA, TAGGING, THREADS, URLS
 
 article_app = typer.Typer(no_args_is_help=True, help="Refresh archived article bodies.")
 media_app = typer.Typer(no_args_is_help=True, help="Download archived tweet media.")
@@ -80,14 +81,7 @@ def refresh_archived_articles(
     try:
         config, paths = load_config()
         with web_pipeline(console, JOBS_BY_KEY["articles"].title, paths) as pipeline:
-            pipeline.add_step(
-                "articles",
-                "Articles",
-                total=1,
-                unit="tweets",
-                detail="archived article rows selected for TweetDetail refresh",
-                rate_unit="tweets/s",
-            )
+            ARTICLES.declare(pipeline)
             if all_articles and targets:
                 raise ConfigError("--all cannot be combined with explicit article targets.")
             auth_bundle = resolve_auth_bundle(config)
@@ -102,7 +96,7 @@ def refresh_archived_articles(
                     console=console,
                 )
             )
-            if pipeline.step_state("articles") == "pending":
+            if pipeline.step_state(ARTICLES.key) == "pending":
                 prefix = "No article rows required refresh. " if result.processed == 0 else ""
                 pipeline.final_note(
                     prefix + "articles: "
@@ -139,14 +133,7 @@ def expand_archive_threads(
     try:
         config, paths = load_config()
         with web_pipeline(console, JOBS_BY_KEY["threads"].title, paths) as pipeline:
-            pipeline.add_step(
-                "threads",
-                "Threads",
-                total=1,
-                unit="candidates",
-                detail="membership and reachable linked-status candidates",
-                rate_unit="candidates/s",
-            )
+            THREADS.declare(pipeline)
             apply_sync_depth_options(config, max_linked_depth, reply_linked_depth)
             auth_bundle = resolve_auth_bundle(config)
             result = asyncio.run(
@@ -160,7 +147,7 @@ def expand_archive_threads(
                     console=console,
                 )
             )
-            if pipeline.step_state("threads") == "pending":
+            if pipeline.step_state(THREADS.key) == "pending":
                 prefix = "No thread candidates required fetching. " if result.processed == 0 else ""
                 pipeline.final_note(
                     prefix + "threads: "
@@ -268,14 +255,7 @@ def media_download(
     try:
         config, paths = load_config()
         with web_pipeline(console, JOBS_BY_KEY["media"].title, paths) as pipeline:
-            pipeline.add_step(
-                "media",
-                "Media",
-                total=1,
-                unit="items",
-                detail="pending archived media selected for local download",
-                rate_unit="items/s",
-            )
+            MEDIA.declare(pipeline)
             result = asyncio.run(
                 download_media(
                     limit=limit,
@@ -286,7 +266,7 @@ def media_download(
                     console=console,
                 )
             )
-            if pipeline.step_state("media") == "pending":
+            if pipeline.step_state(MEDIA.key) == "pending":
                 prefix = "No media items require download. " if result.processed == 0 else ""
                 pipeline.final_note(
                     prefix + "media: "
@@ -310,14 +290,7 @@ def unfurl_archive(
     try:
         config, paths = load_config()
         with web_pipeline(console, JOBS_BY_KEY["urls"].title, paths) as pipeline:
-            pipeline.add_step(
-                "urls",
-                "Link previews",
-                total=1,
-                unit="URLs",
-                detail="saved URLs selected for redirect and canonical metadata refresh",
-                rate_unit="URLs/s",
-            )
+            URLS.declare(pipeline)
             result = asyncio.run(
                 unfurl_urls(
                     limit=limit,
@@ -327,7 +300,7 @@ def unfurl_archive(
                     console=console,
                 )
             )
-            if pipeline.step_state("urls") == "pending":
+            if pipeline.step_state(URLS.key) == "pending":
                 prefix = "No saved URLs require metadata. " if result.processed == 0 else ""
                 pipeline.final_note(
                     prefix + f"unfurl: {result.processed} processed, "
@@ -391,17 +364,13 @@ def tag_archive(
             async with locked_archive_job(config=config, paths=paths, console=console) as job:
                 if tweet_id is not None:
                     pipeline = current_pipeline()
-                    pipeline.add_step(
-                        "tagging",
-                        "Automated tags",
-                        total=1,
-                        unit="tweet",
+                    TAGGING.declare(
+                        pipeline,
                         detail=f"explicit target · {model or config.tagging.model}",
-                        show_rate=False,
-                        show_eta=False,
+                        unit="tweet",
                     )
                     pipeline.start_step(
-                        "tagging",
+                        TAGGING.key,
                         activity="Generating tags",
                     )
                     outcome = await tag_tweets(
@@ -437,25 +406,19 @@ def tag_archive(
                 )
 
         with web_pipeline(console, JOBS_BY_KEY["tagging"].title, paths) as pipeline:
-            pipeline.add_step(
-                "tagging",
-                "Automated tags",
-                total=1,
-                unit="tweet" if tweet_id is not None else "tweets",
-                detail=(
-                    f"explicit target · {model or config.tagging.model}"
-                    if tweet_id is not None
-                    else f"{model or config.tagging.model}"
-                ),
-                show_rate=False,
-                show_eta=False,
+            TAGGING.declare(
+                pipeline,
+                detail=f"explicit target · {model or config.tagging.model}"
+                if tweet_id is not None
+                else f"{model or config.tagging.model}",
+                unit="tweet" if tweet_id is not None else None,
             )
             result = asyncio.run(run_tagging())
             if result.outcome is Outcome.FAILED:
                 # Here tagging is the whole command, so its failure is the command's.
                 raise TweetNookError("Tagging failed: no tags were saved. See the output above.")
             if result.processed == 0 and result.outcome is Outcome.NO_WORK:
-                pipeline.skip_step("tagging", "no eligible untagged tweets")
+                pipeline.skip_step(TAGGING.key, "no eligible untagged tweets")
                 pipeline.final_note("No eligible untagged tweets found.")
             elif not test:
                 pipeline.final_note(f"tag: {result.processed} processed, {result.tagged} tagged")

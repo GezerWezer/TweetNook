@@ -25,15 +25,16 @@ from tweetnook.importer.archive_stages import (
     ingest_archive,
     inspect_archive,
 )
-from tweetnook.importer.archive_steps import INGEST_STEPS
+from tweetnook.importer.archive_steps import FOLLOWUP_COLLECTIONS, INGEST_STEPS
 from tweetnook.jobs.context import (
     locked_archive_job,
     resolve_job_context,
 )
 from tweetnook.jobs.interactive import emit_status
 from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.jobs.steps import ARCHIVE_AUTH
 from tweetnook.storage import ArchiveStore
-from tweetnook.sync.steps import head_step_key, preflight_step_key
+from tweetnook.sync.steps import sync_step_keys
 
 logger = logging.getLogger(__name__)
 
@@ -116,13 +117,8 @@ def _raise_warning(run: ImportRun, warning: str) -> None:
 
 
 def _skip_duplicate_followup_steps(run: ImportRun) -> None:
-    for step_key in (
-        "archive-auth",
-        preflight_step_key(["tweets"]),
-        head_step_key("tweets"),
-        preflight_step_key(["likes"]),
-        head_step_key("likes"),
-    ):
+    sync_keys = (key for collection in FOLLOWUP_COLLECTIONS for key in sync_step_keys(collection))
+    for step_key in (ARCHIVE_AUTH.key, *sync_keys):
         if run.pipeline.has_step(step_key):
             run.pipeline.skip_step(step_key, "the duplicate archive having no requested follow-up")
 

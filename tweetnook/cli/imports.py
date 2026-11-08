@@ -22,6 +22,7 @@ from tweetnook.importer.archive_enrich import (
 )
 from tweetnook.importer.archive_steps import plan_archive_import
 from tweetnook.jobs.catalog import JOBS_BY_KEY
+from tweetnook.jobs.steps import ARCHIVE_AUTH, ARCHIVE_ENRICH
 from tweetnook.sync.collection import SyncMode, sync_all
 from tweetnook.sync.followups import SyncFollowupPlan, plan_sync_pipeline
 
@@ -191,22 +192,9 @@ def import_archive_enrich(
     try:
         config, paths = load_config()
         with web_pipeline(console, JOBS_BY_KEY["enrich"].title, paths) as pipeline:
-            pipeline.add_step(
-                "archive-auth",
-                "Authentication",
-                total=1,
-                unit="session",
-                detail="configured Twitter/X session for archive enrichment",
-                show_rate=False,
-                show_eta=False,
-            )
-            pipeline.add_step(
-                "archive-enrich",
-                "Enrich",
-                total=1,
-                unit="tweets",
-                detail="stable command-start snapshot of eligible sparse archive tweets",
-                rate_unit="tweets/s",
+            ARCHIVE_AUTH.declare(pipeline)
+            ARCHIVE_ENRICH.declare(
+                pipeline, detail="stable command-start snapshot of eligible sparse archive tweets"
             )
             followups = SyncFollowupPlan()
             plan_sync_pipeline(
@@ -215,9 +203,9 @@ def import_archive_enrich(
                 collections=config.sync.collections,
                 followups=followups,
             )
-            pipeline.start_step("archive-auth", activity="Resolving Twitter/X authentication")
+            pipeline.start_step(ARCHIVE_AUTH.key, activity="Resolving Twitter/X authentication")
             auth_bundle = resolve_auth_bundle(config)
-            pipeline.complete_step("archive-auth", "Twitter/X authentication resolved")
+            pipeline.complete_step(ARCHIVE_AUTH.key, "Twitter/X authentication resolved")
 
             async def enrich_then_sync():
                 await enrich_imported_archive(

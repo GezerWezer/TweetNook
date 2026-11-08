@@ -27,6 +27,7 @@ from tweetnook.enrichment.avatars import (
 from tweetnook.jobs.context import locked_archive_job
 from tweetnook.jobs.interactive import emit_status, progress_callback, status_printer
 from tweetnook.jobs.pipeline import current_pipeline
+from tweetnook.jobs.steps import MEDIA
 from tweetnook.storage.backend import ArchiveStore
 
 _CONTENT_TYPE_EXTENSIONS = {
@@ -250,15 +251,8 @@ async def download_media(
     console = console or Console(stderr=True)
     pipeline = current_pipeline()
     status = None if pipeline.active else status_printer(console, "media download")
-    step_key = "media"
-    pipeline.add_step(
-        step_key,
-        "Media",
-        total=1,
-        unit="items",
-        detail="pending archived media selected for local download",
-        rate_unit="items/s",
-    )
+    step_key = MEDIA.key
+    MEDIA.declare(pipeline)
     async with locked_archive_job(config=config, paths=paths, console=console) as job:
         config = job.config
         paths = job.paths
@@ -308,14 +302,7 @@ async def download_media(
                 scope += f" · {', '.join(filters)}"
             if avatar_targets:
                 scope += " and avatars"
-            pipeline.add_step(
-                step_key,
-                "Media",
-                total=total,
-                unit="items",
-                detail=scope,
-                rate_unit="items/s",
-            )
+            MEDIA.declare(pipeline, total=total, detail=scope)
             pipeline.start_step(
                 step_key,
                 activity=_media_activity(rows[0]) if rows else _AVATAR_ACTIVITY,

@@ -204,10 +204,8 @@ def demo_config_payload() -> dict[str, Any]:
     The Pages build runs without project dependencies, so this is generated ahead of time into
     demo/config.json (``--refresh-config``); a test keeps the file in step with tweetnook/config.py.
     """
-    from dataclasses import asdict
-
     from tweetnook.config import AppConfig, get_config_ui_schema
-    from tweetnook.web.jobs import JOBS, option_defaults
+    from tweetnook.jobs.catalog import JOBS, option_defaults
 
     config = AppConfig()
     return {
@@ -218,10 +216,10 @@ def demo_config_payload() -> dict[str, Any]:
                 "key": job.key,
                 "name": job.name,
                 "description": job.description,
-                "command": " ".join(("tweetnook", *job.cli)),
+                "command": job.title,
                 "scheduled": job.scheduled,
                 "sync_step": job.sync_step,
-                "options": [asdict(option) for option in job.options],
+                "options": [option.as_dict() for option in job.options],
                 "defaults": option_defaults(job, config),
             }
             for job in JOBS

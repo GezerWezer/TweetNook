@@ -23,12 +23,20 @@ def head_step_key(collection: str) -> str:
     return f"sync:{collection}:head"
 
 
+def sync_step_keys(collection: str) -> tuple[str, str]:
+    """The keys of one collection's own sync steps, for a caller that skips them."""
+    return preflight_step_key([collection]), head_step_key(collection)
+
+
 def add_preflight_step(
-    pipeline: PipelineReporter | NullPipeline, collections: Sequence[str]
+    pipeline: PipelineReporter | NullPipeline,
+    collections: Sequence[str],
+    *,
+    title: str = "Prepare",
 ) -> None:
     pipeline.add_step(
         preflight_step_key(collections),
-        "Prepare",
+        title,
         total=3 + len(collections),
         unit="checks",
         detail=f"sign-in · archive owner · {len(collections)} collection checks",
@@ -36,10 +44,12 @@ def add_preflight_step(
     )
 
 
-def add_head_step(pipeline: PipelineReporter | NullPipeline, collection: str) -> None:
+def add_head_step(
+    pipeline: PipelineReporter | NullPipeline, collection: str, *, title: str | None = None
+) -> None:
     pipeline.add_step(
         head_step_key(collection),
-        collection.title(),
+        title or collection.title(),
         detail="head timeline pass · each page committed with its resume cursor",
         **_PAGE_STEP,
     )
