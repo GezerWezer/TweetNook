@@ -69,10 +69,6 @@ def test_default_web_host_accepts_lan_connections() -> None:
     assert AppConfig().web.host == "0.0.0.0"
 
 
-def test_pid_file_uses_hidden_file_in_data_directory(tmp_path: Path) -> None:
-    assert cli_web._get_pid_file(tmp_path) == tmp_path / ".web.pid"
-
-
 def test_display_web_url_uses_device_ip_for_ipv4_wildcard(monkeypatch) -> None:
     monkeypatch.setattr(
         web_address,
@@ -266,7 +262,7 @@ def test_start_without_archive(monkeypatch, tmp_path: Path) -> None:
 def test_start_returns_success_when_recorded_server_is_running(monkeypatch, tmp_path: Path) -> None:
     config, paths = _configured(tmp_path, archive=True)
     _stub_start_prerequisites(monkeypatch, config, paths)
-    cli_web._get_pid_file(paths.data_dir).write_text("4321")
+    paths.web_pid_file.write_text("4321")
     _record_process(monkeypatch, paths, 4321)
     monkeypatch.setattr(cli_web, "_is_running", lambda pid: pid == 4321)
     monkeypatch.setattr(
@@ -342,7 +338,7 @@ def test_start_preserves_unset_password_spawns_detached_process_and_writes_pid(
             },
         )
     ]
-    assert cli_web._get_pid_file(paths.data_dir).read_text() == "2468"
+    assert paths.web_pid_file.read_text() == "2468"
     assert "Started background server (PID: 2468)" in result.stdout
 
 
@@ -462,7 +458,7 @@ def test_start_reports_subprocess_failure(monkeypatch, tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "Failed to start web server: fork failed" in result.stdout
-    assert not cli_web._get_pid_file(paths.data_dir).exists()
+    assert not paths.web_pid_file.exists()
 
 
 def test_start_terminates_child_when_pid_file_cannot_be_written(
@@ -485,7 +481,7 @@ def test_start_terminates_child_when_pid_file_cannot_be_written(
     original_write_text = Path.write_text
 
     def write_text(path: Path, data: str, **kwargs) -> int:
-        if path == cli_web._get_pid_file(paths.data_dir):
+        if path == paths.web_pid_file:
             raise OSError("read only")
         return original_write_text(path, data, **kwargs)
 
@@ -497,7 +493,7 @@ def test_start_terminates_child_when_pid_file_cannot_be_written(
     assert signals == [(2468, signal.SIGTERM)]
     assert waits == [10]
     assert "Failed to record web server PID: read only" in result.stdout
-    assert not cli_web._get_pid_file(paths.data_dir).exists()
+    assert not paths.web_pid_file.exists()
 
 
 def test_hidden_serve_daemon_exits_when_web_dependencies_are_missing(
@@ -535,7 +531,7 @@ def test_status_reports_recorded_running_server(monkeypatch, tmp_path: Path) -> 
     config, paths = _configured(tmp_path)
     config.web.host = "0.0.0.0"
     config.web.port = 9123
-    pid_file = cli_web._get_pid_file(paths.data_dir)
+    pid_file = paths.web_pid_file
     pid_file.write_text("123")
     _record_process(monkeypatch, paths, 123)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
@@ -564,7 +560,7 @@ def test_status_reports_stopped_and_cleans_stale_pid(
     monkeypatch, tmp_path: Path, pid_content: str | None
 ) -> None:
     config, paths = _configured(tmp_path)
-    pid_file = cli_web._get_pid_file(paths.data_dir)
+    pid_file = paths.web_pid_file
     if pid_content is not None:
         pid_file.write_text(pid_content)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
@@ -588,7 +584,7 @@ def test_status_reports_stopped_and_cleans_stale_pid(
 def test_status_discovers_recorded_foreground_server(monkeypatch, tmp_path: Path) -> None:
     config, paths = _configured(tmp_path)
     _record_process(monkeypatch, paths, 456)
-    cli_web._get_pid_file(paths.data_dir).write_text("stale")
+    paths.web_pid_file.write_text("stale")
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "_find_pid_by_port", lambda _port: 456)
     monkeypatch.setattr(cli_web, "_is_running", lambda pid: pid == 456)
@@ -601,7 +597,7 @@ def test_status_discovers_recorded_foreground_server(monkeypatch, tmp_path: Path
 
 def test_stop_cleans_stale_pid_without_signaling(monkeypatch, tmp_path: Path) -> None:
     config, paths = _configured(tmp_path)
-    pid_file = cli_web._get_pid_file(paths.data_dir)
+    pid_file = paths.web_pid_file
     pid_file.write_text("123")
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web, "_running_pid", lambda *_args: None)
@@ -622,7 +618,7 @@ def test_stop_cleans_stale_pid_without_signaling(monkeypatch, tmp_path: Path) ->
 
 def test_stop_sends_term_and_stops_without_waiting(monkeypatch, tmp_path: Path) -> None:
     config, paths = _configured(tmp_path)
-    pid_file = cli_web._get_pid_file(paths.data_dir)
+    pid_file = paths.web_pid_file
     pid_file.write_text("123")
     _record_process(monkeypatch, paths, 123)
     monkeypatch.setattr(cli_web, "_wait_for_exit", lambda *_args: True)
@@ -651,7 +647,7 @@ def test_stop_sends_term_and_stops_without_waiting(monkeypatch, tmp_path: Path) 
 
 def test_stop_waits_then_force_kills_unresponsive_process(monkeypatch, tmp_path: Path) -> None:
     config, paths = _configured(tmp_path)
-    pid_file = cli_web._get_pid_file(paths.data_dir)
+    pid_file = paths.web_pid_file
     pid_file.write_text("123")
     _record_process(monkeypatch, paths, 123)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
@@ -681,7 +677,7 @@ def test_stop_waits_then_force_kills_unresponsive_process(monkeypatch, tmp_path:
 
 def test_stop_treats_process_lookup_race_as_success(monkeypatch, tmp_path: Path) -> None:
     config, paths = _configured(tmp_path)
-    pid_file = cli_web._get_pid_file(paths.data_dir)
+    pid_file = paths.web_pid_file
     pid_file.write_text("123")
     _record_process(monkeypatch, paths, 123)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
@@ -701,7 +697,7 @@ def test_stop_treats_process_lookup_race_as_success(monkeypatch, tmp_path: Path)
 
 def test_stop_reports_signal_error_with_nonzero_exit(monkeypatch, tmp_path: Path) -> None:
     config, paths = _configured(tmp_path)
-    pid_file = cli_web._get_pid_file(paths.data_dir)
+    pid_file = paths.web_pid_file
     pid_file.write_text("123")
     _record_process(monkeypatch, paths, 123)
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))

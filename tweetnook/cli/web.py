@@ -29,10 +29,6 @@ from tweetnook.web.processes import (
 web_app = typer.Typer(no_args_is_help=True, help="Manage the background web UI server.")
 
 
-def _get_pid_file(data_dir: Path) -> Path:
-    return data_dir / ".web.pid"
-
-
 def _read_pid(pid_file: Path) -> int | None:
     try:
         pid = int(pid_file.read_text(encoding="utf-8").strip())
@@ -144,7 +140,7 @@ def start_web(dev_tools: Annotated[bool, DEV_TOOLS_OPTION] = False) -> None:
     _require_web_dependencies(console)
     config, paths = load_config()
 
-    pid_file = _get_pid_file(paths.data_dir)
+    pid_file = paths.web_pid_file
     recorded_pid = _running_pid(pid_file, config.web.port)
     if recorded_pid is not None:
         console.print(f"[yellow]Web server is already running (PID: {recorded_pid}).[/yellow]")
@@ -206,7 +202,7 @@ def start_web(dev_tools: Annotated[bool, DEV_TOOLS_OPTION] = False) -> None:
 def stop_web() -> None:
     console = Console()
     config, paths = load_config()
-    pid_file = _get_pid_file(paths.data_dir)
+    pid_file = paths.web_pid_file
     pid = _running_pid(pid_file, config.web.port)
 
     if pid is None:
@@ -247,7 +243,7 @@ def restart_web(dev_tools: Annotated[bool, DEV_TOOLS_OPTION] = False) -> None:
 def status_web() -> None:
     console = Console()
     config, paths = load_config()
-    pid_file = _get_pid_file(paths.data_dir)
+    pid_file = paths.web_pid_file
     web_config = config.web
     url = display_web_url(web_config.host, web_config.port)
     pid = _running_pid(pid_file, web_config.port)

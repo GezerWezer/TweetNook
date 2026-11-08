@@ -20,7 +20,7 @@ from typing import Annotated
 import typer
 
 from tweetnook import __version__
-from tweetnook.config import WebConfig, resolve_paths
+from tweetnook.config import WebConfig, XDGPaths, resolve_paths
 from tweetnook.core.exceptions import ARCHIVE_UPGRADE_NOTICE
 from tweetnook.core.fileio import atomic_write_text
 from tweetnook.jobs.supervisor import SERVICE_STOP_TIMEOUT
@@ -167,10 +167,11 @@ def _is_tweetnook_serve_process(pid: int) -> bool:
 
 
 def _manual_web_pid() -> int | None:
-    data_home = _service_environment().get("XDG_DATA_HOME")
-    if not data_home:
+    environment = _service_environment()
+    # Without the unit's own data home this would read the invoking user's archive.
+    if not environment.get("XDG_DATA_HOME"):
         return None
-    pid_file = Path(data_home) / "tweetnook" / ".web.pid"
+    pid_file = resolve_paths(environment).web_pid_file
     try:
         pid = int(pid_file.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
@@ -300,9 +301,9 @@ def _wait_for_service_web(host: str, port: int, *, alive) -> None:
     )
 
 
-def _archive_upgrade_failure(data_dir: Path) -> str | None:
+def _archive_upgrade_failure(paths: XDGPaths) -> str | None:
     try:
-        notices = json.loads((data_dir / "notices.json").read_text())
+        notices = json.loads(paths.notices_file.read_text())
     except (OSError, ValueError):
         return None
     for notice in notices if isinstance(notices, list) else []:
@@ -439,7 +440,7 @@ def finish_update(
             err=True,
         )
         raise typer.Exit(1) from exc
-    if failure := _archive_upgrade_failure(paths.data_dir):
+    if failure := _archive_upgrade_failure(paths):
         typer.echo(f"TweetNook {__version__} is installed, but: {failure}", err=True)
         raise typer.Exit(1)
     if from_version == __version__:

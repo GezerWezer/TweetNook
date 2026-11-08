@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from tweetnook.config import WEB_PID_FILENAME
 from tweetnook.core.fileio import atomic_write_json
 from tweetnook.core.process_identity import ProcessIdentity, process_identity
 
@@ -52,7 +53,7 @@ def forget_web_process(data_dir: Path, identity: ProcessIdentity) -> None:
         return
     if recorded == identity:
         (data_dir / f".web-process-{identity.pid}.json").unlink(missing_ok=True)
-    pid_file = data_dir / ".web.pid"
+    pid_file = data_dir / WEB_PID_FILENAME
     try:
         if pid_file.read_text().strip() == str(identity.pid):
             pid_file.unlink(missing_ok=True)

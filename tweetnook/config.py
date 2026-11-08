@@ -36,6 +36,7 @@ QUERY_ID_CACHE_FILENAME = "query-ids.json"
 LOCK_FILENAME = "sync.lock"
 ACTIVITY_STATUS_FILENAME = "activity-status.json"
 COMMAND_LOCK_FILENAME = "command.lock"
+WEB_PID_FILENAME = ".web.pid"
 DB_FILENAME = "archive.db"
 DEFAULT_SQLITE_CACHE_SIZE_KB = 512 * 1024
 DEFAULT_SQLITE_MMAP_SIZE_BYTES = 1024**3
@@ -357,6 +358,10 @@ class XDGPaths(BaseModel):
     @property
     def command_lock_file(self) -> Path:
         return self.data_dir / COMMAND_LOCK_FILENAME
+
+    @property
+    def web_pid_file(self) -> Path:
+        return self.data_dir / WEB_PID_FILENAME
 
     @property
     def staged_archive_file(self) -> Path:

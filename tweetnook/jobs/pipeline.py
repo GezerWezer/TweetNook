@@ -22,6 +22,7 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
+from tweetnook.config import COMMAND_LOCK_FILENAME
 from tweetnook.core.fileio import atomic_write_text
 from tweetnook.core.process_identity import ProcessIdentity, process_identity
 from tweetnook.jobs.outcome import Outcome
@@ -378,7 +379,7 @@ class PipelineReporter:
             from tweetnook.core.locking import ProcessLock
 
             command_lock = ProcessLock(
-                self.state_path.with_name("command.lock"),
+                self.state_path.with_name(COMMAND_LOCK_FILENAME),
                 conflict_message=(
                     "Another tweetnook command is already running. Wait for it to finish "
                     "before starting sync, import, or enrichment work."
