@@ -204,7 +204,8 @@ def missing_web_tweet(tweet_id: str) -> dict[str, Any]:
     return tweet
 
 
-def _media_payload(row: dict[str, Any], raw_tweet: dict[str, Any] | None = None) -> dict[str, Any]:
+def media_payload(row: dict[str, Any], raw_tweet: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The media fields a feed card reads, from a saved media row."""
     payload = {
         "source": row.get("source"),
         "type": row.get("media_type"),
@@ -437,7 +438,7 @@ def _attach_targets(
                 if media_source_raw is None:
                     media_source_raw = attached.get("raw_json")
                 attached["media"] = [
-                    _media_payload(row, media_source_raw) for row in media_by_id[target_id][:10]
+                    media_payload(row, media_source_raw) for row in media_by_id[target_id][:10]
                 ]
             if target_id:
                 attached["media_tags"] = tags_by_id.get(target_id)

@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from tweetnook.core import fastjson
+from tweetnook.web.availability import media_payload
 
 
 def _dict(value: Any) -> dict[str, Any]:
@@ -23,20 +24,10 @@ def _dict(value: Any) -> dict[str, Any]:
 def _media(row: dict[str, Any]) -> dict[str, Any]:
     raw = _dict(row.get("raw_json"))
     return {
+        **media_payload(row),
         "media_key": row.get("media_key"),
         "media_id": raw.get("media_id"),
-        "source": row.get("source"),
-        "type": row.get("media_type"),
-        "url": row.get("media_url"),
-        "thumbnail_url": row.get("thumbnail_url"),
-        "width": row.get("width"),
-        "height": row.get("height"),
-        "duration_millis": row.get("duration_millis"),
         "alt_text": raw.get("alt_text") or "",
-        "download": {
-            "local_path": row.get("local_path"),
-            "thumbnail_local_path": row.get("thumbnail_local_path"),
-        },
     }
 
 

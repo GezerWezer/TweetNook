@@ -10,7 +10,6 @@ from fastapi.responses import Response
 
 from tweetnook.core import fastjson
 from tweetnook.core.collection_names import normalize_collection_name
-from tweetnook.core.media_metadata import aspect_ratio_for_media
 from tweetnook.storage.search_query import (
     SearchCursorExpiredError,
     SearchQueryError,
@@ -18,7 +17,12 @@ from tweetnook.storage.search_query import (
     parse_search_query,
     search_posts,
 )
-from tweetnook.web.availability import annotate_web_tweets, missing_web_tweet, slim_web_tweets
+from tweetnook.web.availability import (
+    annotate_web_tweets,
+    media_payload,
+    missing_web_tweet,
+    slim_web_tweets,
+)
 from tweetnook.web.deps import require_store, verify_credentials
 from tweetnook.web.history import tweet_history, tweet_note_history
 
@@ -245,51 +249,29 @@ def api_tweet_thread(
             if row.get("tweet_id"):
                 media_by_tweet_id.setdefault(row["tweet_id"], []).append(row)
 
-        def thread_media_payload(row, raw_tweet):
-            payload = {
-                "source": row.get("source"),
-                "type": row.get("media_type"),
-                "url": row.get("media_url"),
-                "thumbnail_url": row.get("thumbnail_url"),
-                "width": row.get("width"),
-                "height": row.get("height"),
-                "duration_millis": row.get("duration_millis"),
-                "download": {
-                    "local_path": row.get("local_path"),
-                    "thumbnail_local_path": row.get("thumbnail_local_path"),
-                },
-            }
-            aspect_ratio = aspect_ratio_for_media(
-                raw_tweet, row.get("position"), row.get("media_type")
-            )
-            if aspect_ratio is not None:
-                payload["aspect_ratio"] = aspect_ratio
-            return payload
-
-        formatted = {}
-        for obj in objs:
-            tid = obj["tweet_id"]
-            t_media = media_by_tweet_id.get(tid, [])
-            raw_json = raw_by_tweet_id.get(tid)
-
-            formatted[tid] = {
+        def thread_tweet(tid: str, row: dict, raw_json: dict | None) -> dict:
+            return {
                 "tweet_id": tid,
-                "text": obj.get("text", ""),
+                "text": row.get("text") or "",
                 "collections": col_dict.get(tid, []),
                 "author": {
-                    "id": obj.get("author_id"),
-                    "username": obj.get("author_username"),
-                    "display_name": obj.get("author_display_name"),
+                    "id": row.get("author_id"),
+                    "username": row.get("author_username"),
+                    "display_name": row.get("author_display_name"),
                 },
-                "created_at": obj.get("created_at"),
-                "synced_at": obj.get("synced_at"),
-                "media": [thread_media_payload(m, raw_json) for m in t_media],
+                "created_at": row.get("created_at"),
+                "synced_at": row.get("synced_at"),
+                "media": [media_payload(item, raw_json) for item in media_by_tweet_id.get(tid, [])],
                 "raw_json": raw_json,
                 "qt_media": [],
                 "qt_media_tags": None,
                 "media_tags": tags_dict.get(tid),
             }
 
+        formatted = {}
+        for obj in objs:
+            tid = obj["tweet_id"]
+            formatted[tid] = thread_tweet(tid, obj, raw_by_tweet_id.get(tid))
         for tid, membership in membership_by_id.items():
             if tid in formatted:
                 continue
@@ -301,25 +283,7 @@ def api_tweet_thread(
                         raw_json = parsed_raw
                 except (TypeError, json.JSONDecodeError):
                     pass
-            formatted[tid] = {
-                "tweet_id": tid,
-                "text": membership.get("text") or "",
-                "collections": col_dict.get(tid, []),
-                "author": {
-                    "id": membership.get("author_id"),
-                    "username": membership.get("author_username"),
-                    "display_name": membership.get("author_display_name"),
-                },
-                "created_at": membership.get("created_at"),
-                "synced_at": membership.get("synced_at"),
-                "media": [
-                    thread_media_payload(item, raw_json) for item in media_by_tweet_id.get(tid, [])
-                ],
-                "raw_json": raw_json,
-                "qt_media": [],
-                "qt_media_tags": None,
-                "media_tags": tags_dict.get(tid),
-            }
+            formatted[tid] = thread_tweet(tid, membership, raw_json)
 
         known_relation_ids = set(ancestor_ids) | {
             value
