@@ -8,7 +8,8 @@ from dataclasses import dataclass
 
 import httpx
 
-from tweetnook.client.base import request_with_backoff
+from tweetnook.auth import ResolvedAuthBundle
+from tweetnook.client.base import build_async_client, request_with_backoff
 from tweetnook.client.timelines import build_tweet_detail_url
 from tweetnook.config import SyncConfig, XDGPaths
 from tweetnook.core.operations import TWEET_DETAIL
@@ -54,17 +55,20 @@ class TweetDetailRequester:
         )
 
 
-async def resolve_detail_query_ids(
+async def open_detail_requester(
     paths: XDGPaths,
+    auth_bundle: ResolvedAuthBundle,
+    sync: SyncConfig,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
-) -> tuple[QueryIdStore, dict[str, str]]:
-    """Load the TweetDetail query ID, rediscovering it when the saved one has gone stale."""
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> TweetDetailRequester:
+    """Load the TweetDetail query ID (rediscovering a stale one) and open a signed-in client.
+
+    The caller closes ``requester.client``.
+    """
 
     query_store = QueryIdStore(paths)
-    query_ids = await resolve_query_ids(
-        query_store,
-        [TWEET_DETAIL],
-        transport=transport,
-    )
-    return query_store, query_ids
+    query_ids = await resolve_query_ids(query_store, [TWEET_DETAIL], transport=transport)
+    client = build_async_client(auth_bundle, timeout=sync.timeout, transport=transport)
+    return TweetDetailRequester(client, query_store, query_ids, sync, sleep=sleep)

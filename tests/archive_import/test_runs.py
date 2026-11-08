@@ -43,7 +43,7 @@ def test_import_x_archive_detail_api_errors_become_transient_failures(
     async def fake_resolve_query_ids(*_args, **_kwargs):
         return {"TweetDetail": "detail-query-id"}
 
-    async def fake_fetch_page(*_args, **_kwargs):
+    async def fake_request(*_args, **_kwargs):
         raise APIResponseError("server error", status_code=500)
 
     class DummyClient:
@@ -53,9 +53,9 @@ def test_import_x_archive_detail_api_errors_become_transient_failures(
     monkeypatch.setattr(archive_enrich, "_run_live_reconciliation", fake_reconciliation)
     monkeypatch.setattr(client_detail, "resolve_query_ids", fake_resolve_query_ids)
     monkeypatch.setattr(
-        archive_enrich, "build_async_client", lambda *_args, **_kwargs: DummyClient()
+        client_detail, "build_async_client", lambda *_args, **_kwargs: DummyClient()
     )
-    monkeypatch.setattr(client_detail, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(client_detail, "request_with_backoff", fake_request)
 
     result = asyncio.run(
         import_x_archive(
@@ -93,7 +93,7 @@ def test_import_x_archive_detail_stale_query_id_aborts_and_leaves_row_untouched(
     async def fake_resolve_query_ids(*_args, **_kwargs):
         return {"TweetDetail": "detail-query-id"}
 
-    async def fake_fetch_page(*_args, **_kwargs):
+    async def fake_request(*_args, **_kwargs):
         raise StaleQueryIdError("stale query id", status_code=404)
 
     class DummyClient:
@@ -103,9 +103,9 @@ def test_import_x_archive_detail_stale_query_id_aborts_and_leaves_row_untouched(
     monkeypatch.setattr(archive_enrich, "_run_live_reconciliation", fake_reconciliation)
     monkeypatch.setattr(client_detail, "resolve_query_ids", fake_resolve_query_ids)
     monkeypatch.setattr(
-        archive_enrich, "build_async_client", lambda *_args, **_kwargs: DummyClient()
+        client_detail, "build_async_client", lambda *_args, **_kwargs: DummyClient()
     )
-    monkeypatch.setattr(client_detail, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(client_detail, "request_with_backoff", fake_request)
 
     with pytest.raises(archive_enrich.ArchiveEnrichmentAborted, match="stale query id") as exc:
         asyncio.run(

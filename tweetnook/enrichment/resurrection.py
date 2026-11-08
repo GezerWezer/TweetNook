@@ -12,8 +12,8 @@ import httpx
 from rich.console import Console
 
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
-from tweetnook.client.base import AdaptiveRequestPacer, build_async_client
-from tweetnook.client.detail import TweetDetailRequester, resolve_detail_query_ids
+from tweetnook.client.base import AdaptiveRequestPacer
+from tweetnook.client.detail import open_detail_requester
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.operations import TWEET_DETAIL_RESURRECTION
 from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
@@ -366,12 +366,13 @@ async def resurrect_due_tweets(
             auth_bundle = resolve_auth_bundle(config)
             pipeline.status(step_key, "Preparing recovery checks")
 
-        query_store, query_ids = await resolve_detail_query_ids(paths, transport=transport)
+        requester = await open_detail_requester(
+            paths, auth_bundle, config.sync, transport=transport, sleep=sleep
+        )
         pipeline.status(
             step_key,
             "Checking an unavailable tweet",
         )
-        client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
         run = _ResurrectionRun(
             store=store,
             budget=budget,
@@ -384,9 +385,7 @@ async def resurrect_due_tweets(
         retry_status, pacing_status = detail_reporters(step_key, label="Resurrection")
         try:
             await DetailExecutor(
-                requester=TweetDetailRequester(
-                    client, query_store, query_ids, config.sync, sleep=sleep
-                ),
+                requester=requester,
                 pacer=AdaptiveRequestPacer(config.sync.detail_delay),
                 gone_is_unavailable=True,
                 buffer=run.buffer,
@@ -401,7 +400,7 @@ async def resurrect_due_tweets(
             )
         finally:
             try:
-                await client.aclose()
+                await requester.client.aclose()
             finally:
                 run.flush()
 

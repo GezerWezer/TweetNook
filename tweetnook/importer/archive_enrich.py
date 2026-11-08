@@ -14,8 +14,8 @@ from rich.console import Console
 
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
 from tweetnook.client import fxtwitter
-from tweetnook.client.base import AdaptiveRequestPacer, build_async_client
-from tweetnook.client.detail import TweetDetailRequester, resolve_detail_query_ids
+from tweetnook.client.base import AdaptiveRequestPacer
+from tweetnook.client.detail import open_detail_requester
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.exceptions import (
     ArchiveNotFoundError,
@@ -612,15 +612,15 @@ async def _enrich_pending_rows(
         )
         try:
             if auth_bundle is not None:
-                query_store, query_ids = await resolve_detail_query_ids(paths, transport=transport)
-                client = build_async_client(
-                    auth_bundle, timeout=config.sync.timeout, transport=transport
+                requester = await open_detail_requester(
+                    paths, auth_bundle, config.sync, transport=transport
                 )
+                client = requester.client
                 retry_status, pacing_status = detail_reporters(
                     step_key, label="Enrichment", status=status
                 )
                 executor = DetailExecutor(
-                    requester=TweetDetailRequester(client, query_store, query_ids, config.sync),
+                    requester=requester,
                     pacer=AdaptiveRequestPacer(config.sync.detail_delay),
                     gone_is_unavailable=True,
                     buffer=run.buffer,

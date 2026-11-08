@@ -425,7 +425,7 @@ async def test_resurrection_flushes_buffered_work_when_client_close_fails(
         return httpx.Response(200, json=payload, request=httpx.Request("GET", args[1]))
 
     monkeypatch.setattr(
-        resurrection,
+        client_detail,
         "build_async_client",
         lambda *_args, **_kwargs: FailingCloseClient(),
     )
@@ -613,7 +613,7 @@ async def test_account_recovery_boost_stays_inside_global_budget(
     monkeypatch.setattr(resurrection, "locked_archive_job", fake_locked_archive_job)
     monkeypatch.setattr(client_detail, "QueryIdStore", FakeQueryStore)
     monkeypatch.setattr(client_detail, "resolve_query_ids", fake_resolve_query_ids)
-    monkeypatch.setattr(resurrection, "build_async_client", lambda *_args, **_kwargs: FakeClient())
+    monkeypatch.setattr(client_detail, "build_async_client", lambda *_args, **_kwargs: FakeClient())
     monkeypatch.setattr(client_detail, "request_with_backoff", fake_request)
 
     result = await resurrection.resurrect_due_tweets(

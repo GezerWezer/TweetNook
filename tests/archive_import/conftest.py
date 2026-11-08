@@ -362,7 +362,7 @@ class DetailEnrichment:
         self.paths = paths
         self.requested: list[str] = []
         self.dirty: list[tuple[int, int]] = []
-        # No retries, so a transport failure is final without fetch_page's real backoff.
+        # No retries, so a transport failure is final without the client's real backoff.
         self.config = AppConfig(sync=SyncConfig(detail_delay=0.0, detail_max_retries=0))
         QueryIdStore(paths).save({"TweetDetail": "detail-query-id"})
         flush = ArchiveStore.flush

@@ -10,8 +10,8 @@ import httpx
 from rich.console import Console
 
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
-from tweetnook.client.base import AdaptiveRequestPacer, build_async_client
-from tweetnook.client.detail import TweetDetailRequester, resolve_detail_query_ids
+from tweetnook.client.base import AdaptiveRequestPacer
+from tweetnook.client.detail import open_detail_requester
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.exceptions import ConfigError
 from tweetnook.core.extractor import extract_status_id_from_url
@@ -430,10 +430,11 @@ async def expand_threads(
             _log_threads(console, "resolving auth bundle")
             auth_bundle = resolve_auth_bundle(config)
         _log_threads(console, "resolving TweetDetail query ID")
-        query_store, query_ids = await resolve_detail_query_ids(paths, transport=transport)
+        requester = await open_detail_requester(
+            paths, auth_bundle, config.sync, transport=transport, sleep=sleep
+        )
         attempted_targets: set[str] = set()
         attempted_reply_count = 0
-        client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
         selected_total = min(pending_total, limit) if limit is not None else pending_total
         scanned = 0
 
@@ -491,9 +492,7 @@ async def expand_threads(
 
         try:
             await DetailExecutor(
-                requester=TweetDetailRequester(
-                    client, query_store, query_ids, config.sync, sleep=sleep
-                ),
+                requester=requester,
                 pacer=AdaptiveRequestPacer(config.sync.detail_delay),
                 retry_status=lambda tweet_id, message: _log_thread_status(
                     console, tweet_id, message
@@ -501,7 +500,7 @@ async def expand_threads(
                 sleep=sleep,
             ).run(select_targets(), tweet_id_of=lambda target: target[0], record=record)
         finally:
-            await client.aclose()
+            await requester.client.aclose()
 
         pipeline.update_step(
             step_key,

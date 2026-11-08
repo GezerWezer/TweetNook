@@ -10,8 +10,8 @@ import httpx
 from rich.console import Console
 
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
-from tweetnook.client.base import AdaptiveRequestPacer, build_async_client
-from tweetnook.client.detail import TweetDetailRequester, resolve_detail_query_ids
+from tweetnook.client.base import AdaptiveRequestPacer
+from tweetnook.client.detail import open_detail_requester
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.enrichment.detail import (
     DetailAvailable,
@@ -103,16 +103,15 @@ async def refresh_articles(
             pipeline.status(step_key, "Preparing article refresh")
 
         emit_status(status, "resolving TweetDetail query ID")
-        query_store, query_ids = await resolve_detail_query_ids(paths, transport=transport)
+        requester = await open_detail_requester(
+            paths, auth_bundle, config.sync, transport=transport, sleep=sleep
+        )
         pipeline.status(step_key, "Refreshing an article")
 
         retry_status, pacing_status = detail_reporters(step_key, label="Article", status=status)
-        client = build_async_client(auth_bundle, timeout=config.sync.timeout, transport=transport)
         try:
             executor = DetailExecutor(
-                requester=TweetDetailRequester(
-                    client, query_store, query_ids, config.sync, sleep=sleep
-                ),
+                requester=requester,
                 pacer=AdaptiveRequestPacer(config.sync.detail_delay),
                 retry_status=retry_status,
                 pacing_status=pacing_status,
@@ -170,7 +169,7 @@ async def refresh_articles(
 
                 await executor.run(pending_ids(), tweet_id_of=str, record=record)
         finally:
-            await client.aclose()
+            await requester.client.aclose()
         pipeline.complete_step(
             step_key,
             _pipeline_outcomes(result, final=True),
