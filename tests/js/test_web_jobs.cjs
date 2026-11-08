@@ -24,10 +24,10 @@ test('activity drawer loads any pipeline and starts production jobs', async () =
     let stopped = false;
     context.fetch = async (url, options = {}) => {
         calls.push([url, options.method || 'GET']);
-        if (url === '/api/activity/import') {
+        if (url === '/api/jobs/enrich/run') {
             active = true;
             stopped = false;
-            return { ok: true, json: async () => ({ started: true, kind: 'import', run_id: 'run' }) };
+            return { ok: true, json: async () => ({ started: true, kind: 'enrich', run_id: 'run' }) };
         }
         if (url === '/api/activity/stop') {
             active = false;
@@ -83,8 +83,8 @@ test('activity drawer loads any pipeline and starts production jobs', async () =
     assert.equal(app.lastActivity.title, 'tweetnook import enrich');
     assert.equal(app.activitySchedule.relative, 'Not configured');
     app.activityPageKey = '__summary__';
-    await app.startActivity('import');
-    assert.ok(calls.some(([url, method]) => url === '/api/activity/import' && method === 'POST'));
+    await app.startActivity('enrich');
+    assert.ok(calls.some(([url, method]) => url === '/api/jobs/enrich/run' && method === 'POST'));
     assert.equal(app.activityStartPending, false);
     assert.equal(app.activityStartingKind, null);
     assert.equal(app.activityPageKey, null);

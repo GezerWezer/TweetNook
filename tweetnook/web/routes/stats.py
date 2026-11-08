@@ -6,8 +6,6 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from tweetnook.stats import (
-    build_stats_report,
-    build_stats_section,
     get_enrichment_incomplete_count,
     get_latest_sync_at,
 )
@@ -58,7 +56,7 @@ def _format_stats_timestamp(raw: str | None) -> str:
         return raw
 
 
-def _legacy_summary(data: dict[str, Any]) -> dict[str, Any]:
+def _summary_payload(data: dict[str, Any]) -> dict[str, Any]:
     result = dict(data)
     for key in ("oldest_post", "newest_post", "latest_sync"):
         result[key] = _format_ts(result[key])
@@ -68,7 +66,7 @@ def _legacy_summary(data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _legacy_collections(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _collections_payload(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
             **row,
@@ -80,7 +78,7 @@ def _legacy_collections(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def _legacy_health(data: dict[str, Any]) -> dict[str, Any]:
+def _health_payload(data: dict[str, Any]) -> dict[str, Any]:
     result = dict(data)
     result.pop("missing_tweet_objects", None)
     result.pop("pending_thread_memberships", None)
@@ -98,9 +96,9 @@ def _cached_snapshot_payload(cached: CachedStatsReport) -> dict[str, Any]:
         "age_seconds": round(cached.age_seconds, 1),
         "refreshing": cached.refreshing,
         "refresh_failed": cached.refresh_failed,
-        "summary": _legacy_summary(report.section("overview").data),
-        "collections": _legacy_collections(report.section("collections").rows),
-        "health": _legacy_health(report.section("archive_status").data),
+        "summary": _summary_payload(report.section("overview").data),
+        "collections": _collections_payload(report.section("collections").rows),
+        "health": _health_payload(report.section("archive_status").data),
         "storage": report.section("storage").data,
         "tags": report.section("tagging").data,
         "insights": report.section("insights").data,
@@ -115,14 +113,6 @@ def _cached_status_payload(cached: CachedStatsReport) -> dict[str, Any]:
         "refreshing": cached.refreshing,
         "refresh_failed": cached.refresh_failed,
     }
-
-
-@router.get("/report")
-def get_stats_report(
-    store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
-) -> dict[str, Any]:
-    """Return the complete ordered report consumed by both interfaces."""
-    return build_stats_report(store).as_dict()
 
 
 @router.get("/snapshot")
@@ -163,35 +153,3 @@ def get_latest_sync(
 ) -> dict[str, str | None]:
     """Return only the inexpensive page-header sync timestamp."""
     return {"latest_sync": _format_ts(get_latest_sync_at(store))}
-
-
-@router.get("/summary")
-def get_stats_summary(
-    store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
-) -> dict[str, Any]:
-    """Return the legacy overview payload."""
-    return _legacy_summary(build_stats_section(store, "overview").data)
-
-
-@router.get("/collections")
-def get_stats_collections(
-    store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
-) -> list[dict[str, Any]]:
-    """Return the legacy collections payload."""
-    return _legacy_collections(build_stats_section(store, "collections").rows)
-
-
-@router.get("/health")
-def get_stats_health(
-    store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
-) -> dict[str, Any]:
-    """Return the legacy archive-status payload."""
-    return _legacy_health(build_stats_section(store, "archive_status").data)
-
-
-@router.get("/tags")
-def get_stats_tags(
-    store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
-) -> dict[str, Any]:
-    """Return the legacy tagging payload."""
-    return build_stats_section(store, "tagging").data

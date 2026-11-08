@@ -8,12 +8,24 @@ from types import SimpleNamespace
 
 import pytest
 
-from tweetnook.stats import STATS_SECTION_SPECS, build_stats_report
+from tweetnook.stats import build_stats_report, build_stats_section
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.report_facts import StatisticsFacts
 from tweetnook.storage.stats import ArchiveCollectionStats, ArchiveStats
 from tweetnook.web.routes import stats as stats_routes
 from tweetnook.web.stats_cache import WebStatsCache
+
+
+@pytest.fixture(autouse=True)
+def fresh_stats_cache(monkeypatch):
+    # The shared cache is keyed by id(store), which a later test's store can reuse.
+    monkeypatch.setattr(stats_routes, "web_stats_cache", WebStatsCache())
+
+
+def _snapshot_section(client, key: str):
+    response = client.get("/api/stats/snapshot")
+    assert response.status_code == 200
+    return response.json()[key]
 
 
 def _stats_store(tmp_path: Path) -> ArchiveStore:
@@ -109,10 +121,9 @@ def test_summary_reports_counts_ranges_owner_and_latest_sync(tmp_path, make_web_
     )
     client = make_web_client(stats_routes.router, store=store)
 
-    response = client.get("/api/stats/summary")
+    data = _snapshot_section(client, "summary")
 
-    assert response.status_code == 200
-    assert response.json() == {
+    assert data == {
         "owner_user_id": "owner-42",
         "unique_posts": 2,
         "articles": 1,
@@ -133,7 +144,7 @@ def test_summary_uses_empty_defaults(tmp_path, make_web_client) -> None:
     store = _stats_store(tmp_path)
     client = make_web_client(stats_routes.router, store=store)
 
-    data = client.get("/api/stats/summary").json()
+    data = _snapshot_section(client, "summary")
 
     assert data == {
         "owner_user_id": "Local Vault",
@@ -150,23 +161,6 @@ def test_summary_uses_empty_defaults(tmp_path, make_web_client) -> None:
         "newest_post": None,
         "latest_sync": None,
     }
-
-
-def test_report_exposes_the_shared_ordered_section_registry(tmp_path, make_web_client) -> None:
-    store = _stats_store(tmp_path)
-    client = make_web_client(stats_routes.router, store=store)
-
-    response = client.get("/api/stats/report")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert [section["id"] for section in data["sections"]] == [
-        spec.id for spec in STATS_SECTION_SPECS
-    ]
-    assert [section["title"] for section in data["sections"]] == [
-        spec.title for spec in STATS_SECTION_SPECS
-    ]
-    assert data["archive_path"] == str(store.db_path)
 
 
 def test_cached_snapshot_serves_old_data_during_manual_refresh(
@@ -268,8 +262,10 @@ def test_latest_sync_endpoint_avoids_full_statistics_collection(
     )
     monkeypatch.setattr(
         stats_routes,
-        "build_stats_section",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("full stats called")),
+        "web_stats_cache",
+        WebStatsCache(
+            builder=lambda _store: (_ for _ in ()).throw(AssertionError("full stats called"))
+        ),
     )
     client = make_web_client(stats_routes.router, store=store)
 
@@ -292,7 +288,7 @@ def test_format_stats_timestamp(raw: str | None, expected: str) -> None:
     assert stats_routes._format_stats_timestamp(raw) == expected
 
 
-def test_collections_formats_names_and_backfill_states(make_web_client) -> None:
+def test_collections_formats_names_and_backfill_states() -> None:
     archive_stats = ArchiveStats(
         collections=[
             ArchiveCollectionStats(
@@ -320,12 +316,8 @@ def test_collections_formats_names_and_backfill_states(make_web_client) -> None:
         ),
     )
     store.read_snapshot = lambda: nullcontext(store)
-    client = make_web_client(stats_routes.router, store=store)
 
-    response = client.get("/api/stats/collections")
-
-    assert response.status_code == 200
-    rows = response.json()
+    rows = stats_routes._collections_payload(build_stats_section(store, "collections").rows)
     assert [(row["collection"], row["count"], row["backfill_status"]) for row in rows] == [
         ("Bookmarks", 3, "resume older"),
         ("Likes", 2, "incomplete"),
@@ -376,10 +368,9 @@ def test_health_reports_pipeline_counts(tmp_path, make_web_client) -> None:
     )
     client = make_web_client(stats_routes.router, store=store)
 
-    response = client.get("/api/stats/health")
+    data = _snapshot_section(client, "health")
 
-    assert response.status_code == 200
-    assert response.json() == {
+    assert data == {
         "enrichment": {
             "available": 3,
             "done": 2,
@@ -395,14 +386,14 @@ def test_health_reports_pipeline_counts(tmp_path, make_web_client) -> None:
                 "due": 1,
                 "delayed": 0,
                 "permanent": 0,
-                "reasons": response.json()["enrichment"]["unavailable"]["reasons"],
+                "reasons": data["enrichment"]["unavailable"]["reasons"],
             },
         },
         "threads_expanded": 2,
         "preview_articles": 1,
     }
     reasons = {
-        item["reason"]: item for item in response.json()["enrichment"]["unavailable"]["reasons"]
+        item["reason"]: item for item in data["enrichment"]["unavailable"]["reasons"]
     }
     assert list(reasons) == [
         "protected_account",
@@ -453,7 +444,7 @@ def test_health_breaks_unavailable_tweets_down_by_reason_and_retry_state(
     )
     client = make_web_client(stats_routes.router, store=store)
 
-    data = client.get("/api/stats/health").json()["enrichment"]["unavailable"]
+    data = _snapshot_section(client, "health")["enrichment"]["unavailable"]
 
     assert data == {
         "total": 4,
@@ -508,10 +499,8 @@ def test_tag_stats_reports_case_insensitive_usage_and_coverage(tmp_path, make_we
     )
     client = make_web_client(stats_routes.router, store=store)
 
-    response = client.get("/api/stats/tags")
+    data = _snapshot_section(client, "tags")
 
-    assert response.status_code == 200
-    data = response.json()
     assert data == {
         "eligible_tweets": 4,
         "tagged_tweets": 2,
@@ -533,7 +522,7 @@ def test_tag_stats_handles_empty_archive(tmp_path, make_web_client) -> None:
     store = _stats_store(tmp_path)
     client = make_web_client(stats_routes.router, store=store)
 
-    data = client.get("/api/stats/tags").json()
+    data = _snapshot_section(client, "tags")
 
     assert data["coverage_pct"] == 0.0
     assert data["avg_tags_per_tweet"] == 0.0
@@ -555,7 +544,7 @@ def test_tag_stats_require_a_nonempty_tags_array(tmp_path, make_web_client) -> N
     )
     client = make_web_client(stats_routes.router, store=store)
 
-    data = client.get("/api/stats/tags").json()
+    data = _snapshot_section(client, "tags")
 
     assert data["tagged_tweets"] == 1
     assert data["untagged_eligible"] == 2
@@ -598,8 +587,8 @@ def test_summary_and_health_follow_real_archive_schema(tmp_path, make_web_client
     )
     client = make_web_client(stats_routes.router, store=store)
 
-    summary = client.get("/api/stats/summary").json()
-    health = client.get("/api/stats/health").json()
+    summary = _snapshot_section(client, "summary")
+    health = _snapshot_section(client, "health")
 
     assert summary["unique_posts"] == 1
     assert summary["latest_sync"] == "Jun 15, 2025"
@@ -614,6 +603,6 @@ def test_stats_routes_require_authentication(tmp_path, make_web_client) -> None:
         password="secret",
     )
 
-    response = client.get("/api/stats/summary")
+    response = client.get("/api/stats/snapshot")
 
     assert response.status_code == 401

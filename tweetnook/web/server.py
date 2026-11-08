@@ -41,7 +41,6 @@ from tweetnook.web.routes.jobs import router as jobs_router
 from tweetnook.web.routes.notices import router as notices_router
 from tweetnook.web.routes.setup import router as setup_router
 from tweetnook.web.routes.stats import router as stats_router
-from tweetnook.web.routes.storage_stats import router as storage_stats_router
 from tweetnook.web.routes.tags import router as tags_router
 from tweetnook.web.routes.tweets import router as tweets_router
 from tweetnook.web.runtime_config import lifecycle_lock as _lifecycle_lock
@@ -282,20 +281,6 @@ async def gate_initial_setup(request: Request, call_next):
                 status_code=409,
                 content={"detail": {"code": "setup_required", "message": "Complete Setup first."}},
             )
-        if (
-            coordinator.state.completed
-            and not archive_is_ready()
-            and path in {"/api/activity/sync", "/api/activity/enrich", "/api/activity/import"}
-        ):
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "detail": {
-                        "code": "archive_not_ready",
-                        "message": "Initialize the archive from Setup first.",
-                    }
-                },
-            )
     return await call_next(request)
 
 
@@ -305,7 +290,6 @@ app.include_router(tags_router)
 app.include_router(config_router)
 app.include_router(stats_router)
 app.include_router(avatars_router)
-app.include_router(storage_stats_router)
 app.include_router(activity_router)
 app.include_router(jobs_router)
 app.include_router(setup_router)

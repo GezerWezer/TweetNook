@@ -194,7 +194,7 @@ test('incomplete enrichment starts the fixed Web action and refreshes status', a
     const requests = [];
     context.fetch = async (url, options = {}) => {
         requests.push([url, options.method || 'GET']);
-        if (url === '/api/activity/enrich') {
+        if (url === '/api/jobs/enrich/run') {
             return {ok: true, json: async () => ({started: true, kind: 'enrich', run_id: 'run'})};
         }
         throw new Error(`unexpected request: ${url}`);
@@ -208,7 +208,7 @@ test('incomplete enrichment starts the fixed Web action and refreshes status', a
 
     await app.startActivity('enrich');
 
-    assert.deepEqual(requests, [['/api/activity/enrich', 'POST']]);
+    assert.deepEqual(requests, [['/api/jobs/enrich/run', 'POST']]);
     assert.equal(activityRefreshes, 1);
     assert.equal(enrichmentRefreshes, 1);
     const html = pageHtml();

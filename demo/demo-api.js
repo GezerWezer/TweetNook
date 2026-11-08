@@ -758,9 +758,6 @@
             if (path.endsWith('/api/activity/status') && method === 'GET') {
                 return jsonResponse({...jobsReplay.status(), schedule: scheduleStatus()});
             }
-            if (path.endsWith('/api/activity/sync') && method === 'POST') {
-                return replayResponse(jobsReplay.start('sync'), 202);
-            }
             if (path.endsWith('/api/activity/stop') && method === 'POST') return replayResponse(jobsReplay.stop(), 202);
             if (path.endsWith('/api/activity/schedule') && method === 'GET') return jsonResponse(scheduleStatus());
             if (path.endsWith('/api/activity/schedule') && method === 'PUT') {

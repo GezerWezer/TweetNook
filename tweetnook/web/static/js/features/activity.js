@@ -278,7 +278,11 @@ function activityMethods() {
             this.activityPageDirection = 'forward';
             this.activityError = null;
             try {
-                const response = await fetch(`/api/activity/${kind}`, { method: 'POST' });
+                const response = await fetch(`/api/jobs/${kind}/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ options: {} }),
+                });
                 if (!response.ok) {
                     const data = await response.json().catch(() => ({}));
                     throw new Error(data.detail || 'Could not start sync');

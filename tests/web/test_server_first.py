@@ -599,7 +599,7 @@ def test_setup_can_finish_while_import_runs_and_scheduler_waits(first_run):
         )
         assert result.status_code == 200
         assert "schedule_manager" not in server_state
-        assert client.get("/api/stats/summary", auth=("x", "secret")).status_code == 503
+        assert client.get("/api/stats/snapshot", auth=("x", "secret")).status_code == 503
         store = open_archive_store(first_run, create=True)
         store.set_import_manifest("test", archive_generation_date=None, status="completed")
         store.close()

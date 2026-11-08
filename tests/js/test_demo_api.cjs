@@ -137,7 +137,7 @@ async function main() {
     // Jobs playback uses representative recorded runs, separate from the browsing fixture.
     let publicReplayClock = 1000;
     const publicReplayStore = api.createStore(publicFixture, {now: () => publicReplayClock});
-    await request(publicReplayStore, 'https://example.test/api/activity/sync', {method: 'POST'});
+    await request(publicReplayStore, 'https://example.test/api/jobs/sync/run', {method: 'POST', body: '{}'});
     publicReplayClock += 152;
     const publicReplay = (await request(publicReplayStore, 'https://example.test/api/activity/status')).body.last_snapshot;
     const publicStep = key => publicReplay.steps.find(step => step.key === key);
@@ -653,7 +653,7 @@ async function main() {
 
     // Logs preserve incremental offsets and every completed run remains inspectable.
     const logStore = api.createStore(fixture, {now: () => clock, config: demoConfig});
-    const logRun = (await request(logStore, 'https://example.test/api/activity/sync', {method: 'POST'})).body.run_id;
+    const logRun = (await request(logStore, 'https://example.test/api/jobs/sync/run', {method: 'POST', body: '{}'})).body.run_id;
     const readLive = async offset => {
         const response = await logStore.handle(`https://example.test/api/activity/runs/${logRun}/log?offset=${offset}`);
         return {text: await response.text(), next: Number(response.headers.get('X-Log-Offset'))};
@@ -687,7 +687,7 @@ async function main() {
     // Selected collections change the plan, while cached browsing tags stay intact.
     const collectionStore = api.createStore(fixture, {now: () => clock, config: demoConfig});
     await request(collectionStore, 'https://example.test/api/config', {method: 'POST', body: JSON.stringify({changes: {'sync.collections': ['tweets']}})});
-    await request(collectionStore, 'https://example.test/api/activity/sync', {method: 'POST'});
+    await request(collectionStore, 'https://example.test/api/jobs/sync/run', {method: 'POST', body: '{}'});
     const collectionSteps = (await request(collectionStore, 'https://example.test/api/activity/status')).body.snapshot.steps;
     assert.equal(collectionSteps[0].key, 'preflight:tweets');
     assert.equal(collectionSteps[0].total, 4);

@@ -12,7 +12,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
-from pydantic import BaseModel, Field
 
 from tweetnook.config import ScheduleConfig, config_error_message
 from tweetnook.core.process_identity import ProcessIdentity
@@ -43,14 +42,6 @@ ARCHIVE_PIPELINE_TITLES = {
     "tweetnook unfurl",
     "tweetnook tag",
 }
-
-
-class ImportRequest(BaseModel):
-    archive: Path
-    regen: bool = False
-    enrich: bool = True
-    detail_lookups: int = Field(default=0, ge=0)
-    sample_limit: int | None = Field(default=None, ge=1)
 
 
 def _process_is_running(pid: Any) -> bool:
@@ -259,67 +250,6 @@ def stop_activity(
             detail="The task could not be stopped.",
         ) from exc
     return {"stopping": True, "run_id": snapshot.get("run_id")}
-
-
-def _start_activity(kind: str, cli_args: list[str], title: str) -> dict[str, Any]:
-    active = read_active_snapshot()
-    if active is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"{active.get('title', 'Another command')} is already running.",
-        )
-    supervisor = server_state.get("job_supervisor")
-    if supervisor is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="The activity service is not initialized.",
-        )
-    try:
-        return supervisor.start(kind=kind, cli_args=cli_args, origin="web", title=title)
-    except JobConflictError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except OSError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not start the worker: {exc}",
-        ) from exc
-
-
-@router.post("/sync", status_code=status.HTTP_202_ACCEPTED)
-def start_sync(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, Any]:
-    return _start_activity("sync", ["sync"], "tweetnook sync")
-
-
-@router.post("/enrich", status_code=status.HTTP_202_ACCEPTED)
-def start_enrich(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, Any]:
-    store = server_state.get("store")
-    if store is not None and store.count_incomplete_initial_enrichment() <= 0:
-        return {
-            "started": False,
-            "kind": "enrich",
-            "reason": "no_pending_enrichment",
-        }
-    return _start_activity("enrich", ["import", "enrich"], "tweetnook import enrich")
-
-
-@router.post("/import", status_code=status.HTTP_202_ACCEPTED)
-def start_import(
-    request: ImportRequest,
-    _auth: Annotated[bool, Depends(verify_credentials)],
-) -> dict[str, Any]:
-    archive = request.archive.expanduser().resolve()
-    if not archive.exists() or (not archive.is_dir() and archive.suffix.lower() != ".zip"):
-        raise HTTPException(status_code=422, detail="Archive must be an existing ZIP or directory.")
-    args = ["import", "x-archive", str(archive)]
-    if request.regen:
-        args.append("--regen")
-    if not request.enrich:
-        args.append("--no-enrich")
-    if request.detail_lookups:
-        args.extend(("--detail-lookups", str(request.detail_lookups)))
-    if request.sample_limit is not None:
-        args.extend(("--sample-limit", str(request.sample_limit)))
-    return _start_activity("import", args, "tweetnook import x-archive")
 
 
 @router.get("/runs")
