@@ -34,7 +34,7 @@ let openDetailLayer = null;
 // uses the same query.
 const PHONE_MEDIA_QUERY = '(max-width: 640px), (pointer: coarse)';
 
-function isPhoneLayout() {
+function isPhoneMediaLayout() {
     return Boolean(window.matchMedia?.(PHONE_MEDIA_QUERY)?.matches);
 }
 
@@ -89,7 +89,7 @@ function tweetNookChangeVideoAudio(video, muted, volume = video.volume) {
 }
 
 function isMobileFullscreenVideo(video) {
-    return Boolean(video?.closest?.('.lightbox-stage')) && isPhoneLayout();
+    return Boolean(video?.closest?.('.lightbox-stage')) && isPhoneMediaLayout();
 }
 
 function tweetNookSyncVideoDuration(video) {
@@ -285,7 +285,7 @@ function tweetNookGalleryScroll(track) {
 // four posts: the avatar becomes (strip top - avatar top - 6pt) tall, centered
 // 18pt below its resting top; strips 54pt or more below keep the full avatar.
 function tweetNookGalleryAvatar(track) {
-    if (!isPhoneLayout() || track.closest('.quote-card')) return;
+    if (!isPhoneMediaLayout() || track.closest('.quote-card')) return;
     const row = track.closest('.feed-card, .thread-row');
     const avatar = row?.querySelector(':scope > .flex > .avatar, :scope > .avatar');
     if (!avatar) return;
@@ -447,7 +447,7 @@ function tweetNookSyncPlayerControls(video) {
 }
 
 function isMobileInlineVideo(video) {
-    return isPhoneLayout()
+    return isPhoneMediaLayout()
         && !video.closest?.('.lightbox-stage') && document.fullscreenElement !== tweetNookVideoPlayer(video);
 }
 
@@ -861,7 +861,7 @@ function tweetNookOpenLightbox(element, index) {
 
 // GIFs play in place on desktop; a phone opens them in the viewer like photos.
 function tweetNookOpenGif(event, video, index) {
-    if (!isPhoneLayout()) return;
+    if (!isPhoneMediaLayout()) return;
     event?.stopPropagation?.();
     tweetNookOpenLightbox(video, index);
 }

@@ -254,7 +254,7 @@ function feedVideoMethods() {
             });
             [...selected].forEach(video => {
                 let decoder = video;
-                if (!this.videoMuted && isPhoneLayout() && audibleFeedDecoders.size > 1 && !audibleFeedDecoders.has(video)) {
+                if (!this.videoMuted && isPhoneMediaLayout() && audibleFeedDecoders.size > 1 && !audibleFeedDecoders.has(video)) {
                     const spare = [...audibleFeedDecoders].find(node => node.isConnected && isFeedVideoPlayer(node)
                         && node !== audibleFeedVideo && node !== autoplayTarget && node.paused && !selected.has(node));
                     if (spare) {
@@ -450,7 +450,7 @@ function feedVideoMethods() {
                 // Explicit play() in the unmute gesture also unlocks this decoder
                 // when Safari paused it while its muted property changed.
                 if (fromGesture && resume) video.play()?.catch?.(() => {});
-                if (fromGesture && isPhoneLayout() && this.videoPlayback === 'autoplay' && !window.navigator?.connection?.saveData) {
+                if (fromGesture && isPhoneMediaLayout() && this.videoPlayback === 'autoplay' && !window.navigator?.connection?.saveData) {
                     audibleFeedDecoders.forEach(node => { if (!node.isConnected) audibleFeedDecoders.delete(node); });
                     if (!audibleFeedDecoders.has(video) && audibleFeedDecoders.size >= VIDEO_WARMUP_LIMIT + 1) {
                         const spare = [...audibleFeedDecoders].find(node => node !== autoplayTarget);
@@ -477,7 +477,7 @@ function feedVideoMethods() {
         // reader-unmuted decoder as the feed advances, including newly appended
         // pages; leave an ordinary paused decoder and poster in the previous tile.
         reuseAudibleFeedVideo(next, video = audibleFeedVideo) {
-            if (this.videoMuted || !isPhoneLayout() || !video || video === next || !next
+            if (this.videoMuted || !isPhoneMediaLayout() || !video || video === next || !next
                 || video.closest?.('.lightbox-stage') || !video.parentElement || !next.parentElement) return next;
             this.restoreVideoResource(video);
             this.restoreVideoResource(next);
@@ -701,7 +701,7 @@ function feedVideoMethods() {
                 // A newer request for the same video owns any resumed playback.
                 const viewerOwnsPlayback = this.lightboxOpen && next.closest?.('.lightbox-stage');
                 if (!stillSelected() && !viewerOwnsPlayback) this.pauseAutoplayVideo(next);
-                if (stillSelected() && !next.muted && isPhoneLayout()) audibleFeedVideo = next;
+                if (stillSelected() && !next.muted && isPhoneMediaLayout()) audibleFeedVideo = next;
                 finish(false);
                 this.updateVideoWarmup();
             };

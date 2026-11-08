@@ -285,7 +285,7 @@ function lightboxMethods() {
 
         isMobileViewer() {
             return Boolean(this.lightboxMedia[this.lightboxIndex])
-                && isPhoneLayout();
+                && isPhoneMediaLayout();
         },
 
         isMobileVideoViewer() {
