@@ -274,9 +274,7 @@ async def test_query_id_discovery_uses_the_replay_source_and_blocks_others(
     try:
         _config, paths = load_config(env)
         configure_replay(ReplayConfig(url="http://source.test:8000", password="pw"))
-        ids = await resolve_query_ids(
-            QueryIdStore(paths), ["Bookmarks"], force_refresh=True, transport=None
-        )
+        ids = await resolve_query_ids(QueryIdStore(paths), ["Bookmarks"], transport=None)
         async with httpx.AsyncClient(transport=client_transport()) as client:
             with pytest.raises(ReplayBlockedError):
                 await client.get("https://example.com/story")

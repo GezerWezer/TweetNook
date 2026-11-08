@@ -55,19 +55,8 @@ _TIMELINE_FIELD_TOGGLES = {
 }
 
 
-def build_bookmarks_features() -> dict[str, bool]:
-    return dict(_TIMELINE_FEATURES)
-
-
-def build_likes_features() -> dict[str, bool]:
-    return dict(_TIMELINE_FEATURES)
-
-
-def build_user_tweets_features() -> dict[str, bool]:
-    return dict(_TIMELINE_FEATURES)
-
-
-def build_tweet_detail_features() -> dict[str, bool]:
+def build_timeline_features() -> dict[str, bool]:
+    """The feature flags every timeline and TweetDetail request sends."""
     return dict(_TIMELINE_FEATURES)
 
 

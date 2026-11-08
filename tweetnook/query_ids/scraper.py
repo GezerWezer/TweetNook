@@ -98,6 +98,12 @@ async def discover_query_ids(
     return {operation: found[operation] for operation in operations if operation in found}
 
 
+def _discovery_client(transport: httpx.AsyncBaseTransport | None = None) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        follow_redirects=True, timeout=20.0, transport=client_transport(transport)
+    )
+
+
 async def refresh_query_ids(
     store: QueryIdStore,
     *,
@@ -106,9 +112,7 @@ async def refresh_query_ids(
 ) -> dict[str, str]:
     operation_list = list(operations)
     close_client = client is None
-    client = client or httpx.AsyncClient(
-        follow_redirects=True, timeout=20.0, transport=client_transport()
-    )
+    client = client or _discovery_client()
     try:
         discovered = await discover_query_ids(client, operations=operation_list)
     except httpx.HTTPStatusError as exc:
@@ -133,15 +137,12 @@ async def resolve_query_ids(
     store: QueryIdStore,
     operations: Sequence[str],
     *,
-    force_refresh: bool,
     transport: httpx.AsyncBaseTransport | None,
 ) -> dict[str, str]:
     ids = {operation: store.get(operation) for operation in operations}
     missing = any(value is None for value in ids.values())
-    if force_refresh or missing or not store.is_fresh(operations=operations):
-        client = httpx.AsyncClient(
-            follow_redirects=True, timeout=20.0, transport=client_transport(transport)
-        )
+    if missing or not store.is_fresh(operations=operations):
+        client = _discovery_client(transport)
         try:
             await refresh_query_ids(store, operations=operations, client=client)
         except QueryIdRefreshError as error:

@@ -420,7 +420,7 @@ async def test_resurrection_flushes_buffered_work_when_client_close_fails(
         async def aclose(self) -> None:
             raise RuntimeError("close failed")
 
-    async def fake_fetch_page(*args, **_kwargs):
+    async def fake_request(*args, **_kwargs):
         payload = make_tweet_detail_response([make_tweet_result("1", "returned", user_id="42")])
         return httpx.Response(200, json=payload, request=httpx.Request("GET", args[1]))
 
@@ -429,7 +429,7 @@ async def test_resurrection_flushes_buffered_work_when_client_close_fails(
         "build_async_client",
         lambda *_args, **_kwargs: FailingCloseClient(),
     )
-    monkeypatch.setattr(client_detail, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(client_detail, "request_with_backoff", fake_request)
 
     with pytest.raises(RuntimeError, match="close failed"):
         await resurrection.resurrect_due_tweets(
@@ -602,7 +602,7 @@ async def test_account_recovery_boost_stays_inside_global_budget(
     async def fake_resolve_query_ids(*_args, **_kwargs):
         return {"TweetDetail": "qid"}
 
-    async def fake_fetch_page(*args, **_kwargs):
+    async def fake_request(*args, **_kwargs):
         _operation, variables = request_details(args[1])
         tweet_id = variables["focalTweetId"]
         payload = make_tweet_detail_response(
@@ -614,7 +614,7 @@ async def test_account_recovery_boost_stays_inside_global_budget(
     monkeypatch.setattr(client_detail, "QueryIdStore", FakeQueryStore)
     monkeypatch.setattr(client_detail, "resolve_query_ids", fake_resolve_query_ids)
     monkeypatch.setattr(resurrection, "build_async_client", lambda *_args, **_kwargs: FakeClient())
-    monkeypatch.setattr(client_detail, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(client_detail, "request_with_backoff", fake_request)
 
     result = await resurrection.resurrect_due_tweets(
         budget=10,

@@ -23,13 +23,13 @@ from tweetnook.client.base import (
     is_feature_flag_error,
     is_rate_limit,
     is_stale_query_id,
+    request_with_backoff,
 )
 from tweetnook.client.timelines import (
     build_bookmarks_url,
     build_likes_url,
     build_tweet_detail_url,
     build_user_tweets_url,
-    fetch_page,
 )
 from tweetnook.config import SyncConfig
 from tweetnook.core.timeline_parsing import (
@@ -484,7 +484,7 @@ def test_response_classification_helpers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_page_refreshes_once_on_404() -> None:
+async def test_request_with_backoff_refreshes_once_on_404() -> None:
     responses = deque(
         [
             httpx.Response(404, request=httpx.Request("GET", "https://example.com/one")),
@@ -506,7 +506,7 @@ async def test_fetch_page_refreshes_once_on_404() -> None:
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
-        response = await fetch_page(
+        response = await request_with_backoff(
             client,
             "https://example.com/one",
             SyncConfig(),
@@ -522,7 +522,7 @@ async def test_fetch_page_refreshes_once_on_404() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_page_raises_after_repeated_429() -> None:
+async def test_request_with_backoff_raises_after_repeated_429() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, request=request)
 
@@ -535,7 +535,7 @@ async def test_fetch_page_raises_after_repeated_429() -> None:
 
     try:
         with pytest.raises(RateLimitExhaustedError):
-            await fetch_page(
+            await request_with_backoff(
                 client,
                 "https://example.com",
                 SyncConfig(
@@ -556,7 +556,7 @@ async def test_fetch_page_raises_after_repeated_429() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_page_honors_rate_limit_overrides() -> None:
+async def test_request_with_backoff_honors_rate_limit_overrides() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, request=request)
 
@@ -569,7 +569,7 @@ async def test_fetch_page_honors_rate_limit_overrides() -> None:
 
     try:
         with pytest.raises(RateLimitExhaustedError):
-            await fetch_page(
+            await request_with_backoff(
                 client,
                 "https://example.com",
                 SyncConfig(
@@ -597,7 +597,7 @@ async def test_fetch_page_honors_rate_limit_overrides() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_page_honors_retry_after_header() -> None:
+async def test_request_with_backoff_honors_retry_after_header() -> None:
     responses = deque(
         [
             httpx.Response(429, headers={"retry-after": "7"}),
@@ -618,7 +618,7 @@ async def test_fetch_page_honors_retry_after_header() -> None:
         delays.append(delay)
 
     try:
-        response = await fetch_page(
+        response = await request_with_backoff(
             client,
             "https://example.com",
             SyncConfig(),

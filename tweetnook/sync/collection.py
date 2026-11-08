@@ -13,12 +13,11 @@ import httpx
 from rich.console import Console
 
 from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
-from tweetnook.client.base import build_async_client
+from tweetnook.client.base import build_async_client, request_with_backoff
 from tweetnook.client.timelines import (
     build_bookmarks_url,
     build_likes_url,
     build_user_tweets_url,
-    fetch_page,
 )
 from tweetnook.config import AppConfig, XDGPaths, ensure_paths, load_config
 from tweetnook.core.exceptions import (
@@ -198,7 +197,6 @@ async def run_preflight(
             else await resolve_query_ids(
                 query_store,
                 operation_names,
-                force_refresh=not query_store.is_fresh(operations=operation_names),
                 transport=transport,
             )
         )
@@ -244,7 +242,7 @@ async def run_preflight(
 
                 try:
                     pipeline.status(step_key, f"Checking {collection.title()}")
-                    await fetch_page(
+                    await request_with_backoff(
                         client,
                         _build_url(collection, query_ids[operation], auth_bundle, None, 1),
                         config.sync,
@@ -313,7 +311,7 @@ async def _fetch_and_parse_page(
         return _build_url(collection, query_ids[operation], auth, cursor, count)
 
     url = _build_url(collection, query_ids[operation], auth, cursor, count)
-    response = await fetch_page(
+    response = await request_with_backoff(
         client,
         url,
         config.sync,

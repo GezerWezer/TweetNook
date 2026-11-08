@@ -104,9 +104,7 @@ async def test_partial_refresh_preserves_unrelated_ids_and_their_expiry(paths, m
     assert store.get("Custom") == "saved-custom"
     assert store.is_fresh(operations=["TweetDetail"])
     assert not store.is_fresh(operations=["Bookmarks"])
-    result = await scraper.resolve_query_ids(
-        store, ["Bookmarks"], force_refresh=False, transport=None
-    )
+    result = await scraper.resolve_query_ids(store, ["Bookmarks"], transport=None)
     assert result == {"Bookmarks": "discovered-Bookmarks"}
     assert requests == [["TweetDetail"], ["Bookmarks"]]
 
@@ -114,7 +112,7 @@ async def test_partial_refresh_preserves_unrelated_ids_and_their_expiry(paths, m
 @pytest.mark.parametrize(
     "content", [b"{", b"\xff", b'{"ids": []}', b'{"fetched_at": "2026-01-01T00:00:00"}']
 )
-async def test_invalid_cache_is_a_miss_even_for_forced_refresh(paths, monkeypatch, content):
+async def test_invalid_cache_is_a_miss(paths, monkeypatch, content):
     from tweetnook.query_ids import scraper
 
     store = QueryIdStore(paths)
@@ -126,9 +124,7 @@ async def test_invalid_cache_is_a_miss_even_for_forced_refresh(paths, monkeypatc
         return {"TweetDetail": "recovered-id"}
 
     monkeypatch.setattr(scraper, "discover_query_ids", discover)
-    result = await scraper.resolve_query_ids(
-        store, ["TweetDetail"], force_refresh=True, transport=None
-    )
+    result = await scraper.resolve_query_ids(store, ["TweetDetail"], transport=None)
     assert result == {"TweetDetail": "recovered-id"}
     assert calls == [["TweetDetail"]]
     assert store.is_fresh(operations=["TweetDetail"])
@@ -160,9 +156,7 @@ async def test_operation_only_served_by_fallback_is_not_rediscovered_every_call(
     monkeypatch.setattr(scraper, "discover_query_ids", discover)
     expected = {"Bookmarks": FALLBACK_QUERY_IDS["Bookmarks"]}
     for _ in range(2):
-        result = await scraper.resolve_query_ids(
-            store, ["Bookmarks"], force_refresh=False, transport=None
-        )
+        result = await scraper.resolve_query_ids(store, ["Bookmarks"], transport=None)
         assert result == expected
     assert requests == [["Bookmarks"]]
     assert store.load().fetched_at is None
@@ -204,9 +198,7 @@ async def test_operation_with_no_id_is_retried_even_after_a_recent_check(paths, 
         return {"NoFallback": "found"}
 
     monkeypatch.setattr(scraper, "discover_query_ids", discover)
-    result = await scraper.resolve_query_ids(
-        store, ["NoFallback"], force_refresh=False, transport=None
-    )
+    result = await scraper.resolve_query_ids(store, ["NoFallback"], transport=None)
     assert result == {"NoFallback": "found"}
     assert requests == [["NoFallback"]]
 
@@ -220,15 +212,13 @@ async def test_failed_refresh_keeps_usable_ids_and_does_not_mark_them_checked(pa
         raise httpx.ConnectError("bundles unavailable")
 
     monkeypatch.setattr(scraper, "discover_query_ids", discover)
-    result = await scraper.resolve_query_ids(
-        store, ["Bookmarks"], force_refresh=True, transport=None
-    )
+    result = await scraper.resolve_query_ids(store, ["Bookmarks"], transport=None)
     assert result == {"Bookmarks": FALLBACK_QUERY_IDS["Bookmarks"]}
     assert not store.is_fresh(operations=["Bookmarks"])
     from tweetnook.core.exceptions import QueryIdRefreshError
 
     with pytest.raises(QueryIdRefreshError, match="ConnectError"):
-        await scraper.resolve_query_ids(store, ["NoFallback"], force_refresh=False, transport=None)
+        await scraper.resolve_query_ids(store, ["NoFallback"], transport=None)
 
 
 def test_concurrent_saves_of_different_operations_keep_both(paths):

@@ -8,7 +8,8 @@ from dataclasses import dataclass
 
 import httpx
 
-from tweetnook.client.timelines import build_tweet_detail_url, fetch_page
+from tweetnook.client.base import request_with_backoff
+from tweetnook.client.timelines import build_tweet_detail_url
 from tweetnook.config import SyncConfig, XDGPaths
 from tweetnook.core.operations import TWEET_DETAIL
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
@@ -41,7 +42,7 @@ class TweetDetailRequester:
             self.query_ids.update(refreshed)
             return self._url(tweet_id)
 
-        return await fetch_page(
+        return await request_with_backoff(
             self.client,
             self._url(tweet_id),
             self.sync,
@@ -64,7 +65,6 @@ async def resolve_detail_query_ids(
     query_ids = await resolve_query_ids(
         query_store,
         [TWEET_DETAIL],
-        force_refresh=not query_store.is_fresh(operations=[TWEET_DETAIL]),
         transport=transport,
     )
     return query_store, query_ids
