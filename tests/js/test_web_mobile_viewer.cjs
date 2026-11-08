@@ -699,10 +699,13 @@ test('phone media viewers keep the page paintable under Safari chrome while bloc
     assert.equal(context.document.body.style.overflow, 'auto'); // Photos and GIFs use the same phone viewer.
     app.moveLightboxGesture({touches: [{}], preventDefault() {prevented++;}});
     assert.equal(prevented, 2);
+    app.lightboxOpen = false;
     watchers.lightboxOpen(false);
     phone = false;
+    app.lightboxOpen = true;
     watchers.lightboxOpen(true);
     assert.equal(context.document.body.style.overflow, 'hidden'); // Desktop modal locking is retained.
+    app.lightboxOpen = false;
     watchers.lightboxOpen(false);
     assert.equal(context.document.body.style.overflow, 'auto');
 });

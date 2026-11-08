@@ -81,7 +81,7 @@ function tweetApp() {
         },
 
         showSettingsModal: false,
-        settingsBodyOverflow: null,
+        modalBodyOverflow: null,
         settingsTab: 'appearance',
         nookSettingsDetail: false,
         nookSyncCollections: ['bookmarks', 'likes'],
@@ -253,14 +253,13 @@ function tweetApp() {
             }, 60000);
             this.startActivityPolling();
 
-            this.$watch('showStatsModal', val => {
-                if (val) this.lockModalScroll();
-                else if (!this.showSettingsModal && !this.showSetupModal && !this.lightboxOpen) this.unlockModalScroll();
+            this.$watch('showStatsModal', () => {
+                this.syncModalScroll();
                 this.autoplayNextVideo();
             });
             this.$watch('showSettingsModal', val => {
+                this.syncModalScroll();
                 if (val) {
-                    this.lockModalScroll();
                     if (!this.isDemo) this.fetchSetup();
                     if (!this.setupForced) {
                         this.fetchConfig();
@@ -271,7 +270,6 @@ function tweetApp() {
                     }
                 } else {
                     this.showAutomatedTaggingSpendModal = false;
-                    if (!this.showSetupModal && !this.lightboxOpen) this.unlockModalScroll();
                     this.autoplayNextVideo();
                 }
                 if (val) this.autoplayNextVideo();
@@ -283,19 +281,13 @@ function tweetApp() {
             this.$watch('setupFlowStep', step => {
                 if (step === 3) this.loadSetupSchedule();
             });
-            this.$watch('showSetupModal', val => {
-                if (val) this.lockModalScroll();
-                else if (!this.showSettingsModal && !this.lightboxOpen) this.unlockModalScroll();
+            this.$watch('showSetupModal', () => {
+                this.syncModalScroll();
                 this.autoplayNextVideo();
             });
             this.$watch('lightboxOpen', val => {
-                // The mobile viewer blocks pan gestures itself. Changing body
-                // overflow makes Safari stop painting beneath its floating bar.
-                if (val) { if (!this.isMobileViewer()) this.lockModalScroll(); }
-                else {
-                    this.followLightboxShade(false);
-                    if (!this.showStatsModal && !this.showSettingsModal && !this.showSetupModal) this.unlockModalScroll();
-                }
+                this.syncModalScroll();
+                if (!val) this.followLightboxShade(false);
             });
 
             window.addEventListener('open-article', (event) => {
@@ -376,15 +368,19 @@ function tweetApp() {
             this.showSettingsModal = true;
         },
 
-        lockModalScroll() {
-            if (this.settingsBodyOverflow === null) this.settingsBodyOverflow = document.body.style.overflow;
-            document.body.style.overflow = 'hidden';
-        },
-
-        unlockModalScroll() {
-            if (this.settingsBodyOverflow === null) return;
-            document.body.style.overflow = this.settingsBodyOverflow;
-            this.settingsBodyOverflow = null;
+        // Body scroll stays locked while any modal is open, whichever closes first.
+        syncModalScroll() {
+            // The mobile viewer blocks pan gestures itself. Changing body
+            // overflow makes Safari stop painting beneath its floating bar.
+            const locked = this.showStatsModal || this.showSettingsModal || this.showSetupModal
+                || (this.lightboxOpen && !this.isMobileViewer());
+            if (locked) {
+                if (this.modalBodyOverflow === null) this.modalBodyOverflow = document.body.style.overflow;
+                document.body.style.overflow = 'hidden';
+            } else if (this.modalBodyOverflow !== null) {
+                document.body.style.overflow = this.modalBodyOverflow;
+                this.modalBodyOverflow = null;
+            }
         },
 
     };

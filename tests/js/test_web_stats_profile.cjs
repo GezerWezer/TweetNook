@@ -374,7 +374,6 @@ test('archive status filters empty reasons and summarizes retry state', () => {
 
 test('analytics markup exposes the Archive status cards and reason breakdown', () => {
     const html = pageHtml();
-    const appJs = readScripts(pageScripts());
     const styles = pageCss();
 
     assert.match(html, /role="switch"[^>]*:aria-checked="showEmptyUnavailableReasons" @click="showEmptyUnavailableReasons = !showEmptyUnavailableReasons"/);
@@ -387,13 +386,37 @@ test('analytics markup exposes the Archive status cards and reason breakdown', (
     assert.match(html, /x-show="statsRefreshing"/);
     assert.match(html, /class="stats-modal-scroll /);
     assert.match(styles, /\.stats-modal-scroll\s*\{[^}]*overscroll-behavior: contain;/s);
-    const statsWatcherStart = appJs.indexOf("this.$watch('showStatsModal'");
-    const settingsWatcherStart = appJs.indexOf("this.$watch('showSettingsModal'");
-    assert.ok(statsWatcherStart >= 0 && statsWatcherStart < settingsWatcherStart);
-    const statsWatcher = appJs.slice(statsWatcherStart, settingsWatcherStart);
-    assert.match(statsWatcher, /if \(val\) this\.lockModalScroll\(\);/);
-    assert.match(statsWatcher, /!this\.showSettingsModal && !this\.showSetupModal/);
-    assert.match(statsWatcher, /this\.unlockModalScroll\(\);/);
+});
+
+test('body scroll stays locked until the last open modal closes', () => {
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.isMobileViewer = () => false;
+    const body = context.document.body;
+    body.style.overflow = 'auto';
+
+    for (const [first, second] of [
+        ['showStatsModal', 'showSettingsModal'],
+        ['showStatsModal', 'showSetupModal'],
+        ['showSettingsModal', 'lightboxOpen'],
+    ]) {
+        app[first] = true;
+        app.syncModalScroll();
+        app[second] = true;
+        app.syncModalScroll();
+        app[second] = false;
+        app.syncModalScroll();
+        assert.equal(body.style.overflow, 'hidden', `${second} closed while ${first} is open`);
+        app[first] = false;
+        app.syncModalScroll();
+        assert.equal(body.style.overflow, 'auto');
+    }
+
+    app.isMobileViewer = () => true;
+    app.lightboxOpen = true;
+    app.syncModalScroll();
+    assert.equal(body.style.overflow, 'auto', 'the mobile viewer leaves body overflow alone');
 });
 
 test('collection summary labels and links survive a blocked analytics script URL', () => {
