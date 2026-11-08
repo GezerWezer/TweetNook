@@ -379,14 +379,14 @@ function searchAutocomplete() {
 
         highlightMatch(text, query) {
             if (!text) return '';
-            if (!query) return this.escapeHtml(text);
+            if (!query) return escapeHTML(text);
             const cleanQuery = query.startsWith('@') ? query.substring(1) : query;
-            if (!cleanQuery) return this.escapeHtml(text);
+            if (!cleanQuery) return escapeHTML(text);
             const idx = text.toLowerCase().indexOf(cleanQuery.toLowerCase());
-            if (idx === -1) return this.escapeHtml(text);
-            return this.escapeHtml(text.substring(0, idx))
-                + '<b>' + this.escapeHtml(text.substring(idx, idx + cleanQuery.length)) + '</b>'
-                + this.escapeHtml(text.substring(idx + cleanQuery.length));
+            if (idx === -1) return escapeHTML(text);
+            return escapeHTML(text.substring(0, idx))
+                + '<b>' + escapeHTML(text.substring(idx, idx + cleanQuery.length)) + '</b>'
+                + escapeHTML(text.substring(idx + cleanQuery.length));
         },
 
         highlightTagMatch(text, query) {
@@ -408,15 +408,11 @@ function searchAutocomplete() {
             let html = '';
             let cursor = 0;
             for (const [start, end] of merged) {
-                html += this.escapeHtml(text.substring(cursor, start))
-                    + '<b>' + this.escapeHtml(text.substring(start, end)) + '</b>';
+                html += escapeHTML(text.substring(cursor, start))
+                    + '<b>' + escapeHTML(text.substring(start, end)) + '</b>';
                 cursor = end;
             }
-            return html + this.escapeHtml(text.substring(cursor));
-        },
-
-        escapeHtml(unsafe) {
-            return (unsafe || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+            return html + escapeHTML(text.substring(cursor));
         },
 
         validBooleanOperatorOffsets(text) {
@@ -718,7 +714,7 @@ function searchAutocomplete() {
             // An empty value has no text node, so its caret goes right after the colon.
             const keyCaret = part.caret !== -1 && !part.value ? SEARCH_CARET : '';
             return `<span class="${classes}"><span class="capsule-key">${key}${keyCaret}</span>`
-                + `<span class="capsule-value">${part.value ? this.escapeHtml(value).replace(/ /g, '&nbsp;') : ''}</span></span>`;
+                + `<span class="capsule-value">${part.value ? escapeHTML(value).replace(/ /g, '&nbsp;') : ''}</span></span>`;
         },
 
         // Plain query text starting at `start` in the full query, with capsules for
@@ -778,12 +774,12 @@ function searchAutocomplete() {
                         if (isValid) {
                             if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
                                 const innerValue = value.substring(1, value.length - 1);
-                                html += `<span class="search-capsule valid-capsule${negativeClass}"><span class="capsule-key">${prefix}</span><span class="hidden-quote">"</span><span class="capsule-value">${this.escapeHtml(innerValue).replace(/ /g, '&nbsp;')}</span><span class="hidden-quote">"</span></span>`;
+                                html += `<span class="search-capsule valid-capsule${negativeClass}"><span class="capsule-key">${prefix}</span><span class="hidden-quote">"</span><span class="capsule-value">${escapeHTML(innerValue).replace(/ /g, '&nbsp;')}</span><span class="hidden-quote">"</span></span>`;
                             } else {
-                                html += `<span class="search-capsule valid-capsule${negativeClass}"><span class="capsule-key">${prefix}</span><span class="capsule-value">${this.escapeHtml(value)}</span></span>`;
+                                html += `<span class="search-capsule valid-capsule${negativeClass}"><span class="capsule-key">${prefix}</span><span class="capsule-value">${escapeHTML(value)}</span></span>`;
                             }
                         } else {
-                            html += `<span class="search-capsule invalid-capsule${negativeClass}"><span class="capsule-key">${prefix}</span></span><span class="capsule-invalid-value">${this.escapeHtml(value)}</span>`;
+                            html += `<span class="search-capsule invalid-capsule${negativeClass}"><span class="capsule-key">${prefix}</span></span><span class="capsule-invalid-value">${escapeHTML(value)}</span>`;
                         }
                     } else {
                         const isNegative = prefix.startsWith('-');
@@ -794,9 +790,9 @@ function searchAutocomplete() {
                 } else if (match[4]) {
                     const caretBefore = text.slice(0, match.index).includes(SEARCH_CARET) ? 1 : 0;
                     if (validBooleanOffsets.has(start + match.index - caretBefore)) {
-                        html += `<span class="search-capsule boolean-capsule">${this.escapeHtml(match[4])}</span>`;
+                        html += `<span class="search-capsule boolean-capsule">${escapeHTML(match[4])}</span>`;
                     } else {
-                        html += this.escapeHtml(match[4]);
+                        html += escapeHTML(match[4]);
                     }
                 }
             }

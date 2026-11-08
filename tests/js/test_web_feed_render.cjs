@@ -222,7 +222,7 @@ test('tweet text decodes one entity layer before safe rendering and length check
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
     const text = 'Fish &amp; chips &lt;3 &quot;yes&quot; &apos;ok&apos;';
-    const expected = 'Fish &amp; chips &lt;3 "yes" \'ok\'';
+    const expected = 'Fish &amp; chips &lt;3 &quot;yes&quot; &#039;ok&#039;';
     assert.equal(app.decodeTweetText(text), 'Fish & chips <3 "yes" \'ok\'');
     assert.equal(app.formatText({ text }), expected);
     assert.equal(app.formatText({ raw_json: { legacy: { full_text: text } } }), expected);

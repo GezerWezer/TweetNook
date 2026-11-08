@@ -14,7 +14,7 @@ test('autocomplete formats valid, invalid, negative, quoted, and escaped capsule
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const input = { innerHTML: '' };
@@ -40,7 +40,7 @@ test('autocomplete formats hidden search filters as valid capsules', () => {
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const input = { innerHTML: '' };
@@ -63,7 +63,7 @@ test('autocomplete renders only valid uppercase boolean operators as neutral cap
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const input = { innerHTML: '' };
@@ -82,7 +82,7 @@ test('autocomplete highlighting escapes API-provided labels', () => {
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const component = searchAutocomplete();
@@ -93,7 +93,7 @@ test('autocomplete highlighting escapes API-provided labels', () => {
 
 test('tag autocomplete highlights partial fragments and escapes labels', () => {
     const { searchAutocomplete } = loadScripts(
-        browserContext(), ['autocomplete.js'], '({searchAutocomplete})',
+        browserContext(), ['core/html.js', 'autocomplete.js'], '({searchAutocomplete})',
     );
     const component = searchAutocomplete();
     assert.equal(component.highlightTagMatch('REM (Deadlock)', 'rem D'), '<b>REM</b> (<b>D</b>eadlock)');
@@ -114,7 +114,7 @@ test('autocomplete requests partial tag fragments together and selects the compl
         return { ok: true, json: async () => ({ tags: [{ tag: 'REM (Deadlock)', count: 2 }] }) };
     };
     const { searchAutocomplete, SEARCH_CARET, BOX_START, BOX_END } = loadScripts(
-        context, ['autocomplete.js'], '({searchAutocomplete, SEARCH_CARET, BOX_START, BOX_END})',
+        context, ['core/html.js', 'autocomplete.js'], '({searchAutocomplete, SEARCH_CARET, BOX_START, BOX_END})',
     );
     const component = immediateComponent(searchAutocomplete());
     const typed = component.serializeSearchParts(component.parseSearchParts(
@@ -139,7 +139,7 @@ test('autocomplete separates attached content from post types and states', () =>
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const component = searchAutocomplete();
@@ -160,7 +160,7 @@ test('autocomplete separates attached content from post types and states', () =>
 
 test('autocomplete describes excluded filters and values by what they hide', () => {
     const { searchAutocomplete } = loadScripts(
-        browserContext(), ['autocomplete.js'], '({searchAutocomplete})',
+        browserContext(), ['core/html.js', 'autocomplete.js'], '({searchAutocomplete})',
     );
     const component = immediateComponent(searchAutocomplete());
     component.$refs.searchInput = { isContentEditable: false, selectionStart: 0 };
@@ -193,7 +193,7 @@ test('autocomplete describes excluded filters and values by what they hide', () 
 test('autocomplete keeps the menu open with a note when a lookup finds nothing', async () => {
     const context = browserContext();
     context.fetch = async () => ({ ok: true, json: async () => ({ authors: [], tags: [] }) });
-    const { searchAutocomplete } = loadScripts(context, ['autocomplete.js'], '({searchAutocomplete})');
+    const { searchAutocomplete } = loadScripts(context, ['core/html.js', 'autocomplete.js'], '({searchAutocomplete})');
     const component = immediateComponent(searchAutocomplete());
     component.$refs.searchInput = { isContentEditable: false, selectionStart: 0 };
 
@@ -216,7 +216,7 @@ test('autocomplete keyboard navigation wraps and scrolls selected option', () =>
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     let scrolled = 0;
@@ -245,7 +245,7 @@ test('autocomplete quotes selected multi-word values and keeps caret position', 
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     let selection = null;
@@ -283,7 +283,7 @@ test('autocomplete keeps unfinished quoted values together across spaces', async
     };
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const component = immediateComponent(searchAutocomplete());
@@ -318,7 +318,7 @@ test('autocomplete keeps description and tag values in capsules without quotes',
     };
     const { searchAutocomplete, SEARCH_CARET, BOX_START, BOX_END } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete, SEARCH_CARET, BOX_START, BOX_END})',
     );
     const component = immediateComponent(searchAutocomplete());
@@ -380,7 +380,7 @@ test('autocomplete replaces the whole capsule value when a tag is picked', () =>
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const component = immediateComponent(searchAutocomplete());
@@ -426,7 +426,7 @@ test('autocomplete fetches author and tag suggestions with encoded queries', asy
     };
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const component = immediateComponent(searchAutocomplete());
@@ -536,7 +536,7 @@ test('autocomplete calendar handles leap years and month boundaries', () => {
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const component = searchAutocomplete();
@@ -561,7 +561,7 @@ test('autocomplete calendar inserts the picked date without mutating the picker 
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const component = immediateComponent(searchAutocomplete());
@@ -583,7 +583,7 @@ test('autocomplete calendar follows caret moves into and out of date filters', (
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const component = immediateComponent(searchAutocomplete());
@@ -623,7 +623,7 @@ test('autocomplete calendar shows the whole date when the caret is inside it', (
     const context = browserContext();
     const { searchAutocomplete } = loadScripts(
         context,
-        ['autocomplete.js'],
+        ['core/html.js', 'autocomplete.js'],
         '({searchAutocomplete})',
     );
     const component = immediateComponent(searchAutocomplete());

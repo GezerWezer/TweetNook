@@ -47,18 +47,17 @@ function tweetTextMethods() {
 
         highlightSearchText(text, highlight = true, ranges = null, baseOffset = 0) {
             text = String(text || '');
-            const escape = value => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            if (!highlight || !this.searchHighlightTerms.length) return escape(text);
+            if (!highlight || !this.searchHighlightTerms.length) return escapeHTML(text);
             ranges = ranges || this.searchMatchRanges(text);
             let markup = '', offset = 0;
             for (const range of ranges) {
                 const start = Math.max(0, range[0] - baseOffset);
                 const end = Math.min(text.length, range[1] - baseOffset);
                 if (start >= end) continue;
-                markup += escape(text.slice(offset, start)) + '<strong>' + escape(text.slice(start, end)) + '</strong>';
+                markup += escapeHTML(text.slice(offset, start)) + '<strong>' + escapeHTML(text.slice(start, end)) + '</strong>';
                 offset = end;
             }
-            return markup + escape(text.slice(offset));
+            return markup + escapeHTML(text.slice(offset));
         },
 
         articleForTweet(tweet) {
