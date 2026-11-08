@@ -13,7 +13,7 @@ from tweetnook.core.exceptions import QueryIdRefreshError
 from tweetnook.query_ids.constants import (
     BUNDLE_URL_PATTERN,
     CLIENT_WEB_BUNDLE_URL,
-    DISCOVERY_PAGE_URLS,
+    DISCOVERY_PAGE_URL,
     TARGET_OPERATIONS,
 )
 from tweetnook.query_ids.store import QueryIdStore
@@ -52,8 +52,6 @@ def _chunk_keywords(operations: Sequence[str]) -> set[str]:
             keywords.add("Bookmark")
         if "Like" in operation:
             keywords.add("Like")
-        if "Article" in operation:
-            keywords.add("Article")
         keywords.add(operation)
     return keywords
 
@@ -82,7 +80,7 @@ async def discover_query_ids(
     queue: list[str] = []
     seen: set[str] = set()
 
-    for url in DISCOVERY_PAGE_URLS:
+    for url in (DISCOVERY_PAGE_URL,):
         html = await _fetch_text(client, url)
         queue.extend(sorted(extract_bundle_urls(html)))
 

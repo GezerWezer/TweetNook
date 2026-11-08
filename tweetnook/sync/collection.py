@@ -28,6 +28,7 @@ from tweetnook.core.exceptions import (
     ConfigError,
     TweetNookError,
 )
+from tweetnook.core.operations import BOOKMARKS, LIKES, USER_TWEETS
 from tweetnook.core.timeline_parsing import TimelineTweet, parse_timeline_response
 from tweetnook.jobs.context import archive_job, locked_archive_job
 from tweetnook.jobs.pipeline import current_pipeline
@@ -77,9 +78,9 @@ def parse_sync_mode(
 
 
 COLLECTION_TO_OPERATION = {
-    "bookmarks": "Bookmarks",
-    "likes": "Likes",
-    "tweets": "UserTweets",
+    "bookmarks": BOOKMARKS,
+    "likes": LIKES,
+    "tweets": USER_TWEETS,
 }
 COLLECTION_TO_STORAGE = {
     "bookmarks": "bookmark",

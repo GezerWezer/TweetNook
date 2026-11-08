@@ -15,6 +15,7 @@ from tweetnook.auth import ResolvedAuthBundle, resolve_auth_bundle
 from tweetnook.client.base import AdaptiveRequestPacer, build_async_client
 from tweetnook.client.detail import TweetDetailRequester, resolve_detail_query_ids
 from tweetnook.config import AppConfig, XDGPaths
+from tweetnook.core.operations import TWEET_DETAIL_RESURRECTION
 from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
 from tweetnook.enrichment.availability import (
     preserve_reason_confidence,
@@ -40,7 +41,7 @@ ACCOUNT_PROBE_LIMIT = 5
 ACCOUNT_PROBE_SUCCESS_THRESHOLD = 3
 ACCOUNT_BOOST_LIMIT = 15
 DETAIL_WRITE_BATCH = 100
-_DETAIL_OPERATION = "TweetDetailResurrection"
+_DETAIL_OPERATION = TWEET_DETAIL_RESURRECTION
 
 ACCOUNT_LEVEL_REASONS = frozenset({"protected_account", "suspended_account", "account_missing"})
 AMBIGUOUS_REASONS = frozenset({"withheld", "not_found", "unavailable_unknown"})

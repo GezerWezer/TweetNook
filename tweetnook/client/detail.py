@@ -10,6 +10,7 @@ import httpx
 
 from tweetnook.client.timelines import build_tweet_detail_url, fetch_page
 from tweetnook.config import SyncConfig, XDGPaths
+from tweetnook.core.operations import TWEET_DETAIL
 from tweetnook.query_ids import QueryIdStore, refresh_query_ids, resolve_query_ids
 
 
@@ -28,14 +29,14 @@ class TweetDetailRequester:
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
 
     def _url(self, tweet_id: str) -> str:
-        return build_tweet_detail_url(self.query_ids["TweetDetail"], tweet_id)
+        return build_tweet_detail_url(self.query_ids[TWEET_DETAIL], tweet_id)
 
     async def fetch(
         self, tweet_id: str, *, status: Callable[[str], None] | None = None
     ) -> httpx.Response:
         async def refresh_once() -> str:
             refreshed = await refresh_query_ids(
-                self.query_store, operations=["TweetDetail"], client=self.client
+                self.query_store, operations=[TWEET_DETAIL], client=self.client
             )
             self.query_ids.update(refreshed)
             return self._url(tweet_id)
@@ -62,8 +63,8 @@ async def resolve_detail_query_ids(
     query_store = QueryIdStore(paths)
     query_ids = await resolve_query_ids(
         query_store,
-        ["TweetDetail"],
-        force_refresh=not query_store.is_fresh(operations=["TweetDetail"]),
+        [TWEET_DETAIL],
+        force_refresh=not query_store.is_fresh(operations=[TWEET_DETAIL]),
         transport=transport,
     )
     return query_store, query_ids

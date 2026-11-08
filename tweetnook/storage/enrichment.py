@@ -12,6 +12,7 @@ from tweetnook.core.extractor import (
     link_card_lacks_image,
     restore_link_card_image,
 )
+from tweetnook.core.operations import DETAIL_CAPTURE_OPERATIONS
 from tweetnook.core.utils import utc_now
 
 from .checks import ChecksMixin
@@ -28,8 +29,6 @@ from .objects import ObjectsMixin
 from .ownership import worker_changes
 from .record_types import RecordType
 from .records import PageBuffer
-
-_DETAIL_OPERATIONS = ("ThreadExpandDetail", "TweetDetail", "TweetDetailResurrection")
 
 
 def _captured_link_card_tweets(
@@ -159,7 +158,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
         donors: dict[tuple[str, str], dict[str, Any]] = {}
         for tweet_id, identities in stripped.items():
             # Newest first: a tweet's own detail captures are indexed by its id.
-            for capture in reversed(self.list_target_captures(tweet_id, _DETAIL_OPERATIONS)):
+            for capture in reversed(self.list_target_captures(tweet_id, DETAIL_CAPTURE_OPERATIONS)):
                 wanted = {tweet_id: {i for i in identities if (tweet_id, i) not in donors}}
                 if not wanted[tweet_id]:
                     break

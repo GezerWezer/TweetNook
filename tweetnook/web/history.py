@@ -6,12 +6,12 @@ import json
 from datetime import datetime, timedelta
 from typing import Any
 
+from tweetnook.core.operations import DETAIL_CAPTURE_OPERATIONS, THREAD_EXPAND_DETAIL
 from tweetnook.core.timeline_parsing import FocalResultKind, parse_tweet_detail_response
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.web.availability import UNAVAILABLE_MESSAGES
 
 CHECK_SOURCE = "Availability check"
-LOGIN_OPERATIONS = ("TweetDetail", "TweetDetailResurrection", "ThreadExpandDetail")
 # A check run records its checks at its start time and writes copies as it goes.
 CHECK_CAPTURE_WINDOW = timedelta(hours=6)
 COLLECTION_LABELS = {"bookmark": "bookmarks", "like": "likes", "tweet": "your tweets"}
@@ -71,7 +71,7 @@ def _login_event(tweet_id: str, capture: dict[str, Any]) -> dict[str, Any] | Non
     if not isinstance(payload, dict):
         return None
     at = capture.get("captured_at")
-    thread = capture.get("operation") == "ThreadExpandDetail"
+    thread = capture.get("operation") == THREAD_EXPAND_DETAIL
     if "http_status" in payload and "data" not in payload:
         return _event(at, "Missing from X", "Your login", "missing", _reason_message("not_found"))
     focal = parse_tweet_detail_response(payload, tweet_id)
@@ -162,7 +162,7 @@ def tweet_history(store: ArchiveStore, tweet_id: str) -> dict[str, Any]:
         *_fx_copy_events(store, tweet_id, check_events),
         *(
             event
-            for capture in store.list_target_captures(tweet_id, LOGIN_OPERATIONS)
+            for capture in store.list_target_captures(tweet_id, DETAIL_CAPTURE_OPERATIONS)
             if (event := _login_event(tweet_id, capture)) is not None
         ),
         *_note_events(store, tweet_id),

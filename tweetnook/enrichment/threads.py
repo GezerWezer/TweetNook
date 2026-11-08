@@ -15,6 +15,7 @@ from tweetnook.client.detail import TweetDetailRequester, resolve_detail_query_i
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.exceptions import ConfigError
 from tweetnook.core.extractor import extract_status_id_from_url
+from tweetnook.core.operations import THREAD_EXPAND_DETAIL
 from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
 from tweetnook.enrichment.availability import record_unavailable
 from tweetnook.enrichment.detail import (
@@ -134,7 +135,7 @@ def _record_thread_outcome(
         record_unavailable(
             store,
             tweet_id=tweet_id,
-            operation="ThreadExpandDetail",
+            operation=THREAD_EXPAND_DETAIL,
             payload=outcome.payload,
             http_status=outcome.http_status,
             reason=outcome.reason,

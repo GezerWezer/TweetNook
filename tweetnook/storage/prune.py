@@ -7,6 +7,8 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
+from tweetnook.core.operations import DETAIL_CAPTURE_OPERATIONS
+
 from .db import ConnectionMixin
 from .record_types import RecordType
 
@@ -21,12 +23,7 @@ TWEET_RECORD_TYPES = (
     RecordType.TWEET_HIDDEN,
 )
 # Raw captures whose cursor_in is the tweet they fetched.
-TWEET_CAPTURE_OPERATIONS = (
-    "ThreadExpandDetail",
-    "TweetDetail",
-    "TweetDetailResurrection",
-    "FxTwitterStatus",
-)
+TWEET_CAPTURE_OPERATIONS = (*DETAIL_CAPTURE_OPERATIONS, "FxTwitterStatus")
 EMBEDDED_RELATIONS = ("quote_of", "retweet_of")
 
 

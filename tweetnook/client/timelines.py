@@ -18,7 +18,9 @@ from tweetnook.client.features import (
     build_tweet_detail_features,
     build_user_tweets_features,
 )
-from tweetnook.config import API_BASE_URL, SyncConfig
+from tweetnook.config import SyncConfig
+
+API_BASE_URL = "https://x.com/i/api/graphql"
 
 
 def _encode_param(value: dict[str, Any]) -> str:

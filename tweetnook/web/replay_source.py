@@ -30,12 +30,11 @@ from tweetnook.core.dev_replay import (
     PLACEHOLDER_MEDIA,
     RESULT_HEADER,
 )
+from tweetnook.core.operations import DETAIL_CAPTURE_OPERATIONS, TIMELINE_OPERATIONS
 from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
 from tweetnook.storage.record_types import RecordType
 from tweetnook.web.replay_placeholders import IMAGE_FORMATS, placeholder_bytes
 
-TIMELINE_OPERATIONS = ("Bookmarks", "Likes", "UserTweets")
-DETAIL_OPERATIONS = ("ThreadExpandDetail", "TweetDetail", "TweetDetailResurrection")
 MEDIA_HOST_SUFFIX = "twimg.com"
 TIMELINE_TTL_SECONDS = 60.0
 MEDIA_TTL_SECONDS = 300.0
@@ -357,7 +356,7 @@ class ReplayArchive:
         index: dict[str, str] = {}
         connection = self._connect()
         try:
-            placeholders = ",".join("?" for _ in DETAIL_OPERATIONS)
+            placeholders = ",".join("?" for _ in DETAIL_CAPTURE_OPERATIONS)
             cursor = connection.execute(
                 f"""
                 SELECT row_key, raw_json FROM archive
@@ -365,7 +364,7 @@ class ReplayArchive:
                   AND CAST(http_status AS INTEGER) = 200
                 ORDER BY captured_at ASC
                 """,
-                DETAIL_OPERATIONS,
+                DETAIL_CAPTURE_OPERATIONS,
             )
             for row in cursor:
                 try:
@@ -385,7 +384,7 @@ class ReplayArchive:
     def tweet_detail(self, tweet_id: str | None) -> ReplayResult:
         if not tweet_id:
             return _json_result(unavailable_detail_page(""), outcome="miss")
-        placeholders = ",".join("?" for _ in DETAIL_OPERATIONS)
+        placeholders = ",".join("?" for _ in DETAIL_CAPTURE_OPERATIONS)
         rows = self._query(
             f"""
             SELECT raw_json, http_status FROM archive
@@ -393,7 +392,7 @@ class ReplayArchive:
               AND operation IN ({placeholders})
             ORDER BY captured_at DESC LIMIT 1
             """,
-            (tweet_id, *DETAIL_OPERATIONS),
+            (tweet_id, *DETAIL_CAPTURE_OPERATIONS),
         )
         if rows and rows[0]["raw_json"]:
             return ReplayResult(
@@ -488,7 +487,7 @@ class ReplayArchive:
     # -- status -------------------------------------------------------------------
 
     def status(self) -> dict[str, Any]:
-        operations = (*TIMELINE_OPERATIONS, *DETAIL_OPERATIONS)
+        operations = (*TIMELINE_OPERATIONS, *DETAIL_CAPTURE_OPERATIONS)
         placeholders = ",".join("?" for _ in operations)
         counts = {
             row["operation"]: row["count"]
@@ -516,7 +515,9 @@ class ReplayArchive:
             "bookmarks_chain_pages": bookmarks.chain_pages,
             "likes_pages": counts.get("Likes", 0),
             "likes_chain_pages": likes.chain_pages,
-            "thread_captures": sum(counts.get(operation, 0) for operation in DETAIL_OPERATIONS),
+            "thread_captures": sum(
+                counts.get(operation, 0) for operation in DETAIL_CAPTURE_OPERATIONS
+            ),
             "downloaded_media": media[0]["count"] if media else 0,
             "placeholder_media": True,
             "owner_user_id": owner[0]["value"] if owner else None,

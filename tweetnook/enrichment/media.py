@@ -15,7 +15,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import httpx
 from rich.console import Console
 
-from tweetnook.config import DEFAULT_USER_AGENT, AppConfig, XDGPaths
+from tweetnook.client.base import DEFAULT_USER_AGENT
+from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.dev_replay import client_transport
 from tweetnook.core.fileio import owned_temp, publish_file
 from tweetnook.core.utils import utc_now

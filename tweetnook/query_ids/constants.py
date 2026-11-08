@@ -1,28 +1,19 @@
-"""Static query ID configuration."""
+"""Where query IDs are discovered, and the operations TweetNook requests."""
 
 from __future__ import annotations
 
-from tweetnook.config import BUNDLE_URL_REGEX, CLIENT_WEB_BUNDLE_BASE, DISCOVERY_PAGE_URL
+from tweetnook.core.operations import BOOKMARKS, LIKES, TWEET_DETAIL, USER_TWEETS
 
-DISCOVERY_PAGE_URLS = (DISCOVERY_PAGE_URL,)
-CLIENT_WEB_BUNDLE_URL = CLIENT_WEB_BUNDLE_BASE
-BUNDLE_URL_PATTERN = BUNDLE_URL_REGEX
-TARGET_OPERATIONS = (
-    "Bookmarks",
-    "Likes",
-    "UserTweets",
-    "BookmarkFolderTimeline",
-    "TweetDetail",
-    "UserArticlesTweets",
-)
+DISCOVERY_PAGE_URL = "https://x.com/?lang=en"
+CLIENT_WEB_BUNDLE_URL = "https://abs.twimg.com/responsive-web/client-web"
+BUNDLE_URL_PATTERN = r"https://abs\.twimg\.com/responsive-web/client-web/[A-Za-z0-9_.~-]+\.js"
+TARGET_OPERATIONS = (BOOKMARKS, LIKES, USER_TWEETS, TWEET_DETAIL)
 
 # Bookmarks remains a fallback from an authenticated capture on 2026-03-14.
 # The other IDs below were reverified against the public Twitter/X web bundle on 2026-03-16.
 FALLBACK_QUERY_IDS = {
-    "Bookmarks": "Fy0QMy4q_aZCpkO0PnyLYw",
-    "Likes": "a2vYKkx2AtoCmEIRO8Gfbw",
-    "UserTweets": "Y59DTUMfcKmUAATiT2SlTw",
-    "BookmarkFolderTimeline": "hNY7X2xE2N7HVF6Qb_mu6w",
-    "TweetDetail": "9rs110LSoPARDs61WOBZ7A",
-    "UserArticlesTweets": "Z_dacytwC8WEeV3U7XnW5A",
+    BOOKMARKS: "Fy0QMy4q_aZCpkO0PnyLYw",
+    LIKES: "a2vYKkx2AtoCmEIRO8Gfbw",
+    USER_TWEETS: "Y59DTUMfcKmUAATiT2SlTw",
+    TWEET_DETAIL: "9rs110LSoPARDs61WOBZ7A",
 }

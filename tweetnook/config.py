@@ -31,18 +31,6 @@ config_lock = threading.RLock()
 _config_generations: dict[str, int] = {}
 
 APP_NAME = "tweetnook"
-API_BASE_URL = "https://x.com/i/api/graphql"
-CLIENT_WEB_BUNDLE_BASE = "https://abs.twimg.com/responsive-web/client-web"
-DISCOVERY_PAGE_URL = "https://x.com/?lang=en"
-BUNDLE_URL_REGEX = r"https://abs\.twimg\.com/responsive-web/client-web/[A-Za-z0-9_.~-]+\.js"
-PUBLIC_BEARER_TOKEN = (
-    "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16c"
-    "HjhLTvJu4FA33AGWWjCpTnA"
-)
-DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
-)
 CONFIG_FILENAME = "config.toml"
 QUERY_ID_CACHE_FILENAME = "query-ids.json"
 LOCK_FILENAME = "sync.lock"

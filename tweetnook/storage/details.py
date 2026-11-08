@@ -9,6 +9,7 @@ from tweetnook.core.extractor import (
     extract_secondary_objects,
     extract_thread_objects,
 )
+from tweetnook.core.operations import THREAD_EXPAND_DETAIL
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.core.utils import utc_now
 
@@ -224,7 +225,7 @@ class DetailsMixin(TweetsMixin):
         # object whose enrichment timestamp is newer than its last marker needs
         # one fresh expansion; a marker written here proves that refresh happened.
         self.append_raw_capture(
-            "ThreadExpandDetail",
+            THREAD_EXPAND_DETAIL,
             focal_tweet_id,
             None,
             http_status,

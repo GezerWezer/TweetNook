@@ -13,7 +13,7 @@ from email.utils import parsedate_to_datetime
 import httpx
 
 from tweetnook.auth import ResolvedAuthBundle
-from tweetnook.config import DEFAULT_USER_AGENT, PUBLIC_BEARER_TOKEN, SyncConfig
+from tweetnook.config import SyncConfig
 from tweetnook.core.dev_replay import client_transport
 from tweetnook.core.exceptions import (
     APIResponseError,
@@ -21,6 +21,15 @@ from tweetnook.core.exceptions import (
     FeatureFlagDriftError,
     RateLimitExhaustedError,
     StaleQueryIdError,
+)
+
+PUBLIC_BEARER_TOKEN = (
+    "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16c"
+    "HjhLTvJu4FA33AGWWjCpTnA"
+)
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
 )
 
 

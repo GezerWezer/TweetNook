@@ -23,6 +23,7 @@ from tweetnook.core.exceptions import (
     TweetNookError,
 )
 from tweetnook.core.fxtwitter_payloads import fx_status_to_graphql, fx_timeline_tweet
+from tweetnook.core.operations import TWEET_DETAIL
 from tweetnook.core.utils import utc_now
 from tweetnook.enrichment.availability import record_unavailable
 from tweetnook.enrichment.detail import (
@@ -483,7 +484,7 @@ class _EnrichRun:
             record_unavailable(
                 self.store,
                 tweet_id=outcome.tweet_id,
-                operation="TweetDetail",
+                operation=TWEET_DETAIL,
                 payload=outcome.payload,
                 http_status=outcome.http_status,
                 reason=outcome.reason,
