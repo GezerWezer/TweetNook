@@ -77,8 +77,7 @@ test('activity updates retain unchanged rows and handle removal, cancellation, a
     await app.fetchActivityStatus();
     assert.equal(app.activity, null);
     assert.equal(app.activityError, null);
-    assert.equal(app.activityPageKey, 'media');
-    assert.equal(app.activitySegmentState(app.activitySelectedPage()), 'cancelled');
+    assert.equal(app.activitySegmentState(app.lastActivity.steps[1]), 'cancelled');
     const finished = app.lastActivity;
     await app.fetchActivityStatus();
     assert.equal(app.lastActivity, finished);
@@ -86,8 +85,6 @@ test('activity updates retain unchanged rows and handle removal, cancellation, a
     data = {...data, active: true, snapshot: {run_id: 'two', steps: [{key: 'prepare', state: 'active'}]}};
     await app.fetchActivityStatus();
     assert.equal(app.activity.run_id, 'two');
-    assert.equal(app.activityPageKey, null);
-    assert.equal(app.activitySelectedPageKey(), 'prepare');
     assert.equal(Object.hasOwn(app.activity, 'stopped'), false);
 });
 
@@ -351,7 +348,7 @@ test('schedule settings load, normalize, and save through the activity API', asy
     assert.equal(app.scheduleHasChanges(), false);
 });
 
-test('activity stages use focused pages and finish on a run summary', () => {
+test('activity issues, stage states, drawer toggling and command labels', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
@@ -359,9 +356,7 @@ test('activity stages use focused pages and finish on a run summary', () => {
         title: 'tweetnook sync',
         steps: [
             { key: 'one', title: 'First step', state: 'complete', summary: 'done' },
-            { key: 'two', title: 'Second step', state: 'skipped', summary: 'not needed' },
             { key: 'three', title: 'Current step', state: 'active', completed: 2, total: 4 },
-            { key: 'four', title: 'Later step', state: 'pending' },
         ],
         issues: [
             { level: 'warning', message: 'Retrying one item', count: 2 },
@@ -369,52 +364,11 @@ test('activity stages use focused pages and finish on a run summary', () => {
         ],
     };
 
-    assert.equal(app.activityActiveStep().key, 'three');
     assert.equal(app.activityIssues().length, 2);
     assert.equal(app.activityIssueCount(), 3);
-    assert.equal(app.activityRunState(), 'active');
-    assert.equal(app.activityRunStatusTitle(), 'Sync in progress');
-    assert.equal(app.activityRunCounts(), '4 stages · 1 completed · 1 skipped');
-    assert.deepEqual(
-        Array.from(app.activityPages(), page => page.key),
-        ['one', 'two', 'three', 'four', '__summary__'],
-    );
-    assert.equal(app.activityPages().at(-1).state, 'pending');
-    assert.equal(app.activitySelectedSegmentGrow(), 8 / 3);
-    assert.equal(app.activitySegmentPercent(app.activity.steps[0]), 100);
-    assert.equal(app.activitySegmentPercent(app.activity.steps[1]), 100);
-    assert.equal(app.activitySegmentPercent(app.activity.steps[2]), 50);
-    assert.equal(app.activitySegmentPercent(app.activity.steps[3]), 0);
-    assert.equal(app.activitySegmentPercent(app.activityPages().at(-1)), 0);
-    assert.equal(app.activitySegmentState(app.activity.steps[2]), 'active');
-    assert.equal(app.activityPageStateLabel(app.activity.steps[0]), 'Complete');
-    assert.equal(app.activityPageStateLabel(app.activity.steps[1]), 'Skipped');
-    assert.equal(app.activityPageStateLabel(app.activity.steps[2]), 'In progress');
-    assert.equal(app.activityPageUpdateText(app.activity.steps[2]), 'Latest update · Waiting for first result');
-    assert.equal(app.activityPageTimingText(app.activity.steps[2]), 'Timing · Estimating remaining time');
-    app.activity.steps[2].counters = '2 processed';
-    app.activity.steps[2].eta_seconds = 30;
-    assert.equal(app.activityPageUpdateText(app.activity.steps[2]), 'Latest update · 2 processed');
-    assert.equal(app.activityPageTimingText(app.activity.steps[2]), 'Timing · About 00:30 remaining');
-    assert.equal(app.activityRunStateLabel(), 'In progress');
-    assert.equal(app.activitySelectedPageKey(), 'three');
-    assert.equal(app.activitySelectedPageIndex(), 2);
-    assert.equal(app.activityPageDirection, 'forward');
-
-    app.selectActivityPage('one');
-    assert.equal(app.activitySelectedPageKey(), 'one');
-    assert.equal(app.activityPageDirection, 'back');
-    app.moveActivityPage(1);
-    assert.equal(app.activitySelectedPageKey(), 'two');
-    assert.equal(app.activityPageDirection, 'forward');
-    app.moveActivityPage(-10);
-    assert.equal(app.activitySelectedPageKey(), 'one');
-    assert.equal(app.activityPageDirection, 'back');
+    assert.equal(app.activitySegmentState(app.activity.steps[1]), 'active');
     app.openActivityDrawer();
     assert.equal(app.activityDrawerOpen, true);
-    assert.equal(app.activityPageKey, null);
-    assert.equal(app.activityPageDirection, 'forward');
-    assert.equal(app.activitySelectedPageKey(), 'three');
     app.toggleActivityDrawer();
     assert.equal(app.activityDrawerOpen, false);
     assert.equal(app.activityCommandLabel(), 'Archive Sync');
@@ -426,45 +380,13 @@ test('activity stages use focused pages and finish on a run summary', () => {
     app.activityStartPending = true;
     app.activityStartingKind = 'enrich';
     assert.equal(app.activityCommandLabel(), 'Archive Preparation');
-    app.activityStartPending = false;
-    app.activityStartingKind = null;
-    app.activity.title = 'tweetnook sync';
 
-    app.lastActivity = {
-        ...app.activity,
-        running: false,
-        success: true,
-        steps: app.activity.steps.map(step => ({ ...step, state: 'complete' })),
-    };
     app.activity = null;
-    app.activityPageKey = null;
-    assert.equal(app.activityRunState(), 'complete');
-    assert.equal(app.activityRunStateLabel(), 'Complete');
-    assert.equal(app.activityRunStatusTitle(), 'Last run completed');
-    assert.equal(app.activitySelectedPageKey(), '__summary__');
-    assert.equal(app.activitySelectedPage().is_summary, true);
-    assert.equal(app.activityPages().at(-1).state, 'complete');
-    assert.equal(app.activitySegmentPercent(app.activityPages().at(-1)), 100);
-    assert.equal(app.activityRunCounts(), '4 stages · 4 completed');
-
     app.lastActivity = {
-        ...app.lastActivity,
-        success: false,
-        stopped: true,
-        steps: [
-            { key: 'one', title: 'First step', state: 'complete', completed: 1, total: 1 },
-            { key: 'three', title: 'Stopped step', state: 'failed', completed: 2, total: 4 },
-            { key: 'four', title: 'Later step', state: 'skipped', completed: 0, total: 1 },
-        ],
+        run_id: 'stopped', running: false, success: false, stopped: true,
+        steps: [{ key: 'three', title: 'Stopped step', state: 'failed', completed: 2, total: 4 }],
     };
-    const stoppedPage = app.activityPages().find(page => page.key === 'three');
-    assert.equal(app.activitySegmentState(stoppedPage), 'cancelled');
-    assert.equal(app.activityPageStateLabel(stoppedPage), 'Canceled');
-    assert.equal(app.activityRunStateLabel(), 'Canceled');
-    assert.equal(app.activitySegmentPercent(stoppedPage), 50);
-    assert.equal(app.activitySegmentState(app.activityPages().at(-1)), 'cancelled');
-    assert.equal(app.activitySegmentPercent(app.activityPages().at(-1)), 100);
-    assert.equal(app.activityRunCounts(), '3 stages · 1 completed · 1 skipped · 1 canceled');
+    assert.equal(app.activitySegmentState(app.lastActivity.steps[0]), 'cancelled');
 });
 
 test('inactive unknown results are interrupted across the drawer and run history', () => {
@@ -475,9 +397,6 @@ test('inactive unknown results are interrupted across the drawer and run history
     app.lastActivity = {run_id: 'unknown', running: false, success: null, steps: []};
     const panel = nookMergeScope(app, nookSyncPanel());
     assert.equal(panel.headTitle(), 'Sync interrupted');
-    assert.equal(app.activityRunStateLabel(), 'Interrupted');
-    assert.equal(app.activityRunStatusTitle(), 'Last run interrupted');
-    assert.equal(app.activityRunState(), 'failed');
     app.lastSyncFormatted = 'Oct 17, 2026';
     assert.equal(app.activityHeaderText(), 'Sync interrupted — open Activity');
     const logs = nookLogsPage();

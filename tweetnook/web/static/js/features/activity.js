@@ -26,8 +26,6 @@ function activityMethods() {
         feedContentRevision: 0,
         activityDrawerOpen: false,
         activityShadeProgress: 0,
-        activityPageKey: null,
-        activityPageDirection: 'forward',
         activityNowSeconds: Math.floor(Date.now() / 1000),
 
         get displayActivity() {
@@ -38,9 +36,6 @@ function activityMethods() {
             const priorCommittedStages = new Set((this.displayActivity?.steps || [])
                 .filter(step => step.state === 'complete')
                 .map(step => `${this.displayActivity.run_id}:${step.key}`));
-            const previousActiveStepKey = this.activity?.active_step
-                || this.activity?.steps?.find(step => step.state === 'active')?.key
-                || null;
             // A completed run returned on startup is history, not a new
             // change to the feed being loaded. Still catch active tasks
             // and tasks requested before the first status response.
@@ -51,10 +46,6 @@ function activityMethods() {
             this.activitySchedule = reconcileActivityValue(this.activitySchedule, data.schedule || this.activitySchedule);
             this.activityError = null;
             if (data.active) {
-                if (this.displayActivity?.run_id !== data.snapshot?.run_id) {
-                    this.activityPageKey = null;
-                    this.activityPageDirection = 'forward';
-                }
                 this.activity = this.activity?.run_id === data.snapshot?.run_id
                     ? reconcileActivityValue(this.activity, data.snapshot) : data.snapshot;
                 this.activityStartPending = false;
@@ -77,9 +68,6 @@ function activityMethods() {
                 this.lastActivity = this.lastActivity?.run_id === lastActivity?.run_id
                     ? reconcileActivityValue(this.lastActivity, lastActivity) : lastActivity;
                 this.activity = null;
-                if (lastActivity?.stopped && !this.activityPageKey && previousActiveStepKey) {
-                    this.activityPageKey = previousActiveStepKey;
-                }
             }
             const committed = data.active ? data.snapshot : data.last_snapshot;
             if (checkForNewContent && (committed?.steps || []).some(step => step.state === 'complete'
@@ -274,8 +262,6 @@ function activityMethods() {
             if (this.activity || this.activityStartPending) return;
             this.activityStartPending = true;
             this.activityStartingKind = kind;
-            this.activityPageKey = null;
-            this.activityPageDirection = 'forward';
             this.activityError = null;
             try {
                 const response = await fetch(`/api/jobs/${kind}/run`, {
@@ -313,66 +299,7 @@ function activityMethods() {
             }
         },
 
-        activityPages() {
-            if (!this.displayActivity) return [];
-            return [
-                ...this.activitySteps(),
-                {
-                    key: '__summary__',
-                    title: 'Summary',
-                    state: this.activity ? 'pending' : this.activityRunState(),
-                    is_summary: true,
-                },
-            ];
-        },
-
-        activitySelectedSegmentGrow() {
-            const pageCount = this.activityPages().length;
-            if (pageCount <= 2) return 2;
-            return (2 * (pageCount - 1)) / (pageCount - 2);
-        },
-
-        activitySelectedPageKey() {
-            const pages = this.activityPages();
-            if (this.activityPageKey && pages.some(page => page.key === this.activityPageKey)) {
-                return this.activityPageKey;
-            }
-            return this.activityActiveStep()?.key || '__summary__';
-        },
-
-        activitySelectedPage() {
-            const key = this.activitySelectedPageKey();
-            return this.activityPages().find(page => page.key === key) || null;
-        },
-
-        activitySelectedPageIndex() {
-            return Math.max(
-                this.activityPages().findIndex(page => page.key === this.activitySelectedPageKey()),
-                0,
-            );
-        },
-
-        selectActivityPage(key) {
-            const pages = this.activityPages();
-            const nextIndex = pages.findIndex(page => page.key === key);
-            const currentIndex = this.activitySelectedPageIndex();
-            if (nextIndex < 0 || nextIndex === currentIndex) return;
-            this.activityPageDirection = nextIndex < currentIndex ? 'back' : 'forward';
-            this.activityPageKey = key;
-        },
-
-        moveActivityPage(offset) {
-            const pages = this.activityPages();
-            const nextIndex = Math.max(
-                0,
-                Math.min(this.activitySelectedPageIndex() + offset, pages.length - 1),
-            );
-            if (pages[nextIndex]) this.selectActivityPage(pages[nextIndex].key);
-        },
-
         openActivityDrawer() {
-            this.activityPageKey = null;
-            this.activityPageDirection = 'forward';
             this.activityDrawerOpen = true;
             if (activityPollingEnabled) this.fetchActivityStatus();
         },

@@ -72,72 +72,13 @@ function activityViewMethods() {
             return `${amount.toFixed(amount >= 10 ? 1 : 2)} ${units[index]}`;
         },
 
-        activityPercent(step) {
-            if (!step || !step.total) return 0;
-            return Math.max(0, Math.min(100, step.completed / step.total * 100));
-        },
-
-        activitySegmentPercent(page) {
-            if (!page) return 0;
-            if (page.is_summary) return this.activity ? 0 : 100;
-            if (page.state === 'complete' || page.state === 'skipped') return 100;
-            return this.activityPercent(page);
-        },
-
         activitySegmentState(page) {
             if (this.displayActivity?.stopped && page?.state === 'failed') return 'cancelled';
             return page?.state || 'pending';
         },
 
-        activityPageStateLabel(page) {
-            const labels = {
-                active: 'In progress',
-                complete: 'Complete',
-                failed: 'Failed',
-                cancelled: 'Canceled',
-                skipped: 'Skipped',
-                pending: 'Waiting',
-            };
-            return labels[this.activitySegmentState(page)] || 'Waiting';
-        },
-
-        activityPageUpdateText(page) {
-            const counters = String(page?.counters || '').trim();
-            if (counters) return `Latest update · ${counters}`;
-            const labels = {
-                active: 'Waiting for first result',
-                complete: 'Stage complete',
-                failed: 'Stopped with an error',
-                cancelled: 'Canceled',
-                skipped: 'No work needed',
-                pending: 'Waiting to start',
-            };
-            return `Latest update · ${labels[this.activitySegmentState(page)] || 'Waiting to start'}`;
-        },
-
-        activityPageTimingText(page) {
-            const state = this.activitySegmentState(page);
-            const eta = Number(page?.eta_seconds);
-            if (state === 'active' && page?.eta_seconds != null && Number.isFinite(eta)) {
-                return `Timing · About ${this.formatActivityDuration(eta)} remaining`;
-            }
-            const labels = {
-                active: 'Estimating remaining time',
-                complete: 'Completed',
-                failed: 'Stopped',
-                cancelled: 'Canceled',
-                skipped: 'No runtime needed',
-                pending: 'Available when this stage starts',
-            };
-            return `Timing · ${labels[state] || 'Available when this stage starts'}`;
-        },
-
         activitySteps() {
             return this.displayActivity?.steps || [];
-        },
-
-        activityActiveStep() {
-            return this.activitySteps().find(step => step.state === 'active') || null;
         },
 
         // The availability check shares the sync drawer; its wording follows the run.
@@ -181,31 +122,6 @@ function activityViewMethods() {
             );
         },
 
-        activityRunState() {
-            if (this.activity) return 'active';
-            if (this.displayActivity?.success === true) return 'complete';
-            if (this.displayActivity?.stopped || this.displayActivity?.success === false) {
-                return 'failed';
-            }
-            return this.displayActivity ? 'failed' : 'pending';
-        },
-
-        activityRunStateLabel() {
-            if (this.activity) return 'In progress';
-            if (this.displayActivity?.stopped) return 'Canceled';
-            if (this.displayActivity?.success === false) return 'Failed';
-            if (this.displayActivity?.success === true) return 'Complete';
-            return this.displayActivity ? 'Interrupted' : 'Waiting';
-        },
-
-        activityRunStatusTitle() {
-            if (this.activity) return 'Sync in progress';
-            if (this.displayActivity?.stopped) return 'Last run stopped';
-            if (this.displayActivity?.success === false) return 'Last run failed';
-            if (this.displayActivity?.success === true) return 'Last run completed';
-            return this.displayActivity ? 'Last run interrupted' : 'Run summary';
-        },
-
         activityHeaderText() {
             if (this.activity || this.activityStartPending) return this.activityCommandLabel() + ' in progress…';
             const last = this.lastActivity;
@@ -215,19 +131,6 @@ function activityViewMethods() {
             if (last?.success === false) return `${noun} failed — open Activity`;
             if (last && last.success !== true) return `${noun} interrupted — open Activity`;
             return this.lastSyncFormatted ? 'Synced ' + this.lastSyncFormatted : 'Open the Jobs panel to start a sync.';
-        },
-
-        activityRunCounts() {
-            const steps = this.activitySteps();
-            const complete = steps.filter(step => step.state === 'complete').length;
-            const skipped = steps.filter(step => step.state === 'skipped').length;
-            const failed = steps.filter(step => step.state === 'failed').length;
-            return [
-                `${steps.length} stage${steps.length === 1 ? '' : 's'}`,
-                complete ? `${complete} completed` : '',
-                skipped ? `${skipped} skipped` : '',
-                failed ? `${failed} ${this.displayActivity?.stopped ? 'canceled' : 'failed'}` : '',
-            ].filter(Boolean).join(' · ');
         },
 
         activitySummaryMetrics() {

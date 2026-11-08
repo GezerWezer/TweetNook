@@ -71,31 +71,23 @@ test('activity drawer loads any pipeline and starts production jobs', async () =
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
     const app = immediateComponent(tweetApp());
 
-    app.activityPageKey = 'old-run-stage';
     await app.fetchActivityStatus();
     assert.equal(app.activity.title, 'tweetnook import enrich');
-    assert.equal(app.activityPercent(app.activity.steps[0]), 50);
-    assert.equal(app.activityPageKey, null);
 
     active = false;
     await app.fetchActivityStatus();
     assert.equal(app.activity, null);
     assert.equal(app.lastActivity.title, 'tweetnook import enrich');
     assert.equal(app.activitySchedule.relative, 'Not configured');
-    app.activityPageKey = '__summary__';
     await app.startActivity('enrich');
     assert.ok(calls.some(([url, method]) => url === '/api/jobs/enrich/run' && method === 'POST'));
     assert.equal(app.activityStartPending, false);
     assert.equal(app.activityStartingKind, null);
-    assert.equal(app.activityPageKey, null);
     assert.equal(app.activity.title, 'tweetnook import enrich');
     await app.stopActivity();
     assert.ok(calls.some(([url, method]) => url === '/api/activity/stop' && method === 'POST'));
     assert.equal(app.activity, null);
-    assert.equal(app.activityPageKey, 'enrich');
-    assert.equal(app.activitySelectedPageKey(), 'enrich');
-    assert.equal(app.activitySegmentState(app.activitySelectedPage()), 'cancelled');
-    assert.equal(app.activitySegmentPercent(app.activitySelectedPage()), 50);
+    assert.equal(app.activitySegmentState(app.lastActivity.steps[0]), 'cancelled');
 });
 
 test('what to sync is the server sync.collections setting, shared by the sync panel and Schedule', async () => {

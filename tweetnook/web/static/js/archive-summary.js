@@ -29,10 +29,6 @@ function nookManageTags(app) {
   app.openSettings();
   nookSettingsNavigate(app, 'tags');
 }
-function nookScrollTo(id) {
-  const target = document.getElementById(id);
-  target?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-}
 // "19 days of posts" / "8 months of posts" / "About 6 years of posts" from the overview dates.
 function nookSpanLabel(oldest, newest) {
   const parse = text => { const time = Date.parse(String(text || '').replace(/\s+\d{1,2}:\d{2}\s*[ap]m$/i, '')); return Number.isNaN(time) ? null : time; };
