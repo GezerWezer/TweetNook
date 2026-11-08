@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from tweetnook.core.exceptions import ArchiveOwnerMismatchError
+from tweetnook.core.operations import ARCHIVE_LIKES, ARCHIVE_MANIFEST, ARCHIVE_MANIFEST_FILE
 from tweetnook.core.utils import utc_now
 
-from .common import folder_key
+from .common import archive_capture_id, folder_key, raw_capture_row_key
 from .record_types import RecordType
 from .records import PageBuffer, RecordsMixin
 
@@ -154,8 +154,7 @@ class SyncStateMixin(RecordsMixin):
         return self._query(f"record_type = '{RecordType.IMPORT_MANIFEST}' AND status = 'completed'")
 
     def _import_capture_payload(self, digest: str, operation: str, filename: str) -> Any:
-        hashed = hashlib.sha256(f"{digest}\0{operation}\0{filename}".encode()).hexdigest()
-        row = self._get_row(f"raw_capture:{hashed}")
+        row = self._get_row(raw_capture_row_key(archive_capture_id(digest, operation, filename)))
         try:
             return json.loads(row["raw_json"]) if row else None
         except (TypeError, ValueError):
@@ -170,7 +169,7 @@ class SyncStateMixin(RecordsMixin):
         imported: set[str] = set()
         for row in self.completed_manifests():
             digest = row["archive_digest"]
-            manifest = self._import_capture_payload(digest, "XArchiveManifest", "data/manifest.js")
+            manifest = self._import_capture_payload(digest, ARCHIVE_MANIFEST, ARCHIVE_MANIFEST_FILE)
             if not isinstance(manifest, dict):
                 continue
             info = manifest.get("archiveInfo")
@@ -186,7 +185,7 @@ class SyncStateMixin(RecordsMixin):
                 filename = part.get("fileName") if isinstance(part, dict) else None
                 if not isinstance(filename, str):
                     break
-                items = self._import_capture_payload(digest, "XArchiveLikes", filename)
+                items = self._import_capture_payload(digest, ARCHIVE_LIKES, filename)
                 if not isinstance(items, list):
                     break
                 if "count" in part and str(part["count"]) != str(len(items)):

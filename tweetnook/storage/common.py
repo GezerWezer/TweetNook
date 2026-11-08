@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Iterable
@@ -11,6 +12,16 @@ from typing import Any, NamedTuple
 from tweetnook.core.unavailability import PERMANENT_REASONS
 
 from .record_types import RecordType
+
+
+def raw_capture_row_key(capture_id: str) -> str:
+    return f"raw_capture:{capture_id}"
+
+
+def archive_capture_id(archive_digest: str, operation: str, filename: str) -> str:
+    """A stable capture ID for one export file, so a re-import replaces its capture."""
+    return hashlib.sha256(f"{archive_digest}\0{operation}\0{filename}".encode()).hexdigest()
+
 
 _NUMERIC_MEDIA_KEY = re.compile(r"\d+_(\d+)")
 

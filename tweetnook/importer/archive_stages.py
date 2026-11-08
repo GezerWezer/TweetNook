@@ -12,6 +12,16 @@ from rich.console import Console
 
 from tweetnook.config import XDGPaths
 from tweetnook.core.exceptions import ArchiveOwnerMismatchError
+from tweetnook.core.operations import (
+    ARCHIVE_ACCOUNT,
+    ARCHIVE_DELETED_TWEET_HEADERS,
+    ARCHIVE_DELETED_TWEETS,
+    ARCHIVE_LIKES,
+    ARCHIVE_MANIFEST,
+    ARCHIVE_MANIFEST_FILE,
+    ARCHIVE_TWEET_HEADERS,
+    ARCHIVE_TWEETS,
+)
 from tweetnook.core.utils import utc_now
 from tweetnook.importer.archive_input import ArchiveIdentity, ArchiveInput, archive_identity
 from tweetnook.importer.archive_manifests import (
@@ -233,15 +243,15 @@ def _record_import_start(run: ImportRun, store: ArchiveStore) -> None:
     )
     record_archive_capture(
         store,
-        "XArchiveManifest",
-        "data/manifest.js",
+        ARCHIVE_MANIFEST,
+        ARCHIVE_MANIFEST_FILE,
         run.source.manifest,
         archive_digest=run.digest,
     )
     for filename, payload in run.account_parts:
         record_archive_capture(
             store,
-            "XArchiveAccount",
+            ARCHIVE_ACCOUNT,
             filename,
             payload,
             archive_digest=run.digest,
@@ -363,14 +373,14 @@ def load_datasets(run: ImportRun, store: ArchiveStore) -> ArchiveDatasets:
         media_directory=media_directory,
         media_total=media_total,
         raw_parts=[
-            *(("XArchiveTweetHeaders", name, payload) for name, payload in tweet_header_parts),
+            *((ARCHIVE_TWEET_HEADERS, name, payload) for name, payload in tweet_header_parts),
             *(
-                ("XArchiveDeletedTweetHeaders", name, payload)
+                (ARCHIVE_DELETED_TWEET_HEADERS, name, payload)
                 for name, payload in deleted_header_parts
             ),
-            *(("XArchiveTweets", name, payload) for name, payload in tweet_parts),
-            *(("XArchiveDeletedTweets", name, payload) for name, payload in deleted_tweet_parts),
-            *(("XArchiveLikes", name, payload) for name, payload in like_parts),
+            *((ARCHIVE_TWEETS, name, payload) for name, payload in tweet_parts),
+            *((ARCHIVE_DELETED_TWEETS, name, payload) for name, payload in deleted_tweet_parts),
+            *((ARCHIVE_LIKES, name, payload) for name, payload in like_parts),
         ],
         source_part_total=source_part_total,
         record_total=total_tweets + total_deleted_tweets + total_likes,

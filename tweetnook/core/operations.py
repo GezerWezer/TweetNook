@@ -18,3 +18,13 @@ TIMELINE_OPERATIONS = (BOOKMARKS, LIKES, USER_TWEETS)
 THREAD_EXPAND_DETAIL = "ThreadExpandDetail"
 TWEET_DETAIL_RESURRECTION = "TweetDetailResurrection"
 DETAIL_CAPTURE_OPERATIONS = (THREAD_EXPAND_DETAIL, TWEET_DETAIL, TWEET_DETAIL_RESURRECTION)
+
+# An official export's files are captured under these names, one capture per file.
+ARCHIVE_MANIFEST = "XArchiveManifest"
+ARCHIVE_MANIFEST_FILE = "data/manifest.js"
+ARCHIVE_ACCOUNT = "XArchiveAccount"
+ARCHIVE_TWEET_HEADERS = "XArchiveTweetHeaders"
+ARCHIVE_DELETED_TWEET_HEADERS = "XArchiveDeletedTweetHeaders"
+ARCHIVE_TWEETS = "XArchiveTweets"
+ARCHIVE_DELETED_TWEETS = "XArchiveDeletedTweets"
+ARCHIVE_LIKES = "XArchiveLikes"

@@ -3,7 +3,6 @@ import owns."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from pathlib import Path
@@ -11,7 +10,7 @@ from typing import Any
 
 from tweetnook.core.utils import utc_now
 from tweetnook.storage import ArchiveStore
-from tweetnook.storage.common import ARCHIVE_SOURCE
+from tweetnook.storage.common import ARCHIVE_SOURCE, archive_capture_id
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ def record_archive_capture(
     *,
     archive_digest: str,
 ) -> None:
-    capture_key = hashlib.sha256(f"{archive_digest}\0{operation}\0{filename}".encode()).hexdigest()
+    capture_key = archive_capture_id(archive_digest, operation, filename)
     store.append_raw_capture(
         operation,
         filename,

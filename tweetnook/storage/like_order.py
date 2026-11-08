@@ -7,15 +7,16 @@ not use the third-party sequence-alignment implementation.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from itertools import pairwise
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from tweetnook.core import fastjson
+from tweetnook.core.operations import ARCHIVE_LIKES, ARCHIVE_MANIFEST, ARCHIVE_MANIFEST_FILE
 from tweetnook.core.timeline_parsing import extract_tweet_results_from_content
 from tweetnook.core.unavailability import is_tombstone
 
+from .common import archive_capture_id, raw_capture_row_key
 from .record_types import RecordType
 
 if TYPE_CHECKING:
@@ -133,8 +134,7 @@ def _reconstructed_archive_ids(items: list[Any], live: list[str]) -> list[str]:
 
 
 def _capture_key(digest: str, operation: str, filename: str) -> str:
-    hashed = hashlib.sha256(f"{digest}\0{operation}\0{filename}".encode()).hexdigest()
-    return f"raw_capture:{hashed}"
+    return raw_capture_row_key(archive_capture_id(digest, operation, filename))
 
 
 def _entry_spans(node: Any) -> list[list[Any]]:
@@ -327,7 +327,7 @@ def load_like_order(store: RecordsMixin) -> LikeOrder:
             continue
         raw_manifest = store.conn.execute(
             "SELECT raw_json FROM archive WHERE row_key = ?",
-            (_capture_key(digest, "XArchiveManifest", "data/manifest.js"),),
+            (_capture_key(digest, ARCHIVE_MANIFEST, ARCHIVE_MANIFEST_FILE),),
         ).fetchone()
         payload = _payload(raw_manifest) if raw_manifest else None
         if not isinstance(payload, dict):
@@ -351,7 +351,7 @@ def load_like_order(store: RecordsMixin) -> LikeOrder:
             if not isinstance(filename, str):
                 complete = False
                 continue
-            key = _capture_key(digest, "XArchiveLikes", filename)
+            key = _capture_key(digest, ARCHIVE_LIKES, filename)
             part = store.conn.execute(
                 "SELECT raw_json FROM archive WHERE row_key = ?", (key,)
             ).fetchone()
@@ -366,7 +366,8 @@ def load_like_order(store: RecordsMixin) -> LikeOrder:
 
     for row in store.conn.execute(
         f"SELECT row_key, raw_json FROM archive WHERE record_type = '{RecordType.RAW_CAPTURE}' "
-        "AND operation = 'XArchiveLikes' ORDER BY captured_at DESC, rowid DESC"
+        "AND operation = ? ORDER BY captured_at DESC, rowid DESC",
+        (ARCHIVE_LIKES,),
     ):
         if row["row_key"] in accounted:
             continue

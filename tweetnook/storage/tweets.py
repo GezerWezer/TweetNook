@@ -10,7 +10,7 @@ from tweetnook.core.extractor import extract_note_tweet_text
 from tweetnook.core.timeline_parsing import TimelineTweet
 from tweetnook.core.utils import utc_now
 
-from .common import LIVE_SOURCE, created_at_timestamp, folder_key
+from .common import LIVE_SOURCE, created_at_timestamp, folder_key, raw_capture_row_key
 from .objects import ObjectsMixin
 from .record_types import RecordType
 from .records import PageBuffer
@@ -31,7 +31,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
     ) -> tuple[str, dict[str, Any]]:
         capture_id = capture_key or str(uuid.uuid4())
         return capture_id, self._record(
-            row_key=f"raw_capture:{capture_id}",
+            row_key=raw_capture_row_key(capture_id),
             record_type=RecordType.RAW_CAPTURE,
             operation=operation,
             cursor_in=cursor_in,
