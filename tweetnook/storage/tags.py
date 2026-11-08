@@ -16,6 +16,21 @@ from .record_types import RecordType
 AVAILABLE_ENRICHMENT_STATES = ("done", "resurrected")
 
 
+TAGGING_RETRY_KEY_PREFIX = "tagging_retry:"
+
+
+def _media_tag_key(tweet_id: str) -> str:
+    return f"{RecordType.MEDIA_TAG}:{tweet_id}"
+
+
+def _tweet_hidden_key(tweet_id: str) -> str:
+    return f"{RecordType.TWEET_HIDDEN}:{tweet_id}"
+
+
+def _tagging_retry_key(tweet_id: str) -> str:
+    return f"{TAGGING_RETRY_KEY_PREFIX}{tweet_id}"
+
+
 class TaggingCandidate(TypedDict):
     tweet_id: str
     quoted_tweet_id: str | None
@@ -24,6 +39,14 @@ class TaggingCandidate(TypedDict):
 
 
 class TagsMixin(ConnectionMixin):
+    def _write_media_tag(self, tweet_id: str, raw_json: str, state: str, updated_at: str) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO archive "
+            "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (_media_tag_key(tweet_id), RecordType.MEDIA_TAG, tweet_id, raw_json, state, updated_at),
+        )
+
     def get_eligible_tagging_candidates(
         self,
         *,
@@ -54,7 +77,7 @@ class TagsMixin(ConnectionMixin):
         valid_tag_sql = f"""
             NOT EXISTS (
                 SELECT 1 FROM archive retry
-                WHERE retry.row_key = 'tagging_retry:' || {{tweet_id}}
+                WHERE retry.row_key = '{TAGGING_RETRY_KEY_PREFIX}' || {{tweet_id}}
                   AND CASE WHEN json_valid(retry.value)
                       THEN CAST(json_extract(retry.value, '$.next_retry_at') AS REAL)
                       ELSE 0 END > CAST(strftime('%s', 'now') AS REAL)
@@ -254,7 +277,7 @@ class TagsMixin(ConnectionMixin):
         with self.transaction():
             now = time.time()
             for tweet_id in tweet_ids:
-                key = f"tagging_retry:{tweet_id}"
+                key = _tagging_retry_key(tweet_id)
                 row = self.conn.execute(
                     "SELECT value FROM archive WHERE row_key = ?", (key,)
                 ).fetchone()
@@ -331,12 +354,7 @@ class TagsMixin(ConnectionMixin):
 
             payload = json.dumps(data)
 
-            self.conn.execute(
-                "INSERT OR REPLACE INTO archive "
-                "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (f"media_tag:{tweet_id}", "media_tag", tweet_id, payload, "done", now_ts),
-            )
+            self._write_media_tag(tweet_id, payload, "done", now_ts)
             return data
 
     def set_tweet_hidden(self, tweet_id: str, hidden: bool) -> None:
@@ -347,7 +365,7 @@ class TagsMixin(ConnectionMixin):
                     "INSERT OR IGNORE INTO archive (row_key, record_type, tweet_id, updated_at) "
                     "VALUES (?, ?, ?, ?)",
                     (
-                        f"tweet_hidden:{tweet_id}",
+                        _tweet_hidden_key(tweet_id),
                         RecordType.TWEET_HIDDEN,
                         tweet_id,
                         str(time.time()),
@@ -538,7 +556,7 @@ class TagsMixin(ConnectionMixin):
 
     def _saved_tag_payload(self, tweet_id: str) -> dict[str, Any]:
         row = self.conn.execute(
-            "SELECT raw_json FROM archive WHERE row_key = ?", (f"media_tag:{tweet_id}",)
+            "SELECT raw_json FROM archive WHERE row_key = ?", (_media_tag_key(tweet_id),)
         ).fetchone()
         try:
             payload = json.loads(row[0]) if row and row[0] else {}
@@ -553,19 +571,7 @@ class TagsMixin(ConnectionMixin):
                 saved = self._saved_tag_payload(tweet_id)
                 if saved.get("tags") or saved.get("description"):
                     continue
-                self.conn.execute(
-                    "INSERT OR REPLACE INTO archive "
-                    "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (
-                        f"media_tag:{tweet_id}",
-                        "media_tag",
-                        tweet_id,
-                        "{}",
-                        "failed",
-                        str(time.time()),
-                    ),
-                )
+                self._write_media_tag(tweet_id, "{}", "failed", str(time.time()))
 
     def tagging_quote_targets(self, tweet_ids: list[str]) -> dict[str, str]:
         if not tweet_ids:
@@ -655,21 +661,9 @@ class TagsMixin(ConnectionMixin):
             saved = self._saved_tag_payload(tweet_id)
             if saved.get("description") and not saved.get("tags"):
                 payload = {**payload, "description": saved["description"]}
+            self._write_media_tag(tweet_id, json.dumps(payload), "done", str(time.time()))
             self.conn.execute(
-                "INSERT OR REPLACE INTO archive "
-                "(row_key, record_type, tweet_id, raw_json, enrichment_state, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (
-                    f"media_tag:{tweet_id}",
-                    "media_tag",
-                    tweet_id,
-                    json.dumps(payload),
-                    "done",
-                    str(time.time()),
-                ),
-            )
-            self.conn.execute(
-                "DELETE FROM archive WHERE row_key = ?", (f"tagging_retry:{tweet_id}",)
+                "DELETE FROM archive WHERE row_key = ?", (_tagging_retry_key(tweet_id),)
             )
 
     def tagging_choice(self, tweet_id: str) -> dict[str, Any] | None:
