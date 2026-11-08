@@ -26,7 +26,7 @@ host = "127.0.0.1"
 port = 8000
 ```
 
-Restart TweetNook after changing the host or port. Use Settings > Setup to choose a web password, or `tweetnook web set-password` from a terminal. Restart after changing it through that terminal command.
+Restart TweetNook after changing the host or port. Use Settings > Setup to choose a web password, or `tweetnook set-password` from a terminal; either takes effect without a restart.
 
 ### Settings file
 

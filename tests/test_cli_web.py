@@ -757,7 +757,7 @@ def test_set_password_hashes_and_persists_value(monkeypatch, tmp_path: Path) -> 
         lambda actual_paths, changes: saved.append((actual_paths, changes)),
     )
 
-    result = runner.invoke(cli_web.web_app, ["set-password"])
+    result = runner.invoke(cli.app, ["set-password"])
 
     assert result.exit_code == 0
     from tweetnook.core.passwords import verify_password
@@ -767,7 +767,7 @@ def test_set_password_hashes_and_persists_value(monkeypatch, tmp_path: Path) -> 
     assert saved[0][1]["web.password_hash"].startswith("scrypt$")
     assert verify_password("correct horse", saved[0][1]["web.password_hash"])
     assert "Password updated in config.toml." in result.stdout
-    assert "must restart" in result.stdout
+    assert "no restart is needed" in result.stdout
 
 
 def test_set_password_updates_only_hash_and_preserves_sparse_values(
@@ -791,7 +791,7 @@ cache_size_kb = 64
     monkeypatch.setattr(cli_web, "load_config", lambda: (config, paths))
     monkeypatch.setattr(cli_web.typer, "prompt", lambda *_args, **_kwargs: "new secret")
 
-    result = runner.invoke(cli_web.web_app, ["set-password"])
+    result = runner.invoke(cli.app, ["set-password"])
 
     assert result.exit_code == 0
     raw = tomllib.loads(paths.config_file.read_text(encoding="utf-8"))
@@ -813,7 +813,7 @@ def test_set_password_rejects_empty_value(monkeypatch, tmp_path: Path) -> None:
         lambda *_args: pytest.fail("empty password must not save"),
     )
 
-    result = runner.invoke(cli_web.web_app, ["set-password"])
+    result = runner.invoke(cli.app, ["set-password"])
 
     assert result.exit_code == 1
     assert "Password cannot be empty." in result.stdout
@@ -831,7 +831,7 @@ def test_set_password_uses_hidden_confirmation_prompt(monkeypatch, tmp_path: Pat
     monkeypatch.setattr(cli_web.typer, "prompt", prompt)
     monkeypatch.setattr(cli_web, "update_config_values", lambda *_args: None)
 
-    result = runner.invoke(cli_web.web_app, ["set-password"])
+    result = runner.invoke(cli.app, ["set-password"])
 
     assert result.exit_code == 0
     assert calls == [
@@ -852,7 +852,7 @@ def test_set_password_reports_save_failure(monkeypatch, tmp_path: Path) -> None:
         lambda *_args: (_ for _ in ()).throw(OSError("read only")),
     )
 
-    result = runner.invoke(cli_web.web_app, ["set-password"])
+    result = runner.invoke(cli.app, ["set-password"])
 
     assert result.exit_code == 1
     assert "Failed to save password: read only" in result.stdout
@@ -871,14 +871,22 @@ def test_web_cli_help_lists_daemon_commands_and_descriptions() -> None:
     assert "Restart the background web server." in result.stdout
     assert "status" in result.stdout
     assert "Check if the background web server is running." in result.stdout
-    assert "set-password" in result.stdout
-    assert "Set the password for the web server." in result.stdout
+    assert "set-password" not in result.stdout
 
 
-@pytest.mark.parametrize("command", ["start", "stop", "restart", "status", "set-password"])
+@pytest.mark.parametrize("command", ["start", "stop", "restart", "status"])
 def test_web_subcommand_help_exits_successfully(command: str) -> None:
     result = runner.invoke(cli_web.web_app, [command, "--help"])
 
+    assert result.exit_code == 0
+    assert "--help" in result.stdout
+
+
+def test_set_password_is_a_root_command_with_help() -> None:
+    listing = runner.invoke(cli.app, ["--help"], env={"COLUMNS": "200", "TERM": "dumb"})
+    assert "set-password" in listing.stdout
+    assert "Set the password for the web server." in listing.stdout
+    result = runner.invoke(cli.app, ["set-password", "--help"])
     assert result.exit_code == 0
     assert "--help" in result.stdout
 

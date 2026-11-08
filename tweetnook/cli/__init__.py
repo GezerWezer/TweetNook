@@ -30,7 +30,7 @@ from tweetnook.cli.maintenance import (
 from tweetnook.cli.server import serve_daemon_internal, update_command
 from tweetnook.cli.sync import SYNC_GROUP_HELP, sync_app
 from tweetnook.cli.view import export_app, search_archive, stats_archive, view_app
-from tweetnook.cli.web import web_app
+from tweetnook.cli.web import set_password, web_app
 from tweetnook.cli_service import service_app
 
 app = typer.Typer(no_args_is_help=True)
@@ -130,6 +130,7 @@ app.command("prune")(prune_archive)
 app.command("stats")(stats_archive)
 app.command("rehydrate")(rehydrate_archive)
 app.command("search")(search_archive)
+app.command("set-password", help="Set the password for the web server.")(set_password)
 app.command("serve-daemon", hidden=True)(serve_daemon_internal)
 app.command(
     "serve",

@@ -114,4 +114,4 @@ Load local fonts asks the browser for permission to list fonts on the device you
 
 ## Passwords
 
-There is no default web password. When the browser asks for a username and password, any username works; enter the password you chose in Setup. A saved browser session can remember it. Use `tweetnook web set-password` and restart the appropriate server if you need to replace it from the terminal.
+There is no default web password. When the browser asks for a username and password, any username works; enter the password you chose in Setup. A saved browser session can remember it. Use `tweetnook set-password` if you need to replace it from the terminal; the running server picks it up without a restart.

@@ -87,7 +87,7 @@ JSON export accepts `--collection all|bookmarks|likes|tweets` and `--out PATH`. 
 | --- | --- |
 | `serve` | Run in the foreground and complete Setup in your browser. |
 | `web start`, `web stop`, `web restart`, `web status` | Control a personal background server. |
-| `web set-password` | Prompt for a new web password; restart afterward. |
+| `set-password` | Prompt for a new web password. A running server uses it from the next request. |
 | `service install` | Install a Linux systemd unit. Administrator access is required. |
 | `service start`, `service stop`, `service restart`, `service status` | Control the managed Linux service. |
 | `service uninstall` | Remove its managed service while retaining data/configuration. |

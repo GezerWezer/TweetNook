@@ -28,7 +28,12 @@ from tweetnook.jobs.supervisor import JobCompletion, JobSupervisor
 from tweetnook.storage import open_archive_store
 from tweetnook.web.address import normalize_listener_host
 from tweetnook.web.avatar_cache import AvatarCacheManager
-from tweetnook.web.deps import WebSessionMiddleware, server_state, verify_credentials
+from tweetnook.web.deps import (
+    WebSessionMiddleware,
+    server_state,
+    verify_credentials,
+    watch_saved_password,
+)
 from tweetnook.web.notices import NoticeStore
 from tweetnook.web.page import assemble_page
 from tweetnook.web.processes import forget_web_process, record_web_process
@@ -462,6 +467,7 @@ def run_server(
     server_state["config"] = config
     server_state["paths"] = paths
     server_state["password_hash"] = password_hash
+    watch_saved_password(paths)
     # Persistent SSE clients must not keep Uvicorn waiting forever before it
     # enters lifespan shutdown and stops the worker (up to another 70 seconds).
     identity = process_identity(os.getpid())

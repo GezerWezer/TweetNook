@@ -430,6 +430,7 @@ def test_run_server_sets_state_and_invokes_uvicorn(monkeypatch, tmp_path: Path) 
         "config": config,
         "paths": paths,
         "password_hash": "hash",
+        "password_file_stamp": (),
     }
     assert run_calls == [
         (
@@ -553,3 +554,113 @@ def test_correct_password_still_logs_in_when_the_rehash_cannot_be_saved(paths, m
         assert client.get("/protected", auth=("user", "wrong")).status_code == 401
         assert client.get("/protected", auth=("user", "correct")).status_code == 200
     assert server_state["password_hash"] == legacy
+
+
+def test_password_saved_by_another_process_applies_without_a_restart(paths):
+    from tweetnook.config import update_config_values
+    from tweetnook.core.passwords import hash_password
+
+    first = hash_password("first")
+    update_config_values(paths, {"web.password_hash": first})
+    server_state.update(paths=paths, password_hash=first)
+    deps.watch_saved_password(paths)
+    with TestClient(_auth_app()) as client:
+        assert client.get("/protected", auth=("user", "first")).status_code == 200
+        old_session = client.cookies[SESSION_COOKIE]
+
+        update_config_values(paths, {"web.password_hash": hash_password("second")})
+        client.cookies.clear()
+        assert client.get("/protected", auth=("user", "first")).status_code == 401
+        assert client.get("/protected", auth=("user", "second")).status_code == 200
+        client.cookies.clear()
+        client.cookies.set(SESSION_COOKIE, old_session)
+        assert client.get("/protected").status_code == 401
+
+        # Removing the saved password is the same choice as "no password" in Setup.
+        update_config_values(paths, {"web.password_hash": None})
+        client.cookies.clear()
+        assert client.get("/protected").status_code == 200
+    assert server_state["password_hash"] is None
+
+
+def test_password_saved_while_the_server_starts_is_not_missed(paths):
+    from tweetnook.config import update_config_values
+    from tweetnook.core.passwords import hash_password
+
+    # The server was handed the hash it read at launch; the file changed before it watched.
+    server_state.update(paths=paths, password_hash=hash_password("launch"))
+    update_config_values(paths, {"web.password_hash": hash_password("saved")})
+    deps.watch_saved_password(paths)
+    with TestClient(_auth_app()) as client:
+        assert client.get("/protected", auth=("user", "launch")).status_code == 401
+        assert client.get("/protected", auth=("user", "saved")).status_code == 200
+
+
+@pytest.mark.parametrize("damage", ["invalid", "wrong_shape", "missing", "vanished"])
+def test_unreadable_config_keeps_the_current_password(paths, caplog, monkeypatch, damage):
+    from tweetnook.config import update_config_values
+    from tweetnook.core.passwords import hash_password
+
+    saved = hash_password("first")
+    update_config_values(paths, {"web.password_hash": saved})
+    server_state.update(paths=paths, password_hash=saved)
+    deps.watch_saved_password(paths)
+    if damage == "invalid":
+        paths.config_file.write_text("[web\n", encoding="utf-8")
+    elif damage == "wrong_shape":
+        paths.config_file.write_text('web = "not a table"\n', encoding="utf-8")
+    else:
+        paths.config_file.unlink()
+    if damage == "vanished":
+        # Removed after the change check saw a new file but before it was read.
+        monkeypatch.setattr(deps, "_config_stamp", lambda _paths: (1, 2, 3))
+    with TestClient(_auth_app()) as client:
+        assert client.get("/protected").status_code == 401
+        assert client.get("/protected", auth=("user", "first")).status_code == 200
+    assert server_state["password_hash"] == saved
+    warnings = [r for r in caplog.records if r.name == "tweetnook.web.deps"]
+    assert len(warnings) == (0 if damage == "missing" else 1)
+
+
+def test_a_failed_read_is_retried_without_another_change_to_the_file(paths, monkeypatch):
+    from tweetnook.config import update_config_values
+    from tweetnook.core.passwords import hash_password
+
+    update_config_values(paths, {"web.password_hash": hash_password("first")})
+    server_state.update(paths=paths, password_hash=hash_password("first"))
+    deps.watch_saved_password(paths)
+    update_config_values(paths, {"web.password_hash": hash_password("second")})
+    real_load = deps.tomllib.load
+    access = {"denied": True}
+
+    def load(handle):
+        if access["denied"]:
+            raise PermissionError("denied")
+        return real_load(handle)
+
+    monkeypatch.setattr(deps.tomllib, "load", load)
+    with TestClient(_auth_app()) as client:
+        assert client.get("/protected", auth=("user", "first")).status_code == 200
+        client.cookies.clear()
+        # Access is restored without touching the file's inode, mtime or size.
+        access["denied"] = False
+        assert client.get("/protected", auth=("user", "first")).status_code == 401
+        assert client.get("/protected", auth=("user", "second")).status_code == 200
+
+
+def test_login_in_progress_fails_when_another_process_saves_a_new_password(paths, monkeypatch):
+    from tweetnook.config import update_config_values
+    from tweetnook.core.passwords import hash_password
+
+    update_config_values(paths, {"web.password_hash": hash_password("first")})
+    server_state.update(paths=paths, password_hash=hash_password("first"))
+    deps.watch_saved_password(paths)
+    real_verify = deps._password_check.verify
+
+    def rotate_during_check(password, expected):
+        update_config_values(paths, {"web.password_hash": hash_password("second")})
+        return real_verify(password, expected)
+
+    monkeypatch.setattr(deps._password_check, "verify", rotate_during_check)
+    with TestClient(_auth_app()) as client:
+        assert client.get("/protected", auth=("user", "first")).status_code == 401

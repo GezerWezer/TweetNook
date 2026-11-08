@@ -155,6 +155,22 @@ def test_replay_requires_source_password(monkeypatch, source_paths) -> None:
     assert client.get("/api/dev/replay/status", auth=("x", "wrong")).status_code == 401
 
 
+def test_replay_refuses_on_the_first_request_after_the_saved_password_is_removed(
+    monkeypatch, source_paths
+) -> None:
+    from tweetnook.web import deps
+
+    client = TestClient(_source_app(monkeypatch, source_paths))
+    config_module.update_config_values(
+        source_paths, {"web.password_hash": server_state["password_hash"]}
+    )
+    deps.watch_saved_password(source_paths)
+    assert client.get("/api/dev/replay/status", auth=AUTH).status_code == 200
+
+    config_module.update_config_values(source_paths, {"web.password_hash": None})
+    assert client.get("/api/dev/replay/status").status_code == 403
+
+
 def test_config_refuses_enabling_replay_source_without_password(make_web_client) -> None:
     from tweetnook.web.routes import config as config_routes
 

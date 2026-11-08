@@ -8,6 +8,7 @@ import re
 import secrets
 import threading
 import time
+import tomllib
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
@@ -68,6 +69,8 @@ def unmask(value: Any, saved: Any) -> Any:
 
 
 _ISSUE_SESSION = "issue_web_session"
+_PASSWORD_FILE_STAMP = "password_file_stamp"
+_PASSWORD_WARNED_STAMP = "password_warned_stamp"
 _session_key_lock = threading.Lock()
 
 
@@ -141,10 +144,67 @@ def _rehash_saved_password(paths: XDGPaths, expected_hash: str, password: str) -
         logger.warning("Could not upgrade the saved password hash: %s", error.__class__.__name__)
 
 
+def _config_stamp(paths: XDGPaths) -> tuple[int, int, int] | None:
+    try:
+        saved = paths.config_file.stat()
+    except OSError:
+        return None
+    # Config writes replace the file, so the inode changes even within one mtime tick.
+    return (saved.st_ino, saved.st_mtime_ns, saved.st_size)
+
+
+def watch_saved_password(paths: XDGPaths) -> None:
+    """Apply password changes another process saves to ``paths``' config.toml."""
+    # The startup hash was read before this point, so a save in between would match a stamp
+    # taken now. A stamp no file has makes the first request re-read the password.
+    server_state[_PASSWORD_FILE_STAMP] = ()
+
+
+def _saved_password_hash(paths: XDGPaths) -> str | None:
+    # Read directly rather than through load_config_at, which treats a missing file as an
+    # empty configuration and so as "no password".
+    with paths.config_file.open("rb") as handle:
+        web = tomllib.load(handle).get("web", {})
+    if not isinstance(web, dict):
+        raise ValueError("web is not a table")
+    value = web.get("password_hash")
+    if value is not None and not isinstance(value, str):
+        raise ValueError("web.password_hash is not a string")
+    return value
+
+
+def _follow_saved_password() -> None:
+    # `tweetnook set-password` saves from its own process, and the server only learns
+    # of it here. A missing or unreadable file keeps the current password: failing to read
+    # the config must never turn authentication off.
+    if _PASSWORD_FILE_STAMP not in server_state or not (paths := server_state.get("paths")):
+        return
+    stamp = _config_stamp(paths)
+    if stamp is None or stamp == server_state[_PASSWORD_FILE_STAMP]:
+        return
+    with config_lock:
+        if stamp == server_state[_PASSWORD_FILE_STAMP]:
+            return
+        try:
+            server_state["password_hash"] = _saved_password_hash(paths)
+        except (OSError, ValueError) as error:
+            # Retried on every request: fixing a permission leaves the stamp unchanged.
+            # The warning is once per version of the file.
+            if server_state.get(_PASSWORD_WARNED_STAMP) != stamp:
+                server_state[_PASSWORD_WARNED_STAMP] = stamp
+                logger.warning(
+                    "Kept the current web password; config.toml could not be read: %s",
+                    error.__class__.__name__,
+                )
+            return
+        server_state[_PASSWORD_FILE_STAMP] = stamp
+
+
 def verify_credentials(
     request: Request,
     credentials: Annotated[HTTPBasicCredentials | None, Depends(security)],
 ) -> bool:
+    _follow_saved_password()
     expected_hash = server_state.get("password_hash")
     if not expected_hash:
         return True
@@ -171,7 +231,9 @@ def verify_credentials(
             headers={"WWW-Authenticate": "Basic"},
         )
     with config_lock:
-        # A password change during the slow check must not authenticate the old password.
+        # A password change during the slow check must not authenticate the old password,
+        # including one saved by another process that no request has picked up yet.
+        _follow_saved_password()
         if server_state.get("password_hash") != expected_hash:
             raise HTTPException(status_code=401, detail="Incorrect password")
         if password_needs_rehash(expected_hash) and (paths := server_state.get("paths")):

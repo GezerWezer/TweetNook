@@ -27,12 +27,14 @@ def require_replay_source(
 ) -> bool:
     if not _replay_source_enabled():
         raise HTTPException(status_code=404, detail="Not Found")
+    # Authentication first: it picks up a password another process saved or removed.
+    verify_credentials(request, credentials)
     if not server_state.get("password_hash"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Replay source is disabled until this server has a Web password.",
         )
-    return verify_credentials(request, credentials)
+    return True
 
 
 def _archive():

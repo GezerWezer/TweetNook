@@ -261,7 +261,6 @@ def status_web() -> None:
     raise typer.Exit(1)
 
 
-@web_app.command("set-password", help="Set the password for the web server.")
 def set_password() -> None:
     console = Console()
     config, paths = load_config()
@@ -282,8 +281,4 @@ def set_password() -> None:
         console.print(f"[red]Failed to save password: {exc}[/red]")
         raise typer.Exit(1) from exc
     console.print("[green]Password updated in config.toml.[/green]")
-    console.print(
-        "Note: If the server is currently running, you must restart it for the new "
-        "password to take effect."
-    )
-    console.print("Run `tweetnook web stop` and `tweetnook web start`.")
+    console.print("A running server uses it from the next request; no restart is needed.")

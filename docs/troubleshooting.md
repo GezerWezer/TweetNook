@@ -39,10 +39,10 @@ The installer's global command uses the service archive. For a service you creat
 Set a replacement from the terminal using the same installation:
 
 ```bash
-tweetnook web set-password
+tweetnook set-password
 ```
 
-Restart the foreground server, personal background process, or Linux service afterward. The [startup commands](maintenance.md#starting-and-stopping) cover each mode.
+A running server uses the new password from its next request, so no restart is needed.
 
 ## X connection
 
