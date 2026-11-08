@@ -406,7 +406,7 @@ async def _run_pass(
     sleep: Callable[[float], Awaitable[None]],
     client: httpx.AsyncClient,
     imported_like_ids: frozenset[str] = frozenset(),
-    pipeline_step_key: str | None = None,
+    pipeline_step_key: str,
 ) -> PassResult:
     pages_fetched = 0
     tweets_seen = 0
@@ -424,19 +424,18 @@ async def _run_pass(
 
         page_number = pages_fetched + 1
         pass_name = _pass_label(is_head_pass=is_head_pass)
-        if pipeline_step_key is not None:
-            pipeline.update_step(
-                pipeline_step_key,
-                completed=0,
-                total=1,
-                activity=(
-                    f"Fetching page {page_number}"
-                    if is_head_pass
-                    else f"Fetching older page {page_number}"
-                ),
-                counters=f"{pages_fetched} pages · {tweets_seen} tweets saved",
-                detail=f"{pass_name} pass · each page is committed with its resume cursor",
-            )
+        pipeline.update_step(
+            pipeline_step_key,
+            completed=0,
+            total=1,
+            activity=(
+                f"Fetching page {page_number}"
+                if is_head_pass
+                else f"Fetching older page {page_number}"
+            ),
+            counters=f"{pages_fetched} pages · {tweets_seen} tweets saved",
+            detail=f"{pass_name} pass · each page is committed with its resume cursor",
+        )
         response, payload, tweets, next_cursor = await _fetch_and_parse_page(
             collection=collection,
             cursor=cursor,
@@ -454,7 +453,7 @@ async def _run_pass(
                         important=True,
                     )
                 )
-                if pipeline.active and pipeline_step_key is not None
+                if pipeline.active
                 else None
             ),
         )
@@ -498,11 +497,7 @@ async def _run_pass(
             stop_reason=stop_reason,
             is_head_pass=is_head_pass,
         )
-        if pipeline_step_key is not None:
-            pipeline.status(
-                pipeline_step_key,
-                f"Saving {len(tweets):,} tweets from page {page_number}",
-            )
+        pipeline.status(pipeline_step_key, f"Saving {len(tweets):,} tweets from page {page_number}")
         store.persist_page(
             operation=COLLECTION_TO_OPERATION[collection],
             collection_type=COLLECTION_TO_STORAGE[collection],
@@ -520,7 +515,7 @@ async def _run_pass(
 
         pages_fetched += 1
         tweets_seen += len(tweets)
-        if pipeline.active and pipeline_step_key is not None:
+        if pipeline.active:
             rate_context = _rate_limit_context(response)
             detail = f"{pass_name} pass · durable through page {pages_fetched}"
             if rate_context:
