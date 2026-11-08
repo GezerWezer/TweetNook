@@ -415,7 +415,11 @@ def test_enrichment_progress_moves_with_each_fxtwitter_answer(
 ) -> None:
     ids = [str(index) for index in range(1, 7)]
     answered: list[str] = []
-    seen_during_batch: list[int] = []
+    seen_during_batch: list[tuple[int, int]] = []
+    # Post N is answered only once progress for post N-1 has been reported, so the
+    # batch's order is fixed by the test rather than by sleep timings.
+    reported = {count: asyncio.Event() for count in range(len(ids) + 1)}
+    reported[0].set()
 
     class Pipeline:
         def __getattr__(self, _name):
@@ -424,10 +428,12 @@ def test_enrichment_progress_moves_with_each_fxtwitter_answer(
         def update_step(self, _key, *, completed=None, **_kwargs):
             if completed is not None:
                 seen_during_batch.append((completed, len(answered)))
+                reported[completed].set()
 
     async def handler(request: httpx.Request) -> httpx.Response:
         tweet_id = request.url.path.rsplit("/", 1)[-1]
-        await asyncio.sleep(0.01 * int(tweet_id))
+        # Bounded, so progress held until the batch ends fails the test instead of hanging it.
+        await asyncio.wait_for(reported[int(tweet_id) - 1].wait(), timeout=5)
         answered.append(tweet_id)
         code, body = ok(fx_status(tweet_id, "fx"))
         return httpx.Response(code, json=body)
@@ -435,17 +441,11 @@ def test_enrichment_progress_moves_with_each_fxtwitter_answer(
     monkeypatch.setattr(archive_enrich, "current_pipeline", lambda: Pipeline())
     _run_enrichment(paths, monkeypatch, httpx.MockTransport(handler), ids, signed_in=False)
 
-    completed = [value for value, _ in seen_during_batch]
-    assert completed == sorted(completed)
-    # Every post counts as soon as FxTwitter answers it, not after the whole batch.
-    assert [value for value, answers in seen_during_batch if 0 < answers < len(ids)] == [
-        1,
-        2,
-        3,
-        4,
-        5,
+    # Every post counts as soon as FxTwitter answers it, not after the whole batch:
+    # each answer is reported before the next one arrives.
+    assert [(count, answers) for count, answers in seen_during_batch if count] == [
+        (count, count) for count in range(1, len(ids) + 1)
     ]
-    assert completed[-1] == len(ids)
 
 
 def test_enrichment_without_an_account_leaves_the_rest_for_tweetdetail(
