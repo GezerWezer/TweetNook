@@ -18,7 +18,6 @@ from tweetnook.web.deps import (
     SESSION_MAX_AGE,
     SESSION_RENEW_AGE,
     WebSessionMiddleware,
-    get_server_state,
     get_store,
     server_state,
     verify_credentials,
@@ -207,10 +206,9 @@ def test_session_key_is_private_and_survives_restarts(tmp_path: Path) -> None:
 
 def test_state_dependencies_return_shared_objects() -> None:
     store = object()
-    server_state.update({"store": store, "marker": "value"})
+    server_state.update({"store": store})
 
     assert get_store() is store
-    assert get_server_state() is server_state
 
 
 def test_lifespan_opens_and_closes_store(monkeypatch, tmp_path: Path) -> None:

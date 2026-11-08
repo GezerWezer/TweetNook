@@ -8,11 +8,6 @@ function tagMethods() {
         globalTags: [],
         globalTagsLoading: false,
 
-        openTagsFromTweetMenu(tweetId, tagsData) {
-            this.closeTweetMenu();
-            this.openTagModal(tweetId, tagsData);
-        },
-
         // The app can't reach into the dialog's component, so it asks with an event.
         openTagModal(tweetId, tagsData) {
             this.closeTweetMenu();

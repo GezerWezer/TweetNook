@@ -239,7 +239,6 @@ def stop_web() -> None:
 def restart_web(dev_tools: Annotated[bool, DEV_TOOLS_OPTION] = False) -> None:
     console = Console()
     _require_web_dependencies(console)
-    _, paths = load_config()
     stop_web()
     start_web(dev_tools=dev_tools)
 

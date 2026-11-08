@@ -94,7 +94,6 @@ Routes and request/response models are defined in `web/routes/`. The [documentat
 | POST | `/api/setup/migrate` | `setup.py` |
 | GET | `/api/setup/schedule` | `setup.py` |
 | PUT | `/api/setup/schedule` | `setup.py` |
-| PUT | `/api/setup/password` | `setup.py` |
 | POST | `/api/setup/complete` | `setup.py` |
 | GET | `/api/stats/snapshot` | `stats.py` |
 | GET | `/api/stats/status` | `stats.py` |

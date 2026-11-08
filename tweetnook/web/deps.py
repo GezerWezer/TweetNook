@@ -199,7 +199,3 @@ def require_store(store: Annotated[Any, Depends(get_store)]):
             },
         )
     return store
-
-
-def get_server_state():
-    return server_state

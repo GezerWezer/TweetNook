@@ -19,20 +19,6 @@ class MergeMode(Enum):
     WORKER_RESULT = "worker_result"
 
 
-LIFECYCLE_FIELDS = frozenset(
-    {
-        "deleted_at",
-        "enrichment_state",
-        "enrichment_checked_at",
-        "enrichment_http_status",
-        "enrichment_reason",
-        "enrichment_detail",
-        "enrichment_retry_count",
-        "enrichment_next_retry_at",
-        "enrichment_first_unavailable_at",
-        "enrichment_retry_eligible",
-    }
-)
 MEDIA_WORKER_FIELDS = frozenset(
     {
         "download_state",

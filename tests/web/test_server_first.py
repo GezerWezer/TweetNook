@@ -175,10 +175,10 @@ def test_setup_can_finish_without_a_password_and_later_remove_one(first_run):
         assert "password_hash" not in first_run.config_file.read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("endpoint", ["/api/setup/complete", "/api/setup/password"])
-def test_setup_password_change_keeps_only_the_current_browser_authenticated(first_run, endpoint):
+def test_setup_password_change_keeps_only_the_current_browser_authenticated(first_run):
+    endpoint = "/api/setup/complete"
     with TestClient(server.app, base_url="https://testserver") as client:
-        submit = client.put if endpoint.endswith("/password") else client.post
+        submit = client.post
         assert client.post("/api/setup/archive/empty").status_code == 200
         body = {"skip_auth": True, "password": "first", "confirm_password": "first"}
         assert submit(endpoint, json=body).status_code == 200
@@ -220,8 +220,8 @@ def test_pending_login_cannot_renew_across_password_rotation(first_run, monkeypa
     with TestClient(server.app) as owner, TestClient(pending_app) as other:
         assert owner.post("/api/setup/archive/empty").status_code == 200
         assert (
-            owner.put(
-                "/api/setup/password",
+            owner.post(
+                "/api/setup/complete",
                 json={"skip_auth": True, "password": "first", "confirm_password": "first"},
             ).status_code
             == 200
@@ -239,8 +239,8 @@ def test_pending_login_cannot_renew_across_password_rotation(first_run, monkeypa
             response = executor.submit(other.get, "/pending", **credentials)
             try:
                 assert authenticated.wait(2)
-                changed = owner.put(
-                    "/api/setup/password",
+                changed = owner.post(
+                    "/api/setup/complete",
                     json={"password": "second", "confirm_password": "second"},
                 )
                 assert changed.status_code == 200

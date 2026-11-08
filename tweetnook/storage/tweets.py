@@ -80,11 +80,7 @@ class TweetsMixin(SyncStateMixin, ObjectsMixin):
         row_key = self._row_key_for_tweet(tweet.tweet_id, collection_type, folder_id)
         legacy = tweet.raw_json.get("legacy") or {}
         context = self._record_context(row_key, cursor=cursor)
-        prefer_incoming = self._prefer_incoming_source(
-            context,
-            source,
-            deleted_at=deleted_at,
-        )
+        prefer_incoming = self._prefer_incoming_source(context, source)
         text, note_tweet_text = self._merged_tweet_text(
             context,
             tweet.text,

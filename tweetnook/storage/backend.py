@@ -70,8 +70,6 @@ class ArchiveStore(
     PruneMixin,
     ConnectionMixin,
 ):
-    TABLE_NAME = "archive"
-
     def __init__(
         self,
         db_path: Path,

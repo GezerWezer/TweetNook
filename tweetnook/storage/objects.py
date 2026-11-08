@@ -58,11 +58,7 @@ class ObjectsMixin(RecordsMixin):
         context = self._record_context(row_key, cursor=cursor)
         observed = writes_lifecycle(mode)
         keep_lifecycle = not observed and context.existing is not None
-        prefer_incoming = self._prefer_incoming_source(
-            context,
-            source,
-            deleted_at=deleted_at,
-        )
+        prefer_incoming = self._prefer_incoming_source(context, source)
         if (
             not prefer_incoming
             and source in AVAILABLE_SOURCES

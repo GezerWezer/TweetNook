@@ -392,9 +392,7 @@ def test_health_reports_pipeline_counts(tmp_path, make_web_client) -> None:
         "threads_expanded": 2,
         "preview_articles": 1,
     }
-    reasons = {
-        item["reason"]: item for item in data["enrichment"]["unavailable"]["reasons"]
-    }
+    reasons = {item["reason"]: item for item in data["enrichment"]["unavailable"]["reasons"]}
     assert list(reasons) == [
         "protected_account",
         "suspended_account",

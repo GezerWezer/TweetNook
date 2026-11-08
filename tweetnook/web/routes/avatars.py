@@ -24,7 +24,7 @@ from tweetnook.enrichment.avatars import (
     core_avatar_dir,
 )
 from tweetnook.web.avatar_cache import mark_avatar_accessed
-from tweetnook.web.deps import get_server_state, require_store, verify_credentials
+from tweetnook.web.deps import require_store, server_state, verify_credentials
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -67,7 +67,6 @@ async def get_avatar(
 
 
 def _avatar_response(user_id: str, store: Any):
-    server_state = get_server_state()
     paths: XDGPaths = server_state["paths"]
     avatars_dir = paths.media_dir / "avatars"
     config = server_state.get("config")

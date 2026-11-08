@@ -96,7 +96,7 @@ test('tweet overflow supports copying raw data, untagged tweets, and a one-secon
     assert.equal(copiedText, '{\n  "rest_id": "2",\n  "legacy": {\n    "full_text": "Hello"\n  }\n}');
 
     app.toggleTweetMenu('list:2');
-    app.openTagsFromTweetMenu('2', null);
+    app.openTagModal('2', null);
     assert.equal(app.tweetMenuOpen, null);
     assert.equal(dialog.tagModalOpen, true);
     // Nothing saved yet, so the dialog opens in the editor.
@@ -318,7 +318,7 @@ test('feed cards share one overflow menu placed over the opening button', async 
     // Menu items act on the stored display tweet; a new list closes the menu.
     let tags = null;
     app.openTagModal = (id, data) => { tags = [id, data]; app.closeTweetMenu(); };
-    app.openTagsFromTweetMenu(app.listMenu.tweet.tweet_id, app.listMenu.tweet.media_tags);
+    app.openTagModal(app.listMenu.tweet.tweet_id, app.listMenu.tweet.media_tags);
     assert.deepEqual(tags, ['300', null]);
     dispatchFeed(list, 'click', list.children[1].querySelector('[data-action="menu"]'));
     assert.equal(app.tweetMenuOpen, 'list:301');
@@ -334,7 +334,7 @@ test('feed cards share one overflow menu placed over the opening button', async 
     assert.match(menu, /@click\.outside="closeTweetMenu\(listMenu\.key\)" @keydown\.escape\.window="closeTweetMenu\(listMenu\.key\)"/);
     assert.match(menu, /:style="\{ top: listMenu\.top \+ 'px', right: listMenu\.right \+ 'px' \}"/);
     assert.match(menu, /x-transition:enter="transition ease-out duration-100"/);
-    assert.match(menu, /@click\.stop="openTagsFromTweetMenu\(listMenu\.tweet\.tweet_id, listMenu\.tweet\.media_tags\)"/);
+    assert.match(menu, /@click\.stop="openTagModal\(listMenu\.tweet\.tweet_id, listMenu\.tweet\.media_tags\)"/);
     assert.match(menu, /@click\.stop="copyRawTweet\(listMenu\.tweet\)"/);
 });
 

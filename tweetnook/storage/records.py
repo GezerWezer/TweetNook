@@ -289,7 +289,6 @@ class RecordsMixin(ConnectionMixin):
         incoming_source: str,
         *,
         source_field: str = "source",
-        deleted_at: str | None = None,
     ) -> bool:
         if context.existing is None:
             return True

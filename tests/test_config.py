@@ -40,7 +40,7 @@ def test_resolve_paths_honors_explicit_xdg_roots(tmp_path: Path) -> None:
     assert paths.config_dir == tmp_path / "config-home" / "tweetnook"
     assert paths.data_dir == tmp_path / "data-home" / "tweetnook"
     assert paths.cache_dir == tmp_path / "cache-home" / "tweetnook"
-    assert paths.database_file == paths.database_path == paths.data_dir / "archive.db"
+    assert paths.database_path == paths.data_dir / "archive.db"
     assert paths.media_dir == paths.data_dir / "media"
     assert paths.avatar_cache_state_file == paths.data_dir / "avatar-cache-state.json"
 

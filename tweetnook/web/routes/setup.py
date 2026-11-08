@@ -699,20 +699,11 @@ def _finish_setup(request: CompleteRequest, http_request: Request):
     return {"completed": True, "reload": False}
 
 
-@router.put("/password")
-def setup_password(
-    request: CompleteRequest,
-    http_request: Request,
-    _auth: Annotated[bool, Depends(verify_credentials)],
-):
-    """Set a password as the final first-run action, or change it after authentication."""
-    return _finish_setup(request, http_request)
-
-
 @router.post("/complete")
 def complete_setup(
     request: CompleteRequest,
     http_request: Request,
     _auth: Annotated[bool, Depends(verify_credentials)],
 ):
+    """Set a password as the final first-run action, or change it after authentication."""
     return _finish_setup(request, http_request)
