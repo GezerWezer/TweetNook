@@ -30,9 +30,15 @@ from tweetnook.core.dev_replay import (
     PLACEHOLDER_MEDIA,
     RESULT_HEADER,
 )
-from tweetnook.core.operations import DETAIL_CAPTURE_OPERATIONS, TIMELINE_OPERATIONS
+from tweetnook.core.operations import (
+    BOOKMARKS,
+    DETAIL_CAPTURE_OPERATIONS,
+    LIKES,
+    TIMELINE_OPERATIONS,
+)
 from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
-from tweetnook.storage.record_types import RecordType
+from tweetnook.storage import replay_reads
+from tweetnook.storage.replay_reads import replay_connection
 from tweetnook.web.replay_placeholders import IMAGE_FORMATS, placeholder_bytes
 
 MEDIA_HOST_SUFFIX = "twimg.com"
@@ -241,27 +247,9 @@ class ReplayArchive:
 
     # -- database -----------------------------------------------------------------
 
-    def _connect(self) -> sqlite3.Connection:
-        if not self.db_path.is_file():
-            raise FileNotFoundError(f"No archive database at {self.db_path}")
-        connection = sqlite3.connect(
-            f"{self.db_path.resolve().as_uri()}?mode=ro", uri=True, check_same_thread=False
-        )
-        connection.row_factory = sqlite3.Row
-        return connection
-
-    def _query(self, sql: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
-        connection = self._connect()
-        try:
-            return connection.execute(sql, params).fetchall()
-        finally:
-            connection.close()
-
     def _capture(self, row_key: str) -> sqlite3.Row | None:
-        rows = self._query(
-            "SELECT raw_json, http_status FROM archive WHERE row_key = ?", (row_key,)
-        )
-        return rows[0] if rows else None
+        with replay_connection(self.db_path) as conn:
+            return replay_reads.capture(conn, row_key)
 
     # -- timelines ----------------------------------------------------------------
 
@@ -271,16 +259,8 @@ class ReplayArchive:
             cached = self._timelines.get(operation)
             if cached is not None and now - cached[0] < TIMELINE_TTL_SECONDS:
                 return cached[1]
-        rows = self._query(
-            f"""
-            SELECT row_key, cursor_in, cursor_out, captured_at
-            FROM archive
-            WHERE record_type = '{RecordType.RAW_CAPTURE}' AND operation = ?
-              AND CAST(http_status AS INTEGER) = 200
-            ORDER BY captured_at ASC
-            """,
-            (operation,),
-        )
+        with replay_connection(self.db_path) as conn:
+            rows = replay_reads.timeline_captures(conn, operation)
         by_cursor: dict[str, str] = {}
         cursor_out: dict[str, str | None] = {}
         firsts: list[str] = []
@@ -354,19 +334,8 @@ class ReplayArchive:
             if self._detail_index is not None and now - self._detail_index[0] < DETAIL_TTL_SECONDS:
                 return self._detail_index[1]
         index: dict[str, str] = {}
-        connection = self._connect()
-        try:
-            placeholders = ",".join("?" for _ in DETAIL_CAPTURE_OPERATIONS)
-            cursor = connection.execute(
-                f"""
-                SELECT row_key, raw_json FROM archive
-                WHERE record_type = '{RecordType.RAW_CAPTURE}' AND operation IN ({placeholders})
-                  AND CAST(http_status AS INTEGER) = 200
-                ORDER BY captured_at ASC
-                """,
-                DETAIL_CAPTURE_OPERATIONS,
-            )
-            for row in cursor:
+        with replay_connection(self.db_path) as conn:
+            for row in replay_reads.detail_captures(conn, DETAIL_CAPTURE_OPERATIONS):
                 try:
                     payload = fastjson.loads(row["raw_json"])
                 except (TypeError, ValueError):
@@ -375,8 +344,6 @@ class ReplayArchive:
                     continue
                 for tweet in parse_tweet_detail_tweets(payload):
                     index[tweet.tweet_id] = row["row_key"]
-        finally:
-            connection.close()
         with self._lock:
             self._detail_index = (now, index)
         return index
@@ -384,21 +351,15 @@ class ReplayArchive:
     def tweet_detail(self, tweet_id: str | None) -> ReplayResult:
         if not tweet_id:
             return _json_result(unavailable_detail_page(""), outcome="miss")
-        placeholders = ",".join("?" for _ in DETAIL_CAPTURE_OPERATIONS)
-        rows = self._query(
-            f"""
-            SELECT raw_json, http_status FROM archive
-            WHERE record_type = '{RecordType.RAW_CAPTURE}' AND cursor_in = ?
-              AND operation IN ({placeholders})
-            ORDER BY captured_at DESC LIMIT 1
-            """,
-            (tweet_id, *DETAIL_CAPTURE_OPERATIONS),
-        )
-        if rows and rows[0]["raw_json"]:
+        with replay_connection(self.db_path) as conn:
+            requested = replay_reads.latest_detail_capture(
+                conn, tweet_id, DETAIL_CAPTURE_OPERATIONS
+            )
+        if requested is not None and requested["raw_json"]:
             return ReplayResult(
-                status_code=_status_code(rows[0]["http_status"]),
+                status_code=_status_code(requested["http_status"]),
                 outcome="hit",
-                body=str(rows[0]["raw_json"]).encode(),
+                body=str(requested["raw_json"]).encode(),
             )
         row_key = self._detail_lookup().get(tweet_id)
         if row_key is not None and (capture := self._capture(row_key)) is not None:
@@ -407,14 +368,11 @@ class ReplayArchive:
                 outcome="hit",
                 body=str(capture["raw_json"]).encode(),
             )
-        objects = self._query(
-            f"SELECT raw_json FROM archive WHERE record_type = '{RecordType.TWEET_OBJECT}' AND "
-            "tweet_id = ?",
-            (tweet_id,),
-        )
-        for row in objects:
+        with replay_connection(self.db_path) as conn:
+            objects = replay_reads.tweet_object_payloads(conn, tweet_id)
+        for raw_json in objects:
             try:
-                tweet = fastjson.loads(row["raw_json"]) if row["raw_json"] else None
+                tweet = fastjson.loads(raw_json) if raw_json else None
             except (TypeError, ValueError):
                 continue
             if (
@@ -433,16 +391,8 @@ class ReplayArchive:
             if self._media is not None and now - self._media[0] < MEDIA_TTL_SECONDS:
                 return self._media[1]
         index: dict[str, tuple[str, str | None]] = {}
-        rows = self._query(
-            f"""
-            SELECT media_url, variants_json, local_path, content_type,
-                   thumbnail_url, thumbnail_local_path, thumbnail_content_type
-            FROM archive
-            WHERE record_type = '{RecordType.MEDIA}'
-              AND ((local_path IS NOT NULL AND local_path != '')
-                OR (thumbnail_local_path IS NOT NULL AND thumbnail_local_path != ''))
-            """
-        )
+        with replay_connection(self.db_path) as conn:
+            rows = replay_reads.downloaded_media(conn)
         for row in rows:
             if row["thumbnail_local_path"] and (key := _media_key_from_url(row["thumbnail_url"])):
                 index[key] = (row["thumbnail_local_path"], row["thumbnail_content_type"])
@@ -487,40 +437,25 @@ class ReplayArchive:
     # -- status -------------------------------------------------------------------
 
     def status(self) -> dict[str, Any]:
-        operations = (*TIMELINE_OPERATIONS, *DETAIL_CAPTURE_OPERATIONS)
-        placeholders = ",".join("?" for _ in operations)
-        counts = {
-            row["operation"]: row["count"]
-            for row in self._query(
-                f"""
-                SELECT operation, COUNT(*) AS count FROM archive
-                WHERE record_type = '{RecordType.RAW_CAPTURE}' AND operation IN ({placeholders})
-                  AND CAST(http_status AS INTEGER) = 200
-                GROUP BY operation
-                """,
-                operations,
+        with replay_connection(self.db_path) as conn:
+            counts = replay_reads.capture_counts(
+                conn, (*TIMELINE_OPERATIONS, *DETAIL_CAPTURE_OPERATIONS)
             )
-        }
-        media = self._query(
-            f"SELECT COUNT(*) AS count FROM archive WHERE record_type = '{RecordType.MEDIA}' "
-            "AND local_path IS NOT NULL AND local_path != ''"
-        )
-        owner = self._query(
-            "SELECT value FROM archive WHERE row_key = 'metadata:owner_user_id' LIMIT 1"
-        )
-        bookmarks = self._timeline("Bookmarks")
-        likes = self._timeline("Likes")
+            downloaded = replay_reads.downloaded_media_count(conn)
+            owner = replay_reads.owner_user_id(conn)
+        bookmarks = self._timeline(BOOKMARKS)
+        likes = self._timeline(LIKES)
         return {
-            "bookmarks_pages": counts.get("Bookmarks", 0),
+            "bookmarks_pages": counts.get(BOOKMARKS, 0),
             "bookmarks_chain_pages": bookmarks.chain_pages,
-            "likes_pages": counts.get("Likes", 0),
+            "likes_pages": counts.get(LIKES, 0),
             "likes_chain_pages": likes.chain_pages,
             "thread_captures": sum(
                 counts.get(operation, 0) for operation in DETAIL_CAPTURE_OPERATIONS
             ),
-            "downloaded_media": media[0]["count"] if media else 0,
+            "downloaded_media": downloaded,
             "placeholder_media": True,
-            "owner_user_id": owner[0]["value"] if owner else None,
+            "owner_user_id": owner,
         }
 
 
