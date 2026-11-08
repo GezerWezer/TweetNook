@@ -43,7 +43,15 @@ from tweetnook.core.fileio import owned_temp, publish_file
 from tweetnook.core.passwords import hash_password
 from tweetnook.jobs.resource_failure import StorageExhaustedError
 from tweetnook.jobs.supervisor import JobConflictError
-from tweetnook.web.deps import MASKED_SECRET, remember_web_session, server_state, verify_credentials
+from tweetnook.web.deps import (
+    MASKED_SECRET,
+    mask_secrets,
+    remember_web_session,
+    server_state,
+    unmask,
+    verify_credentials,
+    without_masked,
+)
 from tweetnook.web.routes.activity import read_active_snapshot
 from tweetnook.web.runtime_config import save_server_config
 from tweetnook.web.setup_coordinator import staged_archive_info
@@ -61,10 +69,7 @@ class AuthUpdateRequest(BaseModel):
 
 
 def _auth_payload(config: AuthConfig, *, verified: bool = False) -> dict[str, object]:
-    values = config.model_dump()
-    for field in ("auth_token", "ct0"):
-        if values.get(field):
-            values[field] = MASKED_SECRET
+    values = mask_secrets("auth", config.model_dump())
     configured = all((value or "").strip() for value in (config.auth_token, config.ct0))
     return {"configured": configured, "verified": verified, "values": values}
 
@@ -88,10 +93,8 @@ def _archive_auth(config: AuthConfig) -> AuthConfig:
 def _candidate_auth(request: AuthUpdateRequest, current: AuthConfig) -> AuthConfig:
     values: dict[str, str | None] = {}
     for field, value in request.model_dump().items():
-        if field not in request.model_fields_set:
-            value = getattr(current, field)
-        if field in {"auth_token", "ct0"} and value == MASKED_SECRET:
-            value = getattr(current, field)
+        saved = getattr(current, field)
+        value = unmask(value, saved) if field in request.model_fields_set else saved
         if isinstance(value, str):
             value = value.strip() or None
         values[field] = value
@@ -451,11 +454,12 @@ def put_auth(
             detail = output[-8000:] or "The Twitter/X authentication probe did not succeed."
             raise HTTPException(status_code=422, detail=detail)
 
-    changes: dict[str, object] = {}
-    for field, value in request.model_dump(exclude_unset=True).items():
-        if field in {"auth_token", "ct0"} and value == MASKED_SECRET:
-            continue
-        changes[f"auth.{field}"] = (value.strip() or None) if isinstance(value, str) else value
+    changes = without_masked(
+        {
+            f"auth.{field}": (value.strip() or None) if isinstance(value, str) else value
+            for field, value in request.model_dump(exclude_unset=True).items()
+        }
+    )
     if candidate.user_id:
         changes["auth.user_id"] = candidate.user_id
     try:

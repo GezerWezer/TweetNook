@@ -8,7 +8,7 @@
 
 `update_config_values` accepts known dotted paths, validates the resulting configuration and omits values equal to their defaults. Auth placeholders stay explicit. Resetting a field therefore often removes its line from TOML rather than writing the default value.
 
-Use the config APIs rather than editing TOML strings in route handlers. Secrets are masked in web responses. Setup and tagging endpoints preserve unchanged masked secrets. Generic `POST /api/config` rejects masked placeholders; omit unchanged secrets. Environment values take precedence for that process and are not necessarily written to the file.
+Use the config APIs rather than editing TOML strings in route handlers. Secrets are masked in web responses (`SECRET_FIELDS` in `web/deps.py` lists them), and every endpoint keeps the saved value when a secret comes back masked. The replay password is the one narrowing: the saved password is kept only while the source URL is unchanged, so a new URL with a masked or omitted password clears it. Environment values take precedence for that process and are not necessarily written to the file.
 
 Auth environment selection belongs to `resolve_auth_config`. Nonempty overrides take precedence; empty overrides fall back to saved credentials. Loaded configurations retain that selection and its per-field provenance, so later credential resolution does not reread a changed environment. Directly constructed configurations use the same selection policy when resolved.
 

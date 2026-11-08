@@ -6,17 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from tweetnook.config import config_error_message
-from tweetnook.web.deps import MASKED_SECRET, verify_credentials
+from tweetnook.web.deps import SECRET_FIELDS, mask_secrets, verify_credentials, without_masked
 from tweetnook.web.runtime_config import save_server_config
 
 router = APIRouter()
-SECRET_FIELDS = (
-    ("auth", "auth_token"),
-    ("auth", "ct0"),
-    ("web", "password_hash"),
-    ("tagging", "api_key"),
-    ("replay", "password"),
-)
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -24,10 +17,9 @@ class ConfigUpdateRequest(BaseModel):
 
 
 def _mask_secrets(data: dict) -> dict:
-    for section, field in SECRET_FIELDS:
-        section_data = data.get(section)
-        if isinstance(section_data, dict) and section_data.get(field):
-            section_data[field] = MASKED_SECRET
+    for section in SECRET_FIELDS:
+        if isinstance(data.get(section), dict):
+            mask_secrets(section, data[section])
     return data
 
 
@@ -67,15 +59,18 @@ def api_post_config(
             load_config,
         )
 
-        _, paths = load_config()
-        if "web.password_hash" in req.changes:
-            raise ValueError("web.password_hash cannot be changed through this endpoint")
-        secret_paths = {f"{section}.{field}" for section, field in SECRET_FIELDS}
-        if any(
-            path in secret_paths and value == MASKED_SECRET for path, value in req.changes.items()
+        saved, paths = load_config()
+        changes = without_masked(req.changes)
+        if (
+            "replay.url" in changes
+            and changes["replay.url"] != saved.replay.url
+            and "replay.password" not in changes
         ):
-            raise ValueError("Masked secret placeholders cannot be saved")
-        if req.changes.get("web.dev_replay_source") is True:
+            # The saved password is only ever sent back to the source it was saved for.
+            changes["replay.password"] = None
+        if "web.password_hash" in changes:
+            raise ValueError("web.password_hash cannot be changed through this endpoint")
+        if changes.get("web.dev_replay_source") is True:
             from tweetnook.web.deps import server_state
 
             if not server_state.get("password_hash"):
@@ -83,7 +78,7 @@ def api_post_config(
                     "Set a Web password before serving this archive as a replay source."
                 )
 
-        config = save_server_config(paths, req.changes)
+        config = save_server_config(paths, changes)
         return {
             "values": _mask_secrets(config.model_dump()),
             "explicit": get_explicit_config_fields(paths),

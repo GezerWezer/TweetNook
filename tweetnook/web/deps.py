@@ -29,10 +29,44 @@ _password_check = RecentPasswordCheck()
 SESSION_COOKIE = "tweetnook_session"
 SESSION_MAX_AGE = 400 * 24 * 60 * 60  # Browsers cap cookie lifetimes at 400 days.
 SESSION_RENEW_AGE = 7 * 24 * 60 * 60
-# Stands in for a saved secret in API responses. Credential forms that get it back keep the
-# saved value; /api/config rejects it, since a Settings save should never carry it.
+# Stands in for a saved secret in API responses. Every route that gets it back keeps the
+# saved value, so a form can resubmit a secret it was never shown.
 # web/fragments/setup.html compares against the same literal.
 MASKED_SECRET = "********"
+# Config fields no response returns in clear text, by config section.
+SECRET_FIELDS: dict[str, tuple[str, ...]] = {
+    "auth": ("auth_token", "ct0"),
+    "web": ("password_hash",),
+    "tagging": ("api_key",),
+    "replay": ("password",),
+}
+SECRET_PATHS = frozenset(
+    f"{section}.{field}" for section, fields in SECRET_FIELDS.items() for field in fields
+)
+
+
+def mask_secrets(section: str, values: dict[str, Any]) -> dict[str, Any]:
+    """``values`` (one config section's fields) with each saved secret masked, in place."""
+    for field in SECRET_FIELDS[section]:
+        if values.get(field):
+            values[field] = MASKED_SECRET
+    return values
+
+
+def without_masked(changes: dict[str, Any]) -> dict[str, Any]:
+    """Dotted config ``changes`` minus secrets that came back masked, which stay as saved."""
+    return {
+        path: value
+        for path, value in changes.items()
+        if not (path in SECRET_PATHS and value == MASKED_SECRET)
+    }
+
+
+def unmask(value: Any, saved: Any) -> Any:
+    """The submitted value, or the saved one when the mask came back."""
+    return saved if value == MASKED_SECRET else value
+
+
 _ISSUE_SESSION = "issue_web_session"
 _session_key_lock = threading.Lock()
 

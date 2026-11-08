@@ -277,12 +277,11 @@ def test_database_tuning_applies_to_open_store_and_new_readers(
     ("changes", "message"),
     [
         ({"web.password_hash": "new-hash"}, "cannot be changed"),
-        ({"auth.auth_token": "********"}, "Masked secret"),
         ({"web.auto_start": True}, "Unknown configuration field"),
         ({"tagging.free_rpd": 0}, "greater than or equal to 1"),
     ],
 )
-def test_post_config_rejects_blocked_masked_unknown_and_invalid_values(
+def test_post_config_rejects_blocked_unknown_and_invalid_values(
     monkeypatch, make_web_client, tmp_path: Path, changes: dict, message: str
 ) -> None:
     _use_temp_config(monkeypatch, tmp_path)
@@ -292,6 +291,61 @@ def test_post_config_rejects_blocked_masked_unknown_and_invalid_values(
 
     assert response.status_code == 400
     assert message in response.json()["detail"]
+
+
+def test_post_config_keeps_saved_secrets_that_come_back_masked(
+    monkeypatch, make_web_client, tmp_path: Path
+) -> None:
+    _, paths = _use_temp_config(monkeypatch, tmp_path)
+    paths.config_file.write_text(
+        '[auth]\nauth_token = "auth-secret"\n\n[tagging]\napi_key = "gemini-secret"\n'
+    )
+    client = make_web_client(config_routes.router)
+
+    response = client.post(
+        "/api/config",
+        json={
+            "changes": {
+                "auth.auth_token": "********",
+                "tagging.api_key": "********",
+                "web.port": 9001,
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    saved = load_config(_env(tmp_path))[0]
+    assert (saved.auth.auth_token, saved.tagging.api_key, saved.web.port) == (
+        "auth-secret",
+        "gemini-secret",
+        9001,
+    )
+    assert response.json()["values"]["auth"]["auth_token"] == "********"
+
+
+@pytest.mark.parametrize(
+    ("changes", "kept"),
+    [
+        ({"replay.url": "http://other:8000", "replay.password": "********"}, False),
+        ({"replay.url": "http://other:8000"}, False),
+        ({"replay.url": "http://source:8000", "replay.password": "********"}, True),
+    ],
+)
+def test_post_config_sends_the_saved_replay_password_only_to_its_own_source(
+    monkeypatch, make_web_client, tmp_path: Path, changes, kept
+) -> None:
+    _, paths = _use_temp_config(monkeypatch, tmp_path)
+    paths.config_file.write_text(
+        '[replay]\nurl = "http://source:8000"\npassword = "source-secret"\n'
+    )
+    client = make_web_client(config_routes.router)
+
+    response = client.post("/api/config", json={"changes": changes})
+
+    assert response.status_code == 200
+    saved = load_config(_env(tmp_path))[0].replay
+    assert saved.url == changes["replay.url"]
+    assert saved.password == ("source-secret" if kept else None)
 
 
 def test_post_config_leaves_unrelated_raw_settings_untouched(

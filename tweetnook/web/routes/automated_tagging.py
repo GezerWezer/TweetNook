@@ -18,7 +18,7 @@ from tweetnook.tagging.sdk import (
     list_models,
     model_is_compatible,
 )
-from tweetnook.web.deps import MASKED_SECRET, require_store, verify_credentials
+from tweetnook.web.deps import mask_secrets, require_store, unmask, verify_credentials
 from tweetnook.web.runtime_config import save_server_config
 
 router = APIRouter()
@@ -40,10 +40,7 @@ class AutomatedTaggingTestRequest(BaseModel):
 
 
 def _public_values(config: TaggingConfig) -> dict[str, Any]:
-    values = config.model_dump()
-    if values.get("api_key"):
-        values["api_key"] = MASKED_SECRET
-    return values
+    return mask_secrets("tagging", config.model_dump())
 
 
 def _load():
@@ -61,8 +58,8 @@ def _validated_values(values: dict[str, Any], current: TaggingConfig) -> Tagging
             detail=f"Unknown automated-tagging fields: {', '.join(sorted(unknown))}",
         )
     submitted = dict(values)
-    if submitted.get("api_key") == MASKED_SECRET:
-        submitted["api_key"] = current.api_key
+    if "api_key" in submitted:
+        submitted["api_key"] = unmask(submitted["api_key"], current.api_key)
     try:
         return TaggingConfig.model_validate({**current.model_dump(), **submitted})
     except Exception as error:
@@ -194,9 +191,8 @@ def post_automated_tagging_models(
     if not automated_tagging_installed():
         raise HTTPException(status_code=404, detail="Automated tagging is not installed")
     config, _paths = _load()
-    api_key = (
-        config.tagging.api_key if request.api_key in {None, MASKED_SECRET} else request.api_key
-    )
+    saved = config.tagging.api_key
+    api_key = saved if request.api_key is None else unmask(request.api_key, saved)
     if not api_key:
         raise HTTPException(status_code=400, detail="Enter a Gemini API key first")
     try:
