@@ -48,7 +48,13 @@ def test_reports_only_imports_that_point_up_the_stack(tree) -> None:
         "tweetnook/storage/backend.py",
         "from tweetnook import config, sync\nfrom ..search import x\nfrom . import migrate\n",
     )
-    tree("tweetnook/sync/collection.py", "from tweetnook.storage.backend import ArchiveStore\n")
+    tree(
+        "tweetnook/sync/collection.py",
+        "from tweetnook.storage.backend import ArchiveStore\nfrom tweetnook.client import base\n",
+    )
+    tree(
+        "tweetnook/jobs/scheduler.py", "from tweetnook.client import base\nimport tweetnook.sync\n"
+    )
     tree(
         "tweetnook/web/server.py",
         "from tweetnook.sync.collection import run\nfrom tweetnook.cli import app\n",
@@ -56,6 +62,7 @@ def test_reports_only_imports_that_point_up_the_stack(tree) -> None:
 
     assert check_structure.upward_imports() == [
         ("tweetnook.core.utils", "tweetnook.sync"),
+        ("tweetnook.jobs.scheduler", "tweetnook.sync"),
         ("tweetnook.storage.backend", "tweetnook.search"),
         ("tweetnook.storage.backend", "tweetnook.sync"),
     ]

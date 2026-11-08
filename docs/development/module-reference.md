@@ -9,11 +9,12 @@ Each package belongs to one layer, and a module may only import from its own lay
 | Layer | Packages and modules |
 | --- | --- |
 | Interface | `cli/`, `cli_service.py`, `web/`, `__main__.py`, `system_install.py` |
-| Features | `sync/`, `importer/`, `enrichment/`, `tagging/`, `jobs/`, `export/`, `stats/`, `client/`, `auth/`, `query_ids/` |
+| Features | `sync/`, `importer/`, `enrichment/`, `tagging/`, `export/`, `stats/` |
+| Services | `client/`, `auth/`, `query_ids/`, `jobs/` |
 | Storage | `storage/` |
 | Core | `core/`, `config.py` |
 
-CI enforces the rule with `scripts/check_structure.py --strict`. Features may import each other.
+CI enforces the rule with `scripts/check_structure.py --strict`. Features may import each other. Services are what every feature uses to talk to X and run as a job, so they never import a feature.
 
 Some modules sit where their dependencies put them rather than where their name suggests:
 

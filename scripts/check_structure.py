@@ -48,8 +48,10 @@ SIZE_EXEMPT: dict[str, int] = {}
 # config belongs to core but stays a top-level module: install.sh imports it by name.
 CORE = {"core", "config"}
 STORAGE = {"storage"}
+# Talking to X and running jobs: every feature uses these, and they use no feature.
+SERVICES = {"auth", "client", "query_ids", "jobs"}
 INTERFACE = {"__main__", "cli", "cli_service", "system_install", "web"}
-LAYERS = {"core": 0, "storage": 1, "feature": 2, "interface": 3}
+LAYERS = {"core": 0, "storage": 1, "services": 2, "feature": 3, "interface": 4}
 
 
 def layer(module: str) -> str:
@@ -59,6 +61,8 @@ def layer(module: str) -> str:
         return "interface"
     if name in STORAGE:
         return "storage"
+    if name in SERVICES:
+        return "services"
     if name in CORE:
         return "core"
     return "feature"

@@ -40,8 +40,9 @@ for f in tests/js/test_*.cjs; do node "$f"; done   # browser-asset harnesses
   linked in cascade order.
 - `cli/` - the Typer command tree, one module per command group.
 
-Packages are layered: CLI and web, then features, then storage, then core. A module never
-imports from a higher layer, and CI fails if one does; the module reference lists the layers.
+Packages are layered: CLI and web, then features, then services (X access and jobs), then
+storage, then core. A module never imports from a higher layer, and CI fails if one does;
+the module reference lists the layers.
 
 Invariants that must hold:
 
