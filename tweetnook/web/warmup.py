@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class ArchiveWarmer:
@@ -41,7 +44,9 @@ class ArchiveWarmer:
                 try:
                     warm()
                 except Exception:
-                    pass  # Warming is an optimization; requests rebuild on demand.
+                    # Warming is an optimization, so requests still work (rebuilding on
+                    # demand), but a failure here usually means a broken query or archive.
+                    logger.warning("Archive warm-up step failed", exc_info=True)
             with self._lock:
                 if self._stopped or not self._pending:
                     self._thread = None

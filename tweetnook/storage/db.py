@@ -209,7 +209,9 @@ class ConnectionMixin:
                 for _row in conn.execute(sql):
                     pass
         except sqlite3.OperationalError:
-            pass  # Stopped, or the archive is busy; warming is best-effort.
+            # A stop interrupts the query; any other failure is a real problem to report.
+            if not self._warm_cancelled:
+                raise
         finally:
             conn.close()
 

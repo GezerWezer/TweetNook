@@ -94,7 +94,7 @@ def test_requests_during_a_pass_coalesce_into_one_follow_up_pass():
     assert store.interrupted is True
 
 
-def test_failures_are_ignored_and_stopped_warmers_do_not_start():
+def test_failures_are_logged_and_stopped_warmers_do_not_start(caplog):
     class Failing(_Store):
         def warm_like_order(self):
             self.calls.append("like_order")
@@ -106,6 +106,16 @@ def test_failures_are_ignored_and_stopped_warmers_do_not_start():
     assert store.finished.wait(timeout=10)
     warmer.stop()
     assert store.calls == ["like_order", "read_cache"]
+    # The failing step is logged with its error, and the next step still ran.
+    [record] = [r for r in caplog.records if r.name == "tweetnook.web.warmup"]
+    assert record.levelname == "WARNING" and record.exc_info[1].args == ("busy",)
 
     warmer.request()
     assert store.calls == ["like_order", "read_cache"]
+
+
+def test_a_failing_warm_read_is_reported_not_swallowed(store, monkeypatch):
+    monkeypatch.setattr(db, "_WARM_READ_QUERIES", ("SELECT * FROM no_such_table",))
+
+    with pytest.raises(db.sqlite3.OperationalError, match="no_such_table"):
+        store.warm_read_cache()
