@@ -225,6 +225,23 @@ def test_default_client_never_reaches_the_network_in_replay(monkeypatch) -> None
     assert [request.url.host for request in sent] == ["source.test"]
 
 
+async def test_fxtwitter_client_is_blocked_in_replay() -> None:
+    import inspect
+
+    from tweetnook.client import fxtwitter
+    from tweetnook.config import AppConfig
+
+    # Unwrap the autouse offline fixture: this test needs the real default transport.
+    build_fx_client = inspect.unwrap(fxtwitter.build_fx_client)
+    configure_replay(ReplayConfig(url="http://source.test:8000", password="pw"))
+    try:
+        async with build_fx_client(AppConfig()) as client:
+            with pytest.raises(ReplayBlockedError):
+                await client.get("/status/1")
+    finally:
+        configure_replay(None)
+
+
 def test_dev_tools_env_flag() -> None:
     assert dev_replay.dev_tools_enabled({"TWEETNOOK_DEV_TOOLS": "1"})
     assert not dev_replay.dev_tools_enabled({})

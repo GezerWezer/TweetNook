@@ -9,7 +9,6 @@ extractor and the Web UI read, so the existing persistence path can store them.
 from __future__ import annotations
 
 import asyncio
-import math
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -17,7 +16,9 @@ from typing import Any, Literal
 
 import httpx
 
+from tweetnook.client.base import parse_retry_after
 from tweetnook.config import AppConfig
+from tweetnook.core.dev_replay import client_transport
 
 FxLookupKind = Literal["available", "tombstone", "not_found", "protected", "error"]
 
@@ -60,17 +61,13 @@ def build_fx_client(
         headers={"user-agent": FX_USER_AGENT, "accept": "application/json"},
         timeout=config.fxtwitter.timeout,
         follow_redirects=True,
-        transport=transport,
+        transport=client_transport(transport),
     )
 
 
 def _retry_after(response: httpx.Response, attempt: int) -> float:
-    header = response.headers.get("retry-after")
-    try:
-        delay = float(header) if header else float(2**attempt)
-    except ValueError:
-        delay = float(2**attempt)
-    if not math.isfinite(delay):
+    delay = parse_retry_after(response.headers.get("retry-after"))
+    if delay is None:
         delay = float(2**attempt)
     return min(max(delay, 1.0), FX_MAX_RETRY_AFTER_SECONDS)
 

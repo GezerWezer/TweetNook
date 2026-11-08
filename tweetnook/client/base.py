@@ -161,7 +161,8 @@ def _parse_int_header(value: str | None) -> int | None:
     return parsed
 
 
-def _parse_retry_after(value: str | None, *, now: float | None = None) -> float | None:
+def parse_retry_after(value: str | None, *, now: float | None = None) -> float | None:
+    """Seconds a Retry-After header asks for (delta or HTTP date), or None if unusable."""
     if value is None:
         return None
     try:
@@ -200,7 +201,7 @@ def get_rate_limit_info(
         limit=_parse_int_header(response.headers.get("x-rate-limit-limit")),
         remaining=_parse_int_header(response.headers.get("x-rate-limit-remaining")),
         reset_at=reset_at if _reset_datetime(reset_at) is not None else None,
-        retry_after=_parse_retry_after(response.headers.get("retry-after"), now=now),
+        retry_after=parse_retry_after(response.headers.get("retry-after"), now=now),
     )
     if (
         info.limit is None

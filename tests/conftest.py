@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import importlib
 import json
 import pkgutil
@@ -22,6 +23,7 @@ def offline_fxtwitter(monkeypatch: pytest.MonkeyPatch) -> None:
 
     real_build = fxtwitter.build_fx_client
 
+    @functools.wraps(real_build)
     def build(config, *, transport=None):
         offline = httpx.MockTransport(lambda request: httpx.Response(418, json={"code": 418}))
         return real_build(config, transport=transport or offline)
