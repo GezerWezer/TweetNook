@@ -109,16 +109,6 @@ class ReportFactsMixin(InsightFactsMixin, StatsMixin, TagsMixin):
             insights=self.insight_facts() if "insights" in include else None,
         )
 
-    def enrichment_incomplete_count(self) -> int:
-        row = self.conn.execute(
-            f"""
-            SELECT count(*) FROM archive
-            WHERE record_type = '{RecordType.TWEET_OBJECT}'
-              AND enrichment_state IN ('pending', 'transient_failure')
-            """
-        ).fetchone()
-        return int(row[0] or 0) if row else 0
-
     def latest_sync_at(self) -> str | None:
         row = self.conn.execute(
             f"SELECT max(updated_at) FROM archive WHERE record_type = '{RecordType.SYNC_STATE}'"
@@ -225,23 +215,7 @@ class ReportFactsMixin(InsightFactsMixin, StatsMixin, TagsMixin):
             collection.post_count = int(count)
             collection.oldest_created_at = _iso_date(oldest)
             collection.newest_created_at = _iso_date(newest)
-        for row in self._query(
-            f"record_type = '{RecordType.SYNC_STATE}'",
-            cols=["collection_type", "updated_at", "backfill_cursor", "backfill_incomplete"],
-        ):
-            name = row.get("collection_type")
-            if not isinstance(name, str) or not name:
-                continue
-            collection = collections.setdefault(name, ArchiveCollectionStats(name))
-            updated = row.get("updated_at")
-            if (
-                isinstance(updated, str)
-                and updated
-                and (collection.last_synced_at is None or updated > collection.last_synced_at)
-            ):
-                collection.last_synced_at = updated
-                collection.backfill_cursor = row.get("backfill_cursor") or None
-                collection.backfill_incomplete = self._parse_bool(row.get("backfill_incomplete"))
+        self._fold_sync_state(collections)
         names = [*SEARCH_COLLECTION_ORDER, *sorted(set(collections) - set(SEARCH_COLLECTION_ORDER))]
         return [collections[name] for name in names]
 
@@ -284,7 +258,7 @@ class ReportFactsMixin(InsightFactsMixin, StatsMixin, TagsMixin):
             ),
             archive_total,
             unavailable_total,
-            self.enrichment_incomplete_count(),
+            self.count_incomplete_initial_enrichment(),
             counts_by_reason,
         )
 

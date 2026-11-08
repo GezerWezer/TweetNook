@@ -11,8 +11,6 @@ from rich.console import Console
 from tweetnook.stats import (
     build_stats_report,
     build_stats_section,
-    get_enrichment_incomplete_count,
-    get_latest_sync_at,
 )
 from tweetnook.stats import service as stats_service
 from tweetnook.stats.render_cli import render_stats_report
@@ -141,15 +139,15 @@ def test_collection_leaves_the_shared_connection_free_for_other_requests(
         assert release.wait(5)
         return original(context, spec)
 
-    latest_sync = get_latest_sync_at(store)
+    latest_sync = store.latest_sync_at()
     monkeypatch.setitem(stats_service._COLLECTORS, "overview", blocking_collector)
     with ThreadPoolExecutor(max_workers=3) as executor:
         report = executor.submit(build_stats_report, store, include={"overview"})
         try:
             assert entered.wait(5)
             # Header and banner polls answer while the report is still collecting.
-            assert executor.submit(get_latest_sync_at, store).result(timeout=2) == latest_sync
-            assert executor.submit(get_enrichment_incomplete_count, store).result(timeout=2) == 0
+            assert executor.submit(store.latest_sync_at).result(timeout=2) == latest_sync
+            assert executor.submit(store.count_incomplete_initial_enrichment).result(timeout=2) == 0
         finally:
             release.set()
         assert report.result(timeout=5).section("overview").data["unique_posts"] == 1

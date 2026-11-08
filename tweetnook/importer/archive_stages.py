@@ -616,7 +616,7 @@ def ingest_archive(run: ImportRun, store: ArchiveStore, *, final_status: str) ->
     preserve_raw_sources(run, store, data)
     for stage in (*_WRITE_STAGES, _MEDIA_STAGE):
         _run_write_stage(run, store, data, stage)
-    run.pending_after_import = store.count_tweet_objects_for_enrichment()
+    run.pending_after_import = store.count_incomplete_initial_enrichment()
     store.set_import_manifest(
         run.digest,
         archive_generation_date=run.generation_date,

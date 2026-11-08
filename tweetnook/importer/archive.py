@@ -93,7 +93,7 @@ def _ingest_unless_duplicate(run: ImportRun, store: ArchiveStore, *, regen: bool
             run.duplicate = True
             run.counts = manifest_counts(existing_manifest)
             run.warnings = manifest_warnings(existing_manifest)
-            run.pending_after_import = store.count_tweet_objects_for_enrichment()
+            run.pending_after_import = store.count_incomplete_initial_enrichment()
             for step in INGEST_STEPS:
                 if run.pipeline.has_step(step.key):
                     run.pipeline.skip_step(step.key, "this archive already being imported")

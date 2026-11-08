@@ -5,10 +5,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from tweetnook.stats import (
-    get_enrichment_incomplete_count,
-    get_latest_sync_at,
-)
 from tweetnook.storage import ArchiveStore
 from tweetnook.web.deps import require_store, verify_credentials
 from tweetnook.web.stats_cache import CachedStatsReport, web_stats_cache
@@ -144,7 +140,7 @@ def get_enrichment_incomplete(
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
 ) -> dict[str, int]:
     """Return the inexpensive status-banner count."""
-    return {"incomplete": get_enrichment_incomplete_count(store)}
+    return {"incomplete": store.count_incomplete_initial_enrichment()}
 
 
 @router.get("/latest-sync")
@@ -152,4 +148,4 @@ def get_latest_sync(
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
 ) -> dict[str, str | None]:
     """Return only the inexpensive page-header sync timestamp."""
-    return {"latest_sync": _format_ts(get_latest_sync_at(store))}
+    return {"latest_sync": _format_ts(store.latest_sync_at())}

@@ -417,9 +417,6 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             limit=limit,
         )
 
-    def count_tweet_objects_for_enrichment(self) -> int:
-        return self.count_incomplete_initial_enrichment()
-
     def count_pending_initial_enrichment(self) -> int:
         return self._count(
             f"record_type = '{RecordType.TWEET_OBJECT}' AND enrichment_state = 'pending'"

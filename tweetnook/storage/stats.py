@@ -61,6 +61,29 @@ class ArchiveStats:
 
 
 class StatsMixin(SyncStateMixin, RelationsMixin):
+    def _fold_sync_state(self, collections: dict[str, ArchiveCollectionStats]) -> str | None:
+        """Copy each collection's newest sync state onto its stats; return the newest sync."""
+        latest_sync_at: str | None = None
+        for row in self._query(
+            f"record_type = '{RecordType.SYNC_STATE}'",
+            cols=["collection_type", "updated_at", "backfill_cursor", "backfill_incomplete"],
+        ):
+            name = row.get("collection_type")
+            updated_at = row.get("updated_at")
+            if not isinstance(name, str) or not name:
+                continue
+            collection = collections.setdefault(name, ArchiveCollectionStats(name))
+            if not isinstance(updated_at, str) or not updated_at:
+                continue
+            if collection.last_synced_at is None or updated_at > collection.last_synced_at:
+                collection.last_synced_at = updated_at
+                cursor = row.get("backfill_cursor")
+                collection.backfill_cursor = cursor if isinstance(cursor, str) and cursor else None
+                collection.backfill_incomplete = self._parse_bool(row.get("backfill_incomplete"))
+            if latest_sync_at is None or updated_at > latest_sync_at:
+                latest_sync_at = updated_at
+        return latest_sync_at
+
     def counts(self) -> dict[str, int]:
         tweet_rows = self._count(f"record_type = '{RecordType.TWEET}'")
         return {
@@ -91,16 +114,6 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
                 """
             ).fetchall()
         ]
-        sync_rows = self._query(
-            expr=f"record_type = '{RecordType.SYNC_STATE}'",
-            cols=[
-                "collection_type",
-                "updated_at",
-                "last_head_tweet_id",
-                "backfill_cursor",
-                "backfill_incomplete",
-            ],
-        )
         enrichment_counts = {
             row[0]: int(row[1])
             for row in self.conn.execute(
@@ -239,35 +252,7 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
         ).fetchone()
         latest_capture_at = latest_capture_row[0] if latest_capture_row else None
 
-        latest_sync_at: str | None = None
-        for row in sync_rows:
-            collection_type = row.get("collection_type")
-            if not isinstance(collection_type, str) or not collection_type:
-                continue
-            collection = collection_stats.setdefault(
-                collection_type,
-                ArchiveCollectionStats(collection_type=collection_type),
-            )
-            updated_at = row.get("updated_at")
-            if (
-                isinstance(updated_at, str)
-                and updated_at
-                and (collection.last_synced_at is None or updated_at > collection.last_synced_at)
-            ):
-                collection.last_synced_at = updated_at
-                backfill_cursor = row.get("backfill_cursor")
-                collection.backfill_cursor = (
-                    backfill_cursor
-                    if isinstance(backfill_cursor, str) and backfill_cursor
-                    else None
-                )
-                collection.backfill_incomplete = self._parse_bool(row.get("backfill_incomplete"))
-            if (
-                isinstance(updated_at, str)
-                and updated_at
-                and (latest_sync_at is None or updated_at > latest_sync_at)
-            ):
-                latest_sync_at = updated_at
+        latest_sync_at = self._fold_sync_state(collection_stats)
 
         ordered_collections = [
             collection_stats[name] for name in SEARCH_COLLECTION_ORDER if name in collection_stats

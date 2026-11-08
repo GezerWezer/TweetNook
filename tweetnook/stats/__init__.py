@@ -11,8 +11,6 @@ from tweetnook.stats.service import (
     build_stats_report,
     build_stats_section,
     format_bytes,
-    get_enrichment_incomplete_count,
-    get_latest_sync_at,
 )
 
 __all__ = [
@@ -24,6 +22,4 @@ __all__ = [
     "build_stats_report",
     "build_stats_section",
     "format_bytes",
-    "get_enrichment_incomplete_count",
-    "get_latest_sync_at",
 ]

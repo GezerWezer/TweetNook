@@ -42,16 +42,6 @@ def format_bytes(size: float) -> str:
     return f"{size:.2f} PB"
 
 
-def get_enrichment_incomplete_count(store: ArchiveStore) -> int:
-    """Return the lightweight banner count without collecting the full report."""
-    return store.enrichment_incomplete_count()
-
-
-def get_latest_sync_at(store: ArchiveStore) -> str | None:
-    """Return the latest sync timestamp without collecting archive statistics."""
-    return store.latest_sync_at()
-
-
 def _backfill_status(cursor: str | None, incomplete: bool) -> str:
     if incomplete and cursor:
         return "resume older"
