@@ -324,27 +324,6 @@ enabled = true
     assert raw["web"] == {"port": 9123}
 
 
-@pytest.mark.parametrize(
-    ("path", "attribute"),
-    [
-        ("/api/config", "load_config"),
-        ("/api/config/defaults", "AppConfig"),
-        ("/api/config/schema", "get_config_ui_schema"),
-    ],
-)
-def test_get_config_endpoints_translate_failures_to_500(
-    monkeypatch, make_web_client, path: str, attribute: str
-) -> None:
-    def fail(*_args, **_kwargs):
-        raise RuntimeError("config unavailable")
-
-    monkeypatch.setattr(f"tweetnook.config.{attribute}", fail)
-    client = make_web_client(config_routes.router)
-    response = client.get(path)
-    assert response.status_code == 500
-    assert response.json() == {"detail": "config unavailable"}
-
-
 def test_post_config_translates_write_failure_to_400(
     monkeypatch, make_web_client, tmp_path: Path
 ) -> None:

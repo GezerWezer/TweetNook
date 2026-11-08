@@ -34,36 +34,27 @@ def _mask_secrets(data: dict) -> dict:
 
 @router.get("/api/config")
 def api_get_config(_auth: Annotated[bool, Depends(verify_credentials)]):
-    try:
-        from tweetnook.config import get_explicit_config_fields, load_config
+    from tweetnook.config import get_explicit_config_fields, load_config
 
-        config, paths = load_config()
-        return {
-            "values": _mask_secrets(config.model_dump()),
-            "explicit": get_explicit_config_fields(paths),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    config, paths = load_config()
+    return {
+        "values": _mask_secrets(config.model_dump()),
+        "explicit": get_explicit_config_fields(paths),
+    }
 
 
 @router.get("/api/config/defaults")
 def api_get_config_defaults(_auth: Annotated[bool, Depends(verify_credentials)]):
-    try:
-        from tweetnook.config import AppConfig
+    from tweetnook.config import AppConfig
 
-        return AppConfig().model_dump()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    return AppConfig().model_dump()
 
 
 @router.get("/api/config/schema")
 def api_get_config_schema(_auth: Annotated[bool, Depends(verify_credentials)]):
-    try:
-        from tweetnook.config import get_config_ui_schema
+    from tweetnook.config import get_config_ui_schema
 
-        return get_config_ui_schema()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    return get_config_ui_schema()
 
 
 @router.post("/api/config")
@@ -98,5 +89,7 @@ def api_post_config(
             "values": _mask_secrets(config.model_dump()),
             "explicit": get_explicit_config_fields(paths),
         }
-    except Exception as e:
+    # Invalid values (including Pydantic errors) and an unwritable config file are both
+    # something the person saving can fix, so Settings shows them.
+    except (ValueError, OSError) as e:
         raise HTTPException(status_code=400, detail=config_error_message(e)) from e

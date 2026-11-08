@@ -131,18 +131,18 @@ def test_tag_stats_requests_all_counts(make_web_client) -> None:
         ("get", "/api/tags/stats", None),
     ],
 )
-def test_tag_store_failures_return_500(
+def test_tag_store_failures_return_500_without_internals(
     make_web_client, method: str, path: str, json_body: dict | None
 ) -> None:
     store = TagStore()
     store.failure = RuntimeError("tag database unavailable")
-    client = make_web_client(tag_routes.router, store=store)
+    client = make_web_client(tag_routes.router, store=store, raise_server_exceptions=False)
     request: Callable = getattr(client, method)
 
     response = request(path, json=json_body) if json_body is not None else request(path)
 
     assert response.status_code == 500
-    assert response.json() == {"detail": "tag database unavailable"}
+    assert "tag database unavailable" not in response.text
 
 
 @pytest.mark.parametrize(

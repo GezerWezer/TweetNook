@@ -113,6 +113,13 @@ def _conversation_author(main: dict, parents: list[dict], formatted: dict) -> st
     return (root.get("author") or {}).get("username")
 
 
+def _collection_param(collection: str) -> str:
+    try:
+        return normalize_collection_name(collection)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/api/tweets")
 def api_tweets(
     q: str | None = None,
@@ -127,10 +134,7 @@ def api_tweets(
 ):
     """Fetch tweets with pagination, collection filtering, and advanced search."""
     try:
-        try:
-            internal_col = normalize_collection_name(collection)
-        except ValueError:
-            internal_col = "all"
+        internal_col = _collection_param(collection)
 
         collections = {internal_col} if internal_col != "all" else None
         result = search_posts(
@@ -163,11 +167,6 @@ def api_tweets(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except SearchQueryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/api/tweets/count")
@@ -179,10 +178,7 @@ def api_tweets_count(
 ):
     """Count a search separately so the first page can render immediately."""
     try:
-        try:
-            internal_col = normalize_collection_name(collection)
-        except ValueError:
-            internal_col = "all"
+        internal_col = _collection_param(collection)
         reader = store.open_reader()
         try:
             total = count_posts(
@@ -201,183 +197,175 @@ def api_tweet_thread(
     store=Depends(require_store),  # noqa: B008
     _auth: bool = Depends(verify_credentials),
 ):
-    try:
-        ancestor_ids = store.ancestor_chain(tweet_id)
-        related_ids = {tweet_id, *ancestor_ids}
+    ancestor_ids = store.ancestor_chain(tweet_id)
+    related_ids = {tweet_id, *ancestor_ids}
 
-        descendant_relations, reply_tree_truncated = store.reply_subtree(tweet_id)
-        all_relations = descendant_relations
-        for relation in descendant_relations:
-            related_ids.add(relation["tweet_id"])
-            related_ids.add(relation["target_tweet_id"])
+    descendant_relations, reply_tree_truncated = store.reply_subtree(tweet_id)
+    all_relations = descendant_relations
+    for relation in descendant_relations:
+        related_ids.add(relation["tweet_id"])
+        related_ids.add(relation["target_tweet_id"])
 
-        observations = store.thread_observations(related_ids)
-        objs, media = observations.objects, observations.media
-        col_rows, tag_rows = observations.memberships, observations.tags
+    observations = store.thread_observations(related_ids)
+    objs, media = observations.objects, observations.media
+    col_rows, tag_rows = observations.memberships, observations.tags
 
-        col_dict = {}
-        membership_by_id = {}
-        for c in col_rows:
-            col_dict.setdefault(c["tweet_id"], []).append(c["collection_type"])
-            membership_by_id.setdefault(c["tweet_id"], c)
+    col_dict = {}
+    membership_by_id = {}
+    for c in col_rows:
+        col_dict.setdefault(c["tweet_id"], []).append(c["collection_type"])
+        membership_by_id.setdefault(c["tweet_id"], c)
 
-        tags_dict = {}
-        for row in tag_rows:
-            if not row.get("tweet_id") or not row.get("raw_json"):
-                continue
+    tags_dict = {}
+    for row in tag_rows:
+        if not row.get("tweet_id") or not row.get("raw_json"):
+            continue
+        try:
+            tags_dict[row["tweet_id"]] = fastjson.loads(row["raw_json"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+
+    raw_by_tweet_id = {}
+    for obj in objs:
+        tid = obj.get("tweet_id")
+        raw_json = None
+        if obj.get("raw_json"):
             try:
-                tags_dict[row["tweet_id"]] = fastjson.loads(row["raw_json"])
+                parsed_raw = fastjson.loads(obj["raw_json"])
+                if isinstance(parsed_raw, dict):
+                    raw_json = parsed_raw
             except (TypeError, json.JSONDecodeError):
-                continue
+                pass
+        if tid:
+            raw_by_tweet_id[tid] = raw_json
 
-        raw_by_tweet_id = {}
-        for obj in objs:
-            tid = obj.get("tweet_id")
-            raw_json = None
-            if obj.get("raw_json"):
-                try:
-                    parsed_raw = fastjson.loads(obj["raw_json"])
-                    if isinstance(parsed_raw, dict):
-                        raw_json = parsed_raw
-                except (TypeError, json.JSONDecodeError):
-                    pass
-            if tid:
-                raw_by_tweet_id[tid] = raw_json
+    media_by_tweet_id = {}
+    for row in media:
+        if row.get("tweet_id"):
+            media_by_tweet_id.setdefault(row["tweet_id"], []).append(row)
 
-        media_by_tweet_id = {}
-        for row in media:
-            if row.get("tweet_id"):
-                media_by_tweet_id.setdefault(row["tweet_id"], []).append(row)
-
-        def thread_tweet(tid: str, row: dict, raw_json: dict | None) -> dict:
-            return {
-                "tweet_id": tid,
-                "text": row.get("text") or "",
-                "collections": col_dict.get(tid, []),
-                "author": {
-                    "id": row.get("author_id"),
-                    "username": row.get("author_username"),
-                    "display_name": row.get("author_display_name"),
-                },
-                "created_at": row.get("created_at"),
-                "synced_at": row.get("synced_at"),
-                "media": [media_payload(item, raw_json) for item in media_by_tweet_id.get(tid, [])],
-                "raw_json": raw_json,
-                "qt_media": [],
-                "qt_media_tags": None,
-                "media_tags": tags_dict.get(tid),
-            }
-
-        formatted = {}
-        for obj in objs:
-            tid = obj["tweet_id"]
-            formatted[tid] = thread_tweet(tid, obj, raw_by_tweet_id.get(tid))
-        for tid, membership in membership_by_id.items():
-            if tid in formatted:
-                continue
-            raw_json = None
-            if membership.get("raw_json"):
-                try:
-                    parsed_raw = fastjson.loads(membership["raw_json"])
-                    if isinstance(parsed_raw, dict):
-                        raw_json = parsed_raw
-                except (TypeError, json.JSONDecodeError):
-                    pass
-            formatted[tid] = thread_tweet(tid, membership, raw_json)
-
-        known_relation_ids = set(ancestor_ids) | {
-            value
-            for relation in all_relations
-            for value in (relation.get("tweet_id"), relation.get("target_tweet_id"))
-            if value
+    def thread_tweet(tid: str, row: dict, raw_json: dict | None) -> dict:
+        return {
+            "tweet_id": tid,
+            "text": row.get("text") or "",
+            "collections": col_dict.get(tid, []),
+            "author": {
+                "id": row.get("author_id"),
+                "username": row.get("author_username"),
+                "display_name": row.get("author_display_name"),
+            },
+            "created_at": row.get("created_at"),
+            "synced_at": row.get("synced_at"),
+            "media": [media_payload(item, raw_json) for item in media_by_tweet_id.get(tid, [])],
+            "raw_json": raw_json,
+            "qt_media": [],
+            "qt_media_tags": None,
+            "media_tags": tags_dict.get(tid),
         }
-        for tid in related_ids:
-            if tid not in formatted and tid in known_relation_ids:
-                formatted[tid] = missing_web_tweet(tid)
 
-        if tweet_id not in formatted:
-            raise HTTPException(status_code=404, detail="Tweet not found")
+    formatted = {}
+    for obj in objs:
+        tid = obj["tweet_id"]
+        formatted[tid] = thread_tweet(tid, obj, raw_by_tweet_id.get(tid))
+    for tid, membership in membership_by_id.items():
+        if tid in formatted:
+            continue
+        raw_json = None
+        if membership.get("raw_json"):
+            try:
+                parsed_raw = fastjson.loads(membership["raw_json"])
+                if isinstance(parsed_raw, dict):
+                    raw_json = parsed_raw
+            except (TypeError, json.JSONDecodeError):
+                pass
+        formatted[tid] = thread_tweet(tid, membership, raw_json)
 
-        annotate_web_tweets(store, list(formatted.values()))
+    known_relation_ids = set(ancestor_ids) | {
+        value
+        for relation in all_relations
+        for value in (relation.get("tweet_id"), relation.get("target_tweet_id"))
+        if value
+    }
+    for tid in related_ids:
+        if tid not in formatted and tid in known_relation_ids:
+            formatted[tid] = missing_web_tweet(tid)
 
-        main_tweet = formatted[tweet_id]
+    if tweet_id not in formatted:
+        raise HTTPException(status_code=404, detail="Tweet not found")
 
-        main_tweet["local_quote_count"] = store.quote_count(tweet_id)
+    annotate_web_tweets(store, list(formatted.values()))
 
-        parents = [formatted[parent_id] for parent_id in ancestor_ids if parent_id in formatted]
+    main_tweet = formatted[tweet_id]
 
-        child_ids_by_parent: dict[str, list[str]] = {}
-        depth_by_tweet_id: dict[str, int] = {}
-        for relation in descendant_relations:
-            child_id = relation["tweet_id"]
-            parent_id = relation["target_tweet_id"]
-            children_for_parent = child_ids_by_parent.setdefault(parent_id, [])
-            if child_id not in children_for_parent:
-                children_for_parent.append(child_id)
-            depth_by_tweet_id[child_id] = min(
-                relation["depth"], depth_by_tweet_id.get(child_id, relation["depth"])
-            )
+    main_tweet["local_quote_count"] = store.quote_count(tweet_id)
 
-        children_map = {}
-        seen_reply_ids = {tweet_id}
+    parents = [formatted[parent_id] for parent_id in ancestor_ids if parent_id in formatted]
 
-        def append_descendants(parent_id: str, destination: list[dict]) -> None:
-            for nested_id in child_ids_by_parent.get(parent_id, []):
-                if nested_id in seen_reply_ids:
-                    continue
-                seen_reply_ids.add(nested_id)
-                nested_reply = formatted.get(nested_id)
-                if nested_reply is None:
-                    continue
-                nested_reply["thread_depth"] = depth_by_tweet_id.get(nested_id, 2)
-                nested_reply["parent_tweet_id"] = parent_id
-                # Keep the response key for compatibility. Each destination contains its
-                # direct child's complete bounded descendant list in depth-first order.
-                destination.append(nested_reply)
-                append_descendants(nested_id, destination)
-
-        for child_id in child_ids_by_parent.get(tweet_id, []):
-            child = formatted.get(child_id)
-            if child is None or child_id in seen_reply_ids:
-                continue
-            seen_reply_ids.add(child_id)
-            child["thread_depth"] = 1
-            child["parent_tweet_id"] = tweet_id
-            child["op_replies"] = []
-            children_map[child_id] = child
-            append_descendants(child_id, child["op_replies"])
-
-        parents.sort(key=lambda x: x["created_at"] or "")
-        children = list(children_map.values())
-
-        def get_likes(t):
-            raw = t.get("raw_json", {}) or {}
-            return int(raw.get("legacy", {}).get("favorite_count", 0))
-
-        children.sort(key=lambda x: (len(x.get("op_replies", [])) > 0, get_likes(x)), reverse=True)
-        op_username = _conversation_author(main_tweet, parents, formatted)
-        other_children = [child for child in children if _is_other_reply(child, op_username)]
-        if other_children:
-            other_ids = {child["tweet_id"] for child in other_children}
-            children = [child for child in children if child["tweet_id"] not in other_ids]
-        slim_web_tweets(formatted.values())
-
-        return _json(
-            {
-                "main": main_tweet,
-                "parents": parents,
-                "children": children,
-                "other_children": other_children,
-                "reply_tree_truncated": reply_tree_truncated,
-            }
+    child_ids_by_parent: dict[str, list[str]] = {}
+    depth_by_tweet_id: dict[str, int] = {}
+    for relation in descendant_relations:
+        child_id = relation["tweet_id"]
+        parent_id = relation["target_tweet_id"]
+        children_for_parent = child_ids_by_parent.setdefault(parent_id, [])
+        if child_id not in children_for_parent:
+            children_for_parent.append(child_id)
+        depth_by_tweet_id[child_id] = min(
+            relation["depth"], depth_by_tweet_id.get(child_id, relation["depth"])
         )
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
 
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    children_map = {}
+    seen_reply_ids = {tweet_id}
+
+    def append_descendants(parent_id: str, destination: list[dict]) -> None:
+        for nested_id in child_ids_by_parent.get(parent_id, []):
+            if nested_id in seen_reply_ids:
+                continue
+            seen_reply_ids.add(nested_id)
+            nested_reply = formatted.get(nested_id)
+            if nested_reply is None:
+                continue
+            nested_reply["thread_depth"] = depth_by_tweet_id.get(nested_id, 2)
+            nested_reply["parent_tweet_id"] = parent_id
+            # Keep the response key for compatibility. Each destination contains its
+            # direct child's complete bounded descendant list in depth-first order.
+            destination.append(nested_reply)
+            append_descendants(nested_id, destination)
+
+    for child_id in child_ids_by_parent.get(tweet_id, []):
+        child = formatted.get(child_id)
+        if child is None or child_id in seen_reply_ids:
+            continue
+        seen_reply_ids.add(child_id)
+        child["thread_depth"] = 1
+        child["parent_tweet_id"] = tweet_id
+        child["op_replies"] = []
+        children_map[child_id] = child
+        append_descendants(child_id, child["op_replies"])
+
+    parents.sort(key=lambda x: x["created_at"] or "")
+    children = list(children_map.values())
+
+    def get_likes(t):
+        raw = t.get("raw_json", {}) or {}
+        return int(raw.get("legacy", {}).get("favorite_count", 0))
+
+    children.sort(key=lambda x: (len(x.get("op_replies", [])) > 0, get_likes(x)), reverse=True)
+    op_username = _conversation_author(main_tweet, parents, formatted)
+    other_children = [child for child in children if _is_other_reply(child, op_username)]
+    if other_children:
+        other_ids = {child["tweet_id"] for child in other_children}
+        children = [child for child in children if child["tweet_id"] not in other_ids]
+    slim_web_tweets(formatted.values())
+
+    return _json(
+        {
+            "main": main_tweet,
+            "parents": parents,
+            "children": children,
+            "other_children": other_children,
+            "reply_tree_truncated": reply_tree_truncated,
+        }
+    )
 
 
 @router.get("/api/tweets/{tweet_id}/quotes")
@@ -389,28 +377,22 @@ def api_tweet_quotes(
     _auth: bool = Depends(verify_credentials),
 ):
     """Fetch quotes of a specific tweet."""
-    try:
-        start = (page - 1) * limit
+    start = (page - 1) * limit
 
-        total = store.quote_count(tweet_id)
-        paginated_ids = store.quote_page(tweet_id, offset=start, limit=limit)
-        # Quotes by other people are usually stored only as tweet objects, outside
-        # every collection; a source with no stored tweet keeps its place as a
-        # placeholder so the page matches the total.
-        fetched = {
-            tweet["tweet_id"]: tweet
-            for tweet in store.fetch_tweets_by_ids(paginated_ids, include_objects=True)
-        }
-        paginated_tweets = [fetched.get(tid) or missing_web_tweet(tid) for tid in paginated_ids]
-        annotate_web_tweets(store, paginated_tweets)
-        slim_web_tweets(paginated_tweets)
+    total = store.quote_count(tweet_id)
+    paginated_ids = store.quote_page(tweet_id, offset=start, limit=limit)
+    # Quotes by other people are usually stored only as tweet objects, outside
+    # every collection; a source with no stored tweet keeps its place as a
+    # placeholder so the page matches the total.
+    fetched = {
+        tweet["tweet_id"]: tweet
+        for tweet in store.fetch_tweets_by_ids(paginated_ids, include_objects=True)
+    }
+    paginated_tweets = [fetched.get(tid) or missing_web_tweet(tid) for tid in paginated_ids]
+    annotate_web_tweets(store, paginated_tweets)
+    slim_web_tweets(paginated_tweets)
 
-        return _json({"tweets": paginated_tweets, "total": total, "page": page, "limit": limit})
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    return _json({"tweets": paginated_tweets, "total": total, "page": page, "limit": limit})
 
 
 @router.get("/api/tweets/{tweet_id}/raw")
@@ -494,14 +476,8 @@ def search_authors_api(
     _auth: bool = Depends(verify_credentials),
 ):
     """Search for authors by username or display name."""
-    try:
-        authors = store.search_authors(q, limit=10)
-        return {"authors": authors}
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    authors = store.search_authors(q, limit=10)
+    return {"authors": authors}
 
 
 @router.get("/api/authors/profile")

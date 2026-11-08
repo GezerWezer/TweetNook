@@ -88,13 +88,6 @@ def test_api_tweets_fast_path_uses_bounded_pagination_and_sort(sort: str, effect
     assert query["include_total"] is True
 
 
-def test_api_tweets_invalid_collection_falls_back_to_all():
-    store = ListingStore([_row()])
-    _list_tweets(store, collection="not-real")
-    query = next(data for name, data in store.calls if name == "search_tweet_ids")
-    assert query["collections"] is None
-
-
 def test_api_tweets_rejects_unknown_search_filters():
     store = ListingStore([_row()])
 

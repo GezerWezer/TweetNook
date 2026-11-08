@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -18,8 +17,6 @@ from tweetnook.storage.presentation import PresentationMixin  # noqa: E402
 from tweetnook.web.deps import get_store, server_state  # noqa: E402
 from tweetnook.web.routes.tweets import (  # noqa: E402
     api_tweet_quotes,
-    api_tweet_thread,
-    api_tweets,
     router,
 )
 
@@ -284,37 +281,6 @@ def test_tweet_routes_require_authentication(url: str):
     assert response.headers["www-authenticate"] == "Basic"
 
 
-@pytest.mark.parametrize(
-    ("method", "expected_status"),
-    [
-        (
-            lambda: api_tweets(
-                q=None,
-                collection="all",
-                sort="newest",
-                page=1,
-                limit=20,
-                store=type("BadStore", (), {"_count": lambda *_: 1 / 0})(),
-                _auth=True,
-            ),
-            500,
-        ),
-        (
-            lambda: api_tweet_thread(
-                "1",
-                store=type("BadStore", (), {"_query": lambda *_a, **_k: 1 / 0})(),
-                _auth=True,
-            ),
-            500,
-        ),
-    ],
-)
-def test_api_failures_are_mapped_to_http_500(method: Callable[[], object], expected_status: int):
-    with pytest.raises(fastapi.HTTPException) as exc:
-        method()
-    assert exc.value.status_code == expected_status
-
-
 def test_api_hide_and_unhide_tweet_controls_list_membership_and_flag(tmp_path):
     store = ArchiveStore(tmp_path / "archive.db", create=True)
     store._merge_records(
@@ -346,3 +312,11 @@ def test_api_hide_and_unhide_tweet_controls_list_membership_and_flag(tmp_path):
     assert [tweet["tweet_id"] for tweet in client.get("/api/tweets").json()["tweets"]] == ["2", "1"]
     assert client.get("/api/tweets/2").json()["main"]["hidden"] is False
     store.close()
+
+
+@pytest.mark.parametrize("path", ["/api/tweets", "/api/tweets/count"])
+def test_unknown_collection_is_rejected_like_the_cli(path: str) -> None:
+    response = _api_client(ListingStore([])).get(path, params={"collection": "favorites"})
+
+    assert response.status_code == 400
+    assert "Unsupported collection 'favorites'" in response.json()["detail"]

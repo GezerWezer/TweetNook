@@ -23,14 +23,16 @@ def isolated_server_state() -> Iterator[None]:
 def make_web_client():
     clients: list[TestClient] = []
 
-    def factory(router, *, store=None, password: str | None = None) -> TestClient:
+    def factory(
+        router, *, store=None, password: str | None = None, raise_server_exceptions=True
+    ) -> TestClient:
         app = FastAPI()
         app.include_router(router)
         if store is not None:
             app.dependency_overrides[get_store] = lambda: store
         if password is not None:
             server_state["password_hash"] = hashlib.sha256(password.encode()).hexdigest()
-        client = TestClient(app)
+        client = TestClient(app, raise_server_exceptions=raise_server_exceptions)
         clients.append(client)
         return client
 

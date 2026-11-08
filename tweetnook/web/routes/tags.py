@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from tweetnook.storage import ArchiveStore
@@ -27,11 +27,8 @@ def api_delete_tag(
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
     _auth: bool = Depends(verify_credentials),
 ) -> dict[str, bool]:
-    try:
-        store.delete_media_tag(tweet_id)
-        return {"success": True}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    store.delete_media_tag(tweet_id)
+    return {"success": True}
 
 
 @router.put("/api/tags/{tweet_id}")
@@ -41,11 +38,8 @@ def api_update_tag(
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
     _auth: bool = Depends(verify_credentials),
 ) -> dict[str, Any]:
-    try:
-        saved = store.update_media_tags(tweet_id, req.tags, description=req.description)
-        return {"success": True, "media_tags": saved}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    saved = store.update_media_tags(tweet_id, req.tags, description=req.description)
+    return {"success": True, "media_tags": saved}
 
 
 @router.delete("/api/tags/global/{tag:path}")
@@ -54,11 +48,8 @@ def api_delete_global_tag(
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
     _auth: bool = Depends(verify_credentials),
 ) -> dict[str, bool]:
-    try:
-        store.delete_global_tag(tag)
-        return {"success": True}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    store.delete_global_tag(tag)
+    return {"success": True}
 
 
 @router.post("/api/tags/merge")
@@ -67,11 +58,8 @@ def api_merge_tags(
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
     _auth: bool = Depends(verify_credentials),
 ) -> dict[str, bool]:
-    try:
-        store.merge_global_tags(req.primary_tag, req.merge_tags)
-        return {"success": True}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    store.merge_global_tags(req.primary_tag, req.merge_tags)
+    return {"success": True}
 
 
 @router.get("/api/tags/autocomplete")
@@ -80,11 +68,8 @@ def api_tags_autocomplete(
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
     _auth: bool = Depends(verify_credentials),
 ) -> dict[str, list[dict]]:
-    try:
-        results = store.get_tag_counts(query=q)
-        return {"tags": results}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    results = store.get_tag_counts(query=q)
+    return {"tags": results}
 
 
 @router.get("/api/tags/stats")
@@ -92,8 +77,5 @@ def api_tags_stats(
     store: ArchiveStore = Depends(require_store),  # noqa: B008 - FastAPI dependency
     _auth: bool = Depends(verify_credentials),
 ) -> dict[str, list[dict]]:
-    try:
-        results = store.get_tag_counts(limit=-1)
-        return {"tags": results}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    results = store.get_tag_counts(limit=-1)
+    return {"tags": results}
