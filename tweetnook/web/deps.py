@@ -29,7 +29,8 @@ _password_check = RecentPasswordCheck()
 SESSION_COOKIE = "tweetnook_session"
 SESSION_MAX_AGE = 400 * 24 * 60 * 60  # Browsers cap cookie lifetimes at 400 days.
 SESSION_RENEW_AGE = 7 * 24 * 60 * 60
-# Stands in for a saved secret in API responses; submitting it back keeps the saved value.
+# Stands in for a saved secret in API responses. Credential forms that get it back keep the
+# saved value; /api/config rejects it, since a Settings save should never carry it.
 # web/fragments/setup.html compares against the same literal.
 MASKED_SECRET = "********"
 _ISSUE_SESSION = "issue_web_session"

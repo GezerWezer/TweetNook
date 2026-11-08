@@ -847,7 +847,7 @@ test('desktop list and post layouts follow X web: strips, page dashes, quotes, S
     assert.match(block, /\.quote-card:not\(\.quote-compact\) > \.quote-media:empty \{\s*margin-bottom: 0;/);
     assert.match(block, /\.quote-media:has\(> \.media-carousel\) \{\s*margin-top: 16px;/);
     assert.match(block, /\[data-action="media"\]:has\(> \.media-single\) \+ \.quote-card,[^{]*\{\s*margin-top: 4px;/);
-    // Large link cards are no longer limited to phone widths.
+    // Large link cards hide their text beside an image at every width.
     assert.match(css, /^\.link-card-large:has\(\.link-card-image\) > \.link-card-text \{\s*display: none;/m);
 
     const long = app.formatText({tweet_id: 'long-show-more', text: 'word '.repeat(80)});

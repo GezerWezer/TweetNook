@@ -326,8 +326,9 @@ def api_tweet_thread(
                 continue
             nested_reply["thread_depth"] = depth_by_tweet_id.get(nested_id, 2)
             nested_reply["parent_tweet_id"] = parent_id
-            # Keep the response key for compatibility. Each destination contains its
-            # direct child's complete bounded descendant list in depth-first order.
+            # Despite the response key's name (op_replies, which the feed reads), each
+            # destination holds its direct child's complete bounded descendant list in
+            # depth-first order, not only the author's replies.
             destination.append(nested_reply)
             append_descendants(nested_id, destination)
 
