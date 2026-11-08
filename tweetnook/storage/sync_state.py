@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from tweetnook.core.exceptions import ArchiveOwnerMismatchError
-from tweetnook.core.operations import ARCHIVE_LIKES, ARCHIVE_MANIFEST, ARCHIVE_MANIFEST_FILE
 from tweetnook.core.utils import utc_now
 
-from .common import archive_capture_id, folder_key, raw_capture_row_key
+from .common import folder_key
+from .like_order import archive_like_ids, read_archive_like_export
 from .record_types import RecordType
 from .records import PageBuffer, RecordsMixin
 
@@ -153,8 +153,8 @@ class SyncStateMixin(RecordsMixin):
         """Completed official imports eligible for deferred enrichment."""
         return self._query(f"record_type = '{RecordType.IMPORT_MANIFEST}' AND status = 'completed'")
 
-    def _import_capture_payload(self, digest: str, operation: str, filename: str) -> Any:
-        row = self._get_row(raw_capture_row_key(archive_capture_id(digest, operation, filename)))
+    def _capture_payload(self, row_key: str) -> Any:
+        row = self._get_row(row_key)
         try:
             return json.loads(row["raw_json"]) if row else None
         except (TypeError, ValueError):
@@ -168,36 +168,11 @@ class SyncStateMixin(RecordsMixin):
         """
         imported: set[str] = set()
         for row in self.completed_manifests():
-            digest = row["archive_digest"]
-            manifest = self._import_capture_payload(digest, ARCHIVE_MANIFEST, ARCHIVE_MANIFEST_FILE)
-            if not isinstance(manifest, dict):
+            export = read_archive_like_export(row["archive_digest"], self._capture_payload)
+            if export is None or not export.complete:
                 continue
-            info = manifest.get("archiveInfo")
-            datasets = manifest.get("dataTypes")
-            if not isinstance(info, dict) or info.get("isPartialArchive") is not False:
-                continue
-            dataset = datasets.get("like") if isinstance(datasets, dict) else None
-            files = dataset.get("files") if isinstance(dataset, dict) else None
-            if not isinstance(files, list) or not files:
-                continue
-            ids: set[str] = set()
-            for part in files:
-                filename = part.get("fileName") if isinstance(part, dict) else None
-                if not isinstance(filename, str):
-                    break
-                items = self._import_capture_payload(digest, ARCHIVE_LIKES, filename)
-                if not isinstance(items, list):
-                    break
-                if "count" in part and str(part["count"]) != str(len(items)):
-                    break
-                for item in items:
-                    like = item.get("like") if isinstance(item, dict) else None
-                    if isinstance(like, dict) and (
-                        tweet_id := str(like.get("tweetId") or "").strip()
-                    ):
-                        ids.add(tweet_id)
-            else:
-                imported.update(ids)
+            for _key, items in export.parts:
+                imported.update(archive_like_ids(items))
         return frozenset(imported & self.get_collection_tweet_ids("like"))
 
     def has_completed_archive_import(self) -> bool:

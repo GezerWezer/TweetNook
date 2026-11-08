@@ -17,6 +17,7 @@ from tweetnook.storage.like_order import (
     _integer,
     merge_missing,
     page_observations,
+    read_archive_like_export,
     repair_archive_blocks,
 )
 from tweetnook.storage.records import PageBuffer
@@ -66,7 +67,10 @@ def archive_capture(store, parts, *, digest="archive", generation="2026-01-01", 
         (
             "XArchiveManifest",
             "data/manifest.js",
-            {"dataTypes": {"like": {"files": [{"fileName": name} for name in filenames]}}},
+            {
+                "archiveInfo": {"isPartialArchive": False},
+                "dataTypes": {"like": {"files": [{"fileName": name} for name in filenames]}},
+            },
         ),
         *[("XArchiveLikes", name, part) for name, part in zip(filenames, parts, strict=True)],
     ]
@@ -518,3 +522,32 @@ def test_warm_like_order_builds_the_sequence_and_paging_table(store):
     order = store._like_order_cache[1]
     assert store._indexed_like_order is order
     assert order.ordered_ids("liked_latest") == ["B", "A"]
+
+
+@pytest.mark.parametrize(
+    ("info", "count", "complete"),
+    [
+        ({"isPartialArchive": False}, 2, True),
+        ({"isPartialArchive": True}, 2, False),
+        ({}, 2, False),  # an export that doesn't say it's whole is not assumed whole
+        ({"isPartialArchive": False}, 3, False),  # a part saved short of its count
+    ],
+)
+def test_like_export_is_complete_only_when_whole_and_every_part_matches(info, count, complete):
+    def key(operation, filename):
+        digest = hashlib.sha256(f"d\0{operation}\0{filename}".encode()).hexdigest()
+        return f"raw_capture:{digest}"
+
+    saved = {
+        key("XArchiveManifest", "data/manifest.js"): {
+            "archiveInfo": info,
+            "dataTypes": {"like": {"files": [{"fileName": "data/like.js", "count": count}]}},
+        },
+        key("XArchiveLikes", "data/like.js"): likes(["1", "2"]),
+    }
+
+    export = read_archive_like_export("d", saved.get)
+
+    assert export is not None
+    assert export.complete is complete
+    assert [len(items) for _key, items in export.parts] == [2]

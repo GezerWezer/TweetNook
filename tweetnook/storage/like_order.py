@@ -7,6 +7,7 @@ not use the third-party sequence-alignment implementation.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import pairwise
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -108,7 +109,8 @@ def _payload(row: Any) -> Any:
         return None
 
 
-def _archive_ids(items: list[Any]) -> list[str]:
+def archive_like_ids(items: list[Any]) -> list[str]:
+    """Liked tweet IDs from an export's like items, first occurrence kept."""
     ids = []
     for item in items:
         payload = item.get("like") if isinstance(item, dict) else None
@@ -120,8 +122,8 @@ def _archive_ids(items: list[Any]) -> list[str]:
 
 
 def _reconstructed_archive_ids(items: list[Any], live: list[str]) -> list[str]:
-    original = _archive_ids(items)
-    repaired = _archive_ids(repair_archive_blocks(items))
+    original = archive_like_ids(items)
+    repaired = archive_like_ids(repair_archive_blocks(items))
     positions = {tweet_id: index for index, tweet_id in enumerate(live)}
 
     def disagreements(ids: list[str]) -> int:
@@ -135,6 +137,48 @@ def _reconstructed_archive_ids(items: list[Any], live: list[str]) -> list[str]:
 
 def _capture_key(digest: str, operation: str, filename: str) -> str:
     return raw_capture_row_key(archive_capture_id(digest, operation, filename))
+
+
+@dataclass(slots=True)
+class ArchiveLikeExport:
+    """The like parts one export's manifest declares, as far as their captures were saved."""
+
+    parts: list[tuple[str, list[Any]]]  # (capture row key, items), in declared order
+    complete: bool
+
+
+def read_archive_like_export(digest: str, load: Callable[[str], Any]) -> ArchiveLikeExport | None:
+    """Read an export's like parts through ``load`` (capture row key -> parsed payload).
+
+    Complete means the manifest says the export isn't partial, declares at least one part,
+    and every part is saved with the item count it declares. Only a complete export may be
+    reordered by ``repair_archive_blocks`` or treated as the full set of likes.
+    """
+    manifest = load(_capture_key(digest, ARCHIVE_MANIFEST, ARCHIVE_MANIFEST_FILE))
+    if not isinstance(manifest, dict):
+        return None
+    data_types = manifest.get("dataTypes")
+    dataset = data_types.get("like") if isinstance(data_types, dict) else None
+    files = dataset.get("files") if isinstance(dataset, dict) else None
+    if not isinstance(files, list):
+        return None
+    info = manifest.get("archiveInfo")
+    complete = bool(files) and isinstance(info, dict) and info.get("isPartialArchive") is False
+    parts: list[tuple[str, list[Any]]] = []
+    for file in files:
+        filename = file.get("fileName") if isinstance(file, dict) else None
+        if not isinstance(filename, str):
+            complete = False
+            continue
+        key = _capture_key(digest, ARCHIVE_LIKES, filename)
+        items = load(key)
+        if not isinstance(items, list):
+            complete = False
+            continue
+        if "count" in file and str(file["count"]) != str(len(items)):
+            complete = False
+        parts.append((key, items))
+    return ArchiveLikeExport(parts, complete)
 
 
 def _entry_spans(node: Any) -> list[list[Any]]:
@@ -321,47 +365,22 @@ def load_like_order(store: RecordsMixin) -> LikeOrder:
         f"SELECT archive_digest FROM archive WHERE record_type = '{RecordType.IMPORT_MANIFEST}' "
         "ORDER BY COALESCE(archive_generation_date, import_started_at), row_key"
     ).fetchall()
+
+    def load(row_key: str) -> Any:
+        row = store.conn.execute(
+            "SELECT raw_json FROM archive WHERE row_key = ?", (row_key,)
+        ).fetchone()
+        return _payload(row) if row else None
+
     for manifest in manifests:
         digest = manifest["archive_digest"]
-        if not digest:
+        export = read_archive_like_export(digest, load) if digest else None
+        if export is None:
             continue
-        raw_manifest = store.conn.execute(
-            "SELECT raw_json FROM archive WHERE row_key = ?",
-            (_capture_key(digest, ARCHIVE_MANIFEST, ARCHIVE_MANIFEST_FILE),),
-        ).fetchone()
-        payload = _payload(raw_manifest) if raw_manifest else None
-        if not isinstance(payload, dict):
-            continue
-        data_types = payload.get("dataTypes")
-        if not isinstance(data_types, dict):
-            continue
-        dataset = data_types.get("like")
-        if not isinstance(dataset, dict):
-            continue
-        files = dataset.get("files") or []
-        if not isinstance(files, list):
-            continue
-        combined: list[Any] = []
-        archive_info = payload.get("archiveInfo") or {}
-        complete = bool(files) and not (
-            isinstance(archive_info, dict) and archive_info.get("isPartialArchive")
-        )
-        for file in files:
-            filename = file.get("fileName") if isinstance(file, dict) else None
-            if not isinstance(filename, str):
-                complete = False
-                continue
-            key = _capture_key(digest, ARCHIVE_LIKES, filename)
-            part = store.conn.execute(
-                "SELECT raw_json FROM archive WHERE row_key = ?", (key,)
-            ).fetchone()
-            items = _payload(part) if part else None
-            if not isinstance(items, list):
-                complete = False
-                continue
-            accounted.add(key)
-            combined.extend(items)
-        ids = _reconstructed_archive_ids(combined, live) if complete else _archive_ids(combined)
+        combined = [item for _key, items in export.parts for item in items]
+        accounted.update(key for key, _items in export.parts)
+        complete = export.complete
+        ids = _reconstructed_archive_ids(combined, live) if complete else archive_like_ids(combined)
         archive = merge_missing(ids, archive)
 
     for row in store.conn.execute(
@@ -373,7 +392,7 @@ def load_like_order(store: RecordsMixin) -> LikeOrder:
             continue
         items = _payload(row)
         if isinstance(items, list):
-            archive = merge_missing(archive, _archive_ids(items))
+            archive = merge_missing(archive, archive_like_ids(items))
     stored_archive = [
         (index, row["tweet_id"])
         for row in memberships
