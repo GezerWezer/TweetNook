@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 from pydantic import BaseModel, ValidationError
 
@@ -39,6 +40,19 @@ class SetupState(BaseModel):
 
 # Steps after the local import; stopping in one of them still leaves a usable archive.
 _FOLLOWUP_STEPS = {ARCHIVE_AUTH.key, ARCHIVE_ENRICH.key, MEDIA.key}
+
+
+def staged_archive_info(path: Path) -> dict[str, Any]:
+    """Whether Setup holds an uploaded archive waiting to import, with its name and size."""
+    try:
+        size = path.stat().st_size if path.is_file() else None
+    except OSError:  # removed between the check and the stat
+        size = None
+    return {
+        "uploaded": size is not None,
+        "filename": path.name if size is not None else None,
+        "size": size,
+    }
 
 
 def _saved_before_enrichment(run) -> bool:
@@ -564,9 +578,7 @@ class SetupCoordinator:
                     "database_exists": self.paths.database_path.is_file(),
                     "ready": store is not None,
                     "upgrade_error": self.archive_upgrade_error,
-                    "uploaded": archive.is_file(),
-                    "filename": archive.name if archive.is_file() else None,
-                    "size": archive.stat().st_size if archive.is_file() else None,
+                    **staged_archive_info(archive),
                     "imported": imported,
                     "official_import_completed": imported,
                     "enriched": imported and pending == 0 and not followup_failed,

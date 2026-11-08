@@ -18,11 +18,10 @@ from tweetnook.tagging.sdk import (
     list_models,
     model_is_compatible,
 )
-from tweetnook.web.deps import require_store, verify_credentials
+from tweetnook.web.deps import MASKED_SECRET, require_store, verify_credentials
 from tweetnook.web.runtime_config import save_server_config
 
 router = APIRouter()
-MASKED_SECRET = "********"
 
 
 class AutomatedTaggingUpdate(BaseModel):

@@ -6,11 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from tweetnook.config import config_error_message
-from tweetnook.web.deps import verify_credentials
+from tweetnook.web.deps import MASKED_SECRET, verify_credentials
 from tweetnook.web.runtime_config import save_server_config
 
 router = APIRouter()
-MASKED_SECRET = "********"
 SECRET_FIELDS = (
     ("auth", "auth_token"),
     ("auth", "ct0"),

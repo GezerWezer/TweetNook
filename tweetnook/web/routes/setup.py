@@ -43,12 +43,12 @@ from tweetnook.core.fileio import owned_temp, publish_file
 from tweetnook.core.passwords import hash_password
 from tweetnook.jobs.resource_failure import StorageExhaustedError
 from tweetnook.jobs.supervisor import JobConflictError
-from tweetnook.web.deps import remember_web_session, server_state, verify_credentials
+from tweetnook.web.deps import MASKED_SECRET, remember_web_session, server_state, verify_credentials
 from tweetnook.web.routes.activity import read_active_snapshot
 from tweetnook.web.runtime_config import save_server_config
+from tweetnook.web.setup_coordinator import staged_archive_info
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
-MASKED_SECRET = "********"
 MAX_ARCHIVE_BYTES = 50 * 1024**3
 
 
@@ -155,9 +155,7 @@ def _archive_payload() -> dict[str, object]:
     pending = store.count_incomplete_initial_enrichment() if store and imported else 0
     return {
         "ready": store is not None,
-        "uploaded": archive.is_file(),
-        "filename": archive.name if archive.is_file() else None,
-        "size": archive.stat().st_size if archive.is_file() else None,
+        **staged_archive_info(archive),
         "imported": imported,
         "enriched": imported and not pending,
         "pending_enrichment": pending,

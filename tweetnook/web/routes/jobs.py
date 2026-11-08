@@ -13,6 +13,7 @@ from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.web.deps import server_state, verify_credentials
 from tweetnook.web.jobs import jobs_payload
 from tweetnook.web.routes.activity import read_active_snapshot
+from tweetnook.web.setup_coordinator import staged_archive_info
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -42,13 +43,7 @@ def list_jobs(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, 
         setup_queue=coordinator.pending_jobs() if coordinator is not None else [],
     )
     # The archive Setup staged for import (uploaded through /api/setup/archive).
-    staged = getattr(paths, "staged_archive_file", None)
-    uploaded = staged if staged is not None and staged.is_file() else None
-    payload["archive"] = {
-        "uploaded": uploaded is not None,
-        "filename": uploaded.name if uploaded is not None else None,
-        "size": uploaded.stat().st_size if uploaded is not None else None,
-    }
+    payload["archive"] = staged_archive_info(paths.staged_archive_file)
     return payload
 
 

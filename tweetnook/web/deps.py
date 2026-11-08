@@ -29,6 +29,9 @@ _password_check = RecentPasswordCheck()
 SESSION_COOKIE = "tweetnook_session"
 SESSION_MAX_AGE = 400 * 24 * 60 * 60  # Browsers cap cookie lifetimes at 400 days.
 SESSION_RENEW_AGE = 7 * 24 * 60 * 60
+# Stands in for a saved secret in API responses; submitting it back keeps the saved value.
+# web/fragments/setup.html compares against the same literal.
+MASKED_SECRET = "********"
 _ISSUE_SESSION = "issue_web_session"
 _session_key_lock = threading.Lock()
 
