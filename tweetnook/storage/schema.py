@@ -11,13 +11,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 from tweetnook.core.exceptions import ArchiveUpgradeError
 from tweetnook.core.unavailability import PLACEHOLDER_TEXT_MARKER, PLACEHOLDER_TEXT_PREFIXES
 
 from .common import SOURCE_RANK, numeric_media_id, parse_created_at
-from .db import ConnectionMixin
+from .db import ConnectionMixin, connect_read_only
 from .record_types import RecordType
 
 
@@ -180,7 +179,7 @@ def pending_upgrade_version(db_path: Path) -> int | None:
     """
     if not db_path.exists():
         return None
-    conn = sqlite3.connect(f"file:{quote(str(db_path))}?mode=ro", uri=True)
+    conn = connect_read_only(db_path)
     try:
         has_archive = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'archive'"

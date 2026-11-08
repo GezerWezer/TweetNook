@@ -10,7 +10,7 @@ from tweetnook.core.extractor import (
     embedded_result,
     extract_note_tweet_text,
 )
-from tweetnook.core.media_metadata import aspect_ratio_for_media
+from tweetnook.core.media_metadata import aspect_ratio_for_media, raw_tweet_media
 from tweetnook.core.tweet_presentations import (
     legacy_target_id,
     normalized_embedded_tweet,
@@ -77,14 +77,12 @@ def _has_archived_copy(tweet: dict[str, Any]) -> bool:
         raw = {}
     legacy = raw.get("legacy")
     legacy = legacy if isinstance(legacy, dict) else {}
-    media = (legacy.get("extended_entities") or {}).get("media") or (
-        legacy.get("entities") or {}
-    ).get("media")
+    media = raw_tweet_media(raw)
     article = tweet.get("article") or {}
     return bool(
         _is_saved_post_text(legacy.get("full_text"))
         or extract_note_tweet_text(raw)
-        or (isinstance(media, list) and media)
+        or media
         or _is_saved_post_text(tweet.get("text"))
         or tweet.get("media")
         or tweet.get("card_media")
