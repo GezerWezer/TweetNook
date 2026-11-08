@@ -324,7 +324,9 @@ function tagDialog() {
                     this.tagAutocompleteOptions = data.tags;
                     if (this.tagOptionIndex >= this.tagSuggestions().length) this.tagOptionIndex = -1;
                 }
-            } catch(e) {}
+            } catch (_) {
+                // Suggestions are optional: a failed lookup keeps the last list.
+            }
         },
 
         addEditableTag(tag) {

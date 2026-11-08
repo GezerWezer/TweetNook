@@ -39,7 +39,7 @@ function tweetMenuMethods() {
         },
 
         // Feed cards share one menu, keyed by the card and placed over the button that
-        // opened it, where each card's own menu used to open.
+        // opened it, so a long feed carries one menu instead of one per card.
         toggleListTweetMenu(button) {
             if (Date.now() < this.tweetMenuClickBlockedUntil) return;
             const card = button.closest('.feed-card');
