@@ -35,6 +35,7 @@ The active backend is SQLite, opened through `open_archive_store`. It stores mul
 | `search_query.py` | Search query parsing, filter predicates, sorts and cursors, shared by CLI search and web feeds. |
 | `ordering.py` | Logical-post membership keys and shared chronological ordering for feeds and mixed search. |
 | `like_order.py` | Like order rebuilt from captured observations. |
+| `replay_reads.py` | Read-only queries a developer replay source answers from, outside `ArchiveStore`. |
 
 Put a new storage operation in the module for its concern, and add a mixin base only when it calls into another group. Bases follow the order in `ArchiveStore`'s header, which keeps Python's method resolution order consistent.
 
