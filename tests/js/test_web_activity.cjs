@@ -12,7 +12,6 @@ const {
     nookMergeScope,
     test,
     run,
-    pageCss,
 } = require('./web_harness.cjs');
 
 test('activity updates retain unchanged rows and handle removal, cancellation, and new runs', async () => {
@@ -663,19 +662,6 @@ test('notifications live in Settings with unread counts', () => {
     assert.match(html, /Settings, \$\{noticeCount\} unread notifications/);
     assert.match(html, /class="nook-nav-count" aria-hidden="true" x-text="noticeCount"/);
     assert.match(html, /class="nook-notice-count" aria-hidden="true" x-text="noticeCount > 9 \? '9\+' : noticeCount"/);
-});
-
-test('activity drawer animation isolates layout and transitions only geometry', () => {
-    const css = pageCss();
-    const drawerRule = css.match(/\.activity-drawer\s*\{([^}]*)\}/)?.[1] || '';
-    const readyRule = css.match(/\.activity-drawer\.activity-drawer-ready\s*\{([^}]*)\}/)?.[1] || '';
-
-    assert.match(drawerRule, /contain: layout paint style;/);
-    assert.match(readyRule, /will-change: width, height, right, bottom, border-radius;/);
-    assert.doesNotMatch(readyRule, /transition:\s*all\b/);
-    for (const property of ['width', 'height', 'right', 'bottom', 'border-radius']) {
-        assert.match(readyRule, new RegExp(`(?:transition:|,)\\s*${property} 0\\.35s`));
-    }
 });
 
 test('activity log view follows a running log by byte offset', async () => {

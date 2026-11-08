@@ -122,11 +122,6 @@ body {
 .scroll-to-top-enter { transition: opacity 150ms ease-out; }
 .scroll-to-top-leave { transition: opacity 100ms ease-in; }
 
-/* Leave room for the older desktop utilities until they move into the header. */
-@media (min-width: 640px) {
-    body:has(.settings-fab) .scroll-to-top { bottom: 232px; }
-}
-
 @media (prefers-reduced-motion: reduce) {
     .scroll-to-top { transition: none !important; }
 }

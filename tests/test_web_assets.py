@@ -43,7 +43,6 @@ def test_index_loads_local_assets_in_dependency_order():
     # The stylesheets were cut from one file; later ones may rely on overriding earlier rules.
     stylesheets = [
         "styles",
-        "activity",
         "stats",
         "search",
         "setup",

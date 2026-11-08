@@ -90,7 +90,6 @@
 .feed-picker:first-child .nook-sort-menu { left: auto; right: 0; }
 .nook-sort-menu { border-radius: 12px; background: var(--dropdown-bg); box-shadow: 0 0 15px 0 color-mix(in srgb, var(--text-secondary) 20%, transparent), 0 0 3px 1px color-mix(in srgb, var(--text-secondary) 15%, transparent); }
 .nook-icon-button:focus-visible, .nook-tab:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -3px; }
-.settings-fab { display: none !important; }
 @media (max-width: 640px) {
   /* Solid on phones: layer the header tint over the page color so themes with their own
      header shade keep it, without the blur showing scrolled content through. */

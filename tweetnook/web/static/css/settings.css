@@ -76,7 +76,7 @@
 .nook-original-body[x-show="settingsTab === 'logs'"] > .p-4 > button { padding:16px 0; }
 .nook-original-body h3 { font-size:20px; line-height:24px; font-weight:800; }
 .nook-original-body .text-sm { font-size:13px; line-height:18px; }
-.nook-original-body .mb-8,.nook-original-body .mb-10 { padding-bottom:20px; margin-bottom:20px; border-bottom:1px solid var(--border-color); }
+.nook-original-body .mb-8 { padding-bottom:20px; margin-bottom:20px; border-bottom:1px solid var(--border-color); }
 .nook-original-body .uppercase { text-transform:none; letter-spacing:normal; }
 .nook-original-body input:not([type="checkbox"]):not([type="radio"]),.nook-original-body select,.nook-original-body textarea { min-height:48px; border-radius:4px!important; border-color:var(--input-border)!important; font-size:16px; }
 .nook-original-body input[type="checkbox"]:not(.sr-only) { width:20px; height:20px; accent-color:var(--accent-color); }
@@ -99,7 +99,6 @@
 .nook-setting-help { color:var(--text-secondary); font-size:13px; line-height:18px; margin:8px 0 0; }
 .nook-secondary-button { display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:8px 16px; border:1px solid var(--input-border); border-radius:9999px; background:transparent; color:var(--text-primary); font-family:inherit; font-size:14px; line-height:16px; font-weight:700; cursor:pointer; white-space:nowrap; }
 .nook-secondary-button:hover { background:var(--bg-secondary); }
-.nook-tag-editor { padding:0; margin-bottom:16px; }
 @media (max-width:799px) {
   .nook-settings-backdrop { padding:0; }
   .nook-settings-shell { width:100%; height:100dvh; max-height:none; border-radius:0; }
@@ -185,9 +184,6 @@
 
 /* ---- Activity logs ---- */
 @keyframes nook-spin { to { transform:rotate(360deg); } }
-/* Shared spinner (Analytics refresh). */
-.nook-log-spinner { display:inline-block; width:16px; height:16px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:nook-spin .8s linear infinite; }
-@media (prefers-reduced-motion:reduce) { .nook-log-spinner { animation:none; border-right-color:currentColor; opacity:.6; } }
 .nook-detail-header.is-nested .nook-settings-back { display:flex; }
 
 /* ---- Theme tiles: every theme is visible ---- */
@@ -421,7 +417,6 @@ fieldset:disabled .nook-select-trigger { cursor:default; }
 .nook-sync-tick svg { width:20px; height:20px; fill:currentColor; }
 .nook-sync-choice[aria-checked="true"] .nook-sync-tick { visibility:visible; }
 .nook-sync-choice:focus-visible { outline:2px solid var(--accent-color); outline-offset:-2px; border-radius:4px; }
-
 
 /* ---- Tag dialog (a tweet's tags and description) ---- */
 /* 600px dialog toward the top, fixed header, scrolling body; full-screen sheet on phones. */
