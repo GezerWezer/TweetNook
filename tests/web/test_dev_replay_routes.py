@@ -32,6 +32,7 @@ from tweetnook.core.timeline_parsing import (
 from tweetnook.enrichment.media import download_media
 from tweetnook.storage import open_archive_store
 from tweetnook.sync.collection import sync_collection
+from tweetnook.web.config_schema import get_config_ui_schema
 from tweetnook.web.deps import server_state
 from tweetnook.web.notices import NoticeStore
 from tweetnook.web.replay_placeholders import placeholder_bytes
@@ -161,7 +162,7 @@ def test_config_refuses_enabling_replay_source_without_password(make_web_client)
     response = client.post("/api/config", json={"changes": {"web.dev_replay_source": True}})
     assert response.status_code == 400
     assert "Web password" in response.json()["detail"]
-    schema = config_module.get_config_ui_schema()
+    schema = get_config_ui_schema()
     assert "web.dev_replay_source" not in schema["whitelist"]
     assert "web.dev_replay_source" not in schema["blacklist"]
     assert "web.dev_replay_source" in schema["descriptions"]

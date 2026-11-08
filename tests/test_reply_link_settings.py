@@ -10,13 +10,13 @@ from pydantic import ValidationError
 from tests.conftest import make_tweet_detail_response, make_tweet_result
 from tweetnook.config import (
     SyncConfig,
-    get_config_ui_schema,
     load_config,
     update_config_values,
 )
 from tweetnook.enrichment.threads import expand_threads, walk_linked_statuses
 from tweetnook.query_ids import QueryIdStore
 from tweetnook.storage import open_archive_store
+from tweetnook.web.config_schema import get_config_ui_schema
 
 
 def test_reply_limit_defaults_validation_persistence_and_schema(paths):

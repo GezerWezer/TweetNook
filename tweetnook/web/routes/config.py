@@ -51,7 +51,7 @@ def api_get_config_defaults(_auth: Annotated[bool, Depends(verify_credentials)])
 
 @router.get("/api/config/schema")
 def api_get_config_schema(_auth: Annotated[bool, Depends(verify_credentials)]):
-    from tweetnook.config import get_config_ui_schema
+    from tweetnook.web.config_schema import get_config_ui_schema
 
     return get_config_ui_schema()
 

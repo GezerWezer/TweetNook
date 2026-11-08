@@ -17,13 +17,13 @@ from tweetnook.config import (
     WebConfig,
     XDGPaths,
     ensure_paths,
-    get_config_ui_schema,
     get_explicit_config_fields,
     load_config,
     resolve_paths,
     update_config_values,
     upgrade_config,
 )
+from tweetnook.web.config_schema import get_config_ui_schema
 
 
 def _xdg_env(tmp_path: Path) -> dict[str, str]:
