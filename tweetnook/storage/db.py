@@ -10,11 +10,16 @@ from urllib.parse import quote
 
 from .record_types import RecordType
 
+
+def connect_read_only(db_path: Path) -> sqlite3.Connection:
+    return sqlite3.connect(f"file:{quote(str(db_path))}?mode=ro", uri=True)
+
+
 if TYPE_CHECKING:
     import threading
     from pathlib import Path
 
-    from tweetnook.config import AppConfig
+    from tweetnook.config import AppConfig, DatabaseConfig
 
     from .like_order import LikeOrder, PageObservations
     from .schema import MigrationReport
@@ -189,9 +194,12 @@ class ConnectionMixin:
     def apply_config(self, config: AppConfig) -> None:
         """Apply connection tuning and use this snapshot for future private readers."""
         if self.config is None or self.config.database != config.database:
-            self.conn.execute(f"PRAGMA cache_size = -{config.database.cache_size_kb}")
-            self.conn.execute(f"PRAGMA mmap_size = {config.database.mmap_size_bytes}")
+            self._apply_tuning(config.database)
         self.config = config
+
+    def _apply_tuning(self, database: DatabaseConfig) -> None:
+        self.conn.execute(f"PRAGMA cache_size = -{database.cache_size_kb}")  # negative = KiB
+        self.conn.execute(f"PRAGMA mmap_size = {database.mmap_size_bytes}")
 
     def warm_read_cache(self) -> None:
         """Read the pages Web browsing and search use so the OS page cache holds them.
@@ -201,7 +209,7 @@ class ConnectionMixin:
         """
         if self._warm_cancelled:
             return
-        conn = sqlite3.connect(f"file:{quote(str(self.db_path))}?mode=ro", uri=True)
+        conn = connect_read_only(self.db_path)
         # Polled while queries run, so a stop requested at any moment takes effect.
         conn.set_progress_handler(lambda: self._warm_cancelled, 10_000)
         try:

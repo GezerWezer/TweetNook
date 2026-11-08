@@ -8,7 +8,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.parse import quote
 
 from tweetnook.config import DatabaseConfig, XDGPaths
 
@@ -16,7 +15,7 @@ from .authors import AuthorsMixin
 from .checks import ChecksMixin
 from .connection import SerializedConnection
 from .conversations import ConversationsMixin
-from .db import ConnectionMixin
+from .db import ConnectionMixin, connect_read_only
 from .details import DetailsMixin
 from .enrichment import EnrichmentMixin
 from .imports import ImportsMixin
@@ -102,7 +101,7 @@ class ArchiveStore(
         if read_only:
             # A private reader for one thread; the writer that opened the
             # archive already chose WAL and migrated the schema.
-            self.conn = sqlite3.connect(f"file:{quote(db_file)}?mode=ro", uri=True)
+            self.conn = connect_read_only(db_path)
         else:
             # Shared Web readers can race CPython's prepared-statement cache even
             # with serialized SQLite (python/cpython#118172). Keep the database page
@@ -122,11 +121,7 @@ class ArchiveStore(
                 self.conn.execute("PRAGMA journal_mode=WAL")
                 self.conn.execute("PRAGMA recursive_triggers=ON")
 
-            database_config = config.database if config is not None else DatabaseConfig()
-            self.conn.execute(
-                f"PRAGMA cache_size = -{database_config.cache_size_kb}"
-            )  # Negative for kibibytes
-            self.conn.execute(f"PRAGMA mmap_size = {database_config.mmap_size_bytes}")
+            self._apply_tuning(config.database if config is not None else DatabaseConfig())
 
             if not read_only and (create or db_path.exists()):
                 self._migrate_schema()
