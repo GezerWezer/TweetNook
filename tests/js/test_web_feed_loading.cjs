@@ -536,6 +536,7 @@ test('distant feed cards give way to placeholders and return with their scroll a
     for (const card of list.children) {
         card.rect = { top: -9000, bottom: -8680, height: 320 };
         card.computedStyle = { paddingTop: '12px', paddingBottom: '12px', borderTopWidth: '0px', borderBottomWidth: '1px' };
+        card.querySelector('video').paused = true;
     }
     first.querySelector('.media-carousel-track').scrollLeft = 240;
     first.querySelector('video').currentTime = 7.5;
@@ -559,6 +560,8 @@ test('distant feed cards give way to placeholders and return with their scroll a
     assert.deepEqual(evict.observed, [second, third]);
 
     app.viewMode = 'list';
+    // Here the card renders afresh, which is what has to carry its positions over.
+    app.dropPooledFeedCards();
     restore.callback([{ target: placeholder, isIntersecting: true }]);
     const returned = list.children[0];
     assert.notEqual(returned, first);
@@ -733,6 +736,76 @@ test('committed collection stages refresh an empty feed and its count while medi
     assert.equal(feeds, 2);
     await app.fetchActivityStatus();
     assert.equal(feeds, 2); // Identical polls do not keep refreshing the feed.
+});
+
+test('an evicted card returns as the same node until something could change its markup', () => {
+    const context = browserContext();
+    const { app, list } = feedListApp(context);
+    let renders = 0;
+    app.renderFeedCard = tweet => {
+        renders += 1;
+        return `<div class="feed-card" data-tweet-id="${tweet.tweet_id}"><p>${tweet.label}</p>${tweet.video ? '<video src="/media/v.mp4"></video>' : ''}</div>`;
+    };
+    app.tweets = [{ tweet_id: '1', label: 'one' }, { tweet_id: '2', label: 'two', video: true }];
+    app.renderFeedList(app.tweets);
+    const evict = context.intersectionObservers.find(observer => observer.options.rootMargin === '6000px 0px');
+    const restore = context.intersectionObservers.find(observer => observer.options.rootMargin === '3000px 0px');
+    const away = index => {
+        const card = list.children[index];
+        card.querySelectorAll('video').forEach(video => { video.paused = true; });
+        card.rect = { top: -9000, bottom: -8680, height: 320 };
+        evict.callback([{ target: card, isIntersecting: false }]);
+        assert.equal(list.children[index].getAttribute('class'), 'feed-card-placeholder');
+        return card;
+    };
+    const back = index => {
+        restore.callback([{ target: list.children[index], isIntersecting: true }]);
+        return list.children[index];
+    };
+
+    const first = away(0);
+    first.setAttribute('data-loaded', 'kept');
+    renders = 0;
+    const returned = back(0);
+    assert.equal(returned, first, 'an unchanged card is reattached, not parsed again');
+    assert.equal(renders, 0, 'a reattached card is not rendered to check it');
+    assert.equal(returned.getAttribute('data-loaded'), 'kept', 'state added after render survives');
+    assert.ok(evict.observed.includes(returned));
+
+    away(0);
+    app.updateLoadedTweet('1', tweet => { tweet.label = 'edited'; });
+    const edited = back(0);
+    assert.notEqual(edited, first, 'a card whose post was edited renders afresh');
+    assert.equal(edited.querySelector('p').textContent, 'edited');
+
+    away(0);
+    app.tweets = [{ tweet_id: '1', label: 'reloaded' }, app.tweets[1]];
+    assert.equal(back(0).querySelector('p').textContent, 'reloaded', 'a reloaded post renders afresh');
+
+    const beforeExpand = away(0);
+    app.expandFeedText('quoted-id');
+    assert.notEqual(back(0), beforeExpand, 'expanding text anywhere drops detached cards');
+
+    const desktop = away(0);
+    const phone = app.isPhoneLayout();
+    app.isPhoneLayout = () => !phone;
+    assert.notEqual(back(0), desktop, 'a card left in another layout renders afresh');
+
+    // A detached player releases its source; prefetching the returned card restores it.
+    list.children[1].querySelector('video').currentTime = 4;
+    const video = away(1);
+    const player = video.querySelector('video');
+    assert.equal(player.getAttribute('src'), null, 'a pooled player holds no source');
+    player.currentTime = 0;
+    assert.equal(back(1), video, 'a card with video is reattached too');
+    app.prefetchMedia(video, false);
+    assert.equal(player.getAttribute('src'), '/media/v.mp4');
+    assert.equal(player.currentTime, 4, 'the restored source resumes where it was');
+
+    // A decoder kept for audio permission can't be released, so its card isn't kept.
+    app.releaseVideoResource = () => {};
+    const audible = away(1);
+    assert.notEqual(back(1), audible, 'a card whose player keeps its source renders afresh');
 });
 
 run();

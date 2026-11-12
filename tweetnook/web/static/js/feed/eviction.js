@@ -13,6 +13,9 @@ const FEED_EVICT_MARGIN_PX = 6000;
 const FEED_RESTORE_MARGIN_PX = 3000;
 // Cards kept because the feed was collapsed or busy are checked again this often.
 const FEED_EVICT_RETRY_MS = 2000;
+// Evicted cards kept detached for reuse. A reused card skips parsing and keeps its
+// decoded images; its players' sources are released, so none holds a decoder.
+const FEED_CARD_POOL_SIZE = 150;
 
 function feedEvictionMethods() {
     let evictObserver = null;
@@ -20,6 +23,8 @@ function feedEvictionMethods() {
     // Placeholder -> {height, contentHeight, tracks, videos} captured from the card it replaced.
     const savedCards = new WeakMap();
     const deferredCards = new Set();
+    // Tweet id -> {card, tweet, phone}: the post object and layout the card was rendered from.
+    const pooledCards = new Map();
     let retryTimer = null;
 
     return {
@@ -39,6 +44,7 @@ function feedEvictionMethods() {
                 evictObserver.disconnect();
                 restoreObserver.disconnect();
                 deferredCards.clear();
+                pooledCards.clear();
             }
             for (const card of cards) evictObserver.observe(card);
         },
@@ -87,6 +93,7 @@ function feedEvictionMethods() {
                     const placeholder = card.previousElementSibling;
                     savedCards.set(placeholder, state);
                     card.remove();
+                    this.poolFeedCard(card);
                     restoreObserver.observe(placeholder);
                 }
             });
@@ -108,24 +115,59 @@ function feedEvictionMethods() {
             }, FEED_EVICT_RETRY_MS);
         },
 
+        // A card is reused only while it would render the same markup. Rendering it to
+        // compare cost most of a fresh render, so instead whatever can change the markup
+        // drops pooled cards: a new list (search, highlight, sort) resets the pool, edits
+        // to a loaded post go through updateLoadedTweet, and expanding text changes what
+        // every copy of that post renders. A reloaded post is a new object.
+        poolFeedCard(card) {
+            // Released the way distant players are; prefetching the returning card restores
+            // each source and position. A decoder kept for audio permission is not released,
+            // and a detached card must not hold one, so that card renders afresh instead.
+            const videos = [...card.querySelectorAll('video')];
+            for (const video of videos) this.releaseVideoResource(video);
+            if (videos.some(video => video.getAttribute('src'))) return;
+            const tweetObj = this.feedTweetById(card.dataset.tweetId);
+            if (!tweetObj) return;
+            pooledCards.delete(card.dataset.tweetId);
+            pooledCards.set(card.dataset.tweetId, { card, tweet: tweetObj, phone: this.isPhoneLayout() });
+            if (pooledCards.size > FEED_CARD_POOL_SIZE) pooledCards.delete(pooledCards.keys().next().value);
+        },
+
+        dropPooledFeedCards(tweetId = null) {
+            if (tweetId === null) pooledCards.clear();
+            else pooledCards.delete(String(tweetId));
+        },
+
         // A fast scroll back reports many placeholders at once. Every card is inserted
         // before any carousel position is set: setting scrollLeft forces layout, so doing
         // it between insertions would force a layout pass per card.
         restoreFeedCards(placeholders) {
             const restored = [];
+            const phone = this.isPhoneLayout();
             outsideAlpine(() => {
                 for (const placeholder of placeholders) {
                     restoreObserver.unobserve(placeholder);
                     const state = savedCards.get(placeholder);
                     if (!placeholder.isConnected || !state) continue;
-                    const tweetObj = this.feedTweetById(placeholder.dataset.tweetId);
+                    const tweetId = placeholder.dataset.tweetId;
+                    const tweetObj = this.feedTweetById(tweetId);
                     if (!tweetObj) {
                         placeholder.remove();
                         continue;
                     }
-                    placeholder.insertAdjacentHTML('beforebegin', this.renderFeedCard(tweetObj));
-                    const card = placeholder.previousElementSibling;
-                    placeholder.remove();
+                    const pooled = pooledCards.get(tweetId);
+                    pooledCards.delete(tweetId);
+                    const reused = pooled?.tweet === tweetObj && pooled.phone === phone;
+                    let card;
+                    if (reused) {
+                        card = pooled.card;
+                        placeholder.replaceWith(card);
+                    } else {
+                        placeholder.insertAdjacentHTML('beforebegin', this.renderFeedCard(tweetObj));
+                        card = placeholder.previousElementSibling;
+                        placeholder.remove();
+                    }
                     // A skipped (content-visibility) card is sized by its estimate until it
                     // paints; the size it had keeps cards above the viewport from shifting.
                     card.style.containIntrinsicSize = `auto ${state.contentHeight}px`;
@@ -133,7 +175,7 @@ function feedEvictionMethods() {
                         // A track inside a skipped card has no scroll range to restore into.
                         card.style.contentVisibility = 'visible';
                     }
-                    restored.push([card, state]);
+                    restored.push([card, state, reused]);
                 }
                 for (const [card, state] of restored) {
                     const tracks = card.querySelectorAll('.media-carousel-track');
@@ -147,8 +189,9 @@ function feedEvictionMethods() {
                         if (video) video.currentTime = time;
                     }
                 }
-                for (const [card] of restored) {
-                    this.measureTextClamps(card);
+                for (const [card, , reused] of restored) {
+                    // A reused card keeps its measured clamps, and its layout hasn't changed.
+                    if (!reused) this.measureTextClamps(card);
                     evictObserver.observe(card);
                 }
             });

@@ -487,6 +487,8 @@ function feedMethods() {
         expandFeedText(tweetId) {
             const list = this.feedListElement();
             if (!list || !tweetId) return;
+            // The id may be a quote's, so any detached card could hold the collapsed text.
+            this.dropPooledFeedCards();
             for (const toggle of list.querySelectorAll('.expand-tweet')) {
                 if (toggle.dataset.id !== tweetId) continue;
                 const text = toggle.closest('[data-action="text"]');
@@ -537,6 +539,7 @@ function feedMethods() {
             };
 
             for (const tweet of this.tweets) assign(tweet);
+            this.dropPooledFeedCards(tweetId);
             for (const tweet of this.quotesList) assign(tweet);
             for (const tweet of this.panelQuotesList) assign(tweet);
             visitThread(this.threadData);
