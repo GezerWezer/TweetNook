@@ -641,7 +641,7 @@ test('feed clicks are delegated by data-action like the per-card handlers', () =
     assert.equal(event.propagationStopped, false);
     click(retweet.querySelector('.tweet-byline-detail'));
     assert.equal(opened.at(-1), '300');
-    click(quoted.querySelector('.group svg'));  // action bar icons open the thread as before
+    click(quoted.querySelector('.group .tweet-icon'));  // action bar icons open the thread as before
     assert.equal(opened.at(-1), '100');
 
     // The quote opens the quoted thread, including from its text.
@@ -661,7 +661,7 @@ test('feed clicks are delegated by data-action like the per-card handlers', () =
         quoted.querySelector('[data-action="quote"] .community-note-quote span'),
         tombstoneQuote.querySelector('.tweet-skeleton-message'),
         retweet.querySelector('[data-action="stop"] .truncate'),
-        quoted.querySelector('a[title="Open on Twitter/X"] svg'),
+        quoted.querySelector('a[title="Open on Twitter/X"] .tweet-icon'),
     ]) {
         assert.ok(target, 'target exists');
         event = click(target);

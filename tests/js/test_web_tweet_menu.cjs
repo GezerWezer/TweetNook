@@ -273,7 +273,7 @@ test('feed cards share one overflow menu placed over the opening button', async 
     const button = retweet.querySelector('[data-action="menu"]');
     button.rect = { top: 420, right: 664, bottom: 456, left: 628, width: 36, height: 36 };
 
-    let event = dispatchFeed(list, 'click', button.querySelector('circle'));
+    let event = dispatchFeed(list, 'click', button.querySelector('.tweet-icon'));
     assert.equal(event.propagationStopped, true, 'the opening click must not count as outside');
     assert.equal(app.tweetMenuOpen, 'list:301');
     assert.equal(app.listMenu.key, 'list:301');
@@ -399,7 +399,7 @@ test('feed overflow buttons keep the long-press Tags shortcut and avatars their 
     app.renderFeedList(app.tweets);
     const card = list.children[0];
     const button = card.querySelector('[data-action="menu"]');
-    const icon = button.querySelector('svg');
+    const icon = button.querySelector('.tweet-icon');
 
     const timerCount = timers.length;
     for (const modifiers of [{button: 2}, {button: 0, ctrlKey: true}]) {

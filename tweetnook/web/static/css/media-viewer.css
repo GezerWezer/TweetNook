@@ -447,7 +447,7 @@
     }
     .lightbox-actions .tweet-actions > div:nth-last-child(-n + 2) { flex: 0 0 40px; }
     .lightbox-actions .tweet-actions > .tweet-action-views { display: none; }
-    .lightbox-actions .tweet-actions svg { width: 20px; height: 20px; }
+    .lightbox-actions .tweet-actions .tweet-icon { width: 20px; height: 20px; }
     .lightbox-actions .tweet-action-count {
         padding: 0 0 0 6px;
         font-size: 15px;
