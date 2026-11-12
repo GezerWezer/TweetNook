@@ -149,6 +149,7 @@ class ArchiveStore(
                 )
                 self._ensure_tag_table()
                 self._tag_table_ready = True
+                self._ensure_authors_table()
         except BaseException:
             with suppress(Exception):
                 self.conn.close()
@@ -226,6 +227,64 @@ class ArchiveStore(
         # Opening runs migrations before the tag table exists.
         if getattr(self, "_tag_table_ready", False):
             self._sync_tag_table()
+    def _ensure_authors_table(self) -> None:
+        """Each handle's latest saved row, kept current by triggers on memberships."""
+        exists = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tweetnook_authors'"
+        ).fetchone()
+        author_filter = "author_username IS NOT NULL AND author_id IS NOT NULL AND author_id != ''"
+        latest = (
+            "SELECT LOWER(COALESCE(author_username, '')), author_id, author_username, "
+            "author_display_name, LOWER(author_username), LOWER(author_display_name) "
+            # No INDEXED BY here: a trigger naming an index fails whenever a migration drops
+            # or rebuilds it. The handle expression matches idx_archive_search_author anyway.
+            f"FROM archive WHERE record_type = '{RecordType.TWEET}' AND {author_filter} "
+            "AND LOWER(COALESCE(author_username, '')) = {key} "
+            "ORDER BY created_at_ts DESC LIMIT 1"
+        )
+
+        def refresh(row: str) -> str:
+            key = f"LOWER(COALESCE({row}.author_username, ''))"
+            return (
+                f"DELETE FROM tweetnook_authors WHERE name_key = {key}; "
+                f"INSERT OR REPLACE INTO tweetnook_authors {latest.format(key=key)}; "
+            )
+
+        tweet = f"'{RecordType.TWEET}'"
+        with self.transaction():
+            if not exists:
+                self.conn.execute(
+                    "CREATE TABLE tweetnook_authors (name_key TEXT PRIMARY KEY, author_id TEXT, "
+                    "author_username TEXT, author_display_name TEXT, username_key TEXT, "
+                    "display_key TEXT) WITHOUT ROWID"
+                )
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO tweetnook_authors "
+                    "SELECT handles.name_key, saved.author_id, saved.author_username, "
+                    "saved.author_display_name, LOWER(saved.author_username), "
+                    "LOWER(saved.author_display_name) "
+                    "FROM (SELECT DISTINCT LOWER(COALESCE(author_username, '')) AS name_key "
+                    f"FROM archive WHERE record_type = {tweet} AND {author_filter}) AS handles "
+                    "JOIN archive AS saved ON saved.row_key = ("
+                    "SELECT row_key FROM archive INDEXED BY idx_archive_search_author "
+                    f"WHERE record_type = {tweet} AND {author_filter} "
+                    "AND LOWER(COALESCE(author_username, '')) = handles.name_key "
+                    "ORDER BY created_at_ts DESC LIMIT 1)"
+                )
+            self.conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS tweetnook_authors_insert AFTER INSERT ON archive "
+                f"WHEN new.record_type = {tweet} BEGIN {refresh('new')}END"
+            )
+            self.conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS tweetnook_authors_delete AFTER DELETE ON archive "
+                f"WHEN old.record_type = {tweet} BEGIN {refresh('old')}END"
+            )
+            self.conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS tweetnook_authors_update AFTER UPDATE OF "
+                "record_type, author_id, author_username, author_display_name, created_at_ts "
+                f"ON archive WHEN old.record_type = {tweet} OR new.record_type = {tweet} "
+                f"BEGIN {refresh('old')}{refresh('new')}END"
+            )
 
     # --- availability checks and community-note history ------------------
 
