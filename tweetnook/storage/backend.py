@@ -38,6 +38,7 @@ from .stats import StatsMixin
 from .sync_state import SyncStateMixin
 from .tags import TagsMixin
 from .tweets import TweetsMixin
+from .web_cards import WebCardsMixin
 
 if TYPE_CHECKING:
     from tweetnook.config import AppConfig
@@ -67,6 +68,7 @@ class ArchiveStore(
     TagsMixin,
     ConversationsMixin,
     PruneMixin,
+    WebCardsMixin,
     ConnectionMixin,
 ):
     def __init__(
@@ -152,6 +154,7 @@ class ArchiveStore(
                 self._ensure_tag_table()
                 self._tag_table_ready = True
                 self._ensure_authors_table()
+                self._ensure_web_card_table()
         except BaseException:
             with suppress(Exception):
                 self.conn.close()

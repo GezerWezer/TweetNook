@@ -23,6 +23,7 @@ from tweetnook.web.availability import (
     missing_web_tweet,
     slim_web_tweets,
 )
+from tweetnook.web.card_cache import feed_cards
 from tweetnook.web.deps import require_store, verify_credentials
 from tweetnook.web.history import tweet_history, tweet_note_history
 
@@ -146,16 +147,17 @@ def api_tweets(
             limit=limit,
             random_seed=random_seed,
             cursor=cursor,
-            # The Web UI shows links from the post's own entities, not resolved URL rows.
-            include_urls=False,
+            hydrate=False,
         )
-        paginated_tweets = result.rows
-        annotate_web_tweets(store, paginated_tweets)
-        slim_web_tweets(paginated_tweets, list_cards=True)
-
-        return _json(
+        scores = {row["tweet_id"]: row["match_score"] for row in result.rows}
+        # Stored cards are joined into the response as bytes, never parsed.
+        cards = []
+        for tweet_id, card in feed_cards(store, list(scores), collections):
+            if scores[tweet_id] is not None:
+                card = card[:-1] + b',"match_score":' + fastjson.dumps(scores[tweet_id]) + b"}"
+            cards.append(card)
+        rest = fastjson.dumps(
             {
-                "tweets": paginated_tweets,
                 "total": result.total,
                 "page": result.page,
                 "pages": result.pages,
@@ -165,6 +167,8 @@ def api_tweets(
                 "highlight_terms": parse_search_query(q).highlight_terms(),
             }
         )
+        body = b'{"tweets":[' + b",".join(cards) + b"]," + rest[1:]
+        return Response(body, media_type="application/json")
     except SearchCursorExpiredError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except SearchQueryError as exc:

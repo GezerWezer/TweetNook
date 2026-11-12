@@ -614,8 +614,13 @@ def search_posts(
     random_seed: int | None = None,
     cursor: str | None = None,
     include_urls: bool = True,
+    hydrate: bool = True,
 ) -> SearchPage:
-    """Search the complete logical archive and hydrate only the requested page."""
+    """Search the complete logical archive and hydrate only the requested page.
+
+    Without ``hydrate``, rows hold only each hit's ``tweet_id`` and ``match_score``,
+    for a caller that builds the posts itself.
+    """
     if page < 1:
         raise ValueError("page must be at least 1")
     if limit < 1:
@@ -678,15 +683,22 @@ def search_posts(
     has_more = len(hits) > limit
     page_hits = hits[:limit]
     ids = [str(hit["tweet_id"]) for hit in page_hits if hit.get("tweet_id")]
-    hydrated_by_id = {
-        row.get("tweet_id"): row
-        for row in store.fetch_tweets_by_ids(
-            ids, collections=collections, include_urls=include_urls
-        )
-        if row.get("tweet_id")
-    }
-    hydrated = [hydrated_by_id[tweet_id] for tweet_id in ids if tweet_id in hydrated_by_id]
-    hydrated = _hydrate_metadata(hydrated, page_hits)
+    if hydrate:
+        hydrated_by_id = {
+            row.get("tweet_id"): row
+            for row in store.fetch_tweets_by_ids(
+                ids, collections=collections, include_urls=include_urls
+            )
+            if row.get("tweet_id")
+        }
+        hydrated = [hydrated_by_id[tweet_id] for tweet_id in ids if tweet_id in hydrated_by_id]
+        hydrated = _hydrate_metadata(hydrated, page_hits)
+    else:
+        hydrated = [
+            {"tweet_id": str(hit["tweet_id"]), "match_score": hit.get("match_score")}
+            for hit in page_hits
+            if hit.get("tweet_id")
+        ]
     next_cursor = None
     if cursor is not None and has_more and page_hits:
         last = page_hits[-1]
