@@ -61,6 +61,9 @@ class ConnectionMixin:
     _search_count_cache: dict[tuple, tuple[tuple[int, int], int]]
     _search_page_cache: dict[tuple, tuple[tuple[int, int], float, list]]
 
+    def _before_commit(self) -> None:
+        """Bring derived tables up to date inside a write transaction that changed rows."""
+
     @contextmanager
     def transaction(self, *, write: bool = True, allow_nested: bool = True) -> Iterator[None]:
         """Own one serialized transaction, nesting store helpers by savepoint.
@@ -93,6 +96,8 @@ class ConnectionMixin:
                 if nested:
                     self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
                 else:
+                    if self.conn.total_changes != before:
+                        self._before_commit()
                     self.conn.commit()
                     if write and self.conn.total_changes != before:
                         self._has_written = True

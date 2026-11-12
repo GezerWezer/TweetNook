@@ -380,3 +380,28 @@ def test_explicit_integrity_checks_select_quick_or_full_pragma(paths) -> None:
     assert "PRAGMA quick_check" in statements
     assert "PRAGMA integrity_check" in statements
     store.close()
+
+
+def test_tag_table_follows_writes_from_connections_without_tweetnook_functions(paths) -> None:
+    store = open_archive_store(paths, create=True)
+    store.update_media_tags("1", ["Cats"])
+    store.close()
+
+    # The sqlite3 shell and the legacy importer register none of TweetNook's functions.
+    raw = sqlite3.connect(paths.database_path)
+    with raw:
+        raw.execute(
+            "INSERT INTO archive (row_key, record_type, tweet_id, raw_json) VALUES (?, ?, ?, ?)",
+            ("media_tag:2", "media_tag", "2", '{"tags": ["cats", "Dogs"]}'),
+        )
+        raw.execute("DELETE FROM archive WHERE row_key = ?", ("media_tag:1",))
+    raw.close()
+
+    reopened = open_archive_store(paths, create=False)
+    try:
+        assert reopened.get_tag_counts() == [
+            {"tag": "Dogs", "count": 1},
+            {"tag": "cats", "count": 1},
+        ]
+    finally:
+        reopened.close()

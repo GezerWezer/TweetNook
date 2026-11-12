@@ -544,26 +544,16 @@ class TagsMixin(ConnectionMixin):
                     pass
 
     def get_tag_counts(self, query: str = "", limit: int = 50) -> list[dict[str, Any]]:
-        sql = f"""
-        SELECT MIN(json_each.value) as tag, count(*) as count
-        FROM archive,
-             json_each(
-               CASE WHEN json_valid(archive.raw_json)
-                    THEN archive.raw_json ELSE '{{"tags":[]}}' END,
-               '$.tags'
-             )
-        WHERE record_type = '{RecordType.MEDIA_TAG}'
-          AND (enrichment_state = 'done' OR enrichment_state IS NULL)
-          AND json_each.type = 'text'
-        """
-        params = []
+        sql = "SELECT MIN(tag) AS tag, count(*) AS count FROM tweetnook_tags WHERE counted = 1"
+        params: list[Any] = []
         # Each fragment must occur in the same tag; punctuation between them
         # does not prevent a match. instr keeps %, _ and other input literal.
         for fragment in query.casefold().split():
-            sql += " AND instr(tweetnook_tag_key(json_each.value), ?) > 0"
+            sql += " AND instr(tag_key, ?) > 0"
             params.append(fragment)
 
-        sql += " GROUP BY tweetnook_tag_key(json_each.value) ORDER BY count DESC LIMIT ?"
+        # Ties in descending key order, as earlier releases listed equal counts.
+        sql += " GROUP BY tag_key ORDER BY count DESC, tag_key DESC LIMIT ?"
         params.append(limit)
 
         rows = self.conn.execute(sql, tuple(params)).fetchall()

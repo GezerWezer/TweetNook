@@ -24,6 +24,7 @@ from .objects import ObjectsMixin
 from .presentation import PresentationMixin
 from .prune import PruneMixin
 from .reads import ReadsMixin
+from .record_types import RecordType
 from .records import RecordsMixin
 from .relations import RelationsMixin
 from .report_facts import ReportFactsMixin
@@ -146,10 +147,85 @@ class ArchiveStore(
                     "CREATE INDEX IF NOT EXISTS idx_facts_favorite_count "
                     "ON archive_tweet_facts(favorite_count DESC, row_key)"
                 )
+                self._ensure_tag_table()
+                self._tag_table_ready = True
         except BaseException:
             with suppress(Exception):
                 self.conn.close()
             raise
+
+    def _ensure_tag_table(self) -> None:
+        """One row per saved tag, so tag searches and autocomplete skip parsing JSON.
+
+        The triggers only queue the tweet ids whose tags changed: a trigger calling the
+        Python tag-key function would make every write to the archive fail on a connection
+        that hasn't registered it, such as the sqlite3 shell or the legacy importer. This
+        store recomputes queued tweets before each write commits and when it opens.
+        """
+        exists = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tweetnook_tags'"
+        ).fetchone()
+        media_tag = f"'{RecordType.MEDIA_TAG}'"
+        with self.transaction():
+            if not exists:
+                self.conn.execute(
+                    "CREATE TABLE tweetnook_tags (tweet_id TEXT NOT NULL, position INTEGER "
+                    "NOT NULL, tag TEXT NOT NULL, tag_key TEXT NOT NULL, counted INTEGER "
+                    "NOT NULL, PRIMARY KEY (tweet_id, position)) WITHOUT ROWID"
+                )
+                self.conn.execute(
+                    "CREATE INDEX tweetnook_tags_key ON tweetnook_tags (tag_key, tweet_id)"
+                )
+                self.conn.execute(
+                    "CREATE INDEX tweetnook_tags_counted ON tweetnook_tags (counted, tag_key, tag)"
+                )
+                self.conn.execute(f"INSERT OR IGNORE INTO tweetnook_tags {self._tag_rows_sql()}")
+            self.conn.execute(
+                "CREATE TABLE IF NOT EXISTS tweetnook_tags_pending "
+                "(tweet_id TEXT PRIMARY KEY) WITHOUT ROWID"
+            )
+            for event in ("insert", "delete", "update"):
+                self.conn.execute(f"DROP TRIGGER IF EXISTS tweetnook_tags_{event}")
+            for event, row in (("INSERT", "new"), ("DELETE", "old")):
+                self.conn.execute(
+                    f"CREATE TRIGGER tweetnook_tags_{event.lower()} AFTER {event} "
+                    f"ON archive WHEN {row}.record_type = {media_tag} BEGIN "
+                    f"INSERT OR IGNORE INTO tweetnook_tags_pending VALUES ({row}.tweet_id); END"
+                )
+            self.conn.execute(
+                "CREATE TRIGGER tweetnook_tags_update AFTER UPDATE ON archive "
+                f"WHEN old.record_type = {media_tag} OR new.record_type = {media_tag} BEGIN "
+                "INSERT OR IGNORE INTO tweetnook_tags_pending VALUES (old.tweet_id); "
+                "INSERT OR IGNORE INTO tweetnook_tags_pending VALUES (new.tweet_id); END"
+            )
+            self._sync_tag_table()
+
+    @staticmethod
+    def _tag_rows_sql(where: str = "") -> str:
+        return (
+            "SELECT tagged.tweet_id, CAST(item.key AS INTEGER), item.value, "
+            "tweetnook_tag_key(item.value), "
+            "(tagged.enrichment_state = 'done' OR tagged.enrichment_state IS NULL) "
+            "FROM archive AS tagged INDEXED BY idx_archive_media_tag_lookup "
+            "CROSS JOIN json_each(CASE WHEN json_valid(tagged.raw_json) "
+            "THEN tagged.raw_json ELSE '{}' END, '$.tags') AS item "
+            f"WHERE tagged.record_type = '{RecordType.MEDIA_TAG}' AND item.type = 'text'{where}"
+        )
+
+    def _sync_tag_table(self) -> None:
+        # Runs on every write commit: each statement is an index probe when nothing is queued.
+        pending = "SELECT tweet_id FROM tweetnook_tags_pending"
+        self.conn.execute(f"DELETE FROM tweetnook_tags WHERE tweet_id IN ({pending})")
+        self.conn.execute(
+            "INSERT OR IGNORE INTO tweetnook_tags "
+            + self._tag_rows_sql(f" AND tagged.tweet_id IN ({pending})")
+        )
+        self.conn.execute("DELETE FROM tweetnook_tags_pending")
+
+    def _before_commit(self) -> None:
+        # Opening runs migrations before the tag table exists.
+        if getattr(self, "_tag_table_ready", False):
+            self._sync_tag_table()
 
     # --- availability checks and community-note history ------------------
 

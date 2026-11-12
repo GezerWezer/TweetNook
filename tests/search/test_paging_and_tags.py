@@ -263,7 +263,7 @@ def test_tag_search_matches_tags_on_a_quoted_original(tmp_path) -> None:
         if "SELECT COUNT(*) FROM matches" in statement and "matching_tags" in statement
     )
     plan = " ".join(row["detail"] for row in store.conn.execute(f"EXPLAIN QUERY PLAN {count_sql}"))
-    assert "idx_archive_media_tag_lookup" in count_sql
+    assert "tweetnook_tags" in count_sql, count_sql
     assert "CROSS JOIN archive relation INDEXED BY idx_archive_target_tweet_id" in count_sql
     assert "SEARCH relation USING INDEX idx_archive_target_tweet_id (target_tweet_id=?)" in plan
     assert "SCAN relation USING INDEX idx_archive_tweet_id" not in plan

@@ -499,13 +499,7 @@ def _normalized_filter_expr(
         expression = Clause(f"{_fact('card_name')} = ?", (value,))
     elif key == "tag":
         expression = _media_tag_match(
-            "SELECT DISTINCT tagged.tweet_id "
-            "FROM archive tagged INDEXED BY idx_archive_media_tag_lookup "
-            "JOIN json_each(CASE WHEN json_valid(tagged.raw_json) "
-            "THEN tagged.raw_json ELSE '{}' END, '$.tags') AS media_tag "
-            f"WHERE tagged.record_type = '{RecordType.MEDIA_TAG}' "
-            "AND media_tag.type = 'text' "
-            "AND tweetnook_tag_key(media_tag.value) = ?",
+            "SELECT DISTINCT tweet_id FROM tweetnook_tags WHERE tag_key = ?",
             (tag_key(value),),
         )
     elif key == "description":
