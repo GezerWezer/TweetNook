@@ -51,6 +51,91 @@ class SearchMixin(ReadsMixin, TagsMixin):
         ).fetchall()
         return sort_chronologically(rows, {row["tweet_id"]: dict(row) for row in keys}, sort=sort)
 
+    def _most_likes_page(
+        self,
+        collection: str,
+        *,
+        limit: int,
+        offset: int,
+        include_total: bool,
+        excluded_expr: str,
+        exclude_hidden: bool,
+        exclude_uncaptured: bool,
+    ) -> tuple[list[dict[str, Any]], int | None]:
+        """Page a collection by like count by walking the favorite-count index.
+
+        Memberships are read in descending like count until the page is filled and every
+        tie with its last post is collected; only those posts are ordered exactly.
+        """
+        where = [f"member.record_type = '{RecordType.TWEET}'"]
+        params: list[Any] = []
+        if collection != "all":
+            where.append("member.collection_type = ?")
+            params.append(collection)
+        if excluded_expr:
+            where.append(excluded_expr.replace("archive.tweet_id", "member.tweet_id"))
+        needed = offset + limit + 1
+        seen: dict[str, int] = {}
+        threshold = None
+        for tweet_id, likes in self.conn.execute(
+            "SELECT member.tweet_id, COALESCE(facts.favorite_count, 0) "
+            "FROM archive_tweet_facts AS facts INDEXED BY idx_facts_favorite_count "
+            "CROSS JOIN archive AS member ON member.row_key = facts.row_key "
+            f"WHERE {' AND '.join(where)} ORDER BY facts.favorite_count DESC",
+            params,
+        ):
+            if threshold is not None and likes < threshold:
+                break
+            if not tweet_id or tweet_id in seen:
+                continue
+            seen[tweet_id] = likes
+            if threshold is None and len(seen) >= needed:
+                threshold = likes
+        rows: list[dict[str, Any]] = []
+        if seen:
+            ids = clause_in("tweet_id", set(seen))
+            keys = self.conn.execute(
+                "SELECT tweet_id, MAX(created_at_ts) AS created_at_ts, "
+                "MAX(CAST(sort_index AS INTEGER)) AS sort_index "
+                "FROM archive INDEXED BY idx_archive_membership "
+                f"WHERE record_type = '{RecordType.TWEET}' AND {ids.sql} "
+                + ("AND collection_type = ? " if collection != "all" else "")
+                + "GROUP BY tweet_id",
+                (*ids.params, *((collection,) if collection != "all" else ())),
+            ).fetchall()
+            rows = [
+                {
+                    "tweet_id": row["tweet_id"],
+                    "match_score": 0.0,
+                    "created_at_ts": row["created_at_ts"],
+                    "sort_index": row["sort_index"],
+                    "favorite_count": seen[row["tweet_id"]],
+                }
+                for row in keys
+            ]
+
+            # Match SQL's descending order, where NULL sorts last.
+            def descending(value: Any) -> tuple[int, Any]:
+                return (0, value) if value is not None else (-1, 0)
+
+            rows.sort(
+                key=lambda row: (
+                    row["favorite_count"],
+                    descending(row["created_at_ts"]),
+                    descending(row["sort_index"]),
+                    row["tweet_id"],
+                ),
+                reverse=True,
+            )
+        total = None
+        if include_total:
+            total = self.count_export_rows(collection)
+            if excluded_expr:
+                total -= self._excluded_member_count(
+                    collection, hidden=exclude_hidden, uncaptured=exclude_uncaptured
+                )
+        return rows[offset : offset + limit + 1], total
+
     def _dedupe_search_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         deduped: list[dict[str, Any]] = []
         seen_tweet_ids: set[str] = set()
@@ -432,6 +517,18 @@ class SearchMixin(ReadsMixin, TagsMixin):
                 exclude_uncaptured=exclude_uncaptured,
             )
             return rows, total
+
+        if sort == "most_likes" and not query_groups and not count_only:
+            if not collections or len(collections) == 1:
+                return self._most_likes_page(
+                    next(iter(collections)) if collections else "all",
+                    limit=limit,
+                    offset=offset,
+                    include_total=include_total,
+                    excluded_expr=excluded_expr,
+                    exclude_hidden=exclude_hidden,
+                    exclude_uncaptured=exclude_uncaptured,
+                )
 
         collection_expr = self._search_collection_expr(collections)
         ctes: list[str] = []

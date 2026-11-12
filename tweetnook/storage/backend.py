@@ -141,6 +141,11 @@ class ArchiveStore(
                     "CREATE TABLE IF NOT EXISTS tweetnook_like_order_state "
                     "(id INTEGER PRIMARY KEY CHECK (id = 1), signature INTEGER NOT NULL)"
                 )
+                # Sorting by like count walks this index instead of every membership's facts.
+                self.conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_facts_favorite_count "
+                    "ON archive_tweet_facts(favorite_count DESC, row_key)"
+                )
         except BaseException:
             with suppress(Exception):
                 self.conn.close()
