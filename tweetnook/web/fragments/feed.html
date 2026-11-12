@@ -191,7 +191,7 @@
             </div>
 
             <!-- Infinite Scroll Sentinel -->
-            <div x-show="!loading && hasMore" x-ref="feedSentinel" x-intersect.margin.1200px="loadMore()" class="p-6 text-center text-[var(--accent-color)] flex justify-center">
+            <div x-show="!loading && hasMore" x-ref="feedSentinel" class="p-6 text-center text-[var(--accent-color)] flex justify-center">
                 <button x-show="!loadingMore" @click="loadMore()" class="hover:underline" x-text="error ? 'Retry loading more' : 'Load more'"></button>
                 <svg x-show="loadingMore" aria-label="Loading more tweets" class="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M21.45 13A9.5 9.5 0 0 1 5 18.42V21H3v-5.96L2.99 15H9v2H6.41a7.5 7.5 0 0 0 13.02-4zM12 2.5a9.5 9.5 0 0 1 7 3.08V3h2v5.96l.01.04H15V7h2.59a7.5 7.5 0 0 0-13.02 4H2.55A9.5 9.5 0 0 1 12 2.5" />

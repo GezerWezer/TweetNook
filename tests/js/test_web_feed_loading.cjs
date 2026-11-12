@@ -195,6 +195,50 @@ test('feed ignores stale responses and pages without a cursor', async () => {
     assert.equal(app.hasMore, false);
 });
 
+test('each appended page asks the sentinel observer for its current state again', async () => {
+    const context = browserContext();
+    const pending = [];
+    context.fetch = url => new Promise(resolve => pending.push({url, resolve}));
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    const sentinel = {};
+    app.$refs.feedSentinel = sentinel;
+    const page = (n, more = true) => ({ok: true, status: 200, json: async () => (
+        {tweets: [{tweet_id: `t${n}`}], page: n, pages: null, total: null, has_more: more, next_cursor: more ? `c${n}` : null})});
+
+    const first = app.fetchTweets();
+    pending[0].resolve(page(1));
+    await first;
+    const [observer] = context.intersectionObservers;
+    assert.equal(observer.options.rootMargin, '0px 0px 1200px 0px');
+    assert.deepEqual(observer.observed, [sentinel]);
+    const calls = [];
+    const observe = observer.observe.bind(observer);
+    const unobserve = observer.unobserve.bind(observer);
+    observer.observe = node => { calls.push(['observe', node]); observe(node); };
+    observer.unobserve = node => { calls.push(['unobserve', node]); unobserve(node); };
+
+    // Entering the margin loads the next page; reports while it loads start nothing more.
+    observer.callback([{ isIntersecting: false }, { isIntersecting: true }]);
+    assert.equal(pending.length, 2);
+    assert.match(pending[1].url, /page=2&cursor=c1$/);
+    observer.callback([{ isIntersecting: true }]);
+    assert.equal(pending.length, 2);
+
+    // Once the page lands, the sentinel is observed anew, so a sentinel that never left
+    // the margin is reported again instead of stalling the list.
+    const second = app.loadMore() || Promise.resolve();
+    pending[1].resolve(page(2));
+    await second;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(calls, [['unobserve', sentinel], ['observe', sentinel]]);
+    observer.callback([{ isIntersecting: true }]);
+    assert.equal(pending.length, 3);
+    assert.match(pending[2].url, /page=3&cursor=c2$/);
+    observer.callback([{ isIntersecting: false }]);
+    assert.equal(pending.length, 3);
+});
+
 test('expired like cursor reloads the list once with a fresh cursor', async () => {
     const context = browserContext();
     const calls = [];
@@ -417,7 +461,8 @@ test('feeds reuse recent first pages and keep the old list while loading', async
 test('feed layout hooks load early and skip off-screen work', () => {
     const html = pageHtml();
     const css = pageCss();
-    assert.ok(html.includes('x-ref="feedSentinel" x-intersect.margin.1200px="loadMore()"'));
+    // The feed's own observer watches the sentinel (continueFeedPrefetch), not x-intersect.
+    assert.ok(html.includes('<div x-show="!loading && hasMore" x-ref="feedSentinel" class='));
     assert.equal((html.match(/x-intersect\.margin\.600px="if\(!(panelQ|q)uotesLoadingMore/g) || []).length, 2);
     assert.ok(html.includes(`<div x-ref="feedList" :class="{ 'feed-refreshing': loading && tweets.length > 0 }"></div>`));
     // The shared menu sits outside the cards, so every card can skip off-screen work.

@@ -17,6 +17,9 @@ function feedMethods() {
     let feedListUrl = null;
     // The list element whose delegated listeners are bound.
     let boundFeedList = null;
+    // Loads the next page when the end of the list comes within the prefetch margin.
+    let feedSentinelObserver = null;
+    let observedSentinel = null;
     // Roots waiting for the next frame's clamp measurement (measureTextClamps).
     const clampRoots = new Set();
     // tweet_id -> loaded tweet, for the tweets array it was built from (feedTweetById).
@@ -201,12 +204,20 @@ function feedMethods() {
             }
         },
 
-        // An appended page can leave the trigger inside the prefetch margin, where the
-        // observer does not fire again; keep loading until it is out of reach.
+        // An observer reports only changes. While the reader keeps scrolling, an appended
+        // page can leave the sentinel inside the margin at every frame the observer samples,
+        // so it never reports again and loading stops until the layout happens to shift.
+        // Observing the sentinel anew after each page makes the observer deliver its
+        // current state on the next frame instead of a single position check now.
         continueFeedPrefetch() {
             const sentinel = this.$refs?.feedSentinel;
-            if (!sentinel || sentinel.offsetParent === null || !this.hasMore || this.loading || this.loadingMore) return;
-            if (sentinel.getBoundingClientRect().top < window.innerHeight + FEED_PREFETCH_MARGIN_PX) this.loadMore();
+            if (!sentinel || typeof globalThis.IntersectionObserver !== 'function') return;
+            feedSentinelObserver ||= new IntersectionObserver(entries => {
+                if (entries[entries.length - 1].isIntersecting) this.loadMore();
+            }, { rootMargin: `0px 0px ${FEED_PREFETCH_MARGIN_PX}px 0px` });
+            if (observedSentinel) feedSentinelObserver.unobserve(observedSentinel);
+            feedSentinelObserver.observe(sentinel);
+            observedSentinel = sentinel;
         },
 
         async fetchTweets(append = false) {
