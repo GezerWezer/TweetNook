@@ -14,6 +14,10 @@ const VIDEO_AUTOPLAY_STOP_RATIO = 0.1;
 // Follow the picture occupying more of the viewport in either scroll direction.
 // A ten-point picture-area lead keeps almost-equal neighbors from flapping.
 const VIDEO_AUTOPLAY_SWITCH_MARGIN = 0.1;
+// The split panel scrolls independently of the feed beside it. Comparing pictures
+// across the two handed playback back and forth while the reader scrolled either
+// one, so only the side the reader last used autoplays.
+const AUTOPLAY_REGION_SELECTOR = '[data-autoplay-region]';
 const autoplayVideos = new Set();
 const heldAutoplayVideos = new WeakSet();
 const automaticallyPausedVideos = new WeakSet();
@@ -58,6 +62,9 @@ function feedVideoMethods() {
     const carouselWarmupPositions = new WeakMap();
     let videoScrollY = 0;
     let videoScrollDirection = 1;
+    // The marked region the reader last used; null is the page outside every region.
+    let autoplayRegion = null;
+    const inAutoplayRegion = video => (video.closest?.(AUTOPLAY_REGION_SELECTOR) || null) === autoplayRegion;
 
     return {
         // Feed players follow these observers and document events from startup.
@@ -111,6 +118,16 @@ function feedVideoMethods() {
             document.addEventListener('scroll', queueVideoVisibility, { capture: true, passive: true });
             window.addEventListener('resize', queueVideoVisibility, { passive: true });
             window.visualViewport?.addEventListener('resize', queueVideoVisibility, { passive: true });
+            // Scroll events can't say which side the reader moved: restoring a
+            // position and the panel's scroll chaining into the page both scroll.
+            // Overlays sit outside every region, so using one leaves it unchanged.
+            const noteRegion = event => {
+                if (this.lightboxOpen || this.showSettingsModal || this.showStatsModal || this.showSetupModal) return;
+                this.setAutoplayRegion(event?.target?.closest?.(AUTOPLAY_REGION_SELECTOR) || null);
+            };
+            ['pointerdown', 'wheel', 'touchstart'].forEach(type => {
+                document.addEventListener(type, noteRegion, {capture: true, passive: true});
+            });
             document.addEventListener('touchmove', event => this.trackVideoScrollTouch(event), {capture: true, passive: true});
             document.addEventListener('touchend', () => { videoTouchSample = null; }, {capture: true, passive: true});
             document.addEventListener('touchcancel', () => {
@@ -158,6 +175,14 @@ function feedVideoMethods() {
             videoWarmupCandidates.delete(target);
             preparingVideoPosters.get(target)?.();
             this.pauseAutoplayVideo(target);
+        },
+
+        setAutoplayRegion(region) {
+            if (region === autoplayRegion) return;
+            autoplayRegion = region;
+            // A tile started by hand on the other side no longer owns playback.
+            manualAutoplay = null;
+            this.autoplayNextVideo();
         },
 
         // A video closed from the viewer while playing keeps the feed's playback, as if
@@ -241,7 +266,9 @@ function feedVideoMethods() {
                     // Do not spend a warmup slot on clips behind the swipe.
                     if (horizontalDistance <= 0) return;
                 }
-                if (!blocked && isFeedVideoPlayer(video) && video !== autoplayTarget
+                // The other side of the split view can't autoplay; a muted warmup
+                // there would visibly start and stop a paused picture.
+                if (!blocked && isFeedVideoPlayer(video) && video !== autoplayTarget && inAutoplayRegion(video)
                     && !heldAutoplayVideos.has(video) && (video.paused || preparingVideoPosters.has(video))
                     && distance >= -height && distance < MEDIA_PREFETCH_MARGIN_PX) nearby.push({video, distance, horizontalDistance});
             });
@@ -661,6 +688,7 @@ function feedVideoMethods() {
                 // Its playback belongs to that viewer until the handoff returns it.
                 if (!video.isConnected || !isFeedVideoPlayer(video)) autoplayVideos.delete(video);
             });
+            if (autoplayRegion && !autoplayRegion.isConnected) autoplayRegion = null;
             const players = [...autoplayVideos];
             const blocked = videoScrollIntent || document.hidden || this.lightboxOpen || this.showSettingsModal || this.showStatsModal || this.showSetupModal;
             const visible = players.map(video => ({video, ...feedVideoVisibility(video), gallery: video.closest?.('.media-carousel-track')}));
@@ -670,7 +698,8 @@ function feedVideoMethods() {
                     failedAutoplayVideos.delete(video);
                 }
             });
-            const candidates = visible.filter(({video}) => !heldAutoplayVideos.has(video) && !failedAutoplayVideos.has(video));
+            const candidates = visible.filter(({video}) => inAutoplayRegion(video)
+                && !heldAutoplayVideos.has(video) && !failedAutoplayVideos.has(video));
             const current = candidates.find(({video, ratio}) => video === autoplayTarget && ratio >= VIDEO_AUTOPLAY_STOP_RATIO);
             if (manualAutoplay && (!current || current.video !== manualAutoplay.video
                 || Math.abs((window.scrollY || 0) - manualAutoplay.scrollY) > 1
@@ -772,6 +801,7 @@ function feedVideoMethods() {
             if (!pending && isFeedVideoPlayer(video)) {
                 // An explicit play owns its tile until the reader scrolls again.
                 // Background preparation and autoplay promises never enter here.
+                autoplayRegion = video.closest?.(AUTOPLAY_REGION_SELECTOR) || null;
                 autoplayTarget = video;
                 autoplayVideos.add(video);
                 manualAutoplay = {video, scrollY: window.scrollY || 0, scrollLeft: video.closest?.('.media-carousel-track')?.scrollLeft || 0};

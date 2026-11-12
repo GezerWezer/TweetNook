@@ -179,6 +179,26 @@ test('a nested scroll panel clips candidates outside its visible region', async 
     video.parentElement={style:{overflowY:'auto'},getBoundingClientRect:()=>({top:200,left:0,right:400,bottom:380,width:400,height:180})};
     assert.equal(visibility(video).ratio,.2);app.updateAutoplayVisibility(video,true);await settle();assert.equal(video.playCalls,0);
 });
+test('a split panel and the feed beside it autoplay only on the side the reader last used', async () => {
+    const {app,player}=fixture(),feed=player(120),inPanel=player(120);
+    const panel={isConnected:true};
+    inPanel.closest=selector=>selector==='[data-autoplay-region]'?panel:null;
+    Object.assign(inPanel,{src:'/panel.mp4',preload:'none',currentTime:0,readyState:0,getAttribute:()=>'/poster.jpg',
+        querySelectorAll:()=>[],addEventListener() {},removeEventListener() {}});
+    app.updateAutoplayVisibility(feed,true);await settle();assert.equal(feed.paused,false);
+    app.updateAutoplayVisibility(inPanel,true);await settle();
+    assert.equal(inPanel.playCalls,0,'while the reader uses the feed, an equal panel picture cannot take over');
+    app.setAutoplayRegion(panel);await settle();
+    assert.equal(feed.paused,true);assert.equal(inPanel.paused,false);
+    // Scrolled to about half visible, the panel's picture is far smaller than the
+    // fully visible feed clip, which would win a comparison across both sides.
+    inPanel.top=-100;app.autoplayNextVideo();await settle();
+    assert.equal(inPanel.paused,false);assert.equal(feed.playCalls,1);
+    app.setAutoplayRegion(null);await settle();
+    assert.equal(feed.paused,false);assert.equal(inPanel.paused,true);
+    inPanel.top=600;const calls=inPanel.playCalls;app.prefetchMedia(inPanel);
+    assert.equal(inPanel.playCalls,calls,'the paused panel clip is not warmed while the feed owns playback');
+});
 test('observer batches choose the same topmost player in either feed insertion order', async () => {
     for(const reverse of [false,true]){
         const {app,player}=fixture(),upper=player(80),lower=player(400);

@@ -89,7 +89,10 @@ clipping. Candidates enter at 25% visibility; the current owner can stay down to
 The margin uses the smaller picture's viewport-limited area. This applies to
 vertical scrolling and carousels in both directions. Explicit playback keeps its
 tile selected until the reader scrolls again; automatic pauses do not create a
-manual hold.
+manual hold. The split panel (`data-autoplay-region`) and the feed beside it scroll
+independently, so they never compete: opening a post gives autoplay to the panel,
+and a pointer, wheel or touch on either side, or playing a video there, moves it.
+Clips on the other side are not warmed up.
 
 Video preparation follows the scroll direction within the 1,600px media window,
 including the direction of a swipe through the active carousel.

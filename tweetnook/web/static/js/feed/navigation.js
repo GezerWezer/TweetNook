@@ -510,6 +510,8 @@ function navigationMethods() {
             this.panelMode = route.viewMode;
             this.$nextTick(() => {
                 if (this.$refs.detailPanel) this.$refs.detailPanel.scrollTop = entry.scrollY || 0;
+                // The reader is looking at the post they opened, not the feed beside it.
+                if (this.$refs.detailPanel) this.setAutoplayRegion?.(this.$refs.detailPanel);
             });
             if (route.viewMode === 'thread') {
                 this.panelQuotesList = [];
@@ -613,6 +615,8 @@ function navigationMethods() {
             this.panelMode = null;
             this.panelThreadData = null;
             this.panelQuotesList = [];
+            // The panel hides with its stack; playback returns to the feed.
+            this.setAutoplayRegion?.(null);
             if (syncRoute && this.activeRoute.viewMode !== 'list') {
                 const route = { viewMode: 'list' };
                 const state = this.replaceRoute(route, { scrollY: window.scrollY });

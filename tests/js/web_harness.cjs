@@ -19,6 +19,7 @@ function browserContext(pathname = '/') {
     const cssProperties = new Map();
     const rootClasses = new Set();
     const events = new Map();
+    const documentListeners = new Map();
     const historyCalls = [];
     const scrollCalls = [];
     const appendedLinks = [];
@@ -95,11 +96,20 @@ function browserContext(pathname = '/') {
             },
         },
         document: {
+            // Several modules listen for the same document event, so the stored
+            // entry calls each of them, as the browser would.
             addEventListener(name, callback) {
-                events.set(`document:${name}`, callback);
+                const key = `document:${name}`;
+                const listeners = documentListeners.get(key) || [];
+                listeners.push(callback);
+                documentListeners.set(key, listeners);
+                events.set(key, event => listeners.slice().forEach(listener => listener(event)));
             },
-            removeEventListener(name) {
-                events.delete(`document:${name}`);
+            removeEventListener(name, callback) {
+                const key = `document:${name}`;
+                const listeners = (documentListeners.get(key) || []).filter(listener => callback && listener !== callback);
+                documentListeners.set(key, listeners);
+                if (!listeners.length) events.delete(key);
             },
             documentElement: {
                 style: {
