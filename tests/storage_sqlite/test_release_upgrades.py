@@ -31,6 +31,7 @@ RELEASED_SCHEMAS = {
     10: "v1.1.0",
     12: "v1.2.0",
     13: "v1.3.1",
+    14: "v1.4.0",
 }
 # Schema 13 had already dropped the follow-up columns and merged duplicate media.
 BEFORE_SCHEMA_13 = sorted(version for version in RELEASED_SCHEMAS if version < 13)
@@ -241,6 +242,43 @@ def test_schema_13_upgrade_rebuilds_indexes_with_little_free_space(
 
     assert "created_at_ts, sort_index, record_type" in _index_sql(db_path, "idx_archive_membership")
     assert "media_type, source" in _index_sql(db_path, "idx_archive_search_attachment")
+
+
+def test_schema_14_upgrade_builds_the_store_tables_from_saved_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "released.db"
+    released_archive(db_path, 14)
+    connection = sqlite3.connect(db_path)
+    with connection:
+        connection.execute(
+            "UPDATE archive SET author_id = '42', author_display_name = 'Lamp Keeper' "
+            "WHERE row_key = 'tweet:100'"
+        )
+        connection.execute(
+            "UPDATE archive SET raw_json = ? WHERE row_key = 'media_tag:100:3_1'",
+            (json.dumps({"description": "foghorn", "tags": ["Coast", "Fog"]}),),
+        )
+    connection.close()
+    # Like schema 13, this upgrade rewrites only derived data.
+    free = SimpleNamespace(free=db_path.stat().st_size // 2)
+    monkeypatch.setattr(schema_module.shutil, "disk_usage", lambda _path: free)
+
+    store = ArchiveStore(db_path, create=False)
+    try:
+        assert store.migration_report.from_version == 14
+        tags = store.conn.execute(
+            "SELECT tweet_id, tag FROM tweetnook_tags ORDER BY position"
+        ).fetchall()
+        assert [tuple(row) for row in tags] == [("100", "Coast"), ("100", "Fog")]
+        authors = store.conn.execute(
+            "SELECT author_id, author_username, author_display_name FROM tweetnook_authors"
+        ).fetchall()
+        assert [tuple(row) for row in authors] == [("42", "keeper", "Lamp Keeper")]
+        cards = store.conn.execute("SELECT id FROM tweetnook_web_cards_state").fetchall()
+        assert [tuple(row) for row in cards] == [(1,)]
+    finally:
+        store.close()
 
 
 def test_failed_index_upgrade_keeps_the_old_indexes_and_the_version(

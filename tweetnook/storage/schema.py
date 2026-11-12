@@ -152,7 +152,7 @@ def _fill_media_payload(winner: Any, donor: Any) -> Any:
     return donor if winner in (None, "", [], {}) else winner
 
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 # An upgrade rewrites every archive row in one transaction. The write-ahead log and SQLite's
 # temporary files together peak near twice the database size.
 MIGRATION_SPACE_FACTOR = 2
@@ -346,8 +346,9 @@ class SchemaMixin(ConnectionMixin):
 
         # Releases shipped schema 5 (0.0.9 and 0.1.0), schema 8 (0.1.1 to 0.1.6),
         # schema 9 (0.1.7 and 0.1.8), schema 10 (0.2.0 to 1.1.0), schema 12 (1.2.0) and
-        # schema 13 (1.3.0 and 1.3.1). Schema 11 was only on development builds before 1.2.0.
-        if current_version == 13:
+        # schema 13 (1.3.0 and 1.3.1) and schema 14 (1.4.0). Schema 11 was only on development
+        # builds before 1.2.0.
+        if current_version in {13, 14}:
             self._run_migration(
                 self._migrate_search_facts,
                 current_version,
@@ -447,7 +448,8 @@ class SchemaMixin(ConnectionMixin):
         v8 lacks the search-filter facts; v8 and v9 lack the description index.
         v10 lacks the content/note flags used to filter uncaptured tweets and notes;
         v11 computed those flags from an incomplete list of placeholder texts. v13 and
-        older lack the covering membership and attachment indexes.
+        older lack the covering membership and attachment indexes. v14 and older lack the
+        store's tag, author, like-order and feed-card tables.
         """
         with self.transaction():
             if current_version < 13:

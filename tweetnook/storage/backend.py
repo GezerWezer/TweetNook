@@ -127,38 +127,48 @@ class ArchiveStore(
 
             if not read_only and (create or db_path.exists()):
                 self._migrate_schema()
-                # Hydration looks up one record type for a batch of tweet ids; with the type in
-                # the key it visits only those rows instead of every row sharing the id. It leads
-                # with tweet_id: led by record_type, the planner took it for feed candidate scans
-                # and sorted every post instead of walking the date-ordered page indexes.
-                self.conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_archive_tweet_record "
-                    "ON archive(tweet_id, record_type)"
-                )
-                # The derived like sequence persists, keyed by the like-order revision it
-                # was built from, so a restart doesn't rebuild it from every capture.
-                self.conn.execute(
-                    "CREATE TABLE IF NOT EXISTS tweetnook_like_order "
-                    "(tweet_id TEXT PRIMARY KEY, latest_position INTEGER UNIQUE, "
-                    "earliest_position INTEGER UNIQUE)"
-                )
-                self.conn.execute(
-                    "CREATE TABLE IF NOT EXISTS tweetnook_like_order_state "
-                    "(id INTEGER PRIMARY KEY CHECK (id = 1), signature INTEGER NOT NULL)"
-                )
-                # Sorting by like count walks this index instead of every membership's facts.
-                self.conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_facts_favorite_count "
-                    "ON archive_tweet_facts(favorite_count DESC, row_key)"
-                )
-                self._ensure_tag_table()
+                # Writes from connections without the tag-key function only queue tag rows.
+                with self.transaction():
+                    self._sync_tag_table()
                 self._tag_table_ready = True
-                self._ensure_authors_table()
-                self._ensure_web_card_table()
         except BaseException:
             with suppress(Exception):
                 self.conn.close()
             raise
+
+    def _create_derived_structures(self) -> None:
+        """Add the tables and indexes the store derives for its own reads.
+
+        Like the schema's derived structures, they are rebuilt from the archive rows, so
+        upgrades recreate them, and an upgrade drops every archive trigger before this runs.
+        """
+        super()._create_derived_structures()
+        # Hydration looks up one record type for a batch of tweet ids; with the type in
+        # the key it visits only those rows instead of every row sharing the id. It leads
+        # with tweet_id: led by record_type, the planner took it for feed candidate scans
+        # and sorted every post instead of walking the date-ordered page indexes.
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_archive_tweet_record ON archive(tweet_id, record_type)"
+        )
+        # The derived like sequence persists, keyed by the like-order revision it
+        # was built from, so a restart doesn't rebuild it from every capture.
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS tweetnook_like_order "
+            "(tweet_id TEXT PRIMARY KEY, latest_position INTEGER UNIQUE, "
+            "earliest_position INTEGER UNIQUE)"
+        )
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS tweetnook_like_order_state "
+            "(id INTEGER PRIMARY KEY CHECK (id = 1), signature INTEGER NOT NULL)"
+        )
+        # Sorting by like count walks this index instead of every membership's facts.
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_facts_favorite_count "
+            "ON archive_tweet_facts(favorite_count DESC, row_key)"
+        )
+        self._ensure_tag_table()
+        self._ensure_authors_table()
+        self._ensure_web_card_table()
 
     def _ensure_tag_table(self) -> None:
         """One row per saved tag, so tag searches and autocomplete skip parsing JSON.
