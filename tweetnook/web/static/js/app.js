@@ -237,7 +237,9 @@ function tweetApp() {
                 if (tweetId) hoverTimer = setTimeout(() => this.prefetchThread(tweetId), THREAD_HOVER_PREFETCH_MS);
             }, { passive: true });
             // Background polling pauses while the tab is hidden and catches up on return.
+            let lastPoll = 0;
             const pollStatus = () => {
+                lastPoll = Date.now();
                 if (!this.isDemo) this.fetchSetup();
                 this.fetchNotices();
             };
@@ -245,8 +247,12 @@ function tweetApp() {
                 if (!document.hidden) pollStatus();
                 this.autoplayNextVideo();
             });
+            // Setup progress and notices change quickly only while setup or a job runs; a
+            // finished, idle archive is checked once a minute (and whenever the tab returns).
             setInterval(() => {
-                if (!document.hidden) pollStatus();
+                if (document.hidden) return;
+                const idle = this.setupData?.completed && !this.setupForced && !this.activity;
+                if (!idle || Date.now() - lastPoll >= 60000) pollStatus();
             }, 3000);
             setInterval(() => {
                 if (!document.hidden && this.archiveResourcesLoaded) this.fetchArchiveEnrichmentStatus();

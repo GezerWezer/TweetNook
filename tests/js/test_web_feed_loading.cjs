@@ -421,6 +421,35 @@ test('feed layout hooks load early and skip off-screen work', () => {
     assert.doesNotMatch(css + html, /feed-card-active/);
 });
 
+test('status polling slows to once a minute while setup is done and no job runs', () => {
+    const context = browserContext();
+    const intervals = [];
+    context.setInterval = (callback, delay) => intervals.push({ callback, delay });
+    let now = 1_000_000;
+    context.Date = class extends Date { static now() { return now; } };
+    const app = immediateComponent(loadScripts(context, appScripts(), 'tweetApp')());
+    let polls = 0;
+    app.fetchSetup = async () => { polls++; };
+    app.fetchNotices = async () => {};
+    app.fetchActivityStatus = async () => {};
+    app.startActivityPolling = () => {};
+    app.initApp();
+    const tick = () => { now += 3000; intervals.find(interval => interval.delay === 3000).callback(); };
+    const start = polls;
+    tick();
+    assert.equal(polls, start + 1, 'setup still running polls every tick');
+    app.setupData = { completed: true };
+    app.setupForced = false;
+    app.activity = null;
+    for (let i = 0; i < 19; i++) tick();
+    assert.equal(polls, start + 1, 'an idle archive waits a minute after the last poll');
+    tick();
+    assert.equal(polls, start + 2);
+    app.activity = { run_id: 'r1' };
+    tick();
+    assert.equal(polls, start + 3, 'a running job polls every tick again');
+});
+
 test('status polling pauses in hidden tabs and refreshes on return', () => {
     const context = browserContext();
     const intervals = [];
