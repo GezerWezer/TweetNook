@@ -31,6 +31,9 @@ dependencies = [
   "tqdm>=4.66,<5",
   "typer>=0.12,<1",
   "uvicorn>=0.29,<1",
+  # uvicorn picks these up automatically: a C HTTP parser and a faster event loop.
+  "httptools>=0.6,<1",
+  "uvloop>=0.21,<1; sys_platform != 'win32'",
   "platformdirs>=4.9.4",
   "tomli-w>=1.2,<2",
 ]
