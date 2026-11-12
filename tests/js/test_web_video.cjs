@@ -39,8 +39,8 @@ test('media renderer preserves direct playback parents, placeholders and existin
     ], 'quote-detail');
     assert.match(ordinaryQuotedPortrait, /--media-frame-aspect: 0\.75;/);
     assert.doesNotMatch(ordinaryQuotedPortrait, /--media-photo-cap-width|media-frame-portrait-photo/);
-    const originalPhoto = JSON.parse(parseFakeHTML(ordinaryQuotedPortrait)[0]
-        .querySelector('[data-lightbox-media]').getAttribute('data-lightbox-media'))[0].m;
+    const originalPhoto = context.tweetNookLightboxMedia({ dataset: { lightboxMedia: parseFakeHTML(ordinaryQuotedPortrait)[0]
+        .querySelector('[data-lightbox-media]').getAttribute('data-lightbox-media') } })[0].m;
     assert.equal(originalPhoto.width, 360);
     assert.equal(originalPhoto.height, 640);
 

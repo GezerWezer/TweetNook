@@ -903,7 +903,7 @@ test('mobile video gallery swipes keep live decoders, one audio owner and each c
             play(){playLog.push({i,otherPaused:videos.every(other=>other===this||other.paused)});this.paused=false;return Promise.resolve()},pause(){this.paused=true}});
         tweetNookInitVideoPlayer(v);
     });
-    const payload=JSON.parse(root.dataset.lightboxMedia);
+    const payload=context.tweetNookLightboxMedia(root);
     app.openLightbox(payload,0,videos[0]);
     assert.equal(stage.querySelectorAll('video').length,3);assert.equal(root.querySelectorAll('video').length,0);
     assert.equal(app.activeLightboxVideo(),videos[0]);assert.ok(videos[0].parentElement.parentElement.classList.contains('is-video-fill'));

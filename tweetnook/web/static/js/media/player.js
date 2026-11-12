@@ -455,7 +455,7 @@ function tweetNookOpenMobileVideo(video) {
     if (Date.now() < videoTapBlockedUntil) return;
     const holder = video.closest?.('[data-lightbox-media]');
     let media;
-    try { media = JSON.parse(holder?.dataset.lightboxMedia || 'null'); } catch { /* Fall back to this clip. */ }
+    try { media = tweetNookLightboxMedia(holder); } catch { /* Fall back to this clip. */ }
     if (!Array.isArray(media) || !media.length) media = [{type: 'video', src: video.currentSrc || video.src, isGif: false,
         m: {aspect_ratio: [video.videoWidth || Number(video.dataset?.videoAspect) || 16 / 9, video.videoHeight || 1]}}];
     const index = Math.max(0, Math.min(media.length - 1, Number(video.dataset?.mediaIndex) || 0));
@@ -848,14 +848,27 @@ function animateMobileMediaBounds(media, origin, opening, duration, startBounds 
     };
 }
 
-// Media lists travel in an HTML-escaped data attribute, so no field value is ever
-// parsed as script inside the inline handler.
+// Feed media lists stay in memory under the key their card's data-lightbox-media
+// holds; article images carry a one-item JSON list in the attribute instead.
+const lightboxMediaLists = new Map();
+function tweetNookRegisterLightboxMedia(key, list) {
+    lightboxMediaLists.set(key, list);
+}
+// Each opening gets its own copies, as parsing the attribute gave it.
+function tweetNookLightboxMedia(holder) {
+    const value = holder?.dataset?.lightboxMedia || '';
+    if (value.startsWith('#')) return (lightboxMediaLists.get(value) || []).map(item => ({...item}));
+    return JSON.parse(value || 'null');
+}
+
+// Media lists never pass through the inline handler, so no field value is ever
+// parsed as script there.
 function tweetNookOpenLightbox(element, index) {
     const holder = element?.closest?.('[data-lightbox-media]');
     // Ignore Safari's compatibility click that follows a dismissal gesture.
     if (!holder || Date.now() < videoTapBlockedUntil) return;
     window.dispatchEvent(new CustomEvent('open-lightbox', {
-        detail: { media: JSON.parse(holder.dataset.lightboxMedia), index, origin: element },
+        detail: { media: tweetNookLightboxMedia(holder), index, origin: element },
     }));
 }
 

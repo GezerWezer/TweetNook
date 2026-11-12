@@ -271,7 +271,12 @@ function tweetMediaMethods() {
             if (allMedia.length === 0) return '';
             
             const downloadedMedia = allMedia.filter(x => x.src);
-            const mediaAttr = html`data-lightbox-media="${JSON.stringify(downloadedMedia)}"`;
+            // The list stays in memory under a key derived from the post, so a re-rendered
+            // card reuses its entry. Serializing it into the attribute cost 1-5 KB of
+            // JSON and escaping per media card on every render.
+            const mediaKey = `#${tweet?.tweet_id || ''}:${context}:${downloadedMedia.length}:${downloadedMedia[0]?.src || ''}`;
+            tweetNookRegisterLightboxMedia(mediaKey, downloadedMedia);
+            const mediaAttr = html`data-lightbox-media="${mediaKey}"`;
 
             const placeholderHtml = html`
                 <div class="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
