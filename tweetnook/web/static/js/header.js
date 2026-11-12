@@ -49,9 +49,18 @@ function nookHeaderAutoHide() {
   const header = document.querySelector('.nook-header');
   if (!header) return;
   let last = window.scrollY, travel = 0, queued = false;
+  // Movement past either end isn't the reader changing direction: iOS reports rubber-band
+  // overscroll as positions beyond the end, and a page that gets shorter under a reader at
+  // the end (the last page drops the loading footer) pulls the position back with it.
+  // Both used to read as scrolling up and flash the tabs back in.
+  const maxY = () => {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    return Number.isFinite(max) ? Math.max(0, max) : Infinity;
+  };
   const update = () => {
     queued = false;
-    const y = Math.max(0, window.scrollY), delta = y - last;
+    const max = maxY();
+    const y = Math.min(Math.max(0, window.scrollY), max), delta = y - Math.min(last, max);
     last = y;
     // Pointer clicks leave tabs focused too. Only keyboard focus should keep
     // the strip visible while the reader scrolls through a collection.

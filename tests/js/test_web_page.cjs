@@ -44,6 +44,32 @@ test('header collapses after pointer tab selection and keeps keyboard-focused ta
     assert.equal(header.classList.contains('tabs-hidden'), false);
 });
 
+test('header tabs ignore overscroll and a page shrinking under a reader at the end', () => {
+    const context = browserContext();
+    const header = new FakeElement('header');
+    header.offsetHeight = 110;
+    context.document.querySelector = () => header;
+    context.document.documentElement.scrollHeight = 5000;
+    context.window.innerHeight = 800;
+    context.requestAnimationFrame = callback => callback();
+    loadScripts(context, ['header.js'], 'nookHeaderAutoHide')();
+    const scroll = y => { context.window.scrollY = y; context.__state.events.get('scroll')(); };
+    const hidden = () => header.classList.contains('tabs-hidden');
+    scroll(3000);
+    assert.equal(hidden(), true);
+    // Rubber-banding past the end (max 4200) and settling back is not scrolling up.
+    scroll(4290);
+    scroll(4200);
+    assert.equal(hidden(), true);
+    // The page loses 49px under a reader at the end; the position follows the new end.
+    context.document.documentElement.scrollHeight = 4951;
+    scroll(4151);
+    assert.equal(hidden(), true);
+    // A real upward scroll still brings the tabs back.
+    scroll(4100);
+    assert.equal(hidden(), false);
+});
+
 test('unchecked square checkboxes use thinner outlines while checked states retain weight', () => {
     const html = pageHtml();
     assert.equal(
