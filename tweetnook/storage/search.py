@@ -657,8 +657,16 @@ class SearchMixin(ReadsMixin, TagsMixin):
         elif sort == "random":
             seed = int(random_seed or 0)
 
-            order_by = "tweetnook_random_key(matches.tweet_id, ?), matches.tweet_id"
-            page_params.append(seed)
+            # A seeded permutation in SQL arithmetic: calling a Python hash per row costs
+            # more than the rest of the query. A fixed large multiplier scatters the id
+            # first, so small ids don't keep their order under a small seed; every product
+            # stays below 2**63.
+            multiplier = seed % 2147483646 + 1
+            order_by = (
+                "((CAST(matches.tweet_id AS INTEGER) % 2147483647) * 1103515245 % 2147483647 "
+                "* ? + ?) % 2147483647, matches.tweet_id"
+            )
+            page_params.extend([multiplier, seed % 2147483647])
         else:
             order_by = "matches.match_score DESC, matches.tweet_id DESC"
 

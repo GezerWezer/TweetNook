@@ -32,7 +32,6 @@ from .search import SearchMixin
 from .sql_functions import (
     register_export_functions,
     register_identity_functions,
-    register_random_function,
 )
 from .stats import StatsMixin
 from .sync_state import SyncStateMixin
@@ -114,7 +113,6 @@ class ArchiveStore(
         try:
             self.conn.row_factory = sqlite3.Row
             register_export_functions(self.conn)
-            register_random_function(self.conn)
             register_identity_functions(self.conn)
             if not read_only:
                 self.conn.execute("PRAGMA journal_mode=WAL")

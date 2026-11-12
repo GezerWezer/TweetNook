@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import sqlite3
 from typing import Any
 
@@ -44,13 +43,3 @@ def register_identity_functions(conn: sqlite3.Connection) -> None:
 
     conn.create_function("tweetnook_tag_key", 1, tag_key_or_null, deterministic=True)
     conn.create_function("tweetnook_casefold", 1, casefold_or_null, deterministic=True)
-
-
-def register_random_function(conn: sqlite3.Connection) -> None:
-    def stable_random_key(tweet_id: Any, supplied_seed: Any) -> int:
-        digest = hashlib.blake2b(
-            f"{int(supplied_seed)}:{tweet_id}".encode(), digest_size=8
-        ).digest()
-        return int.from_bytes(digest, "big") & ((1 << 63) - 1)
-
-    conn.create_function("tweetnook_random_key", 2, stable_random_key, deterministic=True)
