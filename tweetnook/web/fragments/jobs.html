@@ -5,6 +5,7 @@
             <div class="nook-sync-scrim" x-cloak x-show="activityDrawerOpen || activityShadeProgress" aria-hidden="true"></div>
             <div class="nook-sync-edge" aria-hidden="true"></div>
             <div class="nook-sync-anchor">
+            <template x-if="dialogMounted('jobs', activityDrawerOpen || activityShadeProgress > 0)">
             <section id="nook-activity-drawer" class="nook-sync-panel" x-cloak x-show="activityDrawerOpen" x-transition:leave="cs-leave" x-transition:leave-end="cs-leave-end" x-data="nookSyncPanel()" role="dialog" aria-label="Jobs" @keydown.escape="if (view !== 'main') { $event.stopPropagation(); back(); }">
                 <div class="cs-grab" aria-hidden="true" @pointerdown="grab($event)"></div>
                 <div x-show="view === 'main'" class="cs-view" :class="view === 'main' && viewDir">
@@ -132,4 +133,5 @@
                     <div class="cs-opt-foot"><span class="cs-sub" x-text="optNote()"></span><button type="button" class="cs-text-button" @click="optReset()">Reset</button><button type="button" class="cs-run" :disabled="optRunDisabled()" @click="runOptions()" x-text="optRunLabel()"></button></div>
                 </div>
             </section>
+            </template>
             </div>

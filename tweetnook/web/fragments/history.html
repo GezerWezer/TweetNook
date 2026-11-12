@@ -1,4 +1,5 @@
         <!-- Community note history: every recorded version of one tweet's note. -->
+        <template x-if="dialogMounted('notes', notesOpen)">
         <div class="nook-td-layer" x-show="notesOpen" x-cloak
              @keydown.escape.window="notesOpen && closeNoteHistory()">
             <div class="nook-td-backdrop" @click="closeNoteHistory()"></div>
@@ -46,8 +47,10 @@
                 </div>
             </section>
         </div>
+        </template>
 
         <!-- Tweet History: availability checks, lookups and community-note versions. -->
+        <template x-if="dialogMounted('history', historyOpen)">
         <div class="nook-td-layer" x-show="historyOpen" x-cloak
              @keydown.escape.window="historyOpen && closeTweetHistory()">
             <div class="nook-td-backdrop" @click="closeTweetHistory()"></div>
@@ -93,3 +96,4 @@
                 </div>
             </section>
         </div>
+        </template>
