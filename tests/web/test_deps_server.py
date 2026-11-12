@@ -409,9 +409,42 @@ def test_media_files_are_authenticated_and_path_contained(tmp_path: Path) -> Non
     assert authorized.status_code == 200
     assert authorized.content == b"private-media"
     assert authorized.headers["content-type"] == "image/jpeg"
-    assert authorized.headers["cache-control"] == "private, max-age=2592000"
+    assert authorized.headers["cache-control"] == "private, max-age=2592000, immutable"
     assert escaped.status_code == 404
     assert missing.status_code == 404
+
+
+def test_media_accepts_session_cookies_and_streams_large_files(tmp_path: Path) -> None:
+    paths = _paths(tmp_path)
+    body = bytes(range(256)) * 12_000  # About 3 MB: several file chunks.
+    (paths.media_dir / "clip.mp4").write_bytes(body)
+    password_hash = hashlib.sha256(b"secret").hexdigest()
+    server_state.update({"paths": paths, "password_hash": password_hash})
+    fresh = deps.create_session_token(password_hash)
+    issued = int(time.time()) - SESSION_RENEW_AGE - 60
+    aging = f"{issued}.{deps._session_signature(issued, password_hash)}"
+    forged = f"{issued + 1}.{deps._session_signature(issued, password_hash)}"
+
+    # Without the lifespan, as above: these requests need no Setup.
+    def get(token: str, **kwargs):
+        client = TestClient(server.app, cookies={SESSION_COOKIE: token})
+        try:
+            return client.get("/media/clip.mp4", **kwargs)
+        finally:
+            client.close()
+
+    whole = get(fresh)
+    ranged = get(fresh, headers={"Range": "bytes=1048570-2097160"})
+    renewed = get(aging, headers={"Range": "bytes=0-9"})
+    refused = get(forged)
+
+    assert whole.status_code == 200 and whole.content == body
+    assert "set-cookie" not in whole.headers
+    assert ranged.status_code == 206 and ranged.content == body[1048570:2097161]
+    # An aging session takes the full check, which reissues the cookie.
+    assert renewed.status_code == 206 and renewed.content == body[:10]
+    assert SESSION_COOKIE in renewed.headers["set-cookie"]
+    assert refused.status_code == 401
 
 
 def test_run_server_sets_state_and_invokes_uvicorn(monkeypatch, tmp_path: Path) -> None:

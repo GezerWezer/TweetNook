@@ -7,6 +7,7 @@ import re
 import threading
 from contextlib import ExitStack, asynccontextmanager, suppress
 from pathlib import Path
+from stat import S_ISREG
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -33,6 +34,7 @@ from tweetnook.web.deps import (
     WebSessionMiddleware,
     server_state,
     verify_credentials,
+    verify_credentials_async,
     watch_saved_password,
 )
 from tweetnook.web.notices import NoticeStore
@@ -518,22 +520,49 @@ def read_post_quotes(
     return _serve_web_app(request)
 
 
+class MediaFileResponse(FileResponse):
+    # Each chunk is read on a worker thread; 64 KB chunks cost a hop per chunk of video.
+    chunk_size = 1024 * 1024
+
+
 @app.get("/media/{media_path:path}", response_class=FileResponse)
-def read_media(
+async def read_media(
     media_path: str,
-    _auth: Annotated[bool, Depends(verify_credentials)],
+    _auth: Annotated[bool, Depends(verify_credentials_async)],
 ):
     """Serve archive media only after auth and never follow paths outside media_dir."""
     paths = server_state.get("paths")
     if paths is None:
         raise HTTPException(status_code=404, detail="Media file not found")
 
-    media_dir = paths.media_dir.resolve()
-    target = (media_dir / media_path).resolve()
-    if not target.is_relative_to(media_dir) or not target.is_file():
+    root = _resolved_media_root(paths.media_dir)
+    # realpath follows symlinks, so a link out of the media directory fails the check.
+    target = os.path.realpath(os.path.join(root, media_path))
+    if not target.startswith(root + os.sep):
         raise HTTPException(status_code=404, detail="Media file not found")
-    # Downloaded media keeps its path for life; avoid a revalidation per image.
-    return FileResponse(target, headers={"Cache-Control": "private, max-age=2592000"})
+    try:
+        stat = os.stat(target)
+    except OSError:
+        stat = None
+    if stat is None or not S_ISREG(stat.st_mode):
+        raise HTTPException(status_code=404, detail="Media file not found")
+    # Downloaded media keeps its path for life. Without immutable, Safari and Firefox
+    # revalidate every image on reload. Passing the stat saves FileResponse a second one.
+    return MediaFileResponse(
+        target, stat_result=stat, headers={"Cache-Control": "private, max-age=2592000, immutable"}
+    )
+
+
+_media_root: tuple[Path, str] | None = None
+
+
+def _resolved_media_root(media_dir: Path) -> str:
+    """Resolve the media directory once per configured path, not once per request."""
+    global _media_root
+    cached = _media_root
+    if cached is None or cached[0] != media_dir:
+        cached = _media_root = (media_dir, os.path.realpath(media_dir))
+    return cached[1]
 
 
 def run_server(

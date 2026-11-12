@@ -13,6 +13,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from tweetnook.config import XDGPaths, config_lock, load_config_at
@@ -240,6 +241,25 @@ def verify_credentials(
             _rehash_saved_password(paths, expected_hash, credentials.password)
         setattr(request.state, _ISSUE_SESSION, server_state.get("password_hash"))
     return True
+
+
+async def verify_credentials_async(
+    request: Request,
+    credentials: Annotated[HTTPBasicCredentials | None, Depends(security)],
+) -> bool:
+    """verify_credentials for async handlers that serve many small requests.
+
+    A session cookie that needs no renewal is checked inline, so only the password
+    check, which is slow by design, costs a threadpool hop.
+    """
+    _follow_saved_password()
+    expected_hash = server_state.get("password_hash")
+    if not expected_hash:
+        return True
+    age = session_age(request.cookies.get(SESSION_COOKIE), expected_hash)
+    if age is not None and age < SESSION_RENEW_AGE:
+        return True
+    return await run_in_threadpool(verify_credentials, request, credentials)
 
 
 def remember_web_session(request: Request) -> None:
