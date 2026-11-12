@@ -359,6 +359,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         self,
         sorted_rows: list[dict[str, Any]],
         include_raw_json: bool,
+        include_urls: bool = True,
     ) -> list[dict[str, Any]]:
         tweet_ids = [row["tweet_id"] for row in sorted_rows if row.get("tweet_id")]
 
@@ -428,8 +429,10 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         article_rows = self._rows_for_values(
             RecordType.ARTICLE, "tweet_id", tweet_ids, columns=article_cols
         )
-        url_ref_rows = self._rows_for_values(
-            RecordType.URL_REF, "tweet_id", tweet_ids, columns=url_ref_cols
+        url_ref_rows = (
+            self._rows_for_values(RecordType.URL_REF, "tweet_id", tweet_ids, columns=url_ref_cols)
+            if include_urls
+            else []
         )
         url_hashes = [row["url_hash"] for row in url_ref_rows if row.get("url_hash")]
         url_rows = self._rows_for_values(RecordType.URL, "url_hash", url_hashes, columns=url_cols)
@@ -570,6 +573,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         *,
         include_objects: bool = False,
         collections: set[str] | None = None,
+        include_urls: bool = True,
     ) -> list[dict[str, Any]]:
         """Hydrate collection tweets in the requested order, skipping unknown IDs.
 
@@ -630,6 +634,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         tweets = self._hydrate_exported_rows(
             unique_rows,
             include_raw_json=True,
+            include_urls=include_urls,
         )
         for tweet in tweets:
             if tweet["tweet_id"] in object_ids:

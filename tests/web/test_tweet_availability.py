@@ -635,3 +635,42 @@ def test_note_observations_reach_nested_quotes_and_retweet_originals(tmp_path, c
         assert saved["birdwatch_pivot"]["subtitle"]["text"] == "Old note"
     finally:
         store.close()
+
+
+def test_list_cards_drop_unread_media_card_and_article_fields() -> None:
+    download = {"state": "done", "local_path": "media/a.mp4", "sha256": "x", "byte_size": 9}
+    media = {"type": "video", "url": "u", "variants": [{"url": "v"}], "download": download}
+    bindings = [
+        {"key": "title", "value": {"string_value": "Title"}},
+        {"key": "player_url", "value": {"string_value": "https://player"}},
+    ]
+    article = {"title": "A", "content_text": "word " * 200, "content_state": {"blocks": []}}
+    tweet = {
+        "tweet_id": "1",
+        "raw_json": {
+            "card": {
+                "rest_id": "card://1",
+                "legacy": {"name": "summary", "binding_values": bindings},
+            }
+        },
+        "media": [media],
+        "urls": [{"short_url": "https://t.co/x"}],
+        "article": copy.deepcopy(article),
+    }
+    thread_tweet = copy.deepcopy(tweet)
+
+    slim_web_tweets([tweet], list_cards=True)
+    slim_web_tweets([thread_tweet])
+
+    assert tweet["media"] == [
+        {"type": "video", "url": "u", "download": {"local_path": "media/a.mp4"}}
+    ]
+    assert "urls" not in tweet
+    assert tweet["raw_json"]["card"] == {
+        "legacy": {"name": "summary", "binding_values": [bindings[0]]}
+    }
+    assert tweet["article"]["content_text"] == ("word " * 200)[:600]
+    assert tweet["article"]["content_preview"] is True
+    assert "content_state" not in tweet["article"]
+    # The post view keeps the full article body.
+    assert thread_tweet["article"] == article

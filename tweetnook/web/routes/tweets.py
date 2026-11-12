@@ -146,10 +146,12 @@ def api_tweets(
             limit=limit,
             random_seed=random_seed,
             cursor=cursor,
+            # The Web UI shows links from the post's own entities, not resolved URL rows.
+            include_urls=False,
         )
         paginated_tweets = result.rows
         annotate_web_tweets(store, paginated_tweets)
-        slim_web_tweets(paginated_tweets)
+        slim_web_tweets(paginated_tweets, list_cards=True)
 
         return _json(
             {
@@ -385,11 +387,13 @@ def api_tweet_quotes(
     # placeholder so the page matches the total.
     fetched = {
         tweet["tweet_id"]: tweet
-        for tweet in store.fetch_tweets_by_ids(paginated_ids, include_objects=True)
+        for tweet in store.fetch_tweets_by_ids(
+            paginated_ids, include_objects=True, include_urls=False
+        )
     }
     paginated_tweets = [fetched.get(tid) or missing_web_tweet(tid) for tid in paginated_ids]
     annotate_web_tweets(store, paginated_tweets)
-    slim_web_tweets(paginated_tweets)
+    slim_web_tweets(paginated_tweets, list_cards=True)
 
     return _json({"tweets": paginated_tweets, "total": total, "page": page, "limit": limit})
 

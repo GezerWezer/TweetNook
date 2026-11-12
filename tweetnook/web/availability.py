@@ -577,14 +577,137 @@ def slim_raw_tweet(raw: Any) -> Any:
     return slim
 
 
-def slim_web_tweets(tweets: Any) -> None:
-    """Prune raw JSON in place on annotated tweets and their quote/retweet attachments."""
+# What a card, the lightbox and the players read from a media item. Variants,
+# checksums, byte sizes, content types and download times are not shown.
+_MEDIA_FIELDS = (
+    "media_key",
+    "media_id",
+    "type",
+    "source",
+    "url",
+    "thumbnail_url",
+    "width",
+    "height",
+    "duration_millis",
+    "aspect_ratio",
+    "alt_text",
+)
+_DOWNLOAD_FIELDS = ("local_path", "thumbnail_local_path")
+# The link card and poll fields the card renderer reads.
+_CARD_BINDINGS = frozenset(
+    {
+        "title",
+        "description",
+        "vanity_url",
+        "card_url",
+        "counts_are_final",
+        *(f"choice{i}_{part}" for i in range(1, 5) for part in ("label", "count")),
+        "thumbnail_image_original",
+        "summary_photo_image_original",
+        "thumbnail_image_x_large",
+        "thumbnail_image_large",
+        "thumbnail_image",
+        "photo_image_full_size",
+        "summary_photo_image",
+    }
+)
+# A list card shows an article's title and an excerpt; the article view fetches the
+# post, which carries the full body.
+_ARTICLE_EXCERPT_CHARS = 600
+
+
+def _slim_media(items: Any) -> Any:
+    if not isinstance(items, list):
+        return items
+    slim = []
+    for item in items:
+        if not isinstance(item, dict):
+            slim.append(item)
+            continue
+        picked = _pick(item, _MEDIA_FIELDS)
+        if isinstance(item.get("download"), dict):
+            picked["download"] = _pick(item["download"], _DOWNLOAD_FIELDS)
+        slim.append(picked)
+    return slim
+
+
+def _slim_bindings(bindings: Any) -> Any:
+    if isinstance(bindings, list):
+        return [
+            item
+            for item in bindings
+            if not isinstance(item, dict) or item.get("key") in _CARD_BINDINGS
+        ]
+    if isinstance(bindings, dict):
+        return {key: value for key, value in bindings.items() if key in _CARD_BINDINGS}
+    return bindings
+
+
+def _slim_card(card: Any) -> Any:
+    if not isinstance(card, dict):
+        return card
+    slim = _pick(card, ("name", "url"))
+    if "binding_values" in card:
+        slim["binding_values"] = _slim_bindings(card["binding_values"])
+    legacy = card.get("legacy")
+    if isinstance(legacy, dict):
+        slim_legacy = _pick(legacy, ("name", "url"))
+        if "binding_values" in legacy:
+            slim_legacy["binding_values"] = _slim_bindings(legacy["binding_values"])
+        slim["legacy"] = slim_legacy
+    return slim
+
+
+def _slim_card_tree(raw: Any) -> None:
+    """Prune card bindings in a slimmed raw tweet and its nested tweets."""
+    if not isinstance(raw, dict):
+        return
+    if "card" in raw:
+        raw["card"] = _slim_card(raw["card"])
+    for key in _NESTED_TWEETS:
+        _slim_card_tree(raw.get(key))
+    for key in ("quoted_status_result",):
+        _slim_card_tree((raw.get(key) or {}).get("result"))
+    legacy = raw.get("legacy")
+    if isinstance(legacy, dict):
+        _slim_card_tree((legacy.get("retweeted_status_result") or {}).get("result"))
+
+
+def _slim_article(article: Any) -> None:
+    if not isinstance(article, dict):
+        return
+    article["media"] = _slim_media(article.get("media"))
+    text = article.get("content_text")
+    has_state = article.pop("content_state", None) is not None
+    if isinstance(text, str) and len(text) > _ARTICLE_EXCERPT_CHARS:
+        article["content_text"] = text[:_ARTICLE_EXCERPT_CHARS]
+        article["content_preview"] = True
+    elif has_state:
+        article["content_preview"] = True
+
+
+def slim_web_tweets(tweets: Any, *, list_cards: bool = False) -> None:
+    """Prune annotated tweets and their quote/retweet attachments in place.
+
+    Raw JSON keeps the fields the Web UI renders; media keeps what cards and players
+    read. List cards also drop full article bodies, which only the post view shows.
+    """
     for tweet in tweets:
         if not isinstance(tweet, dict):
             continue
         tweet["raw_json"] = slim_raw_tweet(tweet.get("raw_json"))
+        _slim_card_tree(tweet["raw_json"])
+        tweet.pop("urls", None)
+        for key in ("media", "qt_media", "card_media"):
+            if key in tweet:
+                tweet[key] = _slim_media(tweet[key])
+        if list_cards and "article" in tweet:
+            _slim_article(tweet["article"])
         slim_web_tweets(
-            attached
-            for field in ("quoted_tweet", "retweeted_tweet")
-            if isinstance(attached := tweet.get(field), dict)
+            (
+                attached
+                for field in ("quoted_tweet", "retweeted_tweet")
+                if isinstance(attached := tweet.get(field), dict)
+            ),
+            list_cards=list_cards,
         )

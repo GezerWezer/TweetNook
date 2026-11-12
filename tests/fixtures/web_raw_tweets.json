@@ -2722,8 +2722,7 @@
        ],
        "name": "summary_large_image",
        "url": "https://t.co/card"
-      },
-      "rest_id": "card://1"
+      }
      },
      "core": {
       "user_results": {
@@ -2761,11 +2760,11 @@
        ],
        "user_mentions": [
         {
-         "screen_name": "bob",
          "indices": [
           5,
           9
-         ]
+         ],
+         "screen_name": "bob"
         }
        ]
       },
@@ -2857,8 +2856,7 @@
       ],
       "name": "summary_large_image",
       "url": "https://t.co/card"
-     },
-     "rest_id": "card://1"
+     }
     },
     "core": {
      "user_results": {
@@ -2896,11 +2894,11 @@
       ],
       "user_mentions": [
        {
-        "screen_name": "bob",
         "indices": [
          5,
          9
-        ]
+        ],
+        "screen_name": "bob"
        }
       ]
      },
@@ -3012,8 +3010,7 @@
          ],
          "name": "summary_large_image",
          "url": "https://t.co/card"
-        },
-        "rest_id": "card://1"
+        }
        },
        "core": {
         "user_results": {
@@ -3051,11 +3048,11 @@
          ],
          "user_mentions": [
           {
-           "screen_name": "bob",
            "indices": [
             5,
             9
-           ]
+           ],
+           "screen_name": "bob"
           }
          ]
         },
@@ -3087,8 +3084,7 @@
    "retweeted_tweet": null,
    "synced_at": "2026-03-15T00:00:00Z",
    "text": "#tag @bob https://t.co/link https://t.co/media https://t.co/quote long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text ",
-   "tweet_id": "100",
-   "urls": []
+   "tweet_id": "100"
   },
   {
    "article": null,
@@ -3192,8 +3188,7 @@
       ],
       "name": "summary_large_image",
       "url": "https://t.co/card"
-     },
-     "rest_id": "card://1"
+     }
     },
     "core": {
      "user_results": {
@@ -3231,11 +3226,11 @@
       ],
       "user_mentions": [
        {
-        "screen_name": "bob",
         "indices": [
          5,
          9
-        ]
+        ],
+        "screen_name": "bob"
        }
       ]
      },
@@ -3347,8 +3342,7 @@
          ],
          "name": "summary_large_image",
          "url": "https://t.co/card"
-        },
-        "rest_id": "card://1"
+        }
        },
        "core": {
         "user_results": {
@@ -3386,11 +3380,11 @@
          ],
          "user_mentions": [
           {
-           "screen_name": "bob",
            "indices": [
             5,
             9
-           ]
+           ],
+           "screen_name": "bob"
           }
          ]
         },
@@ -3422,8 +3416,7 @@
    "retweeted_tweet": null,
    "synced_at": "2026-03-15T00:00:00Z",
    "text": "#tag @bob https://t.co/link https://t.co/media https://t.co/quote long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text long text ",
-   "tweet_id": "100",
-   "urls": []
+   "tweet_id": "100"
   },
   {
    "article": null,
@@ -3499,11 +3492,11 @@
       ],
       "user_mentions": [
        {
-        "screen_name": "bob",
         "indices": [
          5,
          9
-        ]
+        ],
+        "screen_name": "bob"
        }
       ]
      },
@@ -3579,11 +3572,11 @@
          ],
          "user_mentions": [
           {
-           "screen_name": "bob",
            "indices": [
             5,
             9
-           ]
+           ],
+           "screen_name": "bob"
           }
          ]
         },
@@ -3684,11 +3677,11 @@
        ],
        "user_mentions": [
         {
-         "screen_name": "bob",
          "indices": [
           5,
           9
-         ]
+         ],
+         "screen_name": "bob"
         }
        ]
       },
@@ -3716,8 +3709,7 @@
    },
    "synced_at": "2026-03-15T00:00:00Z",
    "text": "RT @erin: Original",
-   "tweet_id": "301",
-   "urls": []
+   "tweet_id": "301"
   },
   {
    "article": null,
@@ -3793,11 +3785,11 @@
       ],
       "user_mentions": [
        {
-        "screen_name": "bob",
         "indices": [
          5,
          9
-        ]
+        ],
+        "screen_name": "bob"
        }
       ]
      },
@@ -3873,11 +3865,11 @@
          ],
          "user_mentions": [
           {
-           "screen_name": "bob",
            "indices": [
             5,
             9
-           ]
+           ],
+           "screen_name": "bob"
           }
          ]
         },
@@ -3909,8 +3901,7 @@
    "retweeted_tweet": null,
    "synced_at": "2026-03-15T00:00:00Z",
    "text": "RT @erin: Original",
-   "tweet_id": "301",
-   "urls": []
+   "tweet_id": "301"
   },
   {
    "article": null,
@@ -3994,11 +3985,11 @@
        ],
        "user_mentions": [
         {
-         "screen_name": "bob",
          "indices": [
           5,
           9
-         ]
+         ],
+         "screen_name": "bob"
         }
        ]
       },
@@ -4033,8 +4024,7 @@
    "retweeted_tweet": null,
    "synced_at": "2026-03-15T00:00:00Z",
    "text": "Legacy v1 @bob",
-   "tweet_id": "400",
-   "urls": []
+   "tweet_id": "400"
   },
   {
    "article": null,
@@ -4134,11 +4124,11 @@
       ],
       "user_mentions": [
        {
-        "screen_name": "bob",
         "indices": [
          5,
          9
-        ]
+        ],
+        "screen_name": "bob"
        }
       ]
      },
@@ -4163,8 +4153,7 @@
    "retweeted_tweet": null,
    "synced_at": "2026-03-15T00:00:00Z",
    "text": "Quote of a deleted tweet",
-   "tweet_id": "500",
-   "urls": []
+   "tweet_id": "500"
   }
  ]
 }

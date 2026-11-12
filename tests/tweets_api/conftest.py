@@ -51,7 +51,7 @@ class ListingStore(PresentationMixin):
         return [{"tweet_id": row["tweet_id"]} for row in rows[offset : offset + limit]]
 
     def fetch_tweets_by_ids(
-        self, ids: list[str], *, collections: set[str] | None = None
+        self, ids: list[str], *, collections: set[str] | None = None, include_urls: bool = True
     ) -> list[dict[str, Any]]:
         self.calls.append(("fetch", {"ids": ids}))
         by_id = {row["tweet_id"]: row for row in self.rows}

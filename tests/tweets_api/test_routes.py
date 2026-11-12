@@ -47,9 +47,10 @@ class QuotesStore(ConversationsMixin, PresentationMixin):
         return [{"tweet_id": "q3"}, {"tweet_id": "q2"}]
 
     def fetch_tweets_by_ids(
-        self, ids: list[str], *, include_objects: bool = False
+        self, ids: list[str], *, include_objects: bool = False, include_urls: bool = True
     ) -> list[dict[str, Any]]:
         assert include_objects
+        assert not include_urls
         return [{"tweet_id": value} for value in ids]
 
     def _rows_for_values(
