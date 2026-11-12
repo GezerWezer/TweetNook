@@ -32,9 +32,7 @@ function feedEvictionMethods() {
                     this.evictFeedCards(entries.filter(entry => !entry.isIntersecting).map(entry => entry.target));
                 }, { rootMargin: `${FEED_EVICT_MARGIN_PX}px 0px` });
                 restoreObserver = new IntersectionObserver(entries => {
-                    for (const entry of entries) {
-                        if (entry.isIntersecting) this.restoreFeedCard(entry.target);
-                    }
+                    this.restoreFeedCards(entries.filter(entry => entry.isIntersecting).map(entry => entry.target));
                 }, { rootMargin: `${FEED_RESTORE_MARGIN_PX}px 0px` });
             }
             if (reset) {
@@ -110,38 +108,49 @@ function feedEvictionMethods() {
             }, FEED_EVICT_RETRY_MS);
         },
 
-        restoreFeedCard(placeholder) {
-            restoreObserver.unobserve(placeholder);
-            const state = savedCards.get(placeholder);
-            if (!placeholder.isConnected || !state) return;
-            const tweetId = placeholder.dataset.tweetId;
-            const tweetObj = this.feedTweetById(tweetId);
-            if (!tweetObj) {
-                outsideAlpine(() => placeholder.remove());
-                return;
-            }
+        // A fast scroll back reports many placeholders at once. Every card is inserted
+        // before any carousel position is set: setting scrollLeft forces layout, so doing
+        // it between insertions would force a layout pass per card.
+        restoreFeedCards(placeholders) {
+            const restored = [];
             outsideAlpine(() => {
-                placeholder.insertAdjacentHTML('beforebegin', this.renderFeedCard(tweetObj));
-                const card = placeholder.previousElementSibling;
-                placeholder.remove();
-                // A skipped (content-visibility) card is sized by its estimate until it
-                // paints; the size it had keeps cards above the viewport from shifting.
-                card.style.containIntrinsicSize = `auto ${state.contentHeight}px`;
-                const tracks = card.querySelectorAll('.media-carousel-track');
-                state.tracks.forEach((left, index) => {
-                    if (!left || !tracks[index]) return;
-                    // A track inside a skipped card has no scroll range to restore into.
-                    card.style.contentVisibility = 'visible';
-                    tracks[index].scrollLeft = left;
-                });
-                const players = [...card.querySelectorAll('video')];
-                for (const { src, time } of state.videos) {
-                    const video = time && players.find(player => player.getAttribute('src') === src);
-                    // Before metadata loads this sets the start position; it loads nothing.
-                    if (video) video.currentTime = time;
+                for (const placeholder of placeholders) {
+                    restoreObserver.unobserve(placeholder);
+                    const state = savedCards.get(placeholder);
+                    if (!placeholder.isConnected || !state) continue;
+                    const tweetObj = this.feedTweetById(placeholder.dataset.tweetId);
+                    if (!tweetObj) {
+                        placeholder.remove();
+                        continue;
+                    }
+                    placeholder.insertAdjacentHTML('beforebegin', this.renderFeedCard(tweetObj));
+                    const card = placeholder.previousElementSibling;
+                    placeholder.remove();
+                    // A skipped (content-visibility) card is sized by its estimate until it
+                    // paints; the size it had keeps cards above the viewport from shifting.
+                    card.style.containIntrinsicSize = `auto ${state.contentHeight}px`;
+                    if (state.tracks.some(Boolean)) {
+                        // A track inside a skipped card has no scroll range to restore into.
+                        card.style.contentVisibility = 'visible';
+                    }
+                    restored.push([card, state]);
                 }
-                this.measureTextClamps(card);
-                evictObserver.observe(card);
+                for (const [card, state] of restored) {
+                    const tracks = card.querySelectorAll('.media-carousel-track');
+                    state.tracks.forEach((left, index) => {
+                        if (left && tracks[index]) tracks[index].scrollLeft = left;
+                    });
+                    const players = [...card.querySelectorAll('video')];
+                    for (const { src, time } of state.videos) {
+                        const video = time && players.find(player => player.getAttribute('src') === src);
+                        // Before metadata loads this sets the start position; it loads nothing.
+                        if (video) video.currentTime = time;
+                    }
+                }
+                for (const [card] of restored) {
+                    this.measureTextClamps(card);
+                    evictObserver.observe(card);
+                }
             });
         },
     };
