@@ -193,6 +193,31 @@ test('analytics uses one cached snapshot and retains it during manual refresh', 
     assert.equal(polls, 1);
 });
 
+test('analytics loads its report when the dialog first mounts already open', async () => {
+    const context = browserContext();
+    const calls = [];
+    context.fetch = async url => {
+        calls.push(url);
+        return { ok: true, status: 200, async json() { return { generated_at: '2026-08-10T00:00:00+00:00', summary: { unique_posts: 5 } }; } };
+    };
+    const { tweetApp, statsDialog } = loadScripts(
+        context,
+        appScripts(),
+        '({tweetApp, statsDialog})',
+    );
+    const app = immediateComponent(tweetApp());
+    app.$watch = () => {};
+    // The page mounts the dialog with x-if only once showStatsModal is true, so
+    // init runs after the open and its watcher never sees that change.
+    app.openStatsModal();
+    const stats = nookMergeScope(app, statsDialog());
+    stats.init();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    assert.deepEqual(calls, ['/api/stats/snapshot']);
+    assert.equal(stats.statsSummary.unique_posts, 5);
+});
+
 test('closing analytics stops its refresh poll', () => {
     const context = browserContext();
     const cleared = [];

@@ -128,6 +128,9 @@ function statsDialog() {
         expandedStorageId: null,
 
         init() {
+            // The page mounts this dialog the first time it opens, so the flag is
+            // already true here and the watcher below only sees later opens.
+            if (this.showStatsModal) this.fetchStatsSnapshot();
             this.$watch('showStatsModal', open => {
                 if (open) {
                     this.fetchStatsSnapshot();
