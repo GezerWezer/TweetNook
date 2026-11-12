@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from tweetnook.config import AppConfig, XDGPaths
+from tweetnook.enrichment.avatars import AVATAR_SUFFIXES
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.web.deps import server_state
 from tweetnook.web.routes import avatars
@@ -840,3 +841,42 @@ def test_public_avatar_loader_needs_no_server_state(tmp_path):
     assert image.media_type == "image/jpeg"
     assert image.cache_path == path
     assert server_state == {}
+
+
+def test_versioned_avatar_urls_are_immutable_and_paths_are_remembered(
+    monkeypatch, make_web_client, tmp_path: Path
+) -> None:
+    paths = _paths(tmp_path)
+    avatars_dir = paths.media_dir / "avatars"
+    avatars_dir.mkdir(parents=True)
+    (avatars_dir / "42.png").write_bytes(_alpha_png())
+    server_state.update({"paths": paths, "config": AppConfig()})
+    client = make_web_client(avatars.router, store=AvatarStore())
+    opened: list[str] = []
+    real_open = Path.open
+
+    def tracking_open(self, *args, **kwargs):
+        opened.append(str(self.relative_to(avatars_dir)))
+        return real_open(self, *args, **kwargs)
+
+    first = client.get("/api/avatar/42?v=3")
+    monkeypatch.setattr(Path, "open", tracking_open)
+    second = client.get("/api/avatar/42?v=3")
+    unversioned = client.get("/api/avatar/42")
+
+    assert first.headers["cache-control"] == "private, max-age=2592000, immutable"
+    assert second.content == _alpha_png()
+    assert unversioned.headers["cache-control"] == (
+        "private, max-age=86400, stale-while-revalidate=604800"
+    )
+    # The core candidates are still checked; the other on-demand suffixes are not.
+    core = [f"core/42{suffix}" for suffix in AVATAR_SUFFIXES]
+    assert opened == [*core, "42.png", *core, "42.png"]
+
+    # A core avatar saved later still wins over the remembered on-demand file.
+    (avatars_dir / "core").mkdir()
+    (avatars_dir / "core" / "42.jpg").write_bytes(JPEG)
+    assert client.get("/api/avatar/42?v=3").content == JPEG
+    # A remembered file that disappears is found again by a full probe.
+    (avatars_dir / "core" / "42.jpg").unlink()
+    assert client.get("/api/avatar/42?v=3").content == _alpha_png()

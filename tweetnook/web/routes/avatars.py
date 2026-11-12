@@ -30,6 +30,9 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 # Avatars rarely change; reuse them for a day, then refresh in the background.
 AVATAR_CACHE_HEADERS = {"Cache-Control": "private, max-age=86400, stale-while-revalidate=604800"}
+# The Web UI's avatar URLs carry a version that changes with the avatar settings, so a
+# versioned URL is reused without asking again.
+VERSIONED_AVATAR_CACHE_HEADERS = {"Cache-Control": "private, max-age=2592000, immutable"}
 TRANSPARENT_CACHE_HEADERS = {"Cache-Control": "no-store, max-age=0"}
 # With downloads off, a missing avatar stays missing until the setting changes, so the
 # browser may reuse the placeholder briefly instead of asking on every page load. The
@@ -61,12 +64,15 @@ async def get_avatar(
     user_id: str,
     store: Annotated[Any, Depends(require_store)],
     _auth: Annotated[bool, Depends(verify_credentials)],
+    v: str | None = None,
 ):
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_AVATAR_EXECUTOR, _avatar_response, user_id, store)
+    return await loop.run_in_executor(
+        _AVATAR_EXECUTOR, _avatar_response, user_id, store, v is not None
+    )
 
 
-def _avatar_response(user_id: str, store: Any):
+def _avatar_response(user_id: str, store: Any, versioned: bool = False):
     paths: XDGPaths = server_state["paths"]
     avatars_dir = paths.media_dir / "avatars"
     config = server_state.get("config")
@@ -83,7 +89,7 @@ def _avatar_response(user_id: str, store: Any):
             and avatar.cache_path.parent == avatars_dir
         ):
             mark_avatar_accessed(avatar.cache_path)
-        headers = AVATAR_CACHE_HEADERS
+        headers = VERSIONED_AVATAR_CACHE_HEADERS if versioned else AVATAR_CACHE_HEADERS
     else:
         headers = TRANSPARENT_CACHE_HEADERS
     return Response(content=avatar.content, media_type=avatar.media_type, headers=headers)
@@ -101,9 +107,14 @@ def load_avatar(avatars_dir: Path, user_id: str, store: Any, *, fetch: bool) -> 
     if "\x00" in user_id or "/" in user_id or "\\" in user_id or user_id in {"", ".", ".."}:
         return None
     # Core avatars, saved by sync for posts in collections, win over the on-demand cache.
-    cache_paths = avatar_cache_paths(core_avatar_dir(avatars_dir), user_id) + avatar_cache_paths(
-        avatars_dir, user_id
-    )
+    core_paths = avatar_cache_paths(core_avatar_dir(avatars_dir), user_id)
+    cache_paths = core_paths + avatar_cache_paths(avatars_dir, user_id)
+    # Probing every candidate opens up to eight files. A remembered core avatar is
+    # final; a remembered on-demand one is still checked after the core candidates,
+    # since sync may save a core avatar later.
+    known = _known_avatar_paths.get((avatars_dir, user_id))
+    if known is not None:
+        cache_paths = [known] if known in core_paths else [*core_paths, known]
     for avatar_path in cache_paths:
         try:
             with avatar_path.open("rb") as cached:
@@ -117,7 +128,12 @@ def load_avatar(avatars_dir: Path, user_id: str, store: Any, *, fetch: bool) -> 
             except OSError:
                 pass
         else:
+            _remember_avatar_path(avatars_dir, user_id, avatar_path)
             return AvatarImage(content, image_format[1], avatar_path)
+    if known is not None:
+        # The remembered file is gone (evicted or replaced); probe everything once.
+        _known_avatar_paths.pop((avatars_dir, user_id), None)
+        return load_avatar(avatars_dir, user_id, store, fetch=fetch)
 
     if not fetch:
         return None
@@ -148,6 +164,16 @@ def load_avatar(avatars_dir: Path, user_id: str, store: Any, *, fetch: bool) -> 
             except OSError as exc:
                 logger.warning("Could not cache avatar: %s", exc)
                 return AvatarImage(resp.content, media_type, None)
+            _remember_avatar_path(avatars_dir, user_id, avatar_path)
             return AvatarImage(resp.content, media_type, avatar_path)
 
     return None
+
+
+_known_avatar_paths: dict[tuple[Path, str], Path] = {}
+
+
+def _remember_avatar_path(avatars_dir: Path, user_id: str, path: Path) -> None:
+    if len(_known_avatar_paths) >= 20_000:
+        _known_avatar_paths.clear()
+    _known_avatar_paths[(avatars_dir, user_id)] = path
