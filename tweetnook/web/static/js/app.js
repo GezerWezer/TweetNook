@@ -314,6 +314,12 @@ function tweetApp() {
                         // Moving a live player into the viewer is not teardown.
                         if (node.nodeType !== 1 || node.isConnected) return;
                         tweetNookDisposeGalleries(node);
+                        if (node.classList.contains('feed-card')) {
+                            // A whole card left: its media was observed through the card.
+                            this.mediaPrefetchObserver.unobserve(node);
+                            for (const video of node.getElementsByTagName('video')) this.forgetVideo(video);
+                            return;
+                        }
                         for (const target of [node, ...node.querySelectorAll('.feed-card, img, video')]) {
                             if (target.isConnected) continue;
                             this.mediaPrefetchObserver.unobserve(target);
@@ -321,7 +327,14 @@ function tweetApp() {
                         }
                     });
                     m.addedNodes.forEach(node => {
-                        if (node.nodeType === 1) {
+                        if (node.nodeType === 1 && node.classList.contains('feed-card')) {
+                            // Feed cards arrive by the page; one pass per card, and the card
+                            // is observed for prefetch once instead of once per image.
+                            tweetNookInitGalleries(node);
+                            const videos = node.getElementsByTagName('video');
+                            for (const video of videos) this.observeVideo(video);
+                            if (videos.length || node.querySelector('img[loading="lazy"]')) this.mediaPrefetchObserver.observe(node);
+                        } else if (node.nodeType === 1) {
                             tweetNookInitGalleries(node);
                             if (node.tagName === 'VIDEO') this.observeVideo(node);
                             node.querySelectorAll('video').forEach(v => this.observeVideo(v));
