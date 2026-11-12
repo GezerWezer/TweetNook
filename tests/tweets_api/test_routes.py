@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from typing import Any
 
 import pytest
@@ -86,7 +87,7 @@ def test_api_tweet_quotes_parameterizes_count_and_paginates_distinct_ids():
     assert store.query["indexed_by"] == "idx_archive_target_tweet_id"
 
 
-def test_search_count_endpoint_uses_private_reader_and_closes_it(tmp_path):
+def test_search_count_endpoint_uses_pooled_private_reader_closed_with_the_store(tmp_path):
     store = ArchiveStore(tmp_path / "archive.db", create=True)
     store._merge_records(
         [
@@ -128,12 +129,27 @@ def test_search_count_endpoint_uses_private_reader_and_closes_it(tmp_path):
     )
     assert response.status_code == 200
     assert response.json() == {"total": 24}
-    assert len(readers) == 1
-    assert closed == readers
+    assert readers
+    assert all(reader is not store and reader._read_only for reader in readers)
     assert client.get("/api/tweets/count?q=is:invalid").status_code == 400
-    assert len(readers) == 2
-    assert closed == readers
+    # Readers stay open between requests and close with the store.
+    assert closed == []
     store.close()
+    assert closed == readers
+
+
+def test_pooled_reader_is_reused_per_thread_and_closed_with_the_store(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    first = store.pooled_reader()
+    assert first is not store and first._read_only
+    assert store.pooled_reader() is first
+    other: list[ArchiveStore] = []
+    thread = threading.Thread(target=lambda: other.append(store.pooled_reader()))
+    thread.start()
+    thread.join()
+    assert other[0] is not first
+    store.close()
+    assert first._closed and other[0]._closed
 
 
 @pytest.mark.parametrize(

@@ -179,13 +179,11 @@ def api_tweets_count(
     """Count a search separately so the first page can render immediately."""
     try:
         internal_col = _collection_param(collection)
-        reader = store.open_reader()
-        try:
-            total = count_posts(
-                reader, q, collections={internal_col} if internal_col != "all" else None
-            )
-        finally:
-            reader.close()
+        total = count_posts(
+            store.pooled_reader(),
+            q,
+            collections={internal_col} if internal_col != "all" else None,
+        )
         return {"total": total}
     except SearchQueryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

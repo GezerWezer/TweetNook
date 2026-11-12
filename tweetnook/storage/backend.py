@@ -92,6 +92,8 @@ class ArchiveStore(
         self._count_cache: dict[str, tuple[int, int]] = {}
         self._search_count_cache: dict[tuple, tuple[tuple[int, int], int]] = {}
         self._search_page_cache: dict[tuple, tuple[tuple[int, int], float, list]] = {}
+        self._reader_pool = threading.local()
+        self._readers: list[ArchiveStore] = []
         self.migration_report: MigrationReport | None = None
         if create:
             db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -299,6 +301,30 @@ class ArchiveStore(
         # Closing this archive stops reader queries too, so shutdown never waits on them.
         reader.conn.set_progress_handler(lambda: self._warm_cancelled, 10_000)
         return reader
+
+    def pooled_reader(self) -> ArchiveStore:
+        """This thread's long-lived read-only store, kept open between requests.
+
+        Opening a reader registers its SQL functions and starts with a cold page cache;
+        reusing one per worker thread pays that once.
+        """
+        if self._read_only:
+            return self
+        reader = getattr(self._reader_pool, "reader", None)
+        if reader is None or reader._closed:
+            reader = self.open_reader()
+            self._reader_pool.reader = reader
+            with self._transaction_lock:
+                self._readers.append(reader)
+        return reader
+
+    def close(self) -> None:
+        with self._transaction_lock:
+            readers, self._readers = self._readers, []
+        for reader in readers:
+            with suppress(Exception):
+                reader.close()
+        super().close()
 
     @contextmanager
     def read_snapshot(self) -> Iterator[ArchiveStore]:
