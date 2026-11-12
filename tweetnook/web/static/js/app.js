@@ -412,6 +412,7 @@ function tweetApp() {
         appearanceMethods(),
         lightboxMethods(),
         threadMethods(),
+        threadReplyMethods(),
         navigationMethods(),
         feedEvictionMethods(),
         feedMethods(),

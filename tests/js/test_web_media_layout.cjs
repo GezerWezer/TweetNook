@@ -114,14 +114,15 @@ test('avatar initials preserve emoji and combining graphemes across author surfa
 test('all avatar templates expose load and error handling, including reply and profile initials', () => {
     const html = pageHtml();
     const images = html.match(/<img\b[^>]*:src="avatarUrl\([^>]*>/g) || [];
-    assert.equal(images.length, 23);
+    // Thread replies render outside Alpine (see the thread reply rendering test).
+    assert.equal(images.length, 15);
     for (const image of images) {
         assert.ok(image.includes('@load="avatarLoaded($el)"'));
         assert.ok(image.includes('@error="avatarFailed($el)"'));
         assert.ok(image.includes('class="avatar-image '));
     }
     const initialPairs = html.match(/<span[^>]*x-text="(?:getInitial\([^\"]*|getQuoteAuthor\([^\"]*\.initial|profileCard\?\.initial|avatarInitial\([^\"]*)"[^>]*><\/span>\s*<img[^>]*:src="avatarUrl/g) || [];
-    assert.equal(initialPairs.length, 19);
+    assert.equal(initialPairs.length, 11);
     for (const pair of initialPairs) assert.ok(pair.includes('class="avatar-initial"'));
     // Feed cards (main and quote avatars) render in app.js; capture listeners on the
     // list handle their load and error events.
@@ -219,18 +220,12 @@ test('media quoting media is compact in lists and flush in the detail view', () 
     assert.match(app.renderQuoteThumbnail([{ type: 'video' }]), /aria-label="Media not downloaded"/);
     assert.equal(app.renderQuoteThumbnail([]), '');
 
+    // Thread replies share the compact quote: their rows embed the feed's quote markup.
+    const replyRow = app.renderThreadReplyRow(doubleMedia);
+    assert.ok(replyRow.includes(app.renderQuoteCard(doubleMedia, { highlightSearch: false })));
+    assert.match(replyRow, /quote-compact" data-thread-id="3" data-action="quote"/);
+
     const html = pageHtml();
-    for (const name of ['child', 'reply']) {
-        assert.equal(html.split(`:class="{ 'quote-compact': isMediaQuotingMedia(${name}) }"`).length - 1, 2);
-        assert.equal(html.split(`isMediaQuotingMedia(${name}) ? renderQuoteThumbnail(${name}.qt_media) : renderMediaGrid(${name}.qt_media, 'quote', getQuoteTweet(${name}))`).length - 1, 2);
-        assert.equal(html.split(`@click="if (!isMediaQuotingMedia(${name})) stopMediaClick($event)"`).length - 1, 2);
-        const replyLines = html.split(`<template x-if="getReplyRecipients({raw_json: getQuoteTweet(${name})}).length">`).slice(1);
-        assert.equal(replyLines.length, 2);
-        for (const line of replyLines) {
-            assert.ok(line.includes('class="quote-reply tweet-reply-context'));
-            assert.ok(line.includes(`renderReplyRecipientContent({raw_json: getQuoteTweet(${name})})`));
-        }
-    }
     for (const main of ['threadData?.main', 'panelThreadData?.main']) {
         const mainQuote = html.split(`:data-thread-id="getTweetId(getQuoteTweet(${main}))"`)[0].split('\n').at(-1);
         assert.match(mainQuote, /class="quote-card quote-card-detail /);

@@ -351,7 +351,8 @@ test('a quote shows its own quote nested inside it, as X does', () => {
     dispatchFeed(list, 'click', quoteText);
     assert.equal(opened, '3');
 
-    // Thread templates render it with x-html; their click handler opens it too.
+    // Main posts' templates render it with x-html; their click handler opens it too. Thread
+    // replies use the feed's quote renderer (see the thread reply rendering test).
     opened = null;
     const event = { target: nestedText, propagationStopped: false, stopPropagation() { this.propagationStopped = true; } };
     app.openNestedQuote(event);
@@ -360,7 +361,7 @@ test('a quote shows its own quote nested inside it, as X does', () => {
     app.openNestedQuote({ target: quoteText, stopPropagation() { throw new Error('outside'); } });
 
     const template = pageHtml();
-    for (const name of ['threadData?.main', 'panelThreadData?.main', 'child', 'reply']) {
+    for (const name of ['threadData?.main', 'panelThreadData?.main']) {
         const slot = `<div x-html="renderNestedQuote(getQuoteTweet(${name}))" @click="openNestedQuote($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"></div>`;
         const hasMedia = name.endsWith('main') ? name.replace('?.main', '?.main?.qt_media?.length') : `${name}?.qt_media?.length`;
         assert.equal(template.split(slot).length - 1, name.endsWith('main') ? 1 : 2);

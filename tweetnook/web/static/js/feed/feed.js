@@ -391,7 +391,7 @@ function feedMethods() {
         // Card regions declare their click behavior with data-action. The nearest one
         // wins, and every action except opening the card's thread stops propagation,
         // as the per-card template's @click.stop handlers did.
-        handleFeedClick(event, list) {
+        handleFeedClick(event, list, open = id => this.openThread(id)) {
             const carouselGap = isCarouselGap(event.target);
             for (let element = event.target; element && element !== list; element = element.parentElement) {
                 // Links (tweet text, link cards, Open on X) navigate on their own.
@@ -406,7 +406,7 @@ function feedMethods() {
                     continue;
                 }
                 if (action === 'thread') {
-                    this.openThread(element.dataset.threadId);
+                    open(element.dataset.threadId);
                     return;
                 }
                 // A carousel's padding and gaps belong to the post or quote around it,
@@ -417,7 +417,7 @@ function feedMethods() {
                 if (action === 'media' && !event.target.closest('[data-lightbox-media], .media-video-player, .media-frame')) continue;
                 event.stopPropagation();
                 if (action === 'quote') {
-                    this.openThread(element.dataset.threadId);
+                    open(element.dataset.threadId);
                 } else if (action === 'profile') {
                     const tweet = this.feedCardTweet(element);
                     if (tweet) this.openProfileCard({ currentTarget: element }, tweet);

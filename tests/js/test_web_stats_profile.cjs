@@ -17,7 +17,9 @@ const {
 test('every clickable byline name in the page opens that author\'s profile card', () => {
     const html = pageHtml();
     const names = html.match(/<span\b[^>]*hover:underline tweet-byline-name[^>]*>/g) || [];
-    assert.equal(names.length, 10);
+    // Thread replies render outside Alpine; their names open profiles through the reply
+    // click handler (see the thread reply rendering test).
+    assert.equal(names.length, 6);
     for (const name of names) assert.match(name, /@click\.stop="openProfileCard\(\$event, [\w.]+\)"/);
 });
 
@@ -443,8 +445,8 @@ test('collection summary labels and links survive a blocked analytics script URL
 test('reply-recipient markup opens profile cards on every tweet surface', () => {
     const html = pageHtml();
 
-    assert.equal((html.match(/renderReplyRecipientContent\(/g) || []).length, 16);
-    assert.equal((html.match(/getReplyRecipients\(child\)\.length > 1 \|\|/g) || []).length, 2);
+    // Thread replies render recipient lines with the feed's renderer (see the thread reply test).
+    assert.equal((html.match(/renderReplyRecipientContent\(/g) || []).length, 8);
     assert.equal((html.match(/threadData\.parents\.length === 0/g) || []).length, 1);
     assert.equal((html.match(/panelThreadData\.parents\.length === 0/g) || []).length, 1);
     // Feed cards and their quotes delegate reply targets (see the feed click test).

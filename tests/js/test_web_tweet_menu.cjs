@@ -170,7 +170,8 @@ test('tweet overflow menus are wired on list and detail surfaces', () => {
     assert.match(html, /setTweetHidden\(panelThreadData\.main\.tweet_id, !panelThreadData\.main\.hidden\)/);
     assert.match(html, /startTweetMenuPress\(\$event, threadData\.main\.tweet_id/);
     assert.match(html, /startTweetMenuPress\(\$event, panelThreadData\.main\.tweet_id/);
-    assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet/g) || []).length, 6);
+    // Thread replies render their quotes, placeholders included, with the feed's renderer.
+    assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet/g) || []).length, 2);
     assert.match(html, /x-model="editableDescription"/);
     const { app } = feedListApp();
     const card = app.renderFeedCard({ tweet_id: '1', text: 'x', author: { id: '2', username: 'a', display_name: 'A' } });

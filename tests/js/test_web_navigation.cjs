@@ -6,6 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { appScripts, pageHtml, pageScripts, readScripts } = require('./page_scripts.cjs');
 const {
+    FakeElement,
     ROOT,
     WEB_FIXTURE,
     browserContext,
@@ -455,21 +456,91 @@ test('goBack tears down playing videos before navigating history', () => {
     assert.equal(context.__state.historyCalls.at(-1)[0], 'back');
 });
 
-test('thread reply surfaces render quoted tweets in both presentations', () => {
-    const html = pageHtml();
+// Thread replies render as one string outside Alpine (feed/render/replies.js), from the feed
+// card renderers, and both surfaces route clicks through the feed's action map.
+function renderedThreadReplies({ panel = false } = {}) {
+    const { app } = feedListApp();
+    const author = id => ({ id, username: `u${id}`, display_name: `User ${id}` });
+    const quote = {
+        tweet_id: 'q1',
+        text: 'quoted',
+        author: author('9'),
+        raw_json: { in_reply_to_screen_name: 'frank' },
+        quoted_tweet: { tweet_id: 'q2', text: 'nested', author: author('8') },
+    };
+    const reply = {
+        tweet_id: 'r1',
+        text: 'reply',
+        author: author('3'),
+        thread_depth: 3,
+        raw_json: { in_reply_to_screen_name: 'u2' },
+        quoted_tweet: { tweet_id: 'gone', availability: { placeholder: true } },
+    };
+    const child = {
+        tweet_id: 'c1',
+        text: 'child',
+        author: author('2'),
+        raw_json: { in_reply_to_screen_name: 'someone' },
+        quoted_tweet: quote,
+        qt_media: [],
+        op_replies: [reply],
+    };
+    const data = { main: { tweet_id: 'm', author: author('1') }, parents: [], children: [child] };
+    const container = new FakeElement('div', panel ? [['data-panel', '']] : []);
+    app.renderThreadReplies(container, [child], data, false);
+    const calls = [];
+    app.openThread = (...args) => calls.push(['thread', ...args]);
+    app.openProfileCard = (event, tweet) => calls.push(['profile', tweet.tweet_id]);
+    app.openUsernameProfileCard = (event, username) => calls.push(['user', username]);
+    const click = target => app.handleThreadReplyClick({ currentTarget: container, target, stopPropagation() {} });
+    return { app, container, calls, click };
+}
 
-    assert.equal((html.match(/<template x-if="getQuoteTweet\(child\)">/g) || []).length, 2);
-    assert.equal((html.match(/<template x-if="getQuoteTweet\(reply\)">/g) || []).length, 2);
-    assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet\(child\)\)/g) || []).length, 2);
-    assert.equal((html.match(/renderQuotePlaceholder\(getQuoteTweet\(reply\)\)/g) || []).length, 2);
-    assert.equal((html.match(/formatText\(getQuoteTweet\(child\), isMediaQuotingMedia\(child\)\)/g) || []).length, 2);
-    assert.equal((html.match(/formatText\(getQuoteTweet\(reply\), isMediaQuotingMedia\(reply\)\)/g) || []).length, 2);
-    assert.equal((html.match(/renderMediaGrid\(child\.qt_media, 'quote', getQuoteTweet\(child\)\)/g) || []).length, 2);
-    assert.equal((html.match(/renderMediaGrid\(reply\.qt_media, 'quote', getQuoteTweet\(reply\)\)/g) || []).length, 2);
-    assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(child\)\)\)/);
-    assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(child\)\), false, true\)/);
-    assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(reply\)\)\)/);
-    assert.match(html, /openThread\(getTweetId\(getQuoteTweet\(reply\)\), false, true\)/);
+test('thread replies render quotes, recipients and avatars like feed cards on both surfaces', () => {
+    for (const panel of [false, true]) {
+        const { container, calls, click } = renderedThreadReplies({ panel });
+        const [childRow, replyRow] = container.querySelectorAll('[data-reply-id]');
+        assert.equal(childRow.dataset.replyId, 'c1');
+        assert.equal(replyRow.dataset.replyId, 'r1');
+        assert.equal(childRow.classList.contains('thread-row'), !panel);
+        assert.ok(replyRow.classList.contains('thread-nested-row'));
+        assert.equal(replyRow.getAttribute('style'), 'margin-left: 12px');
+
+        // The quote, its reply line and its nested quote; an unavailable quote shows its placeholder.
+        assert.equal(childRow.querySelector('.quote-card').dataset.threadId, 'q1');
+        assert.ok(childRow.querySelector('.quote-reply [data-username="frank"]'));
+        assert.equal(childRow.querySelector('.quote-nested').dataset.threadId, 'q2');
+        assert.equal(replyRow.querySelector('.quote-card'), null);
+        assert.match(replyRow.querySelector('[data-action="stop"]').textContent, /\S/);
+
+        // Each avatar image follows its initial; the container's capture listeners handle them.
+        const avatars = container.querySelectorAll('img.avatar-image');
+        assert.equal(avatars.length, 4);
+        for (const avatar of avatars) assert.ok(avatar.parentElement.firstElementChild.matches('span.avatar-initial'));
+
+        // A direct reply names someone other than the main author; a nested reply names its parent.
+        const open = panel ? [false, true] : [];
+        click(childRow.querySelector('.quote-text'));
+        click(childRow.querySelector('.quote-nested .quote-text'));
+        click(childRow.querySelector('.tweet-text'));
+        click(replyRow.querySelector('.tweet-byline-name'));
+        click(replyRow.querySelector('.avatar'));
+        click(childRow.querySelector('[data-action="reply-profile"][data-username="someone"]'));
+        click(replyRow.querySelector('[data-action="reply-profile"][data-username="u2"]'));
+        assert.deepEqual(calls, [
+            ['thread', 'q1', ...open],
+            ['thread', 'q2', ...open],
+            ['thread', 'c1', ...open],
+            ['profile', 'r1'],
+            ['profile', 'r1'],
+            ['user', 'someone'],
+            ['user', 'u2'],
+        ]);
+    }
+    const html = pageHtml();
+    for (const [data, other, limit] of [['threadData', 'threadOtherReplies', 'threadReplyLimit'], ['panelThreadData', 'panelOtherReplies', 'panelReplyLimit']]) {
+        assert.ok(html.includes(`x-effect="renderThreadReplies($el, visibleReplies(threadReplies(${data}, ${other}), ${limit}), ${data}, ${other})" @click="handleThreadReplyClick($event)" @load.capture="avatarEvent($event)" @error.capture="avatarEvent($event)"`));
+    }
 });
 
 test('recursive thread replies indent by bounded depth and disclose truncation', () => {
@@ -482,7 +553,6 @@ test('recursive thread replies indent by bounded depth and disclose truncation',
     assert.equal(app.nestedReplyIndent({ thread_depth: 3 }), 12);
     assert.equal(app.nestedReplyIndent({ thread_depth: 20 }), 72);
     assert.equal(app.nestedReplyIndent({}), 0);
-    assert.equal((html.match(/nestedReplyIndent\(reply\)/g) || []).length, 2);
     assert.equal((html.match(/reply_tree_truncated/g) || []).length, 2);
     assert.equal((html.match(/more saved replies than can be shown at once/g) || []).length, 2);
 });
@@ -647,8 +717,8 @@ test('large threads render replies in batches of nested tweets', async () => {
     assert.equal(app.threadReplyLimit, 30);
 
     const html = pageHtml();
-    assert.ok(html.includes('x-for="child in visibleReplies(threadReplies(threadData, threadOtherReplies), threadReplyLimit)"'));
-    assert.ok(html.includes('x-for="child in visibleReplies(threadReplies(panelThreadData, panelOtherReplies), panelReplyLimit)"'));
+    assert.ok(html.includes('renderThreadReplies($el, visibleReplies(threadReplies(threadData, threadOtherReplies), threadReplyLimit)'));
+    assert.ok(html.includes('renderThreadReplies($el, visibleReplies(threadReplies(panelThreadData, panelOtherReplies), panelReplyLimit)'));
     assert.ok(html.includes('x-intersect="showMoreReplies()"'));
     assert.ok(html.includes('x-intersect="showMoreReplies(true)"'));
 });
@@ -695,8 +765,13 @@ test('mention-only replies wait behind Show other replies until regular replies 
     assert.ok(html.includes('x-show="hasOtherReplies(threadData, threadReplyLimit, threadOtherReplies)"'));
     assert.ok(html.includes('x-show="hasOtherReplies(panelThreadData, panelReplyLimit, panelOtherReplies)"'));
     assert.equal(html.split('>Show other replies</button>').length - 1, 2);
-    assert.equal(html.split('font-extrabold text-[var(--text-primary)]">Other replies</h2>').length - 1, 2);
-    assert.ok(html.includes('x-if="child.tweet_id === firstOtherReplyId(threadData, threadOtherReplies)"'));
+    // The rendered replies head the first mention-only reply with "Other replies".
+    const container = new FakeElement('div');
+    app.renderThreadReplies(container, app.threadReplies(data, true).slice(-3), data, true);
+    const headings = container.querySelectorAll('h2');
+    assert.equal(headings.length, 1);
+    assert.equal(headings[0].textContent, 'Other replies');
+    assert.equal(headings[0].parentElement.querySelector('[data-reply-id]').dataset.replyId, 'spam1');
 });
 
 test('threads open on the tweet already shown while the conversation loads', async () => {
