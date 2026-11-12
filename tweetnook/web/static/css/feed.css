@@ -13,8 +13,9 @@
 }
 /* Media already has explicit aspect ratios. Skipping its layout replaces those
    stable boxes with estimated card heights and can expose blank layers while
-   scrolling, especially in Safari. Keep text-only cards eligible for skipping. */
-.feed-card:has(.media-single, .media-photo, video) {
+   scrolling, especially in Safari. Keep text-only cards eligible for skipping.
+   The renderer marks media cards (feed-card-media). */
+.feed-card-media {
     content-visibility: visible;
 }
 

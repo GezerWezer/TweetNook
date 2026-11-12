@@ -7,6 +7,8 @@
 // checkmark-circle from icons.md: the History dialog's "On X" status.
 const AVAILABLE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m16.28 9.62-5.41 6.84-3.54-3.22 1.34-1.48 1.96 1.78 4.09-5.16z"/><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></svg>';
 const MISSING_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9.4 3.5a3 3 0 0 1 5.2 0L22.4 17a3 3 0 0 1-2.6 4.5H4.2A3 3 0 0 1 1.6 17zM12 15.2a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4m0-6.95c-.8 0-1.4.7-1.3 1.49l.55 4.01h1.5l.55-4.01A1.3 1.3 0 0 0 12 8.25"/></svg>';
+// A single photo or video, or any video, in a card's markup (see feed-card-media).
+const FEED_CARD_MEDIA = /[" ]media-(?:single|photo)[" ]|<video[\s>]/;
 
 function feedCardMethods() {
     return {
@@ -85,9 +87,7 @@ function feedCardMethods() {
             const quoteBlock = this.renderQuoteCard(tweet);
             const text = this.formatText(tweet, false, true, true);
 
-            return String(html`${[
-                html`<div class="px-4 pt-3 pb-3 tweet-border feed-card hover-bg transition duration-200 cursor-pointer" data-tweet-id="${tweetObj.tweet_id}"`,
-                html`${tweet.tweet_id ? html` data-thread-id="${tweet.tweet_id}"` : ''} data-action="thread">`,
+            const body = String(html`${[
                 header,
                 html`<div class="flex space-x-2">`,
                 avatar,
@@ -101,6 +101,15 @@ function feedCardMethods() {
                 part(this.renderCommunityNote(tweet.raw_json), ' data-action="stop"'),
                 part(this.renderActionBar(tweet)),
                 html`</div></div></div>`,
+            ]}`);
+            // feed-card-media keeps media cards out of content-visibility skipping. Matching it
+            // in CSS with :has() re-ran a subtree selector on every inserted card.
+            const media = FEED_CARD_MEDIA.test(body) ? ' feed-card-media' : '';
+
+            return String(html`${[
+                html`<div class="px-4 pt-3 pb-3 tweet-border feed-card${media} hover-bg transition duration-200 cursor-pointer" data-tweet-id="${tweetObj.tweet_id}"`,
+                html`${tweet.tweet_id ? html` data-thread-id="${tweet.tweet_id}"` : ''} data-action="thread">`,
+                rawHTML(body),
             ]}`);
         },
 
