@@ -31,6 +31,7 @@ function fixture(timers = {}) {
         localStorage: {setItem() {}},
         getComputedStyle: node => node.style || {},
         requestAnimationFrame: timers.requestAnimationFrame,
+        URL: globalThis.URL,
     };
     const exports = '\n({feedVideoMethods, feedVideoVisibility, forcedMuteVideos, tweetNookWatchVideoPoster, tweetApp: typeof tweetApp === "function" ? tweetApp : null})';
     const { tweetApp, feedVideoMethods, feedVideoVisibility, forcedMuteVideos, tweetNookWatchVideoPoster } = vm.runInNewContext((standalone ? videoSource : source) + exports, context);
@@ -697,14 +698,15 @@ test('offscreen first-frame capture stays silent and survives the narrower autop
         parentElement:{querySelector:()=>image},
         addEventListener:(name,fn)=>events[name]=fn,removeEventListener:name=>delete events[name],
     });
-    document.createElement=()=>({getContext:()=>({drawImage() {}}),toDataURL:()=> 'data:image/jpeg;first-frame'});
+    document.createElement=()=>({getContext:()=>({drawImage() {}}),toBlob:fn=>fn({type:'image/jpeg'})});
+    globalThis.URL.createObjectURL=()=>'blob:first-frame';globalThis.URL.revokeObjectURL=()=>{};
     app.updateAutoplayVisibility(current,true);await settle();
     app.prepareVideoPoster(upcoming);assert.equal(upcoming.muted,true);
     app.updateAutoplayVisibility(upcoming,false);await settle();
     assert.equal(upcoming.paused,false,'offscreen visibility must not abort frame preparation');
     assert.equal(current.paused,false,'silent preparation must not interrupt the active video');
     upcoming.readyState=2;events.loadeddata();assert.equal(upcoming.paused,true);
-    assert.equal(upcoming.poster,'data:image/jpeg;first-frame');
+    assert.equal(upcoming.poster,'blob:first-frame');
     assert.equal(image.src,upcoming.poster);assert.equal(current.paused,false);
     const repeated=player(2400),preview={};
     Object.assign(repeated,{src:upcoming.src,getAttribute:()=>'',preload:'none',

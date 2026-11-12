@@ -326,12 +326,25 @@ function feedVideoMethods() {
                         canvas.width = Math.min(640, video.videoWidth);
                         canvas.height = Math.round(canvas.width * video.videoHeight / video.videoWidth);
                         canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-                        video.poster = canvas.toDataURL('image/jpeg', 0.85);
-                        generatedVideoPosters.delete(video.src);
-                        generatedVideoPosters.set(video.src, video.poster);
-                        if (generatedVideoPosters.size > 48) generatedVideoPosters.delete(generatedVideoPosters.keys().next().value);
-                        const image = tweetNookVideoPlayer(video)?.querySelector('[data-video-poster]');
-                        if (image) { image.src = video.poster; image.hidden = false; }
+                        // toBlob encodes off the main thread; toDataURL encoded synchronously
+                        // and the poster then decoded the base64 string again.
+                        const src = video.src;
+                        canvas.toBlob(blob => {
+                            if (!blob || video.src !== src || video.getAttribute?.('poster')) return;
+                            const url = URL.createObjectURL(blob);
+                            video.poster = url;
+                            const previous = generatedVideoPosters.get(src);
+                            generatedVideoPosters.delete(src);
+                            generatedVideoPosters.set(src, url);
+                            if (previous && previous !== url) URL.revokeObjectURL(previous);
+                            if (generatedVideoPosters.size > 48) {
+                                const oldest = generatedVideoPosters.keys().next().value;
+                                URL.revokeObjectURL(generatedVideoPosters.get(oldest));
+                                generatedVideoPosters.delete(oldest);
+                            }
+                            const image = tweetNookVideoPlayer(video)?.querySelector('[data-video-poster]');
+                            if (image) { image.src = url; image.hidden = false; }
+                        }, 'image/jpeg', 0.85);
                     } catch { /* A remote demo video may not allow canvas capture. */ }
                 }
                 // Only the selected player can retain playback after preparation.
