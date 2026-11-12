@@ -1,5 +1,6 @@
 """FastAPI Web server for TweetNook."""
 
+import gzip
 import hashlib
 import os
 import re
@@ -330,8 +331,37 @@ def _compressible_path(path: str) -> bool:
     if path.startswith("/api/dev/replay/x/") and ".twimg.com/" in path:
         return False
     if path.startswith("/static/"):
-        return path.endswith((".js", ".css", ".html", ".json", ".svg", ".txt"))
+        # Served precompressed (VersionedStaticFiles).
+        return False
+    if path == "/" or path.startswith("/post/"):
+        # The assembled page is compressed once per build (_serve_web_app).
+        return False
     return True
+
+
+_PRECOMPRESSED_SUFFIXES = (".js", ".css", ".html", ".json", ".svg", ".txt")
+_gzip_lock = threading.Lock()
+_gzip_cache: dict[tuple[str, int], bytes] = {}
+
+
+def _accepts_gzip(scope: Scope) -> bool:
+    for name, value in scope.get("headers", ()):
+        if name == b"accept-encoding":
+            return b"gzip" in value
+    return False
+
+
+def _gzipped(key: tuple[str, int], body: bytes) -> bytes:
+    """Compress text once per file version at the highest level, off later requests."""
+    with _gzip_lock:
+        cached = _gzip_cache.get(key)
+    if cached is None:
+        cached = gzip.compress(body, compresslevel=9, mtime=0)
+        with _gzip_lock:
+            for stale in [k for k in _gzip_cache if k[0] == key[0]]:
+                del _gzip_cache[stale]
+            _gzip_cache[key] = cached
+    return cached
 
 
 app.add_middleware(TextGZipMiddleware)
@@ -389,6 +419,23 @@ class VersionedStaticFiles(StaticFiles):
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         response = await super().get_response(path, scope)
+        if (
+            response.status_code == 200
+            and isinstance(response, FileResponse)
+            and path.endswith(_PRECOMPRESSED_SUFFIXES)
+            and _accepts_gzip(scope)
+        ):
+            file_path = Path(response.path)
+            stat = file_path.stat()
+            body = _gzipped((str(file_path), stat.st_mtime_ns), file_path.read_bytes())
+            headers = {
+                key: value
+                for key, value in response.headers.items()
+                if key.lower() not in {"content-length", "content-type"}
+            }
+            headers["Content-Encoding"] = "gzip"
+            headers["Vary"] = "Accept-Encoding"
+            response = Response(body, media_type=response.media_type, headers=headers)
         if response.status_code in {200, 304}:
             query = scope.get("query_string", b"").decode("latin-1")
             current = _index_cache[3].get(path) if _index_cache is not None else None
@@ -402,11 +449,29 @@ if static_dir.exists():
     app.mount("/static", VersionedStaticFiles(directory=static_dir), name="static")
 
 
+def _precompress_static() -> None:
+    """Compress the page and its text assets at startup, before the first visit asks."""
+    try:
+        body, etag, _versions = _versioned_index()
+        _gzipped(("index", hash(etag)), body)
+        for path in static_dir.rglob("*"):
+            if path.is_file() and path.name.endswith(_PRECOMPRESSED_SUFFIXES):
+                _gzipped((str(path.resolve()), path.stat().st_mtime_ns), path.read_bytes())
+    except OSError:
+        pass  # Requests compress on demand.
+
+
+threading.Thread(target=_precompress_static, name="tweetnook-precompress", daemon=True).start()
+
+
 def _serve_web_app(request: Request) -> Response:
     body, etag, _versions = _versioned_index()
-    headers = {"Cache-Control": "no-cache", "ETag": etag}
+    headers = {"Cache-Control": "no-cache", "ETag": etag, "Vary": "Accept-Encoding"}
     if etag in request.headers.get("if-none-match", ""):
         return Response(status_code=304, headers=headers)
+    if "gzip" in request.headers.get("accept-encoding", ""):
+        headers["Content-Encoding"] = "gzip"
+        return HTMLResponse(_gzipped(("index", hash(etag)), body), headers=headers)
     return HTMLResponse(body, headers=headers)
 
 

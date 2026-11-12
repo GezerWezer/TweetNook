@@ -487,11 +487,29 @@ def test_versioned_document_follows_asset_changes(monkeypatch, tmp_path: Path) -
     assert first != second and first_etag != second_etag
 
 
+def test_page_and_static_text_are_served_gzipped_with_their_plain_bytes_inside() -> None:
+    with TestClient(server.app) as client:
+        plain = client.get("/static/js/themes.js", headers={"Accept-Encoding": "identity"})
+        packed = client.get("/static/js/themes.js", headers={"Accept-Encoding": "gzip"})
+        page = client.get("/", headers={"Accept-Encoding": "gzip"})
+        raw_page = client.get("/", headers={"Accept-Encoding": "identity"})
+
+    assert "content-encoding" not in plain.headers
+    assert packed.headers["content-encoding"] == "gzip"
+    assert packed.headers["vary"] == "Accept-Encoding"
+    assert "javascript" in packed.headers["content-type"]
+    # The client decodes transparently; the bytes match the uncompressed file.
+    assert packed.content == plain.content
+    assert page.headers["content-encoding"] == "gzip"
+    assert page.content == raw_page.content
+
+
 @pytest.mark.parametrize(
     ("path", "compressed"),
     [
         ("/api/payload", True),
-        ("/static/js/app.js", True),
+        # The static mount serves text assets precompressed, so the middleware skips them.
+        ("/static/js/app.js", False),
         ("/media/photo.jpg", False),
         ("/api/avatar/1", False),
         ("/static/font.woff2", False),
