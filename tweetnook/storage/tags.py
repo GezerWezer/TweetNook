@@ -409,11 +409,26 @@ class TagsMixin(ConnectionMixin):
             params.extend(member_params)
         if not selects:
             return 0
-        return int(
+        # Hidden markers, captured content and saved media all feed this count, and no
+        # revision scope covers them; any write changes this signature, as for search counts.
+        signature = (
+            self.conn.total_changes,
+            self.conn.execute("PRAGMA data_version").fetchone()[0],
+        )
+        key = ("excluded", collection, hidden, uncaptured)
+        cached = self._search_count_cache.get(key)
+        if not self.conn.in_transaction and cached is not None and cached[0] == signature:
+            return cached[1]
+        count = int(
             self.conn.execute(
                 f"SELECT COUNT(*) FROM ({' UNION '.join(selects)})", params
             ).fetchone()[0]
         )
+        if len(self._search_count_cache) >= 64 or self.conn.in_transaction:
+            self._search_count_cache.clear()
+        if not self.conn.in_transaction:
+            self._search_count_cache[key] = (signature, count)
+        return count
 
     def delete_global_tag(self, tag: str) -> None:
         """Delete a tag globally across all tweets."""
