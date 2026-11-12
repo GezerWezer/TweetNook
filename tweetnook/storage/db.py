@@ -59,6 +59,7 @@ class ConnectionMixin:
     _has_written: bool
     _count_cache: dict[str, tuple[int, int]]
     _search_count_cache: dict[tuple, tuple[tuple[int, int], int]]
+    _search_page_cache: dict[tuple, tuple[tuple[int, int], float, list]]
 
     @contextmanager
     def transaction(self, *, write: bool = True, allow_nested: bool = True) -> Iterator[None]:

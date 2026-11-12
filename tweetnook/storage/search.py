@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
@@ -666,10 +667,37 @@ class SearchMixin(ReadsMixin, TagsMixin):
             f"{ordering_columns}{page_extra} "
             f"FROM {page_from} {page_where} ORDER BY {order_by} LIMIT ? OFFSET ?"
         )
-        page_params.extend([limit + 1, offset])
         like_sort = sort in LIKE_SORTS
         rows = []
-        if not count_only:
+        if not count_only and not like_sort and offset > 0:
+            # Later pages of one search would each re-evaluate and re-sort every match.
+            # The first continuation stores the whole ordered list for a few minutes, and
+            # further pages slice it while the archive is unchanged.
+            ordered_sql = (
+                f"{with_sql} SELECT matches.tweet_id, matches.match_score, "
+                f"{ordering_columns}{page_extra} "
+                f"FROM {page_from} {page_where} ORDER BY {order_by}"
+            )
+            signature = (
+                self.conn.total_changes,
+                self.conn.execute("PRAGMA data_version").fetchone()[0],
+            )
+            key = (ordered_sql, tuple(page_params))
+            cached = self._search_page_cache.get(key)
+            now = time.monotonic()
+            if cached is None or cached[0] != signature or now - cached[1] > 300:
+                ordered = [dict(row) for row in self.conn.execute(ordered_sql, page_params)]
+                for stale in [k for k, v in self._search_page_cache.items() if now - v[1] > 300]:
+                    self._search_page_cache.pop(stale, None)
+                if len(self._search_page_cache) >= 16:
+                    self._search_page_cache.pop(next(iter(self._search_page_cache)), None)
+                if not self.conn.in_transaction:
+                    self._search_page_cache[key] = (signature, now, ordered)
+            else:
+                ordered = cached[2]
+            rows = [dict(row) for row in ordered[offset : offset + limit + 1]]
+        elif not count_only:
+            page_params.extend([limit + 1, offset])
             with self._transaction_lock if like_sort else nullcontext():
                 if like_sort:
                     self._ensure_like_order_table()

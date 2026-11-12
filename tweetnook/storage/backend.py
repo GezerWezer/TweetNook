@@ -91,6 +91,7 @@ class ArchiveStore(
         self._warm_cancelled = False
         self._count_cache: dict[str, tuple[int, int]] = {}
         self._search_count_cache: dict[tuple, tuple[tuple[int, int], int]] = {}
+        self._search_page_cache: dict[tuple, tuple[tuple[int, int], float, list]] = {}
         self.migration_report: MigrationReport | None = None
         if create:
             db_path.parent.mkdir(parents=True, exist_ok=True)
