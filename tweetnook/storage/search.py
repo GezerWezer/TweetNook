@@ -695,6 +695,11 @@ class SearchMixin(ReadsMixin, TagsMixin):
             excluded_expr,
             *group_conditions,
         )
+        if "facts." in match_filter.sql:
+            # One join instead of a correlated lookup per filter clause and row.
+            joins.append(
+                "LEFT JOIN archive_tweet_facts AS facts ON facts.row_key = archive.row_key"
+            )
         score_expr = " + ".join(group_scores) if group_scores else "0.0"
         likes_column = ", favorite_count" if sort == "most_likes" else ""
         likes_value = (

@@ -319,10 +319,8 @@ def _fact(column: str) -> str:
     archive_tweet_facts holds values extracted from raw_json by triggers, so
     filters never parse each tweet's JSON during a search.
     """
-    return (
-        f"(SELECT facts.{column} FROM archive_tweet_facts AS facts "
-        "WHERE facts.row_key = archive.row_key)"
-    )
+    # The search joins archive_tweet_facts once as `facts` whenever a filter reads it.
+    return f"facts.{column}"
 
 
 def _fact_list_contains(column: str, value: str, *, fold_stored: bool = False) -> Clause:

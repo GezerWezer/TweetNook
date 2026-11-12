@@ -172,7 +172,9 @@ def test_real_store_pushes_normalized_filters_into_sql(tmp_path) -> None:
     store.conn.set_trace_callback(None)
     traced_sql = " ".join(statements)
     assert "related INDEXED BY idx_archive_search_attachment" in traced_sql
-    assert "SELECT facts.is_reply FROM archive_tweet_facts" in traced_sql
+    assert "LEFT JOIN archive_tweet_facts AS facts" in traced_sql
+    assert "SELECT facts." not in traced_sql
+    assert "facts.is_reply" in traced_sql
     assert "json_extract" not in traced_sql.split("SELECT archive.tweet_id, MAX(")[1]
 
     text_media = search_posts(store, "needle has:media")
