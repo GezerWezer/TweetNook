@@ -9,11 +9,17 @@ const {
     dispatchFeed,
     immediateComponent,
     loadScripts,
-    parseFakeHTML,
+    parseFakeHTML: parseFakeMarkup,
     test,
     run,
     pageCss,
 } = require('./web_harness.cjs');
+
+// Players build their control bar on first play, hover or focus. These tests drive the
+// controls directly, so their players start with the bar built.
+const VIDEO_CONTROL_BAR = loadScripts(browserContext(), appScripts(), 'renderVideoControlBar()');
+const parseFakeHTML = markup => parseFakeMarkup(String(markup).replaceAll(
+    'data-video-bar></div>', `data-video-bar>${VIDEO_CONTROL_BAR}</div>`));
 
 test('the phone viewer pages and springs back on X\'s measured spring', () => {
     const context = browserContext();

@@ -128,6 +128,9 @@ function tweetNookSyncVideoUi(video) {
 function tweetNookShowVideoUi(video, holdMs = VIDEO_UI_IDLE_MS) {
     const player = tweetNookVideoPlayer(video);
     if (!player?.classList) return;
+    // Showing the controls (a pointer, focus, a tap or play) is what needs the bar.
+    const bar = player.querySelector('[data-video-bar]');
+    if (bar && !bar.firstElementChild) bar.innerHTML = renderVideoControlBar();
 
     clearTimeout(videoUiHideTimers.get(player));
     videoUiHideTimers.set(player, setTimeout(() => {
@@ -370,28 +373,47 @@ function videoIcon(name) {
     return `<svg viewBox="${name === 'poster' ? '0 0 60 61' : '0 0 24 24'}" aria-hidden="true">${VIDEO_ICONS[name]}</svg>`;
 }
 
+function videoControlButton(action, label, icon, className = '') {
+    return `<button type="button" class="video-button ${className}" data-video-action="${action}" aria-label="${label}" title="${label}">${videoIcon(icon)}</button>`;
+}
+
+// The center play and idle mute buttons show on a resting card. The control bar, with
+// its two range inputs (each its own shadow tree), is built the first time the player
+// plays, is hovered or takes focus: most feed videos are never touched.
 function renderVideoControls() {
-    const button = (action, label, icon, className = '') => `<button type="button" class="video-button ${className}" data-video-action="${action}" aria-label="${label}" title="${label}">${videoIcon(icon)}</button>`;
     return `<div data-video-controls hidden>
-        ${button('play', 'Play video', 'poster', 'video-center-play')}
-        ${button('mute', 'Mute', 'mobileSound', 'video-idle-mute')}
-        <div class="video-control-bar">
-            <span class="video-scrub-time" data-video-scrub-time aria-hidden="true">0:00 / 0:00</span>
+        ${videoControlButton('play', 'Play video', 'poster', 'video-center-play')}
+        ${videoControlButton('mute', 'Mute', 'mobileSound', 'video-idle-mute')}
+        <div class="video-control-bar" data-video-bar></div>
+    </div>`;
+}
+
+function renderVideoControlBar() {
+    return `<span class="video-scrub-time" data-video-scrub-time aria-hidden="true">0:00 / 0:00</span>
             <div class="video-seek-wrap">
                 <input class="video-seek" data-video-seek type="range" min="0" max="100" step="0.1" value="0" aria-label="Seek video" disabled>
                 <span class="video-scrub-track" aria-hidden="true"><span></span></span>
             </div>
             <div class="video-control-row">
-                ${button('play', 'Play video', 'play')}
+                ${videoControlButton('play', 'Play video', 'play')}
                 <span class="video-time" data-video-time>0:00 / 0:00</span>
                 <span class="video-time video-mobile-time" data-video-remaining-time>-0:00</span>
-                <div class="video-volume-group">${button('mute', 'Mute', 'sound')}
+                <div class="video-volume-group">${videoControlButton('mute', 'Mute', 'sound')}
                     <input class="video-volume" data-video-volume type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume">
                 </div>
-                ${button('fullscreen', 'Full screen', 'fullscreen')}
-            </div>
-        </div>
-    </div>`;
+                ${videoControlButton('fullscreen', 'Full screen', 'fullscreen')}
+            </div>`;
+}
+
+// Builds the player's control bar once it plays or opens in the viewer (showing the
+// controls builds it too): 'ready' when it exists, 'built' when this call created it,
+// and '' while the player rests untouched.
+function tweetNookVideoControlBar(video, player) {
+    const bar = player.querySelector('[data-video-bar]');
+    if (!bar || bar.firstElementChild) return 'ready';
+    if ((video.paused || video.ended) && !video.closest?.('.lightbox-stage')) return '';
+    bar.innerHTML = renderVideoControlBar();
+    return 'built';
 }
 
 function tweetNookSyncPlayerControls(video) {
@@ -423,6 +445,13 @@ function tweetNookSyncPlayerControls(video) {
     });
     const duration = Number.isFinite(video.duration) ? Math.max(0, video.duration) : 0;
     const time = Math.max(0, videoScrubStates.get(video)?.targetTime ?? video.currentTime ?? 0);
+    const bar = tweetNookVideoControlBar(video, player);
+    if (!bar) {
+        if (video.videoWidth && video.videoHeight) player.style.setProperty('--video-aspect', video.videoWidth / video.videoHeight);
+        return;
+    }
+    // The labels set above missed the buttons of a bar this call built.
+    if (bar === 'built') return tweetNookSyncPlayerControls(video);
     const seek = player.querySelector('[data-video-seek]');
     seek.disabled = !duration;
     seek.value = duration ? time / duration * 100 : 0;

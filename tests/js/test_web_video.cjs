@@ -8,11 +8,17 @@ const {
     dispatchFeed,
     immediateComponent,
     loadScripts,
-    parseFakeHTML,
+    parseFakeHTML: parseFakeMarkup,
     test,
     run,
     pageCss,
 } = require('./web_harness.cjs');
+
+// Players build their control bar on first play, hover or focus. These tests drive the
+// controls directly, so their players start with the bar built.
+const VIDEO_CONTROL_BAR = loadScripts(browserContext(), appScripts(), 'renderVideoControlBar()');
+const parseFakeHTML = markup => parseFakeMarkup(String(markup).replaceAll(
+    'data-video-bar></div>', `data-video-bar>${VIDEO_CONTROL_BAR}</div>`));
 
 test('media renderer preserves direct playback parents, placeholders and existing galleries', () => {
     const context = browserContext();
@@ -689,6 +695,43 @@ test('carousel arrows advance one tile, clamp at the ends, and retain player key
     context.window.matchMedia = () => ({matches:true});
     app.tweetNookScrollGallery(track, -1);
     assert.equal(calls.at(-1).behavior, 'auto');
+});
+
+test('a resting player leaves its control bar unbuilt until it plays or is shown', () => {
+    const context = browserContext();
+    context.setTimeout = () => 1;
+    context.clearTimeout = () => {};
+    const { tweetApp, tweetNookInitVideoPlayer, tweetNookSyncPlayerControls, tweetNookShowVideoUi } = loadScripts(
+        context, appScripts(),
+        '({tweetApp, tweetNookInitVideoPlayer, tweetNookSyncPlayerControls, tweetNookShowVideoUi})',
+    );
+    const app = immediateComponent(tweetApp());
+    const build = () => {
+        const player = parseFakeMarkup(app.renderMediaGrid([{type: 'video', download: {local_path: 'media/v.mp4'}}]))[0].querySelector('video').parentElement;
+        const video = player.querySelector('video');
+        player.style = { setProperty() {} };
+        Object.assign(video, { paused: true, ended: false, duration: 12, currentTime: 0, volume: 1, muted: false });
+        tweetNookInitVideoPlayer(video);
+        return { player, video };
+    };
+    const { player, video } = build();
+    assert.equal(player.querySelector('[data-video-seek]'), null, 'a resting card has no range inputs');
+    assert.ok(player.querySelector('.video-center-play'), 'the center play button is always present');
+    tweetNookSyncPlayerControls(video);
+    assert.equal(player.querySelector('[data-video-seek]'), null, 'a timeupdate while resting builds nothing');
+    video.paused = false;
+    tweetNookSyncPlayerControls(video);
+    const seek = player.querySelector('[data-video-seek]');
+    assert.ok(seek, 'playing builds the bar');
+    assert.equal(seek.disabled, false);
+    const barPlay = player.querySelector('[data-video-bar] [data-video-action="play"]');
+    assert.equal(barPlay.getAttribute('aria-label'), 'Pause video', 'the new bar is synced in the same pass');
+    tweetNookSyncPlayerControls(video);
+    assert.equal(player.querySelectorAll('[data-video-seek]').length, 1, 'the bar is built once');
+
+    const shown = build();
+    tweetNookShowVideoUi(shown.video);
+    assert.ok(shown.player.querySelector('[data-video-volume]'), 'showing the controls builds the bar while paused');
 });
 
 run();
