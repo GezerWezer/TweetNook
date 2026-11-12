@@ -19,42 +19,6 @@ class ThreadObservations:
 
 
 class ConversationsMixin(ConnectionMixin):
-    def _directional_relations(
-        self,
-        tweet_id: str,
-        *,
-        source_types: tuple[str, ...] = (),
-        target_types: tuple[str, ...] = (),
-        limit: int,
-    ):
-        """Load both sides of a relation without leaving an index choice to SQLite."""
-        rows = []
-        seen = set()
-        lookups = (
-            ("tweet_id", source_types, "idx_archive_tweet_record"),
-            ("target_tweet_id", target_types, "idx_archive_target_tweet_id"),
-        )
-        for field, relation_types, index_name in lookups:
-            if not relation_types or len(rows) >= limit:
-                continue
-            types = clause_in("relation_type", relation_types)
-            candidates = self._query(
-                f"record_type = '{RecordType.TWEET_RELATION}' AND {field} = ? AND {types.sql}",
-                (tweet_id, *types.params),
-                cols=["tweet_id", "target_tweet_id", "relation_type"],
-                limit=limit - len(rows),
-                indexed_by=index_name,
-            )
-            for row in candidates:
-                key = (row.get("tweet_id"), row.get("target_tweet_id"), row.get("relation_type"))
-                if key in seen:
-                    continue
-                seen.add(key)
-                rows.append(row)
-                if len(rows) >= limit:
-                    break
-        return rows
-
     def reply_subtree(
         self,
         tweet_id: str,
@@ -125,31 +89,42 @@ class ConversationsMixin(ConnectionMixin):
         return normalized[:limit], len(normalized) > limit
 
     def ancestor_chain(self, tweet_id: str) -> list[str]:
-        """Resolve one chain in directional lookup order, excluding cycles and the focal ID."""
-        parents: list[str] = []
-        current = tweet_id
-        seen = {tweet_id}
-        for _ in range(50):
-            rows = self._directional_relations(
-                current,
-                source_types=("reply_to", "thread_parent"),
-                target_types=("thread_child",),
-                limit=10,
+        """Resolve one chain in directional lookup order, excluding cycles and the focal ID.
+
+        One recursive statement walks up to 50 parents; each step prefers the tweet's own
+        reply_to/thread_parent relation, then a thread_child relation pointing at it.
+        """
+        relation = f"'{RecordType.TWEET_RELATION}'"
+
+        def parent_of(child: str) -> str:
+            return f"""COALESCE(
+                (SELECT relation.target_tweet_id
+                 FROM archive AS relation INDEXED BY idx_archive_tweet_record
+                 WHERE relation.record_type = {relation} AND relation.tweet_id = {child}
+                   AND relation.relation_type IN ('reply_to', 'thread_parent')
+                   AND COALESCE(relation.target_tweet_id, '') != '' LIMIT 1),
+                (SELECT relation.tweet_id
+                 FROM archive AS relation INDEXED BY idx_archive_target_tweet_id
+                 WHERE relation.record_type = {relation} AND relation.target_tweet_id = {child}
+                   AND relation.relation_type = 'thread_child'
+                   AND COALESCE(relation.tweet_id, '') != '' LIMIT 1))"""
+
+        rows = self.conn.execute(
+            f"""
+            WITH RECURSIVE chain(id, depth, path, parent) AS (
+                SELECT ?1, 0, ',' || ?1 || ',', {parent_of("?1")}
+                UNION ALL
+                SELECT chain.parent, chain.depth + 1, chain.path || chain.parent || ',',
+                       {parent_of("chain.parent")}
+                FROM chain
+                WHERE chain.parent IS NOT NULL AND chain.depth < 50
+                  AND instr(chain.path, ',' || chain.parent || ',') = 0
             )
-            parent = None
-            for row in rows:
-                if row.get("relation_type") in ("reply_to", "thread_parent"):
-                    parent = row.get("target_tweet_id")
-                elif row.get("relation_type") == "thread_child":
-                    parent = row.get("tweet_id")
-                if parent:
-                    break
-            if not parent or parent in seen:
-                break
-            parents.append(parent)
-            seen.add(parent)
-            current = parent
-        return parents
+            SELECT id FROM chain WHERE depth > 0 ORDER BY depth
+            """,
+            (tweet_id,),
+        ).fetchall()
+        return [str(row[0]) for row in rows]
 
     def thread_observations(self, related_ids: set[str]) -> ThreadObservations:
         related = clause_in("tweet_id", related_ids)
@@ -201,7 +176,7 @@ class ConversationsMixin(ConnectionMixin):
                 "author_display_name",
                 "created_at",
                 "synced_at",
-                "raw_json",
+                "row_key",
             ],
             limit=related_count * 3,
             indexed_by="idx_archive_tweet_record",
@@ -213,6 +188,18 @@ class ConversationsMixin(ConnectionMixin):
             limit=related_count,
             indexed_by="idx_archive_tweet_record",
         )
+
+        # A membership's payload is shown only for a post without a stored object, so the
+        # large raw_json column is read for those memberships alone.
+        object_ids = {row.get("tweet_id") for row in objs}
+        needed = [row["row_key"] for row in col_rows if row.get("tweet_id") not in object_ids]
+        payloads: dict[str, Any] = {}
+        for start in range(0, len(needed), 200):
+            keys = clause_in("row_key", set(needed[start : start + 200]))
+            for row in self._query(keys.sql, keys.params, cols=["row_key", "raw_json"]):
+                payloads[row["row_key"]] = row.get("raw_json")
+        for row in col_rows:
+            row["raw_json"] = payloads.get(row.pop("row_key"))
 
         return ThreadObservations(objs, media, col_rows, tag_rows)
 

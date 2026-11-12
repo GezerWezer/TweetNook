@@ -141,15 +141,24 @@ class ThreadStore(ConversationsMixin, PresentationMixin):
             ]
         if "record_type = 'tweet' AND" in expr:
             return [
-                {"tweet_id": "main", "collection_type": "bookmark"},
-                {"tweet_id": "main", "collection_type": "like"},
+                {
+                    "tweet_id": "main",
+                    "collection_type": "bookmark",
+                    "row_key": "tweet:bookmark:main",
+                },
+                {"tweet_id": "main", "collection_type": "like", "row_key": "tweet:like:main"},
             ]
+        if expr.startswith("row_key"):
+            return [{"row_key": key, "raw_json": None} for key in params]
         if "record_type = 'media_tag'" in expr:
             return [
                 {"tweet_id": "main", "raw_json": '{"tags":["Night"]}'},
                 {"tweet_id": "child", "raw_json": "not-json"},
             ]
         return []
+
+    def ancestor_chain(self, tweet_id: str) -> list[str]:
+        return ["parent"] if tweet_id == "main" else []
 
     def execute(self, sql: str, params: tuple[object, ...]):
         if "/* tweetnook_reply_frontier */" in sql:
@@ -273,26 +282,6 @@ def test_api_tweet_thread_builds_parents_children_nested_replies_quotes_media_an
     assert store.quote_count_call is not None
     assert store.quote_count_call[1] == ("main",)
     assert "INDEXED BY idx_archive_target_tweet_id" in store.quote_count_call[0]
-    relation_columns = {
-        tuple(columns or [])
-        for expr, columns in store.query_columns
-        if "record_type = 'tweet_relation'" in expr
-    }
-    assert relation_columns == {("tweet_id", "target_tweet_id", "relation_type")}
-    relation_queries = [
-        (expr, index)
-        for expr, index in store.query_indexes
-        if "record_type = 'tweet_relation'" in expr
-    ]
-    assert relation_queries
-    assert all(" OR " not in expr for expr, _ in relation_queries)
-    for expr, index in relation_queries:
-        expected = (
-            "idx_archive_target_tweet_id"
-            if " AND target_tweet_id" in expr
-            else "idx_archive_tweet_record"
-        )
-        assert index == expected
     expected_columns = {
         "tweet_object": {
             "tweet_id",
@@ -483,38 +472,45 @@ def test_api_tweet_thread_parses_each_tweet_json_once_and_tolerates_malformed(mo
     assert original_loads(response.body)["main"]["raw_json"] is None
 
 
-class CycleStore(ThreadStore):
-    def _query(
-        self, expr: str, params=(), *, limit: int | None = None, **kwargs: Any
-    ) -> list[dict[str, Any]]:
-        if "record_type = 'tweet_relation'" in expr and "quote_of" not in expr:
-            self.expressions.append(expr)
-            self.relation_call += 1
-            if self.relation_call == 1:
-                return [
-                    {
-                        "tweet_id": "main",
-                        "target_tweet_id": "parent",
-                        "relation_type": "reply_to",
-                    }
-                ]
-            if self.relation_call == 2:
-                return [
-                    {
-                        "tweet_id": "parent",
-                        "target_tweet_id": "main",
-                        "relation_type": "reply_to",
-                    }
-                ]
-            return []
-        return super()._query(expr, params, limit=limit, **kwargs)
+def _relation(store: ArchiveStore, tweet_id: str, relation_type: str, target_id: str):
+    return store._record(
+        row_key=f"tweet_relation:{tweet_id}:{relation_type}:{target_id}",
+        record_type="tweet_relation",
+        tweet_id=tweet_id,
+        relation_type=relation_type,
+        target_tweet_id=target_id,
+    )
 
 
-def test_api_tweet_thread_stops_parent_cycles_before_depth_cap():
-    store = CycleStore()
-    result = _decoded(api_tweet_thread("main", store=store, _auth=True))
-    assert result["main"]["tweet_id"] == "main"
-    assert store.relation_call < 10
+def test_ancestor_chain_follows_parent_and_thread_child_relations_and_stops_cycles(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    store._merge_records(
+        [
+            _relation(store, "main", "reply_to", "parent"),
+            # The grandparent is known only from its thread_child relation.
+            _relation(store, "grandparent", "thread_child", "parent"),
+            # A child's own parent relation wins over a thread_child pointing at it.
+            _relation(store, "decoy", "thread_child", "main"),
+            _relation(store, "grandparent", "thread_parent", "main"),
+        ]
+    )
+    statements: list[str] = []
+    store.conn.set_trace_callback(statements.append)
+    assert store.ancestor_chain("main") == ["parent", "grandparent"]
+    store.conn.set_trace_callback(None)
+    # One statement walks the chain, with each lookup pinned to its relation index.
+    assert len(statements) == 1
+    assert "INDEXED BY idx_archive_tweet_record" in statements[0]
+    assert "INDEXED BY idx_archive_target_tweet_id" in statements[0]
+    assert store.ancestor_chain("orphan") == []
+    store.close()
+
+
+def test_ancestor_chain_caps_depth_at_fifty_parents(tmp_path):
+    store = ArchiveStore(tmp_path / "archive.db", create=True)
+    store._merge_records([_relation(store, str(i), "reply_to", str(i + 1)) for i in range(60)])
+    assert store.ancestor_chain("0") == [str(i) for i in range(1, 51)]
+    store.close()
 
 
 def test_api_tweet_thread_preserves_relation_only_placeholders(tmp_path):
