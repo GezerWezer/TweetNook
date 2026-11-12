@@ -19,6 +19,29 @@ const {
     pageCss,
 } = require('./web_harness.cjs');
 
+test('media cards skip rendering until the prefetch margin, then stay rendered', () => {
+    const css = pageCss();
+    // Media cards keep content-visibility: auto from .feed-card, with their own estimate.
+    const mediaRule = css.match(/\n\.feed-card-media \{([^}]*)\}/)[1];
+    assert.doesNotMatch(mediaRule, /content-visibility/);
+    assert.match(mediaRule, /contain-intrinsic-size: auto \d+px/);
+
+    const context = browserContext();
+    const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');
+    const app = immediateComponent(tweetApp());
+    app.initVideoPlayback();
+    const observer = app.mediaPrefetchObserver;
+    assert.equal(observer.options.rootMargin, '1600px 0px');
+    const card = { tagName: 'DIV', classList: { contains: name => name === 'feed-card' }, style: {}, querySelectorAll: () => [] };
+    observer.observe(card);
+    observer.callback([{ target: card, isIntersecting: false }]);
+    assert.equal(card.style.contentVisibility, undefined, 'a distant card stays skippable');
+    assert.deepEqual(observer.observed, [card]);
+    observer.callback([{ target: card, isIntersecting: true }]);
+    assert.equal(card.style.contentVisibility, 'visible');
+    assert.deepEqual(observer.observed, [], 'rendered once, it is never skipped again');
+});
+
 test('lazy feed images are observed per card and loaded and decoded ahead of scrolling', () => {
     const context = browserContext();
     const { tweetApp } = loadScripts(context, appScripts(), '({tweetApp})');

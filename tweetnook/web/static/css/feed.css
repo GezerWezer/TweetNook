@@ -11,12 +11,13 @@
     content-visibility: auto;
     contain-intrinsic-size: auto 420px;
 }
-/* Media already has explicit aspect ratios. Skipping its layout replaces those
-   stable boxes with estimated card heights and can expose blank layers while
-   scrolling, especially in Safari. Keep text-only cards eligible for skipping.
-   The renderer marks media cards (feed-card-media). */
+/* Media cards are skipped too until the media prefetch observer reaches them, a
+   margin ahead of the viewport, and renders them for good (initVideoPlayback).
+   Skipping and rendering a card over and over is what exposed blank media layers
+   in Safari; rendering once ahead of the reader does not. Until then a media card
+   is sized by this estimate (the renderer marks them feed-card-media). */
 .feed-card-media {
-    content-visibility: visible;
+    contain-intrinsic-size: auto 560px;
 }
 
 /* Community notes use distinct spacing in feeds, quotes, and detail views. */

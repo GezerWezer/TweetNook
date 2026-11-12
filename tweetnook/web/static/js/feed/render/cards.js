@@ -102,8 +102,8 @@ function feedCardMethods() {
                 part(this.renderActionBar(tweet)),
                 html`</div></div></div>`,
             ]}`);
-            // feed-card-media keeps media cards out of content-visibility skipping. Matching it
-            // in CSS with :has() re-ran a subtree selector on every inserted card.
+            // feed-card-media gives media cards their own size estimate while skipped. Matching
+            // it in CSS with :has() re-ran a subtree selector on every inserted card.
             const media = FEED_CARD_MEDIA.test(body) ? ' feed-card-media' : '';
 
             return String(html`${[
