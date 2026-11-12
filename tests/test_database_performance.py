@@ -195,7 +195,8 @@ def test_temp_like_index_does_not_trigger_close_time_writes(tmp_path):
         statements = []
         store.conn.set_trace_callback(statements.append)
         store.warm_like_order()
-        assert store.conn.total_changes > 0
+        # The writer persists the order; the reader then finds it current and writes nothing.
+        assert (store.conn.total_changes > 0) is not store._read_only
         store.close()
         assert "PRAGMA optimize" not in statements
 
@@ -346,7 +347,7 @@ def test_like_temp_transaction_serializes_with_archive_mutations(tmp_path):
 
         def executemany(self, sql, params):
             result = connection.executemany(sql, params)
-            if "INSERT INTO temp.tweetnook_like_order" in sql:
+            if "INSERT INTO main.tweetnook_like_order" in sql:
                 indexed.set()
                 assert release.wait(5)
             return result

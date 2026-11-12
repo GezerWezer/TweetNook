@@ -131,6 +131,17 @@ class ArchiveStore(
                     "CREATE INDEX IF NOT EXISTS idx_archive_tweet_record "
                     "ON archive(tweet_id, record_type)"
                 )
+                # The derived like sequence persists, keyed by the like-order revision it
+                # was built from, so a restart doesn't rebuild it from every capture.
+                self.conn.execute(
+                    "CREATE TABLE IF NOT EXISTS tweetnook_like_order "
+                    "(tweet_id TEXT PRIMARY KEY, latest_position INTEGER UNIQUE, "
+                    "earliest_position INTEGER UNIQUE)"
+                )
+                self.conn.execute(
+                    "CREATE TABLE IF NOT EXISTS tweetnook_like_order_state "
+                    "(id INTEGER PRIMARY KEY CHECK (id = 1), signature INTEGER NOT NULL)"
+                )
         except BaseException:
             with suppress(Exception):
                 self.conn.close()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -119,36 +120,60 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             self._ensure_like_order_table()
 
     def _ensure_like_order_table(self) -> None:
-        """Index the immutable derived sequence once per input revision/connection.
+        """Keep the like sequence's paging table current with its input revision.
 
-        Call under _transaction_lock: the TEMP table shares the connection's transaction
-        state with archive writes. A savepoint preserves any caller transaction;
-        temporary rows never become part of the on-disk archive or backups.
+        Call under _transaction_lock: the paging table shares the connection's transaction
+        state with archive writes. A writable store persists the table, so a restart reuses
+        it until like-order inputs change. A read-only store reads the persisted table while
+        it is current and otherwise indexes a temporary copy, which shadows the persisted
+        one because SQLite resolves unqualified names in temp first.
         """
-        order = self.get_like_order()
-        if self._indexed_like_order is order and not self.conn.in_transaction:
+        signature = self.cache_revision("like_order")
+        if self._indexed_like_order == signature and not self.conn.in_transaction:
             return
+        try:
+            row = self.conn.execute(
+                "SELECT signature FROM main.tweetnook_like_order_state WHERE id = 1"
+            ).fetchone()
+            persisted = True
+        except sqlite3.OperationalError:  # an archive no writable store has opened yet
+            row, persisted = None, False
+        if row is not None and row[0] == signature:
+            self.conn.execute(f"DROP TABLE IF EXISTS temp.{LIKE_ORDER_TABLE}")
+            self._indexed_like_order = signature if not self.conn.in_transaction else None
+            return
+        target = "main" if persisted and not self._read_only else "temp"
+        order = self.get_like_order()
         self.conn.execute("SAVEPOINT like_order_index")
         try:
-            self.conn.execute(
-                f"CREATE TEMP TABLE IF NOT EXISTS {LIKE_ORDER_TABLE} "
-                "(tweet_id TEXT PRIMARY KEY, latest_position INTEGER UNIQUE, "
-                "earliest_position INTEGER UNIQUE)"
-            )
-            self.conn.execute(f"DELETE FROM temp.{LIKE_ORDER_TABLE}")
+            if target == "temp":
+                self.conn.execute(
+                    f"CREATE TEMP TABLE IF NOT EXISTS {LIKE_ORDER_TABLE} "
+                    "(tweet_id TEXT PRIMARY KEY, latest_position INTEGER UNIQUE, "
+                    "earliest_position INTEGER UNIQUE)"
+                )
+            else:
+                self.conn.execute(f"DROP TABLE IF EXISTS temp.{LIKE_ORDER_TABLE}")
+            self.conn.execute(f"DELETE FROM {target}.{LIKE_ORDER_TABLE}")
             earliest = {
                 tweet_id: i for i, tweet_id in enumerate(order.ordered_ids("liked_earliest"))
             }
             self.conn.executemany(
-                f"INSERT INTO temp.{LIKE_ORDER_TABLE} VALUES (?, ?, ?)",
+                f"INSERT INTO {target}.{LIKE_ORDER_TABLE} VALUES (?, ?, ?)",
                 ((tweet_id, i, earliest[tweet_id]) for i, tweet_id in enumerate(order.ids)),
             )
+            if target == "main":
+                self.conn.execute(
+                    "INSERT INTO main.tweetnook_like_order_state (id, signature) VALUES (1, ?) "
+                    "ON CONFLICT(id) DO UPDATE SET signature = excluded.signature",
+                    (signature,),
+                )
         except BaseException:
             self.conn.execute("ROLLBACK TO like_order_index")
             raise
         finally:
             self.conn.execute("RELEASE like_order_index")
-        self._indexed_like_order = order if not self.conn.in_transaction else None
+        self._indexed_like_order = signature if not self.conn.in_transaction else None
 
     def query_like_order_ids(
         self,
@@ -170,7 +195,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
             self._ensure_like_order_table()
             rows = self.conn.execute(
                 f"SELECT ordering.tweet_id, ordering.{position} AS like_position "
-                f"FROM temp.{LIKE_ORDER_TABLE} AS ordering "
+                f"FROM {LIKE_ORDER_TABLE} AS ordering "
                 f"WHERE ordering.{position} > ? AND EXISTS "
                 "(SELECT 1 FROM archive INDEXED BY idx_archive_tweet_id "
                 f"WHERE archive.tweet_id = ordering.tweet_id AND ({filter_expr})) "

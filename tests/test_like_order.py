@@ -520,8 +520,53 @@ def test_warm_like_order_builds_the_sequence_and_paging_table(store):
     store.warm_like_order()
 
     order = store._like_order_cache[1]
-    assert store._indexed_like_order is order
     assert order.ordered_ids("liked_latest") == ["B", "A"]
+    rows = store.conn.execute(
+        "SELECT tweet_id, latest_position, earliest_position FROM main.tweetnook_like_order "
+        "ORDER BY latest_position"
+    ).fetchall()
+    assert [tuple(row) for row in rows] == [("B", 0, 1), ("A", 1, 0)]
+
+
+def test_read_only_store_indexes_a_temp_copy_until_the_persisted_order_is_current(tmp_path):
+    from tweetnook.storage.backend import ArchiveStore
+
+    path = tmp_path / "archive.db"
+    writer = ArchiveStore(path, create=True)
+    for tweet_id in "AB":
+        membership(writer, tweet_id)
+    capture(writer, ["B", "A"])
+    writer.close()  # nothing has warmed the order, so the persisted table is empty
+
+    reader = ArchiveStore(path, create=False, read_only=True)
+    try:
+        reader.warm_like_order()
+        rows = reader.conn.execute(
+            "SELECT tweet_id FROM temp.tweetnook_like_order ORDER BY latest_position"
+        ).fetchall()
+        assert [row[0] for row in rows] == ["B", "A"]
+        assert (
+            reader.conn.execute("SELECT COUNT(*) FROM main.tweetnook_like_order").fetchone()[0] == 0
+        )
+    finally:
+        reader.close()
+
+    writer = ArchiveStore(path, create=False)
+    writer.warm_like_order()
+    writer.close()
+    reader = ArchiveStore(path, create=False, read_only=True)
+    try:
+        reader.warm_like_order()
+        # The persisted copy is current, so the reader writes nothing and uses it.
+        assert reader.conn.total_changes == 0
+        assert (
+            reader.conn.execute(
+                "SELECT name FROM sqlite_temp_master WHERE name = 'tweetnook_like_order'"
+            ).fetchone()
+            is None
+        )
+    finally:
+        reader.close()
 
 
 @pytest.mark.parametrize(

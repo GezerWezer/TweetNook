@@ -52,7 +52,7 @@ class ConnectionMixin:
     _transaction_lock: threading.RLock
     _like_order_cache: tuple[int, LikeOrder] | None
     _like_capture_pages: dict[tuple[str, str | None], PageObservations | None]
-    _indexed_like_order: LikeOrder | None
+    _indexed_like_order: int | None
     _transaction_depth: int
     _transaction_aborted: bool
     _read_only: bool

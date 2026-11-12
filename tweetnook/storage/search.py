@@ -625,7 +625,7 @@ class SearchMixin(ReadsMixin, TagsMixin):
         if sort in LIKE_SORTS:
             position = "earliest_position" if sort == "liked_earliest" else "latest_position"
             page_from = (
-                f"matches JOIN temp.{LIKE_ORDER_TABLE} AS like_order "
+                f"matches JOIN {LIKE_ORDER_TABLE} AS like_order "
                 "ON like_order.tweet_id = matches.tweet_id"
             )
             order_by = f"like_order.{position}, matches.tweet_id"
