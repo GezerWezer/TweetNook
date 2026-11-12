@@ -15,7 +15,6 @@ function feedMethods() {
     // First pages by URL ({at, speculative, result, promise}) and the URL on screen.
     const feedPages = new Map();
     let feedListUrl = null;
-    let feedPrefetchScheduled = false;
     // The list element whose delegated listeners are bound.
     let boundFeedList = null;
     // Roots waiting for the next frame's clamp measurement (measureTextClamps).
@@ -165,16 +164,13 @@ function feedMethods() {
             this.threadCache.clear();
         },
 
-        scheduleFeedPrefetch() {
-            if (feedPrefetchScheduled || typeof globalThis.fetch !== 'function') return;
-            feedPrefetchScheduled = true;
-            const prefetch = () => {
-                for (const [collection, sort] of DEFAULT_FEEDS) {
-                    this.requestFeedPage(`/api/tweets?collection=${collection}&sort=${sort}&page=1&cursor=`);
-                }
-            };
-            if (typeof globalThis.requestIdleCallback === 'function') globalThis.requestIdleCallback(prefetch, { timeout: 3000 });
-            else setTimeout(prefetch, 1500);
+        // Another collection's first page is fetched when the reader points at, focuses or
+        // presses its tab, not for every tab after each load: each page is a full hydration.
+        prefetchFeedTab(collection) {
+            if (typeof globalThis.fetch !== 'function') return;
+            const feed = DEFAULT_FEEDS.find(([name]) => name === collection);
+            if (!feed || collection === this.collectionFilter) return;
+            this.requestFeedPage(`/api/tweets?collection=${feed[0]}&sort=${feed[1]}&page=1&cursor=`);
         },
 
         async fetchFeedPage(url) {
@@ -279,7 +275,6 @@ function feedMethods() {
                     if (contentRevision === this.feedContentRevision) this.feedUpdateAvailable = false;
                     this.searchHighlightTerms = data.highlight_terms || [];
                     this.renderFeedList(data.tweets);
-                    this.scheduleFeedPrefetch();
                 }
                 this.page = data.page;
                 this.totalPages = data.pages;

@@ -30,7 +30,7 @@
             <div x-show="pageView === 'list'" class="nook-tabs-frame" x-init="nookTabsInit($el)">
                 <nav class="nook-tabs" role="tablist" aria-label="Archive collection">
                     <template x-for="option in feedOptions('collection')" :key="option.value">
-                        <button type="button" role="tab" class="nook-tab" :id="'nook-tab-' + option.value" aria-controls="nook-feed" :aria-selected="collectionFilter === option.value" :tabindex="collectionFilter === option.value ? 0 : -1" @click="selectFeedOption('collection', option.value); nookRevealTab($el)" @keydown="nookTabKey($event, $data)"><span x-text="option.label"></span></button>
+                        <button type="button" role="tab" class="nook-tab" :id="'nook-tab-' + option.value" aria-controls="nook-feed" :aria-selected="collectionFilter === option.value" :tabindex="collectionFilter === option.value ? 0 : -1" @pointerenter="prefetchFeedTab(option.value)" @pointerdown="prefetchFeedTab(option.value)" @focus="prefetchFeedTab(option.value)" @click="selectFeedOption('collection', option.value); nookRevealTab($el)" @keydown="nookTabKey($event, $data)"><span x-text="option.label"></span></button>
                     </template>
                 </nav>
             </div>

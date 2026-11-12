@@ -371,11 +371,15 @@ test('feeds reuse recent first pages and keep the old list while loading', async
     assert.deepEqual(requests, [likes]);
     assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['L1']);
 
-    // Idle time fetches the other collections' first pages once.
-    idle();
-    assert.deepEqual(requests.slice(1), [all,
-        '/api/tweets?collection=bookmarks&sort=newest&page=1&cursor=',
-        '/api/tweets?collection=tweets&sort=newest&page=1&cursor=']);
+    // Loading a list prefetches nothing; pointing at another tab fetches that tab's first page
+    // once, and the tab on screen or an unknown one fetches nothing.
+    assert.equal(idle, null);
+    app.prefetchFeedTab('likes');
+    app.prefetchFeedTab('nope');
+    assert.deepEqual(requests, [likes]);
+    app.prefetchFeedTab('all');
+    app.prefetchFeedTab('all');
+    assert.deepEqual(requests, [likes, all]);
 
     app.collectionFilter = 'all';
     app.sortOrder = 'newest';
@@ -392,7 +396,7 @@ test('feeds reuse recent first pages and keep the old list while loading', async
     const back = app.fetchTweets();
     assert.equal(app.loading, false);
     await back;
-    assert.equal(requests.length, 4);
+    assert.equal(requests.length, 2);
     assert.deepEqual(Array.from(app.tweets, tweet => tweet.tweet_id), ['L1']);
 
     // A finished job invalidates cached lists.
