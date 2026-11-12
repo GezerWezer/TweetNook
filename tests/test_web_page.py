@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -9,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from tweetnook.web import server
-from tweetnook.web.page import assemble_page
+from tweetnook.web.page import assemble_page, bundle_assets
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "tweetnook" / "web"
@@ -105,3 +106,69 @@ def test_browser_harnesses_assemble_the_same_page() -> None:
     )
 
     assert json.loads(result.stdout) == assemble_page(WEB_ROOT)[0]
+
+
+def _bundle_root(tmp_path: Path) -> Path:
+    web_root = tmp_path / "web"
+    (web_root / "static" / "js").mkdir(parents=True)
+    (web_root / "static" / "css").mkdir()
+    (web_root / "index.html").write_text(
+        "<head>\n"
+        "    <!-- bundle -->\n"
+        '    <link rel="stylesheet" href="/static/css/a.css">\n'
+        '    <script defer src="/static/vendor/alpine.min.js"></script>\n'
+        '    <script src="/static/js/one.js"></script>\n'
+        '    <script src="/static/js/two.js"></script>\n'
+        "    <!-- /bundle -->\n"
+        "</head>\n"
+    )
+    for name, text in (("js/one.js", "1"), ("js/two.js", "2"), ("css/a.css", "a{}")):
+        (web_root / "static" / name).write_text(text)
+
+    def digest(*files: tuple[str, str]) -> str:
+        hash_ = hashlib.sha256()
+        for name, text in files:
+            hash_.update(f"{name}\0{text}\0".encode())
+        return hash_.hexdigest()
+
+    manifest = {
+        "js": digest(("js/one.js", "1"), ("js/two.js", "2")),
+        "css": digest(("css/a.css", "a{}")),
+    }
+    (web_root / "static" / "bundle.json").write_text(json.dumps(manifest))
+    return web_root
+
+
+def test_current_bundle_replaces_the_listed_assets_and_keeps_deferred_scripts(
+    tmp_path: Path,
+) -> None:
+    web_root = _bundle_root(tmp_path)
+    page, sources = assemble_page(web_root)
+
+    served = bundle_assets(page, web_root, sources)
+
+    assert served == (
+        "<head>\n"
+        '    <link rel="stylesheet" href="/static/css/bundle.min.css">\n'
+        '    <script defer src="/static/vendor/alpine.min.js"></script>\n'
+        '    <script src="/static/js/bundle.min.js"></script>\n'
+        "</head>\n"
+    )
+    assert {path.name for path, _ in sources} >= {"bundle.json", "one.js", "two.js", "a.css"}
+
+
+@pytest.mark.parametrize("change", ["edit_source", "drop_manifest", "corrupt_manifest"])
+def test_stale_or_missing_bundle_serves_the_listed_assets(tmp_path: Path, change: str) -> None:
+    web_root = _bundle_root(tmp_path)
+    if change == "edit_source":
+        (web_root / "static" / "js" / "two.js").write_text("2;")
+    elif change == "drop_manifest":
+        (web_root / "static" / "bundle.json").unlink()
+    else:
+        (web_root / "static" / "bundle.json").write_text("{")
+    page, sources = assemble_page(web_root)
+
+    served = bundle_assets(page, web_root, sources)
+
+    assert "<!-- bundle -->" not in served and "bundle.min" not in served
+    assert served.count("<script") == 3 and '/static/css/a.css"' in served

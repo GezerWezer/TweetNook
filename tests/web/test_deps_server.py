@@ -448,15 +448,15 @@ def test_run_server_sets_state_and_invokes_uvicorn(monkeypatch, tmp_path: Path) 
 def test_document_versions_assets_and_revalidates_with_etag() -> None:
     with TestClient(server.app) as client:
         root = client.get("/")
-        version = re.search(r'src="/static/js/app\.js\?v=([0-9a-f]{16})"', root.text)
+        version = re.search(r'src="/static/js/bundle\.min\.js\?v=([0-9a-f]{16})"', root.text)
         assert version is not None
-        current = client.get(f"/static/js/app.js?v={version.group(1)}")
-        unversioned = client.get("/static/js/app.js")
-        stale = client.get("/static/js/app.js?v=0000000000000000")
+        current = client.get(f"/static/js/bundle.min.js?v={version.group(1)}")
+        unversioned = client.get("/static/js/bundle.min.js")
+        stale = client.get("/static/js/bundle.min.js?v=0000000000000000")
         revalidated = client.get("/", headers={"If-None-Match": root.headers["etag"]})
 
     assert root.headers["cache-control"] == "no-cache"
-    assert 'href="/static/css/styles.css?v=' in root.text
+    assert 'href="/static/css/bundle.min.css?v=' in root.text
     assert current.headers["cache-control"] == "public, max-age=31536000, immutable"
     assert unversioned.headers["cache-control"] == "no-cache"
     assert stale.headers["cache-control"] == "no-cache"

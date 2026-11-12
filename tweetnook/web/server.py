@@ -36,7 +36,7 @@ from tweetnook.web.deps import (
     watch_saved_password,
 )
 from tweetnook.web.notices import NoticeStore
-from tweetnook.web.page import assemble_page
+from tweetnook.web.page import assemble_page, bundle_assets
 from tweetnook.web.processes import forget_web_process, record_web_process
 from tweetnook.web.routes.activity import router as activity_router
 from tweetnook.web.routes.automated_tagging import router as automated_tagging_router
@@ -387,6 +387,7 @@ def _versioned_index() -> tuple[bytes, str, dict[str, str]]:
         if cached is not None and _unchanged(cached[0]):
             return cached[1], cached[2], cached[3]
         page, stamps = assemble_page(WEB_ROOT)
+        page = bundle_assets(page, WEB_ROOT, stamps)
         versions: dict[str, str] = {}
 
         def version(match: re.Match[str]) -> str:

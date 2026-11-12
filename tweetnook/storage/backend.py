@@ -229,6 +229,7 @@ class ArchiveStore(
         # Opening runs migrations before the tag table exists.
         if getattr(self, "_tag_table_ready", False):
             self._sync_tag_table()
+
     def _ensure_authors_table(self) -> None:
         """Each handle's latest saved row, kept current by triggers on memberships."""
         exists = self.conn.execute(
