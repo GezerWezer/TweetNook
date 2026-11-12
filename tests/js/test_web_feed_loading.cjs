@@ -564,6 +564,62 @@ test('feed list replaces pages, appends only new tweets, and ignores stale respo
     assert.deepEqual(ids(), []);
 });
 
+test('an appended page goes in a few cards per frame and holds the loader until the last', async () => {
+    const context = browserContext();
+    const frames = [];
+    context.requestAnimationFrame = callback => frames.push(callback);
+    const pending = [];
+    context.fetch = url => new Promise(resolve => pending.push({ url, resolve }));
+    const { app, list } = feedListApp(context);
+    const tweet = id => ({ tweet_id: id, text: `Tweet ${id}`, author: { id: '1', username: 'a', display_name: 'A' } });
+    const respond = (index, tweets, more = true) => pending[index].resolve({ ok: true, status: 200,
+        json: async () => ({ tweets, page: index + 1, pages: null, total: null, has_more: more, next_cursor: more ? `c${index}` : null }) });
+    const ids = () => list.children.map(card => card.dataset.tweetId);
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+    const runFrame = async () => { const due = frames.splice(0); due.forEach(callback => callback()); await settle(); };
+
+    const first = app.fetchTweets();
+    respond(0, [tweet('1')]);
+    await first;
+    assert.deepEqual(ids(), ['1']);
+
+    // Twelve new cards: five now, five next frame, the last two the frame after.
+    const page = Array.from({ length: 12 }, (_, index) => tweet(String(index + 2)));
+    const more = app.loadMore();
+    respond(1, page);
+    await settle();
+    assert.equal(ids().length, 6);
+    assert.equal(app.tweets.length, 13, 'the data holds the whole page from the start');
+    assert.equal(app.loadingMore, true);
+    assert.equal(app.loadMore(), undefined, 'no other page starts mid-insert');
+    assert.equal(pending.length, 2);
+    // A post removed between frames is not inserted.
+    app.tweets = app.tweets.filter(item => item.tweet_id !== '9');
+    await runFrame();
+    assert.deepEqual(ids(), ['1', '2', '3', '4', '5', '6', '7', '8', '10', '11']);
+    assert.equal(app.loadingMore, true);
+    await runFrame();
+    await more;
+    assert.deepEqual(ids(), ['1', '2', '3', '4', '5', '6', '7', '8', '10', '11', '12', '13']);
+    assert.equal(app.loadingMore, false);
+    assert.equal(app.page, 2);
+
+    // A newer list abandons the rest of a page that is still going in.
+    const next = app.loadMore();
+    respond(2, Array.from({ length: 10 }, (_, index) => tweet(`n${index}`)));
+    await settle();
+    assert.equal(ids().length, 17);
+    app.searchQuery = 'new';
+    const fresh = app.fetchTweets();
+    await runFrame();
+    await next;
+    assert.equal(ids().length, 17, 'no more cards from the abandoned page');
+    assert.equal(app.page, 2, 'the abandoned page does not advance the cursor');
+    respond(3, [tweet('fresh')], false);
+    await fresh;
+    assert.deepEqual(ids(), ['fresh']);
+});
+
 test('distant feed cards give way to placeholders and return with their scroll and video positions', () => {
     const context = browserContext();
     const { app, list } = feedListApp(context);

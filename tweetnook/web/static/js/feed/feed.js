@@ -9,6 +9,10 @@ const FEED_CACHE_MS = 5 * 60 * 1000;
 const FEED_CACHE_LIMIT = 12;
 // Load the next page while the end of the list is still this far below the viewport.
 const FEED_PREFETCH_MARGIN_PX = 1200;
+// An appended page goes in this many cards per frame. Styling, laying out and painting
+// a whole page at once is one long task (about a quarter second on a slow phone), and the
+// page lands below the viewport, so the reader never sees the stagger.
+const FEED_APPEND_CARDS_PER_FRAME = 5;
 const DEFAULT_FEEDS = [['likes', 'liked_latest'], ['all', 'newest'], ['bookmarks', 'newest'], ['tweets', 'newest']];
 
 function feedMethods() {
@@ -280,7 +284,8 @@ function feedMethods() {
                         return true;
                     });
                     this.tweets = [...this.tweets, ...added];
-                    this.renderFeedList(added, { append: true });
+                    await this.appendFeedCards(added, requestId);
+                    if (requestId !== this.feedRequestId) return;
                 } else {
                     this.tweets = data.tweets;
                     if (contentRevision === this.feedContentRevision) this.feedUpdateAvailable = false;
@@ -340,6 +345,24 @@ function feedMethods() {
             });
             this.measureTextClamps(list);
             this.trackFeedCards([...list.children].slice(start), { reset: !append });
+        },
+
+        // Inserts a page's cards a few per frame. loadingMore stays set until the last
+        // chunk, so the sentinel can't start another page mid-insert. A newer request
+        // (a new list, a retry) abandons the rest, and a post removed meanwhile is skipped.
+        async appendFeedCards(tweets, requestId) {
+            const nextFrame = () => new Promise(resolve => (typeof globalThis.requestAnimationFrame === 'function'
+                ? globalThis.requestAnimationFrame(resolve) : setTimeout(resolve, 0)));
+            for (let start = 0; start < tweets.length; start += FEED_APPEND_CARDS_PER_FRAME) {
+                if (start) {
+                    await nextFrame();
+                    if (requestId !== this.feedRequestId) return;
+                }
+                const chunk = tweets.slice(start, start + FEED_APPEND_CARDS_PER_FRAME)
+                    .map(tweet => this.feedTweetById(tweet.tweet_id))
+                    .filter(Boolean);
+                if (chunk.length) this.renderFeedList(chunk, { append: true });
+            }
         },
 
         isPhoneLayout() {
