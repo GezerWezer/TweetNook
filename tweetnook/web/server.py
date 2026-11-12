@@ -267,27 +267,46 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="TweetNook Web UI", lifespan=lifespan)
 
 
-@app.middleware("http")
-async def gate_initial_setup(request: Request, call_next):
+def _setup_gate_response(path: str) -> JSONResponse | None:
     coordinator = server_state.get("setup_coordinator")
-    path = request.url.path
-    if coordinator is not None:
-        safe = (
-            path == "/"
-            or _DETAIL_DOCUMENT_PATH.fullmatch(path) is not None
-            or path.startswith("/static/")
-            or path == "/api/setup"
-            or path.startswith("/api/setup/")
-            or path == "/api/notices"
-            or path.startswith("/api/notices/")
-            or path in {"/api/activity/status", "/api/activity/events", "/api/activity/stop"}
+    if coordinator is None:
+        return None
+    safe = (
+        path == "/"
+        or _DETAIL_DOCUMENT_PATH.fullmatch(path) is not None
+        or path.startswith("/static/")
+        or path == "/api/setup"
+        or path.startswith("/api/setup/")
+        or path == "/api/notices"
+        or path.startswith("/api/notices/")
+        or path in {"/api/activity/status", "/api/activity/events", "/api/activity/stop"}
+    )
+    if not coordinator.state.completed and not safe:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": {"code": "setup_required", "message": "Complete Setup first."}},
         )
-        if not coordinator.state.completed and not safe:
-            return JSONResponse(
-                status_code=409,
-                content={"detail": {"code": "setup_required", "message": "Complete Setup first."}},
-            )
-    return await call_next(request)
+    return None
+
+
+class SetupGateMiddleware:
+    """Refuse archive routes until Setup completes.
+
+    Pure ASGI: BaseHTTPMiddleware would relay every response body, including each
+    media and video chunk, through an extra memory stream and task.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and (refusal := _setup_gate_response(scope["path"])):
+            await refusal(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(SetupGateMiddleware)
 
 
 # Include route modules
