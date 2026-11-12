@@ -156,12 +156,12 @@ def test_unified_search_paginates_complete_large_result_sets(tmp_path) -> None:
             row["detail"] for row in store.conn.execute(f"EXPLAIN QUERY PLAN {page_sql}")
         )
     assert all("archive_fts VIRTUAL TABLE INDEX" in plan for plan in plans.values())
-    assert "idx_archive_tweet_id" in plans["simple"]
-    assert "idx_archive_tweet_id" in plans["collection"]
+    assert "idx_archive_tweet_record" in plans["simple"]
+    assert "idx_archive_tweet_record" in plans["collection"]
     assert "idx_archive_search_attachment" in plans["filter"]
-    assert "idx_archive_tweet_id" in plans["or"]
+    assert "idx_archive_tweet_record" in plans["or"]
     assert "idx_archive_record_page" in plans["negative"]
-    assert "idx_archive_tweet_id" in plans["newest"]
+    assert "idx_archive_tweet_record" in plans["newest"]
     store.close()
 
 

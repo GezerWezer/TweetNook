@@ -237,7 +237,7 @@ def test_saved_secondary_content_remains_in_default_feed_and_search(
         plan = " ".join(
             row[3] for row in store.conn.execute("EXPLAIN QUERY PLAN " + UNCAPTURED_TWEET_IDS_SQL)
         )
-        assert "SEARCH saved USING INDEX idx_archive_tweet_id" in plan
+        assert "SEARCH saved USING INDEX idx_archive_tweet_record" in plan
         # Secondary record removal must immediately restore uncaptured filtering.
         with store.conn:
             store.conn.execute(

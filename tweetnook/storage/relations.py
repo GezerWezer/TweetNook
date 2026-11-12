@@ -82,7 +82,7 @@ class RelationsMixin(ConnectionMixin):
             placeholders = ", ".join("?" for _ in chunk)
             query = f"""
                 SELECT tweet_id, target_tweet_id
-                FROM archive INDEXED BY idx_archive_tweet_id
+                FROM archive INDEXED BY idx_archive_tweet_record
                 WHERE record_type = '{RecordType.TWEET_RELATION}'
                   AND relation_type = 'quote_of'
                   AND tweet_id IN ({placeholders})

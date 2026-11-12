@@ -139,6 +139,7 @@ class ConnectionMixin:
     ) -> list[dict[str, Any]]:
         allowed_indexes = {
             "idx_archive_tweet_id",
+            "idx_archive_tweet_record",
             "idx_archive_target_tweet_id",
         }
         if indexed_by is not None and indexed_by not in allowed_indexes:

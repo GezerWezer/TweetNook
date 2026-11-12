@@ -186,7 +186,7 @@ class RecordsMixin(ConnectionMixin):
         for start in range(0, len(unique_values), chunk_size):
             chunk = unique_values[start : start + chunk_size]
             value_index = {
-                "tweet_id": "idx_archive_tweet_id",
+                "tweet_id": "idx_archive_tweet_record",
                 "target_tweet_id": "idx_archive_target_tweet_id",
                 "row_key": "sqlite_autoindex_archive_1",
             }.get(field_name)

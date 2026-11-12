@@ -31,7 +31,7 @@ class ConversationsMixin(ConnectionMixin):
         rows = []
         seen = set()
         lookups = (
-            ("tweet_id", source_types, "idx_archive_tweet_id"),
+            ("tweet_id", source_types, "idx_archive_tweet_record"),
             ("target_tweet_id", target_types, "idx_archive_target_tweet_id"),
         )
         for field, relation_types, index_name in lookups:
@@ -87,7 +87,7 @@ class ConversationsMixin(ConnectionMixin):
                     UNION ALL
                     SELECT relation.target_tweet_id AS child_id,
                            relation.tweet_id AS parent_id
-                    FROM archive AS relation INDEXED BY idx_archive_tweet_id
+                    FROM archive AS relation INDEXED BY idx_archive_tweet_record
                     WHERE relation.record_type = '{RecordType.TWEET_RELATION}'
                       AND relation.relation_type = 'thread_child'
                       AND relation.tweet_id IN ({placeholders})
@@ -168,7 +168,7 @@ class ConversationsMixin(ConnectionMixin):
                 "raw_json",
             ],
             limit=related_count,
-            indexed_by="idx_archive_tweet_id",
+            indexed_by="idx_archive_tweet_record",
         )
         media = self._query(
             f"record_type = '{RecordType.MEDIA}' AND {related.sql}",
@@ -187,7 +187,7 @@ class ConversationsMixin(ConnectionMixin):
                 "thumbnail_local_path",
             ],
             limit=related_count * 10,
-            indexed_by="idx_archive_tweet_id",
+            indexed_by="idx_archive_tweet_record",
         )
         col_rows = self._query(
             f"record_type = '{RecordType.TWEET}' AND {related.sql}",
@@ -204,14 +204,14 @@ class ConversationsMixin(ConnectionMixin):
                 "raw_json",
             ],
             limit=related_count * 3,
-            indexed_by="idx_archive_tweet_id",
+            indexed_by="idx_archive_tweet_record",
         )
         tag_rows = self._query(
             f"record_type = '{RecordType.MEDIA_TAG}' AND {related.sql}",
             related.params,
             cols=["tweet_id", "raw_json"],
             limit=related_count,
-            indexed_by="idx_archive_tweet_id",
+            indexed_by="idx_archive_tweet_record",
         )
 
         return ThreadObservations(objs, media, col_rows, tag_rows)
@@ -247,6 +247,6 @@ class ConversationsMixin(ConnectionMixin):
             (tweet_id,),
             cols=["raw_json"],
             limit=1,
-            indexed_by="idx_archive_tweet_id",
+            indexed_by="idx_archive_tweet_record",
         )
         return rows[0].get("raw_json") if rows else None

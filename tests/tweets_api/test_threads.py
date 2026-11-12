@@ -268,7 +268,7 @@ def test_api_tweet_thread_builds_parents_children_nested_replies_quotes_media_an
     assert store.reply_frontier_calls
     first_frontier_sql, first_frontier_params = store.reply_frontier_calls[0]
     assert first_frontier_sql.count("INDEXED BY idx_archive_target_tweet_id") == 1
-    assert first_frontier_sql.count("INDEXED BY idx_archive_tweet_id") == 1
+    assert first_frontier_sql.count("INDEXED BY idx_archive_tweet_record") == 1
     assert first_frontier_params == ("main", "main", 252)
     assert store.quote_count_call is not None
     assert store.quote_count_call[1] == ("main",)
@@ -290,7 +290,7 @@ def test_api_tweet_thread_builds_parents_children_nested_replies_quotes_media_an
         expected = (
             "idx_archive_target_tweet_id"
             if " AND target_tweet_id" in expr
-            else "idx_archive_tweet_id"
+            else "idx_archive_tweet_record"
         )
         assert index == expected
     expected_columns = {
@@ -328,7 +328,7 @@ def test_api_tweet_thread_builds_parents_children_nested_replies_quotes_media_an
         assert set(actual or []) == columns
     for expr, index in store.query_indexes:
         if any(f"record_type = '{record_type}'" in expr for record_type in expected_columns):
-            assert index == "idx_archive_tweet_id"
+            assert index == "idx_archive_tweet_record"
 
 
 def test_api_tweet_thread_recursively_loads_and_deduplicates_saved_reply_chain(tmp_path):
@@ -401,7 +401,7 @@ def test_api_tweet_thread_recursively_loads_and_deduplicates_saved_reply_chain(t
     frontier_queries = [sql for sql in traced_sql if "/* tweetnook_reply_frontier */" in sql]
     assert len(frontier_queries) == 4
     assert all("INDEXED BY idx_archive_target_tweet_id" in sql for sql in frontier_queries)
-    assert all("INDEXED BY idx_archive_tweet_id" in sql for sql in frontier_queries)
+    assert all("INDEXED BY idx_archive_tweet_record" in sql for sql in frontier_queries)
     assert all("WITH RECURSIVE" not in sql for sql in frontier_queries)
     store.close()
 

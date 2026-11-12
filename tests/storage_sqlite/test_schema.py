@@ -78,7 +78,7 @@ def test_archive_queries_can_force_safe_id_indexes(paths) -> None:
 
     store.conn.set_trace_callback(None)
     assert rows == [{"tweet_id": "1"}]
-    assert any("INDEXED BY idx_archive_tweet_id" in statement for statement in statements)
+    assert any("INDEXED BY idx_archive_tweet_record" in statement for statement in statements)
     with pytest.raises(ValueError, match="Unsupported archive query index"):
         store._query("tweet_id = '1'", indexed_by="idx_archive_record_page")
     store.close()
