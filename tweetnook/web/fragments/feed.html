@@ -35,7 +35,10 @@
                 <div x-ref="dropdownMenu" id="nook-suggest" role="listbox" aria-label="Search suggestions"
                      x-show="showDropdown && (options.length > 0 || emptyNote)" x-transition.opacity.duration.100ms
                      :class="options[0]?.isDatePicker && 'is-calendar'" class="nook-popover nook-suggest">
-                    <template x-for="(opt, index) in options" :key="index">
+                    <!-- The date picker gets its own key: reusing a suggestion row's element for it
+                         left that row's class and aria-selected bindings behind, so the calendar
+                         opened inside a highlighted row. -->
+                    <template x-for="(opt, index) in options" :key="opt.isDatePicker ? 'date-picker' : index">
                         <div :id="opt.isDatePicker ? null : 'nook-suggest-' + index"
                              :role="opt.isDatePicker ? null : 'option'"
                              :aria-selected="opt.isDatePicker ? null : String(selectedIndex === index)"
