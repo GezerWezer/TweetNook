@@ -421,6 +421,9 @@
 .nook-post-history .nook-td-head { gap:20px; padding-top:4px; padding-bottom:4px; border-bottom:0; }
 .nook-post-history .nook-td-title { font-weight:800; }
 .nook-post-history .nook-td-body { padding-bottom:0; }
+/* The body drops its padding for the status list's own rule; an error box
+   in its place needs the gap back. */
+.nook-post-history .nook-td-error { margin-bottom:16px; }
 .nook-history-status { display:grid; grid-template-columns:24px minmax(0,1fr); gap:12px; padding:20px 16px 24px; border-bottom:1px solid var(--border-color); }
 .nook-history-status > div { display:flex; flex-direction:column; gap:4px; min-width:0; }
 .nook-history-status strong { color:var(--text-primary); font-size:17px; line-height:24px; font-weight:700; }
