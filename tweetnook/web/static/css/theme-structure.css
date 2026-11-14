@@ -539,106 +539,110 @@
    thin overlay settings from styles.css are reset here; Firefox has no
    pseudo-elements and takes the two colours instead. The page's own
    scrollbar belongs to <html>, which carries data-edge itself, so every
-   rule names the root as well as its descendants. */
-[data-edge="bevel"],
-[data-edge="bevel"] * {
-    scrollbar-width: auto;
-    scrollbar-color: auto;
-}
-@supports not selector(::-webkit-scrollbar) {
+   rule names the root as well as its descendants. Only a mouse gets them:
+   on touch screens a 16px gutter takes width from narrow dialogs and the
+   arrows can't be aimed at, so the thin overlay bar stays. */
+@media (hover: hover) and (pointer: fine) {
     [data-edge="bevel"],
     [data-edge="bevel"] * {
-        scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-bg);
+        scrollbar-width: auto;
+        scrollbar-color: auto;
     }
-}
-[data-edge="bevel"]::-webkit-scrollbar,
-[data-edge="bevel"] ::-webkit-scrollbar {
-    width: 16px;
-    height: 16px;
-}
-[data-edge="bevel"]::-webkit-scrollbar-track,
-[data-edge="bevel"] ::-webkit-scrollbar-track {
-    background: var(--scrollbar-track);
-}
-[data-edge="bevel"]::-webkit-scrollbar-corner,
-[data-edge="bevel"] ::-webkit-scrollbar-corner {
-    background: var(--scrollbar-bg);
-}
-[data-edge="bevel"]::-webkit-scrollbar-thumb,
-[data-edge="bevel"] ::-webkit-scrollbar-thumb,
-[data-edge="bevel"]::-webkit-scrollbar-thumb:hover,
-[data-edge="bevel"] ::-webkit-scrollbar-thumb:hover {
-    border: 1px solid;
-    border-color: var(--bevel-raised);
-    border-radius: 0;
-    background: var(--scrollbar-thumb);
-    box-shadow: var(--bevel-raised-inner);
-}
+    @supports not selector(::-webkit-scrollbar) {
+        [data-edge="bevel"],
+        [data-edge="bevel"] * {
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-bg);
+        }
+    }
+    [data-edge="bevel"]::-webkit-scrollbar,
+    [data-edge="bevel"] ::-webkit-scrollbar {
+        width: 16px;
+        height: 16px;
+    }
+    [data-edge="bevel"]::-webkit-scrollbar-track,
+    [data-edge="bevel"] ::-webkit-scrollbar-track {
+        background: var(--scrollbar-track);
+    }
+    [data-edge="bevel"]::-webkit-scrollbar-corner,
+    [data-edge="bevel"] ::-webkit-scrollbar-corner {
+        background: var(--scrollbar-bg);
+    }
+    [data-edge="bevel"]::-webkit-scrollbar-thumb,
+    [data-edge="bevel"] ::-webkit-scrollbar-thumb,
+    [data-edge="bevel"]::-webkit-scrollbar-thumb:hover,
+    [data-edge="bevel"] ::-webkit-scrollbar-thumb:hover {
+        border: 1px solid;
+        border-color: var(--bevel-raised);
+        border-radius: 0;
+        background: var(--scrollbar-thumb);
+        box-shadow: var(--bevel-raised-inner);
+    }
 
-/* The gutter ends in square raised buttons with a small arrow, like the skin.
-   A data-URI icon can't read theme colours, so each arrow is two half
-   triangles drawn with diagonal gradients and placed side by side. Buttons
-   are named by position rather than :single-button, which macOS never
-   matches; the extra pair a double-button layout adds is hidden. */
-[data-edge="bevel"]::-webkit-scrollbar-button:start:decrement,
-[data-edge="bevel"]::-webkit-scrollbar-button:end:increment,
-[data-edge="bevel"] ::-webkit-scrollbar-button:start:decrement,
-[data-edge="bevel"] ::-webkit-scrollbar-button:end:increment {
-    display: block;
-    width: 16px;
-    height: 16px;
-    border: 1px solid;
-    border-color: var(--bevel-raised);
-    background-color: var(--scrollbar-thumb);
-    box-shadow: var(--bevel-raised-inner);
-    background-repeat: no-repeat;
-    background-size: 4px 4px;
-}
-[data-edge="bevel"]::-webkit-scrollbar-button:start:increment,
-[data-edge="bevel"]::-webkit-scrollbar-button:end:decrement,
-[data-edge="bevel"] ::-webkit-scrollbar-button:start:increment,
-[data-edge="bevel"] ::-webkit-scrollbar-button:end:decrement {
-    display: none;
-}
-[data-edge="bevel"]::-webkit-scrollbar-button:vertical:decrement,
-[data-edge="bevel"] ::-webkit-scrollbar-button:vertical:decrement {
-    background-image: linear-gradient(to top left, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to top right, var(--scrollbar-arrow) 50%, transparent 50%);
-    background-position: 3px 5px, 7px 5px;
-}
-[data-edge="bevel"]::-webkit-scrollbar-button:vertical:increment,
-[data-edge="bevel"] ::-webkit-scrollbar-button:vertical:increment {
-    background-image: linear-gradient(to bottom left, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to bottom right, var(--scrollbar-arrow) 50%, transparent 50%);
-    background-position: 3px 5px, 7px 5px;
-}
-[data-edge="bevel"]::-webkit-scrollbar-button:horizontal:decrement,
-[data-edge="bevel"] ::-webkit-scrollbar-button:horizontal:decrement {
-    background-image: linear-gradient(to top left, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to bottom left, var(--scrollbar-arrow) 50%, transparent 50%);
-    background-position: 5px 3px, 5px 7px;
-}
-[data-edge="bevel"]::-webkit-scrollbar-button:horizontal:increment,
-[data-edge="bevel"] ::-webkit-scrollbar-button:horizontal:increment {
-    background-image: linear-gradient(to top right, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to bottom right, var(--scrollbar-arrow) 50%, transparent 50%);
-    background-position: 5px 3px, 5px 7px;
-}
-/* A pressed thumb or button sinks, and a pressed arrow moves a pixel down and
-   right, as the skin draws it. The selectors repeat the position and
-   direction pseudo-classes so they outrank the resting rules above. */
-[data-edge="bevel"]::-webkit-scrollbar-thumb:active,
-[data-edge="bevel"] ::-webkit-scrollbar-thumb:active,
-[data-edge="bevel"]::-webkit-scrollbar-button:start:decrement:active,
-[data-edge="bevel"]::-webkit-scrollbar-button:end:increment:active,
-[data-edge="bevel"] ::-webkit-scrollbar-button:start:decrement:active,
-[data-edge="bevel"] ::-webkit-scrollbar-button:end:increment:active {
-    border-color: var(--bevel-sunken);
-    box-shadow: var(--bevel-sunken-inner);
-}
-[data-edge="bevel"]::-webkit-scrollbar-button:vertical:active,
-[data-edge="bevel"] ::-webkit-scrollbar-button:vertical:active {
-    background-position: 4px 6px, 8px 6px;
-}
-[data-edge="bevel"]::-webkit-scrollbar-button:horizontal:active,
-[data-edge="bevel"] ::-webkit-scrollbar-button:horizontal:active {
-    background-position: 6px 4px, 6px 8px;
+    /* The gutter ends in square raised buttons with a small arrow, like the skin.
+       A data-URI icon can't read theme colours, so each arrow is two half
+       triangles drawn with diagonal gradients and placed side by side. Buttons
+       are named by position rather than :single-button, which macOS never
+       matches; the extra pair a double-button layout adds is hidden. */
+    [data-edge="bevel"]::-webkit-scrollbar-button:start:decrement,
+    [data-edge="bevel"]::-webkit-scrollbar-button:end:increment,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:start:decrement,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:end:increment {
+        display: block;
+        width: 16px;
+        height: 16px;
+        border: 1px solid;
+        border-color: var(--bevel-raised);
+        background-color: var(--scrollbar-thumb);
+        box-shadow: var(--bevel-raised-inner);
+        background-repeat: no-repeat;
+        background-size: 4px 4px;
+    }
+    [data-edge="bevel"]::-webkit-scrollbar-button:start:increment,
+    [data-edge="bevel"]::-webkit-scrollbar-button:end:decrement,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:start:increment,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:end:decrement {
+        display: none;
+    }
+    [data-edge="bevel"]::-webkit-scrollbar-button:vertical:decrement,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:vertical:decrement {
+        background-image: linear-gradient(to top left, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to top right, var(--scrollbar-arrow) 50%, transparent 50%);
+        background-position: 3px 5px, 7px 5px;
+    }
+    [data-edge="bevel"]::-webkit-scrollbar-button:vertical:increment,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:vertical:increment {
+        background-image: linear-gradient(to bottom left, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to bottom right, var(--scrollbar-arrow) 50%, transparent 50%);
+        background-position: 3px 5px, 7px 5px;
+    }
+    [data-edge="bevel"]::-webkit-scrollbar-button:horizontal:decrement,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:horizontal:decrement {
+        background-image: linear-gradient(to top left, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to bottom left, var(--scrollbar-arrow) 50%, transparent 50%);
+        background-position: 5px 3px, 5px 7px;
+    }
+    [data-edge="bevel"]::-webkit-scrollbar-button:horizontal:increment,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:horizontal:increment {
+        background-image: linear-gradient(to top right, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to bottom right, var(--scrollbar-arrow) 50%, transparent 50%);
+        background-position: 5px 3px, 5px 7px;
+    }
+    /* A pressed thumb or button sinks, and a pressed arrow moves a pixel down and
+       right, as the skin draws it. The selectors repeat the position and
+       direction pseudo-classes so they outrank the resting rules above. */
+    [data-edge="bevel"]::-webkit-scrollbar-thumb:active,
+    [data-edge="bevel"] ::-webkit-scrollbar-thumb:active,
+    [data-edge="bevel"]::-webkit-scrollbar-button:start:decrement:active,
+    [data-edge="bevel"]::-webkit-scrollbar-button:end:increment:active,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:start:decrement:active,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:end:increment:active {
+        border-color: var(--bevel-sunken);
+        box-shadow: var(--bevel-sunken-inner);
+    }
+    [data-edge="bevel"]::-webkit-scrollbar-button:vertical:active,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:vertical:active {
+        background-position: 4px 6px, 8px 6px;
+    }
+    [data-edge="bevel"]::-webkit-scrollbar-button:horizontal:active,
+    [data-edge="bevel"] ::-webkit-scrollbar-button:horizontal:active {
+        background-position: 6px 4px, 6px 8px;
+    }
 }
 
 /* Meters are sunken wells (--bevel-meter-bg) filled with a row of upright blocks. A single
