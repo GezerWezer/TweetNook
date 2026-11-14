@@ -201,7 +201,7 @@ test('shared controls load before the feature stylesheets and theme structure af
     const shell = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     const sheets = [...shell.matchAll(/<link rel="stylesheet" href="\/static\/css\/([^"]+)">/g)].map(m => m[1]);
     assert.deepEqual(sheets.slice(0, 3), ['tailwind.css', 'styles.css', 'controls.css']);
-    assert.deepEqual(sheets.slice(-2), ['theme-structure.css', 'theme-gloss.css']);
+    assert.deepEqual(sheets.slice(-3), ['theme-structure.css', 'theme-windows-95.css', 'theme-gloss.css']);
 });
 
 run();

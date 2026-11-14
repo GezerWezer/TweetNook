@@ -607,7 +607,7 @@ function paintTheme(key) {
     if (darkMode) root.classList.remove('light'); else root.classList.add('light');
     root.dataset.edge = theme._edge;
     // For the few details a theme draws that no token expresses, such as
-    // Windows 95's title bars (theme-structure.css).
+    // Windows 95's title bars (theme-windows-95.css).
     root.dataset.theme = key;
     root.style.setProperty('color-scheme', darkMode ? 'dark' : 'light');
 
