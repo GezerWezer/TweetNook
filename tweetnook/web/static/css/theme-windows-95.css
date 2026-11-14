@@ -238,3 +238,52 @@
     font-size: 12px;
     font-weight: 400;
 }
+
+/* Lists are white wells sunk into the grey face, as list boxes and
+   Explorer's details view are, rather than rows printed on the face. A
+   ranked list's title becomes the column header button above the rows. The
+   rows lose their dividers, which the details view never drew, and the
+   chosen or keyboard-focused row is the navy selection. */
+[data-theme="windows-95"] .nook-stats :is(.nook-list-card, .nook-rows-card),
+[data-theme="windows-95"] .nook-stats :is(.nook-list-card, .nook-rows-card):hover,
+[data-theme="windows-95"] .nook-tag-list {
+    border: 1px solid;
+    border-color: var(--bevel-sunken);
+    background: var(--field-bg);
+    box-shadow: var(--bevel-sunken-inner);
+}
+[data-theme="windows-95"] .nook-stats .nook-list-card {
+    padding: 2px 2px 8px;
+}
+[data-theme="windows-95"] .nook-stats .nook-rows-card {
+    padding: 2px;
+}
+[data-theme="windows-95"] .nook-list-title {
+    margin-bottom: 4px;
+    padding: 3px 18px;
+    border: 1px solid;
+    border-color: var(--bevel-raised);
+    background: var(--button-bg);
+    box-shadow: var(--bevel-raised-inner);
+}
+[data-theme="windows-95"] :is(.nook-rows-card > * + * > .nook-row, .nook-rows-card > .nook-row + .nook-row) {
+    border-top: 0;
+    box-shadow: none;
+}
+[data-theme="windows-95"] .nook-tag-list {
+    margin: 0;
+}
+[data-theme="windows-95"] .nook-tag-row {
+    border-bottom: 0;
+}
+[data-theme="windows-95"] :is(button.nook-rank-row:hover:not(:disabled), .nook-tag-row:hover) {
+    background: transparent;
+}
+[data-theme="windows-95"] :is(button.nook-rank-row:focus-visible, .nook-row.is-active, .storage-row.is-active, .nook-tag-row.is-selected) {
+    outline: 0;
+    background: #000080;
+    --text-primary: #ffffff;
+    --text-secondary: #ffffff;
+    --accent-color: #ffffff;
+    color: #ffffff;
+}
