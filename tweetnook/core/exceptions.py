@@ -3,6 +3,15 @@
 from __future__ import annotations
 
 
+def error_text(exc: BaseException) -> str:
+    """Describe an exception by its message, or by its class when the message is blank.
+
+    httpx timeouts carry an empty message, so ``str(exc)`` alone can say nothing at all.
+    """
+
+    return str(exc) or type(exc).__name__
+
+
 class TweetNookError(RuntimeError):
     """Base exception for the project."""
 

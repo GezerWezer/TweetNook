@@ -914,3 +914,34 @@ async def test_a_local_error_keeps_the_rows_finished_before_it(paths, config, mo
 
     states = sorted(str(row["download_state"]) for row in _rows_by_post(paths).values())
     assert states == ["done", "pending"]
+
+
+@pytest.mark.asyncio
+async def test_a_timed_out_download_is_failed_and_says_it_timed_out(paths, config) -> None:
+    _only_video(paths)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(_VIDEO_URL_SUFFIX):
+            # httpx raises its timeouts with an empty message.
+            raise httpx.ReadTimeout("", request=request)
+        return httpx.Response(
+            200, content=b"poster", headers={"content-type": "image/jpeg"}, request=request
+        )
+
+    result = await download_media(
+        config=config, paths=paths, transport=httpx.MockTransport(handler)
+    )
+
+    assert result.failed == 1
+    saved = _video_row(paths)
+    assert saved["download_state"] == "failed"
+    assert saved["local_path"] is None
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        (error,) = store.conn.execute(
+            "SELECT download_error FROM archive WHERE row_key = ?", (saved["row_key"],)
+        ).fetchone()
+    finally:
+        store.close()
+    assert error == "ReadTimeout"

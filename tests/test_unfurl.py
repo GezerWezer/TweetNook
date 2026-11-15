@@ -657,3 +657,33 @@ async def test_a_failed_url_is_named_by_its_host_in_the_run_log(paths, config) -
     assert warnings
     assert warnings[0].startswith("WARNING: URL example.com: Server error '503")
     assert "URL url:" not in output.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_a_timed_out_url_names_the_timeout_in_the_log_and_row(paths, config) -> None:
+    _seed_archive(paths)
+    output = StringIO()
+    console = Console(file=output, force_terminal=False, color_system=None, width=200)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("", request=request)
+
+    with PipelineReporter(console, "unfurl", interactive=False):
+        await unfurl_urls(
+            config=config, paths=paths, console=console, transport=httpx.MockTransport(handler)
+        )
+
+    warnings = [line for line in output.getvalue().splitlines() if line.startswith("WARNING")]
+    assert warnings[0] == "WARNING: URL example.com: ConnectTimeout"
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        errors = {
+            row["download_error"]
+            for row in store.conn.execute(
+                "SELECT download_error FROM archive WHERE row_key LIKE 'url:%'"
+            )
+        }
+    finally:
+        store.close()
+    assert errors == {"ConnectTimeout"}

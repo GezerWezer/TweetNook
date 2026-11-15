@@ -15,6 +15,7 @@ from rich.console import Console
 from tweetnook.client.base import DEFAULT_USER_AGENT
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.dev_replay import client_transport
+from tweetnook.core.exceptions import error_text
 from tweetnook.core.extractor import canonicalize_url
 from tweetnook.core.utils import utc_now
 from tweetnook.jobs.context import locked_archive_job
@@ -340,18 +341,18 @@ async def unfurl_urls(
                                     content_type=row.get("content_type"),
                                     unfurl_state="failed",
                                     last_fetched_at=utc_now(),
-                                    download_error=str(exc),
+                                    download_error=error_text(exc),
                                 )
                             )
                             result.failed += 1
                             if pipeline.active:
                                 pipeline.issue(
-                                    f"URL {_url_host(request_url)}: {exc}",
+                                    f"URL {_url_host(request_url)}: {error_text(exc)}",
                                     dedupe_key="urls:unfurl-failure",
                                 )
                             elif console:
                                 console.print(
-                                    f"url {_url_host(request_url)}: failed ({exc})",
+                                    f"url {_url_host(request_url)}: failed ({error_text(exc)})",
                                     highlight=False,
                                 )
                         else:

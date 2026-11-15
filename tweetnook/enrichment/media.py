@@ -18,6 +18,7 @@ from rich.console import Console
 from tweetnook.client.base import DEFAULT_USER_AGENT
 from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.core.dev_replay import client_transport
+from tweetnook.core.exceptions import error_text
 from tweetnook.core.fileio import owned_temp, publish_file
 from tweetnook.core.utils import utc_now
 from tweetnook.enrichment.avatars import (
@@ -206,7 +207,7 @@ async def _obtain_missing_assets(
                 client, url=url, destination=destination
             )
         except _REMOTE_FAILURES as exc:
-            error = error or str(exc)
+            error = error or error_text(exc)
             return
         state[path_field] = final_path.relative_to(base_dir).as_posix()
         state[f"{field_prefix}sha256"] = file_hash
@@ -231,8 +232,8 @@ def _row_update(
 ) -> dict[str, object]:
     return store.build_media_download_update(
         row,
-        download_state="failed" if error else "done",
-        downloaded_at=(row.get("downloaded_at") or None) if error else utc_now(),
+        download_state="failed" if error is not None else "done",
+        downloaded_at=(row.get("downloaded_at") or None) if error is not None else utc_now(),
         download_error=error,
         **state,
     )
