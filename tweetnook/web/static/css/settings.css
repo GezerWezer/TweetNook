@@ -56,7 +56,8 @@
 .nook-choice-row > span:first-child { min-width:0; }
 .nook-choice-row strong { display:block; font-size:15px; font-weight:400; line-height:20px; }
 .nook-choice-row > span > span { display:block; font-size:13px; color:var(--text-secondary); line-height:18px; margin-top:3px; }
-.nook-settings-shell button:focus-visible,.nook-settings-shell input:focus-visible,.nook-settings-shell select:focus-visible,.nook-settings-shell summary:focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
+/* An input inside a shared field (.nook-field, .nook-input, .nook-search) is framed by the field's own focus ring. */
+.nook-settings-shell button:focus-visible,.nook-settings-shell input:focus-visible:not(:is(.nook-field, .nook-input, .nook-search) input),.nook-settings-shell select:focus-visible,.nook-settings-shell summary:focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
 .nook-original-body { padding-top:16px; }
 /* Logs rows align with the detail title instead of sitting in a second inset. */
 .nook-original-body[x-show="settingsTab === 'logs'"] > .p-4 { padding:0; }
@@ -325,7 +326,8 @@
 .nook-td-backdrop { position:absolute; inset:0; }
 .nook-td { position:relative; display:flex; flex-direction:column; width:100%; max-width:600px; max-height:min(820px,calc(100dvh - max(24px,6vh) - 24px)); overflow:hidden; font-size:15px; line-height:20px; }
 .nook-td button,.nook-td input,.nook-td textarea { font-family:inherit; }
-.nook-td :focus-visible,.nook-td-confirm :focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
+/* A text box inside a shared field is framed by the field's own focus ring. */
+.nook-td :focus-visible:not(:is(.nook-field, .nook-input, .nook-search) :is(input, textarea)),.nook-td-confirm :focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
 @media (prefers-reduced-motion:no-preference) {
   .nook-td,.nook-td-confirm { animation:nook-td-pop .14s ease-out; }
   @keyframes nook-td-pop { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
