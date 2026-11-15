@@ -22,7 +22,8 @@
    wraps onto more lines instead of scrolling. */
 .nook-search-field .nook-search-input { flex: 1; display: block; padding: 10px 0; overflow: hidden; white-space: pre-wrap; line-height: 22px; font-size: calc(var(--font-size-base) * .933333); }
 /* Search suggestions follow the design.md menu recipe with the Sort menu's shadow. */
-.nook-suggest { position: absolute; top: 100%; left: 16px; right: 16px; z-index: 50; margin-top: 4px; max-height: min(440px, 60vh); overflow-y: auto; overscroll-behavior: contain; }
+/* The list scrolls with the feed while it stays open, so it stacks under the sticky header (30) and above the feed's own layers, such as carousel arrows (25). */
+.nook-suggest { position: absolute; top: 100%; left: 16px; right: 16px; z-index: 28; margin-top: 4px; max-height: min(440px, 60vh); overflow-y: auto; overscroll-behavior: contain; }
 /* Rows run edge to edge so the highlight meets the rounded corners; the calendar keeps its inset. */
 /* The month grid has a fixed height, so it never scrolls; a short window would otherwise clip the last weeks behind a scrollbar. */
 .nook-suggest.is-calendar { right: auto; width: 320px; max-width: calc(100% - 32px); max-height: none; overflow: visible; padding: 4px 0 8px; }

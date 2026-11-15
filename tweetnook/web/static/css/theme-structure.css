@@ -193,6 +193,40 @@
     box-shadow: var(--bevel-sunken-inner);
 }
 
+/* A post's tag chips are buttons like the rest, rather than X's tinted
+   pills, and an activity log is a sunken text well, like a field. */
+[data-edge="bevel"] .nook-td-chip {
+    border-color: var(--bevel-raised);
+    background: var(--button-bg);
+    box-shadow: var(--bevel-raised-inner);
+    color: var(--button-text);
+    font-weight: 400;
+}
+[data-edge="bevel"] .nook-td-chip:hover {
+    background: var(--button-bg);
+    color: var(--selected-text);
+}
+[data-edge="bevel"] .nook-td-chip:active {
+    border-color: var(--bevel-sunken);
+    box-shadow: var(--bevel-sunken-inner);
+}
+[data-edge="bevel"] .nook-log-panel {
+    border-color: var(--bevel-sunken);
+    background: var(--field-bg);
+    box-shadow: var(--bevel-sunken-inner);
+}
+/* Settings marks its current page with --bg-secondary, which is the panel
+   colour the list already sits on here; the page takes the list selection
+   instead. Phones show one page at a time and mark none. */
+@media (min-width: 800px) {
+    [data-edge="bevel"] .nook-settings-nav[aria-current="page"] {
+        background: var(--option-active-bg);
+        color: var(--option-active-text);
+    }
+    [data-edge="bevel"] .nook-settings-nav[aria-current="page"] :is(.nook-category-icon, .nook-category-arrow) {
+        color: inherit;
+    }
+}
 /* Floating panels and dialogs are raised windows with a hard edge; the
    theme's --popover-shadow and --dialog-shadow are the hard drop under them. */
 [data-edge="bevel"] .nook-popover,
@@ -293,6 +327,20 @@
    rather than into the page. */
 [data-edge="bevel"] .nook-header > .nook-tabs-frame {
     --tabs-surface: var(--bg-header);
+}
+/* Scrolling tucks the tabs away: they fade while the header's backdrop
+   retracts under them. Over an opaque panel that briefly shows ghost tabs on
+   the posts and swaps a grey band for white in 200ms, a flash on every turn
+   of the wheel. Here the strip is a solid panel that slides up behind the
+   title row instead, so the band leaves as one piece. */
+[data-edge="bevel"] .nook-header > .nook-title-row {
+    background: var(--bg-header);
+}
+[data-edge="bevel"] .nook-header > .nook-tabs-frame {
+    background: var(--bg-header);
+}
+[data-edge="bevel"] .nook-header.tabs-hidden .nook-tabs-frame {
+    opacity: 1;
 }
 /* Inside a dialog the page under the tabs is the dialog's own face, which a
    theme with grey windows around white lists (Windows 95) sets apart from
@@ -588,6 +636,37 @@
     border-radius: 0;
     background: var(--bg-secondary);
     color: var(--button-text);
+}
+/* The GIF badge's pause half and label carry X's own dark fills, which put
+   the panel's dark label on black; the badge is one panel face instead, the
+   halves split by a groove. */
+[data-edge="bevel"] .media-gif-indicator {
+    gap: 0;
+}
+[data-edge="bevel"] :is(.media-gif-action, .media-gif-label) {
+    border-radius: 0;
+    background: none;
+}
+[data-edge="bevel"] .media-gif-action {
+    border-right: 1px solid var(--gray-700);
+}
+/* A text-less post's page dashes are tiny sunken meter slots that fill with
+   the accent as the strip passes them. --dot-active runs 0 to 1 with the
+   scroll, so the fill mixes rather than switching. The slots are taller than
+   X's 4px dashes so the bevel still leaves a visible fill. */
+[data-edge="bevel"] .media-carousel-dots {
+    height: 8px;
+    margin-bottom: 10px;
+}
+[data-edge="bevel"] .media-carousel-dots > span {
+    box-sizing: border-box;
+    width: calc(14px + 12px * var(--dot-active, 0));
+    border: 1px solid;
+    border-color: var(--bevel-sunken);
+    border-radius: 0;
+    box-shadow: var(--bevel-sunken-inner);
+    background: color-mix(in srgb, var(--accent-color) calc(100% * var(--dot-active, 0)), var(--bevel-meter-bg));
+    opacity: 1;
 }
 @media (min-width: 641px) and (pointer: fine) {
     [data-edge="bevel"] .video-control-bar {
