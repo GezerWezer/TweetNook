@@ -1,6 +1,7 @@
 /* Structure a theme opts into beyond colour and shape (themes.js sets
-   data-edge on <html>). Linked last, so these rules win over the feature
-   stylesheets they restyle at the same specificity plus the attribute. */
+   data-edge on <html>). Linked after the feature stylesheets, so these
+   rules win over the ones they restyle at the same specificity plus the
+   attribute. The gloss edge has its own sheet, theme-gloss.css. */
 
 /* Bevel: classic desktop controls. Light falls from the top left, so raised
    controls have a light top-left edge and sunken fields a dark one. Buttons

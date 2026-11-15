@@ -68,10 +68,11 @@ test('every theme keeps text legible on the surfaces it is drawn on', () => {
     assert.deepEqual(failures, []);
 });
 
-test('themes keep X shapes unless a seed asks for square corners and bevels', () => {
+test('themes keep X shapes unless a seed asks for its own corners and edge', () => {
     const all = themes();
     for (const [key, theme] of Object.entries(all)) {
-        if (theme._edge === 'bevel') continue;
+        assert.ok(['flat', 'bevel', 'gloss'].includes(theme._edge), key);
+        if (theme._edge !== 'flat') continue;
         assert.equal(theme['--radius-full'], '9999px', key);
         assert.equal(theme['--radius-xl'], '16px', key);
         assert.equal(theme._edge, 'flat', key);
@@ -95,6 +96,14 @@ test('themes keep X shapes unless a seed asks for square corners and bevels', ()
     assert.equal(win['--field-bg'], '#ffffff');
     assert.notEqual(win['--bevel-raised-inner'], '0 0 #0000');
     assert.notEqual(win['--bevel-sunken-inner'], '0 0 #0000');
+    const aero = all['frutiger-aero'];
+    assert.equal(aero._edge, 'gloss');
+    assert.match(aero['--font-ui'], /^Frutiger, "Frutiger Linotype",/);
+    // Gel capsules want the rounded shape's generous radii.
+    assert.equal(aero['--radius-full'], '9999px');
+    assert.deepEqual([aero['--radius-xl'], aero['--radius-lg'], aero['--radius-md']], ['16px', '12px', '8px']);
+    assert.equal(aero['--heading-color'], '#0b3a5c');
+
     // Only bevel themes that ask for one draw a second ring.
     for (const [key, theme] of Object.entries(all)) {
         if (key === 'windows-95') continue;
@@ -122,7 +131,7 @@ test('new colour roles follow the variable they split from, after its override',
     assert.equal(all['classic-light']['--bg-secondary'], '#f7f9f9');
     assert.equal(all['classic-light']['--field-bg'], '#f7f9f9');
     for (const [key, theme] of Object.entries(all)) {
-        if (theme._edge === 'bevel') continue;
+        if (theme._edge !== 'flat') continue;
         assert.equal(theme['--field-bg'], theme['--bg-secondary'], key);
         assert.equal(theme['--heading-color'], theme['--text-primary'], key);
         assert.equal(theme['--selected-text'], theme['--text-primary'], key);
@@ -151,6 +160,9 @@ test('applying a theme sets its edge style and shape, and switching away restore
     assert.equal(root.dataset.theme, 'steam-green');
     assert.equal(css.get('--radius-xl'), '2px');
     assert.equal(css.get('--selected-text'), '#dccd62');
+    app.applyTheme('frutiger-aero');
+    assert.equal(root.dataset.edge, 'gloss');
+    assert.equal(css.get('--radius-xl'), '16px');
     app.applyTheme('dracula');
     assert.equal(root.dataset.edge, 'flat');
     assert.equal(root.dataset.theme, 'dracula');
@@ -189,7 +201,7 @@ test('shared controls load before the feature stylesheets and theme structure af
     const shell = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     const sheets = [...shell.matchAll(/<link rel="stylesheet" href="\/static\/css\/([^"]+)">/g)].map(m => m[1]);
     assert.deepEqual(sheets.slice(0, 3), ['tailwind.css', 'styles.css', 'controls.css']);
-    assert.equal(sheets.at(-1), 'theme-structure.css');
+    assert.deepEqual(sheets.slice(-2), ['theme-structure.css', 'theme-gloss.css']);
 });
 
 run();

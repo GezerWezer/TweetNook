@@ -1,0 +1,931 @@
+/* Gloss: Frutiger Aero, the glossy, aquatic look of mid-2000s consumer tech
+   (music players, phone menus, eco and wellness branding) rather than any one
+   desktop. Controls are capsules of coloured gel: a curved highlight across
+   the top, as if lit from above through a bubble, and a caustic glow pooled
+   along the bottom where the light comes back out. Four gels carry meaning:
+   pearl for ordinary controls, aqua for the chosen and primary ones, lime
+   for things that are on or done, and coral for destruction. Surfaces are
+   white panes of glass with an ice-blue rim. themes.js sets
+   data-edge="gloss" on <html>; linked after theme-structure.css, so these
+   rules win over the shared controls at the same specificity plus the
+   attribute. The colours belong to this edge alone, so they are named here
+   as custom properties rather than as theme tokens. */
+
+[data-edge="gloss"] {
+    --aero-ocean: #0b3a5c;
+    --aero-deep: #0a6aa6;
+    --aero-rim: #8fc3df;
+    --aero-rim-hot: #2ea8e0;
+    --aero-ice: #eef8fd;
+    /* The highlight: an ellipse of light over the top half, fading toward a
+       hard-ish lower edge so the face reads as curved, not banded. */
+    --aero-sheen: radial-gradient(ellipse 95% 62% at 50% 0, rgba(255, 255, 255, .92), rgba(255, 255, 255, .38) 72%, rgba(255, 255, 255, 0) 74%);
+    --aero-sheen-soft: radial-gradient(ellipse 95% 62% at 50% 0, rgba(255, 255, 255, .55), rgba(255, 255, 255, .14) 72%, rgba(255, 255, 255, 0) 74%);
+    --aero-pearl: linear-gradient(#ffffff, #ecf7fc 55%, #d3ebf7);
+    --aero-pearl-hot: linear-gradient(#ffffff, #ddf3fd 55%, #b9e4f8);
+    --aero-aqua: linear-gradient(#4cc3f2, #0d8bd0 50%, #0770b0);
+    --aero-aqua-hot: linear-gradient(#66d0f8, #1599dc 50%, #0a7cc1);
+    --aero-aqua-down: linear-gradient(#06659f, #0a7cc1 45%, #1e98d8);
+    --aero-lime: linear-gradient(#bdf06a, #74c925 55%, #45a013);
+    --aero-coral: linear-gradient(#ffa08c, #f05a42 55%, #c93420);
+    --aero-coral-hot: linear-gradient(#ffb3a3, #f86c52 55%, #d63d27);
+    --aero-glow-pearl: inset 0 -3px 5px rgba(120, 210, 250, .35);
+    --aero-glow-aqua: inset 0 -4px 6px rgba(170, 245, 255, .75);
+    --aero-glow-lime: inset 0 -4px 6px rgba(235, 255, 160, .75);
+    --aero-glow-coral: inset 0 -4px 6px rgba(255, 220, 170, .7);
+    --aero-focus: 0 0 0 3px rgba(46, 168, 224, .38);
+}
+
+/* ── Page chrome ────────────────────────────────────────────────────────
+   The feed column is a tall pane of glass on the white page: an ice rim and
+   a soft blue glow along both sides. The header is a glossy band across its
+   top, bright above and a breath of aqua below, with the light breaking
+   sharply between them as on a curved face, ending in a waterline, a thin
+   aqua-to-lime rule. The waterline is a layer of the pane itself, so it
+   follows the pane's bottom edge as the tabs tuck away. */
+[data-edge="gloss"] .app-column {
+    border-color: #cfe6f2;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .9), 0 0 28px rgba(10, 90, 140, .1);
+}
+[data-edge="gloss"] .nook-header::before {
+    background:
+        linear-gradient(to right, rgba(46, 168, 224, 0), rgba(46, 168, 224, .6) 25%, rgba(124, 207, 42, .6) 75%, rgba(124, 207, 42, 0)) bottom / 100% 2px no-repeat,
+        linear-gradient(#ffffff, #f7fcfe 46%, #e6f4fb 54%, #f1f9fd),
+        var(--bg-primary);
+    box-shadow: inset 0 1px 0 #ffffff, 0 3px 8px -4px rgba(10, 90, 140, .25);
+}
+/* The header's buttons and the feed's sort control are pearl bubbles at
+   rest, lighting aqua at the rim under the pointer and filling with aqua
+   gel while pressed or while their menu is open. Elsewhere icon buttons
+   stay clear until pointed at. */
+[data-edge="gloss"] :is(.nook-header .nook-icon-button.is-lg:not(.nook-back), .feed-picker-trigger) {
+    border: 1px solid var(--aero-rim);
+    background: var(--aero-sheen), var(--aero-pearl);
+    box-shadow: var(--aero-glow-pearl), 0 1px 3px rgba(10, 90, 140, .14);
+    color: var(--aero-ocean);
+}
+[data-edge="gloss"] .nook-header .nook-icon-button.is-lg:not(.nook-back) {
+    width: 38px;
+    height: 38px;
+    margin: 3px;
+}
+[data-edge="gloss"] .feed-picker-trigger {
+    padding-inline: 14px 10px;
+}
+/* A clear trigger could sit in the row's narrow right padding; a visible
+   pill lines up with the search box above it instead. */
+[data-edge="gloss"] .nook-results-row {
+    padding: 2px 16px 8px;
+}
+[data-edge="gloss"] :is(.nook-icon-button:not(.is-action, .is-danger), .feed-picker-trigger):hover:not(:disabled) {
+    background: var(--aero-sheen), var(--aero-pearl-hot);
+    box-shadow: inset 0 0 0 1px var(--aero-rim), var(--aero-glow-pearl);
+}
+[data-edge="gloss"] :is(.nook-header .nook-icon-button.is-lg:not(.nook-back), .feed-picker-trigger):hover:not(:disabled) {
+    border-color: var(--aero-rim-hot);
+    box-shadow: var(--aero-glow-pearl), 0 0 0 3px rgba(46, 168, 224, .16), 0 1px 3px rgba(10, 90, 140, .16);
+}
+[data-edge="gloss"] :is(.nook-icon-button:not(.is-action, .is-danger), .feed-picker-trigger):is(:active, [aria-expanded="true"]):not(:disabled) {
+    border-color: var(--aero-deep);
+    background: var(--aero-sheen-soft), var(--aero-aqua);
+    box-shadow: inset 0 0 0 1px var(--aero-deep), var(--aero-glow-aqua);
+    color: #ffffff;
+}
+[data-edge="gloss"] .feed-picker-trigger {
+    border-radius: 9999px;
+}
+[data-edge="gloss"] :is(.nook-icon-button, .feed-picker-trigger):focus-visible {
+    outline: none;
+    box-shadow: var(--aero-focus);
+}
+[data-edge="gloss"] ::selection {
+    background: rgba(46, 168, 224, .3);
+    color: var(--aero-ocean);
+}
+/* Avatars are portraits in a bubble: a white rim, a faint aqua halo, and a
+   crescent of light across their upper edge. */
+[data-edge="gloss"] .avatar {
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px rgba(46, 168, 224, .4), 0 2px 6px 2px rgba(10, 90, 140, .14), inset 0 6px 6px -4px rgba(255, 255, 255, .7);
+}
+/* Count badges are aqua beads; the one on the header, which says something
+   needs attention, is lime. */
+[data-edge="gloss"] :is(.nook-notice-count, .nook-nav-count, .nook-td-badge) {
+    background: var(--aero-sheen), var(--aero-aqua);
+    box-shadow: 0 0 0 1px var(--aero-deep), var(--aero-glow-aqua);
+    color: #ffffff;
+    text-shadow: 0 1px 1px rgba(0, 50, 90, .45);
+}
+/* The badge is placed for a clear 44px button; on the smaller pearl
+   bubble that would cover the icon, so it rides the bubble's rim. */
+[data-edge="gloss"] .nook-header .nook-notice-count {
+    top: -4px;
+    right: -5px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    line-height: 17px;
+    background: var(--aero-sheen), var(--aero-lime);
+    box-shadow: 0 0 0 1px #3f8a12, 0 0 0 2px #ffffff, var(--aero-glow-lime);
+    text-shadow: 0 1px 1px rgba(30, 70, 0, .5);
+}
+/* The scroll-to-top button is a large aqua bubble. */
+[data-edge="gloss"] .scroll-to-top {
+    border: 1px solid var(--aero-deep);
+    background: var(--aero-sheen), var(--aero-aqua);
+    box-shadow: var(--aero-glow-aqua), 0 3px 10px rgba(10, 100, 160, .35);
+    color: #ffffff;
+}
+[data-edge="gloss"] .scroll-to-top:hover {
+    background: var(--aero-sheen), var(--aero-aqua-hot);
+    box-shadow: var(--aero-glow-aqua), 0 0 0 4px rgba(46, 168, 224, .18), 0 3px 12px rgba(10, 100, 160, .4);
+}
+[data-edge="gloss"] .scroll-to-top:active {
+    background: var(--aero-sheen-soft), var(--aero-aqua-down);
+}
+
+/* ── Posts ──────────────────────────────────────────────────────────────
+   The reading surface stays plain white. Action icons are glossy glyphs,
+   each a colour from the same outdoor palette (water, leaf, blossom, sun),
+   lit from the top; the icons are masks, so a gradient behind one paints
+   the glyph. Counts stay muted beside them. */
+[data-edge="gloss"] .tweet-icon-reply { background: linear-gradient(#7fd6fb, #1ea6e4 55%, #0b80c5); }
+[data-edge="gloss"] :is(.tweet-icon-repost, .tweet-icon-reposted) { background: linear-gradient(#b4ea60, #5fbd1f 55%, #3c9410); }
+[data-edge="gloss"] .tweet-icon-like { background: linear-gradient(#ffa3b8, #ec4d74 55%, #c92452); }
+[data-edge="gloss"] .tweet-icon-liked { background: linear-gradient(#ff8aa6, #f0275a 50%, #c0103f); }
+[data-edge="gloss"] .tweet-icon-views { background: linear-gradient(#8fe8dc, #22b3a3 55%, #11887c); }
+[data-edge="gloss"] :is(.tweet-icon-bookmark, .tweet-icon-bookmarked) { background: linear-gradient(#ffe07a, #f7b500 55%, #dc8f00); }
+[data-edge="gloss"] .tweet-icon-open { background: linear-gradient(#a7c8ff, #4e86ea 55%, #2f63c6); }
+[data-edge="gloss"] .tweet-byline-name {
+    color: var(--aero-ocean);
+}
+/* Thread lines are a stream of water: aqua fading to clear at each end. */
+[data-edge="gloss"] :is(.thread-connector-up, .thread-connector-down) {
+    background: linear-gradient(rgba(46, 168, 224, .25), #7cc9ee 30% 70%, rgba(46, 168, 224, .25));
+}
+/* Each post is a strip of glass: white clearing to a faint ice at its foot,
+   with an etched divider (the blue rule over a white line) below it. Under
+   the pointer the ice rises through it. */
+[data-edge="gloss"] .feed-card {
+    background: linear-gradient(#ffffff 55%, #f5fbfe);
+    box-shadow: 0 1px 0 #ffffff;
+}
+[data-edge="gloss"] .feed-card:hover {
+    background: linear-gradient(#f9fdff, #e9f6fc);
+}
+/* Each action is a clear bubble that shows under the pointer, a pearl face
+   around its glyph and count. The negative margin keeps the bubble's
+   padding from moving the row. */
+[data-edge="gloss"] .tweet-actions > div {
+    margin: -4px -8px;
+    padding: 4px 8px;
+    border-radius: 9999px;
+    transition: background-color 120ms, box-shadow 120ms;
+}
+[data-edge="gloss"] .tweet-actions > div:hover {
+    background: var(--aero-sheen), var(--aero-pearl-hot);
+    box-shadow: inset 0 0 0 1px var(--aero-rim), var(--aero-glow-pearl);
+}
+/* Quotes and link previews are panes of clear glass set into the post: a
+   rim of ice blue, a sheen across the top edge and a soft lift. */
+[data-edge="gloss"] :is(.quote-card, .link-card) {
+    border-color: #c7e3f1;
+    background: linear-gradient(#ffffff, #edf7fc);
+    box-shadow: inset 0 1px 0 #ffffff, inset 0 10px 14px -10px rgba(46, 168, 224, .18), 0 2px 6px rgba(10, 90, 140, .07);
+}
+[data-edge="gloss"] :is(.quote-card, .link-card):hover {
+    border-color: #8fd0ee;
+    box-shadow: inset 0 1px 0 #ffffff, inset 0 10px 14px -10px rgba(46, 168, 224, .28), 0 0 0 3px rgba(46, 168, 224, .1), 0 3px 10px rgba(10, 90, 140, .1);
+}
+/* Photos and videos sit in a thin ice-blue rim with a soft shadow; the
+   picture itself is left untouched. */
+[data-edge="gloss"] :is(.media-frame, [data-lightbox-media].grid, .media-carousel-tile) {
+    border-color: #c2dff0;
+    box-shadow: 0 3px 10px rgba(10, 90, 140, .14);
+}
+/* The open post's actions sit on a pearl capsule, inset from its ends and
+   standing clear of the rule below the post. */
+[data-edge="gloss"] .tweet-actions-main {
+    height: 42px;
+    margin: 6px 0 12px;
+    padding: 0 14px;
+    border: 1px solid #c7e3f1;
+    border-radius: 9999px;
+    background: var(--aero-sheen-soft), var(--aero-pearl);
+    box-shadow: var(--aero-glow-pearl), 0 2px 6px rgba(10, 90, 140, .08);
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────
+   Gel capsules. Ordinary buttons are pearl with an ocean label and turn
+   faintly aqua under the pointer; the primary action is aqua gel with a
+   white label; pressing sinks the highlight. */
+[data-edge="gloss"] .nook-button:not(.is-text) {
+    border-color: var(--aero-rim);
+    border-radius: 9999px;
+    background: var(--aero-sheen), var(--aero-pearl);
+    box-shadow: var(--aero-glow-pearl), 0 1px 2px rgba(10, 90, 140, .12);
+    color: var(--aero-ocean);
+}
+[data-edge="gloss"] .nook-button:not(.is-text):hover:not(:disabled) {
+    border-color: var(--aero-rim-hot);
+    background: var(--aero-sheen), var(--aero-pearl-hot);
+    box-shadow: var(--aero-glow-pearl), 0 0 0 3px rgba(46, 168, 224, .14), 0 1px 3px rgba(10, 90, 140, .16);
+}
+[data-edge="gloss"] .nook-button.is-primary:not(:disabled) {
+    border-color: var(--aero-deep);
+    background: var(--aero-sheen), var(--aero-aqua);
+    box-shadow: var(--aero-glow-aqua), 0 1px 3px rgba(10, 90, 140, .25);
+    color: #ffffff;
+    text-shadow: 0 1px 1px rgba(0, 50, 90, .4);
+}
+[data-edge="gloss"] .nook-button.is-primary:hover:not(:disabled) {
+    background: var(--aero-sheen), var(--aero-aqua-hot);
+    box-shadow: var(--aero-glow-aqua), 0 0 0 3px rgba(46, 168, 224, .22), 0 1px 4px rgba(10, 90, 140, .3);
+}
+[data-edge="gloss"] .nook-button:not(.is-text):active:not(:disabled) {
+    background: var(--aero-sheen-soft), linear-gradient(#cfe9f6, #e2f3fb 50%, #f4fbfe);
+    box-shadow: inset 0 2px 4px rgba(10, 90, 140, .22);
+}
+[data-edge="gloss"] .nook-button.is-primary:active:not(:disabled) {
+    background: var(--aero-sheen-soft), var(--aero-aqua-down);
+    box-shadow: inset 0 2px 5px rgba(0, 40, 80, .35);
+}
+[data-edge="gloss"] .nook-button.is-danger:not(:disabled) {
+    border-color: #a8261a;
+    background: var(--aero-sheen), var(--aero-coral);
+    box-shadow: var(--aero-glow-coral), 0 1px 3px rgba(140, 30, 10, .25);
+    color: #ffffff;
+    text-shadow: 0 1px 1px rgba(110, 20, 0, .45);
+}
+[data-edge="gloss"] .nook-button.is-danger:hover:not(:disabled) {
+    border-color: #a8261a;
+    background: var(--aero-sheen), var(--aero-coral-hot);
+    box-shadow: var(--aero-glow-coral), 0 0 0 3px rgba(240, 90, 66, .2), 0 1px 4px rgba(140, 30, 10, .3);
+}
+[data-edge="gloss"] .nook-button.is-danger:active:not(:disabled) {
+    background: var(--aero-sheen-soft), linear-gradient(#b92d1b, #d0442e 50%, #e8604a);
+    box-shadow: inset 0 2px 5px rgba(80, 10, 0, .4);
+}
+[data-edge="gloss"] .nook-button:not(.is-text):is(:disabled, [aria-disabled="true"]) {
+    border-color: #d3e3ec;
+    background: #f5f9fb;
+    box-shadow: none;
+    color: #9fb2bf;
+    text-shadow: none;
+}
+[data-edge="gloss"] .nook-button:not(.is-text):focus-visible {
+    outline: none;
+    box-shadow: var(--aero-glow-pearl), var(--aero-focus);
+}
+[data-edge="gloss"] .nook-button.is-primary:focus-visible {
+    box-shadow: var(--aero-glow-aqua), var(--aero-focus);
+}
+
+/* Segmented controls are one pearl capsule; the chosen segment is a bead
+   of aqua gel inside it. The buttons fill the capsule's height, so the bead
+   follows its rounded ends instead of floating inside them. */
+[data-edge="gloss"] .nook-segmented {
+    align-items: stretch;
+    gap: 2px;
+    padding: 2px;
+    overflow: hidden;
+    border: 1px solid var(--aero-rim);
+    background: linear-gradient(#e4f2f9, #f6fbfe);
+    box-shadow: inset 0 1px 3px rgba(10, 90, 140, .16);
+}
+[data-edge="gloss"] .nook-segmented button {
+    border-radius: 9999px;
+    color: var(--aero-ocean);
+}
+[data-edge="gloss"] .nook-segmented button:hover {
+    background: var(--aero-sheen), var(--aero-pearl-hot);
+}
+[data-edge="gloss"] .nook-segmented button:is([aria-checked="true"], [aria-pressed="true"]) {
+    background: var(--aero-sheen), var(--aero-aqua);
+    box-shadow: 0 0 0 1px var(--aero-deep), var(--aero-glow-aqua);
+    color: #ffffff;
+    text-shadow: 0 1px 1px rgba(0, 50, 90, .4);
+}
+[data-edge="gloss"] .nook-segmented button:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px rgba(46, 168, 224, .6);
+}
+
+/* ── Fields ─────────────────────────────────────────────────────────────
+   A text field is a shallow well of clear water: an ice-blue rim and a soft
+   inner shadow along its top. Focus fills the rim with aqua and rings the
+   field with a glow, one ring only. */
+[data-edge="gloss"] :is(.nook-field, .nook-input, .nook-select-trigger, .nook-search) {
+    border-color: #a9d0e5;
+    background: linear-gradient(#f4fafd, #ffffff 40%);
+    box-shadow: inset 0 1px 3px rgba(10, 90, 140, .12);
+}
+[data-edge="gloss"] :is(.nook-field, .nook-input, .nook-select-trigger, .nook-search):hover {
+    border-color: #6fbde3;
+}
+[data-edge="gloss"] :is(.nook-field:focus-within, .nook-input:focus-within, .nook-select-trigger[aria-expanded="true"], .nook-select-trigger:focus-visible, .nook-search:focus-within) {
+    border-color: var(--aero-rim-hot);
+    box-shadow: inset 0 1px 3px rgba(10, 90, 140, .12), var(--aero-focus);
+}
+[data-edge="gloss"] :is(.nook-field, .nook-input).is-invalid {
+    border-color: var(--destructive-color);
+    box-shadow: inset 0 1px 3px rgba(10, 90, 140, .12), 0 0 0 3px rgba(201, 52, 32, .2);
+}
+
+/* Search capsules and tags are small gel pills: aqua-tinted pearl for a
+   filter or tag, blush for an excluded one. */
+[data-edge="gloss"] :is(.search-capsule.valid-capsule, .filter-box, .nook-token, .nook-td-chip) {
+    border: 1px solid #93cdea;
+    background: var(--aero-sheen), linear-gradient(#f4fbfe, #d9effa);
+    box-shadow: inset 0 -2px 3px rgba(120, 210, 250, .3);
+    color: var(--aero-deep);
+}
+[data-edge="gloss"] :is(.search-capsule.negative-capsule.valid-capsule, .filter-box.negative) {
+    border-color: #efa999;
+    background: var(--aero-sheen), linear-gradient(#fff7f5, #fde0d9);
+    box-shadow: inset 0 -2px 3px rgba(255, 170, 150, .3);
+    color: #b02a17;
+}
+[data-edge="gloss"] .nook-td-chip:hover {
+    border-color: var(--aero-rim-hot);
+    background: var(--aero-sheen), linear-gradient(#e8f7fe, #bfe6f9);
+}
+[data-edge="gloss"] .nook-td-chip:active {
+    background: var(--aero-sheen-soft), var(--aero-aqua);
+    color: #ffffff;
+}
+[data-edge="gloss"] .nook-token button:hover {
+    background: rgba(255, 255, 255, .75);
+    box-shadow: inset 0 0 0 1px var(--aero-rim);
+}
+
+/* ── Checkboxes, radios and switches ────────────────────────────────────
+   A checkbox is a rounded well that fills with aqua gel when ticked; a
+   radio is a clear bubble holding an aqua bead. A switch is a capsule that
+   fills with lime gel when on, with a pearl bubble for its knob. */
+[data-edge="gloss"] .nook-checkbox {
+    width: 17px;
+    height: 17px;
+    border: 1px solid #8fbfd8;
+    border-radius: 5px;
+    background: linear-gradient(#e6f3fa, #ffffff 70%);
+    box-shadow: inset 0 1px 2px rgba(10, 90, 140, .18);
+}
+[data-edge="gloss"] .nook-checkbox:hover,
+[data-edge="gloss"] :hover > .nook-checkbox {
+    border-color: var(--aero-rim-hot);
+    box-shadow: inset 0 1px 2px rgba(10, 90, 140, .18), 0 0 0 3px rgba(46, 168, 224, .14);
+}
+[data-edge="gloss"] .nook-checkbox:has(input:checked),
+[data-edge="gloss"] [aria-checked="true"] > .nook-checkbox {
+    border-color: var(--aero-deep);
+    background: var(--aero-sheen), var(--aero-aqua);
+    box-shadow: var(--aero-glow-aqua);
+    color: #ffffff;
+}
+[data-edge="gloss"] .nook-checkbox:has(input:focus-visible) {
+    outline: none;
+    box-shadow: inset 0 1px 2px rgba(10, 90, 140, .18), var(--aero-focus);
+}
+[data-edge="gloss"] .nook-radio,
+[data-edge="gloss"] [aria-checked="true"] > .nook-radio,
+[data-edge="gloss"] input:checked + .nook-radio {
+    width: 17px;
+    height: 17px;
+    border: 1px solid #8fbfd8;
+    background: radial-gradient(circle at 50% 25%, #ffffff, #eaf6fc 55%, #cfe8f5);
+    box-shadow: inset 0 -2px 3px rgba(120, 210, 250, .35);
+}
+[data-edge="gloss"] :hover > .nook-radio {
+    border-color: var(--aero-rim-hot);
+}
+[data-edge="gloss"] .nook-radio::after {
+    inset: 3px;
+    background: radial-gradient(circle at 50% 25%, #e6faff 0 18%, #3ec0f2 50%, #0a7cc1 90%);
+    box-shadow: 0 0 3px rgba(46, 168, 224, .7);
+}
+[data-edge="gloss"] :focus-visible > .nook-radio {
+    outline: none;
+    box-shadow: inset 0 -2px 3px rgba(120, 210, 250, .35), var(--aero-focus);
+}
+[data-edge="gloss"] .nook-switch {
+    border: 1px solid #9cc7dd;
+    background: linear-gradient(#d4e7f1, #eef7fb 60%, #f8fcfe);
+    box-shadow: inset 0 1px 3px rgba(10, 90, 140, .25);
+}
+[data-edge="gloss"] :is(.nook-switch.is-on, [aria-checked="true"] > .nook-switch, input:checked + .nook-switch) {
+    border-color: #3f8a12;
+    background: var(--aero-sheen-soft), var(--aero-lime);
+    box-shadow: inset 0 1px 3px rgba(30, 80, 0, .3), var(--aero-glow-lime);
+}
+[data-edge="gloss"] .nook-switch::after,
+[data-edge="gloss"] :is(.nook-switch.is-on, [aria-checked="true"] > .nook-switch, input:checked + .nook-switch)::after {
+    top: 1px;
+    left: 1px;
+    background: radial-gradient(circle at 50% 22%, #ffffff 0 28%, #eef7fb 60%, #c6dfec);
+    box-shadow: 0 0 0 1px rgba(10, 70, 110, .3), 0 1px 3px rgba(10, 70, 110, .35);
+}
+
+/* ── Menus and dialogs ──────────────────────────────────────────────────
+   Menus are white glass with an ice rim; the highlighted row is a pale aqua
+   capsule, and the chosen row in a listbox keeps that capsule. */
+[data-edge="gloss"] .nook-popover {
+    border: 1px solid #b6dbee;
+    background: linear-gradient(#f0f9fe, #ffffff 40px, #f5fbfe);
+    box-shadow: inset 0 1px 0 #ffffff, var(--popover-shadow);
+}
+[data-edge="gloss"] .nook-option {
+    min-height: 34px;
+    padding: 6px 14px;
+}
+[data-edge="gloss"] :is(.nook-option:is(button, a):hover, .nook-option:focus-visible, .nook-option[data-active="true"], .nook-option.is-active, .nook-suggest-row.is-active) {
+    border-radius: 9999px;
+    box-shadow: inset 0 0 0 1px #a9dcf3, inset 0 -2px 4px rgba(120, 210, 250, .25);
+}
+
+/* A dialog is a white pane with an ice rim and a long, soft, blue-tinted
+   shadow. Its header is a band of clear sky: a pale aqua wash under a curved
+   sheen, ending in the same waterline as the page header. Text stays ocean
+   ink. The close button is a pearl bubble that turns coral under the
+   pointer. */
+[data-edge="gloss"] .nook-dialog {
+    border: 1px solid #b6dbee;
+    background: linear-gradient(#eef8fd, #ffffff 160px);
+}
+/* The floating jobs panel takes the same sky at its top and a white inner
+   rim; its rows light as pearl capsules. */
+[data-edge="gloss"] .nook-dialog.is-floating {
+    box-shadow: inset 0 1px 0 #ffffff, var(--popover-shadow);
+}
+[data-edge="gloss"] .cs-row {
+    border-radius: 12px;
+}
+[data-edge="gloss"] .cs-row:hover {
+    background: var(--aero-sheen-soft), var(--aero-pearl-hot);
+    box-shadow: inset 0 0 0 1px #b9e0f3;
+}
+[data-edge="gloss"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) {
+    border-bottom: 1px solid rgba(46, 168, 224, .35);
+    background: var(--aero-sheen-soft), linear-gradient(#f2fafe, #dcf0fa);
+    box-shadow: inset 0 1px 0 #ffffff;
+}
+[data-edge="gloss"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) :is(h1, h2, h3) {
+    color: var(--aero-ocean);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, .9);
+}
+[data-edge="gloss"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close) {
+    border: 1px solid var(--aero-rim);
+    border-radius: 9999px;
+    background: var(--aero-sheen), var(--aero-pearl);
+    box-shadow: var(--aero-glow-pearl);
+    color: var(--aero-ocean);
+}
+[data-edge="gloss"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close):hover:not(:disabled) {
+    border-color: #a8261a;
+    background: var(--aero-sheen), var(--aero-coral);
+    box-shadow: var(--aero-glow-coral), 0 0 0 3px rgba(240, 90, 66, .18);
+    color: #ffffff;
+}
+[data-edge="gloss"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close):active:not(:disabled) {
+    background: var(--aero-sheen-soft), linear-gradient(#b92d1b, #d0442e 50%, #e8604a);
+    color: #ffffff;
+}
+/* The command area along a dialog's foot is a strip of ice. */
+[data-edge="gloss"] :is(.setup-modal-footer, .nook-selection-bar) {
+    border-top-color: #d3e9f4;
+    background: linear-gradient(#f3fafd, #e6f4fb);
+}
+
+/* Settings' page list: the current page is an aqua gel capsule, and others
+   take a pearl one under the pointer. */
+[data-edge="gloss"] .nook-settings-nav {
+    border-radius: 9999px;
+}
+[data-edge="gloss"] .nook-settings-nav:hover {
+    background: var(--aero-sheen), var(--aero-pearl-hot);
+    box-shadow: inset 0 0 0 1px #b9e0f3;
+}
+[data-edge="gloss"] .nook-settings-nav[aria-current="page"] {
+    border-right-color: transparent;
+    background: var(--aero-sheen), var(--aero-aqua);
+    box-shadow: inset 0 0 0 1px var(--aero-deep), var(--aero-glow-aqua);
+    color: #ffffff;
+    text-shadow: 0 1px 1px rgba(0, 50, 90, .4);
+}
+[data-edge="gloss"] .nook-settings-nav[aria-current="page"] :is(svg, span) {
+    color: #ffffff;
+}
+@media (max-width: 799px) {
+    [data-edge="gloss"] .nook-settings-nav[aria-current="page"] { background: transparent; box-shadow: none; color: inherit; text-shadow: none; }
+    [data-edge="gloss"] .nook-settings-nav[aria-current="page"] :is(svg, span) { color: inherit; }
+}
+/* A tag's share of the archive is a small glass tube of aqua. */
+[data-edge="gloss"] .nook-tag-share {
+    height: 7px;
+    border: 1px solid #b6dbee;
+    background: linear-gradient(#e2f0f7, #f7fbfd);
+    box-shadow: inset 0 1px 2px rgba(10, 90, 140, .15);
+}
+[data-edge="gloss"] .nook-tag-share > span {
+    background: var(--aero-sheen), var(--aero-aqua);
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────────
+   The chosen tab's label is a capsule of aqua gel; another tab's label
+   takes a pearl capsule under the pointer. The tab itself stays clear, so
+   the capsule floats in the strip, and the accent bar is dropped. */
+/* The label's padding takes over most of the tab's, so the tabs keep their
+   width and a feature's ::before mark (the jobs panel's status dots) stays
+   clear of the capsule. */
+[data-edge="gloss"] .nook-tab,
+[data-edge="gloss"] .nook-tab:hover {
+    --tab-pad: 4px;
+    background: transparent;
+}
+[data-edge="gloss"] .nook-tab .nook-tab-label {
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+}
+[data-edge="gloss"] .nook-tab.is-sm .nook-tab-label {
+    height: 28px;
+    padding: 0 8px;
+}
+[data-edge="gloss"] .nook-tab:hover:not([aria-selected="true"]) .nook-tab-label {
+    border-color: var(--aero-rim);
+    background: var(--aero-sheen), var(--aero-pearl-hot);
+    box-shadow: var(--aero-glow-pearl);
+}
+/* Phone headers fit four tabs in the width header.css gives them. */
+@media (max-width: 640px) {
+    [data-edge="gloss"] .nook-header .nook-tab { --tab-pad: 1px; }
+    [data-edge="gloss"] .nook-header .nook-tab .nook-tab-label { padding: 0 10px; }
+}
+@media (max-width: 359px) {
+    [data-edge="gloss"] .nook-header .nook-tab .nook-tab-label { padding: 0 6px; }
+}
+[data-edge="gloss"] .nook-tab[aria-selected="true"] {
+    color: #ffffff;
+}
+[data-edge="gloss"] .nook-tab[aria-selected="true"] .nook-tab-label {
+    border-color: var(--aero-deep);
+    background: var(--aero-sheen), var(--aero-aqua);
+    box-shadow: var(--aero-glow-aqua), 0 1px 3px rgba(10, 90, 140, .25);
+    text-shadow: 0 1px 1px rgba(0, 50, 90, .4);
+}
+[data-edge="gloss"] .nook-tab[aria-selected="true"] .nook-tab-label::after {
+    display: none;
+}
+[data-edge="gloss"] .nook-tab:focus-visible {
+    outline: none;
+}
+[data-edge="gloss"] .nook-tab:focus-visible .nook-tab-label {
+    box-shadow: var(--aero-focus);
+}
+
+/* ── Meters ─────────────────────────────────────────────────────────────
+   A clear glass tube filled with gel: lime by default (or the meter's own
+   colour), under the shared sheen. No light glides along the fill, as an
+   endless background animation repaints every meter on screen each frame
+   and makes scrolling stutter. */
+[data-edge="gloss"] .nook-meter {
+    height: 12px;
+    border: 1px solid #a9d0e5;
+    border-radius: 9999px;
+    background: linear-gradient(#dbecf5, #f6fbfd 60%, #ffffff);
+    box-shadow: inset 0 1px 3px rgba(10, 90, 140, .2);
+}
+[data-edge="gloss"] :is(.nook-meter-fill, .nook-meter-part.is-done, .nook-meter-part.is-neutral, .nook-meter-part.is-failed, .nook-meter-part.is-indeterminate) {
+    --gloss-meter: var(--meter-fill, #6cc51f);
+    border-radius: 9999px;
+    background:
+        linear-gradient(rgba(255, 255, 255, .7), rgba(255, 255, 255, .15) 55%, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, .25)),
+        var(--gloss-meter);
+}
+[data-edge="gloss"] .nook-meter-part.is-neutral { --gloss-meter: #9fb8c6; }
+[data-edge="gloss"] .nook-meter-part.is-failed { --gloss-meter: var(--destructive-color); }
+/* The Jobs bar's legend dots are beads in the same colours as its parts. */
+[data-edge="gloss"] :is(.is-done, .is-neutral, .is-failed) > .bd-dot {
+    background: radial-gradient(circle at 50% 25%, rgba(255, 255, 255, .9), transparent 55%), var(--gloss-meter);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15);
+}
+[data-edge="gloss"] .is-done > .bd-dot { --gloss-meter: #6cc51f; }
+[data-edge="gloss"] .is-neutral > .bd-dot { --gloss-meter: #9fb8c6; }
+[data-edge="gloss"] .is-failed > .bd-dot { --gloss-meter: var(--destructive-color); }
+
+/* ── Scrollbars ─────────────────────────────────────────────────────────
+   A slim glass channel holding a pearl capsule that turns aqua under the
+   pointer, with no arrow buttons. As in theme-structure.css, the thin
+   overlay settings are reset so Chrome honours the pseudo-elements, <html>
+   is named with its descendants, and only a mouse gets them; touch screens
+   keep the thin overlay. */
+@media (hover: hover) and (pointer: fine) {
+    [data-edge="gloss"],
+    [data-edge="gloss"] * {
+        scrollbar-width: auto;
+        scrollbar-color: auto;
+    }
+    @supports not selector(::-webkit-scrollbar) {
+        [data-edge="gloss"],
+        [data-edge="gloss"] * {
+            scrollbar-color: #8fc3df var(--scrollbar-bg);
+        }
+    }
+    [data-edge="gloss"]::-webkit-scrollbar,
+    [data-edge="gloss"] ::-webkit-scrollbar {
+        width: 13px;
+        height: 13px;
+    }
+    [data-edge="gloss"]::-webkit-scrollbar-track,
+    [data-edge="gloss"] ::-webkit-scrollbar-track,
+    [data-edge="gloss"]::-webkit-scrollbar-corner,
+    [data-edge="gloss"] ::-webkit-scrollbar-corner {
+        background: var(--scrollbar-bg);
+    }
+    [data-edge="gloss"]::-webkit-scrollbar-button,
+    [data-edge="gloss"] ::-webkit-scrollbar-button {
+        display: none;
+    }
+    /* The transparent border insets the capsule from the channel's edges;
+       background-clip keeps the gel inside it. */
+    [data-edge="gloss"]::-webkit-scrollbar-thumb,
+    [data-edge="gloss"] ::-webkit-scrollbar-thumb {
+        border: 2px solid transparent;
+        border-radius: 9999px;
+        background-clip: padding-box;
+        box-shadow: inset 0 0 0 1px #8fc3df;
+    }
+    [data-edge="gloss"]::-webkit-scrollbar-thumb:vertical,
+    [data-edge="gloss"] ::-webkit-scrollbar-thumb:vertical {
+        background-image: linear-gradient(to right, #ffffff, #e2f2fa 55%, #c4e3f3);
+    }
+    [data-edge="gloss"]::-webkit-scrollbar-thumb:horizontal,
+    [data-edge="gloss"] ::-webkit-scrollbar-thumb:horizontal {
+        background-image: linear-gradient(#ffffff, #e2f2fa 55%, #c4e3f3);
+    }
+    [data-edge="gloss"]::-webkit-scrollbar-thumb:vertical:hover,
+    [data-edge="gloss"] ::-webkit-scrollbar-thumb:vertical:hover {
+        background-image: linear-gradient(to right, #8ee0ff, #2db6f0 55%, #108fd4);
+        box-shadow: inset 0 0 0 1px var(--aero-deep);
+    }
+    [data-edge="gloss"]::-webkit-scrollbar-thumb:horizontal:hover,
+    [data-edge="gloss"] ::-webkit-scrollbar-thumb:horizontal:hover {
+        background-image: linear-gradient(#8ee0ff, #2db6f0 55%, #108fd4);
+        box-shadow: inset 0 0 0 1px var(--aero-deep);
+    }
+    [data-edge="gloss"]::-webkit-scrollbar-thumb:active,
+    [data-edge="gloss"] ::-webkit-scrollbar-thumb:active {
+        background-image: linear-gradient(#1b8fcf, #3cb7ec);
+        box-shadow: inset 0 0 0 1px var(--aero-deep);
+    }
+}
+
+/* ── Sliders ────────────────────────────────────────────────────────────
+   A glass channel filled with aqua up to a pearl bubble thumb. */
+[data-edge="gloss"] .nook-font-slider input::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 3px;
+    background:
+        linear-gradient(rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 60%),
+        linear-gradient(to right, #1ea6e4 0 var(--range-progress), #e2f0f7 var(--range-progress) 100%);
+    box-shadow: inset 0 0 0 1px rgba(10, 90, 140, .25);
+}
+[data-edge="gloss"] .nook-font-slider input::-moz-range-track {
+    height: 6px;
+    border-radius: 3px;
+    background: #e2f0f7;
+    box-shadow: inset 0 0 0 1px rgba(10, 90, 140, .25);
+}
+[data-edge="gloss"] .nook-font-slider input::-moz-range-progress {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(#7fd6fb, #1ea6e4);
+}
+[data-edge="gloss"] .nook-font-slider input::-webkit-slider-thumb {
+    width: 18px;
+    height: 18px;
+    margin-top: -6px;
+    border: 1px solid var(--aero-rim);
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 22%, #ffffff 0 30%, #e6f4fb 62%, #bfe0f1);
+    box-shadow: 0 1px 3px rgba(10, 70, 110, .3);
+}
+[data-edge="gloss"] .nook-font-slider input::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--aero-rim);
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 22%, #ffffff 0 30%, #e6f4fb 62%, #bfe0f1);
+    box-shadow: 0 1px 3px rgba(10, 70, 110, .3);
+}
+[data-edge="gloss"] .nook-font-slider input:hover::-webkit-slider-thumb {
+    border-color: var(--aero-rim-hot);
+    box-shadow: 0 1px 3px rgba(10, 70, 110, .3), 0 0 0 4px rgba(46, 168, 224, .18);
+}
+[data-edge="gloss"] .nook-font-slider input:hover::-moz-range-thumb {
+    border-color: var(--aero-rim-hot);
+    box-shadow: 0 1px 3px rgba(10, 70, 110, .3), 0 0 0 4px rgba(46, 168, 224, .18);
+}
+
+/* ── Analytics ──────────────────────────────────────────────────────────
+   Tiles are glass panels with a sheen along the top; chart bars are gel
+   tubes, lit down their left side. */
+[data-edge="gloss"] .nook-stats .stats-card {
+    border: 1px solid #c7e3f1;
+    background: var(--aero-sheen-soft), linear-gradient(#ffffff, #eaf6fc);
+    box-shadow: inset 0 1px 0 #ffffff, 0 2px 8px rgba(10, 90, 140, .07);
+}
+[data-edge="gloss"] .nook-stats .stats-card.nook-stats-link:hover {
+    border-color: #8fd0ee;
+    box-shadow: inset 0 1px 0 #ffffff, 0 0 0 3px rgba(46, 168, 224, .1), 0 3px 10px rgba(10, 90, 140, .1);
+}
+/* Section icons sit in aqua bubbles. */
+[data-edge="gloss"] .nook-icon-well {
+    border: 1px solid var(--aero-deep);
+    background: var(--aero-sheen), var(--aero-aqua);
+    box-shadow: var(--aero-glow-aqua), 0 1px 3px rgba(10, 90, 140, .25);
+    color: #ffffff;
+}
+[data-edge="gloss"] :is(.nook-year-bar, .nook-spark span) {
+    background:
+        linear-gradient(to right, rgba(255, 255, 255, .55), rgba(255, 255, 255, .12) 55%, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, .2)),
+        var(--nook-mark);
+}
+/* The storage and status bars are rows of glass tubes: pale for each part,
+   the chosen one in the mark colour. */
+[data-edge="gloss"] .nook-segment {
+    border-radius: 9999px;
+    background:
+        linear-gradient(rgba(255, 255, 255, .7), rgba(255, 255, 255, .15) 55%, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, .25)),
+        #b3cad6;
+    box-shadow: inset 0 0 0 1px rgba(10, 70, 110, .18);
+    opacity: 1;
+}
+[data-edge="gloss"] .nook-segment.is-active {
+    background:
+        linear-gradient(rgba(255, 255, 255, .7), rgba(255, 255, 255, .15) 55%, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, .25)),
+        var(--nook-mark);
+}
+
+/* Tooltips are small frosted bubbles. */
+[data-edge="gloss"] .nook-tip {
+    border: 1px solid #b6dbee;
+    border-radius: 10px;
+    background: linear-gradient(rgba(255, 255, 255, .97), rgba(232, 246, 252, .97));
+    box-shadow: 0 3px 10px rgba(10, 70, 110, .18);
+    color: var(--aero-ocean);
+}
+
+/* ── Video ──────────────────────────────────────────────────────────────
+   Under the picture is a bar of deep-water glass: translucent teal-black
+   with a sheen along its top edge, holding clear glass bubbles for buttons,
+   an aqua bubble for play, and a seek tube that fills with aqua under a
+   pearl bead. The duration badge is a small capsule of the same glass. The
+   phone feed and viewer keep X's layout, which their gestures and
+   safe-area spacing are built around. */
+[data-edge="gloss"] :is(.media-video-duration, .media-gif-indicator) {
+    border: 1px solid rgba(160, 230, 255, .35);
+    background: linear-gradient(rgba(255, 255, 255, .22), rgba(255, 255, 255, 0) 55%), rgba(4, 38, 56, .72);
+    color: #ffffff;
+}
+/* The GIF badge's halves carry X's own dark fills, which would cover the
+   capsule's glass; the badge is one capsule, split by a hairline. */
+[data-edge="gloss"] .media-gif-indicator {
+    gap: 0;
+    border-radius: 9999px;
+}
+[data-edge="gloss"] :is(.media-gif-action, .media-gif-label) {
+    background: none;
+}
+[data-edge="gloss"] .media-gif-action {
+    border-right: 1px solid rgba(255, 255, 255, .2);
+}
+/* A text-less post's page dashes are glass beads; the current one fills
+   with aqua. The lit face is a layer whose opacity follows --dot-active (0
+   to 1 with the scroll), so it fades across rather than repainting a
+   gradient. */
+[data-edge="gloss"] .media-carousel-dots {
+    height: 8px;
+    margin-bottom: 11px;
+}
+[data-edge="gloss"] .media-carousel-dots > span {
+    position: relative;
+    box-sizing: border-box;
+    width: calc(8px + 16px * var(--dot-active, 0));
+    border: 1px solid #a9d0e5;
+    border-radius: 9999px;
+    background: radial-gradient(circle at 50% 25%, #ffffff, #e6f4fb 60%, #cbe5f2);
+    box-shadow: 0 1px 2px rgba(10, 90, 140, .15);
+    opacity: 1;
+}
+[data-edge="gloss"] .media-carousel-dots > span::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border: 1px solid var(--aero-deep);
+    border-radius: inherit;
+    background: var(--aero-sheen), var(--aero-aqua);
+    box-shadow: 0 0 4px rgba(46, 168, 224, .6);
+    opacity: var(--dot-active, 0);
+}
+@media (min-width: 641px) and (pointer: fine) {
+    [data-edge="gloss"] .video-control-bar {
+        padding: 0 6px 3px;
+        border-top: 1px solid rgba(160, 230, 255, .3);
+        background: linear-gradient(rgba(255, 255, 255, .16), rgba(255, 255, 255, .02) 50%, rgba(255, 255, 255, 0)), linear-gradient(rgba(6, 52, 74, .82), rgba(2, 22, 34, .92));
+        font-family: inherit;
+    }
+    [data-edge="gloss"] .video-control-row { gap: 4px; }
+    [data-edge="gloss"] .video-control-row .video-button {
+        flex-basis: 30px;
+        width: 30px;
+        height: 30px;
+        border: 1px solid rgba(160, 230, 255, .3);
+        background: var(--aero-sheen-soft), rgba(255, 255, 255, .06);
+    }
+    [data-edge="gloss"] .video-control-row .video-button svg { width: 16px; height: 16px; }
+    [data-edge="gloss"] .video-control-row .video-button:hover {
+        border-color: rgba(160, 230, 255, .7);
+        background: var(--aero-sheen-soft), radial-gradient(circle at 50% 110%, rgba(90, 210, 255, .7), transparent 70%), rgba(255, 255, 255, .08);
+        box-shadow: 0 0 6px rgba(90, 210, 255, .55);
+    }
+    [data-edge="gloss"] .video-control-row .video-button[data-video-action="play"] {
+        flex-basis: 34px;
+        width: 34px;
+        height: 34px;
+        border-color: var(--aero-deep);
+        background: var(--aero-sheen), var(--aero-aqua);
+        box-shadow: var(--aero-glow-aqua);
+    }
+    [data-edge="gloss"] .video-control-row .video-button:active {
+        background: rgba(0, 0, 0, .25);
+    }
+    [data-edge="gloss"] .video-time {
+        color: #cdefff;
+        font-size: 12px;
+    }
+    [data-edge="gloss"] .video-seek { margin: 0 2px; width: calc(100% - 4px); }
+    [data-edge="gloss"] .video-seek::-webkit-slider-runnable-track {
+        height: 6px;
+        border: 1px solid rgba(0, 0, 0, .5);
+        border-radius: 3px;
+        background:
+            linear-gradient(rgba(255, 255, 255, .5), rgba(255, 255, 255, 0) 55%),
+            linear-gradient(to right, #1ea6e4 var(--video-progress), rgba(255, 255, 255, .14) var(--video-progress));
+    }
+    [data-edge="gloss"] .video-seek::-moz-range-track {
+        height: 6px;
+        border: 1px solid rgba(0, 0, 0, .5);
+        border-radius: 3px;
+        background: rgba(255, 255, 255, .14);
+    }
+    [data-edge="gloss"] .video-seek::-moz-range-progress {
+        height: 6px;
+        border-radius: 3px;
+        background: linear-gradient(#7fd6fb, #1ea6e4 55%, #0b80c5);
+    }
+    [data-edge="gloss"] .video-seek::-webkit-slider-thumb {
+        width: 13px;
+        height: 13px;
+        margin-top: -4.5px;
+        border: 1px solid rgba(0, 40, 60, .6);
+        background: radial-gradient(circle at 50% 25%, #ffffff 0 30%, #dcf1fb 65%, #9fd0e8);
+        opacity: 1;
+    }
+    [data-edge="gloss"] .video-seek::-moz-range-thumb {
+        width: 11px;
+        height: 11px;
+        border: 1px solid rgba(0, 40, 60, .6);
+        background: radial-gradient(circle at 50% 25%, #ffffff 0 30%, #dcf1fb 65%, #9fd0e8);
+        opacity: 1;
+    }
+    [data-edge="gloss"] .video-volume {
+        bottom: 34px;
+        border: 1px solid rgba(160, 230, 255, .3);
+        border-radius: 9999px;
+        background: linear-gradient(to right, rgba(6, 52, 74, .92), rgba(2, 22, 34, .95));
+    }
+    [data-edge="gloss"] .video-volume::-webkit-slider-thumb {
+        background: radial-gradient(circle at 50% 25%, #ffffff 0 30%, #dcf1fb 65%, #9fd0e8);
+        box-shadow: 0 0 0 1px rgba(0, 40, 60, .6);
+    }
+    [data-edge="gloss"] .video-volume::-moz-range-thumb {
+        background: radial-gradient(circle at 50% 25%, #ffffff 0 30%, #dcf1fb 65%, #9fd0e8);
+    }
+    /* The poster's play glyph becomes a large aqua bubble; the SVG's own
+       disc is dropped so the button can be the bubble. */
+    [data-edge="gloss"] .video-center-play {
+        width: 64px;
+        height: 64px;
+        border: 1px solid var(--aero-deep);
+        border-radius: 50%;
+        background: var(--aero-sheen), var(--aero-aqua);
+        box-shadow: var(--aero-glow-aqua), 0 0 0 5px rgba(255, 255, 255, .25), 0 3px 12px rgba(0, 0, 0, .4);
+    }
+    [data-edge="gloss"] .video-center-play svg { width: 44px; height: 44px; }
+    [data-edge="gloss"] .video-center-play svg circle { display: none; }
+    [data-edge="gloss"] .video-center-play svg path { fill: #ffffff; }
+    [data-edge="gloss"] .video-center-play:hover {
+        background: var(--aero-sheen), var(--aero-aqua-hot);
+    }
+}

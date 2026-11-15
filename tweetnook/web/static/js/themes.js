@@ -17,11 +17,13 @@
  *
  * Optional structure, for themes modelled on a UI that isn't X's:
  *   shape – 'rounded' (default) or 'square' corners (SHAPES below)
- *   edge  – 'flat' (default) or 'bevel': raised controls and sunken fields,
- *           drawn from --edge-light and --edge-dark by the [data-edge] rules
- *           in theme-structure.css. A bevel theme can set --bevel-raised and
- *           --bevel-sunken (border colours) and --bevel-raised-inner and
- *           --bevel-sunken-inner (inset shadows) for a two-pixel edge.
+ *   edge  – 'flat' (default), 'bevel' or 'gloss'. Bevel draws raised
+ *           controls and sunken fields from --edge-light and --edge-dark by
+ *           the [data-edge] rules in theme-structure.css. A bevel theme can
+ *           set --bevel-raised and --bevel-sunken (border colours) and
+ *           --bevel-raised-inner and --bevel-sunken-inner (inset shadows)
+ *           for a two-pixel edge. Gloss is Frutiger Aero's gel controls and
+ *           glass, drawn by theme-gloss.css.
  *   font  – font stack for "Theme Default" in the font picker
  *
  * Painting also sets data-theme on <html> to the theme's key, for details
@@ -448,6 +450,49 @@ const THEME_SEEDS = {
             '--meter-block-width': '7px',
             '--meter-block-gap': '2px',
             '--bevel-meter-bg': '#c0c0c0',
+        },
+    },
+    'frutiger-aero': {
+        _name: 'Frutiger Aero',
+        // The glossy, aquatic optimism of mid-2000s consumer tech: white
+        // glass, gel capsules in aqua and lime, ocean-ink text. The page stays
+        // a plain white reading surface; theme-gloss.css draws the gel.
+        bg: '#ffffff', text: '#0f2a3d', muted: '#557286',
+        accent: '#0a7cc1', danger: '#e0335f', destructive: '#c93420',
+        shape: 'rounded', edge: 'gloss',
+        // Frutiger, then the humanist faces of the period's devices: Myriad
+        // on Apple's, Segoe UI on Windows, Lucida Grande on older Macs.
+        font: 'Frutiger, "Frutiger Linotype", "Myriad Pro", "Segoe UI", "Lucida Grande", "Lucida Sans Unicode", "Helvetica Neue", Arial, sans-serif',
+        overrides: {
+            '--bg-secondary': '#eef8fd',
+            '--bg-header': 'rgba(255, 255, 255, .9)',
+            '--field-bg': '#ffffff',
+            '--dropdown-bg': '#ffffff',
+            '--border-color': '#d6eaf4',
+            '--thread-line': '#a9d9f0',
+            '--input-border': '#a9d0e5',
+            '--gray-700': '#a3c3d4',
+            '--divider-light': '#ffffff',
+            '--heading-color': '#0b3a5c',
+            '--selected-text': '#0b3a5c',
+            // Solid faces for anything that can't take a gradient; the gloss
+            // rules paint the gel over them.
+            '--button-bg': '#ecf7fc',
+            '--button-hover-bg': '#ddf3fd',
+            '--button-text': '#0b3a5c',
+            '--button-border': '#8fc3df',
+            '--button-primary-bg': '#0877b8',
+            '--button-primary-hover-bg': '#0a7cc1',
+            '--button-primary-text': '#ffffff',
+            '--option-active-bg': 'linear-gradient(#f4fbfe, #d6f0fb)',
+            '--popover-shadow': '0 2px 4px rgba(10, 90, 140, .08), 0 10px 28px rgba(10, 90, 140, .18)',
+            '--dialog-shadow': '0 0 0 4px rgba(255, 255, 255, .6), 0 4px 10px rgba(10, 90, 140, .12), 0 24px 60px rgba(10, 90, 140, .28)',
+            '--backdrop-bg': 'rgba(8, 60, 95, .28)',
+            '--hover-bg': 'rgba(30, 166, 228, .05)',
+            '--accent-hover': '#0a6aa6',
+            '--scrollbar-bg': '#f2f9fc',
+            '--scrollbar-thumb': '#c4e3f3',
+            '--scrollbar-thumb-hover': '#2db6f0',
         },
     },
     'steam-modern': {
