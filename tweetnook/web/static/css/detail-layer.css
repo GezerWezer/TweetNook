@@ -8,7 +8,12 @@
    it down and laying every card out again. Only the height changes; the clip is
    permanent because switching overflow or visibility restyles every card. */
 #nook-feed { overflow-y: clip; }
-#nook-feed.feed-collapsed { height: 0; padding-bottom: 0; }
+#nook-feed.feed-collapsed { height: 0; padding-bottom: 0; flex-grow: 0; }
+/* The clip would also cut off the search suggestions, Sort menu and post menus
+   when a short feed ends above them, so the feed fills the column down to the
+   bottom of the screen. */
+.app-column { display: flex; flex-direction: column; }
+#nook-feed { flex-grow: 1; }
 .detail-layer, .detail-underlay {
     --detail-bar: 38px;
     position: fixed; top: 0; bottom: 0; left: 0; right: 0; margin: 0 auto; max-width: 600px;
