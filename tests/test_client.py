@@ -18,6 +18,8 @@ from tests.conftest import (
     request_details,
 )
 from tweetnook.client.base import (
+    APIResponseError,
+    FeatureFlagDriftError,
     RateLimitExhaustedError,
     is_auth_error,
     is_feature_flag_error,
@@ -645,3 +647,45 @@ def test_absent_focal_result_cannot_carry_an_unavailability_observation():
             kind=FocalResultKind.ABSENT,
             unavailable=TweetUnavailableInfo("1", "TweetUnavailable", "not_found", None, {}),
         )
+
+
+@pytest.mark.asyncio
+async def test_an_x_error_keeps_the_operation_and_the_start_of_xs_answer() -> None:
+    body = {"errors": [{"message": "The following features cannot be null: rweb_lists"}]}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, text=json.dumps(body, indent=2), request=request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(FeatureFlagDriftError) as caught:
+            await request_with_backoff(
+                client,
+                "https://x.com/i/api/graphql/abc123/Bookmarks?variables=%7B%7D",
+                SyncConfig(),
+            )
+    finally:
+        await client.aclose()
+
+    assert caught.value.operation == "Bookmarks"
+    # Whitespace is collapsed so the excerpt fits on one log line.
+    assert caught.value.response_excerpt == " ".join(json.dumps(body, indent=2).split())
+    # The message stays short for the UI; the body is for the run log.
+    assert "rweb_lists" not in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_a_long_x_error_body_is_cut_to_an_excerpt() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="x" * 5_000, request=request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(APIResponseError) as caught:
+            await request_with_backoff(
+                client, "https://x.com/i/api/graphql/abc/Likes", SyncConfig(), max_retries=0
+            )
+    finally:
+        await client.aclose()
+
+    assert caught.value.response_excerpt == "x" * 500 + "…"

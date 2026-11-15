@@ -266,25 +266,51 @@ def format_rate_limit_info(info: RateLimitInfo, *, now: float | None = None) -> 
     return ", ".join(parts) if parts else None
 
 
+_RESPONSE_EXCERPT_CHARS = 500
+
+
+def _response_details(response: httpx.Response) -> dict[str, str | None]:
+    """The GraphQL operation and the start of X's answer, for the run log."""
+
+    try:
+        operation = response.request.url.path.rstrip("/").rpartition("/")[2] or None
+    except RuntimeError:
+        # A response built without its request, as tests and replays can do.
+        operation = None
+    try:
+        text = " ".join(response.text.split())
+    except (UnicodeDecodeError, httpx.ResponseNotRead):
+        text = ""
+    if len(text) > _RESPONSE_EXCERPT_CHARS:
+        text = text[:_RESPONSE_EXCERPT_CHARS] + "…"
+    return {"operation": operation, "response_excerpt": text or None}
+
+
 def _classify_response(response: httpx.Response) -> APIResponseError:
+    details = _response_details(response)
     if is_auth_error(response):
         return AuthExpiredError(
-            "Twitter/X rejected the current session cookies.", status_code=response.status_code
+            "Twitter/X rejected the current session cookies.",
+            status_code=response.status_code,
+            **details,
         )
     if is_feature_flag_error(response):
         return FeatureFlagDriftError(
             "Twitter/X returned 400 for the timeline request. The committed feature flags "
             "likely drifted.",
             status_code=response.status_code,
+            **details,
         )
     if is_stale_query_id(response):
         return StaleQueryIdError(
             "Twitter/X returned 404 for the GraphQL operation. The query ID is stale.",
             status_code=404,
+            **details,
         )
     return APIResponseError(
         f"Unexpected Twitter/X API response: HTTP {response.status_code}.",
         status_code=response.status_code,
+        **details,
     )
 
 
@@ -348,7 +374,9 @@ async def request_with_backoff(
                 await sleep(sync_config.cooldown_duration)
                 continue
             raise RateLimitExhaustedError(
-                "Rate limit persisted after retries and cooldown.", status_code=response.status_code
+                "Rate limit persisted after retries and cooldown.",
+                status_code=response.status_code,
+                **_response_details(response),
             )
 
         if is_stale_query_id(response) and refresh_once and not used_refresh:

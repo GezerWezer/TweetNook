@@ -120,7 +120,8 @@ async def refresh_query_ids(
             f"Query ID discovery failed: HTTP {exc.response.status_code}."
         ) from exc
     except httpx.RequestError as exc:
-        raise QueryIdRefreshError(f"Query ID discovery failed: {exc.__class__.__name__}.") from exc
+        reason = f"{exc.__class__.__name__}: {exc}" if str(exc) else exc.__class__.__name__
+        raise QueryIdRefreshError(f"Query ID discovery failed: {reason}.") from exc
     finally:
         if close_client:
             await client.aclose()

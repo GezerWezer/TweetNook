@@ -39,9 +39,20 @@ class QueryIdRefreshError(TweetNookError):
 class APIResponseError(TweetNookError):
     """Raised when Twitter/X returns an unexpected API response."""
 
-    def __init__(self, message: str, *, status_code: int):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int,
+        operation: str | None = None,
+        response_excerpt: str | None = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
+        # Kept for the run log, not the message: X's error body names the missing feature
+        # flags on a 400 and the reason for a 403, and the message stays short for the UI.
+        self.operation = operation
+        self.response_excerpt = response_excerpt
 
 
 class AuthExpiredError(APIResponseError):
