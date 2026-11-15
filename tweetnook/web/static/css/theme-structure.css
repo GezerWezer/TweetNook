@@ -5,11 +5,11 @@
 /* Bevel: classic desktop controls. Light falls from the top left, so raised
    controls have a light top-left edge and sunken fields a dark one. Buttons
    are panel coloured rather than filled with text or accent colour; the
-   accent stays for text, selection and focus. */
-[data-edge="bevel"] {
-    --bevel-raised: var(--edge-light) var(--edge-dark) var(--edge-dark) var(--edge-light);
-    --bevel-sunken: var(--edge-dark) var(--edge-light) var(--edge-light) var(--edge-dark);
-}
+   accent stays for text, selection and focus. The frame is --bevel-raised
+   or --bevel-sunken as border colours, plus --bevel-raised-inner or
+   --bevel-sunken-inner as an inset shadow for themes whose edge is two
+   pixels deep (themes.js sets all four). Where a rule lists the inner ring
+   with another shadow, the ring comes first so it stays inside the border. */
 
 /* The window is panel coloured and content sits in it as sunken wells, as
    the skin draws its list panels: the feed column and the split post panel
@@ -39,27 +39,31 @@
    rest. */
 [data-edge="bevel"] .nook-button:not(.is-text) {
     border-color: var(--bevel-raised);
+    box-shadow: var(--bevel-raised-inner);
 }
 [data-edge="bevel"] .nook-button:not(.is-text):not(.is-danger):hover:not(:disabled) {
     color: var(--selected-text);
 }
 [data-edge="bevel"] .nook-button:not(.is-text):active:not(:disabled) {
     border-color: var(--bevel-sunken);
+    box-shadow: var(--bevel-sunken-inner);
 }
 /* Classic toolkits set button labels in the regular weight, mark keyboard
-   focus with a thin black frame, and draw disabled labels engraved: a dark
-   glyph over a lighter one offset down and right, rather than faded. */
+   focus with a thin black frame (dotted and inside the face on Windows, per
+   --bevel-focus-style and --bevel-focus-offset), and draw disabled labels
+   engraved: a dark glyph over a lighter one offset down and right, rather
+   than faded. */
 [data-edge="bevel"] .nook-button:not(.is-text) {
     font-weight: 400;
 }
 [data-edge="bevel"] .nook-button:not(.is-text):focus-visible {
-    outline: 1px solid #000;
-    outline-offset: 0;
+    outline: 1px var(--bevel-focus-style) #000;
+    outline-offset: var(--bevel-focus-offset);
 }
 [data-edge="bevel"] .nook-button:not(.is-text):is(:disabled, [aria-disabled="true"]) {
     opacity: 1;
     color: var(--edge-dark);
-    text-shadow: 1px 1px 0 color-mix(in srgb, var(--text-secondary) 60%, var(--bg-secondary));
+    text-shadow: 1px 1px 0 var(--disabled-shadow);
 }
 /* Search capsules are small raised panels set into the sunken search field,
    with square corners and the label white. Excluded filters keep the danger
@@ -122,6 +126,7 @@
     border: 1px solid;
     border-color: var(--bevel-sunken);
     background: var(--field-bg);
+    box-shadow: var(--bevel-sunken-inner);
 }
 [data-edge="bevel"] .nook-checkbox:has(input:checked),
 [data-edge="bevel"] [aria-checked="true"] > .nook-checkbox {
@@ -152,7 +157,7 @@
     border: 1px solid;
     border-color: var(--bevel-sunken);
     background: var(--field-bg);
-    box-shadow: none;
+    box-shadow: var(--bevel-sunken-inner);
 }
 [data-edge="bevel"] .nook-field:focus-within,
 [data-edge="bevel"] .nook-input:focus-within,
@@ -161,12 +166,12 @@
 [data-edge="bevel"] .nook-select-trigger:focus-visible {
     border-color: var(--bevel-sunken);
     background: var(--field-bg);
-    box-shadow: 0 0 0 1px var(--accent-color);
+    box-shadow: var(--bevel-sunken-inner), 0 0 0 1px var(--accent-color);
 }
 /* An invalid field keeps its well and takes the destructive ring instead. */
 [data-edge="bevel"] .nook-field.is-invalid,
 [data-edge="bevel"] .nook-input.is-invalid {
-    box-shadow: 0 0 0 1px var(--destructive-color);
+    box-shadow: var(--bevel-sunken-inner), 0 0 0 1px var(--destructive-color);
 }
 
 /* Segmented controls read as a row of buttons with the chosen one pressed. */
@@ -178,12 +183,13 @@
     border: 1px solid;
     border-color: var(--bevel-raised);
     background: var(--bg-secondary);
+    box-shadow: var(--bevel-raised-inner);
 }
 [data-edge="bevel"] .nook-segmented button:is([aria-checked="true"], [aria-pressed="true"]) {
     border-color: var(--bevel-sunken);
     background: var(--field-bg);
     color: var(--selected-text);
-    box-shadow: none;
+    box-shadow: var(--bevel-sunken-inner);
 }
 
 /* Floating panels and dialogs are raised windows with a hard edge; the
@@ -193,11 +199,34 @@
     border: 1px solid;
     border-color: var(--bevel-raised);
 }
+[data-edge="bevel"] .nook-popover,
+[data-edge="bevel"] .nook-dialog.is-floating {
+    box-shadow: var(--bevel-raised-inner), var(--popover-shadow);
+}
+[data-edge="bevel"] .nook-dialog:not(.is-floating) {
+    box-shadow: var(--bevel-raised-inner), var(--dialog-shadow);
+}
+/* Menu rows take their size from the theme: X's touch rows unless the theme
+   draws compact desktop menus. */
+[data-edge="bevel"] .nook-option {
+    min-height: var(--bevel-option-height);
+    padding: var(--bevel-option-pad);
+}
+[data-edge="bevel"] .nook-option:is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]) {
+    font-weight: var(--bevel-option-weight);
+}
+/* The highlighted menu row takes --option-active-text, which a theme with a
+   solid highlight (Windows' navy) sets to contrast with it. Destructive rows
+   keep their colour. */
+[data-edge="bevel"] .nook-option:is(button, a):hover:not(.is-danger),
+[data-edge="bevel"] .nook-option:is(:focus-visible, [data-active="true"], .is-active):not(.is-danger) {
+    color: var(--option-active-text);
+}
 
 /* The search suggestions are a compact menu under the field, as the skin
    draws its dropdown lists: square, with tighter rows, and the active row
-   lights its label in the selected-text yellow rather than relying on the
-   faint row shade alone. */
+   lights its label (--option-active-label: Steam's selected-text yellow)
+   rather than relying on the faint row shade alone. */
 [data-edge="bevel"] .nook-suggest {
     margin-top: 2px;
     border-radius: 0;
@@ -206,10 +235,10 @@
     padding: 6px 12px;
 }
 [data-edge="bevel"] .nook-suggest-row.is-active :is(.nook-suggest-glyph, .nook-suggest-key, .nook-suggest-name, .nook-suggest-tag) {
-    color: var(--selected-text);
+    color: var(--option-active-label);
 }
 [data-edge="bevel"] .nook-suggest-row.is-active .nook-suggest-desc {
-    color: var(--text-primary);
+    color: var(--option-active-text);
 }
 
 /* Tabs: a row of raised tabs standing on the top edge of the page below.
@@ -252,7 +281,7 @@
     display: none;
 }
 [data-edge="bevel"] .nook-tab:focus-visible {
-    outline: 1px solid #000;
+    outline: 1px var(--bevel-focus-style) #000;
     outline-offset: -4px;
 }
 /* A frame's own divider would cut the selected tab off from the page. */
@@ -264,6 +293,15 @@
 [data-edge="bevel"] .nook-header > .nook-tabs-frame {
     --tabs-surface: var(--bg-header);
 }
+/* Inside a dialog the page under the tabs is the dialog's own face, which a
+   theme with grey windows around white lists (Windows 95) sets apart from
+   the page background. */
+[data-edge="bevel"] .nook-dialog .nook-tabs-frame {
+    --tabs-surface: var(--dialog-bg);
+}
+[data-edge="bevel"] .nook-dialog .nook-tab[aria-selected="true"] {
+    background: var(--dialog-bg);
+}
 
 /* Analytics: tiles are raised panels on the darker dialog, empty heat cells
    and meter tracks are sunken slots, sections are split by an etched line,
@@ -274,6 +312,7 @@
 [data-edge="bevel"] .nook-stats .stats-card,
 [data-edge="bevel"] .nook-stats .stats-card:hover {
     border-color: var(--bevel-raised);
+    box-shadow: var(--bevel-raised-inner);
 }
 [data-edge="bevel"] .nook-stats .stats-card.nook-stats-link:hover {
     background: var(--nook-tile);
@@ -282,6 +321,7 @@
 }
 [data-edge="bevel"] .nook-stats .stats-card.nook-stats-link:active {
     border-color: var(--bevel-sunken);
+    box-shadow: var(--bevel-sunken-inner);
 }
 [data-edge="bevel"] .nook-stats-section + .nook-stats-section {
     border-top-color: var(--edge-dark);
@@ -293,10 +333,11 @@
    onto lines below the bar's height, which are clipped, so a bar of any
    width shows only whole columns. */
 [data-edge="bevel"] .nook-years {
-    padding: 8px 6px 0;
+    padding: 8px 6px 2px;
     border: 1px solid;
     border-color: var(--bevel-sunken);
     background: var(--field-bg);
+    box-shadow: var(--bevel-sunken-inner);
 }
 [data-edge="bevel"] .nook-year-track {
     border-bottom: 0;
@@ -342,7 +383,8 @@
 }
 
 /* Scrollbars are wide, square and drawn like the controls: a raised thumb in
-   a lighter gutter (--scrollbar-bg). Chrome only honours the ::-webkit-
+   a lighter gutter (--scrollbar-track, which may be a pattern, over
+   --scrollbar-bg). Chrome only honours the ::-webkit-
    pseudo-elements while scrollbar-width and scrollbar-color are auto, so the
    thin overlay settings from styles.css are reset here; Firefox has no
    pseudo-elements and takes the two colours instead. The page's own
@@ -365,7 +407,9 @@
     height: 16px;
 }
 [data-edge="bevel"]::-webkit-scrollbar-track,
-[data-edge="bevel"] ::-webkit-scrollbar-track,
+[data-edge="bevel"] ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+}
 [data-edge="bevel"]::-webkit-scrollbar-corner,
 [data-edge="bevel"] ::-webkit-scrollbar-corner {
     background: var(--scrollbar-bg);
@@ -378,6 +422,7 @@
     border-color: var(--bevel-raised);
     border-radius: 0;
     background: var(--scrollbar-thumb);
+    box-shadow: var(--bevel-raised-inner);
 }
 
 /* The gutter ends in square raised buttons with a small arrow, like the skin.
@@ -395,6 +440,7 @@
     border: 1px solid;
     border-color: var(--bevel-raised);
     background-color: var(--scrollbar-thumb);
+    box-shadow: var(--bevel-raised-inner);
     background-repeat: no-repeat;
     background-size: 4px 4px;
 }
@@ -406,22 +452,22 @@
 }
 [data-edge="bevel"]::-webkit-scrollbar-button:vertical:decrement,
 [data-edge="bevel"] ::-webkit-scrollbar-button:vertical:decrement {
-    background-image: linear-gradient(to top left, var(--text-secondary) 50%, transparent 50%), linear-gradient(to top right, var(--text-secondary) 50%, transparent 50%);
+    background-image: linear-gradient(to top left, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to top right, var(--scrollbar-arrow) 50%, transparent 50%);
     background-position: 3px 5px, 7px 5px;
 }
 [data-edge="bevel"]::-webkit-scrollbar-button:vertical:increment,
 [data-edge="bevel"] ::-webkit-scrollbar-button:vertical:increment {
-    background-image: linear-gradient(to bottom left, var(--text-secondary) 50%, transparent 50%), linear-gradient(to bottom right, var(--text-secondary) 50%, transparent 50%);
+    background-image: linear-gradient(to bottom left, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to bottom right, var(--scrollbar-arrow) 50%, transparent 50%);
     background-position: 3px 5px, 7px 5px;
 }
 [data-edge="bevel"]::-webkit-scrollbar-button:horizontal:decrement,
 [data-edge="bevel"] ::-webkit-scrollbar-button:horizontal:decrement {
-    background-image: linear-gradient(to top left, var(--text-secondary) 50%, transparent 50%), linear-gradient(to bottom left, var(--text-secondary) 50%, transparent 50%);
+    background-image: linear-gradient(to top left, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to bottom left, var(--scrollbar-arrow) 50%, transparent 50%);
     background-position: 5px 3px, 5px 7px;
 }
 [data-edge="bevel"]::-webkit-scrollbar-button:horizontal:increment,
 [data-edge="bevel"] ::-webkit-scrollbar-button:horizontal:increment {
-    background-image: linear-gradient(to top right, var(--text-secondary) 50%, transparent 50%), linear-gradient(to bottom right, var(--text-secondary) 50%, transparent 50%);
+    background-image: linear-gradient(to top right, var(--scrollbar-arrow) 50%, transparent 50%), linear-gradient(to bottom right, var(--scrollbar-arrow) 50%, transparent 50%);
     background-position: 5px 3px, 5px 7px;
 }
 /* A pressed thumb or button sinks, and a pressed arrow moves a pixel down and
@@ -434,6 +480,7 @@
 [data-edge="bevel"] ::-webkit-scrollbar-button:start:decrement:active,
 [data-edge="bevel"] ::-webkit-scrollbar-button:end:increment:active {
     border-color: var(--bevel-sunken);
+    box-shadow: var(--bevel-sunken-inner);
 }
 [data-edge="bevel"]::-webkit-scrollbar-button:vertical:active,
 [data-edge="bevel"] ::-webkit-scrollbar-button:vertical:active {
@@ -444,10 +491,11 @@
     background-position: 6px 4px, 6px 8px;
 }
 
-/* Meters are sunken wells filled with a row of upright blocks. A single
+/* Meters are sunken wells (--bevel-meter-bg) filled with a row of upright blocks. A single
    fill holds more fixed-size blocks than it can fit; they wrap onto lines
    below the meter's height, which are clipped, so a fill of any width shows
-   only whole blocks. A parts meter that carries whole cells (the Jobs bar)
+   only whole blocks, sized by --meter-block-width and --meter-block-gap. A
+   parts meter that carries whole cells (the Jobs bar)
    shows those instead, so each block is one colour and a part never ends
    halfway through one. */
 [data-edge="bevel"] .nook-meter {
@@ -456,13 +504,13 @@
     border: 1px solid;
     border-color: var(--bevel-sunken);
     border-radius: 0;
-    background: var(--field-bg);
+    background: var(--bevel-meter-bg);
 }
 [data-edge="bevel"] .nook-meter-fill {
     display: flex;
     flex-wrap: wrap;
     align-content: flex-start;
-    gap: 0 3px;
+    gap: 0 var(--meter-block-gap);
     overflow: hidden;
     border-radius: 0;
     background: transparent;
@@ -470,7 +518,7 @@
 [data-edge="bevel"] .nook-meter-block {
     display: block;
     flex: none;
-    width: 5px;
+    width: var(--meter-block-width);
     height: 100%;
     background: var(--meter-fill, var(--accent-color));
 }
@@ -523,7 +571,7 @@
     background: var(--button-text);
 }
 [data-edge="bevel"] .nook-font-slider input:focus-visible {
-    outline: 1px solid #000;
+    outline: 1px var(--bevel-focus-style) #000;
     outline-offset: 2px;
 }
 
@@ -565,7 +613,7 @@
     [data-edge="bevel"] .video-button:focus-visible,
     [data-edge="bevel"] .video-volume:focus-visible,
     [data-edge="bevel"] .media-video-player:focus-visible {
-        outline: 1px solid #000;
+        outline: 1px var(--bevel-focus-style) #000;
         outline-offset: -4px;
     }
     [data-edge="bevel"] .video-time {
@@ -607,8 +655,8 @@
         background: var(--button-text);
         opacity: 1;
     }
-    [data-edge="bevel"] .video-seek:focus-visible::-webkit-slider-thumb { outline: 1px solid #000; outline-offset: 1px; }
-    [data-edge="bevel"] .video-seek:focus-visible::-moz-range-thumb { outline: 1px solid #000; outline-offset: 1px; }
+    [data-edge="bevel"] .video-seek:focus-visible::-webkit-slider-thumb { outline: 1px var(--bevel-focus-style) #000; outline-offset: 1px; }
+    [data-edge="bevel"] .video-seek:focus-visible::-moz-range-thumb { outline: 1px var(--bevel-focus-style) #000; outline-offset: 1px; }
     [data-edge="bevel"] .video-volume {
         bottom: 30px;
         border: 1px solid;
@@ -656,4 +704,196 @@
     [data-edge="bevel"] .video-center-play svg path { fill: var(--button-text); }
     [data-edge="bevel"] .video-center-play:hover { background: var(--bg-secondary); }
     [data-edge="bevel"] .video-center-play:hover svg path { fill: var(--selected-text); }
+}
+
+/* ── Windows 95 ─────────────────────────────────────────────────────────
+   Details of the Windows desktop that no shared token expresses, keyed on
+   the data-theme attribute painting sets. */
+
+/* A dialog's header is its title bar: solid navy (98 added the gradient)
+   with the title in bold white, and the close button a small raised grey
+   box at the far right, where X's layout puts it at the far left. Other
+   header buttons stay ordinary raised buttons. Settings has one header per
+   pane, so both turn navy and read as one bar, and its close button is
+   lifted out of the menu pane to the window's corner. */
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) {
+    min-height: 30px;
+    padding: 3px 4px 3px 8px;
+    border-bottom: 0;
+    background: #000080;
+    color: #ffffff;
+}
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) :is(h1, h2, h3, .nook-demo-badge) {
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 18px;
+    letter-spacing: 0;
+}
+/* Everything else in the bar is set in white too, such as a switch's label;
+   grey text vanishes into the navy. Buttons keep their own colours. */
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) :not(.nook-button, .nook-button *, .nook-icon-button, .nook-icon-button *) {
+    color: #ffffff;
+}
+/* A button in the bar is a thin strip like the close box, so the bar stays
+   a title bar rather than growing into a toolbar. */
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) .nook-button {
+    gap: 4px;
+    min-width: 0;
+    height: 20px;
+    min-height: 20px;
+    padding: 0 8px;
+    font-size: 12px;
+    line-height: 14px;
+}
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) .nook-button :is(svg, .nook-refresh-icon) {
+    width: 14px;
+    height: 14px;
+}
+[data-theme="windows-95"] :is(.stats-modal-header, .setup-modal-header) :is(.nook-stats-heading > span, .setup-modal-step) {
+    color: #dfdfdf;
+}
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) .nook-icon-button {
+    color: #ffffff;
+}
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) .nook-icon-button:hover:not(:disabled) {
+    background: transparent;
+}
+[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close) {
+    order: 99;
+    width: 20px;
+    height: 18px;
+    margin-left: auto;
+    padding: 0;
+    border: 1px solid;
+    border-color: var(--bevel-raised);
+    border-radius: 0;
+    background: var(--bg-secondary);
+    box-shadow: var(--bevel-raised-inner);
+    color: #000000;
+}
+[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close):hover:not(:disabled) {
+    background: var(--bg-secondary);
+}
+[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close):active {
+    border-color: var(--bevel-sunken);
+    box-shadow: var(--bevel-sunken-inner);
+}
+[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close) svg {
+    width: 14px;
+    height: 14px;
+}
+[data-theme="windows-95"] .nook-settings-shell {
+    position: relative;
+}
+/* The two Settings bars share one height so they line up, and the detail
+   bar leaves room at its end for the lifted close box. */
+[data-theme="windows-95"] .nook-settings-header {
+    height: 30px;
+}
+[data-theme="windows-95"] .nook-detail-header {
+    padding-right: 32px;
+}
+[data-theme="windows-95"] .nook-settings-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 2;
+}
+[data-theme="windows-95"] .nook-master-header .nook-demo-badge {
+    margin-left: -4px;
+}
+
+/* The default button carries an extra black frame outside its bevel. */
+[data-theme="windows-95"] .nook-button.is-primary:not(:disabled) {
+    box-shadow: 0 0 0 1px #000000, var(--bevel-raised-inner);
+}
+[data-theme="windows-95"] .nook-button.is-primary:active:not(:disabled) {
+    box-shadow: 0 0 0 1px #000000, var(--bevel-sunken-inner);
+}
+
+/* Radios are small white wells, sunken like a field, with a black dot. */
+[data-theme="windows-95"] .nook-radio,
+[data-theme="windows-95"] [aria-checked="true"] > .nook-radio,
+[data-theme="windows-95"] input:checked + .nook-radio {
+    width: 13px;
+    height: 13px;
+    border: 1px solid;
+    border-color: var(--bevel-sunken);
+    background: var(--field-bg);
+    box-shadow: var(--bevel-sunken-inner);
+}
+[data-theme="windows-95"] .nook-radio::after {
+    inset: 3px;
+    background: #000000;
+}
+[data-theme="windows-95"] :focus-visible > .nook-radio {
+    outline: 1px dotted #000000;
+    outline-offset: 2px;
+}
+
+/* Slider thumbs are raised grey blocks in a sunken white channel. */
+[data-theme="windows-95"] .nook-font-slider input::-webkit-slider-runnable-track {
+    height: 4px;
+    background: var(--field-bg);
+    box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #ffffff, inset 2px 2px 0 #000000, inset -2px -2px 0 #c0c0c0;
+}
+[data-theme="windows-95"] .nook-font-slider input::-moz-range-track,
+[data-theme="windows-95"] .nook-font-slider input::-moz-range-progress {
+    height: 4px;
+    background: var(--field-bg);
+    box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #ffffff, inset 2px 2px 0 #000000, inset -2px -2px 0 #c0c0c0;
+}
+[data-theme="windows-95"] .nook-font-slider input::-webkit-slider-thumb {
+    width: 11px;
+    height: 21px;
+    margin-top: -8.5px;
+    background: var(--bg-secondary);
+    box-shadow: inset -1px -1px 0 #000000, inset 1px 1px 0 #ffffff, inset -2px -2px 0 #808080;
+}
+[data-theme="windows-95"] .nook-font-slider input::-moz-range-thumb {
+    width: 11px;
+    height: 21px;
+    border: 0;
+    background: var(--bg-secondary);
+    box-shadow: inset -1px -1px 0 #000000, inset 1px 1px 0 #ffffff, inset -2px -2px 0 #808080;
+}
+@media (min-width: 641px) and (pointer: fine) {
+    [data-theme="windows-95"] .video-seek::-webkit-slider-thumb {
+        width: 10px;
+        height: 20px;
+        margin-top: -8px;
+        background: var(--bg-secondary);
+        box-shadow: inset -1px -1px 0 #000000, inset 1px 1px 0 #ffffff, inset -2px -2px 0 #808080;
+    }
+    [data-theme="windows-95"] .video-seek::-moz-range-thumb {
+        width: 10px;
+        height: 20px;
+        border: 0;
+        background: var(--bg-secondary);
+        box-shadow: inset -1px -1px 0 #000000, inset 1px 1px 0 #ffffff, inset -2px -2px 0 #808080;
+    }
+}
+
+/* Separators are etched grooves: the grey line with a white one beside it,
+   below a horizontal rule and to the right of a vertical one. */
+[data-theme="windows-95"] :is(.nook-setting-section, .nook-schedule-master, .nook-select-search) {
+    box-shadow: 0 1px 0 var(--edge-light);
+}
+[data-theme="windows-95"] :is(.cs-menu, .cs-jobs, .setup-modal-footer, .nook-selection-bar, .nook-rows-card > * + * > .nook-row, .nook-rows-card > .nook-row + .nook-row) {
+    box-shadow: inset 0 1px 0 var(--edge-light);
+}
+[data-theme="windows-95"] .nook-settings-detail {
+    box-shadow: inset 1px 0 0 var(--edge-light);
+}
+
+/* Tooltips are the pale yellow note with a thin black frame. */
+[data-theme="windows-95"] .nook-tip {
+    padding: 2px 4px;
+    border: 1px solid #000000;
+    border-radius: 0;
+    background: #ffffe1;
+    color: #000000;
+    font-size: 12px;
+    font-weight: 400;
 }

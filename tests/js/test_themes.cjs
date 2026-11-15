@@ -71,7 +71,7 @@ test('every theme keeps text legible on the surfaces it is drawn on', () => {
 test('themes keep X shapes unless a seed asks for square corners and bevels', () => {
     const all = themes();
     for (const [key, theme] of Object.entries(all)) {
-        if (key === 'steam-green') continue;
+        if (theme._edge === 'bevel') continue;
         assert.equal(theme['--radius-full'], '9999px', key);
         assert.equal(theme['--radius-xl'], '16px', key);
         assert.equal(theme._edge, 'flat', key);
@@ -85,6 +85,35 @@ test('themes keep X shapes unless a seed asks for square corners and bevels', ()
     assert.ok(luminance(steam['--bg-header']) > luminance(steam['--bg-primary']));
     assert.ok(luminance(steam['--edge-light']) > luminance(steam['--bg-secondary']));
     assert.ok(luminance(steam['--edge-dark']) < luminance(steam['--bg-primary']));
+
+    const win = all['windows-95'];
+    for (const token of ['--radius-full', '--radius-xl', '--radius-lg', '--radius-md']) assert.equal(win[token], '2px');
+    assert.equal(win._edge, 'bevel');
+    assert.match(win['--font-ui'], /^"Microsoft Sans Serif",/);
+    // Grey faces around white wells, with the two-pixel bevel's inner ring.
+    assert.equal(win['--bg-secondary'], '#c0c0c0');
+    assert.equal(win['--field-bg'], '#ffffff');
+    assert.notEqual(win['--bevel-raised-inner'], '0 0 #0000');
+    assert.notEqual(win['--bevel-sunken-inner'], '0 0 #0000');
+    // Only bevel themes that ask for one draw a second ring.
+    for (const [key, theme] of Object.entries(all)) {
+        if (key === 'windows-95') continue;
+        assert.equal(theme['--bevel-raised-inner'], '0 0 #0000', key);
+        assert.equal(theme['--bevel-sunken-inner'], '0 0 #0000', key);
+    }
+});
+
+test('a solid menu highlight keeps its row text legible', () => {
+    for (const [key, theme] of Object.entries(themes())) {
+        if (!isHex(theme['--option-active-bg'])) continue;
+        for (const role of ['--option-active-text', '--option-active-label']) {
+            assert.ok(contrast(theme[role], theme['--option-active-bg']) >= 4.5, `${key} ${role}`);
+        }
+    }
+    // Rows on a translucent highlight keep the theme's own colours.
+    const steam = themes()['steam-green'];
+    assert.equal(steam['--option-active-text'], steam['--text-primary']);
+    assert.equal(steam['--option-active-label'], steam['--selected-text']);
 });
 
 test('new colour roles follow the variable they split from, after its override', () => {
@@ -93,7 +122,7 @@ test('new colour roles follow the variable they split from, after its override',
     assert.equal(all['classic-light']['--bg-secondary'], '#f7f9f9');
     assert.equal(all['classic-light']['--field-bg'], '#f7f9f9');
     for (const [key, theme] of Object.entries(all)) {
-        if (key === 'steam-green') continue;
+        if (theme._edge === 'bevel') continue;
         assert.equal(theme['--field-bg'], theme['--bg-secondary'], key);
         assert.equal(theme['--heading-color'], theme['--text-primary'], key);
         assert.equal(theme['--selected-text'], theme['--text-primary'], key);
@@ -119,10 +148,12 @@ test('applying a theme sets its edge style and shape, and switching away restore
 
     app.applyTheme('steam-green');
     assert.equal(root.dataset.edge, 'bevel');
+    assert.equal(root.dataset.theme, 'steam-green');
     assert.equal(css.get('--radius-xl'), '2px');
     assert.equal(css.get('--selected-text'), '#dccd62');
     app.applyTheme('dracula');
     assert.equal(root.dataset.edge, 'flat');
+    assert.equal(root.dataset.theme, 'dracula');
     assert.equal(css.get('--radius-xl'), '16px');
     assert.equal(css.get('--selected-text'), '#f8f8f2');
     assert.equal(css.get('--font-ui'), SYSTEM_STACK);

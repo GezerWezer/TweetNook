@@ -19,8 +19,13 @@
  *   shape – 'rounded' (default) or 'square' corners (SHAPES below)
  *   edge  – 'flat' (default) or 'bevel': raised controls and sunken fields,
  *           drawn from --edge-light and --edge-dark by the [data-edge] rules
- *           in theme-structure.css
+ *           in theme-structure.css. A bevel theme can set --bevel-raised and
+ *           --bevel-sunken (border colours) and --bevel-raised-inner and
+ *           --bevel-sunken-inner (inset shadows) for a two-pixel edge.
  *   font  – font stack for "Theme Default" in the font picker
+ *
+ * Painting also sets data-theme on <html> to the theme's key, for details
+ * specific to one theme that no token expresses.
  */
 
 // ── Color utilities (private) ─────────────────────────────────────────
@@ -154,6 +159,23 @@ function _generateTheme(seed) {
         // Only drawn when the theme sets edge: 'bevel'.
         '--edge-light':            _surface(bg, muted, dark ? 16 : 8),
         '--edge-dark':             _surface(bg, muted, dark ? -8 : -24),
+        // The bevel's border colours (top right bottom left), resolved
+        // against the edge colours on <html>, and an optional second ring
+        // inside them; a single-pixel bevel leaves the ring empty.
+        '--bevel-raised':          'var(--edge-light) var(--edge-dark) var(--edge-dark) var(--edge-light)',
+        '--bevel-sunken':          'var(--edge-dark) var(--edge-light) var(--edge-light) var(--edge-dark)',
+        '--bevel-raised-inner':    '0 0 #0000',
+        '--bevel-sunken-inner':    '0 0 #0000',
+        // Keyboard focus on bevelled controls, and the size of the blocks a
+        // bevelled meter is built from.
+        '--bevel-focus-style':     'solid',
+        '--bevel-focus-offset':    '0px',
+        '--meter-block-width':     '5px',
+        '--meter-block-gap':       '3px',
+        // Menu rows in a bevelled theme; X's tall touch rows by default.
+        '--bevel-option-height':   '44px',
+        '--bevel-option-pad':      '10px 16px',
+        '--bevel-option-weight':   '700',
         // Set on every theme so switching away from one that overrides it
         // doesn't leave its value on <html>.
         '--divider-light':         _surface(bg, muted, dark ? 16 : 8),
@@ -166,7 +188,9 @@ function _generateTheme(seed) {
         '--popover-shadow':        '0 0 15px 0 rgba(101, 119, 134, .2), 0 0 3px 1px rgba(101, 119, 134, .15)',
         // Dialogs sit on a dimmed page with no shadow of their own, as X's do.
         '--backdrop-bg':           'rgba(91, 112, 131, .4)',
-        '--dialog-shadow':         'none',
+        // A real shadow rather than none, so a bevel can list its inner ring
+        // in front of it.
+        '--dialog-shadow':         '0 0 #0000',
         ...SHAPES[seed.shape || 'rounded'],
     };
     // Plain properties, not CSS variables; paintTheme sets the attribute.
@@ -184,9 +208,16 @@ function _generateTheme(seed) {
         '--button-primary-bg': '--text-primary', '--button-primary-text': '--bg-primary',
         '--button-text': '--text-primary', '--button-border': '--input-border', '--button-hover-bg': '--bg-tertiary',
         '--popover-bg': '--dropdown-bg', '--option-active-bg': '--bg-tertiary', '--dialog-bg': '--bg-primary',
+        '--option-active-text': '--text-primary', '--option-active-label': '--selected-text',
+        '--scrollbar-track': '--scrollbar-bg', '--scrollbar-arrow': '--text-secondary',
+        '--bevel-meter-bg': '--field-bg',
     };
     for (const [role, base] of Object.entries(roles)) {
         if (!(seed.overrides && role in seed.overrides)) vars[role] = vars[base];
+    }
+    // The light half of an engraved (disabled) bevelled label.
+    if (!(seed.overrides && '--disabled-shadow' in seed.overrides)) {
+        vars['--disabled-shadow'] = `color-mix(in srgb, ${vars['--text-secondary']} 60%, ${vars['--bg-secondary']})`;
     }
 
     // Pre-compute accent variants for themes with selectable accents
@@ -348,6 +379,77 @@ const THEME_SEEDS = {
             '--gray-700': '#5a6a50',
         },
     },
+    'windows-95': {
+        _name: 'Windows 95',
+        // The classic Windows desktop: grey 3D window faces with two-pixel
+        // bevels around white content and fields, black text, and navy
+        // reserved for selection, menus' highlighted row and progress.
+        bg: '#ffffff', text: '#000000', muted: '#505050',
+        accent: '#000080', danger: '#a00000',
+        shape: 'square', edge: 'bevel',
+        font: '"Microsoft Sans Serif", "MS Sans Serif", Tahoma, Arial, sans-serif',
+        overrides: {
+            // The window face; lists and fields are white wells set into it.
+            '--bg-secondary': '#c0c0c0',
+            '--bg-header': '#c0c0c0',
+            '--dropdown-bg': '#c0c0c0',
+            '--dialog-bg': '#c0c0c0',
+            '--field-bg': '#ffffff',
+            '--divider-light': '#ffffff',
+            '--border-color': '#808080',
+            '--thread-line': '#c0c0c0',
+            '--input-border': '#808080',
+            '--gray-700': '#808080',
+            // Single-pixel lines are the classic button shadow over white;
+            // controls add the inner ring of the two-pixel bevel, with black
+            // outside a raised edge and inside a sunken one. Windows 95's
+            // 3D light colour is the face grey itself (98 lightened it to
+            // #dfdfdf), so the inner ring shows only its shadow side.
+            '--edge-light': '#ffffff',
+            '--edge-dark': '#808080',
+            '--bevel-raised': '#ffffff #000000 #000000 #ffffff',
+            '--bevel-raised-inner': 'inset 1px 1px 0 #c0c0c0, inset -1px -1px 0 #808080',
+            '--bevel-sunken': '#808080 #ffffff #ffffff #808080',
+            '--bevel-sunken-inner': 'inset 1px 1px 0 #000000, inset -1px -1px 0 #c0c0c0',
+            '--bevel-focus-style': 'dotted',
+            '--bevel-focus-offset': '-4px',
+            '--disabled-shadow': '#ffffff',
+            '--heading-color': '#000000',
+            '--selected-text': '#000000',
+            '--button-primary-bg': '#c0c0c0',
+            '--button-primary-text': '#000000',
+            '--button-primary-hover-bg': '#c0c0c0',
+            '--button-text': '#000000',
+            '--button-bg': '#c0c0c0',
+            '--button-hover-bg': '#c0c0c0',
+            // Menus are flat-shaded windows; the highlighted row is navy.
+            '--popover-shadow': '0 0 #0000',
+            '--dialog-shadow': '0 0 #0000',
+            '--option-active-bg': '#000080',
+            '--option-active-text': '#ffffff',
+            '--option-active-label': '#ffffff',
+            // Menu rows are short and set in the regular weight.
+            '--bevel-option-height': '24px',
+            '--bevel-option-pad': '3px 20px',
+            '--bevel-option-weight': '400',
+            '--backdrop-bg': 'rgba(0, 0, 0, .25)',
+            '--accent-hover': '#1084d0',
+            '--hover-bg': 'rgba(0, 0, 0, .04)',
+            // The gutter is the classic white-and-grey dither, behind grey
+            // buttons with black arrows.
+            '--scrollbar-bg': '#c0c0c0',
+            '--scrollbar-track': 'repeating-conic-gradient(#c0c0c0 0 25%, #ffffff 0 50%) 0 0 / 2px 2px',
+            '--scrollbar-thumb': '#c0c0c0',
+            '--scrollbar-thumb-hover': '#c0c0c0',
+            '--scrollbar-arrow': '#000000',
+            // Progress bars fill the grey face with navy chunks about two
+            // thirds as wide as the bar is tall inside, as the 95 progress
+            // control draws them.
+            '--meter-block-width': '7px',
+            '--meter-block-gap': '2px',
+            '--bevel-meter-bg': '#c0c0c0',
+        },
+    },
     'steam-modern': {
         _name: 'Steam Modern',
         bg: '#1B2838',         
@@ -459,6 +561,9 @@ function paintTheme(key) {
     const darkMode = (r * 0.299 + g * 0.587 + b * 0.114) < 128;
     if (darkMode) root.classList.remove('light'); else root.classList.add('light');
     root.dataset.edge = theme._edge;
+    // For the few details a theme draws that no token expresses, such as
+    // Windows 95's title bars (theme-structure.css).
+    root.dataset.theme = key;
     root.style.setProperty('color-scheme', darkMode ? 'dark' : 'light');
 
     let accent = theme['--accent-color'];

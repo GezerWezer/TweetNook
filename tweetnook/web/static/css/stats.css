@@ -7,7 +7,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: var(--bg-primary);
+    background: var(--dialog-bg);
     flex-shrink: 0;
 }
 @media (min-width: 768px) {

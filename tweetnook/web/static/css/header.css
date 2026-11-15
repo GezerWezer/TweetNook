@@ -159,8 +159,8 @@
 /* Counts share one left edge; each legend dot sits beside its quiet label. */
 .bd-label .bd-dot { display: inline-block; width: 6px; height: 6px; margin-right: 4px; vertical-align: 1px; }
 .cs-tab-arrow { position: absolute; top: 0; bottom: 0; z-index: 2; display: none; align-items: center; width: 44px; padding: 0 4px; border: 0; background: transparent; color: var(--text-primary); cursor: pointer; }
-.cs-tab-arrow.is-start { left: 0; justify-content: flex-start; background: linear-gradient(to right, var(--bg-primary) 55%, transparent); }
-.cs-tab-arrow.is-end { right: 0; justify-content: flex-end; background: linear-gradient(to left, var(--bg-primary) 55%, transparent); }
+.cs-tab-arrow.is-start { left: 0; justify-content: flex-start; background: linear-gradient(to right, var(--tabs-surface, var(--bg-primary)) 55%, transparent); }
+.cs-tab-arrow.is-end { right: 0; justify-content: flex-end; background: linear-gradient(to left, var(--tabs-surface, var(--bg-primary)) 55%, transparent); }
 .cs-tab-arrow svg { box-sizing: content-box; width: 18px; height: 18px; padding: 5px; border-radius: var(--radius-full); fill: currentColor; }
 .cs-tab-arrow:hover svg { background: var(--hover-bg); }
 .cs-tab-arrow.is-start svg { transform: rotate(180deg); }
@@ -232,7 +232,7 @@
   .nook-sync-panel { transform: translateY(var(--cs-sheet-y, 0px)); }
   .nook-sync-panel.cs-dragging { transition: none; user-select: none; }
   .nook-sync-panel.cs-settling { transition: transform 220ms cubic-bezier(.2, .9, .3, 1); }
-  .cs-grab { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; justify-content: center; min-height: 36px; background: var(--bg-primary); cursor: grab; touch-action: none; }
+  .cs-grab { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; justify-content: center; min-height: 36px; background: var(--dialog-bg); cursor: grab; touch-action: none; }
   .cs-grab::before { content: ''; width: 36px; height: 4px; border-radius: var(--radius-full); background: var(--input-border); }
   .cs-view.is-push { animation: cs-push 280ms cubic-bezier(.2, .9, .3, 1); }
   .cs-view.is-pop { animation: cs-pop 280ms cubic-bezier(.2, .9, .3, 1); }
