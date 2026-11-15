@@ -67,6 +67,48 @@
     color: var(--edge-dark);
     text-shadow: 1px 1px 0 var(--disabled-shadow);
 }
+/* Icon buttons and the feed's sort trigger are toolbar buttons: flat until
+   the pointer or keyboard focus is on them, then a raised panel, and sunken
+   while pressed or while their menu is open. Their shared hover fill is the
+   button colour, which is the panel they already sit on here and so shows
+   nothing. The frame is an inset shadow, since these buttons have no border
+   to colour. */
+[data-edge="bevel"] :is(.nook-icon-button, .feed-picker-trigger):is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) {
+    background: var(--button-bg);
+    box-shadow: inset 1px 1px 0 var(--edge-light), inset -1px -1px 0 var(--edge-dark);
+}
+[data-edge="bevel"] :is(.nook-icon-button:not(.is-action, .is-danger), .feed-picker-trigger):hover:not(:disabled) {
+    color: var(--selected-text);
+}
+[data-edge="bevel"] :is(.nook-icon-button, .feed-picker-trigger):is(:active, [aria-expanded="true"]):not(:disabled) {
+    box-shadow: inset 1px 1px 0 var(--edge-dark), inset -1px -1px 0 var(--edge-light);
+}
+[data-edge="bevel"] :is(.nook-icon-button, .feed-picker-trigger):focus-visible {
+    outline: 1px var(--bevel-focus-style) #000;
+    outline-offset: -3px;
+}
+/* The scroll-to-top button and the search field's clear button are raised
+   panel buttons like the rest, rather than an accent fill and a dark disc. */
+[data-edge="bevel"] :is(.scroll-to-top, .nook-search-clear),
+[data-edge="bevel"] :is(.scroll-to-top, .nook-search-clear):hover {
+    border: 1px solid;
+    border-color: var(--bevel-raised);
+    border-radius: 0;
+    background: var(--button-bg);
+    box-shadow: var(--bevel-raised-inner);
+    color: var(--button-text);
+}
+[data-edge="bevel"] :is(.scroll-to-top, .nook-search-clear):hover {
+    color: var(--selected-text);
+}
+[data-edge="bevel"] :is(.scroll-to-top, .nook-search-clear):active {
+    border-color: var(--bevel-sunken);
+    box-shadow: var(--bevel-sunken-inner);
+}
+[data-edge="bevel"] :is(.scroll-to-top, .nook-search-clear):focus-visible {
+    outline: 1px var(--bevel-focus-style) #000;
+    outline-offset: var(--bevel-focus-offset);
+}
 /* Search capsules are small raised panels set into the sunken search field,
    with square corners and the label white. Excluded filters keep the danger
    colour for their text. A capsule still being typed (no
@@ -98,6 +140,29 @@
 }
 [data-edge="bevel"] :is(.search-capsule.negative-capsule:is(.incomplete-capsule, .invalid-capsule) .capsule-key, .filter-box.negative:is(.is-editing, .is-empty, .is-unknown) .capsule-key) {
     color: var(--danger-color);
+}
+
+/* A removable value in a field, such as a tag being added, is the same
+   raised panel as a finished capsule, and its remove button a small toolbar
+   button. */
+[data-edge="bevel"] .nook-token {
+    border-radius: 0;
+    background: var(--button-bg);
+    box-shadow: inset 1px 1px 0 var(--edge-light), inset -1px -1px 0 var(--edge-dark);
+    color: var(--button-text);
+    font-weight: 400;
+}
+[data-edge="bevel"] .nook-token button:hover {
+    background: none;
+    box-shadow: inset 1px 1px 0 var(--edge-light), inset -1px -1px 0 var(--edge-dark);
+    color: var(--selected-text);
+}
+[data-edge="bevel"] .nook-token button:active {
+    box-shadow: inset 1px 1px 0 var(--edge-dark), inset -1px -1px 0 var(--edge-light);
+}
+[data-edge="bevel"] .nook-token button:focus-visible {
+    outline: 1px var(--bevel-focus-style) #000;
+    outline-offset: -3px;
 }
 
 /* Switches are a sunken slot with a raised square knob; checkboxes are
@@ -215,6 +280,18 @@
     border-color: var(--bevel-sunken);
     background: var(--field-bg);
     box-shadow: var(--bevel-sunken-inner);
+}
+/* A tag's share of the archive is a small sunken gauge with a square fill. */
+[data-edge="bevel"] .nook-tag-share {
+    height: 8px;
+    border: 1px solid;
+    border-color: var(--bevel-sunken);
+    border-radius: 0;
+    background: var(--bevel-meter-bg);
+}
+[data-edge="bevel"] .nook-tag-share > span {
+    border-radius: 0;
+    background: var(--accent-color);
 }
 /* Settings marks its current page with --bg-secondary, which is the panel
    colour the list already sits on here; the page takes the list selection
@@ -376,6 +453,29 @@
 [data-edge="bevel"] .nook-stats-section + .nook-stats-section {
     border-top-color: var(--edge-dark);
     box-shadow: inset 0 1px 0 var(--edge-light);
+}
+/* The storage and status bars are a sunken well holding one raised block
+   per part, lit on its top and left like a filled heat cell; the chosen part
+   takes the mark colour. */
+[data-edge="bevel"] .nook-segments {
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid;
+    border-color: var(--bevel-sunken);
+    background: var(--bevel-meter-bg);
+    box-shadow: var(--bevel-sunken-inner);
+}
+[data-edge="bevel"] .nook-segments.is-joined {
+    gap: 0;
+}
+[data-edge="bevel"] .nook-segment {
+    border-radius: 0;
+    background: var(--gray-700);
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, .3), inset -1px -1px 0 rgba(0, 0, 0, .35);
+    opacity: 1;
+}
+[data-edge="bevel"] .nook-segment.is-active {
+    background: var(--nook-mark);
 }
 /* The bar chart is the skin's graph panel: a sunken dark-green well that
    Steam fills with narrow flat maize columns standing on its floor, with no

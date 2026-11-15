@@ -9,15 +9,16 @@
    box at the far right, where X's layout puts it at the far left. Other
    header buttons stay ordinary raised buttons. Settings has one header per
    pane, so both turn navy and read as one bar, and its close button is
-   lifted out of the menu pane to the window's corner. */
-[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) {
+   lifted out of the menu pane to the window's corner. The split post panel
+   is a second window beside the feed, so its header is a title bar too. */
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header, .nook-panel-header) {
     min-height: 30px;
     padding: 3px 4px 3px 8px;
     border-bottom: 0;
     background: #000080;
     color: #ffffff;
 }
-[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) :is(h1, h2, h3, .nook-demo-badge) {
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header, .nook-panel-header) :is(h1, h2, h3, .nook-demo-badge) {
     color: #ffffff;
     font-size: 13px;
     font-weight: 700;
@@ -26,12 +27,12 @@
 }
 /* Everything else in the bar is set in white too, such as a switch's label;
    grey text vanishes into the navy. Buttons keep their own colours. */
-[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) :not(.nook-button, .nook-button *, .nook-icon-button, .nook-icon-button *) {
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header, .nook-panel-header) :not(.nook-button, .nook-button *, .nook-icon-button, .nook-icon-button *) {
     color: #ffffff;
 }
 /* A button in the bar is a thin strip like the close box, so the bar stays
    a title bar rather than growing into a toolbar. */
-[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) .nook-button {
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header, .nook-panel-header) .nook-button {
     gap: 4px;
     min-width: 0;
     height: 20px;
@@ -40,20 +41,21 @@
     font-size: 12px;
     line-height: 14px;
 }
-[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) .nook-button :is(svg, .nook-refresh-icon) {
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header, .nook-panel-header) .nook-button :is(svg, .nook-refresh-icon) {
     width: 14px;
     height: 14px;
 }
 [data-theme="windows-95"] :is(.stats-modal-header, .setup-modal-header) :is(.nook-stats-heading > span, .setup-modal-step) {
     color: #dfdfdf;
 }
-[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) .nook-icon-button {
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header, .nook-panel-header) .nook-icon-button {
     color: #ffffff;
 }
-[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header) .nook-icon-button:hover:not(:disabled) {
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header, .nook-panel-header) .nook-icon-button:hover:not(:disabled) {
     background: transparent;
+    box-shadow: none;
 }
-[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close) {
+[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .nook-panel-header .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close) {
     order: 99;
     width: 20px;
     height: 18px;
@@ -66,16 +68,51 @@
     box-shadow: var(--bevel-raised-inner);
     color: #000000;
 }
-[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close):hover:not(:disabled) {
+[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .nook-panel-header .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close):hover:not(:disabled) {
     background: var(--bg-secondary);
 }
-[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close):active {
+[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .nook-panel-header .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close):active {
     border-color: var(--bevel-sunken);
     box-shadow: var(--bevel-sunken-inner);
 }
-[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close) svg {
+[data-theme="windows-95"] :is(.stats-modal-header .nook-icon-button[aria-label^="Close"], .nook-td-head .nook-icon-button[aria-label="Close"], .nook-panel-header .nook-icon-button[aria-label="Close"], .setup-modal-close, .nook-settings-close) svg {
     width: 14px;
     height: 14px;
+}
+/* The dotted focus rectangle is black, which the navy bar hides. */
+[data-theme="windows-95"] :is(.stats-modal-header, .nook-td-head, .nook-sheet-header, .setup-modal-header, .nook-settings-header, .nook-panel-header) .nook-icon-button:focus-visible {
+    background: transparent;
+    box-shadow: none;
+    outline-color: #ffffff;
+}
+/* Setup centres its title and pins the close button to the bar's left end;
+   a title bar reads from the left and ends in the close box, with the step
+   count before it. */
+[data-theme="windows-95"] .setup-modal-header {
+    justify-content: flex-start;
+}
+[data-theme="windows-95"] .setup-modal-header > .setup-modal-close {
+    top: 6px;
+    right: 5px;
+    left: auto;
+}
+[data-theme="windows-95"] .setup-modal-header > .setup-modal-step {
+    right: 32px;
+}
+/* The panel's header is laid out with utility classes for a tall bar; its
+   icons take their colour from the bar rather than the page's icon colour. */
+[data-theme="windows-95"] .nook-panel-header {
+    backdrop-filter: none;
+}
+[data-theme="windows-95"] .nook-panel-header .nook-icon-button {
+    width: 20px;
+    height: 20px;
+    margin-left: 0;
+}
+[data-theme="windows-95"] .nook-panel-header .nook-icon-button svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
 }
 [data-theme="windows-95"] .nook-settings-shell {
     position: relative;
@@ -96,6 +133,16 @@
 }
 [data-theme="windows-95"] .nook-master-header .nook-demo-badge {
     margin-left: -4px;
+}
+
+/* A count badge is navy, which vanishes into the navy selection behind the
+   current Settings page; there it inverts, like selected text. Phones mark
+   no current page. */
+@media (min-width: 800px) {
+    [data-theme="windows-95"] .nook-settings-nav[aria-current="page"] .nook-nav-count {
+        background: #ffffff;
+        color: #000080;
+    }
 }
 
 /* The default button carries an extra black frame outside its bevel. */

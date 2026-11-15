@@ -3,7 +3,7 @@
          class="nook-detail-panel flex flex-col w-[600px] flex-shrink-0 border-x border-[var(--border-color)] bg-[var(--bg-primary)] h-screen sticky top-0 overflow-y-auto">
         
         <!-- Panel Header -->
-        <div data-video-occluder class="sticky top-0 z-20 bg-[var(--bg-header)] backdrop-blur-md p-4 border-b border-[var(--border-color)] flex items-center justify-between">
+        <div data-video-occluder class="nook-panel-header sticky top-0 z-20 bg-[var(--bg-header)] backdrop-blur-md p-4 border-b border-[var(--border-color)] flex items-center justify-between">
             <div class="flex items-center space-x-4">
                 <button type="button" x-show="panelStack.length > 1" @click="panelGoBack()" aria-label="Back" class="nook-icon-button -ml-2">
                     <svg viewBox="0 0 24 24" class="w-5 h-5 fill-[var(--white-icon)]" fill="currentColor"><path d="m12.41 6-5 5H20v2H7.41l5 5L11 19.41 3.59 12 11 4.59z" /></svg>
