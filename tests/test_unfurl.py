@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import errno
+import time
 from io import StringIO
 from unittest.mock import MagicMock
 from urllib.parse import urlsplit
@@ -17,6 +19,7 @@ from tests.conftest import (
     make_video_media,
 )
 from tweetnook.core.timeline_parsing import TimelineTweet
+from tweetnook.enrichment import unfurl
 from tweetnook.enrichment.unfurl import unfurl_urls
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.jobs.resource_failure import StorageExhaustedError
@@ -149,32 +152,21 @@ async def test_unfurl_urls_persists_html_metadata(paths, config) -> None:
 
 
 @pytest.mark.asyncio
-async def test_unfurl_urls_batches_row_merges(
-    paths,
-    config,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_each_url_is_saved_before_the_next_is_fetched(paths, config) -> None:
+    """A worker killed mid-run runs no cleanup, so a finished URL must already be committed."""
     _seed_archive(paths)
-    batch_sizes: list[int] = []
-    original = ArchiveStore.merge_rows
-
-    def counting_merge_rows(self, rows):
-        batch_sizes.append(len(rows))
-        return original(self, rows)
-
-    monkeypatch.setattr(ArchiveStore, "merge_rows", counting_merge_rows)
+    done_when_fetched: list[int] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        html = """
-        <html><head>
-        <title>Story</title>
-        </head><body></body></html>
-        """
+        # A separate connection sees only committed rows.
+        reader = open_archive_store(paths, create=False)
+        assert reader is not None
+        try:
+            done_when_fetched.append(len(reader.list_url_rows(states={"done"})))
+        finally:
+            reader.close()
         return httpx.Response(
-            200,
-            text=html,
-            headers={"content-type": "text/html"},
-            request=request,
+            200, text="<title>Story</title>", headers={"content-type": "text/html"}
         )
 
     result = await unfurl_urls(
@@ -184,7 +176,104 @@ async def test_unfurl_urls_batches_row_merges(
     )
 
     assert result.updated == 2
-    assert batch_sizes == [2]
+    assert done_when_fetched == [0, 1]
+
+
+class _CountingStream(httpx.AsyncByteStream):
+    """An endless body that counts the chunks a reader pulled from it."""
+
+    def __init__(self, chunk: bytes, *, delay: float = 0.0, first: bytes = b"") -> None:
+        self.chunk = chunk
+        self.delay = delay
+        self.first = first
+        self.pulled = 0
+
+    async def __aiter__(self):
+        if self.first:
+            self.pulled += 1
+            yield self.first
+        while True:
+            if self.delay:
+                await asyncio.sleep(self.delay)
+            self.pulled += 1
+            yield self.chunk
+
+
+@pytest.mark.asyncio
+async def test_a_non_html_answer_is_recorded_without_reading_its_body(paths, config) -> None:
+    _seed_archive(paths)
+    streams: list[_CountingStream] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        stream = _CountingStream(b"\0" * 65536)
+        streams.append(stream)
+        return httpx.Response(200, headers={"content-type": "video/mp4"}, stream=stream)
+
+    result = await unfurl_urls(config=config, paths=paths, transport=httpx.MockTransport(handler))
+
+    assert result.updated == result.processed == 2
+    assert [stream.pulled for stream in streams] == [0, 0]
+    rows = _done_rows(paths)
+    assert {row["content_type"] for row in rows} == {"video/mp4"}
+
+
+@pytest.mark.asyncio
+async def test_an_endless_html_page_is_read_only_up_to_the_metadata_limit(paths, config) -> None:
+    _seed_archive(paths)
+    streams: list[_CountingStream] = []
+    chunk = b"<p>filler</p>" * 1000
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        stream = _CountingStream(chunk, first=b"<title>Huge page</title>")
+        streams.append(stream)
+        return httpx.Response(200, headers={"content-type": "text/html"}, stream=stream)
+
+    result = await unfurl_urls(config=config, paths=paths, transport=httpx.MockTransport(handler))
+
+    assert result.updated == result.processed == 2
+    # 500,000 bytes after a short first chunk takes 39 chunks of 13,000 bytes.
+    assert [stream.pulled for stream in streams] == [1 + 39, 1 + 39]
+    assert {row["title"] for row in _done_rows(paths)} == {"Huge page"}
+
+
+@pytest.mark.asyncio
+async def test_a_page_that_never_finishes_fails_at_the_deadline(paths, config, monkeypatch) -> None:
+    _seed_archive(paths)
+    # The client timeout is 30s; this makes each URL's deadline 0.3s.
+    monkeypatch.setattr(unfurl, "_DEADLINE_TIMEOUTS", 0.01)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # Small chunks keep arriving, so no single read ever waits long.
+        stream = _CountingStream(b"<p>.</p>", delay=0.01)
+        return httpx.Response(200, headers={"content-type": "text/html"}, stream=stream)
+
+    started = time.monotonic()
+    result = await unfurl_urls(config=config, paths=paths, transport=httpx.MockTransport(handler))
+    elapsed = time.monotonic() - started
+
+    assert result.failed == result.processed == 2
+    assert elapsed < 5
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        errors = [
+            row["download_error"]
+            for row in store.conn.execute(
+                "SELECT download_error FROM archive WHERE row_key LIKE 'url:%'"
+            )
+        ]
+    finally:
+        store.close()
+    assert errors == ["gave up after 0.3s without a complete answer"] * 2
+
+
+def _done_rows(paths) -> list[dict]:
+    store = open_archive_store(paths, create=False)
+    assert store is not None
+    try:
+        return store.list_url_rows(states={"done"})
+    finally:
+        store.close()
 
 
 @pytest.mark.asyncio

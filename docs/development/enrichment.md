@@ -50,7 +50,7 @@ The extractor unwraps visibility wrappers, prefers valid Note Tweet text, follow
 
 Canonical HTTP(S) URLs lowercase scheme/host, remove fragments/default ports and known tracking parameters, and preserve other path/query data. The canonical hash is a storage identity, so normalization changes need compatibility analysis. Reply, quote, repost, thread-parent/child and linked-status edges have different meanings.
 
-URL unfurling parses at most the first 500,000 HTML characters after loading the body. This limits parser work, not response bytes or memory use. Updates are batched, and previous failures need explicit retry selection. See [trust and security](architecture.md#trust-and-security) for remote-host and response-size limits.
+URL unfurling streams each response: a non-HTML answer is recorded from its status and headers without reading the body, and an HTML body is read only up to its first 500,000 bytes. The client timeout bounds each connect and read, so each URL also has an overall deadline of two client timeouts, after which it is recorded as failed. Each URL is saved as soon as it finishes, so a killed worker doesn't fetch it again. Previous failures need explicit retry selection. See [trust and security](architecture.md#trust-and-security) for remote-host and response-size limits.
 
 Rehydration reparses membership rows in batches of 500 plus relevant saved detail captures. Malformed raw responses can fail the pass, and stale secondary rows aren't comprehensively removed. It isn't corruption repair or a live refresh.
 

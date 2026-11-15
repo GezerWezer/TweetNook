@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import suppress
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -22,7 +23,11 @@ from tweetnook.jobs.pipeline import current_pipeline
 from tweetnook.jobs.steps import URLS
 
 _REMOTE_FAILURES = (httpx.HTTPError, httpx.InvalidURL)
-_UPDATE_BATCH_SIZE = 100
+# Title, description and canonical link sit in the page head, well inside this many bytes.
+_HTML_READ_LIMIT = 500_000
+_MIN_CLIENT_TIMEOUT = 30.0
+# Each URL gets this many client timeouts in total before it is recorded as failed.
+_DEADLINE_TIMEOUTS = 2.0
 
 
 @dataclass(slots=True)
@@ -120,23 +125,64 @@ def _resolve_canonical(href: str | None, final_url: str) -> str | None:
         return None
 
 
+def _decode_html(body: bytes, charset: str | None) -> str:
+    try:
+        return body.decode(charset or "utf-8", errors="replace")
+    except LookupError:
+        # A page can declare a charset Python doesn't know.
+        return body.decode("utf-8", errors="replace")
+
+
+async def _read_destination(
+    client: httpx.AsyncClient, request_url: str
+) -> tuple[httpx.Response, str | None, str | None]:
+    """Fetch a URL's status, headers and the start of its HTML.
+
+    Only HTML is read, and only up to the metadata limit: a saved URL can point at a video or
+    an archive, and reading the whole body would download it just to learn it isn't a page.
+    """
+
+    async with client.stream("GET", request_url) as response:
+        response.raise_for_status()
+        content_type = response.headers.get("content-type")
+        if not content_type or "html" not in content_type.lower():
+            return response, content_type, None
+        body = bytearray()
+        async for chunk in response.aiter_bytes():
+            body += chunk
+            if len(body) >= _HTML_READ_LIMIT:
+                break
+        return (
+            response,
+            content_type,
+            _decode_html(bytes(body[:_HTML_READ_LIMIT]), response.charset_encoding),
+        )
+
+
 async def _fetch_destination(
     client: httpx.AsyncClient,
     request_url: str,
     row: dict[str, object],
+    *,
+    deadline: float,
 ) -> dict[str, Any]:
     """Fetch a URL and read what it says about itself, falling back to the saved values."""
 
-    response = await client.get(request_url)
-    response.raise_for_status()
+    # The client's timeout bounds each connect and read, so a server that keeps sending
+    # slowly never trips it. The deadline bounds the whole fetch.
+    try:
+        async with asyncio.timeout(deadline):
+            response, content_type, html = await _read_destination(client, request_url)
+    except TimeoutError as exc:
+        raise httpx.TimeoutException(
+            f"gave up after {deadline:g}s without a complete answer"
+        ) from exc
     final_url = str(response.url)
-    content_type = response.headers.get("content-type")
     title = row.get("title")
     description = row.get("description")
     site_name = row.get("site_name")
     canonical_url = row.get("canonical_url")
-    if content_type and "html" in content_type.lower():
-        html = response.text[:500000]
+    if html is not None:
         (
             parsed_title,
             parsed_description,
@@ -215,130 +261,119 @@ async def unfurl_urls(
                 activity=f"Fetching {first_host}",
             )
 
+        client_timeout = max(config.sync.timeout, _MIN_CLIENT_TIMEOUT)
+        deadline = client_timeout * _DEADLINE_TIMEOUTS
         async with httpx.AsyncClient(
             follow_redirects=True,
-            timeout=max(config.sync.timeout, 30.0),
+            timeout=client_timeout,
             transport=client_transport(transport),
             headers={
                 "User-Agent": DEFAULT_USER_AGENT,
                 "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
             },
         ) as client:
-            pending_updates: list[dict[str, object]] = []
+            # Each URL is saved as it finishes: a fetch takes far longer than its write, and a
+            # worker killed mid-run must not fetch the same URLs again on the next run.
+            def save(update: dict[str, object]) -> None:
+                store.merge_rows([update])
 
-            def flush_updates() -> None:
-                if not pending_updates:
-                    return
-                updates = pending_updates.copy()
-                store.merge_rows(updates)
-                pending_updates.clear()
-
-            try:
-                with progress_callback(
-                    console,
-                    label="unfurl",
-                    total=len(rows),
-                    unit="urls",
-                ) as progress:
-                    for index, row in enumerate(rows, start=1):
-                        try:
-                            result.processed += 1
-                            request_url = (
-                                row.get("final_url")
-                                or row.get("expanded_url")
-                                or row.get("canonical_url")
-                                or row.get("url")
-                            )
-                            if pipeline.active:
-                                host = _url_host(request_url) if request_url else "missing URL"
-                                pipeline.update_step(
-                                    step_key,
-                                    completed=index - 1,
-                                    activity=f"Fetching {host}",
-                                    counters=_pipeline_outcomes(result),
-                                )
-                            if not isinstance(request_url, str) or not request_url:
-                                pending_updates.append(
-                                    store.build_url_unfurl_update(
-                                        row,
-                                        http_status=row.get("http_status"),
-                                        final_url=row.get("final_url"),
-                                        canonical_url=row.get("canonical_url"),
-                                        title=row.get("title"),
-                                        description=row.get("description"),
-                                        site_name=row.get("site_name"),
-                                        content_type=row.get("content_type"),
-                                        unfurl_state="failed",
-                                        last_fetched_at=utc_now(),
-                                        download_error="missing URL to unfurl",
-                                    )
-                                )
-                                result.failed += 1
-                                if len(pending_updates) >= _UPDATE_BATCH_SIZE:
-                                    flush_updates()
-                                continue
-
-                            try:
-                                fetched = await _fetch_destination(client, request_url, row)
-                            except _REMOTE_FAILURES as exc:
-                                pending_updates.append(
-                                    store.build_url_unfurl_update(
-                                        row,
-                                        http_status=(
-                                            exc.response.status_code
-                                            if isinstance(exc, httpx.HTTPStatusError)
-                                            else None
-                                        ),
-                                        final_url=row.get("final_url"),
-                                        canonical_url=row.get("canonical_url"),
-                                        title=row.get("title"),
-                                        description=row.get("description"),
-                                        site_name=row.get("site_name"),
-                                        content_type=row.get("content_type"),
-                                        unfurl_state="failed",
-                                        last_fetched_at=utc_now(),
-                                        download_error=str(exc),
-                                    )
-                                )
-                                result.failed += 1
-                                if pipeline.active:
-                                    pipeline.issue(
-                                        f"URL {row['row_key']}: {exc}",
-                                        dedupe_key="urls:unfurl-failure",
-                                    )
-                                elif console:
-                                    console.print(
-                                        f"url {row['row_key']}: failed ({exc})",
-                                        highlight=False,
-                                    )
-                            else:
-                                pending_updates.append(
-                                    store.build_url_unfurl_update(
-                                        row,
-                                        unfurl_state="done",
-                                        last_fetched_at=utc_now(),
-                                        download_error=None,
-                                        **fetched,
-                                    )
-                                )
-                                result.updated += 1
-                            if len(pending_updates) >= _UPDATE_BATCH_SIZE:
-                                flush_updates()
-                        finally:
+            with progress_callback(
+                console,
+                label="unfurl",
+                total=len(rows),
+                unit="urls",
+            ) as progress:
+                for index, row in enumerate(rows, start=1):
+                    try:
+                        result.processed += 1
+                        request_url = (
+                            row.get("final_url")
+                            or row.get("expanded_url")
+                            or row.get("canonical_url")
+                            or row.get("url")
+                        )
+                        if pipeline.active:
+                            host = _url_host(request_url) if request_url else "missing URL"
                             pipeline.update_step(
                                 step_key,
-                                completed=index,
+                                completed=index - 1,
+                                activity=f"Fetching {host}",
                                 counters=_pipeline_outcomes(result),
                             )
-                            if progress is not None:
-                                progress(index, len(rows))
+                        if not isinstance(request_url, str) or not request_url:
+                            save(
+                                store.build_url_unfurl_update(
+                                    row,
+                                    http_status=row.get("http_status"),
+                                    final_url=row.get("final_url"),
+                                    canonical_url=row.get("canonical_url"),
+                                    title=row.get("title"),
+                                    description=row.get("description"),
+                                    site_name=row.get("site_name"),
+                                    content_type=row.get("content_type"),
+                                    unfurl_state="failed",
+                                    last_fetched_at=utc_now(),
+                                    download_error="missing URL to unfurl",
+                                )
+                            )
+                            result.failed += 1
+                            continue
 
-                flush_updates()
-            finally:
-                # Rows already finished stay true when a later one stops the job. The store
-                # may be what failed, and that must not replace the real error.
-                with suppress(Exception):
-                    flush_updates()
+                        try:
+                            fetched = await _fetch_destination(
+                                client, request_url, row, deadline=deadline
+                            )
+                        except _REMOTE_FAILURES as exc:
+                            save(
+                                store.build_url_unfurl_update(
+                                    row,
+                                    http_status=(
+                                        exc.response.status_code
+                                        if isinstance(exc, httpx.HTTPStatusError)
+                                        else None
+                                    ),
+                                    final_url=row.get("final_url"),
+                                    canonical_url=row.get("canonical_url"),
+                                    title=row.get("title"),
+                                    description=row.get("description"),
+                                    site_name=row.get("site_name"),
+                                    content_type=row.get("content_type"),
+                                    unfurl_state="failed",
+                                    last_fetched_at=utc_now(),
+                                    download_error=str(exc),
+                                )
+                            )
+                            result.failed += 1
+                            if pipeline.active:
+                                pipeline.issue(
+                                    f"URL {row['row_key']}: {exc}",
+                                    dedupe_key="urls:unfurl-failure",
+                                )
+                            elif console:
+                                console.print(
+                                    f"url {row['row_key']}: failed ({exc})",
+                                    highlight=False,
+                                )
+                        else:
+                            save(
+                                store.build_url_unfurl_update(
+                                    row,
+                                    unfurl_state="done",
+                                    last_fetched_at=utc_now(),
+                                    download_error=None,
+                                    **fetched,
+                                )
+                            )
+                            result.updated += 1
+                    finally:
+                        pipeline.update_step(
+                            step_key,
+                            completed=index,
+                            counters=_pipeline_outcomes(result),
+                        )
+                        if progress is not None:
+                            progress(index, len(rows))
+
         pipeline.complete_step(
             step_key,
             _pipeline_outcomes(result, final=True),
