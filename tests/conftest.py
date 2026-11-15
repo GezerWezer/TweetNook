@@ -31,6 +31,23 @@ def offline_fxtwitter(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(fxtwitter, "build_fx_client", build)
 
 
+@pytest.fixture(autouse=True)
+def offline_chirp_font(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the server's startup font download off abs.twimg.com: every request fails
+    unless a test supplies a transport."""
+
+    from tweetnook.web import chirp_font
+
+    real_build = chirp_font.build_font_client
+
+    @functools.wraps(real_build)
+    def build(transport=None):
+        offline = httpx.MockTransport(lambda request: httpx.Response(418))
+        return real_build(transport or offline)
+
+    monkeypatch.setattr(chirp_font, "build_font_client", build)
+
+
 @pytest.fixture
 def paths(tmp_path: Path) -> XDGPaths:
     resolved = XDGPaths(

@@ -7,6 +7,7 @@ const { appScripts, appScriptsWith } = require('./page_scripts.cjs');
 const { ROOT, browserContext, immediateComponent, loadScripts, test, run } = require('./web_harness.cjs');
 
 const SYSTEM_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+const CHIRP_STACK = `"Chirp", ${SYSTEM_STACK}`;
 
 // WCAG 2 relative luminance and contrast ratio, written out here rather than
 // borrowed from themes.js so the check doesn't share the generator's maths.
@@ -76,7 +77,8 @@ test('themes keep X shapes unless a seed asks for its own corners and edge', () 
         assert.equal(theme['--radius-full'], '9999px', key);
         assert.equal(theme['--radius-xl'], '16px', key);
         assert.equal(theme._edge, 'flat', key);
-        assert.equal(theme['--font-ui'], SYSTEM_STACK, key);
+        // Themes without a font of their own ask for X's Chirp first (styles.css @font-face).
+        assert.equal(theme['--font-ui'], CHIRP_STACK, key);
     }
     const steam = all['steam-green'];
     for (const token of ['--radius-full', '--radius-xl', '--radius-lg', '--radius-md']) assert.equal(steam[token], '2px');
@@ -168,7 +170,7 @@ test('applying a theme sets its edge style and shape, and switching away restore
     assert.equal(root.dataset.theme, 'dracula');
     assert.equal(css.get('--radius-xl'), '16px');
     assert.equal(css.get('--selected-text'), '#f8f8f2');
-    assert.equal(css.get('--font-ui'), SYSTEM_STACK);
+    assert.equal(css.get('--font-ui'), CHIRP_STACK);
 });
 
 test('Theme Default font follows the theme, including a default saved as the system stack', () => {
@@ -178,7 +180,14 @@ test('Theme Default font follows the theme, including a default saved as the sys
     const app = startedApp(context);
     assert.equal(app.fontFamily, 'system');
     assert.equal(context.document.body.style.fontFamily, 'var(--font-ui)');
-    assert.equal(app.selectedFontChoice().label, 'Theme Default');
+    // The label names the font the theme asks for.
+    assert.equal(app.selectedFontChoice().label, 'Theme Default (Chirp)');
+    app.applyTheme('dracula');
+    assert.equal(app.selectedFontChoice().label, 'Theme Default (Chirp)');
+    app.applyTheme('windows-95');
+    assert.equal(app.selectedFontChoice().label, 'Theme Default (Microsoft Sans Serif)');
+    app.applyTheme('frutiger-aero');
+    assert.equal(app.selectedFontChoice().label, 'Theme Default (Frutiger)');
 
     // Another saved family is restored as it was stored.
     const other = browserContext();

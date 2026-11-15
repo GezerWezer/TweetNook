@@ -1,3 +1,11 @@
+/* X's Chirp, the font of every theme without its own. TweetNook can't ship it, so the server
+   downloads it from X into its cache (chirp_font.py); an installed copy is used
+   first. Until the files exist, /fonts/ answers 404 and the system font shows. */
+@font-face { font-family:"Chirp"; font-weight:400; font-style:normal; font-display:swap; src:local("Chirp Regular"), local("Chirp-Regular"), url("/fonts/chirp-regular.woff") format("woff"); }
+@font-face { font-family:"Chirp"; font-weight:500; font-style:normal; font-display:swap; src:local("Chirp Medium"), local("Chirp-Medium"), url("/fonts/chirp-medium.woff") format("woff"); }
+@font-face { font-family:"Chirp"; font-weight:700; font-style:normal; font-display:swap; src:local("Chirp Bold"), local("Chirp-Bold"), url("/fonts/chirp-bold.woff") format("woff"); }
+@font-face { font-family:"Chirp"; font-weight:800; font-style:normal; font-display:swap; src:local("Chirp Heavy"), local("Chirp-Heavy"), url("/fonts/chirp-heavy.woff") format("woff"); }
+
 :root {
     --bg-primary: #000000;
     --bg-secondary: #202327;
@@ -51,7 +59,7 @@
     --backdrop-bg: rgba(91, 112, 131, .4);
     --dialog-bg: #000000;
     --dialog-shadow: none;
-    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-ui: "Chirp", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 html {

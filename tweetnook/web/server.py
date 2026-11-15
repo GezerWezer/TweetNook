@@ -30,6 +30,7 @@ from tweetnook.jobs.supervisor import JobCompletion, JobSupervisor
 from tweetnook.storage import open_archive_store
 from tweetnook.web.address import normalize_listener_host
 from tweetnook.web.avatar_cache import AvatarCacheManager
+from tweetnook.web.chirp_font import start_chirp_download
 from tweetnook.web.deps import (
     WebSessionMiddleware,
     server_state,
@@ -45,6 +46,7 @@ from tweetnook.web.routes.automated_tagging import router as automated_tagging_r
 from tweetnook.web.routes.avatars import router as avatars_router
 from tweetnook.web.routes.config import router as config_router
 from tweetnook.web.routes.dev_replay import router as dev_replay_router
+from tweetnook.web.routes.fonts import router as fonts_router
 from tweetnook.web.routes.jobs import router as jobs_router
 from tweetnook.web.routes.notices import router as notices_router
 from tweetnook.web.routes.setup import router as setup_router
@@ -182,6 +184,8 @@ async def lifespan(app: FastAPI):
             avatar_cache_manager = AvatarCacheManager(paths, config)
             server_state["avatar_cache_manager"] = avatar_cache_manager
             avatar_cache_manager.start()
+            # Most themes use it, including the default, from the first page load.
+            start_chirp_download(paths)
 
             def on_job_start(run_id: str, _pid: int) -> None:
                 import time
@@ -276,7 +280,7 @@ def _setup_gate_response(path: str) -> JSONResponse | None:
     safe = (
         path == "/"
         or _DETAIL_DOCUMENT_PATH.fullmatch(path) is not None
-        or path.startswith("/static/")
+        or path.startswith(("/static/", "/fonts/"))
         or path == "/api/setup"
         or path.startswith("/api/setup/")
         or path == "/api/notices"
@@ -322,6 +326,7 @@ app.include_router(jobs_router)
 app.include_router(setup_router)
 app.include_router(notices_router)
 app.include_router(dev_replay_router)
+app.include_router(fonts_router)
 
 app.include_router(automated_tagging_router)
 
@@ -347,7 +352,7 @@ class TextGZipMiddleware:
 def _compressible_path(path: str) -> bool:
     if path == "/api/activity/events":
         return False
-    if path.startswith(("/media/", "/api/avatar/")):
+    if path.startswith(("/media/", "/api/avatar/", "/fonts/")):
         return False
     if path.startswith("/api/dev/replay/x/") and ".twimg.com/" in path:
         return False

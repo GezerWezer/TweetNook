@@ -85,6 +85,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `web/setup_coordinator.py`, `web/jobs.py` | Setup transitions and the Web jobs list's state, last and next runs. |
 | `web/availability.py`, `web/cards.py`, `web/articles.py`, `web/history.py` | Read presentation and observed history. |
 | `web/avatar_cache.py`, `web/stats_cache.py`, `web/warmup.py` | Background caches and archive preparation. |
+| `web/chirp_font.py` | Downloads X's Chirp font into the cache on start as the themes' default font, since TweetNook can't ship it; `routes/fonts.py` serves it. |
 | `web/activity_stream.py`, `web/notices.py` | Live activity snapshots and durable notifications. |
 | `web/replay_source.py`, `web/replay_placeholders.py` | Source-side replay and placeholder media. |
 | `web/routes/` | HTTP resource groups; see the [API guide](search-and-web-api.md). |

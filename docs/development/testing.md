@@ -32,6 +32,7 @@ Existing failures should be recorded with their command and scope. Targeted test
 | Jobs and schedules | Supervisor, pipeline, activity-history, scheduler and jobs-route suites; `tests/test_job_resource_ownership.py` |
 | Browser presentation | Python asset assertions and `tests/js/` harnesses |
 | Replay and server lifecycle | `tests/test_dev_replay.py`, `tests/web/test_dev_replay_routes.py`, `tests/web/test_server_first.py`, `tests/web/test_deps_server.py` |
+| Chirp font download and route | `tests/web/test_chirp_font.py` |
 | Installer or release | Installer/system-install/service, package and demo tests |
 
 Use the actual filenames under `tests/` when selecting a command. The [module reference](module-reference.md) maps operations to their owners.

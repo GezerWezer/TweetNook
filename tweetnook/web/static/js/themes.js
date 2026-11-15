@@ -24,7 +24,7 @@
  *           --bevel-raised-inner and --bevel-sunken-inner (inset shadows)
  *           for a two-pixel edge. Gloss is Frutiger Aero's gel controls and
  *           glass, drawn by theme-gloss.css.
- *   font  – font stack for "Theme Default" in the font picker
+ *   font  – font stack for "Theme Default" in the font picker; Chirp otherwise
  *   special – listed under Special in Settings rather than Light or Dark
  *
  * Painting also sets data-theme on <html> to the theme's key, for details
@@ -120,6 +120,9 @@ function _surface(bg, muted, delta) {
 // ── Theme generator ───────────────────────────────────────────────────
 
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+// X's typeface, which the server downloads from X (styles.css @font-face). Every
+// theme without a font of its own uses it, falling back to the system font.
+const CHIRP_FONT = `"Chirp", ${SYSTEM_FONT}`;
 
 // Corner radii by element size (styles.css). Square keeps a hairline radius,
 // as the classic desktop toolkits did, rather than a hard 0.
@@ -182,7 +185,7 @@ function _generateTheme(seed) {
         // Set on every theme so switching away from one that overrides it
         // doesn't leave its value on <html>.
         '--divider-light':         _surface(bg, muted, dark ? 16 : 8),
-        '--font-ui':               seed.font || SYSTEM_FONT,
+        '--font-ui':               seed.font || CHIRP_FONT,
         // Buttons (controls.css). Secondary buttons are outlined on whatever
         // they sit on; the primary fill derives from the theme's own text.
         '--button-bg':             'transparent',

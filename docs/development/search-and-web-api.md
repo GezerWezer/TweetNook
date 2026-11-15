@@ -42,6 +42,7 @@ Normal list payloads are slimmed after presentation annotation; raw JSON is avai
 - Worker/job options, run/start/queue controls and activity streams are in `routes/jobs.py` and `routes/activity.py`.
 - Runtime configuration, schedule and Gemini controls have dedicated route modules.
 - Analytics, storage totals, notices and avatars are separate read/control resources.
+- `routes/fonts.py` serves the Chirp font the server downloads as the themes' default font. Like `/static/`, it needs no login and works before Setup.
 
 Most application routes require `verify_credentials`; archive-dependent reads also require `require_store`. Setup/status/configuration remain usable before a store exists. Keep masked secrets out of serialized responses and validate run IDs and managed paths before returning logs/files.
 
@@ -117,6 +118,7 @@ Routes and request/response models are defined in `web/routes/`. The [documentat
 | DELETE | `/api/tweets/{tweet_id}/hidden` | `tweets.py` |
 | GET | `/api/authors/search` | `tweets.py` |
 | GET | `/api/authors/profile` | `tweets.py` |
+| GET | `/fonts/chirp-{weight}.woff` | `fonts.py` |
 
 ## Response details
 

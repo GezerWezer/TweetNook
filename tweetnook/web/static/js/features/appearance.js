@@ -22,7 +22,7 @@ function appearanceMethods() {
         mediaGallery: 'date', // 'grid' | 'carousel' | 'date'; browser-local appearance
 
         FONT_OPTIONS: [
-            // The theme's font (--font-ui), which is the system font unless a theme sets one.
+            // The theme's font (--font-ui), which is Chirp unless a theme sets one.
             {key: 'system', label: 'Theme Default', family: 'var(--font-ui)'},
             {key: 'serif', label: 'System Serif', family: 'serif'},
             {key: 'mono', label: 'System Monospace', family: 'monospace'},
@@ -120,11 +120,17 @@ function appearanceMethods() {
             return window.isSecureContext && typeof window.queryLocalFonts === 'function';
         },
 
+        // The first family in the theme's stack, which is what Theme Default asks for.
+        themeFontName() {
+            const stack = THEMES[this.currentTheme]?.['--font-ui'] || CHIRP_FONT;
+            return stack.split(',')[0].trim().replace(/^["']|["']$/g, '');
+        },
+
         fontChoices() {
             const choices = this.FONT_OPTIONS.map(font => ({
                 ...font,
-                label: ['system', 'serif', 'mono'].includes(font.key)
-                    ? font.label : `${font.label} (if installed)`,
+                label: font.key === 'system' ? `${font.label} (${this.themeFontName()})`
+                    : ['serif', 'mono'].includes(font.key) ? font.label : `${font.label} (if installed)`,
             }));
             const families = new Set(this.installedFonts);
             if (this.fontFamily.startsWith('local:')) families.add(this.fontFamily.slice(6));
@@ -170,7 +176,8 @@ function appearanceMethods() {
         },
 
         selectedFontChoice() {
-            return this.fontChoices().find(font => font.key === this.fontFamily) || this.FONT_OPTIONS[0];
+            const choices = this.fontChoices();
+            return choices.find(font => font.key === this.fontFamily) || choices[0];
         },
 
         openFontPicker(edge = 'selected') {
