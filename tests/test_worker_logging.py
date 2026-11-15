@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import errno
+import os
 import re
+import signal
+import subprocess
 import sys
+import time
 from datetime import datetime
 from io import StringIO
 
@@ -121,3 +125,44 @@ def test_real_supervised_worker_timestamps_startup_errors_and_offset_reads(tmp_p
     assert any("unknown-worker-option" in message for message in _messages(output))
     assert offset == len(output.encode("utf-8"))
     assert read_run_log_since(tmp_path, result["run_id"], offset) == ("", offset)
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGUSR1"), reason="POSIX signals")
+def test_a_managed_worker_dumps_its_stack_on_request_and_when_terminated(tmp_path):
+    log_path = tmp_path / "console.log"
+    script = (
+        "import sys, time\n"
+        "from tweetnook.jobs.worker_logging import configure_worker_output\n"
+        "configure_worker_output()\n"
+        "def stuck_in_a_fetch():\n"
+        "    print('ready', flush=True)\n"
+        "    time.sleep(60)\n"
+        "stuck_in_a_fetch()\n"
+    )
+    env = {
+        **os.environ,
+        "TWEETNOOK_ACTIVITY_RUN_ID": "test-worker",
+        "TWEETNOOK_ACTIVITY_ORIGIN": "web",
+    }
+    with log_path.open("wb") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-c", script], stdout=log, stderr=subprocess.STDOUT, env=env
+        )
+        try:
+            deadline = time.monotonic() + 30
+            while "ready" not in log_path.read_text():
+                assert process.poll() is None, log_path.read_text()
+                assert time.monotonic() < deadline
+                time.sleep(0.05)
+            process.send_signal(signal.SIGUSR1)
+            while log_path.read_text().count("stuck_in_a_fetch") < 1:
+                assert time.monotonic() < deadline
+                time.sleep(0.05)
+            assert process.poll() is None
+            process.send_signal(signal.SIGTERM)
+            assert process.wait(timeout=30) == -signal.SIGTERM
+        finally:
+            if process.poll() is None:
+                process.kill()
+    # One dump on request and one on the way out, each naming the stuck function.
+    assert log_path.read_text().count("in stuck_in_a_fetch") == 2

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import faulthandler
+import io
 import os
+import signal
 import sys
 import threading
 from collections.abc import Iterable
@@ -60,6 +63,26 @@ def configure_worker_output() -> None:
         return
     if isinstance(sys.stdout, TimestampedWorkerStream):
         return
+    _enable_stack_dumps(sys.stderr)
     stream = TimestampedWorkerStream(sys.stdout)
     sys.stdout = stream
     sys.stderr = stream
+
+
+def _enable_stack_dumps(log: TextIO) -> None:
+    """Write every thread's stack to console.log when the worker crashes or is terminated.
+
+    The supervisor sends SIGTERM only after SIGINT went unanswered, so a worker that gets it
+    is usually stuck, and its stack shows where. The dump is chained, so the signal still
+    ends the worker. SIGUSR1 dumps on request and leaves the worker running. Nothing can
+    catch SIGKILL or the OOM killer.
+    """
+
+    try:
+        faulthandler.enable(file=log, all_threads=True)
+        if hasattr(faulthandler, "register"):
+            faulthandler.register(signal.SIGTERM, file=log, all_threads=True, chain=True)
+            faulthandler.register(signal.SIGUSR1, file=log, all_threads=True)
+    except (OSError, ValueError, AttributeError, io.UnsupportedOperation):
+        # A stream without a file descriptor can't take a dump; logging still works.
+        pass

@@ -302,6 +302,10 @@ def _log_unrecorded_exit(
             # The supervisor marks every signal it sends as a stop, so this one came from
             # outside TweetNook.
             line += " · the signal didn't come from TweetNook"
+    _append_last_line(run_dir, line + _last_activity(snapshot))
+
+
+def _last_activity(snapshot: dict[str, Any]) -> str:
     active = snapshot.get("active_step")
     step = next(
         (
@@ -311,10 +315,31 @@ def _log_unrecorded_exit(
         ),
         None,
     )
+    text = ""
     if step is not None:
-        line += f" · last step: {step.get('title') or active}"
+        text += f" · last step: {step.get('title') or active}"
         if step.get("activity"):
-            line += f" · {step['activity']}"
+            text += f" · {step['activity']}"
+    updated_at = snapshot.get("updated_at")
+    if isinstance(updated_at, int | float) and not isinstance(updated_at, bool):
+        # The worker refreshes its snapshot on every step update, so a long gap means it
+        # hung before it ended rather than being cut off while it was busy.
+        text += f" · last update {_format_age(time.time() - updated_at)} earlier"
+    return text
+
+
+def _format_age(seconds: float) -> str:
+    whole = max(round(seconds), 0)
+    hours, remainder = divmod(whole, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
+
+
+def _append_last_line(run_dir: Path, line: str) -> None:
     console_log = run_dir / "console.log"
     log_path = console_log if console_log.exists() else run_dir / "output.log"
     stamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -383,6 +408,13 @@ def read_run(data_dir: Path, run_id: str) -> dict[str, Any] | None:
                 summary=final.get("summary", ""),
             )
         elif _worker_disappeared(metadata):
+            # No supervisor saw this worker exit (a CLI run, or a server that died with it),
+            # so nothing else will end the log.
+            _append_last_line(
+                run_dir,
+                "Worker is gone and its exit status is unknown; completion was not recorded"
+                + _last_activity(snapshot or {}),
+            )
             snapshot = terminal_snapshot(snapshot or {})
             snapshot.update(
                 run_id=run_id,

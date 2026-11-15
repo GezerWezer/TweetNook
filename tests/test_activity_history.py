@@ -218,3 +218,33 @@ def test_a_worker_that_recorded_its_end_gets_no_extra_log_line(tmp_path):
     history.mark_run_process_result(tmp_path, writer.run_id, exit_code=0)
 
     assert (writer.run_dir / "console.log").read_text() == "2026-01-01T00:00:00Z earlier line\n"
+
+
+def test_the_last_line_says_how_long_the_worker_had_been_quiet(tmp_path, monkeypatch):
+    history, writer = _killed_mid_step(tmp_path, console_log=True)
+    snapshot = json.loads((writer.run_dir / "snapshot.json").read_text())
+    writer.snapshot({**snapshot, "updated_at": 1_000.0})
+    monkeypatch.setattr(history.time, "time", lambda: 1_000.0 + 4 * 60 + 10)
+
+    history.mark_run_process_result(tmp_path, writer.run_id, exit_code=-9)
+
+    last = (writer.run_dir / "console.log").read_text().splitlines()[-1]
+    assert last.endswith(
+        " · last step: Link previews · Fetching media.example.net · last update 4m 10s earlier"
+    )
+
+
+def test_a_worker_gone_without_a_supervisor_still_ends_its_log(tmp_path):
+    history, writer = _killed_mid_step(tmp_path, console_log=True)
+
+    # The pid recorded by _killed_mid_step belongs to no process.
+    assert history.read_run(tmp_path, writer.run_id)["status"] == "interrupted"
+    history._TERMINAL_RESULTS.clear()
+    history.read_run(tmp_path, writer.run_id)
+
+    lines = (writer.run_dir / "console.log").read_text().splitlines()
+    assert len(lines) == 2
+    assert lines[1].split(" ", 1)[1] == (
+        "Worker is gone and its exit status is unknown; completion was not recorded"
+        " · last step: Link previews · Fetching media.example.net"
+    )

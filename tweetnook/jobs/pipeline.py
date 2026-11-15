@@ -578,10 +578,9 @@ class PipelineReporter:
             fields = (
                 [f"{step.completed:,}/{step.total:,} {step.unit}"] if step.show_progress else []
             )
-            if step.counters:
-                fields.append(step.counters)
-            elif step.activity:
-                fields.append(step.activity)
+            # Progress can be logged as an item starts, so the activity names what the
+            # step is working on if it then hangs.
+            fields.extend(part for part in (step.counters, step.activity) if part)
             if self.interactive:
                 self._record_history(step.title, "progress", " · ".join(fields))
             else:

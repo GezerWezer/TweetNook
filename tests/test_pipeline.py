@@ -546,3 +546,21 @@ def test_null_pipeline_answers_everything_the_reporter_is_asked() -> None:
     assert NULL_PIPELINE.step_state("step") is None
     assert NULL_PIPELINE.active_step is None
     assert NULL_PIPELINE.run_id is None
+
+
+def test_a_progress_line_names_the_item_in_flight_alongside_its_counters() -> None:
+    output = StringIO()
+    reporter = PipelineReporter(
+        _console(output), "tweetnook unfurl", interactive=False, log_interval_seconds=0
+    )
+
+    with reporter:
+        reporter.add_step("urls", "Link previews", total=4, unit="urls")
+        reporter.update_step(
+            "urls", completed=1, activity="Fetching slow.example", counters="1 updated"
+        )
+
+    assert (
+        "Link previews: progress · 1/4 urls · 1 updated · Fetching slow.example"
+        in output.getvalue().splitlines()
+    )
