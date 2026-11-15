@@ -157,3 +157,64 @@ def test_process_exit_cannot_turn_failed_followup_into_success(tmp_path):
     assert result["status"] == "failed"
     assert result["success"] is False
     assert result["snapshot"]["success"] is False
+
+
+def _killed_mid_step(tmp_path, *, console_log: bool):
+    import tweetnook.jobs.activity_history as history
+
+    writer = history.ActivityRunWriter(tmp_path / "activity-status.json", "tweetnook sync")
+    writer.start(pid=2**31 - 1, started_at=1)
+    if console_log:
+        (writer.run_dir / "console.log").write_text("2026-01-01T00:00:00Z earlier line\n")
+    writer.snapshot(
+        {
+            "running": True,
+            "active_step": "urls",
+            "steps": [
+                {
+                    "key": "urls",
+                    "title": "Link previews",
+                    "state": "active",
+                    "activity": "Fetching media.example.net",
+                }
+            ],
+        }
+    )
+    return history, writer
+
+
+def test_a_killed_worker_leaves_its_signal_and_last_activity_in_the_log(tmp_path):
+    history, writer = _killed_mid_step(tmp_path, console_log=True)
+
+    history.mark_run_process_result(tmp_path, writer.run_id, exit_code=-15)
+
+    lines = (writer.run_dir / "console.log").read_text().splitlines()
+    assert lines[0] == "2026-01-01T00:00:00Z earlier line"
+    assert len(lines) == 2
+    assert lines[1].split(" ", 1)[1] == (
+        "Worker ended by SIGTERM (exit status -15) before recording completion"
+        " · the signal didn't come from TweetNook"
+        " · last step: Link previews · Fetching media.example.net"
+    )
+    assert read_run_log(tmp_path, writer.run_id).endswith("Fetching media.example.net")
+
+
+def test_a_stop_that_needed_a_signal_is_logged_as_a_stop(tmp_path):
+    history, writer = _killed_mid_step(tmp_path, console_log=False)
+
+    history.mark_run_process_result(tmp_path, writer.run_id, exit_code=-15, stopped=True)
+
+    last = (writer.run_dir / "output.log").read_text().splitlines()[-1]
+    assert last.split(" ", 1)[1] == (
+        "Worker stopped by request · SIGTERM (exit status -15)"
+        " · last step: Link previews · Fetching media.example.net"
+    )
+
+
+def test_a_worker_that_recorded_its_end_gets_no_extra_log_line(tmp_path):
+    history, writer = _killed_mid_step(tmp_path, console_log=True)
+    writer.snapshot({"running": False, "steps": [], "summary": "done"})
+
+    history.mark_run_process_result(tmp_path, writer.run_id, exit_code=0)
+
+    assert (writer.run_dir / "console.log").read_text() == "2026-01-01T00:00:00Z earlier line\n"

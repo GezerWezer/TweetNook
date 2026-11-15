@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import sys
 import time
 import uuid
@@ -222,6 +223,7 @@ def mark_run_process_result(
     final = _read_json(run_dir / "final.json")
     if final is None:
         snapshot = _read_json(run_dir / "snapshot.json") or {}
+        _log_unrecorded_exit(run_dir, snapshot, exit_code=exit_code, stopped=stopped)
         snapshot.update(
             {
                 "run_id": run_id,
@@ -272,6 +274,55 @@ def mark_run_process_result(
         final["summary"] = f"{final.get('summary', '')} {final['history_warning']}".strip()
         result["summary"] = final["summary"]
     return result
+
+
+def _exit_description(exit_code: int) -> str:
+    if exit_code < 0:
+        try:
+            return f"{signal.Signals(-exit_code).name} (exit status {exit_code})"
+        except ValueError:
+            pass
+    return f"exit status {exit_code}"
+
+
+def _log_unrecorded_exit(
+    run_dir: Path, snapshot: dict[str, Any], *, exit_code: int, stopped: bool
+) -> None:
+    """End the run's log with how the worker ended when it couldn't record that itself.
+
+    The worker writes its own last line when it finishes; a killed one can't, and without
+    this the log just stops mid-step.
+    """
+
+    if stopped:
+        line = f"Worker stopped by request · {_exit_description(exit_code)}"
+    else:
+        line = f"Worker ended by {_exit_description(exit_code)} before recording completion"
+        if exit_code < 0:
+            # The supervisor marks every signal it sends as a stop, so this one came from
+            # outside TweetNook.
+            line += " · the signal didn't come from TweetNook"
+    active = snapshot.get("active_step")
+    step = next(
+        (
+            item
+            for item in snapshot.get("steps") or []
+            if isinstance(item, dict) and active is not None and item.get("key") == active
+        ),
+        None,
+    )
+    if step is not None:
+        line += f" · last step: {step.get('title') or active}"
+        if step.get("activity"):
+            line += f" · {step['activity']}"
+    console_log = run_dir / "console.log"
+    log_path = console_log if console_log.exists() else run_dir / "output.log"
+    stamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    try:
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{stamp} {line}\n")
+    except OSError:
+        pass
 
 
 def terminal_snapshot(snapshot: dict[str, Any], *, stopped: bool | None = None) -> dict[str, Any]:

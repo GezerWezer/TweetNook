@@ -637,3 +637,23 @@ async def test_a_malformed_saved_url_is_that_rows_failure_under_a_pipeline(
         result = await _unfurl_one(paths, config, handler)
 
     assert result.failed == result.processed >= 1
+
+
+@pytest.mark.asyncio
+async def test_a_failed_url_is_named_by_its_host_in_the_run_log(paths, config) -> None:
+    _seed_archive(paths)
+    output = StringIO()
+    console = Console(file=output, force_terminal=False, color_system=None, width=200)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="down", request=request)
+
+    with PipelineReporter(console, "unfurl", interactive=False):
+        await unfurl_urls(
+            config=config, paths=paths, console=console, transport=httpx.MockTransport(handler)
+        )
+
+    warnings = [line for line in output.getvalue().splitlines() if line.startswith("WARNING")]
+    assert warnings
+    assert warnings[0].startswith("WARNING: URL example.com: Server error '503")
+    assert "URL url:" not in output.getvalue()

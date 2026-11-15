@@ -346,12 +346,12 @@ async def unfurl_urls(
                             result.failed += 1
                             if pipeline.active:
                                 pipeline.issue(
-                                    f"URL {row['row_key']}: {exc}",
+                                    f"URL {_url_host(request_url)}: {exc}",
                                     dedupe_key="urls:unfurl-failure",
                                 )
                             elif console:
                                 console.print(
-                                    f"url {row['row_key']}: failed ({exc})",
+                                    f"url {_url_host(request_url)}: failed ({exc})",
                                     highlight=False,
                                 )
                         else:
