@@ -188,6 +188,19 @@ test('Theme Default font follows the theme, including a default saved as the sys
     assert.equal(other.document.body.style.fontFamily, '"Fira Sans", sans-serif');
 });
 
+test('Settings lists the recreated interfaces under Special, after light and dark', () => {
+    const context = browserContext();
+    const { nookThemeGroups } = loadScripts(context, appScriptsWith('settings.js'), '({nookThemeGroups})');
+    // Copied out of the page's realm so deepEqual compares plain arrays.
+    const groups = Object.fromEntries(Array.from(nookThemeGroups(), group => [group.label, Array.from(group.themes, item => item.key)]));
+    assert.deepEqual(Object.keys(groups), ['Light', 'Dark', 'Special']);
+    assert.deepEqual(groups.Special, ['steam-green', 'windows-95', 'frutiger-aero']);
+    assert.ok(groups.Light.includes('classic-light') && groups.Dark.includes('classic-dark'));
+    for (const removed of ['vesper', 'steam-modern']) {
+        assert.ok(!Object.values(groups).flat().includes(removed), removed);
+    }
+});
+
 test('theme samples in Settings use each theme\'s own corners', () => {
     const context = browserContext();
     const { tweetApp, nookThemeTileStyle } = loadScripts(context, appScriptsWith('settings.js'), '({tweetApp, nookThemeTileStyle})');

@@ -25,6 +25,7 @@
  *           for a two-pixel edge. Gloss is Frutiger Aero's gel controls and
  *           glass, drawn by theme-gloss.css.
  *   font  – font stack for "Theme Default" in the font picker
+ *   special – listed under Special in Settings rather than Light or Dark
  *
  * Painting also sets data-theme on <html> to the theme's key, for details
  * specific to one theme that no token expresses.
@@ -333,6 +334,7 @@ const THEME_SEEDS = {
     },
     'steam-green': {
         _name: 'Steam Green',
+        special: true,
         // The 2003-era Steam client: olive panels around darker content
         // wells, bevelled controls, Tahoma, and yellow reserved for selected
         // and heading text.
@@ -383,6 +385,7 @@ const THEME_SEEDS = {
     },
     'windows-95': {
         _name: 'Windows 95',
+        special: true,
         // The classic Windows desktop: grey 3D window faces with two-pixel
         // bevels around white content and fields, black text, and navy
         // reserved for selection, menus' highlighted row and progress.
@@ -454,6 +457,7 @@ const THEME_SEEDS = {
     },
     'frutiger-aero': {
         _name: 'Frutiger Aero',
+        special: true,
         // The glossy, aquatic optimism of mid-2000s consumer tech: white
         // glass, gel capsules in aqua and lime, ocean-ink text. The page stays
         // a plain white reading surface; theme-gloss.css draws the gel.
@@ -495,56 +499,6 @@ const THEME_SEEDS = {
             '--scrollbar-thumb-hover': '#2db6f0',
         },
     },
-    'steam-modern': {
-        _name: 'Steam Modern',
-        bg: '#1B2838',         
-        text: '#DCDEDF',     
-        muted: '#8B929A',    
-        accent: '#1A9FFF',  
-        danger: '#D94126',  
-        
-        overrides: {
-            // Background Tiers
-            '--bg-primary': '#1B2838',        
-            '--bg-secondary': '#2A475E',      
-            '--bg-tertiary': '#3D4450',       
-            '--bg-header': '#171D25',         
-            '--dropdown-bg': '#3D4450',       
-
-            // Text & Icons
-            '--text-primary': '#DCDEDF',      
-            '--text-secondary': '#8B929A',    
-            '--white-icon': '#DCDEDF',        
-
-            // Borders & Dividers
-            '--border-color': '#3D4450',      
-            '--thread-line': '#2A475E',       
-            '--input-border': '#4e697d',      
-
-            // Accents & Interactive
-            '--accent-color': '#1A9FFF',      
-            '--accent-hover': '#00BBFF',      
-            '--accent-text': '#FFFFFF',           
-            
-            '--hover-bg': 'rgba(103, 193, 245, 0.2)', 
-
-            // Scrollbars
-            '--scrollbar-bg': 'rgba(0, 0, 0, 0.2)', 
-            '--scrollbar-thumb': '#2e5470',       
-            '--scrollbar-thumb-hover': '#3d6c8d', 
-
-            // Danger/Errors
-            '--danger-color': '#D94126',
-            '--danger-hover': '#EE563B',
-            '--danger-text': '#FFFFFF',
-            '--destructive-color': '#D94126',
-            '--destructive-hover': '#EE563B',
-            '--destructive-text': '#FFFFFF',
-
-            // Misc
-            '--gray-700': '#67707B'     
-        },
-    },
     'monokai': {
         _name: 'Monokai',
         bg: '#272822', text: '#f8f8f2', muted: '#75715e',
@@ -576,11 +530,6 @@ const THEME_SEEDS = {
             { name: 'Pink', color: '#f92aad' }, { name: 'Cyan', color: '#36f9f6' },
             { name: 'Yellow', color: '#fede5d' }, { name: 'Orange', color: '#ff8b39' }
         ]
-    },
-    'vesper': {
-        _name: 'Vesper',
-        bg: '#101010', text: '#cccccc', muted: '#777777',
-        accent: '#ffc799', danger: '#ff5f5f'
     }
 };
 

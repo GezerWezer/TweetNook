@@ -191,9 +191,14 @@ async function nookRestoreDefaults(app) {
 
 
 // Appearance: every theme is visible, grouped by light and dark backgrounds.
+// Themes that recreate a whole interface rather than recolour X's are Special.
 function nookThemeGroups() {
-  const groups = { Light: [], Dark: [] };
+  const groups = { Light: [], Dark: [], Special: [] };
   for (const [key, theme] of Object.entries(THEMES)) {
+    if (THEME_SEEDS[key].special) {
+      groups.Special.push({ key, theme });
+      continue;
+    }
     const hex = theme['--bg-primary'] || '#000000';
     const luma = parseInt(hex.slice(1, 3), 16) * .299 + parseInt(hex.slice(3, 5), 16) * .587 + parseInt(hex.slice(5, 7), 16) * .114;
     groups[luma < 128 ? 'Dark' : 'Light'].push({ key, theme });
