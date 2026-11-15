@@ -270,7 +270,7 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             where.sql,
             where.params,
             cols=cols,
-            order_by="COALESCE(tweet_id, ''), COALESCE(position, 1000000), rowid",
+            order_by="COALESCE(tweet_id, ''), COALESCE(CAST(position AS INTEGER), 1000000), rowid",
             limit=limit,
         )
 

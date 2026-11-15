@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from tweetnook.core import fastjson
+from tweetnook.storage.common import position_order
 from tweetnook.web.availability import media_payload
 
 
@@ -56,7 +57,7 @@ def annotate_web_articles(store: Any, tweets: list[dict[str, Any]]) -> None:
         return
     media_rows = observations.media
     media_by_id: dict[str, list[dict[str, Any]]] = {}
-    for row in sorted(media_rows, key=lambda item: item.get("position") or 0):
+    for row in sorted(media_rows, key=position_order):
         if str(row.get("source") or "").startswith("article_"):
             media_by_id.setdefault(str(row["tweet_id"]), []).append(_media(row))
     for node in nodes:

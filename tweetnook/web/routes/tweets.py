@@ -10,6 +10,7 @@ from fastapi.responses import Response
 
 from tweetnook.core import fastjson
 from tweetnook.core.collection_names import normalize_collection_name
+from tweetnook.storage.common import position_order
 from tweetnook.storage.search_query import (
     SearchCursorExpiredError,
     SearchQueryError,
@@ -244,7 +245,7 @@ def api_tweet_thread(
             raw_by_tweet_id[tid] = raw_json
 
     media_by_tweet_id = {}
-    for row in media:
+    for row in sorted(media, key=position_order):
         if row.get("tweet_id"):
             media_by_tweet_id.setdefault(row["tweet_id"], []).append(row)
 

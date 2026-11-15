@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 from tweetnook.core import fastjson
 from tweetnook.core.media_metadata import aspect_ratio_for_media
 
-from .common import listed_tweet_sql
+from .common import listed_tweet_sql, position_order
 from .like_order import LIKE_ORDER_TABLE
 from .ordering import chronological_columns, chronological_order
 from .record_types import RecordType
@@ -460,10 +460,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
                 raw_tweet_by_id[row["tweet_id"]] = raw_tweet
         for row in sorted(
             media_rows,
-            key=lambda item: (
-                item.get("tweet_id") or "",
-                item.get("position") if item.get("position") is not None else 1_000_000,
-            ),
+            key=position_order,
         ):
             media_by_tweet.setdefault(row["tweet_id"], []).append(
                 self._serialize_media_row(row, raw_tweet_by_id.get(row["tweet_id"]))
@@ -480,10 +477,7 @@ class ReadsMixin(RecordsMixin, RelationsMixin):
         url_refs_by_tweet: dict[str, list[dict[str, Any]]] = {}
         for row in sorted(
             url_ref_rows,
-            key=lambda item: (
-                item.get("tweet_id") or "",
-                item.get("position") if item.get("position") is not None else 1_000_000,
-            ),
+            key=position_order,
         ):
             resolved = urls_by_hash.get(row.get("url_hash"))
             url_refs_by_tweet.setdefault(row["tweet_id"], []).append(

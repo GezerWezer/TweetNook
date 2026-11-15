@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .common import position_order
 from .db import ConnectionMixin
 from .record_types import RecordType
 
@@ -63,12 +64,7 @@ class RelationsMixin(ConnectionMixin):
             expr=f"record_type = '{RecordType.URL_REF}'",
             cols=["tweet_id", "position", "canonical_url", "expanded_url", "url"],
         )
-        rows.sort(
-            key=lambda row: (
-                row.get("tweet_id") or "",
-                row.get("position") if row.get("position") is not None else 1_000_000,
-            )
-        )
+        rows.sort(key=position_order)
         return rows
 
     def list_quote_relation_rows(self, source_tweet_ids: set[str]) -> list[dict[str, Any]]:

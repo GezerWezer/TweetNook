@@ -161,7 +161,7 @@ class ConversationsMixin(ConnectionMixin):
                 "local_path",
                 "thumbnail_local_path",
             ],
-            limit=related_count * 10,
+            # No row cap: a post can carry up to twenty media items.
             indexed_by="idx_archive_tweet_record",
         )
         col_rows = self._query(

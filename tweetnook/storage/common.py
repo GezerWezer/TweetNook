@@ -41,6 +41,20 @@ def numeric_media_id(media_key: Any) -> str | None:
     return match[1] if match else None
 
 
+def position_order(row: dict[str, Any]) -> tuple[str, int]:
+    """Sort key placing a tweet's media or links in post order.
+
+    Archive columns are TEXT, so a stored position reads back as "10" and would sort before
+    "2"; positions compare as numbers here, and a missing one sorts last.
+    """
+    position = row.get("position")
+    try:
+        order = int(position) if position is not None else 1_000_000
+    except (TypeError, ValueError):
+        order = 1_000_000
+    return (row.get("tweet_id") or "", order)
+
+
 def created_at_timestamp(value: Any) -> int | None:
     """The epoch seconds stored beside a creation date, which search and ordering read."""
     parsed = parse_created_at(value)
