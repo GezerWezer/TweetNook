@@ -87,8 +87,11 @@ def _seed_source(paths: XDGPaths) -> None:
     try:
         _persist_page(store, ["11", "12"], None, "c1")
         _persist_page(store, ["13"], "c1", "c2")
-        # A later, shorter head-only chain must not hide the longer saved chain.
-        _persist_page(store, ["11"], None, "c-short")
+        # Later syncs saved short head chains, oldest first. Their newer posts come
+        # before the longest chain; a head page with nothing new is left out.
+        _persist_page(store, ["10"], None, "c-repeat")
+        _persist_page(store, ["10", "11"], None, "c-b")
+        _persist_page(store, ["9", "10"], None, "c-a")
         detail = make_tweet_detail_response(
             [make_tweet_result("50", "root"), make_tweet_result("51", "reply")]
         )
@@ -189,8 +192,8 @@ def test_config_refuses_enabling_replay_source_without_password(make_web_client)
 def test_status_reports_available_replay_data(monkeypatch, source_paths) -> None:
     client = TestClient(_source_app(monkeypatch, source_paths))
     status = client.get("/api/dev/replay/status", auth=AUTH).json()
-    assert status["bookmarks_pages"] == 3
-    assert status["bookmarks_chain_pages"] == 2
+    assert status["bookmarks_pages"] == 5
+    assert status["bookmarks_chain_pages"] == 4
     assert status["likes_pages"] == 0
     assert status["thread_captures"] == 1
     assert status["downloaded_media"] == 1
@@ -208,15 +211,20 @@ def test_bookmarks_chain_by_cursor_and_end_with_empty_page(monkeypatch, source_p
     assert first.status_code == 200
     assert first.headers[RESULT_HEADER] == "hit"
     tweets, cursor = parse_timeline_response(first.json())
-    assert [tweet.tweet_id for tweet in tweets] == ["11", "12"]
-    assert cursor == "c1"
+    assert [tweet.tweet_id for tweet in tweets] == ["9", "10"]
+    assert cursor == "c-a"
 
-    second = client.get(f"{GRAPHQL}/Bookmarks", params=_variables(cursor="c1"), auth=AUTH)
-    tweets, cursor = parse_timeline_response(second.json())
-    assert [tweet.tweet_id for tweet in tweets] == ["13"]
+    pages = []
+    while True:
+        page = client.get(f"{GRAPHQL}/Bookmarks", params=_variables(cursor=cursor), auth=AUTH)
+        if page.headers[RESULT_HEADER] != "hit":
+            break
+        tweets, next_cursor = parse_timeline_response(page.json())
+        pages.append((cursor, [tweet.tweet_id for tweet in tweets]))
+        cursor = next_cursor
+    assert pages == [("c-a", ["10", "11"]), ("c-b", ["11", "12"]), ("c1", ["13"])]
     assert cursor == "c2"
-
-    end = client.get(f"{GRAPHQL}/Bookmarks", params=_variables(cursor="c2"), auth=AUTH)
+    end = page
     assert end.status_code == 200
     assert end.headers[RESULT_HEADER] == "empty"
     payload = end.json()
@@ -335,12 +343,12 @@ async def test_test_install_sync_replays_saved_chain(
         sleep=no_sleep,
     )
 
-    assert result.pages_fetched == 3
-    assert result.tweets_seen == 3
+    assert result.pages_fetched == 5
+    assert result.tweets_seen == 7
     assert result.stop_reason == "empty"
     store = open_archive_store(paths, create=False)
     try:
-        assert store.get_collection_tweet_ids("bookmark") == {"11", "12", "13"}
+        assert store.get_collection_tweet_ids("bookmark") == {"9", "10", "11", "12", "13"}
     finally:
         store.close()
 
@@ -402,8 +410,8 @@ async def test_sync_without_explicit_transport_replays_from_the_source(
         "bookmarks", full=False, config=config, paths=paths, sleep=no_sleep
     )
 
-    assert result.pages_fetched == 3
-    assert result.tweets_seen == 3
+    assert result.pages_fetched == 5
+    assert result.tweets_seen == 7
     assert result.stop_reason == "empty"
 
 
@@ -585,8 +593,8 @@ def test_replay_setup_tests_saves_toggles_and_disconnects(
     assert replay["password"] == "********"
     assert replay["placeholder_media"] is True
     assert replay["skip_quote_expansion"] is False
-    assert replay["status"]["bookmarks_pages"] == 3
-    assert replay["status"]["bookmarks_chain_pages"] == 2
+    assert replay["status"]["bookmarks_pages"] == 5
+    assert replay["status"]["bookmarks_chain_pages"] == 4
     assert isinstance(replay["status"]["checked_at"], int)
     assert saved.json()["tools"] is True
     assert PASSWORD not in saved.text
@@ -615,7 +623,7 @@ def test_replay_setup_tests_saves_toggles_and_disconnects(
     )
     assert dev_replay.active_replay().placeholder_media is False
     setup_dev = client.get("/api/setup").json()["dev"]
-    assert setup_dev["replay"]["status"]["bookmarks_pages"] == 3
+    assert setup_dev["replay"]["status"]["bookmarks_pages"] == 5
     assert setup_dev["replay"]["placeholder_media"] is False
 
     skipped = client.put(

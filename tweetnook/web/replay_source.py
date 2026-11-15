@@ -18,6 +18,7 @@ import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from itertools import pairwise
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import parse_qs
@@ -36,7 +37,7 @@ from tweetnook.core.operations import (
     LIKES,
     TIMELINE_OPERATIONS,
 )
-from tweetnook.core.timeline_parsing import parse_tweet_detail_tweets
+from tweetnook.core.timeline_parsing import parse_timeline_response, parse_tweet_detail_tweets
 from tweetnook.storage import replay_reads
 from tweetnook.storage.replay_reads import replay_connection
 from tweetnook.web.replay_placeholders import IMAGE_FORMATS, placeholder_bytes
@@ -242,6 +243,7 @@ class ReplayArchive:
         self._lock = threading.Lock()
         self._timelines: dict[str, tuple[float, _Timeline]] = {}
         self._empty_pages: dict[str, dict[str, Any]] = {}
+        self._page_ids: dict[str, frozenset[str]] = {}
         self._media: tuple[float, dict[str, tuple[str, str | None]]] | None = None
         self._detail_index: tuple[float, dict[str, str]] | None = None
 
@@ -271,33 +273,60 @@ class ReplayArchive:
             else:
                 firsts.append(row["row_key"])
 
-        def chain_length(row_key: str) -> int:
-            length = 1
-            seen = {row_key}
+        def chain(row_key: str) -> list[str]:
+            keys = [row_key]
             next_cursor = cursor_out.get(row_key)
-            while next_cursor and (next_key := by_cursor.get(next_cursor)) and next_key not in seen:
-                seen.add(next_key)
-                length += 1
+            while next_cursor and (next_key := by_cursor.get(next_cursor)) and next_key not in keys:
+                keys.append(next_key)
                 next_cursor = cursor_out.get(next_key)
-            return length
+            return keys
 
-        best: tuple[int, int] | None = None
-        first_row_key: str | None = None
-        for position, row_key in enumerate(firsts):
-            # Prefer the longest saved chain; among equals, the most recent first page.
-            score = (chain_length(row_key), position)
-            if best is None or score > best:
-                best, first_row_key = score, row_key
+        chains = [chain(row_key) for row_key in firsts]
+        # The longest chain is the fullest walk of the timeline; among equals, the newest.
+        best = max(range(len(chains)), key=lambda i: (len(chains[i]), i)) if chains else -1
+        # Each later sync saved a head chain that ends where the previous one began, so
+        # the newest posts are only in chains captured after the longest one. Serve those
+        # newest first, as X would, keeping only pages that add posts not served yet,
+        # then the whole longest chain.
+        served: list[str] = []
+        served_ids: set[str] = set()
+        for index in range(len(chains) - 1, best, -1):
+            for row_key in chains[index]:
+                ids = self._page_tweet_ids(row_key)
+                if not ids <= served_ids:
+                    served.append(row_key)
+                    served_ids |= ids
+        if chains:
+            served.extend(chains[best])
+        next_page = dict(by_cursor)
+        for row_key, next_key in pairwise(served):
+            if link := cursor_out.get(row_key):
+                next_page[link] = next_key
         timeline = _Timeline(
-            first_row_key=first_row_key,
-            by_cursor=by_cursor,
+            first_row_key=served[0] if served else None,
+            by_cursor=next_page,
             pages=len(rows),
-            chain_pages=best[0] if best else 0,
+            chain_pages=len(served),
             latest_row_key=rows[-1]["row_key"] if rows else None,
         )
         with self._lock:
             self._timelines[operation] = (now, timeline)
         return timeline
+
+    def _page_tweet_ids(self, row_key: str) -> frozenset[str]:
+        # Captures never change, so each page is parsed once per process.
+        with self._lock:
+            cached = self._page_ids.get(row_key)
+        if cached is not None:
+            return cached
+        capture = self._capture(row_key)
+        ids: frozenset[str] = frozenset()
+        if capture is not None and capture["raw_json"]:
+            tweets, _cursor = parse_timeline_response(fastjson.loads(capture["raw_json"]))
+            ids = frozenset(tweet.tweet_id for tweet in tweets)
+        with self._lock:
+            self._page_ids[row_key] = ids
+        return ids
 
     def _empty_page(self, operation: str, timeline: _Timeline) -> dict[str, Any]:
         with self._lock:
