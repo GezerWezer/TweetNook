@@ -151,3 +151,11 @@ For contributions, see the [developer docs](docs/development/README.md). Release
 TweetNook began as a fork of [TweetXVault](https://github.com/lhl/tweetxvault) and is developed independently. Thanks to [rrika](https://github.com/rrika) for sharing [research on archive like order](https://github.com/lhl/tweetxvault/issues/2).
 
 If you would like to migrate from a TweetXVault archive, follow the [migration steps](docs/maintenance.md#migration).
+
+<a href="https://www.star-history.com/?repos=gezerwezer%2Ftweetnook&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=gezerwezer/tweetnook&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=gezerwezer/tweetnook&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=gezerwezer/tweetnook&type=date&legend=bottom-right" />
+ </picture>
+</a>
