@@ -32,7 +32,7 @@ function noticeMethods() {
             if (response.ok) this.notices = this.notices.filter(n => !n.dismissed);
         },
 
-        // Notices raised by a run open that run's log in Settings → Activity logs.
+        // Notices raised by a run open that run's log in Settings → Logs.
         openNoticeLog(notice) {
             nookSettingsNavigate(this, 'logs');
             this.nookLogOpenRunId = notice.run_id;

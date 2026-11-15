@@ -465,17 +465,19 @@ def test_run_server_sets_state_and_invokes_uvicorn(monkeypatch, tmp_path: Path) 
         "password_hash": "hash",
         "password_file_stamp": (),
     }
-    assert run_calls == [
-        (
-            server.app,
-            {
-                "host": "127.0.0.2",
-                "port": 9123,
-                "log_level": "info",
-                "timeout_graceful_shutdown": 5,
-            },
-        )
-    ]
+    [(app, kwargs)] = run_calls
+    log_config = kwargs.pop("log_config")
+    assert app is server.app
+    assert kwargs == {
+        "host": "127.0.0.2",
+        "port": 9123,
+        "log_level": "info",
+        "timeout_graceful_shutdown": 5,
+    }
+    # The server log goes in the data directory.
+    assert log_config["handlers"]["server_file"]["filename"] == str(
+        paths.data_dir / "logs" / "server.log"
+    )
 
 
 def test_document_versions_assets_and_revalidates_with_etag() -> None:

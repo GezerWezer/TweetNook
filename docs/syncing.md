@@ -50,7 +50,7 @@ Optional automated tagging runs when it's installed and enabled. To leave it out
 
 ## Sync status
 
-A completed collection sync can still have a media, Article, conversation, link-preview, or tagging issue listed in Activity logs. Those tasks can be continued separately.
+A completed collection sync can still have a media, Article, conversation, link-preview, or tagging issue listed in Settings > Logs. Those tasks can be continued separately.
 
 Sync failed means a connection, collection, archive-write, storage, or worker failure prevented completion. Sync stopped records a requested stop, while Sync interrupted means the run has no confirmed final result. Check the log before deciding what to rerun.
 

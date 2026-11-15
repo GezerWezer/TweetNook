@@ -685,6 +685,49 @@ test('Verbose shows the full log, is remembered, and shows only its last lines',
     assert.equal(page.truncatedLines, 0);
 });
 
+test('the Server tab reads the server log while it shows, and Download saves all of it', async () => {
+    const context = browserContext(), timers = new Map(), requests = [];
+    let nextTimer = 0;
+    context.setTimeout = callback => { timers.set(++nextTimer, callback); return nextTimer; };
+    context.clearTimeout = timer => timers.delete(timer);
+    const today = new Date(), stamp = date => date.toISOString();
+    const yesterday = new Date(today.getTime() - 86400000);
+    const body = `${stamp(yesterday)} uvicorn: Started server process\n${stamp(today)} WARNING: jobs.scheduler: Skipped the scheduled sync\n`;
+    context.fetch = async url => { requests.push(url); return { ok: true, async text() { return body; } }; };
+    const page = immediateComponent(loadScripts(context, ['settings.js'], 'nookLogsPage')());
+    Object.assign(page, { showSettingsModal: true, settingsTab: 'logs', nookLogRun: null, nookLogLines: null });
+
+    // Activity is the first tab and reads nothing from the server log.
+    await page.refreshServer();
+    assert.equal(requests.length, 0);
+    assert.equal(page.lines(), null);
+
+    page.showView('server');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(requests, ['/api/activity/server-log']);
+    assert.equal(page.lines().length, 2);
+    assert.equal(page.countOf('warning'), 1);
+    assert.equal(page.timed(), true);
+    // A line from another day says which day; today's shows only the time.
+    const time = date => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+    assert.equal(page.lines()[0].time, `${yesterday.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time(yesterday)}`);
+    assert.equal(page.lines()[1].time, time(today));
+    assert.equal(page.dated(), true);
+    assert.equal(timers.size, 1);
+
+    const saved = [];
+    page.saveText = (text, filename) => saved.push([text, filename]);
+    await page.download();
+    assert.equal(requests.at(-1), '/api/activity/server-log?full=1');
+    assert.equal(saved[0][1], 'tweetnook-server.log');
+
+    // Leaving the tab stops the polling; an open run shows its own log instead.
+    page.showView('activity');
+    assert.equal(timers.size, 0);
+    page.nookLogRun = { run_id: 'r1' }; page.nookLogLines = [];
+    assert.deepEqual(page.lines(), []);
+});
+
 test('timestamped worker logs show local times', async () => {
     const context = browserContext();
     const { nookLogParse, nookLogsPage } = loadScripts(context, ['settings.js'], '({nookLogParse, nookLogsPage})');

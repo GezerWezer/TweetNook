@@ -30,6 +30,7 @@ from tweetnook.jobs.supervisor import JobConflictError
 from tweetnook.web.activity_stream import ActivityStream
 from tweetnook.web.deps import server_state, verify_credentials
 from tweetnook.web.runtime_config import save_server_config
+from tweetnook.web.server_log import read_full_server_log, read_server_log
 
 router = APIRouter(prefix="/api/activity", tags=["activity"])
 # Every job the Web jobs list can run reports through the same pipeline.
@@ -301,6 +302,20 @@ def activity_run_log(
         return PlainTextResponse(text, headers={"X-Log-Offset": str(next_offset)})
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="Run not found.") from exc
+
+
+@router.get("/server-log", response_class=PlainTextResponse)
+def activity_server_log(
+    _auth: Annotated[bool, Depends(verify_credentials)],
+    full: bool = False,
+) -> PlainTextResponse:
+    """The end of the Web server's own log, or with ``full`` all of it, rotated files included."""
+
+    paths = server_state.get("paths")
+    if paths is None:
+        return PlainTextResponse("")
+    log_file = paths.server_log_file
+    return PlainTextResponse(read_full_server_log(log_file) if full else read_server_log(log_file))
 
 
 @router.get("/schedule")

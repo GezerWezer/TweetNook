@@ -683,6 +683,9 @@ async function main() {
         assert.equal(await (await activityStore.handle(`https://example.test/api/activity/runs/${run.run_id}/log?offset=${next + 100}`)).text(), text);
     }
     assert.equal((await activityStore.handle('https://example.test/api/activity/runs/missing')).status, 404);
+    const serverLog = await (await activityStore.handle('https://example.test/api/activity/server-log?full=1')).text();
+    assert.match(serverLog, /^DEMO REPLAY:/);
+    assert.match(serverLog, /^\d{4}-\d\d-\d\dT[\d:.]+Z uvicorn: Started server process$/m);
 
     // Selected collections change the plan, while cached browsing tags stay intact.
     const collectionStore = api.createStore(fixture, {now: () => clock, config: demoConfig});

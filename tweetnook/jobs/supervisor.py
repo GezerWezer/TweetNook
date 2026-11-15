@@ -209,6 +209,9 @@ class JobSupervisor:
                 self._monitor_thread = None
                 raise
             result = {"started": True, "kind": kind, "run_id": run_id, "pid": process.pid}
+        logging.getLogger(__name__).info(
+            "Started %s (%s, run %s, pid %d)", title, origin, run_id, process.pid
+        )
         if self.on_start is not None:
             try:
                 self.on_start(run_id, process.pid)
@@ -259,6 +262,7 @@ class JobSupervisor:
                 return started
             # Counted now: a failed launch ahead of this job can have moved it up.
             position = self._queue.index(item) + 1
+        logging.getLogger(__name__).info("Queued %s (%s, position %d)", title, origin, position)
         return {"started": False, "queued": True, "kind": kind, "position": position}
 
     def dequeue(self, kind: str) -> bool:
@@ -390,6 +394,7 @@ class JobSupervisor:
                 -signal.SIGINT,
             }
             handle = self._console_handle if self._run_id == run_id else None
+            title = self._title if self._run_id == run_id else None
             try:
                 self.last_result = mark_run_process_result(
                     self.paths.data_dir,
@@ -429,6 +434,13 @@ class JobSupervisor:
                 exit_code=exit_code,
                 outcome=recorded_outcome(self.last_result["snapshot"]),
             )
+        logging.getLogger(__name__).info(
+            "%s ended (run %s, exit code %d, %s)",
+            title or "Worker",
+            run_id,
+            exit_code,
+            completion.outcome or "no recorded outcome",
+        )
         if handle is not None:
             try:
                 handle.close()

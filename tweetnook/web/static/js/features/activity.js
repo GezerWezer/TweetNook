@@ -1,6 +1,6 @@
 /**
  * The Jobs panel's live state: the activity status stream with polling as its fallback,
- * starting and stopping jobs, the drawer and its pages, and the runs listed in Activity logs.
+ * starting and stopping jobs, the drawer and its pages, and the runs listed in Settings > Logs.
  */
 
 function activityMethods() {

@@ -56,8 +56,9 @@
 .nook-choice-row > span:first-child { min-width:0; }
 .nook-choice-row strong { display:block; font-size:15px; font-weight:400; line-height:20px; }
 .nook-choice-row > span > span { display:block; font-size:13px; color:var(--text-secondary); line-height:18px; margin-top:3px; }
-/* An input inside a shared field (.nook-field, .nook-input, .nook-search) is framed by the field's own focus ring. */
-.nook-settings-shell button:focus-visible,.nook-settings-shell input:focus-visible:not(:is(.nook-field, .nook-input, .nook-search) input),.nook-settings-shell select:focus-visible,.nook-settings-shell summary:focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
+/* An input inside a shared field (.nook-field, .nook-input, .nook-search) is framed by the field's own focus ring.
+   A tab keeps its own inset ring, which its scrolling strip would clip if drawn outside. */
+.nook-settings-shell button:focus-visible:not(.nook-tab),.nook-settings-shell input:focus-visible:not(:is(.nook-field, .nook-input, .nook-search) input),.nook-settings-shell select:focus-visible,.nook-settings-shell summary:focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
 .nook-original-body { padding-top:16px; }
 /* Logs rows align with the detail title instead of sitting in a second inset. */
 .nook-original-body[x-show="settingsTab === 'logs'"] > .p-4 { padding:0; }
@@ -134,7 +135,7 @@
 .nook-tag-pagination { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding-bottom:24px; }
 .nook-tag-pagination > span { flex:1; min-width:140px; color:var(--text-secondary); font-size:13px; }
 
-/* ---- Activity logs ---- */
+/* ---- Logs ---- */
 @keyframes nook-spin { to { transform:rotate(360deg); } }
 .nook-detail-header.is-nested .nook-settings-back { display:flex; }
 
@@ -278,7 +279,7 @@
 /* Compact dropdown: no inner label, sits at the end of a row, menu aligned to its right edge. */
 @media (max-width:420px) { .nook-config-input.is-text { width:150px; } }
 
-/* ---- Activity logs: run list and log panel, theme colors only ---- */
+/* ---- Logs: tabs, run list and log panel, theme colors only ---- */
 .nook-log-row { display:flex; align-items:center; gap:12px; width:calc(100% + 32px); min-height:64px; margin:0 -16px; padding:12px 8px 12px 16px; border:0; border-bottom:1px solid var(--border-color); background:transparent; color:var(--text-primary); text-align:left; cursor:pointer; }
 .nook-log-row:hover { background:var(--hover-bg); }
 .nook-log-copy { flex:1; min-width:0; }
@@ -288,6 +289,7 @@
 .nook-log-state.is-failed { color:var(--destructive-color); font-weight:700; }
 .nook-log-state.is-running { color:var(--accent-color); font-weight:700; }
 .nook-log-detail { padding-top:12px; }
+.nook-logs-tabs { margin:0 -16px; border-bottom:1px solid var(--border-color); }
 .nook-log-summary { margin:0; color:var(--text-primary); font-size:15px; line-height:20px; }
 .nook-log-summary + .nook-log-meta { margin-top:4px; }
 .nook-log-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; margin:16px 0 8px; }
@@ -302,6 +304,9 @@
 .nook-log-line { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--log-column-gap); padding:0 16px; }
 .nook-log-panel.has-time .nook-log-line { grid-template-columns:var(--log-time-width) minmax(0,1fr); }
 .nook-log-line time { color:var(--text-secondary); }
+.nook-log-panel:not(.has-time) .nook-log-line time { display:none; }
+/* Server log times can carry a day ("Nov 14 23:59:59"). */
+.nook-log-panel.is-dated { --log-time-width:128px; }
 .nook-log-line > span { white-space:pre-wrap; overflow-wrap:anywhere; }
 .nook-log-line.is-quiet { color:var(--text-secondary); }
 .nook-log-line.is-warning { color:var(--accent-color); }

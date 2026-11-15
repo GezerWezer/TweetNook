@@ -319,6 +319,18 @@
         function findRun(runId) {
             return jobsReplay.findRun(runId);
         }
+        // The demo has no server process; this stands in for the start of its log
+        // (tweetnook/web/server_log.py writes the same shape).
+        function serverLog() {
+            const stamp = secondsAgo => new Date((nowSeconds() - secondsAgo) * 1000).toISOString().replace(/\.\d+Z$/, '.000Z');
+            return [
+                'DEMO REPLAY: a sample server log; the demo runs in your browser, without a server.',
+                `${stamp(3600)} uvicorn: Started server process`,
+                `${stamp(3600)} uvicorn: Waiting for application startup.`,
+                `${stamp(3599)} uvicorn: Application startup complete.`,
+                `${stamp(3599)} uvicorn: Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)`,
+            ].join('\n') + '\n';
+        }
         // Complete lines after a byte offset, like activity_history.read_run_log_since().
         function logSince(text, offset) {
             const bytes = new TextEncoder().encode(text);
@@ -769,6 +781,7 @@
                 const limit = Math.max(1, Number(url.searchParams.get('limit')) || 100);
                 return jsonResponse({runs: jobsReplay.runs().slice(0, limit)});
             }
+            if (path.endsWith('/api/activity/server-log') && method === 'GET') return textResponse(serverLog());
             const runMatch = path.match(/\/api\/activity\/runs\/([^/]+)(\/log)?$/);
             if (runMatch && method === 'GET') {
                 const found = findRun(decodeURIComponent(runMatch[1]));

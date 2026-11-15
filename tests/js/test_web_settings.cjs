@@ -498,7 +498,7 @@ test('the mobile viewer requests edge-to-edge layout and restores the original v
 test('schedule settings bind every control to the schedule form', () => {
     const html = pageHtml();
     const start = html.indexOf('<!-- Scheduled sync settings -->');
-    const end = html.indexOf('<!-- Activity logs -->');
+    const end = html.indexOf('<!-- Logs -->');
     const scheduleHtml = html.slice(start, end);
 
     assert.match(html, /id="save-schedule-btn"[^>]*@click="saveScheduleSettings\(\)"/);

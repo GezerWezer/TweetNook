@@ -80,6 +80,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `jobs/supervisor.py`, `jobs/scheduler.py` | Worker/queue ownership and scheduled submission. |
 | `jobs/reminders.py`, `jobs/interactive.py` | Notices and terminal interaction. |
 | `web/server.py`, `web/deps.py` | FastAPI lifecycle, shared state, sessions and archive readiness. |
+| `web/server_log.py` | The Web server's rotating log file and reading it for Settings > Logs. |
 | `web/processes.py` | Archive-scoped process records used by personal Web commands and server startup. |
 | `web/runtime_config.py` | Apply saved settings to running services under the shared lifecycle lock. |
 | `web/setup_coordinator.py`, `web/jobs.py` | Setup transitions and the Web jobs list's state, last and next runs. |

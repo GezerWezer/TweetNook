@@ -580,6 +580,7 @@ def run_server(
     import uvicorn
 
     from tweetnook.core.process_identity import process_identity
+    from tweetnook.web.server_log import server_logging_config
 
     host = normalize_listener_host(host)
     upgrade_config(paths)
@@ -594,7 +595,14 @@ def run_server(
         raise RuntimeError("Cannot read the Web server's process identity.")
     record_web_process(paths.data_dir, identity, port)
     try:
-        uvicorn.run(app, host=host, port=port, log_level="info", timeout_graceful_shutdown=5)
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            log_level="info",
+            log_config=server_logging_config(paths.server_log_file),
+            timeout_graceful_shutdown=5,
+        )
     finally:
         with suppress(OSError):
             forget_web_process(paths.data_dir, identity)

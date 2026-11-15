@@ -314,7 +314,7 @@ def test_scheduler_resumes_after_an_overdue_randomized_occurrence(tmp_path) -> N
     )
 
 
-def test_scheduler_records_conflicting_run_as_skipped(tmp_path) -> None:
+def test_scheduler_records_conflicting_run_as_skipped(tmp_path, caplog) -> None:
     paths = XDGPaths(
         config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
     )
@@ -337,9 +337,13 @@ def test_scheduler_records_conflicting_run_as_skipped(tmp_path) -> None:
         on_job_conflict=conflicts.append,
     )
     manager._state["next_run_at"] = 1_000.0
-    manager.tick(now=1_001.0)
+    with caplog.at_level(logging.INFO, logger="tweetnook.jobs.scheduler"):
+        manager.tick(now=1_001.0)
 
     assert manager._state["last_result"] == "skipped: another command was running"
+    assert [record.getMessage() for record in caplog.records] == [
+        "Skipped the scheduled sync: import was running"
+    ]
     assert manager._state["last_run_at"] == 1_001.0
     assert manager._state["next_run_at"] > 1_001.0
     assert conflicts == [
@@ -386,6 +390,32 @@ def test_sync_due_during_the_check_waits_for_it_then_runs(tmp_path) -> None:
 
     assert manager._state["last_run_id"] == "scheduled-run"
     assert manager.sync_deferred() is False
+
+
+def test_a_sync_waiting_for_the_check_is_logged_once(tmp_path, caplog) -> None:
+    paths = XDGPaths(
+        config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache"
+    )
+    config = AppConfig(schedule=ScheduleConfig(enabled=True, cadence="daily", timezone="UTC"))
+
+    class Supervisor:
+        config = None
+        active_run_id = "check-run"
+        active_kind = "check"
+
+        def start(self, **_kwargs):
+            raise JobConflictError("busy")
+
+    manager = ScheduleManager(paths, config, Supervisor())
+    manager._state["next_run_at"] = 1_000.0
+    with caplog.at_level(logging.INFO, logger="tweetnook.jobs.scheduler"):
+        manager.tick(now=1_001.0)
+        manager.tick(now=1_001.0 + 15 * 60)
+
+    assert manager.sync_deferred() is True
+    assert [record.getMessage() for record in caplog.records] == [
+        "Scheduled sync is waiting for the availability check to finish"
+    ]
 
 
 def test_a_new_schedule_replaces_waiting_sync_and_check_retries(tmp_path) -> None:

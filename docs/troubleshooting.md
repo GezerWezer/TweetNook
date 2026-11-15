@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with Jobs and Settings > Activity logs. The current run and its log usually tell you which part needs attention. Keep any report free of X cookies, API keys, passwords, and private post content.
+Start with Jobs and Settings > Logs. The current run and its log usually tell you which part needs attention, and the Server tab shows what the server itself did, such as a scheduled sync it skipped or a job it couldn't start. The server log is also kept as `logs/server.log` in the data directory. Keep any report free of X cookies, API keys, passwords, and private post content.
 
 ## Opening TweetNook
 
@@ -12,7 +12,7 @@ If a port is already in use, stop the old TweetNook process or choose another po
 
 ### The server exits before the page opens
 
-Startup errors can happen before Jobs or Activity logs are available. A personal background server discards its terminal output, so run it in the foreground to see the error. Use the same Python environment and file locations as usual:
+Startup errors can happen before Jobs or Logs are available. A personal background server discards its terminal output, so run it in the foreground to see the error. Use the same Python environment and file locations as usual:
 
 ```bash
 tweetnook web stop
@@ -79,7 +79,7 @@ Saved text, media, and Articles remain visible with a warning when a post is del
 
 The host must be awake and TweetNook must stay running. Check that Sync automatically is enabled, your collection choices were saved, and the next run and timezone are what you expect. Random delay can move a run later than its nominal time.
 
-Another active job can prevent a scheduled sync from starting. Notifications and Activity logs record those events. A scheduled run isn't a reason to start another copy of the server.
+Another active job can prevent a scheduled sync from starting. Notifications and the server log record those events. A scheduled run isn't a reason to start another copy of the server.
 
 ## Tags and search
 

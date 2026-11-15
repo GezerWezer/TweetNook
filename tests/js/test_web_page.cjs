@@ -120,8 +120,8 @@ test('typed values sit in a shared field box', () => {
 test('tab strips use the shared tab with its label span', () => {
     const html = pageHtml();
     const tabs = html.match(/<button[^>]*role="tab"[\s\S]*?<\/button>/g) || [];
-    // Feed collections, Setup's browser help and the jobs panel's steps.
-    assert.equal(tabs.length, 3);
+    // Feed collections, Setup's browser help, the jobs panel's steps, and Logs' Activity and Server.
+    assert.equal(tabs.length, 5);
     for (const tab of tabs) {
         assert.match(tab, /class="nook-tab[ "]/);
         assert.match(tab, /<span class="nook-tab-label"/);

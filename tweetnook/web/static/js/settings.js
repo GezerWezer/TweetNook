@@ -1,4 +1,4 @@
-// Settings: categories, detail pages, and the pages for Appearance, Schedule, Tags, Configuration, and Activity logs.
+// Settings: categories, detail pages, and the pages for Appearance, Schedule, Tags, Configuration, and Logs.
 let nookSettingsTrigger = null;
 const nookInitialSettings = new URLSearchParams(location.search).get('settings');
 function nookSettingsRememberFocus() { nookSettingsTrigger = document.activeElement; }
@@ -10,7 +10,7 @@ function nookSettingsRestoreFocus() {
 function nookSettingsTitle(key) {
   return {appearance:'Appearance',schedule:'Schedule',tags:'Tags',
     'automated-tagging':'Automated tagging',notifications:'Notifications',
-    setup:'Setup',config:'Configuration',logs:'Activity logs'}[key] || 'Settings';
+    setup:'Setup',config:'Configuration',logs:'Logs'}[key] || 'Settings';
 }
 function nookSettingsFocus(app) {
   if (app.nookSettingsDetail || window.matchMedia('(min-width:800px)').matches)
@@ -383,13 +383,21 @@ function nookTagsPage() {
   };
 }
 
-// Activity logs: runs grouped by day; a run opens as a nested page in the detail pane.
+// Logs: the Activity tab lists runs, and a run opens as a nested page in the detail pane; the
+// Server tab shows the Web server's own log (tweetnook/web/server_log.py).
 // Activity log lines (tweetnook/pipeline.py): "Step: event · fields", "WARNING: …", "ERROR: …", and
 // "tweetnook <command>: started|complete". New worker/output.log lines carry UTC timestamps;
 // older console.log files may have no per-line times.
 const NOOK_LOG_RUN = /^tweetnook\b[^:]*: (started|complete|failed|stopped)\b/;
 const NOOK_LOG_STEP = /^[A-Z][\w '\/&-]*?: (starting|progress|status|complete|failed|skipped|stopped)\b/;
-function nookLogParse(text) {
+// The server log spans days, so its lines say which day when it isn't today.
+function nookLogTime(stamp, dated) {
+  const date = new Date(stamp);
+  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+  return dated && date.toDateString() !== new Date().toDateString()
+    ? `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}` : time;
+}
+function nookLogParse(text, { dated = false } = {}) {
   return String(text || '').split('\n').filter(line => line.trim()).map((raw, index) => {
     const stamp = raw.match(/^(\d{4}-\d\d-\d\dT[\d:.]+Z) (.*)$/);
     const text = stamp ? stamp[2] : raw;
@@ -401,7 +409,7 @@ function nookLogParse(text) {
       : event === 'progress' || event === 'status' ? 'quiet'
       : event ? 'milestone' : 'plain';
     return { index, raw, text, tone, quiet: !!step && tone === 'quiet',
-      time: stamp ? new Date(stamp[1]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }) : '' };
+      time: stamp ? nookLogTime(stamp[1], dated) : '' };
   });
 }
 
@@ -432,6 +440,8 @@ function nookNoticeWhen(notice) {
 // of errors. This many of its last lines are shown.
 const NOOK_VERBOSE_VIEW_LINES = 20000;
 const NOOK_LOG_VERBOSE_KEY = 'tweetnook.logs.verbose';
+// The server log changes rarely; while its tab is open it is read again this often.
+const NOOK_SERVER_LOG_POLL_MS = 5000;
 function nookReadLogVerbose() {
   try { return globalThis.localStorage?.getItem(NOOK_LOG_VERBOSE_KEY) === '1'; }
   catch (_) { return false; }
@@ -443,7 +453,8 @@ function nookWriteLogVerbose(on) {
 
 function nookLogsPage() {
   return {
-    verbose: nookReadLogVerbose(), downloadFailed: false, truncatedLines: 0, openFolds: [], flash: null, hasTime: false, liveTimer: null, liveRequest: null, liveRequestId: 0, logOffset: 0,
+    verbose: nookReadLogVerbose(), downloadFailed: false, truncatedLines: 0, openFolds: [], flash: null, liveTimer: null, liveRequest: null, liveRequestId: 0, logOffset: 0,
+    logsView: 'activity', serverLines: null, serverTimer: null, serverRequestId: 0,
     originLabel(origin) { return { schedule: 'Scheduled', web: 'Web app', cli: 'Command line' }[origin] || origin || 'Command line'; },
     statusKind(run) { return { completed: 'ok', failed: 'failed', interrupted: 'failed', stopped: 'stopped', starting: 'running', running: 'running' }[run.status] || 'failed'; },
     statusLabel(run) { return { completed: 'Completed', failed: 'Failed', interrupted: 'Interrupted', stopped: 'Stopped', starting: 'Starting', running: 'Running' }[run.status] || 'Result unavailable'; },
@@ -472,7 +483,7 @@ function nookLogsPage() {
       this.$watch('activityRuns', openPending);
       // Settings preserves this view when closed. Catch up immediately when it reopens,
       // including runs that finished while polling was paused.
-      const restore = () => this.refreshLive(this.nookLogRun?.run_id);
+      const restore = () => { this.refreshServer(); return this.refreshLive(this.nookLogRun?.run_id); };
       this.$watch('showSettingsModal', restore);
       this.$watch('settingsTab', restore);
       this.$watch('nookLogRun?.run_id', (now, before) => { if (now !== before) restore(); });
@@ -480,7 +491,9 @@ function nookLogsPage() {
     async open(run) {
       clearTimeout(this.liveTimer);
       this.liveRequest = null;
-      this.nookLogRun = run; this.nookLogLines = null; this.downloadFailed = false; this.truncatedLines = 0; this.openFolds = []; this.flash = null; this.hasTime = false; this.logOffset = 0;
+      // Runs are listed under Activity, so Back from one returns there.
+      this.logsView = 'activity';
+      this.nookLogRun = run; this.nookLogLines = null; this.downloadFailed = false; this.truncatedLines = 0; this.openFolds = []; this.flash = null; this.logOffset = 0;
       this.$nextTick(() => document.querySelector('.nook-detail-header h2')?.focus());
       await this.refreshLive(run.run_id);
     },
@@ -550,10 +563,7 @@ function nookLogsPage() {
         const [details, lines] = await request.promise;
         if (!isCurrent()) return;
         if (details) this.nookLogRun = { ...this.nookLogRun, ...details };
-        if (lines || this.nookLogLines === null) {
-          this.nookLogLines = lines || [];
-          this.hasTime = this.nookLogLines.some(line => line.time);
-        }
+        if (lines || this.nookLogLines === null) this.nookLogLines = lines || [];
       } finally {
         if (this.liveRequest?.id === request.id) {
           this.liveRequest = null;
@@ -563,10 +573,46 @@ function nookLogsPage() {
         }
       }
     },
+    showView(view) {
+      if (this.logsView === view) return;
+      this.logsView = view; this.downloadFailed = false; this.flash = null;
+      this.refreshServer();
+    },
+    // Arrow keys move between the two tabs, as in any tab list.
+    viewKey(event) {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      this.showView(this.logsView === 'activity' ? 'server' : 'activity');
+      this.$nextTick(() => document.getElementById(`nook-logs-tab-${this.logsView}`)?.focus());
+    },
+    // Read the end of the server log, again every few seconds while its tab is showing.
+    async refreshServer() {
+      clearTimeout(this.serverTimer);
+      this.serverTimer = null;
+      const showing = () => this.logsView === 'server' && !this.nookLogRun && this.showSettingsModal && this.settingsTab === 'logs';
+      if (!showing()) return;
+      const id = ++this.serverRequestId;
+      try {
+        const response = await fetch('/api/activity/server-log');
+        const text = response.ok ? await response.text() : null;
+        if (id !== this.serverRequestId) return;
+        if (text !== null) this.serverLines = nookLogParse(text, { dated: true }).slice(-NOOK_VERBOSE_VIEW_LINES).map((line, index) => ({ ...line, index }));
+        else if (this.serverLines === null) this.serverLines = [];
+      } catch (_) {
+        if (id !== this.serverRequestId) return;
+        if (this.serverLines === null) this.serverLines = [];
+      }
+      if (showing()) this.serverTimer = setTimeout(() => this.refreshServer(), NOOK_SERVER_LOG_POLL_MS);
+    },
+    // The open run's log, or the server log when the Server tab is showing.
+    lines() { return this.nookLogRun ? this.nookLogLines : this.serverLines; },
+    timed() { return (this.lines() || []).some(line => line.time); },
+    // Server log times name the day for lines before today, which needs a wider column.
+    dated() { return !this.nookLogRun && (this.serverLines || []).some(line => line.time.includes(' ')); },
     back() { nookSettingsBack(this); },
     plural(count, noun) { return `${count.toLocaleString()} ${noun}${count === 1 ? '' : 's'}`; },
-    countOf(tone) { return (this.nookLogLines || []).filter(line => line.tone === tone).length; },
-    lineCountLabel() { return this.nookLogLines?.length ? this.plural(this.nookLogLines.length, 'line') : ''; },
+    countOf(tone) { return (this.lines() || []).filter(line => line.tone === tone).length; },
+    lineCountLabel() { return this.lines()?.length ? this.plural(this.lines().length, 'line') : ''; },
     // Runs of 4+ progress/status lines collapse behind their latest line; everything else stays visible.
     items() {
       const items = [], push = line => items.push({ type: 'line', key: 'l' + line.index, line });
@@ -580,7 +626,7 @@ function nookLogsPage() {
         } else run.forEach(push);
         run = [];
       };
-      for (const line of this.nookLogLines || []) {
+      for (const line of this.lines() || []) {
         if (line.quiet && (!run.length || run[0].text.split(':')[0] === line.text.split(':')[0])) run.push(line);
         else { flush(); line.quiet ? run.push(line) : push(line); }
       }
@@ -590,20 +636,24 @@ function nookLogsPage() {
     toggleFold(id) { this.openFolds = this.openFolds.includes(id) ? this.openFolds.filter(item => item !== id) : [...this.openFolds, id]; },
     foldLabel(item) { return this.openFolds.includes(item.id) ? `Hide ${this.plural(item.count, 'update')}` : `${this.plural(item.count, 'earlier update')}`; },
     jumpTo(tone) {
-      const index = (this.nookLogLines || []).findIndex(line => line.tone === tone);
+      const index = (this.lines() || []).findIndex(line => line.tone === tone);
       if (index < 0) return;
       this.flash = index;
       this.$nextTick(() => document.querySelector(`.nook-log-line[data-line="${index}"]`)?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }));
       setTimeout(() => { if (this.flash === index) this.flash = null; }, 2000);
     },
-    // Download always saves the full log, whatever the view shows.
+    // Download always saves the full log, whatever the view shows: for a run, every line Verbose
+    // shows; for the server, its rotated files too.
     async download() {
-      const runId = this.nookLogRun.run_id;
+      const runId = this.nookLogRun?.run_id;
+      const [url, filename] = runId
+        ? [`/api/activity/runs/${encodeURIComponent(runId)}/log?full=1`, `${runId}.log`]
+        : ['/api/activity/server-log?full=1', 'tweetnook-server.log'];
       this.downloadFailed = false;
       try {
-        const response = await fetch(`/api/activity/runs/${encodeURIComponent(runId)}/log?full=1`);
+        const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        this.saveText(`${(await response.text()).trimEnd()}\n`, `${runId}.log`);
+        this.saveText(`${(await response.text()).trimEnd()}\n`, filename);
       }
       catch (error) {
         console.warn('Log download failed', error);

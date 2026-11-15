@@ -297,6 +297,8 @@ class ScheduleManager:
             return
         if float(next_at) > timestamp:
             return
+        # A deferred sync tries again every few minutes; say so once, not on each try.
+        was_deferred = self._state.get("sync_deferred")
         self._state["sync_deferred"] = False
         try:
             result = self._start(JOBS_BY_KEY["sync"])
@@ -307,11 +309,17 @@ class ScheduleManager:
                 # The check runs at most once a day, so a sync due during it waits
                 # for it instead of losing its slot.
                 self._state["last_result"] = "deferred: waiting for the availability check"
+                if not was_deferred:
+                    logger.info("Scheduled sync is waiting for the availability check to finish")
                 self._state["sync_deferred"] = True
                 self._state["next_run_at"] = timestamp + CHECK_CONFLICT_RETRY_SECONDS
                 self._save_state()
                 return
             self._state["last_result"] = "skipped: another command was running"
+            logger.warning(
+                "Skipped the scheduled sync: %s was running",
+                self.supervisor.active_kind or "another command",
+            )
             if self.on_job_conflict is not None:
                 context = {
                     "scheduled_at": float(next_at),
@@ -433,11 +441,14 @@ class ScheduleManager:
             return
         if float(next_at) > timestamp:
             return
+        was_deferred = self._state.get("check_deferred")
         self._state["check_deferred"] = False
         try:
             result = self._start(JOBS_BY_KEY["check"])
         except JobConflictError:
             # Unlike a missed sync, a due check waits for the running command.
+            if not was_deferred:
+                logger.info("Scheduled availability check is waiting for the running command")
             self._state["check_last_result"] = "deferred: another command was running"
             self._state["check_deferred"] = True
             self._state["check_next_run_at"] = timestamp + CHECK_CONFLICT_RETRY_SECONDS

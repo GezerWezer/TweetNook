@@ -76,7 +76,7 @@ On a phone, Jobs opens as a bottom sheet. Scroll inside it to browse jobs. To cl
 
 Use the stop action if you need to interrupt active work. Give it time to finish stopping before starting another task. Work already saved remains available.
 
-Settings > Activity logs keeps past runs and their logs, which you can download. Settings > Notifications collects events that need attention and links them to the relevant run. Dismissing a notification or clearing dismissed history doesn't delete archived posts.
+Settings > Logs keeps past runs and their logs under Activity, and the server's own log under Server: startup, scheduled syncs, job launches and errors outside a run. Download saves either log in full. Settings > Notifications collects events that need attention and links them to the relevant run. Dismissing a notification or clearing dismissed history doesn't delete archived posts.
 
 Analytics shows collection totals, storage usage, and the state of outstanding work, along with highlights from what you've saved: when the posts were published, the accounts, hashtags and mentions you save most, and how many saved posts X no longer shows. Switch to With conversations to add the surrounding conversation posts you've archived to the figures. Select a year, account, tag or highlight to search for those posts. Some figures refresh periodically; use the refresh action when you need a new snapshot.
 

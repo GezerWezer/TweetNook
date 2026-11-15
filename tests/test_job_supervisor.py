@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import errno
 import json
+import logging
 import signal
 import subprocess
 import threading
@@ -20,7 +21,10 @@ def _paths(tmp_path):
     return XDGPaths(config_dir=tmp_path / "config", data_dir=tmp_path, cache_dir=tmp_path / "cache")
 
 
-def test_supervisor_launches_isolated_cli_worker_and_records_exit(tmp_path, monkeypatch) -> None:
+def test_supervisor_launches_isolated_cli_worker_and_records_exit(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    caplog.set_level(logging.INFO, logger="tweetnook.jobs.supervisor")
     paths = _paths(tmp_path)
     finished = threading.Event()
     captured = {}
@@ -65,6 +69,16 @@ def test_supervisor_launches_isolated_cli_worker_and_records_exit(tmp_path, monk
     assert metadata["status"] == "interrupted"
     assert metadata["exit_code"] == 0
     assert metadata["success"] is None
+    # The server log says what it launched and how that ended.
+    run_id = result["run_id"]
+    for _ in range(100):
+        if len(caplog.records) == 2:
+            break
+        time.sleep(0.01)
+    assert [record.getMessage() for record in caplog.records] == [
+        f"Started tweetnook sync (web, run {run_id}, pid 4321)",
+        f"tweetnook sync ended (run {run_id}, exit code 0, no recorded outcome)",
+    ]
 
 
 def test_supervisor_stops_the_worker_process_group(tmp_path, monkeypatch) -> None:

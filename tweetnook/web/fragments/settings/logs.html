@@ -1,7 +1,12 @@
-                    <!-- Activity logs -->
-                    <!-- Runs by day; a run opens its log in the detail pane -->
+                    <!-- Logs -->
+                    <!-- Activity lists runs, and a run opens its log in the detail pane; Server shows the Web server's own log -->
                     <div class="nook-setting-body nook-logs-page" x-show="settingsTab === 'logs'" x-data="nookLogsPage()" @keydown.escape="if (nookLogRun) { $event.stopPropagation(); back(); }">
                         <div x-show="!nookLogRun">
+                            <div class="nook-tabs is-fill nook-logs-tabs" role="tablist" aria-label="Logs">
+                                <button type="button" role="tab" class="nook-tab" id="nook-logs-tab-activity" aria-controls="nook-logs-activity" :aria-selected="logsView === 'activity'" :tabindex="logsView === 'activity' ? 0 : -1" @click="showView('activity')" @keydown="viewKey($event)"><span class="nook-tab-label">Activity</span></button>
+                                <button type="button" role="tab" class="nook-tab" id="nook-logs-tab-server" aria-controls="nook-logs-server" :aria-selected="logsView === 'server'" :tabindex="logsView === 'server' ? 0 : -1" @click="showView('server')" @keydown="viewKey($event)"><span class="nook-tab-label">Server</span></button>
+                            </div>
+                            <div id="nook-logs-activity" role="tabpanel" aria-labelledby="nook-logs-tab-activity" x-show="logsView === 'activity'">
                             <div x-show="activityRunsLoading && !activityRuns.length" class="nook-empty"><span>Loading logs…</span></div>
                             <div x-show="!activityRunsLoading && !activityRuns.length" class="nook-empty"><strong>No logs yet</strong><span>Runs appear here after your first sync or import.</span></div>
                             <template x-for="run in activityRuns" :key="run.run_id">
@@ -15,12 +20,19 @@
 </svg></span>
                                 </button>
                             </template>
+                            </div>
                         </div>
 
-                        <template x-if="nookLogRun">
-                            <div class="nook-log-detail">
-                                <p class="nook-log-summary" x-show="nookLogRun.summary" x-text="nookLogRun.summary"></p>
-                                <p class="nook-log-meta"><span x-text="originLabel(nookLogRun.origin)"></span> · <span class="nook-log-state" :class="'is-' + statusKind(nookLogRun)" x-text="statusLabel(nookLogRun)"></span> · <span x-text="fullTime(nookLogRun.started_at)"></span><span x-show="durationLabel(nookLogRun)" x-text="' · ' + durationLabel(nookLogRun)"></span><span x-show="nookLogRun.exit_code" x-text="' · exit code ' + nookLogRun.exit_code"></span></p>
+                        <!-- An open run's log, or the server log under the Server tab -->
+                        <template x-if="nookLogRun || logsView === 'server'">
+                            <div class="nook-log-detail" :id="nookLogRun ? null : 'nook-logs-server'" :role="nookLogRun ? null : 'tabpanel'" :aria-labelledby="nookLogRun ? null : 'nook-logs-tab-server'">
+                                <template x-if="nookLogRun">
+                                    <div>
+                                        <p class="nook-log-summary" x-show="nookLogRun.summary" x-text="nookLogRun.summary"></p>
+                                        <p class="nook-log-meta"><span x-text="originLabel(nookLogRun.origin)"></span> · <span class="nook-log-state" :class="'is-' + statusKind(nookLogRun)" x-text="statusLabel(nookLogRun)"></span> · <span x-text="fullTime(nookLogRun.started_at)"></span><span x-show="durationLabel(nookLogRun)" x-text="' · ' + durationLabel(nookLogRun)"></span><span x-show="nookLogRun.exit_code" x-text="' · exit code ' + nookLogRun.exit_code"></span></p>
+                                    </div>
+                                </template>
+                                <p class="nook-log-meta" x-show="!nookLogRun">What the server did outside a run: starting up, scheduling syncs, launching jobs, and errors.</p>
 
                                 <div class="nook-log-toolbar">
                                     <span class="nook-log-counts">
@@ -29,18 +41,18 @@
                                         <button type="button" class="is-warning" x-show="countOf('warning')" @click="jumpTo('warning')" x-text="plural(countOf('warning'), 'warning')"></button>
                                     </span>
                                     <span class="nook-log-actions">
-                                        <label class="nook-log-verbose" title="Every occurrence of repeated warnings and the tracebacks of errors">
+                                        <label class="nook-log-verbose" x-show="nookLogRun" title="Every occurrence of repeated warnings and the tracebacks of errors">
                                             <span>Verbose</span>
                                             <button type="button" role="switch" class="nook-switch-button" :aria-checked="String(verbose)" @click="toggleVerbose()"><span class="nook-switch"></span></button>
                                         </label>
-                                        <button type="button" class="nook-button" :disabled="!nookLogLines?.length" @click="download()" title="Saves the full log, as Verbose shows it" x-text="downloadFailed ? 'Download failed' : 'Download'"></button>
+                                        <button type="button" class="nook-button" :disabled="!lines()?.length" @click="download()" :title="nookLogRun ? 'Saves the full log, as Verbose shows it' : 'Saves the whole server log, older files included'" x-text="downloadFailed ? 'Download failed' : 'Download'"></button>
                                     </span>
                                 </div>
 
-                                <div class="nook-log-panel" :class="{ 'has-time': hasTime }" role="log" aria-label="Run output" tabindex="0">
-                                    <div x-show="nookLogLines === null" class="nook-log-placeholder">Loading log…</div>
-                                    <div x-show="nookLogLines && !nookLogLines.length" class="nook-log-placeholder">No log output.</div>
-                                    <div x-show="truncatedLines" class="nook-log-placeholder" x-text="`${plural(truncatedLines, 'earlier line')} not shown. Download saves the whole log.`"></div>
+                                <div class="nook-log-panel" :class="{ 'has-time': timed(), 'is-dated': dated() }" role="log" :aria-label="nookLogRun ? 'Run output' : 'Server log'" tabindex="0">
+                                    <div x-show="lines() === null" class="nook-log-placeholder">Loading log…</div>
+                                    <div x-show="lines() && !lines().length" class="nook-log-placeholder" x-text="nookLogRun ? 'No log output.' : 'Nothing logged yet.'"></div>
+                                    <div x-show="nookLogRun && truncatedLines" class="nook-log-placeholder" x-text="`${plural(truncatedLines, 'earlier line')} not shown. Download saves the whole log.`"></div>
                                     <template x-for="item in items()" :key="item.key">
                                         <div>
                                             <template x-if="item.type === 'fold'">
@@ -49,7 +61,7 @@
 </svg></span><span x-text="foldLabel(item)"></span></button>
                                             </template>
                                             <template x-if="item.type === 'line'">
-                                                <div class="nook-log-line" :class="['is-' + item.line.tone, item.line.index === flash ? 'is-flash' : '']" :data-line="item.line.index"><time x-show="hasTime" x-text="item.line.time"></time><span x-text="item.line.text"></span></div>
+                                                <div class="nook-log-line" :class="['is-' + item.line.tone, item.line.index === flash ? 'is-flash' : '']" :data-line="item.line.index"><time x-text="item.line.time"></time><span x-text="item.line.text"></span></div>
                                             </template>
                                         </div>
                                     </template>

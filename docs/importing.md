@@ -10,7 +10,7 @@ In X, open Settings and privacy, then Your account, and request a download of yo
 
 Open Settings > Setup and choose the archive import option. Upload the original ZIP and start the import. You can continue connecting your X account and choosing collections while it runs. It saves local data, fills in available post details, then downloads media. You can close the page while it works.
 
-Once the import succeeds and Setup is complete with X connected, TweetNook starts the first sync of your chosen collections. Watch Jobs for progress; Settings > Activity logs keeps the run's details. If enrichment or media stops, saved posts remain browsable and automatic preparation waits for you to [resume the failed task](#resume-an-import).
+Once the import succeeds and Setup is complete with X connected, TweetNook starts the first sync of your chosen collections. Watch Jobs for progress; Settings > Logs keeps the run's details. If enrichment or media stops, saved posts remain browsable and automatic preparation waits for you to [resume the failed task](#resume-an-import).
 
 After import, Settings > Setup can clear the uploaded ZIP. This removes the staged copy and keeps imported posts and media.
 
