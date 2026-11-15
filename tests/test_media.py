@@ -263,36 +263,20 @@ async def test_download_media_updates_rows_and_files(paths, config) -> None:
 
 
 @pytest.mark.asyncio
-async def test_download_media_batches_row_merges(
-    paths,
-    config,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_each_media_row_is_saved_before_the_next_is_downloaded(paths, config) -> None:
+    """A killed worker runs no cleanup, and a row saved without its path is downloaded again."""
     _seed_archive(paths)
-    batch_sizes: list[int] = []
-    original = ArchiveStore.merge_rows
-
-    def counting_merge_rows(self, rows):
-        batch_sizes.append(len(rows))
-        return original(self, rows)
-
-    monkeypatch.setattr(ArchiveStore, "merge_rows", counting_merge_rows)
+    done_when_requested: list[int] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        url = str(request.url)
-        if url.endswith(".mp4"):
-            return httpx.Response(
-                200,
-                content=b"video-bytes",
-                headers={"content-type": "video/mp4"},
-                request=request,
-            )
-        return httpx.Response(
-            200,
-            content=b"image-bytes",
-            headers={"content-type": "image/jpeg"},
-            request=request,
-        )
+        # A separate connection sees only committed rows.
+        reader = open_archive_store(paths, create=False)
+        assert reader is not None
+        try:
+            done_when_requested.append(len(reader.list_media_rows(states={"done"})))
+        finally:
+            reader.close()
+        return _serve_assets(request)
 
     result = await download_media(
         config=config,
@@ -301,7 +285,9 @@ async def test_download_media_batches_row_merges(
     )
 
     assert result.downloaded == 3
-    assert batch_sizes == [3]
+    assert done_when_requested[0] == 0
+    # The last row's request comes after the other two rows were committed.
+    assert done_when_requested[-1] == 2
 
 
 @pytest.mark.asyncio
@@ -928,30 +914,3 @@ async def test_a_local_error_keeps_the_rows_finished_before_it(paths, config, mo
 
     states = sorted(str(row["download_state"]) for row in _rows_by_post(paths).values())
     assert states == ["done", "pending"]
-
-
-@pytest.mark.asyncio
-async def test_saving_finished_rows_cannot_replace_the_error_that_stopped_the_job(
-    paths, config, monkeypatch
-) -> None:
-    _seed_media(paths, make_photo_media("3_first", "https://pbs.twimg.com/media/first.jpg"))
-    download_file = media_module._download_file
-    calls = 0
-
-    async def fail_second(*args, **kwargs):
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            raise PermissionError("read-only")
-        return await download_file(*args, **kwargs)
-
-    def broken_merge(self, rows):
-        raise RuntimeError("store failed too")
-
-    monkeypatch.setattr("tweetnook.enrichment.media._download_file", fail_second)
-    monkeypatch.setattr(ArchiveStore, "merge_rows", broken_merge)
-
-    with pytest.raises(PermissionError):
-        await download_media(
-            config=config, paths=paths, transport=httpx.MockTransport(_serve_assets)
-        )

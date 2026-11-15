@@ -40,7 +40,6 @@ DEFAULT_RESURRECTION_BUDGET = 200
 ACCOUNT_PROBE_LIMIT = 5
 ACCOUNT_PROBE_SUCCESS_THRESHOLD = 3
 ACCOUNT_BOOST_LIMIT = 15
-DETAIL_WRITE_BATCH = 100
 _DETAIL_OPERATION = TWEET_DETAIL_RESURRECTION
 
 ACCOUNT_LEVEL_REASONS = frozenset({"protected_account", "suspended_account", "account_missing"})
@@ -140,7 +139,6 @@ class _ResurrectionRun:
     result: ResurrectionResult
     step_key: str = RESURRECTION.key
     buffer: PageBuffer = field(default_factory=PageBuffer)
-    buffered_attempts: int = 0
     queued_ids: set[str] = field(default_factory=set)
     processed_ids: set[str] = field(default_factory=set)
     probe_ids: dict[str, set[str]] = field(default_factory=dict)
@@ -150,7 +148,6 @@ class _ResurrectionRun:
 
     def flush(self) -> None:
         self.store.flush(self.buffer)
-        self.buffered_attempts = 0
 
     def _publish_progress(self, completed: int, **fields: Any) -> None:
         pipeline = current_pipeline()
@@ -182,7 +179,6 @@ class _ResurrectionRun:
             if current is None:
                 continue
             result.attempted += 1
-            self.buffered_attempts += 1
             self._publish_progress(result.attempted - 1, activity="Checking an unavailable tweet")
             yield current
 
@@ -318,8 +314,9 @@ class _ResurrectionRun:
         ):
             self._probe_author(author_id)
         self._publish_progress(self.result.attempted)
-        if self.buffered_attempts >= DETAIL_WRITE_BATCH:
-            self.flush()
+        # Every attempt spends a rate-limited X request, so each is committed as it finishes;
+        # a worker killed mid-run runs no cleanup and would otherwise repeat them.
+        self.flush()
 
 
 async def resurrect_due_tweets(

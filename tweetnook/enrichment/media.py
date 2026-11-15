@@ -39,7 +39,6 @@ _CONTENT_TYPE_EXTENSIONS = {
     "image/webp": ".webp",
     "video/mp4": ".mp4",
 }
-_UPDATE_BATCH_SIZE = 100
 _REMOTE_FAILURES = (httpx.HTTPError, httpx.InvalidURL)
 _URL_EXTENSION = re.compile(r"\.[a-z0-9]{1,16}")
 _AVATAR_ACTIVITY = "Downloading avatars"
@@ -315,100 +314,92 @@ async def download_media(
             transport=client_transport(transport),
             headers={"User-Agent": DEFAULT_USER_AGENT},
         ) as client:
-            pending_updates: list[dict[str, object]] = []
 
-            def flush_updates() -> None:
-                if not pending_updates:
-                    return
-                updates = pending_updates.copy()
-                store.merge_rows(updates)
-                pending_updates.clear()
-
-            try:
-                with progress_callback(
-                    console,
-                    label="media download",
-                    total=total,
-                    unit="items",
-                ) as progress:
-                    for index, row in enumerate(rows, start=1):
-                        try:
-                            result.processed += 1
-                            pipeline.update_step(
-                                step_key,
-                                completed=index - 1,
-                                activity=_media_activity(row),
-                                counters=_pipeline_outcomes(result),
-                            )
-                            state, transferred, error = await _obtain_missing_assets(
-                                client, row, paths.data_dir
-                            )
-                            result.downloaded_bytes += transferred
-                            pending_updates.append(_row_update(store, row, state, error))
-                            if error is None:
-                                result.downloaded += 1
-                            else:
-                                result.failed += 1
-                                if pipeline.active:
-                                    pipeline.issue(
-                                        f"Media {row['row_key']}: {error}",
-                                        dedupe_key="media:download-failure",
-                                    )
-                                elif console:
-                                    console.print(
-                                        f"media {row['row_key']}: failed ({error})",
-                                        highlight=False,
-                                    )
-                            if len(pending_updates) >= _UPDATE_BATCH_SIZE:
-                                flush_updates()
-                        finally:
-                            pipeline.update_step(
-                                step_key,
-                                completed=index,
-                                counters=_pipeline_outcomes(result),
-                            )
-                            if progress is not None:
-                                progress(index, total)
-
-                    flush_updates()
-                    for index, target in enumerate(avatar_targets, start=len(rows) + 1):
-                        try:
-                            result.processed += 1
-                            pipeline.update_step(
-                                step_key,
-                                completed=index - 1,
-                                activity=_AVATAR_ACTIVITY,
-                                counters=_pipeline_outcomes(result),
-                            )
-                            outcome = await download_core_avatar(client, avatars_dir, target)
-                            if outcome.saved:
-                                result.avatars_downloaded += 1
-                                result.downloaded_bytes += outcome.content_bytes
-                                avatar_state.saved[target.author_id] = target.source_urls[0]
-                                avatar_state.unavailable.pop(target.author_id, None)
-                            else:
-                                # Deleted and suspended accounts are expected here, so a
-                                # missing avatar is counted rather than raised as an issue.
-                                result.avatars_failed += 1
-                                if outcome.unavailable:
-                                    avatar_state.unavailable[target.author_id] = target.source_urls[
-                                        0
-                                    ]
-                        finally:
-                            pipeline.update_step(
-                                step_key,
-                                completed=index,
-                                counters=_pipeline_outcomes(result),
-                            )
-                            if progress is not None:
-                                progress(index, total)
-            finally:
-                # Rows already finished stay true when a later one stops the job. The store
-                # may be what failed, and that must not replace the real error.
-                with suppress(Exception):
-                    flush_updates()
+            def save_avatar_state() -> None:
+                # A lost state file only means some avatars are tried again, so a failed
+                # write must not stop the downloads.
                 with suppress(OSError):
                     avatar_state.save(paths.core_avatar_state_file)
+
+            # Keeps what planning adopted from and released to the cache.
+            save_avatar_state()
+            with progress_callback(
+                console,
+                label="media download",
+                total=total,
+                unit="items",
+            ) as progress:
+                for index, row in enumerate(rows, start=1):
+                    try:
+                        result.processed += 1
+                        pipeline.update_step(
+                            step_key,
+                            completed=index - 1,
+                            activity=_media_activity(row),
+                            counters=_pipeline_outcomes(result),
+                        )
+                        state, transferred, error = await _obtain_missing_assets(
+                            client, row, paths.data_dir
+                        )
+                        result.downloaded_bytes += transferred
+                        # Saved as soon as it finishes: the file is already on disk, but a
+                        # row without its path is downloaded again by the next run, and a
+                        # killed worker runs no cleanup.
+                        store.merge_rows([_row_update(store, row, state, error)])
+                        if error is None:
+                            result.downloaded += 1
+                        else:
+                            result.failed += 1
+                            if pipeline.active:
+                                pipeline.issue(
+                                    f"Media {row['row_key']}: {error}",
+                                    dedupe_key="media:download-failure",
+                                )
+                            elif console:
+                                console.print(
+                                    f"media {row['row_key']}: failed ({error})",
+                                    highlight=False,
+                                )
+                    finally:
+                        pipeline.update_step(
+                            step_key,
+                            completed=index,
+                            counters=_pipeline_outcomes(result),
+                        )
+                        if progress is not None:
+                            progress(index, total)
+
+                for index, target in enumerate(avatar_targets, start=len(rows) + 1):
+                    try:
+                        result.processed += 1
+                        pipeline.update_step(
+                            step_key,
+                            completed=index - 1,
+                            activity=_AVATAR_ACTIVITY,
+                            counters=_pipeline_outcomes(result),
+                        )
+                        outcome = await download_core_avatar(client, avatars_dir, target)
+                        if outcome.saved:
+                            result.avatars_downloaded += 1
+                            result.downloaded_bytes += outcome.content_bytes
+                            avatar_state.saved[target.author_id] = target.source_urls[0]
+                            avatar_state.unavailable.pop(target.author_id, None)
+                            save_avatar_state()
+                        else:
+                            # Deleted and suspended accounts are expected here, so a
+                            # missing avatar is counted rather than raised as an issue.
+                            result.avatars_failed += 1
+                            if outcome.unavailable:
+                                avatar_state.unavailable[target.author_id] = target.source_urls[0]
+                                save_avatar_state()
+                    finally:
+                        pipeline.update_step(
+                            step_key,
+                            completed=index,
+                            counters=_pipeline_outcomes(result),
+                        )
+                        if progress is not None:
+                            progress(index, total)
         pipeline.complete_step(
             step_key,
             _pipeline_outcomes(result, final=True),

@@ -798,12 +798,10 @@ def _thread_answer(request: httpx.Request, ids: list[str]) -> httpx.Response:
     )
 
 
-@pytest.mark.parametrize("batch", [100, 1], ids=["same-buffer", "after-a-flush"])
 @pytest.mark.asyncio
 async def test_a_post_restored_as_thread_context_is_not_requested_or_marked_unavailable_again(
-    paths, config, auth_bundle, monkeypatch: pytest.MonkeyPatch, batch: int
+    paths, config, auth_bundle
 ) -> None:
-    monkeypatch.setattr(resurrection, "DETAIL_WRITE_BATCH", batch)
     _seed_due(paths, ("1", "protected_account", {}), ("2", "protected_account", {}))
     requested: list[str] = []
 
@@ -828,6 +826,31 @@ async def test_a_post_restored_as_thread_context_is_not_requested_or_marked_unav
     assert (result.attempted, result.transient_failures) == (1, 0)
     assert _state_of(paths, "2")["enrichment_state"] == "resurrected"
     assert _state_of(paths, "2")["text"] == "returned 2"
+
+
+@pytest.mark.asyncio
+async def test_each_attempt_is_saved_before_the_next_request(paths, config, auth_bundle) -> None:
+    """Attempts spend rate-limited requests, and a killed worker runs no cleanup."""
+    _seed_due(paths, ("1", "protected_account", {}), ("2", "protected_account", {}))
+    first_state_when_second_requested: list[object] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        focal = request_details(str(request.url))[1]["focalTweetId"]
+        if focal == "2":
+            # _state_of opens a separate connection, which sees only committed rows.
+            first_state_when_second_requested.append(_state_of(paths, "1")["enrichment_state"])
+        return _thread_answer(request, [focal])
+
+    await resurrection.resurrect_due_tweets(
+        budget=5,
+        config=config,
+        paths=paths,
+        auth_bundle=auth_bundle,
+        transport=httpx.MockTransport(handler),
+        sleep=_no_sleep,
+    )
+
+    assert first_state_when_second_requested == ["resurrected"]
 
 
 @pytest.mark.asyncio
