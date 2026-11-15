@@ -44,7 +44,7 @@
 .stats-card {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     padding: 16px 20px;
 }
 .stats-card:hover {
@@ -79,7 +79,7 @@
 .spend-history-panel {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     padding: 18px 20px;
 }
 

@@ -51,7 +51,7 @@
     margin: -4px -4px -4px auto;
     padding: 0;
     border: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: none;
     color: var(--text-secondary);
     cursor: pointer;
@@ -74,7 +74,7 @@
     margin-top: 12px;
     padding: 12px;
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     background: var(--bg-secondary);
     cursor: pointer;
     transition: background-color 150ms ease;
@@ -85,7 +85,7 @@
 .community-note-detail {
     margin-top: 12px;
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     overflow: hidden;
     background: var(--bg-primary);
 }
@@ -103,7 +103,7 @@
     margin: 0 -12px -12px;
     padding: 0 0 12px;
     border-top: 1px solid var(--border-color);
-    border-radius: 0 0 16px 16px;
+    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
     background: var(--bg-secondary);
 }
 .community-note-quote-spaced {
@@ -167,7 +167,7 @@
 .link-card-large:has(.link-card-image) > .link-card-image {
     position: relative;
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     overflow: hidden;
 }
 .link-card-large:has(.link-card-image) > .link-card-text {
@@ -381,7 +381,7 @@
     }
     .quote-card:not(.quote-compact) > .quote-media > .media-single > :is(.media-video-player, .media-frame-gif) {
         border: 1px solid var(--border-color);
-        border-radius: 16px;
+        border-radius: var(--radius-xl);
     }
     .quote-card:not(.quote-compact) > .quote-media > .media-single > .media-video-player::before,
     .quote-card:not(.quote-compact) > .quote-media > .media-single > .media-frame > video,

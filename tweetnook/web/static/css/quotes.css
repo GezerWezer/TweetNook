@@ -45,7 +45,7 @@
     height: 100px;
     overflow: hidden;
     border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     color: var(--text-secondary);
     background: var(--bg-secondary);
 }
@@ -53,7 +53,7 @@
     width: 100%;
     height: auto;
     aspect-ratio: 1;
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
 }
 .quote-thumbnail img,
 .quote-thumbnail video {
@@ -175,7 +175,7 @@
 }
 
 .quote-card {
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     overflow: hidden;
 }
 

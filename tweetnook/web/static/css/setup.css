@@ -8,14 +8,14 @@
 .settings-modal-shell {
     width: min(100%, 768px);
     height: min(85vh, 760px);
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
 }
 .setup-modal-shell {
     width: min(100%, 600px);
     height: min(90vh, 720px);
     flex-direction: column;
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
 }
 .setup-modal-header {
     position: relative;
@@ -36,7 +36,7 @@
     width: 40px;
     height: 40px;
     border: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     color: var(--text-primary);
     background: transparent;
     cursor: pointer;
@@ -61,7 +61,7 @@
     justify-content: center;
     width: 56px;
     height: 56px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     color: var(--accent-color);
     background: color-mix(in srgb, var(--accent-color) 12%, transparent);
 }
@@ -84,7 +84,7 @@
     flex-shrink: 0;
 }
 .setup-modal-progress span {
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--border-color);
     transition: background 180ms ease;
 }
@@ -206,7 +206,7 @@
 .setup-card {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     padding: 16px 18px;
     transition: border-color 0.15s ease;
 }
@@ -231,7 +231,7 @@
     min-height: 38px;
     padding: 9px 18px;
     border: 1px solid var(--border-color);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     font-size: 14px;
     font-weight: 700;
     font-family: inherit;
@@ -323,7 +323,7 @@
     min-height: 44px;
     padding: 0 24px;
     border: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     font-size: 15px;
     font-weight: 700;
     cursor: pointer;
@@ -427,7 +427,7 @@
     margin: 0 -12px;
     padding: 12px;
     border: 0;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     color: var(--text-primary);
     background: transparent;
     font-family: inherit;
@@ -487,7 +487,7 @@
     width: 36px;
     height: 36px;
     border: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     color: var(--text-secondary);
     background: transparent;
     cursor: pointer;
@@ -524,7 +524,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     justify-content: center;
     width: 24px;
     height: 24px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--bg-secondary);
     color: var(--text-primary);
     font-size: 13px;
@@ -593,7 +593,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     min-height: 148px;
     padding: 20px 16px;
     border: 1px dashed var(--input-border);
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     color: var(--text-primary);
     background: var(--bg-secondary);
     font-family: inherit;
@@ -629,7 +629,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     min-height: 72px;
     padding: 12px 8px 12px 16px;
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
 }
 .setup-file-icon {
     width: 40px;
@@ -637,7 +637,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     background: var(--bg-secondary);
     color: var(--text-secondary);
     flex-shrink: 0;
@@ -658,7 +658,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     height: 4px;
     margin-top: 6px;
     overflow: hidden;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--border-color);
 }
 .setup-progress span {
@@ -676,7 +676,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     width: 36px;
     height: 36px;
     border: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     color: var(--text-secondary);
     background: transparent;
     cursor: pointer;
@@ -691,7 +691,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
 .feed-picker { position: relative; }
 .feed-picker-trigger {
     display: flex; align-items: center; gap: 6px; min-height: 36px;
-    padding: 6px 10px; border: 0; border-radius: 9999px;
+    padding: 6px 10px; border: 0; border-radius: var(--radius-full);
     color: var(--text-primary); background: transparent;
     font-size: 15px; font-weight: 700; white-space: nowrap; cursor: pointer;
     transition: background 150ms;
@@ -704,7 +704,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
     position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
     width: 220px; max-width: calc(100vw - 32px); padding: 4px 0;
     max-height: min(380px, 65vh); overflow-y: auto;
-    border-radius: 12px; color: var(--text-primary); background: var(--dropdown-bg);
+    border-radius: var(--radius-lg); color: var(--text-primary); background: var(--dropdown-bg);
     box-shadow: 0 0 15px color-mix(in srgb, var(--text-primary) 15%, transparent),
                 0 0 3px 1px color-mix(in srgb, var(--text-primary) 8%, transparent);
 }

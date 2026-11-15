@@ -25,6 +25,20 @@
     --destructive-hover: #dc1e29;
     --destructive-text: #ffffff;
     --font-size-base: 15px;
+    /* Corner radii by size of element; themes.js sets them per theme shape.
+       Full rounds pills, avatars and icon buttons; dots, spinners, knobs and
+       swatches use a literal 50% so they stay round in a square theme. */
+    --radius-full: 9999px;
+    --radius-xl: 16px;
+    --radius-lg: 12px;
+    --radius-md: 8px;
+    /* Roles themes.js can separate; these match the classic dark defaults. */
+    --field-bg: #202327;
+    --heading-color: #e7e9ea;
+    --selected-text: #e7e9ea;
+    --edge-light: #3a3d40;
+    --edge-dark: #000000;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 html {
@@ -35,7 +49,7 @@ html {
 body {
     background-color: var(--bg-primary);
     color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--font-ui);
     font-size: var(--font-size-base);
     transition: background-color 0.2s, color 0.2s;
 }
@@ -101,7 +115,7 @@ body {
     height: 44px;
     padding: 0;
     border: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background-color: var(--accent-color);
     color: var(--accent-text);
     box-shadow: 0 0 15px 0 rgba(101, 119, 134, .2), 0 0 3px 1px rgba(101, 119, 134, .15);
@@ -144,7 +158,7 @@ body {
 }
 ::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
 }
 ::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
@@ -393,14 +407,14 @@ body {
     margin-top: 12px;
     padding: 12px;
     border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
 }
 
 .tweet-skeleton-avatar {
     width: 40px;
     height: 40px;
     flex: 0 0 40px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--bg-tertiary);
 }
 
@@ -437,7 +451,7 @@ body {
 .tweet-skeleton-bar {
     display: block;
     background: var(--bg-tertiary);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
 }
 
 .tweet-skeleton-meta .tweet-skeleton-bar {

@@ -120,7 +120,10 @@ function tweetApp() {
             const savedFontFamily = localStorage.getItem('tvx-font-family');
             if (savedFont && savedFontFamily) {
                 this.fontFamily = savedFont;
-                document.body.style.fontFamily = savedFontFamily;
+                // A built-in option's stored family can predate its current one
+                // (the default was saved as the literal system stack).
+                const option = this.FONT_OPTIONS.find(font => font.key === savedFont);
+                document.body.style.fontFamily = option ? option.family : savedFontFamily;
             }
 
             window.addEventListener('scroll', () => {

@@ -81,7 +81,7 @@
 .media-carousel-tile {
     height: 100%;
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow: hidden;
 }
 .media-carousel-tile img,
@@ -96,7 +96,7 @@
     width: 36px;
     height: 36px;
     border: 1px solid transparent;
-    border-radius: 50%;
+    border-radius: var(--radius-full);
     background: rgba(15,20,25,.75);
     color: #fff;
     display: flex;

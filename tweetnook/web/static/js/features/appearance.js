@@ -22,7 +22,8 @@ function appearanceMethods() {
         mediaGallery: 'date', // 'grid' | 'carousel' | 'date'; browser-local appearance
 
         FONT_OPTIONS: [
-            {key: 'system', label: 'System Default', family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'},
+            // The theme's font (--font-ui), which is the system font unless a theme sets one.
+            {key: 'system', label: 'Theme Default', family: 'var(--font-ui)'},
             {key: 'serif', label: 'System Serif', family: 'serif'},
             {key: 'mono', label: 'System Monospace', family: 'monospace'},
             {key: 'inter', label: 'Inter', family: '"Inter", sans-serif'},

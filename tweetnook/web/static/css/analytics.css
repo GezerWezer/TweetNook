@@ -48,14 +48,14 @@
 .nook-skeleton { animation:nook-pulse 1.4s ease-in-out infinite; }
 @keyframes nook-pulse { 50% { opacity:.55; } }
 
-.nook-icon-well { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:40px; height:40px; padding:10px; border-radius:9999px; background:color-mix(in srgb,var(--accent-color) 14%,transparent); color:var(--accent-color); }
+.nook-icon-well { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:40px; height:40px; padding:10px; border-radius:var(--radius-full); background:color-mix(in srgb,var(--accent-color) 14%,transparent); color:var(--accent-color); }
 
 .nook-stats-switch { display:flex; align-items:center; gap:4px; color:var(--text-primary); font-size:14px; font-weight:600; cursor:pointer; }
 .nook-section-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px 12px; }
 /* Which posts a section counts: separate outlined pills with an inverted selection (XDS
    chips), so the choice reads apart from the gray segmented collection filter beside it. */
 .nook-scope { display:inline-flex; gap:8px; margin-left:auto; }
-.nook-scope button { min-height:32px; padding:0 14px; border:1px solid var(--border-color); border-radius:9999px; background:transparent; color:var(--text-primary); font-size:14px; line-height:16px; font-weight:600; white-space:nowrap; cursor:pointer; transition:background-color 100ms ease, transform 100ms ease; }
+.nook-scope button { min-height:32px; padding:0 14px; border:1px solid var(--border-color); border-radius:var(--radius-full); background:transparent; color:var(--text-primary); font-size:14px; line-height:16px; font-weight:600; white-space:nowrap; cursor:pointer; transition:background-color 100ms ease, transform 100ms ease; }
 .nook-scope button:hover { background:var(--bg-secondary); }
 .nook-scope button:active { transform:scale(.97); }
 .nook-scope button[aria-checked="true"] { border-color:var(--text-primary); background:var(--text-primary); color:var(--bg-primary); }
@@ -67,7 +67,7 @@
 .nook-years.is-static .nook-year,.nook-cal-grid.is-static .nook-cal-day { cursor:default; }
 .nook-chips { display:flex; flex-wrap:wrap; gap:8px; }
 .nook-chips-label { margin-bottom:12px; }
-.nook-stats-chip { display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:0 12px; border:1px solid var(--border-color); border-radius:9999px; background:var(--bg-primary); color:var(--text-primary); font-size:13px; font-weight:700; cursor:pointer; transition:background-color 120ms ease; }
+.nook-stats-chip { display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:0 12px; border:1px solid var(--border-color); border-radius:var(--radius-full); background:var(--bg-primary); color:var(--text-primary); font-size:13px; font-weight:700; cursor:pointer; transition:background-color 120ms ease; }
 .nook-stats-chip:hover { background:var(--bg-tertiary); }
 .nook-stats-chip span + span { color:var(--text-secondary); font-weight:500; }
 
@@ -121,7 +121,7 @@
 .nook-gone-value { color:var(--text-primary); font-size:30px; line-height:36px; font-weight:800; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
 .nook-gone-unit { color:var(--text-secondary); font-size:15px; line-height:20px; font-weight:600; letter-spacing:0; }
 .nook-gone-body .stats-subtitle span + span::before { content:" "; }
-.nook-gone-search { display:inline-flex; align-items:center; gap:6px; margin-top:4px; min-height:36px; padding:0 16px; border:1px solid var(--border-color); border-radius:9999px; background:transparent; color:var(--text-primary); font:inherit; font-size:14px; font-weight:700; cursor:pointer; transition:background-color 120ms ease; }
+.nook-gone-search { display:inline-flex; align-items:center; gap:6px; margin-top:4px; min-height:36px; padding:0 16px; border:1px solid var(--border-color); border-radius:var(--radius-full); background:transparent; color:var(--text-primary); font:inherit; font-size:14px; font-weight:700; cursor:pointer; transition:background-color 120ms ease; }
 .nook-gone-search:hover { background:var(--bg-tertiary); }
 .nook-gone-reasons { display:flex; flex-direction:column; gap:10px; min-width:0; }
 .nook-gone-reason { display:flex; flex-direction:column; gap:6px; }
@@ -136,7 +136,7 @@
   .nook-facts > div.nook-fact:last-of-type:nth-of-type(odd) { grid-column:1 / -1; }
 }
 
-.nook-avatar { position:relative; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:32px; height:32px; overflow:hidden; border-radius:9999px; background:var(--gray-700); color:var(--white-icon); font-size:14px; font-weight:700; text-transform:uppercase; }
+.nook-avatar { position:relative; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:32px; height:32px; overflow:hidden; border-radius:var(--radius-full); background:var(--gray-700); color:var(--white-icon); font-size:14px; font-weight:700; text-transform:uppercase; }
 .nook-avatar-image { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
 
 /* Activity: posts per year as bars, then a week-by-hour grid in local time. */
@@ -175,7 +175,7 @@
 .nook-cal-title { display:flex; align-items:center; gap:8px; }
 .nook-year-stepper { display:inline-flex; align-items:center; gap:2px; }
 .nook-year-current { min-width:40px; color:var(--text-primary); font-size:14px; font-weight:700; line-height:20px; text-align:center; font-variant-numeric:tabular-nums; }
-.nook-stats .nook-icon-button { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:0; border-radius:9999px; background:transparent; color:var(--text-primary); cursor:pointer; transition:background-color 120ms ease; }
+.nook-stats .nook-icon-button { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:0; border-radius:var(--radius-full); background:transparent; color:var(--text-primary); cursor:pointer; transition:background-color 120ms ease; }
 .nook-stats .nook-icon-button svg { width:18px; height:18px; }
 .nook-stats .nook-icon-button:hover:not(:disabled) { background:var(--bg-tertiary); }
 .nook-stats .nook-icon-button:disabled { color:var(--text-secondary); opacity:.4; cursor:default; }
@@ -228,7 +228,7 @@
 
 /* One tooltip recipe for bars and cells, shown on hover or keyboard focus. Hidden tips stay
    out of layout; positioned but invisible ones would still widen the scroll area. */
-.nook-tip { position:absolute; bottom:calc(100% + 6px); left:50%; z-index:5; display:none; padding:4px 8px; border-radius:8px; background:var(--text-primary); color:var(--bg-primary); font-size:13px; line-height:16px; font-weight:500; white-space:nowrap; pointer-events:none; transform:translateX(-50%); }
+.nook-tip { position:absolute; bottom:calc(100% + 6px); left:50%; z-index:5; display:none; padding:4px 8px; border-radius:var(--radius-md); background:var(--text-primary); color:var(--bg-primary); font-size:13px; line-height:16px; font-weight:500; white-space:nowrap; pointer-events:none; transform:translateX(-50%); }
 .is-start > .nook-tip { left:0; transform:none; }
 .is-end > .nook-tip { left:auto; right:0; transform:none; }
 .nook-year:hover > .nook-tip,.nook-year:focus-visible > .nook-tip,.nook-heat-cell:hover > .nook-tip { display:block; }
@@ -253,8 +253,8 @@ button.nook-rank-row:disabled { cursor:default; }
 .nook-rank-sub { display:none; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--text-secondary); font-size:13px; line-height:16px; }
 /* Phones give the breakdown its own line so long names keep the row width. */
 @media (max-width:520px) { .nook-rank-sub { display:block; } .nook-rank-value .nook-rank-wide { display:none; } }
-.nook-meter { display:block; height:4px; overflow:hidden; border-radius:9999px; background:var(--nook-track); }
-.nook-meter > span { display:block; height:100%; border-radius:9999px; background:var(--nook-mark); }
+.nook-meter { display:block; height:4px; overflow:hidden; border-radius:var(--radius-full); background:var(--nook-track); }
+.nook-meter > span { display:block; height:100%; border-radius:var(--radius-full); background:var(--nook-mark); }
 .nook-meter-spaced { margin:10px 0 2px; }
 .nook-people { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start; }
 @media (max-width:767px) { .nook-people { grid-template-columns:minmax(0,1fr); } }

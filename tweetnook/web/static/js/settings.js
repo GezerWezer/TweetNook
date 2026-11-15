@@ -204,7 +204,9 @@ function nookThemeTileStyle(key, theme, app) {
   const current = app.currentTheme === key && app.currentAccent;
   const accent = current || theme['--accent-color'];
   const accentText = (current && theme._accents?.find(item => item.color === current)?.text) || theme['--accent-text'] || '#fff';
-  return `--t-bg:${theme['--bg-primary']};--t-header:${theme['--bg-header'] || theme['--bg-primary']};--t-like:${theme['--danger-color']};--t-surface:${theme['--bg-secondary']};--t-text:${theme['--text-primary']};--t-muted:${theme['--text-secondary']};--t-border:${theme['--border-color']};--t-accent:${accent};--t-accent-text:${accentText}`;
+  return `--t-bg:${theme['--bg-primary']};--t-header:${theme['--bg-header'] || theme['--bg-primary']};--t-like:${theme['--danger-color']};--t-surface:${theme['--bg-secondary']};--t-text:${theme['--text-primary']};--t-muted:${theme['--text-secondary']};--t-border:${theme['--border-color']};--t-accent:${accent};--t-accent-text:${accentText}`
+    // Each sample shows its own theme's corners, not the current theme's.
+    + `;--radius-lg:${theme['--radius-lg']};--radius-md:${theme['--radius-md']};--radius-full:${theme['--radius-full']}`;
 }
 
 function nookCountLabel(count) {

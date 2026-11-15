@@ -24,6 +24,19 @@ module.exports = {
         files: ['../../tweetnook/web/index.html', '../../tweetnook/web/fragments/**/*.html', '../../tweetnook/web/static/js/**/*.js'],
     },
     corePlugins: { space: false },
+    // Follow the theme's shape tokens (styles.css), so a square theme squares
+    // the markup's rounded-* utilities too.
+    theme: {
+        extend: {
+            borderRadius: {
+                md: 'min(6px, var(--radius-md))',
+                lg: 'var(--radius-md)',
+                xl: 'var(--radius-lg)',
+                '2xl': 'var(--radius-xl)',
+                full: 'var(--radius-full)',
+            },
+        },
+    },
     plugins: [
         // A plain function, so the harnesses can read this file without Tailwind installed.
         ({ matchUtilities, theme }) => {

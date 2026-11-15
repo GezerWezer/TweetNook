@@ -14,6 +14,13 @@
  * Optional: destructive – Delete and other destructive actions; defaults to
  * danger, so set it when danger is a like color rather than a red.
  * Optional: overrides object for any CSS variable that needs a hand-picked value.
+ *
+ * Optional structure, for themes modelled on a UI that isn't X's:
+ *   shape – 'rounded' (default) or 'square' corners (SHAPES below)
+ *   edge  – 'flat' (default) or 'bevel': raised controls and sunken fields,
+ *           drawn from --edge-light and --edge-dark by the [data-edge] rules
+ *           in theme-structure.css
+ *   font  – font stack for "Theme Default" in the font picker
  */
 
 // ── Color utilities (private) ─────────────────────────────────────────
@@ -104,6 +111,15 @@ function _surface(bg, muted, delta) {
 
 // ── Theme generator ───────────────────────────────────────────────────
 
+const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+
+// Corner radii by element size (styles.css). Square keeps a hairline radius,
+// as the classic desktop toolkits did, rather than a hard 0.
+const SHAPES = {
+    rounded: { '--radius-full': '9999px', '--radius-xl': '16px', '--radius-lg': '12px', '--radius-md': '8px' },
+    square:  { '--radius-full': '2px', '--radius-xl': '2px', '--radius-lg': '2px', '--radius-md': '2px' },
+};
+
 function _generateTheme(seed) {
     const { bg, text, muted, accent, danger } = seed;
     const destructive = seed.destructive || danger;
@@ -135,9 +151,24 @@ function _generateTheme(seed) {
         '--destructive-color':     destructive,
         '--destructive-hover':     _adjustL(destructive, -8),
         '--destructive-text':      _luminance(destructive) > 150 ? '#000000' : '#ffffff',
+        // Only drawn when the theme sets edge: 'bevel'.
+        '--edge-light':            _surface(bg, muted, dark ? 16 : 8),
+        '--edge-dark':             _surface(bg, muted, dark ? -8 : -24),
+        '--font-ui':               seed.font || SYSTEM_FONT,
+        ...SHAPES[seed.shape || 'rounded'],
     };
+    // Plain properties, not CSS variables; paintTheme sets the attribute.
+    vars._edge = seed.edge || 'flat';
 
     if (seed.overrides) Object.assign(vars, seed.overrides);
+
+    // Roles a theme can separate from broader ones. Unless overridden, each
+    // follows the variable its elements used before they had their own role,
+    // after that variable's own override.
+    const roles = { '--field-bg': '--bg-secondary', '--heading-color': '--text-primary', '--selected-text': '--text-primary' };
+    for (const [role, base] of Object.entries(roles)) {
+        if (!(seed.overrides && role in seed.overrides)) vars[role] = vars[base];
+    }
 
     // Pre-compute accent variants for themes with selectable accents
     if (seed.accents) {
@@ -250,51 +281,33 @@ const THEME_SEEDS = {
     },
     'steam-green': {
         _name: 'Steam Green',
-        bg: '#3e4637',         
-        text: '#d8ded3',      
-        muted: '#a0aa95',     
-        accent: '#c4b550',     
-        danger: '#b24b4b',    
-        
+        // The 2003-era Steam client: olive panels around darker content
+        // wells, bevelled controls, Tahoma, and yellow reserved for selected
+        // and heading text.
+        bg: '#3e4637', text: '#d8ded3', muted: '#a0aa95',
+        accent: '#c4b550', danger: '#de7a68',
+        shape: 'square', edge: 'bevel',
+        font: 'Tahoma, Verdana, "Segoe UI", sans-serif',
         overrides: {
-            // Background
-            '--bg-primary': '#3e4637',         
-            '--bg-secondary': '#4c5844',         
-            '--bg-tertiary': '#5a6a50',         
-            '--bg-header': '#282e22',         
-            '--dropdown-bg': '#4c5844',        
-
-            // Text & Icons
-            '--text-primary': '#d8ded3',   
-            '--text-secondary': '#a0aa95', 
-            '--white-icon': '#d8ded3',  
-
-            // Borders & Dividers
-            '--border-color': '#282e22',        
-            '--thread-line': '#282e22',         
-            '--input-border': '#808080',    
-
-            // Accents & Interactive
-            '--accent-color': '#c4b550',         
-            '--accent-hover': '#91863c',       
-            '--accent-text': '#282e22',      
-            '--hover-bg': 'rgba(90, 106, 80, 0.4)',
-
-            // Danger
-            '--danger-color': '#b24b4b',
-            '--danger-hover': '#8c3b3b', 
-            '--danger-text': '#d8ded3',
-            '--destructive-color': '#b24b4b',
-            '--destructive-hover': '#8c3b3b',
-            '--destructive-text': '#d8ded3',
-
-            // Scrollbars
-            '--scrollbar-bg': '#282e22',        
-            '--scrollbar-thumb': '#4c5844',       
-            '--scrollbar-thumb-hover': '#5a6a50', 
-
-            // Misc / Muted elements
-            '--gray-700': '#75806f'           
+            // Window chrome and raised controls; content sits in the darker bg.
+            '--bg-secondary': '#4c5844',
+            '--bg-header': '#4c5844',
+            '--dropdown-bg': '#4c5844',
+            '--field-bg': '#3e4637',
+            '--border-color': '#323a2c',
+            '--thread-line': '#5a6a50',
+            '--input-border': '#282e22',
+            '--edge-light': '#7f8b72',
+            '--edge-dark': '#282e22',
+            '--heading-color': '#dccd62',
+            '--selected-text': '#dccd62',
+            // Yellow darkened toward the bg loses contrast; hover brightens it.
+            '--accent-hover': '#d9ca66',
+            '--accent-text': '#282e22',
+            '--hover-bg': 'rgba(216, 222, 211, 0.04)',
+            '--scrollbar-thumb': '#5a6a50',
+            '--scrollbar-thumb-hover': '#6b7a60',
+            '--gray-700': '#5a6a50',
         },
     },
     'steam-modern': {
@@ -407,6 +420,7 @@ function paintTheme(key) {
     const r = parseInt(bgHex.slice(1, 3), 16), g = parseInt(bgHex.slice(3, 5), 16), b = parseInt(bgHex.slice(5, 7), 16);
     const darkMode = (r * 0.299 + g * 0.587 + b * 0.114) < 128;
     if (darkMode) root.classList.remove('light'); else root.classList.add('light');
+    root.dataset.edge = theme._edge;
     root.style.setProperty('color-scheme', darkMode ? 'dark' : 'light');
 
     let accent = theme['--accent-color'];

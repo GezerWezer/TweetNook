@@ -112,6 +112,7 @@ function browserContext(pathname = '/') {
                 if (!listeners.length) events.delete(key);
             },
             documentElement: {
+                dataset: {},
                 style: {
                     setProperty(key, value) {
                         cssProperties.set(key, value);
