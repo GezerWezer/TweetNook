@@ -266,6 +266,23 @@ def test_upgrade_recognizes_existing_sqlite(first_run):
         assert server_state["schedule_manager"] is scheduler
 
 
+def test_archive_copied_in_after_first_start_can_finish_setup(first_run):
+    # The installer starts the server before the user copies an archive from another
+    # machine, so Setup state exists, unfinished, with no initialization recorded.
+    with TestClient(server.app) as client:
+        assert client.get("/api/setup").json()["required"]
+    store = open_archive_store(first_run, create=True)
+    store.close()
+
+    with TestClient(server.app) as client:
+        status = client.get("/api/setup").json()
+        assert status["required"] and status["archive"]["ready"]
+        assert status["archive"]["initialization_mode"] is None
+        response = client.post("/api/setup/complete", json={"skip_auth": True, "no_password": True})
+        assert response.status_code == 200
+        assert client.get("/api/tweets").status_code == 200
+
+
 def test_attached_archive_warms_at_start_and_after_each_job(first_run, monkeypatch):
     events = []
 

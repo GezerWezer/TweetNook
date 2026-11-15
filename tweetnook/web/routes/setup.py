@@ -657,7 +657,7 @@ def _finish_setup(request: CompleteRequest, http_request: Request):
     coordinator = _coordinator()
     with coordinator.lock, config_lock:
         initial = not coordinator.state.completed
-        if initial and not coordinator.state.initialization_mode:
+        if initial and not coordinator.archive_chosen():
             raise HTTPException(
                 status_code=409, detail="Choose an archive initialization option first."
             )

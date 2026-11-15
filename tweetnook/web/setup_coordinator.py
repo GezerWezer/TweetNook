@@ -444,10 +444,18 @@ class SetupCoordinator:
                 self.notices.dismiss(f"import-followup-{self.state.archive_init_run_id}")
             self.start_scheduler()
 
+    def archive_chosen(self):
+        """Whether Setup has an archive: one it initialized, or one already attached.
+
+        An archive copied into a fresh install's data directory after the server first
+        started has no recorded initialization, but it is the archive the user chose.
+        """
+        return bool(self.state.initialization_mode) or self.server.get("store") is not None
+
     def complete_walkthrough(self, *, skip_auth=False):
         with self.lock:
             if not self.state.completed:
-                if not self.state.initialization_mode:
+                if not self.archive_chosen():
                     raise ValueError("Choose an archive initialization option first.")
                 if not self.state.auth_verified and not skip_auth:
                     raise ValueError("Connect Twitter/X or explicitly continue without connecting.")
