@@ -18,6 +18,7 @@ from tweetnook.core.process_identity import ProcessIdentity
 from tweetnook.jobs.activity_history import (
     latest_finished_snapshot,
     list_runs,
+    read_full_run_log,
     read_run,
     read_run_log,
     read_run_log_since,
@@ -281,14 +282,19 @@ def activity_run_log(
     run_id: str,
     _auth: Annotated[bool, Depends(verify_credentials)],
     offset: Annotated[int | None, Query(ge=0)] = None,
+    full: bool = False,
 ) -> PlainTextResponse:
     """The run's log. With ``offset``, only complete lines written since that byte offset;
-    ``X-Log-Offset`` gives the offset to pass next, so a live view can follow a long run."""
+    ``X-Log-Offset`` gives the offset to pass next, so a live view can follow a long run.
+    With ``full``, the whole log with every occurrence of repeated issues and the tracebacks
+    of handled errors."""
 
     paths = server_state.get("paths")
     try:
         if paths is None or read_run(paths.data_dir, run_id) is None:
             raise ValueError
+        if full:
+            return PlainTextResponse(read_full_run_log(paths.data_dir, run_id))
         if offset is None:
             return PlainTextResponse(read_run_log(paths.data_dir, run_id))
         text, next_offset = read_run_log_since(paths.data_dir, run_id, offset)

@@ -112,6 +112,10 @@ def test_activity_history_endpoints_return_manual_cli_logs(tmp_path, make_web_cl
     assert client.get(f"/api/activity/runs/{run_id}").json()["summary"] == "manual sync complete"
     assert "tweetnook sync: started" in client.get(f"/api/activity/runs/{run_id}/log").text
     assert client.get("/api/activity/runs/not-a-run/log").status_code == 404
+    full = client.get(f"/api/activity/runs/{run_id}/log", params={"full": 1})
+    assert full.status_code == 200
+    assert "tweetnook sync: started" in full.text
+    assert client.get("/api/activity/runs/not-a-run/log", params={"full": 1}).status_code == 404
 
 
 def test_schedule_endpoints_persist_validated_settings(tmp_path, make_web_client) -> None:

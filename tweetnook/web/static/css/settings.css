@@ -296,7 +296,8 @@
 .nook-log-counts button:hover { text-decoration:underline; }
 .nook-log-counts .is-error { color:var(--destructive-color); }
 .nook-log-counts .is-warning { color:var(--accent-color); }
-.nook-log-actions { display:flex; gap:8px; }
+.nook-log-actions { display:flex; align-items:center; gap:8px 12px; }
+.nook-log-verbose { display:flex; align-items:center; gap:4px; color:var(--text-primary); font-size:14px; font-weight:600; cursor:pointer; }
 .nook-log-panel { --log-time-width:64px; --log-column-gap:12px; margin-bottom:8px; padding:12px 0; border:1px solid var(--border-color); border-radius:var(--radius-lg); background:var(--bg-secondary); color:var(--text-primary); font:13px/20px ui-monospace,SFMono-Regular,Menlo,monospace; }
 .nook-log-line { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--log-column-gap); padding:0 16px; }
 .nook-log-panel.has-time .nook-log-line { grid-template-columns:var(--log-time-width) minmax(0,1fr); }

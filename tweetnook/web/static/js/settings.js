@@ -428,9 +428,22 @@ function nookNoticeWhen(notice) {
   const time = Date.parse(notice?.created_at || '');
   return Number.isFinite(time) ? nookWhenLabel(time / 1000) : '';
 }
+// Verbose mode shows the full log: every occurrence of repeated issues and the tracebacks
+// of errors. This many of its last lines are shown.
+const NOOK_VERBOSE_VIEW_LINES = 20000;
+const NOOK_LOG_VERBOSE_KEY = 'tweetnook.logs.verbose';
+function nookReadLogVerbose() {
+  try { return globalThis.localStorage?.getItem(NOOK_LOG_VERBOSE_KEY) === '1'; }
+  catch (_) { return false; }
+}
+function nookWriteLogVerbose(on) {
+  try { on ? globalThis.localStorage?.setItem(NOOK_LOG_VERBOSE_KEY, '1') : globalThis.localStorage?.removeItem(NOOK_LOG_VERBOSE_KEY); }
+  catch (_) { /* Private windows can refuse storage; the toggle still works for this visit. */ }
+}
+
 function nookLogsPage() {
   return {
-    copied: false, openFolds: [], flash: null, hasTime: false, liveTimer: null, liveRequest: null, liveRequestId: 0, logOffset: 0,
+    verbose: nookReadLogVerbose(), downloadFailed: false, truncatedLines: 0, openFolds: [], flash: null, hasTime: false, liveTimer: null, liveRequest: null, liveRequestId: 0, logOffset: 0,
     originLabel(origin) { return { schedule: 'Scheduled', web: 'Web app', cli: 'Command line' }[origin] || origin || 'Command line'; },
     statusKind(run) { return { completed: 'ok', failed: 'failed', interrupted: 'failed', stopped: 'stopped', starting: 'running', running: 'running' }[run.status] || 'failed'; },
     statusLabel(run) { return { completed: 'Completed', failed: 'Failed', interrupted: 'Interrupted', stopped: 'Stopped', starting: 'Starting', running: 'Running' }[run.status] || 'Result unavailable'; },
@@ -467,7 +480,7 @@ function nookLogsPage() {
     async open(run) {
       clearTimeout(this.liveTimer);
       this.liveRequest = null;
-      this.nookLogRun = run; this.nookLogLines = null; this.copied = false; this.openFolds = []; this.flash = null; this.hasTime = false; this.logOffset = 0;
+      this.nookLogRun = run; this.nookLogLines = null; this.downloadFailed = false; this.truncatedLines = 0; this.openFolds = []; this.flash = null; this.hasTime = false; this.logOffset = 0;
       this.$nextTick(() => document.querySelector('.nook-detail-header h2')?.focus());
       await this.refreshLive(run.run_id);
     },
@@ -496,7 +509,32 @@ function nookLogsPage() {
         return null;
       }
     },
-    // While a run is in progress, read its new log lines every two seconds; stop when it ends or the view closes.
+    // The full log interleaves its extra lines by time, so it can't be followed by byte offset
+    // and is read whole each time. Only its last lines are shown; Download saves all of it.
+    async readFullLog(runId, isCurrent = () => true) {
+      try {
+        const response = await fetch(`/api/activity/runs/${encodeURIComponent(runId)}/log?full=1`);
+        if (!response.ok) return null;
+        const text = await response.text();
+        if (!isCurrent()) return null;
+        const lines = nookLogParse(text);
+        this.truncatedLines = Math.max(0, lines.length - NOOK_VERBOSE_VIEW_LINES);
+        return this.truncatedLines ? lines.slice(this.truncatedLines).map((line, index) => ({ ...line, index })) : lines;
+      } catch (_) {
+        return null;
+      }
+    },
+    toggleVerbose() {
+      this.verbose = !this.verbose;
+      nookWriteLogVerbose(this.verbose);
+      if (!this.nookLogRun) return;
+      clearTimeout(this.liveTimer);
+      this.liveRequest = null;
+      this.nookLogLines = null; this.openFolds = []; this.flash = null; this.truncatedLines = 0; this.logOffset = 0;
+      this.refreshLive(this.nookLogRun.run_id);
+    },
+    // While a run is in progress, read its new log lines every two seconds (the whole full log
+    // every six in verbose mode); stop when it ends or the view closes.
     async refreshLive(runId) {
       clearTimeout(this.liveTimer);
       this.liveTimer = null;
@@ -505,7 +543,9 @@ function nookLogsPage() {
       const request = { runId, id: ++this.liveRequestId };
       this.liveRequest = request;
       const isCurrent = () => this.liveRequest?.id === request.id && this.nookLogRun?.run_id === runId;
-      request.promise = Promise.all([this.readDetails(runId), this.readLog(runId, this.logOffset, isCurrent)]);
+      const details = this.readDetails(runId);
+      const log = this.verbose ? this.readFullLog(runId, isCurrent) : this.readLog(runId, this.logOffset, isCurrent);
+      request.promise = Promise.all([details, log]);
       try {
         const [details, lines] = await request.promise;
         if (!isCurrent()) return;
@@ -519,7 +559,7 @@ function nookLogsPage() {
           this.liveRequest = null;
           if (this.nookLogRun?.run_id === runId && this.showSettingsModal && this.settingsTab === 'logs'
               && ['starting', 'running'].includes(this.nookLogRun.status))
-            this.liveTimer = setTimeout(() => this.refreshLive(runId), 2000);
+            this.liveTimer = setTimeout(() => this.refreshLive(runId), this.verbose ? 6000 : 2000);
         }
       }
     },
@@ -556,24 +596,23 @@ function nookLogsPage() {
       this.$nextTick(() => document.querySelector(`.nook-log-line[data-line="${index}"]`)?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }));
       setTimeout(() => { if (this.flash === index) this.flash = null; }, 2000);
     },
-    rawText() { return (this.nookLogLines || []).map(line => line.raw).join('\n') + '\n'; },
-    async copy() {
+    // Download always saves the full log, whatever the view shows.
+    async download() {
+      const runId = this.nookLogRun.run_id;
+      this.downloadFailed = false;
       try {
-        const text = this.rawText();
-        let copied = false;
-        if (globalThis.navigator?.clipboard?.writeText) {
-          try { await globalThis.navigator.clipboard.writeText(text); copied = true; }
-          catch (error) { console.warn('Clipboard API copy failed; trying fallback', error); }
-        }
-        if (!copied) this.copyTextWithLegacyFallback(text);
-        this.copied = true;
-        setTimeout(() => { this.copied = false; }, 2000);
+        const response = await fetch(`/api/activity/runs/${encodeURIComponent(runId)}/log?full=1`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        this.saveText(`${(await response.text()).trimEnd()}\n`, `${runId}.log`);
       }
-      catch (_) { this.copied = false; }
+      catch (error) {
+        console.warn('Log download failed', error);
+        this.downloadFailed = true;
+      }
     },
-    download() {
-      const url = URL.createObjectURL(new Blob([this.rawText()], { type: 'text/plain' }));
-      const link = Object.assign(document.createElement('a'), { href: url, download: `${this.nookLogRun.run_id}.log` });
+    saveText(text, filename) {
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+      const link = Object.assign(document.createElement('a'), { href: url, download: filename });
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     },

@@ -843,6 +843,7 @@ async def sync_all(
                     level="error",
                     dedupe_key=f"sync:{collection}:failure",
                 )
+                pipeline.record_error(exc)
             else:
                 console.print(f"{collection}: failed ({exc})")
             break

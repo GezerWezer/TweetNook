@@ -621,7 +621,71 @@ test('activity log view follows a running log by byte offset', async () => {
     assert.equal(nookRunTitle('tweetnook export'), 'Export');
 });
 
-test('timestamped worker logs show local times and retain UTC timestamps in exports', async () => {
+test('Download saves the full log from the server, whatever the view shows', async () => {
+    const context = browserContext();
+    const requests = [];
+    context.fetch = async url => {
+        requests.push(url);
+        return { ok: true, async text() { return 'line one\nWARNING: every occurrence\n\n'; } };
+    };
+    const { nookLogsPage } = loadScripts(context, ['settings.js'], '({nookLogsPage})');
+    const page = Object.assign(nookLogsPage(), { nookLogRun: { run_id: 'run/1' }, verbose: false });
+    const saved = [];
+    page.saveText = (text, filename) => saved.push([text, filename]);
+
+    await page.download();
+    assert.deepEqual(requests, ['/api/activity/runs/run%2F1/log?full=1']);
+    assert.deepEqual(saved, [['line one\nWARNING: every occurrence\n', 'run/1.log']]);
+    assert.equal(page.downloadFailed, false);
+
+    context.fetch = async () => ({ ok: false, status: 404 });
+    await page.download();
+    assert.equal(saved.length, 1);
+    assert.equal(page.downloadFailed, true);
+});
+
+test('Verbose shows the full log, is remembered, and shows only its last lines', async () => {
+    const context = browserContext();
+    const requests = [];
+    let body = '2026-10-17T21:01:16Z tweetnook sync: started\n2026-10-17T21:01:17Z WARNING: URL a.example: ReadTimeout\n';
+    context.fetch = async url => {
+        requests.push(url);
+        if (url.endsWith('/log?full=1')) return { ok: true, async text() { return body; } };
+        if (url.includes('/log?offset=')) return { ok: true, async text() { return 'tweetnook sync: started\n'; }, headers: { get: () => '24' } };
+        return { ok: true, async json() { return { status: 'completed' }; } };
+    };
+    const { nookLogsPage } = loadScripts(context, ['settings.js'], '({nookLogsPage})');
+    const page = Object.assign(nookLogsPage(), { showSettingsModal: true, settingsTab: 'logs', $nextTick() {} });
+    assert.equal(page.verbose, false);
+
+    await page.open({ run_id: 'r1' });
+    assert.ok(requests.some(url => url.includes('/log?offset=0')));
+    assert.equal(page.nookLogLines.length, 1);
+
+    requests.length = 0;
+    page.toggleVerbose();
+    await page.liveRequest?.promise;
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(requests.includes('/api/activity/runs/r1/log?full=1'));
+    assert.equal(page.nookLogLines.length, 2);
+    assert.equal(page.countOf('warning'), 1);
+    assert.equal(context.localStorage.getItem('tweetnook.logs.verbose'), '1');
+    // A page opened later starts in the remembered mode.
+    assert.equal(nookLogsPage().verbose, true);
+
+    body = Array.from({ length: 20005 }, (_, index) => `line ${index}`).join('\n');
+    const lines = await page.readFullLog('r1');
+    assert.equal(page.truncatedLines, 5);
+    assert.equal(lines.length, 20000);
+    assert.equal(lines[0].text, 'line 5');
+    assert.equal(lines[0].index, 0);
+
+    page.toggleVerbose();
+    assert.equal(context.localStorage.getItem('tweetnook.logs.verbose'), null);
+    assert.equal(page.truncatedLines, 0);
+});
+
+test('timestamped worker logs show local times', async () => {
     const context = browserContext();
     const { nookLogParse, nookLogsPage } = loadScripts(context, ['settings.js'], '({nookLogParse, nookLogsPage})');
     const stamp = '2026-10-17T21:01:16.123456Z';
@@ -634,77 +698,6 @@ test('timestamped worker logs show local times and retain UTC timestamps in expo
     assert.equal(lines[1].tone, 'error');
     assert.equal(lines[1].time, localTime);
     assert.equal(nookLogParse('Older log without a timestamp\n')[0].time, '');
-    const page = nookLogsPage();
-    page.nookLogLines = lines;
-    assert.equal(page.rawText(), raw); // Copy and Download both use rawText().
-    let copied = null;
-    context.navigator = {clipboard: {writeText: async value => { copied = value; }}};
-    context.setTimeout = () => 0;
-    await page.copy();
-    assert.equal(copied, raw);
-    assert.equal(page.copied, true);
-});
-
-test('log copying falls back on HTTP and clipboard rejection, and only confirms success', async () => {
-    for (const mode of ['http', 'rejected', 'failed']) {
-        const context = browserContext();
-        const { tweetApp, nookLogsPage, nookLogParse } = loadScripts(
-            context, appScriptsWith('settings.js'), '({tweetApp, nookLogsPage, nookLogParse})',
-        );
-        const page = nookMergeScope(tweetApp(), nookLogsPage());
-        const raw = '2026-10-22T21:01:16.123456Z Media: progress · 47 files\nERROR: Storage is full.\n';
-        page.nookLogLines = nookLogParse(raw);
-        page.copied = true;
-        let apiCalls = 0;
-        context.navigator = mode === 'http' ? {} : {
-            clipboard: { async writeText(text) {
-                apiCalls++;
-                assert.equal(text, raw);
-                throw new Error('Clipboard access denied');
-            } },
-        };
-        const calls = [];
-        const textarea = {
-            style: {},
-            setAttribute() {},
-            focus() { calls.push('focus'); },
-            select() { calls.push('select'); },
-        };
-        context.document.createElement = tag => {
-            assert.equal(tag, 'textarea');
-            return textarea;
-        };
-        context.document.body.appendChild = node => {
-            assert.equal(node, textarea);
-            assert.equal(node.value, raw);
-            calls.push('append');
-        };
-        context.document.body.removeChild = node => {
-            assert.equal(node, textarea);
-            calls.push('remove');
-        };
-        context.document.execCommand = command => {
-            assert.equal(command, 'copy');
-            calls.push('copy');
-            return mode !== 'failed';
-        };
-        let reset = null;
-        context.setTimeout = (callback, delay) => {
-            assert.equal(delay, 2000);
-            reset = callback;
-        };
-
-        await page.copy();
-
-        assert.equal(apiCalls, mode === 'http' ? 0 : 1);
-        assert.deepEqual(calls, ['append', 'focus', 'select', 'copy', 'remove']);
-        assert.equal(page.copied, mode !== 'failed');
-        if (mode === 'failed') assert.equal(reset, null);
-        else {
-            reset();
-            assert.equal(page.copied, false);
-        }
-    }
 });
 
 test('combined archive preparation keeps its name through enrichment, sync, media and history', () => {

@@ -29,14 +29,18 @@
                                         <button type="button" class="is-warning" x-show="countOf('warning')" @click="jumpTo('warning')" x-text="plural(countOf('warning'), 'warning')"></button>
                                     </span>
                                     <span class="nook-log-actions">
-                                        <button type="button" class="nook-button" :disabled="!nookLogLines?.length" @click="copy()" x-text="copied ? 'Copied' : 'Copy'"></button>
-                                        <button type="button" class="nook-button" :disabled="!nookLogLines?.length" @click="download()">Download</button>
+                                        <label class="nook-log-verbose" title="Every occurrence of repeated warnings and the tracebacks of errors">
+                                            <span>Verbose</span>
+                                            <button type="button" role="switch" class="nook-switch-button" :aria-checked="String(verbose)" @click="toggleVerbose()"><span class="nook-switch"></span></button>
+                                        </label>
+                                        <button type="button" class="nook-button" :disabled="!nookLogLines?.length" @click="download()" title="Saves the full log, as Verbose shows it" x-text="downloadFailed ? 'Download failed' : 'Download'"></button>
                                     </span>
                                 </div>
 
                                 <div class="nook-log-panel" :class="{ 'has-time': hasTime }" role="log" aria-label="Run output" tabindex="0">
                                     <div x-show="nookLogLines === null" class="nook-log-placeholder">Loading log…</div>
                                     <div x-show="nookLogLines && !nookLogLines.length" class="nook-log-placeholder">No log output.</div>
+                                    <div x-show="truncatedLines" class="nook-log-placeholder" x-text="`${plural(truncatedLines, 'earlier line')} not shown. Download saves the whole log.`"></div>
                                     <template x-for="item in items()" :key="item.key">
                                         <div>
                                             <template x-if="item.type === 'fold'">

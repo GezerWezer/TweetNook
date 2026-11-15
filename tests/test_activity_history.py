@@ -3,9 +3,15 @@ from __future__ import annotations
 import json
 from io import StringIO
 
+import pytest
 from rich.console import Console
 
-from tweetnook.jobs.activity_history import list_runs, read_run, read_run_log
+from tweetnook.jobs.activity_history import (
+    list_runs,
+    read_full_run_log,
+    read_run,
+    read_run_log,
+)
 from tweetnook.jobs.pipeline import PipelineReporter
 
 
@@ -248,3 +254,139 @@ def test_a_worker_gone_without_a_supervisor_still_ends_its_log(tmp_path):
         "Worker is gone and its exit status is unknown; completion was not recorded"
         " · last step: Link previews · Fetching media.example.net"
     )
+
+
+def _run(tmp_path, body, *, interactive=False):
+    output = StringIO()
+    with PipelineReporter(
+        Console(file=output, width=400),
+        "tweetnook sync",
+        interactive=interactive,
+        state_path=tmp_path / "activity-status.json",
+    ) as pipeline:
+        body(pipeline)
+    return pipeline.run_id, output.getvalue()
+
+
+def test_the_run_log_starts_with_the_version_and_command(tmp_path, monkeypatch):
+    import tweetnook
+
+    monkeypatch.setattr(
+        "sys.argv", ["/venv/lib/tweetnook/__main__.py", "sync", "--auth-token", "secret", "likes"]
+    )
+
+    run_id, _ = _run(tmp_path, lambda pipeline: None)
+
+    lines = [line.split(" ", 1)[1] for line in read_run_log(tmp_path, run_id).splitlines()]
+    assert lines[0].startswith(f"tweetnook sync: started · TweetNook {tweetnook.__version__} · ")
+    assert " · cli · pid " in lines[0]
+    assert lines[1] == "tweetnook sync: command · tweetnook sync --auth-token '********' likes"
+
+
+def test_an_x_error_puts_xs_answer_in_the_run_log_and_its_traceback_in_the_full_log(tmp_path):
+    from tweetnook.core.exceptions import FeatureFlagDriftError
+
+    def fetch_bookmarks():
+        try:
+            raise ConnectionError("socket detail")
+        except ConnectionError as exc:
+            raise FeatureFlagDriftError(
+                "Twitter/X returned 400.",
+                status_code=400,
+                operation="Bookmarks",
+                response_excerpt='{"errors":[{"message":"rweb_lists cannot be null"}]}',
+            ) from exc
+
+    def body(pipeline):
+        pipeline.add_step("sync", "Bookmarks", total=1, unit="pages")
+        pipeline.start_step("sync", activity="Fetching bookmarks")
+        fetch_bookmarks()
+
+    with pytest.raises(FeatureFlagDriftError):
+        _run(tmp_path, body)
+    (run_id,) = [run["run_id"] for run in list_runs(tmp_path)]
+
+    log = read_run_log(tmp_path, run_id)
+    assert (
+        'X response: detail · HTTP 400 · Bookmarks · {"errors":[{"message":"rweb_lists cannot'
+        in log
+    )
+    assert "Traceback" not in log
+
+    full = read_full_run_log(tmp_path, run_id)
+    assert "Traceback for FeatureFlagDriftError:" in full
+    assert "in fetch_bookmarks" in full
+    assert "ConnectionError: socket detail" in full
+    assert "direct cause of the following exception" in full
+    # The traceback comes before the failure that ends the log.
+    assert full.index("Traceback for") < full.index("tweetnook sync: failed")
+
+
+def test_the_full_log_keeps_every_occurrence_the_run_log_samples(tmp_path):
+    def body(pipeline):
+        for index in range(1, 31):
+            pipeline.issue(f"URL host{index}.example: ReadTimeout", dedupe_key="urls:failure")
+
+    run_id, _ = _run(tmp_path, body)
+
+    sampled = [line for line in read_run_log(tmp_path, run_id).splitlines() if "WARNING" in line]
+    assert len(sampled) == 5  # occurrences 1, 2, 3, 10 and 25
+    full = [line for line in read_full_run_log(tmp_path, run_id).splitlines() if "WARNING" in line]
+    assert [line.split("WARNING: URL ", 1)[1].split(".", 1)[0] for line in full] == [
+        f"host{index}" for index in range(1, 31)
+    ]
+
+
+def test_the_full_log_stops_recording_an_issue_after_its_limit(tmp_path, monkeypatch):
+    import tweetnook.jobs.pipeline as pipeline_module
+
+    monkeypatch.setattr(pipeline_module, "FULL_LOG_ISSUE_LIMIT", 5)
+
+    def body(pipeline):
+        for index in range(1, 9):
+            pipeline.issue(f"Media {index}: HTTP 403", dedupe_key="media:failure")
+
+    run_id, _ = _run(tmp_path, body)
+
+    full = [
+        line.split(" ", 1)[1]
+        for line in read_full_run_log(tmp_path, run_id).splitlines()
+        if "WARNING" in line
+    ]
+    assert full == [
+        "WARNING: Media 1: HTTP 403",
+        "WARNING: Media 2: HTTP 403 · occurrences=2",
+        "WARNING: Media 3: HTTP 403 · occurrences=3",
+        "WARNING: Media 4: HTTP 403 · occurrences=4",
+        "WARNING: Media 5: HTTP 403 · occurrences=5",
+        "WARNING: later occurrences are only counted · Media 6: HTTP 403 · occurrences=6",
+    ]
+
+
+def test_the_full_log_merges_by_time_and_keeps_a_stack_dump_with_its_line(tmp_path):
+    import tweetnook.jobs.activity_history as history
+
+    writer = history.ActivityRunWriter(tmp_path / "activity-status.json", "tweetnook sync")
+    (writer.run_dir / "console.log").write_text(
+        "2026-01-01T00:00:01Z first\n"
+        "2026-01-01T00:00:03Z Fatal Python error: Terminated\n"
+        'File "fetch.py", line 9 in stuck\n'
+        "2026-01-01T00:00:05Z last\n"
+    )
+    events = [
+        {"timestamp": 1767225602.0, "line": "WARNING: between first and dump", "full": True},
+        {"timestamp": 1767225603.5, "line": "not full, already in the console log"},
+        {"timestamp": 1767225604.0, "line": "WARNING: after the dump", "full": True},
+    ]
+    (writer.run_dir / "events.jsonl").write_text(
+        "".join(json.dumps(event) + "\n" for event in events) + '{"partial'
+    )
+
+    assert history.read_full_run_log(tmp_path, writer.run_id).splitlines() == [
+        "2026-01-01T00:00:01Z first",
+        "2026-01-01T00:00:02Z WARNING: between first and dump",
+        "2026-01-01T00:00:03Z Fatal Python error: Terminated",
+        'File "fetch.py", line 9 in stuck',
+        "2026-01-01T00:00:04Z WARNING: after the dump",
+        "2026-01-01T00:00:05Z last",
+    ]

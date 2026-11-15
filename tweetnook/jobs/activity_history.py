@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 import json
 import os
 import re
@@ -161,18 +162,27 @@ class ActivityRunWriter:
     def start(self, *, pid: int, started_at: float) -> None:
         self.update_metadata(status="running", pid=pid, started_at=started_at)
 
-    def append(self, *, scope: str, event: str, message: str, line: str) -> None:
+    def append(
+        self, *, scope: str, event: str, message: str, line: str, full_only: bool = False
+    ) -> None:
+        """Record a log line. A ``full_only`` line goes to events.jsonl alone, so it appears
+        in the full log but not the run log."""
+
         timestamp = time.time()
-        payload = {
+        payload: dict[str, Any] = {
             "timestamp": timestamp,
             "scope": scope,
             "event": event,
             "message": message,
             "line": line,
         }
+        if full_only:
+            payload["full"] = True
         try:
             with self.events_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+            if full_only:
+                return
             with self.output_path.open("a", encoding="utf-8") as handle:
                 stamp = datetime.fromtimestamp(timestamp, UTC).isoformat().replace("+00:00", "Z")
                 handle.write(f"{stamp} {line}\n")
@@ -554,6 +564,68 @@ def read_run_log(data_dir: Path, run_id: str, *, max_bytes: int = 2_000_000) -> 
             prefix = "[earlier log output truncated]\n"
         return (prefix + data.decode("utf-8", errors="replace")).strip()
     return ""
+
+
+def _line_time(line: str) -> float | None:
+    stamp = line.split(" ", 1)[0]
+    if not stamp.endswith("Z"):
+        return None
+    try:
+        return datetime.fromisoformat(stamp[:-1] + "+00:00").timestamp()
+    except ValueError:
+        return None
+
+
+def _full_only_entries(run_dir: Path) -> list[tuple[float, str]]:
+    entries: list[tuple[float, str]] = []
+    try:
+        handle = (run_dir / "events.jsonl").open(encoding="utf-8", errors="replace")
+    except OSError:
+        return entries
+    with handle:
+        for raw in handle:
+            try:
+                event = json.loads(raw)
+            except json.JSONDecodeError:
+                # A worker killed mid-write leaves a partial last line.
+                continue
+            if not isinstance(event, dict) or not event.get("full"):
+                continue
+            timestamp = event.get("timestamp")
+            if not isinstance(timestamp, int | float):
+                continue
+            stamp = datetime.fromtimestamp(timestamp, UTC).isoformat().replace("+00:00", "Z")
+            entries.append((float(timestamp), f"{stamp} {event.get('line', '')}"))
+    return entries
+
+
+def read_full_run_log(data_dir: Path, run_id: str, *, max_bytes: int = 20_000_000) -> str:
+    """The run log with the lines only the full log keeps merged in by time.
+
+    Those are every occurrence of a repeated issue, which the run log samples, and the
+    tracebacks of handled errors. Unstamped run-log lines, such as a stack dump, stay with
+    the stamped line before them.
+    """
+
+    run_dir = get_run_dir(data_dir, run_id)
+    extra = _full_only_entries(run_dir)
+    base = read_run_log(data_dir, run_id, max_bytes=max_bytes)
+    if not extra:
+        return base
+    blocks: list[tuple[float, str]] = []
+    for line in base.splitlines():
+        when = _line_time(line)
+        if when is None and blocks:
+            blocks[-1] = (blocks[-1][0], f"{blocks[-1][1]}\n{line}")
+        else:
+            blocks.append((when if when is not None else float("-inf"), line))
+    # Ties keep run-log lines first: heapq.merge prefers the earlier iterable.
+    merged = "\n".join(text for _, text in heapq.merge(blocks, extra, key=lambda item: item[0]))
+    encoded = merged.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return merged
+    tail = encoded[-max_bytes:].decode("utf-8", errors="ignore")
+    return "[earlier log output truncated]\n" + tail.partition("\n")[2]
 
 
 def cleanup_runs(data_dir: Path, *, max_runs: int, retention_days: int) -> None:

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import random
+import shlex
 import time
+import traceback
 from contextlib import suppress
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
@@ -22,7 +25,9 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
+from tweetnook import __version__
 from tweetnook.config import COMMAND_LOCK_FILENAME
+from tweetnook.core.exceptions import APIResponseError
 from tweetnook.core.fileio import atomic_write_text
 from tweetnook.core.process_identity import ProcessIdentity, process_identity
 from tweetnook.jobs.outcome import Outcome
@@ -118,6 +123,8 @@ SPINNER_FRAMES: dict[str, tuple[str, ...]] = {
 
 StepState = Literal["pending", "active", "complete", "skipped", "failed"]
 IssueLevel = Literal["warning", "error"]
+# The run log samples a repeated issue; the full log keeps this many occurrences of each.
+FULL_LOG_ISSUE_LIMIT = 1_000
 _SERVICE_ENV_VARS = ("INVOCATION_ID", "JOURNAL_STREAM")
 
 
@@ -158,6 +165,9 @@ class NullPipeline:
     def issue(self, *_args, **_kwargs) -> None:
         pass
 
+    def record_error(self, *_args, **_kwargs) -> None:
+        pass
+
     def complete_step(self, *_args, **_kwargs) -> None:
         pass
 
@@ -191,6 +201,15 @@ def current_pipeline() -> PipelineReporter | NullPipeline:
 
 def _clean_line(value: str) -> str:
     return " ".join(value.split())
+
+
+def _exception_chain(exc: BaseException) -> list[BaseException]:
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and current not in chain:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    return chain
 
 
 def _format_duration(seconds: float) -> str:
@@ -401,7 +420,7 @@ class PipelineReporter:
                     self._run_writer = None
             self._token = _CURRENT_PIPELINE.set(self)
             if self.interactive:
-                self._record_history("command", "start")
+                self._record_history("command", "start", self._environment())
                 self._live = Live(
                     self,
                     console=self.console,
@@ -410,7 +429,8 @@ class PipelineReporter:
                 )
                 self._live.start(refresh=True)
             else:
-                self._log("command", "start")
+                self._log("command", "start", self._environment())
+            self._log_command_line()
             return self
         except BaseException as error:
             # Python does not call __exit__ when __enter__ fails.
@@ -430,6 +450,9 @@ class PipelineReporter:
                 )
                 if is_storage_exhausted(exc):
                     message = STORAGE_RECOVERY
+                if not stopped:
+                    with suppress(Exception):
+                        self.record_error(exc)
                 if active is not None and active.state == "active":
                     self.fail_step(active.key, message)
                 self.issue(
@@ -631,13 +654,40 @@ class PipelineReporter:
         else:
             issue.count += 1
             issue.latest = message
+        suffix = "" if issue.count == 1 else f" · occurrences={issue.count}"
         if issue.count <= 3 or issue.count == 10 or issue.count % 25 == 0:
-            suffix = "" if issue.count == 1 else f" · occurrences={issue.count}"
             if self.interactive:
                 self._record_history("issue", level, message + suffix)
             else:
                 self._log("issue", level, message + suffix)
+        elif issue.count <= FULL_LOG_ISSUE_LIMIT:
+            self._record_full("issue", level, f"{level.upper()}: {message}{suffix}")
+        elif issue.count == FULL_LOG_ISSUE_LIMIT + 1:
+            self._record_full(
+                "issue",
+                level,
+                f"{level.upper()}: later occurrences are only counted · {message}{suffix}",
+            )
         self._refresh()
+
+    def record_error(self, exc: BaseException) -> None:
+        """Log what a caught error carries beyond its message.
+
+        The run log gets X's answer for an API error. The full log also gets the traceback
+        and its causes, which a handled error's message never shows.
+        """
+
+        api_error = next(
+            (item for item in _exception_chain(exc) if isinstance(item, APIResponseError)), None
+        )
+        if api_error is not None and (api_error.operation or api_error.response_excerpt):
+            fields = [f"HTTP {api_error.status_code}"]
+            fields.extend(
+                part for part in (api_error.operation, api_error.response_excerpt) if part
+            )
+            self.detail("X response", " · ".join(fields))
+        trace = "".join(traceback.format_exception(exc)).rstrip()
+        self._record_full("traceback", "detail", f"Traceback for {type(exc).__name__}:\n{trace}")
 
     def complete_step(
         self,
@@ -801,6 +851,10 @@ class PipelineReporter:
         if scope == "command":
             if event == "start":
                 line = f"{self.title}: started"
+                if clean_message:
+                    line += f" · {clean_message}"
+            elif event == "detail":
+                line = f"{self.title}: command · {clean_message}"
             else:
                 line = f"{self.title}: {event} · elapsed {_format_duration(self.elapsed)}"
                 if clean_message:
@@ -835,6 +889,34 @@ class PipelineReporter:
                 line=line,
             )
         return line
+
+    def _record_full(self, scope: str, event: str, line: str) -> None:
+        """Keep a line only in the run's full log, which the console and run log leave out."""
+
+        if self._run_writer is not None:
+            self._run_writer.append(
+                scope=scope, event=event, message=line, line=line, full_only=True
+            )
+
+    def _environment(self) -> str:
+        origin = self._run_writer.origin if self._run_writer is not None else "cli"
+        return (
+            f"TweetNook {__version__} · Python {platform.python_version()} · "
+            f"{platform.system()} {platform.release()} · {origin} · pid {os.getpid()}"
+        )
+
+    def _log_command_line(self) -> None:
+        from tweetnook.jobs.activity_history import sanitized_argv
+
+        argv = sanitized_argv()
+        if argv:
+            # Managed workers run as `python -m tweetnook`, whose argv[0] is a full path.
+            name = Path(argv[0]).name
+            argv[0] = "tweetnook" if name in {"__main__.py", "tweetnook"} else name
+        if self.interactive:
+            self._record_history("command", "detail", shlex.join(argv))
+        else:
+            self._log("command", "detail", shlex.join(argv))
 
     def _log(self, scope: str, event: str, message: str = "") -> None:
         line = self._record_history(scope, event, message)
