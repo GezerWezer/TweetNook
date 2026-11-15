@@ -83,8 +83,8 @@
                                                 <strong x-text="setupUploading ? setupUpload?.name : setupData.archive.filename"></strong>
                                                 <span x-show="setupUploading" x-text="`Uploading · ${setupUploadPercent}% of ${formatSetupBytes(setupUpload?.total || 0)}`"></span>
                                                 <span x-show="!setupUploading" x-text="`${formatSetupBytes(setupData.archive.size)} · ${setupArchiveFileState}`"></span>
-                                                <div class="setup-progress" x-show="setupUploading" role="progressbar" aria-label="Archive upload" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="setupUploadPercent">
-                                                    <span :style="`width: ${setupUploadPercent}%`"></span>
+                                                <div class="nook-meter setup-progress" x-show="setupUploading" role="progressbar" aria-label="Archive upload" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="setupUploadPercent">
+                                                    <span class="nook-meter-fill" :style="`width: ${setupUploadPercent}%`"><template x-for="block in 80" :key="block"><span class="nook-meter-block"></span></template></span>
                                                 </div>
                                             </div>
                                             <button type="button" class="nook-button" x-show="setupUploading" @click="cancelSetupUpload()">Cancel</button>

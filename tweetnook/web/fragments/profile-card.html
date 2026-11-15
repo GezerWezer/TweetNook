@@ -1,6 +1,6 @@
         <!-- Mini Profile Card Modal -->
         <template x-if="profileCard">
-            <div id="profile-card-modal" class="fixed z-[100] bg-[var(--dropdown-bg)] border border-[var(--border-color)] rounded-xl shadow-[0_0_15px_rgba(255,255,255,0.1)] w-[300px]"
+            <div id="profile-card-modal" class="nook-popover fixed z-[100] w-[300px]"
                  :style="`left: ${profileCard?.x}px; top: ${profileCard?.y}px;`"
                  @click.outside="closeProfileCard()"
                  @keydown.escape.window="closeProfileCard()"

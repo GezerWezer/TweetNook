@@ -650,12 +650,37 @@ test('sync panel labels unknown progress without fabricated fractions and animat
     assert.deepEqual(Array.from(active.bars, bar => ({ ...bar })), [{ kind: 'done is-indeterminate', width: 30 }]);
 
     const html = pageHtml();
-    const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'header.css'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'controls.css'), 'utf8');
     assert.match(html, /class="nook-tab is-sm cs-step-tab"[^\n]*stepState\(steps\(\)\[index\]\)/);
-    assert.match(html, /class="bd-part" :class="'is-' \+ part.kind" :style="`width:\$\{part.width\}%`"/);
-    assert.match(css, /\.bd-part\.is-indeterminate \{[^}]*animation: nook-sync-bounce[^}]*infinite alternate/);
-    assert.match(css, /@keyframes nook-sync-bounce \{[^\n]*translateX\(233\.333333%\)/);
-    assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[^\n]*\.bd-part\.is-indeterminate \{ animation: none;/);
+    assert.match(html, /class="nook-meter-part" :class="'is-' \+ part.kind" :style="`width:\$\{part.width\}%`"/);
+    assert.match(css, /\.nook-meter-part\.is-indeterminate \{[^}]*animation:nook-meter-bounce[^}]*infinite alternate/);
+    assert.match(css, /@keyframes nook-meter-bounce \{[^\n]*translateX\(233\.333333%\)/);
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[^\n]*\.nook-meter-part\.is-indeterminate \{ animation:none;/);
+});
+
+test('segmented sync bar fills whole cells and keeps a block for small counts', () => {
+    const { nookSyncBreakdown } = loadScripts(browserContext(), ['header.js'], '({nookSyncBreakdown})');
+    const cellsFor = model => Array.from(nookSyncBreakdown(model).cells);
+    const runs = cells => cells.reduce((out, kind) => {
+        if (out.length && out[out.length - 1][0] === kind) out[out.length - 1][1] += 1;
+        else out.push([kind, 1]);
+        return out;
+    }, []);
+
+    // 47% saved, 9% known, 1% failed of 32 cells: parts end at cells 15, 18 and 18,
+    // but the single failure still gets its own block.
+    const mixed = cellsFor({ state: 'active', total: 100, stats: [{ num: 47, label: 'posts saved' }, { num: 9, label: 'already known' }, { num: 1, label: 'failed' }] });
+    assert.deepEqual(runs(mixed), [['done', 15], ['neutral', 3], ['failed', 1], ['empty', 13]]);
+    // 199 saved and 1 failed of 200: saved rounds to all 32 cells, but the failure
+    // still takes the last one.
+    assert.deepEqual(runs(cellsFor({ state: 'complete', total: 200, stats: [{ num: 199, label: 'posts saved' }, { num: 1, label: 'failed' }] })), [['done', 31], ['failed', 1]]);
+    // 97 saved, 2 known, 1 failed of 100: known rounds to 32 too, so each later part keeps one.
+    assert.deepEqual(runs(cellsFor({ state: 'complete', total: 100, stats: [{ num: 97, label: 'posts saved' }, { num: 2, label: 'already known' }, { num: 1, label: 'failed' }] })), [['done', 30], ['neutral', 1], ['failed', 1]]);
+    assert.deepEqual(runs(cellsFor({ state: 'complete', total: 10, stats: [{ num: 10, label: 'posts saved' }] })), [['done', 32]]);
+    assert.deepEqual(runs(cellsFor({ state: 'active', stats: [], total: 0 })), [['sweep', 32]]);
+    assert.deepEqual(runs(cellsFor({ state: 'pending', stats: [], total: 0 })), [['empty', 32]]);
+
+    assert.match(pageHtml(), /class="nook-meter-cell" :class="'is-' \+ cell" :style="`--i:\$\{cellIndex\}`"/);
 });
 
 run();

@@ -144,7 +144,7 @@
                                             <span>X can't show these anymore, but your archive kept them.</span>
                                             <span x-show="insightGone.resurrected" x-text="insightNumber(insightGone.resurrected) + (insightGone.resurrected === 1 ? ' saved post' : ' saved posts') + ' came back after going missing.'"></span>
                                         </p>
-                                        <button type="button" class="nook-gone-search" x-show="insightGone.saved" @click="runInsightAction({ kind: 'search', query: 'is:missing' })">
+                                        <button type="button" class="nook-button nook-gone-search" x-show="insightGone.saved" @click="runInsightAction({ kind: 'search', query: 'is:missing' })">
                                             <span>Browse them</span><span class="nook-inline-icon" x-html="statsIcon('arrowRight')"></span>
                                         </button>
                                     </div>
@@ -154,7 +154,7 @@
                                     <template x-for="reason in insightGone.reasons" :key="reason.reason">
                                         <div class="nook-gone-reason">
                                             <div class="nook-gone-reason-top"><span x-text="reason.label"></span><span><span x-text="insightNumber(reason.count)"></span><span class="nook-gone-share" x-text="reason.share"></span></span></div>
-                                            <span class="nook-meter"><span :style="'width:' + reason.width + '%'"></span></span>
+                                            <span class="nook-meter"><span class="nook-meter-fill" :style="'width:' + reason.width + '%'"><template x-for="block in 80" :key="block"><span class="nook-meter-block"></span></template></span></span>
                                         </div>
                                     </template>
                                 </div>
@@ -208,7 +208,7 @@
                                 <template x-for="(bar, index) in insightYears" :key="bar.key">
                                     <button type="button" class="nook-year" :aria-label="bar.label" @click="insightYearSearch(bar)"
                                             :class="{ 'is-start': index < 3, 'is-end': index > insightYears.length - 4 }">
-                                        <span class="nook-year-track"><span class="nook-year-bar" :style="'height:' + bar.height + '%'"></span></span>
+                                        <span class="nook-year-track"><span class="nook-year-bar" :style="'height:' + bar.height + '%'"><template x-for="col in 12" :key="col"><span class="nook-year-col"></span></template></span></span>
                                         <span class="nook-year-label" x-text="bar.showLabel ? bar.year : ''"></span>
                                         <span class="nook-tip" aria-hidden="true" x-text="bar.label"></span>
                                     </button>
@@ -330,7 +330,7 @@
                                     <span class="nook-inline-icon" x-html="statsIcon(row.icon)"></span>
                                     <span class="nook-rank-main">
                                         <span class="nook-rank-name" x-text="row.label"></span>
-                                        <span class="nook-meter"><span :style="'width:' + row.width + '%'"></span></span>
+                                        <span class="nook-meter"><span class="nook-meter-fill" :style="'width:' + row.width + '%'"><template x-for="block in 80" :key="block"><span class="nook-meter-block"></span></template></span></span>
                                     </span>
                                     <span class="nook-rank-value"><span x-text="row.share"></span><span x-text="insightNumber(row.count)"></span></span>
                                 </button>
@@ -355,7 +355,7 @@
                                         <span class="avatar nook-avatar" aria-hidden="true"><span class="avatar-initial" x-text="avatarInitial(author.display_name || author.username)"></span><img :src="avatarUrl(author.author_id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image nook-avatar-image" alt="" loading="lazy"></span>
                                         <span class="nook-rank-main">
                                             <span class="nook-rank-name"><span x-text="insightAuthorLabel(author)"></span><span class="nook-rank-handle" x-show="author.username" x-text="'@' + author.username"></span></span>
-                                            <span class="nook-meter"><span :style="'width:' + author.width + '%'"></span></span>
+                                            <span class="nook-meter"><span class="nook-meter-fill" :style="'width:' + author.width + '%'"><template x-for="block in 80" :key="block"><span class="nook-meter-block"></span></template></span></span>
                                             <span class="nook-rank-sub" x-text="insightCollectionsLabel(author)"></span>
                                         </span>
                                         <span class="nook-rank-value"><span x-text="insightNumber(author.count)"></span><span class="nook-rank-wide" x-text="insightCollectionsLabel(author)"></span></span>
@@ -374,7 +374,7 @@
                                         <span class="avatar nook-avatar" aria-hidden="true"><span class="avatar-initial" x-text="avatarInitial(author.display_name || author.username)"></span><img :src="avatarUrl(author.author_id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image nook-avatar-image" alt="" loading="lazy"></span>
                                         <span class="nook-rank-main">
                                             <span class="nook-rank-name"><span x-text="insightAuthorLabel(author)"></span><span class="nook-rank-handle" x-show="author.username" x-text="'@' + author.username"></span></span>
-                                            <span class="nook-meter"><span :style="'width:' + author.width + '%'"></span></span>
+                                            <span class="nook-meter"><span class="nook-meter-fill" :style="'width:' + author.width + '%'"><template x-for="block in 80" :key="block"><span class="nook-meter-block"></span></template></span></span>
                                         </span>
                                         <span class="nook-rank-value"><span x-text="insightNumber(author.count)"></span><span class="nook-rank-wide" x-text="author.count === 1 ? 'reply' : 'replies'"></span></span>
                                     </div>
@@ -385,7 +385,7 @@
                                 <div class="nook-list-title"><div class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('hash')"></span>Hashtags</div></div>
                                 <div class="nook-chips">
                                     <template x-for="t in insightHashtags" :key="t.tag">
-                                        <button type="button" class="nook-stats-chip" @click="runInsightAction({ kind: 'search', query: 'hashtag:' + t.tag })" :aria-label="'Search #' + t.tag + ', ' + insightNumber(t.count) + ' posts'">
+                                        <button type="button" class="nook-button is-sm nook-stats-chip" @click="runInsightAction({ kind: 'search', query: 'hashtag:' + t.tag })" :aria-label="'Search #' + t.tag + ', ' + insightNumber(t.count) + ' posts'">
                                             <span x-text="'#' + t.tag"></span><span x-text="insightNumber(t.count)"></span>
                                         </button>
                                     </template>
@@ -396,7 +396,7 @@
                                 <div class="nook-list-title"><div class="stats-label"><span class="nook-inline-icon" x-html="statsIcon('at')"></span>Mentioned most</div></div>
                                 <template x-for="m in insightMentions.slice(0, 5)" :key="m.key">
                                     <button type="button" class="nook-rank-row nook-rank-compact" @click="runInsightAction({ kind: 'search', query: 'mentions:' + m.username })" :aria-label="'Search posts mentioning @' + m.username">
-                                        <span class="nook-rank-main"><span class="nook-rank-name" x-text="'@' + m.username"></span><span class="nook-meter"><span :style="'width:' + m.width + '%'"></span></span></span>
+                                        <span class="nook-rank-main"><span class="nook-rank-name" x-text="'@' + m.username"></span><span class="nook-meter"><span class="nook-meter-fill" :style="'width:' + m.width + '%'"><template x-for="block in 80" :key="block"><span class="nook-meter-block"></span></template></span></span></span>
                                         <span class="nook-rank-value"><span x-text="insightNumber(m.count)"></span></span>
                                     </button>
                                 </template>
@@ -571,7 +571,7 @@
                                     <div class="stats-card">
                                         <div class="stats-label">Coverage</div>
                                         <div class="stats-value" x-text="statsTags.coverage_pct + '%'"></div>
-                                        <div class="nook-meter nook-meter-spaced"><span :style="'width:' + Math.min(100, statsTags.coverage_pct) + '%'"></span></div>
+                                        <div class="nook-meter nook-meter-spaced"><span class="nook-meter-fill" :style="'width:' + Math.min(100, statsTags.coverage_pct) + '%'"><template x-for="block in 80" :key="block"><span class="nook-meter-block"></span></template></span></div>
                                         <div class="stats-subtitle" x-text="statsTags.tagged_tweets.toLocaleString() + ' / ' + statsTags.eligible_tweets.toLocaleString() + ' eligible'"></div>
                                     </div>
                                     <div class="stats-card">
@@ -590,7 +590,7 @@
                                     <div class="stats-label nook-chips-label">Most used tags</div>
                                     <div class="nook-chips">
                                         <template x-for="t in statsTags.top_tags" :key="t.tag">
-                                            <button type="button" class="nook-stats-chip" @click="nookShowTag($data, t.tag)" :aria-label="'Show tweets tagged ' + t.tag + ', ' + t.count.toLocaleString()">
+                                            <button type="button" class="nook-button is-sm nook-stats-chip" @click="nookShowTag($data, t.tag)" :aria-label="'Show tweets tagged ' + t.tag + ', ' + t.count.toLocaleString()">
                                                 <span x-text="t.tag"></span><span x-text="t.count.toLocaleString()"></span>
                                             </button>
                                         </template>

@@ -22,7 +22,7 @@
 .nook-category-copy { flex:1; min-width:0; }
 .nook-category-copy > span { display:block; font-size:15px; line-height:20px; }
 .nook-category-arrow { color:var(--text-secondary); flex:0 0 18px; }
-.nook-nav-count { min-width:20px; height:20px; padding:0 6px; border-radius:var(--radius-full); background:var(--accent-color); color:#fff; font-size:12px; font-weight:700; line-height:20px; text-align:center; }
+.nook-nav-count { min-width:20px; height:20px; padding:0 6px; border-radius:var(--radius-full); background:var(--accent-color); color:var(--accent-text,#fff); font-size:12px; font-weight:700; line-height:20px; text-align:center; }
 .nook-category-arrow svg { width:18px; height:18px; }
 .nook-settings-detail { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
 .nook-detail-header { border-bottom:1px solid transparent; padding-left:16px; padding-right:16px; transition:border-color 120ms ease; }

@@ -149,7 +149,7 @@ function tweetMetaMethods() {
             // dialog (see the capture listener in init).
             const noteTweetId = String(raw_json.rest_id || raw_json.legacy?.id_str || '');
             const historyButton = bw.note_history && /^\d+$/.test(noteTweetId) && !this.isDemo
-                ? html`<button type="button" class="community-note-history" data-note-history="${noteTweetId}" aria-label="Community note history" title="Community note history"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5"/><path d="m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z"/></svg></button>`
+                ? html`<button type="button" class="nook-icon-button is-xs is-action community-note-history" data-note-history="${noteTweetId}" aria-label="Community note history" title="Community note history"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5"/><path d="m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z"/></svg></button>`
                 : '';
             return String(html`
             <div class="${containerClass}" ${!isQuote ? html`onclick="event.stopPropagation()"` : ''}>

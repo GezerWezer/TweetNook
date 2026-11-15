@@ -1,7 +1,7 @@
 /* Analytics dialog, scoped to .nook-stats. stats.css holds the shared card basics; this file
    follows design.md and the XDS recipes: flat filled tiles, icon wells beside the copy, thin
    one-hue marks in the accent color, and hover feedback only on things that do something. */
-.nook-stats { --nook-tile:var(--bg-secondary); --nook-mark:var(--accent-color); --nook-track:color-mix(in srgb,var(--text-secondary) 14%,transparent); }
+.nook-stats { --nook-tile:var(--bg-secondary); --nook-mark:var(--accent-color); --nook-track:color-mix(in srgb,var(--text-secondary) 14%,transparent); --meter-fill:var(--nook-mark); --meter-track:var(--nook-track); }
 .nook-stats .stats-modal-header { gap:12px; }
 .nook-stats-heading { min-width:0; }
 .nook-stats-heading .stats-modal-title { margin:0; line-height:24px; }
@@ -21,7 +21,10 @@
 .nook-stats .stats-section-title { display:flex; align-items:center; gap:10px; margin:0; font-size:20px; line-height:24px; font-weight:800; letter-spacing:-.01em; }
 .nook-section-icon { display:inline-flex; width:22px; height:22px; color:var(--text-primary); }
 .nook-section-note { margin:0; color:var(--text-secondary); font-size:13px; line-height:16px; }
-/* The conversations scope sits at the end of the section tools. */
+/* The conversations scope sits at the right end of the section tools. The
+   tools fill what the title leaves, so the scope keeps that edge even when
+   the tools wrap onto their own line under the title. */
+.nook-section-tools { flex:1 1 auto; }
 .nook-scope { margin-left:auto; }
 @media (max-width:520px) {
   .nook-section-head .nook-segmented { width:100%; }
@@ -61,8 +64,7 @@
 .nook-years.is-static .nook-year,.nook-cal-grid.is-static .nook-cal-day { cursor:default; }
 .nook-chips { display:flex; flex-wrap:wrap; gap:8px; }
 .nook-chips-label { margin-bottom:12px; }
-.nook-stats-chip { display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:0 12px; border:1px solid var(--border-color); border-radius:var(--radius-full); background:var(--bg-primary); color:var(--text-primary); font-size:13px; font-weight:700; cursor:pointer; transition:background-color 120ms ease; }
-.nook-stats-chip:hover { background:var(--bg-tertiary); }
+.nook-stats-chip { min-width:0; }
 .nook-stats-chip span + span { color:var(--text-secondary); font-weight:500; }
 
 /* Archive overview: a lead card (total + date span) and a strip of supporting counts. */
@@ -115,8 +117,7 @@
 .nook-gone-value { color:var(--text-primary); font-size:30px; line-height:36px; font-weight:800; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
 .nook-gone-unit { color:var(--text-secondary); font-size:15px; line-height:20px; font-weight:600; letter-spacing:0; }
 .nook-gone-body .stats-subtitle span + span::before { content:" "; }
-.nook-gone-search { display:inline-flex; align-items:center; gap:6px; margin-top:4px; min-height:36px; padding:0 16px; border:1px solid var(--border-color); border-radius:var(--radius-full); background:transparent; color:var(--text-primary); font:inherit; font-size:14px; font-weight:700; cursor:pointer; transition:background-color 120ms ease; }
-.nook-gone-search:hover { background:var(--bg-tertiary); }
+.nook-gone-search { margin-top:4px; }
 .nook-gone-reasons { display:flex; flex-direction:column; gap:10px; min-width:0; }
 .nook-gone-reason { display:flex; flex-direction:column; gap:6px; }
 .nook-gone-reason-top { display:flex; justify-content:space-between; gap:12px; color:var(--text-primary); font-size:14px; line-height:16px; font-weight:700; }
@@ -141,6 +142,8 @@
 .nook-year { position:relative; flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:stretch; padding:0; border:0; background:transparent; color:inherit; cursor:pointer; }
 .nook-year-track { position:relative; flex:1 1 auto; display:flex; align-items:flex-end; justify-content:center; padding:0 2px; border-bottom:1px solid var(--border-color); }
 .nook-year-bar { width:min(100%,28px); border-radius:4px 4px 0 0; background:var(--nook-mark); transition:opacity 120ms ease, height 300ms cubic-bezier(.4,0,.2,1); }
+/* Columns are for edge styles that draw a bar as a run of graph columns. */
+.nook-year-col { display:none; }
 .nook-years:hover .nook-year-bar { opacity:.45; }
 .nook-years .nook-year:hover .nook-year-bar,.nook-year:focus-visible .nook-year-bar { opacity:1; }
 .nook-year-label { height:20px; padding-top:6px; overflow:visible; color:var(--text-secondary); font-size:11px; line-height:14px; text-align:center; white-space:nowrap; }
@@ -241,8 +244,6 @@ button.nook-rank-row:disabled { cursor:default; }
 .nook-rank-sub { display:none; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--text-secondary); font-size:13px; line-height:16px; }
 /* Phones give the breakdown its own line so long names keep the row width. */
 @media (max-width:520px) { .nook-rank-sub { display:block; } .nook-rank-value .nook-rank-wide { display:none; } }
-.nook-meter { display:block; height:4px; overflow:hidden; border-radius:var(--radius-full); background:var(--nook-track); }
-.nook-meter > span { display:block; height:100%; border-radius:var(--radius-full); background:var(--nook-mark); }
 .nook-meter-spaced { margin:10px 0 2px; }
 .nook-people { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start; }
 @media (max-width:767px) { .nook-people { grid-template-columns:minmax(0,1fr); } }

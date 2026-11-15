@@ -203,9 +203,29 @@ function nookSyncBreakdown(model) {
   }
   if (!bars.length && model.state === 'complete') bars = [{ kind: 'done', width: 100 }];
   if (!bars.length && model.state === 'active') bars = [{ kind: 'done is-indeterminate', width: 30 }];
+  const cells = nookSyncCells(bars);
   const label = slots.length ? slots.map(slot => `${slot.value} ${slot.label}`).join(', ') : model.status;
   if (!slots.length) slots = [{ value: '—', label: { pending: 'Not started', skipped: 'Skipped', active: 'Starting', paused: 'Paused', cancelled: 'Nothing counted', failed: 'Nothing counted', complete: 'Nothing to count' }[model.state] || 'Nothing to count', num: null, kind: 'plain' }];
-  return { ...model, slots: slots.map(slot => ({ ...slot, label: ({ 'already known': 'Known', 'posts saved': 'Saved' }[slot.label] || slot.label.replace(/^./, c => c.toUpperCase())) })), bars, label };
+  return { ...model, slots: slots.map(slot => ({ ...slot, label: ({ 'already known': 'Known', 'posts saved': 'Saved' }[slot.label] || slot.label.replace(/^./, c => c.toUpperCase())) })), bars, cells, label };
+}
+// Edge styles with segmented meters draw the bar as a fixed row of whole blocks, each
+// one colour, instead of cutting the smooth parts into stripes. Each part ends on the
+// block nearest its share, and a part with any posts keeps at least one block, so a
+// small failure count never disappears, even beside a part that rounds up to full. An
+// indeterminate bar marks every block 'sweep' and the stylesheet lights them in turn.
+const NOOK_SYNC_CELLS = 32;
+function nookSyncCells(bars) {
+  if (bars.some(bar => bar.kind.includes('is-indeterminate'))) return Array(NOOK_SYNC_CELLS).fill('sweep');
+  const cells = [];
+  let total = 0;
+  bars.forEach((bar, index) => {
+    total += bar.width;
+    const reserved = bars.length - index - 1;
+    const end = Math.min(NOOK_SYNC_CELLS - reserved, Math.max(cells.length + 1, Math.round(total / 100 * NOOK_SYNC_CELLS)));
+    while (cells.length < end) cells.push(bar.kind);
+  });
+  while (cells.length < NOOK_SYNC_CELLS) cells.push('empty');
+  return cells;
 }
 // Jobs list: every job the CLI can run. The server (/api/jobs) owns state and option specs;
 // the panel shows the selected job's run on top and the rest as rows.

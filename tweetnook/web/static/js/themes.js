@@ -154,6 +154,9 @@ function _generateTheme(seed) {
         // Only drawn when the theme sets edge: 'bevel'.
         '--edge-light':            _surface(bg, muted, dark ? 16 : 8),
         '--edge-dark':             _surface(bg, muted, dark ? -8 : -24),
+        // Set on every theme so switching away from one that overrides it
+        // doesn't leave its value on <html>.
+        '--divider-light':         _surface(bg, muted, dark ? 16 : 8),
         '--font-ui':               seed.font || SYSTEM_FONT,
         // Buttons (controls.css). Secondary buttons are outlined on whatever
         // they sit on; the primary fill derives from the theme's own text.
@@ -309,18 +312,23 @@ const THEME_SEEDS = {
             '--bg-secondary': '#4c5844',
             '--bg-header': '#4c5844',
             '--dropdown-bg': '#4c5844',
+            '--divider-light': '#5a6a50',
             '--field-bg': '#3e4637',
-            '--border-color': '#323a2c',
+            // Lines inside the dark wells are the skin's shadow colour; a
+            // softer olive barely shows against the well.
+            '--border-color': '#282e22',
             '--thread-line': '#5a6a50',
             '--input-border': '#282e22',
-            '--edge-light': '#7f8b72',
+            // The skin's BorderBright is a neutral grey, not a lighter olive.
+            '--edge-light': '#808080',
             '--edge-dark': '#282e22',
             '--heading-color': '#dccd62',
             '--selected-text': '#dccd62',
             // Buttons are raised panels, not fills; the bevel draws the edge
             // and hover lights the label instead of the face.
             '--button-primary-bg': '#4c5844',
-            '--button-primary-text': '#d8ded3',
+            '--button-primary-text': '#ffffff',
+            '--button-text': '#ffffff',
             '--button-primary-hover-bg': '#4c5844',
             '--button-bg': '#4c5844',
             '--button-hover-bg': '#4c5844',
@@ -333,8 +341,10 @@ const THEME_SEEDS = {
             '--accent-hover': '#d9ca66',
             '--accent-text': '#282e22',
             '--hover-bg': 'rgba(216, 222, 211, 0.04)',
-            '--scrollbar-thumb': '#5a6a50',
-            '--scrollbar-thumb-hover': '#6b7a60',
+            // Raised panel-coloured thumb in a lighter gutter.
+            '--scrollbar-bg': '#5a6a50',
+            '--scrollbar-thumb': '#4c5844',
+            '--scrollbar-thumb-hover': '#4c5844',
             '--gray-700': '#5a6a50',
         },
     },

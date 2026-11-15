@@ -131,7 +131,7 @@ body {
     border-radius: var(--radius-full);
     background-color: var(--accent-color);
     color: var(--accent-text);
-    box-shadow: 0 0 15px 0 rgba(101, 119, 134, .2), 0 0 3px 1px rgba(101, 119, 134, .15);
+    box-shadow: var(--popover-shadow);
     cursor: pointer;
     transition: background-color 150ms ease;
 }

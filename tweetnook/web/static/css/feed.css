@@ -43,22 +43,7 @@
     padding: 2px 0;
 }
 .community-note-history {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
     margin: -4px -4px -4px auto;
-    padding: 0;
-    border: 0;
-    border-radius: var(--radius-full);
-    background: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-}
-.community-note-history:hover {
-    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
-    color: var(--accent-color);
 }
 .community-note .community-note-history svg {
     width: 18px;

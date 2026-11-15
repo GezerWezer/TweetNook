@@ -485,18 +485,7 @@ button.setup-link { padding: 0; border: 0; background: none; font-family: inheri
 }
 .setup-file-copy > span { color: var(--text-secondary); font-size: 13px; line-height: 16px; font-variant-numeric: tabular-nums; }
 .setup-progress {
-    height: 4px;
     margin-top: 6px;
-    overflow: hidden;
-    border-radius: var(--radius-full);
-    background: var(--border-color);
-}
-.setup-progress span {
-    display: block;
-    height: 100%;
-    border-radius: inherit;
-    background: var(--accent-color);
-    transition: width 200ms ease;
 }
 
 /* Timeline menus */

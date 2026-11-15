@@ -76,10 +76,10 @@
                                 <div class="select-none" @mousedown.prevent>
                                     <div class="nook-calendar-head">
                                         <h2 x-text="new Date(dpYear, dpMonth, 1).toLocaleString('default', { month: 'long', year: 'numeric' })"></h2>
-                                        <button type="button" class="nook-calendar-nav" aria-label="Previous month" @click.stop="dpPrevMonth()">
+                                        <button type="button" class="nook-icon-button is-sm" aria-label="Previous month" @click.stop="dpPrevMonth()">
                                             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.91 7.5 9.41 12l4.5 4.5-1.41 1.41L6.59 12l5.91-5.91z"></path></svg>
                                         </button>
-                                        <button type="button" class="nook-calendar-nav" aria-label="Next month" @click.stop="dpNextMonth()">
+                                        <button type="button" class="nook-icon-button is-sm" aria-label="Next month" @click.stop="dpNextMonth()">
                                             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.91 12 10 17.91 8.59 16.5l4.5-4.5-4.5-4.5L10 6.09z"></path></svg>
                                         </button>
                                     </div>
