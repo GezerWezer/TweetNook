@@ -57,6 +57,10 @@ test('every theme keeps text legible on the surfaces it is drawn on', () => {
         const tabSurface = theme._edge === 'bevel' ? theme['--bg-secondary']
             : isHex(theme['--bg-header']) ? theme['--bg-header'] : theme['--bg-primary'];
         check(key, 'selected tab text', theme['--selected-text'], tabSurface, 4.5);
+        // Button labels on their own faces; a transparent face shows the page.
+        check(key, 'primary button label', theme['--button-primary-text'], theme['--button-primary-bg'], 4.5);
+        const buttonFace = theme['--button-bg'] === 'transparent' ? theme['--bg-primary'] : theme['--button-bg'];
+        check(key, 'button label', theme['--button-text'], buttonFace, 4.5);
         // Secondary text and like/danger marks: AA for large text and UI parts (3:1).
         check(key, 'muted text on bg', theme['--text-secondary'], theme['--bg-primary'], 3);
         check(key, 'danger on bg', theme['--danger-color'], theme['--bg-primary'], 3);
@@ -93,7 +97,15 @@ test('new colour roles follow the variable they split from, after its override',
         assert.equal(theme['--field-bg'], theme['--bg-secondary'], key);
         assert.equal(theme['--heading-color'], theme['--text-primary'], key);
         assert.equal(theme['--selected-text'], theme['--text-primary'], key);
+        // The primary button is the inverted fill unless a theme says otherwise.
+        assert.equal(theme['--button-primary-bg'], theme['--text-primary'], key);
+        assert.equal(theme['--button-primary-text'], theme['--bg-primary'], key);
+        assert.equal(theme['--button-border'], theme['--input-border'], key);
+        assert.equal(theme['--button-bg'], 'transparent', key);
     }
+    // Classic Light's hand-picked input border carries through to buttons.
+    assert.equal(all['classic-light']['--button-border'], '#cfd9de');
+    assert.equal(all['steam-green']['--button-primary-bg'], '#4c5844');
     assert.equal(all['steam-green']['--heading-color'], '#dccd62');
     assert.equal(all['steam-green']['--field-bg'], '#3e4637');
 });
@@ -142,9 +154,10 @@ test('theme samples in Settings use each theme\'s own corners', () => {
     assert.match(nookThemeTileStyle('steam-green', app.THEMES['steam-green'], app), /--radius-lg:2px;.*--radius-full:2px/);
 });
 
-test('the theme structure stylesheet loads after every feature stylesheet', () => {
+test('shared controls load before the feature stylesheets and theme structure after them', () => {
     const shell = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'index.html'), 'utf8');
     const sheets = [...shell.matchAll(/<link rel="stylesheet" href="\/static\/css\/([^"]+)">/g)].map(m => m[1]);
+    assert.deepEqual(sheets.slice(0, 3), ['tailwind.css', 'styles.css', 'controls.css']);
     assert.equal(sheets.at(-1), 'theme-structure.css');
 });
 

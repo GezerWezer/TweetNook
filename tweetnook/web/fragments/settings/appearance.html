@@ -49,7 +49,6 @@
                         
                         <section class="nook-setting-section nook-font">
                             <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Font</h3>
-                            <div id="font-picker-label" class="block text-sm font-bold mb-2">Display font</div>
                             <div class="relative" @click.outside="fontPickerOpen = false"
                                  @focusout="if (!$el.contains($event.relatedTarget)) fontPickerOpen = false"
                                  @keydown.escape.stop.prevent="fontPickerOpen = false; $refs.fontTrigger.focus()">
@@ -59,9 +58,10 @@
                                         @click="fontPickerOpen ? fontPickerOpen = false : openFontPicker()"
                                         @keydown.arrow-down.prevent="openFontPicker('first')"
                                         @keydown.arrow-up.prevent="openFontPicker('last')"
-                                        class="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--input-border)] bg-[var(--bg-primary)] px-3 py-2 text-left text-[var(--text-primary)]">
-                                    <span id="selected-font-label" class="truncate" :style="{ fontFamily: selectedFontChoice().family }" x-text="selectedFontChoice().label"></span>
-                                    <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" /></svg>
+                                        class="nook-select-trigger">
+                                    <span id="font-picker-label" class="nook-select-label">Display font</span>
+                                    <span id="selected-font-label" class="nook-select-value" :style="{ fontFamily: selectedFontChoice().family }" x-text="selectedFontChoice().label"></span>
+                                    <span class="nook-select-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" /></svg></span>
                                 </button>
                                 <div id="font-options" x-ref="fontOptions" x-show="fontPickerOpen" x-cloak
                                      role="listbox" aria-labelledby="font-picker-label"
@@ -69,17 +69,15 @@
                                      @keydown.arrow-up.prevent="focusFontOption(-1)"
                                      @keydown.home.prevent="focusFontOption('first')"
                                      @keydown.end.prevent="focusFontOption('last')"
-                                     class="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-[var(--input-border)] bg-[var(--bg-primary)] p-1 shadow-xl">
+                                     class="nook-popover absolute z-30 mt-1 max-h-64 w-full overflow-y-auto py-1">
                                     <template x-for="f in fontChoices()" :key="f.key">
                                         <button type="button" role="option" tabindex="-1" :aria-selected="fontFamily === f.key"
                                                 @click="selectFont(f.key)" :style="{ fontFamily: f.family }"
-                                                :class="fontFamily === f.key ? 'bg-[var(--bg-secondary)] text-[var(--accent-color)]' : 'text-[var(--text-primary)]'"
-                                                class="block w-full truncate rounded-md px-3 py-2 text-left hover:bg-[var(--bg-secondary)] focus:bg-[var(--bg-secondary)] focus:outline-none"
-                                                x-text="f.label"></button>
+                                                class="nook-option"><span class="nook-select-option" x-text="f.label"></span><span class="nook-tick" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg></span></button>
                                     </template>
                                 </div>
                             </div>
-                            <button type="button" x-show="canDiscoverFonts()" @click="discoverFonts()" :disabled="fontDiscoveryBusy" class="mt-3 rounded-full px-4 py-2 bg-[var(--accent-color)] text-[var(--accent-text)] font-bold disabled:opacity-50" x-text="fontDiscoveryBusy ? 'Reading fonts…' : 'Load local fonts'"></button>
+                            <button type="button" x-show="canDiscoverFonts()" @click="discoverFonts()" :disabled="fontDiscoveryBusy" class="nook-button is-primary mt-3" x-text="fontDiscoveryBusy ? 'Reading fonts…' : 'Load local fonts'"></button>
                             <p class="mt-2 text-sm text-[var(--text-secondary)]" x-show="!canDiscoverFonts()">This browser cannot list installed fonts. Local fallback fonts are available in the dropdown.</p>
                             <p role="status" class="mt-2 text-sm text-[var(--text-secondary)]" x-text="fontDiscoveryMessage"></p>
                         </section>
@@ -88,12 +86,8 @@
                         <section class="nook-setting-section">
                             <h3>Desktop layout</h3>
                             <div role="radiogroup" aria-label="Desktop layout">
-                                <button type="button" role="radio" class="nook-choice-row" aria-label="Single column" :aria-checked="!splitPanel" @click="toggleSplitPanel(false)"><span><strong>Single column</strong><span>Open tweets in the main feed.</span></span><span class="nook-radio-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
-</svg></span></button>
-                                <button type="button" role="radio" class="nook-choice-row" aria-label="Split panel" :aria-checked="splitPanel" @click="toggleSplitPanel(true)"><span><strong>Split panel</strong><span>Keep the feed beside an open tweet.</span></span><span class="nook-radio-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
-  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
-</svg></span></button>
+                                <button type="button" role="radio" class="nook-choice-row" aria-label="Single column" :aria-checked="!splitPanel" @click="toggleSplitPanel(false)"><span><strong>Single column</strong><span>Open tweets in the main feed.</span></span><span class="nook-radio" aria-hidden="true"></span></button>
+                                <button type="button" role="radio" class="nook-choice-row" aria-label="Split panel" :aria-checked="splitPanel" @click="toggleSplitPanel(true)"><span><strong>Split panel</strong><span>Keep the feed beside an open tweet.</span></span><span class="nook-radio" aria-hidden="true"></span></button>
                             </div>
                         </section>
                         <section class="nook-setting-section">
@@ -123,6 +117,6 @@
                         </section>
                         <section class="nook-setting-section">
                             <h3>Playback</h3>
-                            <div class="nook-choice-row nook-autoplay-row"><span><strong>Autoplay videos</strong><span>Play videos muted as they scroll into view.</span></span><button type="button" role="switch" aria-label="Autoplay videos" :aria-checked="videoPlayback === 'autoplay'" @click="setVideoPlayback(videoPlayback === 'autoplay' ? 'paused' : 'autoplay')" class="nook-switch-button"><span class="nook-switch-track"><span></span></span></button></div>
+                            <div class="nook-choice-row nook-autoplay-row"><span><strong>Autoplay videos</strong><span>Play videos muted as they scroll into view.</span></span><button type="button" role="switch" aria-label="Autoplay videos" :aria-checked="videoPlayback === 'autoplay'" @click="setVideoPlayback(videoPlayback === 'autoplay' ? 'paused' : 'autoplay')" class="nook-switch-button"><span class="nook-switch"></span></button></div>
                         </section>
                     </div>

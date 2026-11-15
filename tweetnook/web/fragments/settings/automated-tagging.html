@@ -18,26 +18,22 @@
                                         <div class="flex shrink-0 items-center">
                                             <label class="relative inline-flex cursor-pointer items-center rounded-lg">
                                                 <input type="checkbox" role="switch" aria-label="Enable automated tagging" x-model="automatedTagging.enabled" class="sr-only">
-                                                <span class="nook-switch-track" :class="automatedTagging.enabled ? 'is-on' : ''"><span></span></span>
+                                                <span class="nook-switch"></span>
                                             </label>
                                         </div>
                                     </div>
                                     <fieldset :disabled="!automatedTagging.enabled" :class="!automatedTagging.enabled ? 'opacity-50' : ''" class="mt-4 min-w-0">
-                                        <label class="block">
-                                            <span class="text-sm font-bold text-[var(--text-secondary)]">Gemini API key</span>
-                                            <input type="password" autocomplete="off" aria-label="Demo API key" x-model="automatedTagging.api_key" class="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--input-border)] text-[var(--text-primary)] rounded-lg px-3 py-2 focus:outline-none focus:border-[var(--accent-color)]">
+                                        <label class="nook-field">
+                                            <span class="nook-field-body"><span class="nook-field-label">Gemini API key</span>
+                                            <input type="password" autocomplete="off" aria-label="Demo API key" x-model="automatedTagging.api_key"></span>
                                         </label>
                                         <div class="mt-4">
                                             <span class="text-sm font-bold text-[var(--text-secondary)]">API usage</span>
-                                            <div class="mt-2 flex w-full items-center gap-3 rounded-xl bg-[var(--bg-secondary)] p-1" role="group" aria-label="API usage">
+                                            <div class="nook-segmented nook-segmented-full mt-2" role="group" aria-label="API usage">
                                                 <button type="button" @click="setAutomatedTaggingApiMode('free')"
-                                                        :aria-pressed="automatedTagging.api_mode === 'free'"
-                                                        :class="automatedTagging.api_mode === 'free' ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
-                                                        class="flex-1 rounded-lg px-3 py-2 text-sm font-bold transition">Free</button>
+                                                        :aria-pressed="automatedTagging.api_mode === 'free'">Free</button>
                                                 <button type="button" @click="setAutomatedTaggingApiMode('paid')"
-                                                        :aria-pressed="automatedTagging.api_mode === 'paid'"
-                                                        :class="automatedTagging.api_mode === 'paid' ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
-                                                        class="flex-1 rounded-lg px-3 py-2 text-sm font-bold transition">Paid</button>
+                                                        :aria-pressed="automatedTagging.api_mode === 'paid'">Paid</button>
                                             </div>
                                             <p class="mt-2 text-sm text-[var(--text-secondary)]">Free batches multiple tweets without Google Search. Paid sends one tweet per Gemini request and can use Google Search. <a href="#" @click.prevent="null" class="font-bold text-[var(--accent-color)] hover:underline">Learn more</a></p>
                                         </div>
@@ -48,7 +44,7 @@
                                 <div class="mb-8">
                                     <div class="flex items-center justify-between gap-3">
                                         <h3 class="text-lg font-bold text-[var(--text-primary)]">Model</h3>
-                                        <button @click="loadAutomatedTaggingModels(true)" :disabled="automatedTaggingLoadingModels" class="w-auto min-w-[9rem] shrink-0 whitespace-nowrap border border-[var(--border-color)] rounded-full px-3 py-1.5 text-center text-sm font-bold hover:bg-[var(--hover-bg)]" x-text="automatedTaggingLoadingModels ? 'Loading…' : 'Refresh models'"></button>
+                                        <button @click="loadAutomatedTaggingModels(true)" :disabled="automatedTaggingLoadingModels" class="nook-button min-w-[9rem] shrink-0" x-text="automatedTaggingLoadingModels ? 'Loading…' : 'Refresh models'"></button>
                                     </div>
                                     <p class="mt-2 mb-4 text-sm text-[var(--text-secondary)]">Model refresh and test runs require internet access from the server. Choose a Gemini model for text and media tagging. Most models support this configuration, but capabilities vary. Check the <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener noreferrer" class="font-bold text-[var(--accent-color)] hover:underline">model documentation</a> before choosing one.</p>
                                     <div class="mt-2 w-full" role="group" aria-label="Gemini model">
@@ -59,14 +55,35 @@
                                             </div>
                                         </template>
                                         <template x-if="automatedTaggingModels.length">
-                                            <label class="block w-full">
-                                                <span class="sr-only">Gemini model</span>
-                                                <select x-model="automatedTagging.model" class="block w-full min-w-0 rounded-lg border border-[var(--input-border)] bg-[var(--bg-primary)] px-3 py-2 text-[var(--text-primary)] focus:border-[var(--accent-color)] focus:outline-none">
-                                                <template x-for="model in automatedTaggingModels" :key="model.id">
-                                                    <option :value="model.id" x-text="model.name"></option>
-                                                </template>
-                                                </select>
-                                            </label>
+                                            <div class="nook-select is-wide" x-data="nookSelect({ label: 'Gemini model', searchable: true, options: () => automatedTaggingModels.map(model => ({ value: model.id, label: model.name })), value: () => automatedTagging.model, choose: value => { automatedTagging.model = value } })"
+                 @click.outside="open && close(false)" @keydown="open && key($event)">
+                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                        aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
+                    <span class="nook-select-label" x-text="label"></span>
+                    <span class="nook-select-value" x-text="currentLabel()"></span>
+                    <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
+</svg></span>
+                </button>
+                <div class="nook-popover nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                <div class="nook-select-search" x-show="searchable">
+                    <label class="nook-search is-sm"><input type="search" x-ref="search" x-model="query" :placeholder="placeholder" role="combobox" aria-autocomplete="list" :aria-expanded="open"
+                           :aria-controls="uid + '-list'" :aria-activedescendant="filtered().length ? uid + '-' + active : null" @input="active = 0" autocomplete="off" spellcheck="false"></label>
+                </div>
+                    <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
+                        <template x-for="(option, index) in filtered()" :key="option.value">
+                            <li class="nook-option" role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                                <span class="nook-select-option" x-text="option.label"></span>
+                                <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
+                                <span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
+</svg></span>
+                            </li>
+                        </template>
+                        <li class="nook-select-empty" x-show="!filtered().length" role="presentation">No matches</li>
+                    </ul>
+                </div>
+            </div>
                                         </template>
                                     </div>
                                 </div>
@@ -74,7 +91,7 @@
                                 <div class="mb-8">
                                     <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Thinking</h3>
                                     <p class="text-sm text-[var(--text-secondary)] mb-4">Choose how much reasoning Gemini should use for each tag.</p>
-                                    <div class="flex w-full items-center gap-3 rounded-xl bg-[var(--bg-secondary)] p-1" role="group" aria-label="Thinking level">
+                                    <div class="nook-segmented nook-segmented-full" role="group" aria-label="Thinking level">
                                         <template x-for="level in [
                                             {key: 'none', label: 'None'},
                                             {key: 'low', label: 'Low'},
@@ -82,9 +99,7 @@
                                             {key: 'high', label: 'High'}
                                         ]" :key="level.key">
                                             <button type="button" @click="automatedTagging.thinking_level = level.key"
-                                                    :aria-pressed="automatedTagging.thinking_level === level.key"
-                                                    :class="automatedTagging.thinking_level === level.key ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
-                                                    class="flex-1 rounded-lg px-2 py-2 text-sm font-bold transition" x-text="level.label"></button>
+                                                    :aria-pressed="automatedTagging.thinking_level === level.key" x-text="level.label"></button>
                                         </template>
                                     </div>
                                 </div>
@@ -93,24 +108,20 @@
                                     <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Free quota limits</h3>
                                     <p class="text-sm text-[var(--text-secondary)] mb-4">Keep Free requests within the configured Gemini quota.</p>
                                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <label><span class="text-sm font-bold text-[var(--text-secondary)]">Batch size</span><input type="number" min="1" max="20" x-model.number="automatedTagging.free_batch_size" class="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--input-border)] rounded-lg px-3 py-2"><span class="mt-1 block text-xs text-[var(--text-secondary)]">Tweets per homogeneous request, up to 20.</span></label>
-                                        <label><span class="text-sm font-bold text-[var(--text-secondary)]">Requests per minute</span><input type="number" min="1" x-model.number="automatedTagging.free_rpm" class="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--input-border)] rounded-lg px-3 py-2"></label>
-                                        <label><span class="text-sm font-bold text-[var(--text-secondary)]">Requests per day</span><input type="number" min="1" x-model.number="automatedTagging.free_rpd" class="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--input-border)] rounded-lg px-3 py-2"></label>
+                                        <div><label class="nook-field"><span class="nook-field-body"><span class="nook-field-label">Batch size</span><input type="number" min="1" max="20" x-model.number="automatedTagging.free_batch_size"></span></label><p class="mt-1 text-xs text-[var(--text-secondary)]">Tweets per homogeneous request, up to 20.</p></div>
+                                        <div><label class="nook-field"><span class="nook-field-body"><span class="nook-field-label">Requests per minute</span><input type="number" min="1" x-model.number="automatedTagging.free_rpm"></span></label></div>
+                                        <div><label class="nook-field"><span class="nook-field-body"><span class="nook-field-label">Requests per day</span><input type="number" min="1" x-model.number="automatedTagging.free_rpd"></span></label></div>
                                     </div>
                                 </div>
 
                                 <div class="mb-8" x-show="automatedTagging.api_mode === 'paid'">
                                     <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Processing</h3>
                                     <p class="text-sm text-[var(--text-secondary)] mb-4">Choose the Gemini processing tier for Paid requests. <a href="https://ai.google.dev/gemini-api/docs/flex-inference#how-it-works" target="_blank" rel="noopener noreferrer" class="font-bold text-[var(--accent-color)] hover:underline">Learn more</a></p>
-                                    <div class="flex w-full items-center gap-3 rounded-xl bg-[var(--bg-secondary)] p-1" role="group" aria-label="Processing tier">
+                                    <div class="nook-segmented nook-segmented-full" role="group" aria-label="Processing tier">
                                         <button type="button" @click="automatedTagging.processing_tier = 'standard'"
-                                                :aria-pressed="automatedTagging.processing_tier === 'standard'"
-                                                :class="automatedTagging.processing_tier === 'standard' ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
-                                                class="flex-1 rounded-lg px-3 py-2 text-sm font-bold transition">Standard</button>
+                                                :aria-pressed="automatedTagging.processing_tier === 'standard'">Standard</button>
                                         <button type="button" @click="automatedTagging.processing_tier = 'flex'"
-                                                :aria-pressed="automatedTagging.processing_tier === 'flex'"
-                                                :class="automatedTagging.processing_tier === 'flex' ? 'bg-[var(--accent-color)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'"
-                                                class="flex-1 rounded-lg px-3 py-2 text-sm font-bold transition">Flex</button>
+                                                :aria-pressed="automatedTagging.processing_tier === 'flex'">Flex</button>
                                     </div>
                                 </div>
 
@@ -118,52 +129,103 @@
                                     <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Spend limit</h3>
                                     <p class="text-sm text-[var(--text-secondary)] mb-4">Set the maximum amount you want to spend over the selected period.</p>
                                     <div class="flex w-full max-w-md items-center gap-3" role="group" aria-label="Spend limit">
-                                        <label class="relative flex h-12 min-w-0 flex-1 items-center rounded-xl border border-[var(--input-border)] bg-[var(--bg-primary)] px-3 focus-within:border-[var(--accent-color)]">
+                                        <label class="nook-input min-w-0 flex-1">
                                             <span class="sr-only">Spend limit in USD</span>
-                                            <span class="pointer-events-none text-base font-semibold text-[var(--text-secondary)]">$</span>
-                                            <input type="number" min="0.01" step="0.01" x-model="automatedTaggingSpendAmount" @input="setAutomatedTaggingSpendAmount($event.target.value)" class="h-full min-w-0 flex-1 border-0 bg-transparent px-1 py-2 text-base font-semibold text-[var(--text-primary)] focus:outline-none focus:ring-0">
+                                            <span class="nook-input-affix" aria-hidden="true">$</span>
+                                            <input type="number" min="0.01" step="0.01" x-model="automatedTaggingSpendAmount" @input="setAutomatedTaggingSpendAmount($event.target.value)">
                                         </label>
-                                        <label class="relative h-12 w-28 shrink-0">
-                                            <span class="sr-only">Spend limit period</span>
-                                            <select x-model="automatedTaggingSpendPeriod" @change="setAutomatedTaggingSpendPeriod($event.target.value)" aria-label="Spend limit period" class="h-full w-full appearance-none rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] px-3 py-2 pr-9 text-center text-base font-bold text-[var(--text-primary)] focus:border-[var(--accent-color)] focus:outline-none">
-                                                <option value="day">Day</option>
-                                                <option value="week">Week</option>
-                                                <option value="month">Month</option>
-                                                <option value="year">Year</option>
-                                            </select>
-                                            <svg viewBox="0 0 24 24" aria-hidden="true" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 fill-current text-[var(--text-secondary)]" fill="currentColor">
-                                                <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
-                                            </svg>
-                                        </label>
+                                        <div class="nook-select is-compact" x-data="nookSelect({ label: 'Spend limit period', searchable: false, options: () => [{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }, { value: 'year', label: 'Year' }], value: () => automatedTaggingSpendPeriod, choose: value => { automatedTaggingSpendPeriod = value; setAutomatedTaggingSpendPeriod(value) } })"
+                 @click.outside="open && close(false)" @keydown="open && key($event)">
+                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                        aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
+                    <span class="nook-select-label" x-text="label"></span>
+                    <span class="nook-select-value" x-text="currentLabel()"></span>
+                    <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
+</svg></span>
+                </button>
+                <div class="nook-popover nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                    <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
+                        <template x-for="(option, index) in filtered()" :key="option.value">
+                            <li class="nook-option" role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                                <span class="nook-select-option" x-text="option.label"></span>
+                                <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
+                                <span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
+</svg></span>
+                            </li>
+                        </template>
+                        <li class="nook-select-empty" x-show="!filtered().length" role="presentation">No matches</li>
+                    </ul>
+                </div>
+            </div>
                                     </div>
-                                    <button type="button" x-ref="automatedTaggingSpendButton" @click="openAutomatedTaggingSpendHistory()" class="mt-4 rounded-full border border-[var(--border-color)] px-4 py-2 text-sm font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">View spend history</button>
+                                    <button type="button" x-ref="automatedTaggingSpendButton" @click="openAutomatedTaggingSpendHistory()" class="nook-button mt-4">View spend history</button>
                                 </div>
 
                                 <details class="mb-8" x-show="automatedTagging.api_mode === 'paid'">
                                     <summary class="cursor-pointer text-sm font-bold text-[var(--text-primary)]">Missing usage limits</summary>
                                     <div class="mt-3 space-y-3 text-sm text-[var(--text-secondary)]">
                                         <p>When billing usage is missing, keep a local estimated reserve and continue within your daily budget, or stop immediately. Reserves are estimates; actual charges may differ.</p>
-                                        <label class="block">Missing billing usage
-                                            <select x-model="automatedTagging.unknown_billing_policy" class="mt-1 block w-full rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] p-2 text-[var(--text-primary)]">
-                                                <option value="reserve">Reserve and continue</option>
-                                                <option value="stop">Stop immediately</option>
-                                            </select>
+                                        <div class="nook-select is-wide mt-1" x-data="nookSelect({ label: 'Missing billing usage', searchable: false, options: () => [{ value: 'reserve', label: 'Reserve and continue' }, { value: 'stop', label: 'Stop immediately' }], value: () => automatedTagging.unknown_billing_policy, choose: value => { automatedTagging.unknown_billing_policy = value } })"
+                 @click.outside="open && close(false)" @keydown="open && key($event)">
+                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                        aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
+                    <span class="nook-select-label" x-text="label"></span>
+                    <span class="nook-select-value" x-text="currentLabel()"></span>
+                    <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
+</svg></span>
+                </button>
+                <div class="nook-popover nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                    <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
+                        <template x-for="(option, index) in filtered()" :key="option.value">
+                            <li class="nook-option" role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                                <span class="nook-select-option" x-text="option.label"></span>
+                                <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
+                                <span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
+</svg></span>
+                            </li>
+                        </template>
+                        <li class="nook-select-empty" x-show="!filtered().length" role="presentation">No matches</li>
+                    </ul>
+                </div>
+            </div>
+                                        <label class="nook-field" x-show="automatedTagging.unknown_billing_policy === 'reserve'">
+                                            <span class="nook-field-body"><span class="nook-field-label">Minimum reserve per uncertain request (USD)</span><input type="number" min="0.001" step="0.001" x-model.number="automatedTagging.unknown_request_reserve_usd"></span>
                                         </label>
-                                        <label class="block" x-show="automatedTagging.unknown_billing_policy === 'reserve'">Minimum reserve per uncertain request (USD)
-                                            <input type="number" min="0.001" step="0.001" x-model.number="automatedTagging.unknown_request_reserve_usd" class="mt-1 block w-full rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] p-2 text-[var(--text-primary)]">
-                                        </label>
-                                        <label class="block" x-show="automatedTagging.unknown_billing_policy === 'reserve'">Maximum uncertain billing requests per UTC day
-                                            <input type="number" min="1" max="100" step="1" x-model.number="automatedTagging.max_unknown_requests_per_day" class="mt-1 block w-full rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] p-2 text-[var(--text-primary)]">
+                                        <label class="nook-field" x-show="automatedTagging.unknown_billing_policy === 'reserve'">
+                                            <span class="nook-field-body"><span class="nook-field-label">Maximum uncertain billing requests per UTC day</span><input type="number" min="1" max="100" step="1" x-model.number="automatedTagging.max_unknown_requests_per_day"></span>
                                         </label>
                                         <p x-show="automatedTaggingAccounting?.today_unknown_cost_requests">Today: <span x-text="automatedTaggingAccounting.today_unknown_cost_requests"></span> uncertain requests; $<span x-text="automatedTaggingAccounting.today_unknown_reserved_cost_usd || '0'"></span> reserved.</p>
-                                        <label class="block">Missing Search usage
-                                            <select x-model="automatedTagging.search_unknown_policy" class="mt-1 block w-full rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] p-2 text-[var(--text-primary)]">
-                                                <option value="reserve">Reserve and continue</option>
-                                                <option value="disable">Disable Search for the run</option>
-                                            </select>
-                                        </label>
-                                        <label class="block" x-show="automatedTagging.search_unknown_policy === 'reserve'">Maximum uncertain Search requests per run
-                                            <input type="number" min="1" max="100" step="1" x-model.number="automatedTagging.max_unknown_search_requests" class="mt-1 block w-full rounded-xl border border-[var(--input-border)] bg-[var(--bg-secondary)] p-2 text-[var(--text-primary)]">
+                                        <div class="nook-select is-wide mt-1" x-data="nookSelect({ label: 'Missing Search usage', searchable: false, options: () => [{ value: 'reserve', label: 'Reserve and continue' }, { value: 'disable', label: 'Disable Search for the run' }], value: () => automatedTagging.search_unknown_policy, choose: value => { automatedTagging.search_unknown_policy = value } })"
+                 @click.outside="open && close(false)" @keydown="open && key($event)">
+                <button type="button" class="nook-select-trigger" x-ref="trigger" @click="toggle()" @keydown.arrow-down.prevent="if (!open) { $event.stopPropagation(); openMenu(); }" @keydown.arrow-up.prevent="if (!open) { $event.stopPropagation(); openMenu(); }"
+                        aria-haspopup="listbox" :aria-expanded="open" :aria-controls="uid + '-list'" :aria-label="label + ', ' + currentLabel()">
+                    <span class="nook-select-label" x-text="label"></span>
+                    <span class="nook-select-value" x-text="currentLabel()"></span>
+                    <span class="nook-select-chevron" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
+</svg></span>
+                </button>
+                <div class="nook-popover nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                    <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
+                        <template x-for="(option, index) in filtered()" :key="option.value">
+                            <li class="nook-option" role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                                <span class="nook-select-option" x-text="option.label"></span>
+                                <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
+                                <span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
+</svg></span>
+                            </li>
+                        </template>
+                        <li class="nook-select-empty" x-show="!filtered().length" role="presentation">No matches</li>
+                    </ul>
+                </div>
+            </div>
+                                        <label class="nook-field" x-show="automatedTagging.search_unknown_policy === 'reserve'">
+                                            <span class="nook-field-body"><span class="nook-field-label">Maximum uncertain Search requests per run</span><input type="number" min="1" max="100" step="1" x-model.number="automatedTagging.max_unknown_search_requests"></span>
                                         </label>
                                         <p>Each uncertain Search request consumes an estimated five-query reserve. Five is not a provider limit. Search turns off when the uncertainty limit is reached.</p>
                                     </div>
@@ -174,12 +236,7 @@
                                     <p class="text-sm text-[var(--text-secondary)] mb-4">Identification aid for uncertain entities and references.</p>
                                     <label :class="automatedTagging.api_mode === 'free' ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'" class="flex items-center justify-between gap-4 rounded-lg">
                                         <span class="text-sm font-bold text-[var(--text-secondary)]">Enable Google Search</span>
-                                        <span class="relative inline-flex shrink-0 items-center rounded-lg">
-                                            <input type="checkbox" x-model="automatedTagging.google_search" :disabled="automatedTagging.api_mode === 'free'" class="sr-only">
-                                            <span :class="automatedTagging.google_search ? 'border-[var(--accent-color)] bg-[var(--accent-color)] text-white border-[3px]' : 'border-[var(--text-secondary)] bg-transparent text-transparent'" class="flex h-6 w-6 items-center justify-center rounded-lg border-2 transition">
-                                                <svg viewBox="0 0 24 24" aria-hidden="true" class="h-5 w-5 fill-current" fill="currentColor"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg>
-                                            </span>
-                                        </span>
+                                        <span class="nook-checkbox"><input type="checkbox" x-model="automatedTagging.google_search" :disabled="automatedTagging.api_mode === 'free'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg></span>
                                     </label>
                                     <p x-show="automatedTagging.api_mode === 'free'" class="text-sm text-[var(--text-secondary)]">Google Search is unavailable in Free mode.</p>
                                     <p x-show="automatedTagging.api_mode === 'paid'" class="text-sm text-[var(--text-secondary)]"><span class="font-bold text-[var(--text-primary)]" x-text="automatedTaggingAccounting?.search_queries_this_month || 0"></span> / <span x-text="automatedTaggingAccounting?.search_allowance || 5000"></span> locally observed searches this month. TweetNook stops before the free allowance using a safety reserve and resumes after the monthly rollover. This counter only knows about TweetNook requests; it cannot see searches made by another application sharing the same Google project.</p>
@@ -189,16 +246,16 @@
                                     <div>
                                         <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Tagging context <span class="font-normal text-[var(--text-secondary)]">(optional)</span></h3>
                                         <p class="text-sm text-[var(--text-secondary)] mb-4">Add subjects you commonly archive. These remain weak hints and never override tweet or media evidence.</p>
-                                        <div class="mt-3 flex min-h-[44px] flex-wrap items-center gap-2 rounded-xl border border-[var(--input-border)] bg-[var(--bg-primary)] p-2 focus-within:border-[var(--accent-color)] transition">
+                                        <div class="nook-input is-block is-tokens mt-3" @mousedown="if (!$event.target.closest('button, input')) { $event.preventDefault(); $refs.automatedTaggingContextInput.focus(); }">
                                             <template x-for="item in automatedTaggingContextItems" :key="item">
-                                                <div class="relative group flex items-center rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-1 pr-8 text-sm font-medium text-[var(--text-primary)]">
-                                                    <span x-text="item"></span>
-                                                    <button type="button" @click="removeAutomatedTaggingContext(item)" class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-[var(--text-secondary)] hover:text-[var(--destructive-color)]" :aria-label="`Remove ${item}`">
-                                                        <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current" fill="currentColor"><path d="M17.7 7.7 13.42 12l4.3 4.3-1.42 1.4-4.3-4.28-4.3 4.3-1.4-1.42 4.28-4.3-4.3-4.3L7.7 6.3l4.3 4.28 4.3-4.3z" /></svg>
+                                                <div class="nook-token">
+                                                    <span :title="item" x-text="item"></span>
+                                                    <button type="button" @click="removeAutomatedTaggingContext(item)" :aria-label="`Remove ${item}`">
+                                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.7 7.7 13.42 12l4.3 4.3-1.42 1.4-4.3-4.28-4.3 4.3-1.4-1.42 4.28-4.3-4.3-4.3L7.7 6.3l4.3 4.28 4.3-4.3z" /></svg>
                                                     </button>
                                                 </div>
                                             </template>
-                                            <input x-ref="automatedTaggingContextInput" type="text" x-model="automatedTaggingContextInput" @keydown="handleAutomatedTaggingContextKeydown($event)" placeholder="Add a subject…" class="min-w-[12rem] flex-1 bg-transparent px-2 py-1 text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none">
+                                            <input x-ref="automatedTaggingContextInput" type="text" x-model="automatedTaggingContextInput" @keydown="handleAutomatedTaggingContextKeydown($event)" placeholder="Add a subject…" aria-label="Add a tagging subject">
                                         </div>
                                         <p class="mt-2 text-xs text-[var(--text-secondary)]">Press Enter, Tab, or comma to add a subject. No autocomplete is used here.</p>
                                     </div>
@@ -208,17 +265,17 @@
                                     <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Additional user instructions <span class="font-normal text-[var(--text-secondary)]">(optional)</span></h3>
                                     <p class="text-sm text-[var(--text-secondary)] mb-4">Add rules for how you prefer supported subjects to be tagged. Built-in evidence, safety, output, isolation, and tag-count rules always take priority.</p>
                                     <div class="flex items-stretch gap-2">
-                                        <label class="min-w-0 flex-1">
+                                        <label class="nook-input min-w-0 flex-1">
                                             <span class="sr-only">New additional user instruction</span>
-                                            <input x-model="automatedTaggingInstructionInput" @keydown.enter.prevent="addAutomatedTaggingInstruction()" maxlength="1000" type="text" placeholder="For example: Prefer original-language film titles." class="w-full rounded-lg border border-[var(--input-border)] bg-[var(--bg-primary)] px-3 py-2 text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:border-[var(--accent-color)] focus:outline-none">
+                                            <input x-model="automatedTaggingInstructionInput" @keydown.enter.prevent="addAutomatedTaggingInstruction()" maxlength="1000" type="text" placeholder="For example: Prefer original-language film titles.">
                                         </label>
-                                        <button type="button" @click="addAutomatedTaggingInstruction()" class="shrink-0 rounded-lg bg-[var(--accent-color)] px-4 py-2 text-sm font-bold text-[var(--accent-text)] hover:opacity-90">Add</button>
+                                        <button type="button" @click="addAutomatedTaggingInstruction()" class="nook-button is-primary shrink-0">Add</button>
                                     </div>
                                     <div x-show="automatedTaggingInstructionItems.length" class="mt-3 space-y-2">
                                         <template x-for="item in automatedTaggingInstructionItems" :key="item">
                                             <div class="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
                                                 <span class="min-w-0 break-words text-sm text-[var(--text-primary)]" x-text="item"></span>
-                                                <button type="button" @click="removeAutomatedTaggingInstruction(item)" class="shrink-0 rounded-full p-1 text-[var(--text-secondary)] hover:text-[var(--destructive-color)]" :aria-label="`Remove ${item}`">
+                                                <button type="button" @click="removeAutomatedTaggingInstruction(item)" class="nook-icon-button is-xs is-quiet" :aria-label="`Remove ${item}`">
                                                     <svg viewBox="0 0 24 24" aria-hidden="true" class="h-4 w-4 fill-current" fill="currentColor"><path d="M17.7 7.7 13.42 12l4.3 4.3-1.42 1.4-4.3-4.28-4.3 4.3-1.4-1.42 4.28-4.3-4.3-4.3L7.7 6.3l4.3 4.28 4.3-4.3z" /></svg>
                                                 </button>
                                             </div>
@@ -233,8 +290,8 @@
                                     </div>
 
                                     <div>
-                                        <label for="automated-tagging-tweet-id" class="text-sm font-bold text-[var(--text-secondary)]">Archived tweet ID</label>
-                                        <input id="automated-tagging-tweet-id" type="text" inputmode="numeric" autocomplete="off" x-model="automatedTaggingTweetId" @input.debounce.350ms="lookupAutomatedTaggingTweet()" @keydown.enter.prevent="lookupAutomatedTaggingTweet()" placeholder="Enter the numeric tweet ID" class="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--input-border)] text-[var(--text-primary)] rounded-lg px-3 py-2 focus:outline-none focus:border-[var(--accent-color)]">
+                                        <div class="nook-field"><div class="nook-field-body"><label for="automated-tagging-tweet-id" class="nook-field-label">Archived tweet ID</label>
+                                        <input id="automated-tagging-tweet-id" type="text" inputmode="numeric" autocomplete="off" x-model="automatedTaggingTweetId" @input.debounce.350ms="lookupAutomatedTaggingTweet()" @keydown.enter.prevent="lookupAutomatedTaggingTweet()" placeholder="Enter the numeric tweet ID"></div></div>
                                         <p class="mt-2 text-xs text-[var(--text-secondary)]">The ID must belong to a tweet already in your archive.</p>
                                         <p x-show="automatedTaggingTweetLookingUp" class="mt-2 text-sm text-[var(--text-secondary)]">Loading archived tweet…</p>
                                         <p x-show="automatedTaggingTweetLookupError" role="alert" class="mt-2 text-sm text-[var(--destructive-color)]" x-text="automatedTaggingTweetLookupError"></p>
@@ -247,13 +304,13 @@
                                                 <p class="mt-1 text-sm text-[var(--text-primary)]" x-text="automatedTaggingSelectedTweet?.text || '(No tweet text)'"></p>
                                                 <p class="mt-1 text-xs text-[var(--text-secondary)]" x-text="`ID ${automatedTaggingSelectedTweet?.tweet_id || ''}`"></p>
                                             </div>
-                                            <button type="button" @click="automatedTaggingTweetId = ''; automatedTaggingSelectedTweet = null; automatedTaggingTestResult = null; automatedTaggingTestError = ''; automatedTaggingTweetLookupError = ''" class="shrink-0 text-sm font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)]">Change</button>
+                                            <button type="button" @click="automatedTaggingTweetId = ''; automatedTaggingSelectedTweet = null; automatedTaggingTestResult = null; automatedTaggingTestError = ''; automatedTaggingTweetLookupError = ''" class="nook-button is-text shrink-0">Change</button>
                                         </div>
                                     </div>
 
                                     <div class="mt-4 flex flex-col gap-3">
                                         <p class="text-xs text-[var(--text-secondary)]"><span class="font-bold text-[var(--accent-color)]">Your settings, descriptions, and tags won't be changed.</span> The test sends one request at a time using your selected Free or Paid mode. Retries or Google Search may use additional quota, and any applicable paid spend and Search usage still count.</p>
-                                        <button id="run-automated-tagging-test-btn" type="button" @click="runAutomatedTaggingTest()" :disabled="!automatedTaggingSelectedTweet || automatedTaggingTesting" class="w-full rounded-full bg-[var(--accent-color)] px-5 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-50" x-text="automatedTaggingTesting ? 'Running test…' : 'Run test'"></button>
+                                        <button id="run-automated-tagging-test-btn" type="button" @click="runAutomatedTaggingTest()" :disabled="!automatedTaggingSelectedTweet || automatedTaggingTesting" class="nook-button is-primary is-block" x-text="automatedTaggingTesting ? 'Running test…' : 'Run test'"></button>
                                     </div>
 
                                     <div x-show="automatedTaggingTestError" role="alert" class="rounded-xl border border-[var(--destructive-color)] p-4 text-sm text-[var(--destructive-color)] whitespace-pre-wrap" x-text="automatedTaggingTestError"></div>

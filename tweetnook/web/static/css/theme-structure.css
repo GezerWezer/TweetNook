@@ -11,64 +11,75 @@
     --bevel-sunken: var(--edge-dark) var(--edge-light) var(--edge-light) var(--edge-dark);
 }
 
-[data-edge="bevel"] .nook-primary-button,
-[data-edge="bevel"] .nook-secondary-button,
-[data-edge="bevel"] .cs-run,
-[data-edge="bevel"] .setup-btn,
-[data-edge="bevel"] button[class*="bg-[var(--accent-color)]"]:not([aria-pressed]) {
-    border: 1px solid;
+/* Buttons take their face colours from the --button-* tokens; the bevel
+   adds only the frame. Destructive buttons keep their colour, framed like the
+   rest. */
+[data-edge="bevel"] .nook-button:not(.is-text) {
     border-color: var(--bevel-raised);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
 }
-[data-edge="bevel"] .nook-primary-button:hover:not(:disabled),
-[data-edge="bevel"] .nook-secondary-button:hover:not(:disabled),
-[data-edge="bevel"] .cs-run:hover:not(:disabled),
-[data-edge="bevel"] .setup-btn:hover:not(:disabled),
-[data-edge="bevel"] button[class*="bg-[var(--accent-color)]"]:not([aria-pressed]):hover:not(:disabled) {
-    background: var(--bg-secondary);
+[data-edge="bevel"] .nook-button:not(.is-text):not(.is-danger):hover:not(:disabled) {
     color: var(--selected-text);
-    opacity: 1;
 }
-[data-edge="bevel"] .nook-primary-button:active:not(:disabled),
-[data-edge="bevel"] .nook-secondary-button:active:not(:disabled),
-[data-edge="bevel"] .cs-run:active:not(:disabled),
-[data-edge="bevel"] .setup-btn:active:not(:disabled),
-[data-edge="bevel"] button[class*="bg-[var(--accent-color)]"]:not([aria-pressed]):active:not(:disabled) {
+[data-edge="bevel"] .nook-button:not(.is-text):active:not(:disabled) {
     border-color: var(--bevel-sunken);
 }
-
-/* Destructive actions keep their colour, framed like the other buttons. */
-[data-edge="bevel"] .nook-destructive-button {
+/* Switches are a sunken slot with a raised square knob; checkboxes are
+   sunken wells whose tick takes the selected-text colour. */
+[data-edge="bevel"] .nook-switch {
+    box-shadow: inset 1px 1px 0 var(--edge-dark), inset -1px -1px 0 var(--edge-light);
+}
+[data-edge="bevel"] .nook-switch::after {
+    border-radius: var(--radius-full);
+    background: var(--bg-secondary);
+    box-shadow: inset 1px 1px 0 var(--edge-light), inset -1px -1px 0 var(--edge-dark);
+}
+[data-edge="bevel"] .nook-switch.is-on::after,
+[data-edge="bevel"] [aria-checked="true"] > .nook-switch::after,
+[data-edge="bevel"] input:checked + .nook-switch::after {
+    background: var(--bg-secondary);
+}
+[data-edge="bevel"] .nook-checkbox,
+[data-edge="bevel"] .nook-checkbox:has(input:checked),
+[data-edge="bevel"] [aria-checked="true"] > .nook-checkbox,
+[data-edge="bevel"] .nook-radio,
+[data-edge="bevel"] [aria-checked="true"] > .nook-radio {
     border: 1px solid;
-    border-color: var(--bevel-raised);
+    border-color: var(--bevel-sunken);
+    background: var(--field-bg);
+}
+[data-edge="bevel"] .nook-checkbox:has(input:checked),
+[data-edge="bevel"] [aria-checked="true"] > .nook-checkbox {
+    color: var(--selected-text);
+}
+[data-edge="bevel"] .nook-radio::after {
+    inset: 4px;
+    background: var(--selected-text);
 }
 
-[data-edge="bevel"] .nook-search-field,
-[data-edge="bevel"] .nook-search-pill,
-[data-edge="bevel"] .nook-select-trigger,
-[data-edge="bevel"] .nook-font #display-font,
-[data-edge="bevel"] .nook-config-input,
-[data-edge="bevel"] .nook-td-field,
-[data-edge="bevel"] .nook-original-body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-[data-edge="bevel"] .nook-original-body textarea {
+/* Text fields and dropdown triggers are sunken wells; focus keeps the well
+   and adds the accent ring outside it. */
+[data-edge="bevel"] .nook-field,
+[data-edge="bevel"] .nook-input,
+[data-edge="bevel"] .nook-search,
+[data-edge="bevel"] .nook-select-trigger {
     border: 1px solid;
     border-color: var(--bevel-sunken);
     background: var(--field-bg);
     box-shadow: none;
 }
-/* The feed search input draws its own border inside the bevelled field. */
-[data-edge="bevel"] .nook-search-field .nook-search-input {
-    border-color: transparent;
-    background: transparent;
-}
-[data-edge="bevel"] .nook-search-pill:focus-within,
+[data-edge="bevel"] .nook-field:focus-within,
+[data-edge="bevel"] .nook-input:focus-within,
+[data-edge="bevel"] .nook-search:focus-within,
 [data-edge="bevel"] .nook-select-trigger[aria-expanded="true"],
-[data-edge="bevel"] .nook-select-trigger:focus-visible,
-[data-edge="bevel"] .nook-config-input:focus-within {
+[data-edge="bevel"] .nook-select-trigger:focus-visible {
     border-color: var(--bevel-sunken);
     background: var(--field-bg);
     box-shadow: 0 0 0 1px var(--accent-color);
+}
+/* An invalid field keeps its well and takes the destructive ring instead. */
+[data-edge="bevel"] .nook-field.is-invalid,
+[data-edge="bevel"] .nook-input.is-invalid {
+    box-shadow: 0 0 0 1px var(--destructive-color);
 }
 
 /* Segmented controls read as a row of buttons with the chosen one pressed. */
@@ -81,32 +92,27 @@
     border-color: var(--bevel-raised);
     background: var(--bg-secondary);
 }
-[data-edge="bevel"] .nook-segmented button[aria-checked="true"] {
+[data-edge="bevel"] .nook-segmented button:is([aria-checked="true"], [aria-pressed="true"]) {
     border-color: var(--bevel-sunken);
     background: var(--field-bg);
     color: var(--selected-text);
     box-shadow: none;
 }
 
-/* Floating panels are raised windows with a hard edge, not soft shadows. */
-[data-edge="bevel"] .nook-sort-menu,
-[data-edge="bevel"] .nook-menu,
-[data-edge="bevel"] .nook-select-menu,
-[data-edge="bevel"] .nook-td-options,
-[data-edge="bevel"] .nook-sheet,
-[data-edge="bevel"] .nook-settings-shell,
-[data-edge="bevel"] .nook-td {
+/* Floating panels and dialogs are raised windows with a hard edge; the
+   theme's --popover-shadow and --dialog-shadow are the hard drop under them. */
+[data-edge="bevel"] .nook-popover,
+[data-edge="bevel"] .nook-dialog {
     border: 1px solid;
     border-color: var(--bevel-raised);
-    box-shadow: 0 2px 0 rgba(0, 0, 0, .25);
 }
 
 /* Tabs: the selected tab is marked by its colour and a raised frame instead
    of the accent underline. */
-[data-edge="bevel"] .nook-tab[aria-selected="true"] span::after {
+[data-edge="bevel"] .nook-tab[aria-selected="true"] .nook-tab-label::after {
     display: none;
 }
-[data-edge="bevel"] .nook-tab[aria-selected="true"] span {
+[data-edge="bevel"] .nook-tab[aria-selected="true"] .nook-tab-label {
     height: auto;
     padding: 4px 12px;
     border: 1px solid;

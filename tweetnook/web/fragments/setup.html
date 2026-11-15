@@ -1,16 +1,16 @@
         <!-- Setup Modal -->
         <div x-data="setupDialog()" x-show="showSetupModal"
              @keydown.window.escape="closeSetup()"
-             class="settings-modal-backdrop fixed inset-0 z-[100] flex justify-center items-center"
+             class="nook-backdrop settings-modal-backdrop fixed inset-0 z-[100] flex justify-center items-center"
              x-cloak
              @click.self="closeSetup()">
-            <div class="setup-modal-shell bg-[var(--bg-primary)] w-full h-full flex flex-col overflow-hidden relative"
+            <div class="nook-dialog is-fullscreen-mobile setup-modal-shell w-full h-full flex flex-col overflow-hidden relative"
                  :class="{ 'is-complete': setupCompletionVisible, 'is-appearance': setupFlowStep === 4 && !setupCompletionVisible }"
                  @keydown.tab="if (setupCompletionVisible) nookTrapFocus($event, $event.currentTarget)"
                  role="dialog" aria-modal="true" aria-labelledby="setup-modal-title">
                     <!-- Focused first-run setup in its own Twitter/X-style modal -->
                     <div class="setup-modal-header" x-show="showSetupModal">
-                        <button x-show="!setupForced" @click="closeSetup()" class="setup-modal-close" aria-label="Close setup">
+                        <button x-show="!setupForced" @click="closeSetup()" class="nook-icon-button setup-modal-close" aria-label="Close setup">
                             <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M18.7 6.7 13.42 12l5.3 5.3-1.42 1.4-5.3-5.29-5.28 5.3-1.42-1.42L10.6 12 5.3 6.7l1.42-1.4L12 10.58l5.3-5.3z" /></svg>
                         </button>
                         <h1 id="setup-modal-title" class="setup-modal-heading">Setup</h1>
@@ -87,8 +87,8 @@
                                                     <span :style="`width: ${setupUploadPercent}%`"></span>
                                                 </div>
                                             </div>
-                                            <button type="button" class="setup-btn" x-show="setupUploading" @click="cancelSetupUpload()">Cancel</button>
-                                            <button type="button" class="setup-icon-btn is-destructive" x-show="!setupUploading && !['importing'].includes(setupArchiveStatus)"
+                                            <button type="button" class="nook-button" x-show="setupUploading" @click="cancelSetupUpload()">Cancel</button>
+                                            <button type="button" class="nook-icon-button is-danger" x-show="!setupUploading && !['importing'].includes(setupArchiveStatus)"
                                                     :disabled="!!activity"
                                                     @click="clearSetupArchive()" aria-label="Remove uploaded archive" title="Remove uploaded archive">
                                                 <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M11 17H9v-6h2zm4 0h-2v-6h2z" /><path d="M13.12 2a3.5 3.5 0 0 1 3.36 2.54L16.9 6H21v2h-1.07l-.77 10.75A3.5 3.5 0 0 1 15.67 22H8.33a3.5 3.5 0 0 1-3.5-3.25L4.08 8H3V6h4.1l.42-1.46A3.5 3.5 0 0 1 10.9 2zM6.07 8l.76 10.6c.06.8.71 1.4 1.5 1.4h7.34c.79 0 1.44-.6 1.5-1.4L17.93 8zm4.82-4a1.5 1.5 0 0 0-1.45 1.09L9.18 6h5.64l-.26-.91A1.5 1.5 0 0 0 13.12 4z" /></svg>
@@ -132,18 +132,18 @@
                                             </div>
 
                                             <form id="setup-replay-form" class="setup-fields setup-replay-fields" x-show="!setupReplayConnected" @submit.prevent="connectSetupReplay()">
-                                                <div class="setup-field">
-                                                    <div class="setup-field-body">
-                                                        <label for="setup-replay-url">Archive address</label>
+                                                <div class="nook-field">
+                                                    <div class="nook-field-body">
+                                                        <label class="nook-field-label" for="setup-replay-url">Archive address</label>
                                                         <input id="setup-replay-url" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="192.168.1.20:8000" x-model="setupReplayForm.url" @input="setupReplayError = ''">
                                                     </div>
                                                 </div>
-                                                <div class="setup-field" x-data="{ shown: false }">
-                                                    <div class="setup-field-body">
-                                                        <label for="setup-replay-password">Archive web password</label>
+                                                <div class="nook-field" x-data="{ shown: false }">
+                                                    <div class="nook-field-body">
+                                                        <label class="nook-field-label" for="setup-replay-password">Archive web password</label>
                                                         <input id="setup-replay-password" :type="shown ? 'text' : 'password'" autocomplete="off" x-model="setupReplayForm.password" @input="setupReplayError = ''">
                                                     </div>
-                                                    <button type="button" class="setup-field-toggle" :aria-label="shown ? 'Hide password' : 'Show password'" :aria-pressed="shown" @click="shown = !shown">
+                                                    <button type="button" class="nook-icon-button is-quiet" :aria-label="shown ? 'Hide password' : 'Show password'" :aria-pressed="shown" @click="shown = !shown">
                                                         <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5" /><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0" /></svg>
                                                         <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10" /></svg>
                                                     </button>
@@ -152,25 +152,25 @@
 
                                             <label class="setup-check-row">
                                                 <span class="setup-option-copy"><strong>Use placeholder media</strong><span>Download tiny stand-in images and videos instead of the real files to save space.</span></span>
-                                                <input type="checkbox" :checked="setupReplayPlaceholder" :disabled="setupReplaySaving" @change="setSetupReplayPlaceholder($event.target.checked)">
+                                                <span class="nook-checkbox"><input type="checkbox" :checked="setupReplayPlaceholder" :disabled="setupReplaySaving" @change="setSetupReplayPlaceholder($event.target.checked)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg></span>
                                             </label>
                                             <label class="setup-check-row">
                                                 <span class="setup-option-copy"><strong>Skip quote expansion during sync</strong><span>Skip lookups for quoted tweets during replay syncs. Thread and linked-tweet expansion still run. Applies to the next sync.</span></span>
-                                                <input type="checkbox" :checked="setupReplaySkipQuotes" :disabled="setupReplaySaving" @change="setSetupReplaySkipQuotes($event.target.checked)">
+                                                <span class="nook-checkbox"><input type="checkbox" :checked="setupReplaySkipQuotes" :disabled="setupReplaySaving" @change="setSetupReplaySkipQuotes($event.target.checked)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg></span>
                                             </label>
                                             <label class="setup-check-row">
                                                 <span class="setup-option-copy"><strong>Skip link previews during sync</strong><span>Skip external website lookups blocked by replay. Applies to the next sync.</span></span>
-                                                <input type="checkbox" :checked="setupReplaySkipPreviews" :disabled="setupReplaySaving" @change="setSetupReplaySkipPreviews($event.target.checked)">
+                                                <span class="nook-checkbox"><input type="checkbox" :checked="setupReplaySkipPreviews" :disabled="setupReplaySaving" @change="setSetupReplaySkipPreviews($event.target.checked)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg></span>
                                             </label>
 
                                             <p class="setup-field-error setup-step-error" x-show="setupReplayError" x-text="setupReplayError" role="alert"></p>
 
                                             <div class="setup-replay-actions">
-                                                <button type="submit" form="setup-replay-form" class="setup-btn" x-show="!setupReplayConnected" :disabled="setupReplaySaving || !setupReplayForm.url.trim()">
+                                                <button type="submit" form="setup-replay-form" class="nook-button" x-show="!setupReplayConnected" :disabled="setupReplaySaving || !setupReplayForm.url.trim()">
                                                     <span class="setup-btn-spinner" x-show="setupReplaySaving" aria-hidden="true"></span>
                                                     <span x-text="setupReplaySaving ? 'Testing…' : 'Test and connect'"></span>
                                                 </button>
-                                                <button type="button" class="setup-btn" x-show="setupReplayConnected" :disabled="setupReplaySaving" @click="disconnectSetupReplay()">Disconnect</button>
+                                                <button type="button" class="nook-button" x-show="setupReplayConnected" :disabled="setupReplaySaving" @click="disconnectSetupReplay()">Disconnect</button>
                                             </div>
                                         </section>
                                     </div>
@@ -204,18 +204,18 @@
                                                 {key: 'auth_token', id: 'setup-auth-token', label: 'auth_token'},
                                                 {key: 'ct0', id: 'setup-ct0', label: 'ct0'},
                                             ]" :key="field.key">
-                                                <div class="setup-field" x-data="{ shown: false }">
-                                                    <div class="setup-field-body">
-                                                        <label :for="field.id" x-text="field.label"></label>
+                                                <div class="nook-field" x-data="{ shown: false }">
+                                                    <div class="nook-field-body">
+                                                        <label class="nook-field-label" :for="field.id" x-text="field.label"></label>
                                                         <input :id="field.id" :type="shown ? 'text' : 'password'" x-model="setupAuth[field.key]" @input="editSetupAuth()"
                                                                autocomplete="off" spellcheck="false" placeholder="Paste cookie value">
                                                     </div>
-                                                    <button type="button" class="setup-field-toggle" x-show="setupAuth[field.key] !== '********'"
+                                                    <button type="button" class="nook-icon-button is-quiet" x-show="setupAuth[field.key] !== '********'"
                                                             :aria-label="(shown ? 'Hide ' : 'Show ') + field.label" :aria-pressed="shown" @click="shown = !shown">
                                                         <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5" /><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0" /></svg>
                                                         <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10" /></svg>
                                                     </button>
-                                                    <button type="button" class="setup-field-toggle" x-show="setupAuth[field.key] === '********'"
+                                                    <button type="button" class="nook-icon-button is-quiet" x-show="setupAuth[field.key] === '********'"
                                                             :aria-label="'Clear saved ' + field.label" title="Clear saved value"
                                                             @click="setupAuth[field.key] = ''; editSetupAuth(); $nextTick(() => document.getElementById(field.id)?.focus())">
                                                         <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M17.7 7.7 13.42 12l4.3 4.3-1.42 1.4-4.3-4.28-4.3 4.3-1.4-1.42 4.28-4.3-4.3-4.3L7.7 6.3l4.3 4.28 4.3-4.3z" /></svg>
@@ -223,9 +223,9 @@
                                                 </div>
                                             </template>
                                             <div>
-                                                <div class="setup-field">
-                                                    <div class="setup-field-body">
-                                                        <label for="setup-user-id">X user ID</label>
+                                                <div class="nook-field">
+                                                    <div class="nook-field-body">
+                                                        <label class="nook-field-label" for="setup-user-id">X user ID</label>
                                                         <input id="setup-user-id" type="text" inputmode="numeric" x-model="setupAuth.user_id" @input="editSetupAuth()" autocomplete="off">
                                                     </div>
                                                 </div>
@@ -268,7 +268,7 @@
                                             <div>
                                                 <div class="nook-choice-row setup-sync-switch">
                                                     <span><strong id="setup-sync-label">Sync automatically</strong><span x-text="setupScheduleSummary"></span></span>
-                                                    <button type="button" role="switch" class="nook-switch-button" aria-labelledby="setup-sync-label" :aria-checked="scheduleForm.enabled" @click="scheduleForm.enabled = !scheduleForm.enabled; scheduleFieldChanged()"><span class="nook-switch-track"><span></span></span></button>
+                                                    <button type="button" role="switch" class="nook-switch-button" aria-labelledby="setup-sync-label" :aria-checked="scheduleForm.enabled" @click="scheduleForm.enabled = !scheduleForm.enabled; scheduleFieldChanged()"><span class="nook-switch"></span></button>
                                                 </div>
                                                 <section class="setup-sync-section">
                                                     <h3 id="setup-sync-what-title">What to sync</h3>
@@ -278,7 +278,7 @@
                                                             {key: 'likes', label: 'Likes', detail: 'Posts you’ve liked'},
                                                             {key: 'tweets', label: 'Your tweets', detail: 'Posts you’ve written'},
                                                         ]" :key="item.key">
-                                                            <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes(item.key)" @click="nookToggleSyncCollection($data, item.key)"><span><strong x-text="item.label"></strong><span x-text="item.detail"></span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg></span></button>
+                                                            <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes(item.key)" @click="nookToggleSyncCollection($data, item.key)"><span><strong x-text="item.label"></strong><span x-text="item.detail"></span></span><span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg></span></button>
                                                         </template>
                                                     </div>
                                                 </section>
@@ -354,20 +354,20 @@
                                         <form @submit.prevent="finishSetup()" id="setup-password-form">
                                             <!-- Disabled rather than hidden when no password is chosen, so nothing moves -->
                                             <fieldset class="setup-fields setup-password-fields" :disabled="setupNoPassword">
-                                            <div class="setup-field" x-data="{ shown: false }">
-                                                <div class="setup-field-body">
-                                                    <label for="setup-password" x-text="setupPasswordRequired ? 'Web password' : 'New web password'"></label>
+                                            <div class="nook-field" x-data="{ shown: false }">
+                                                <div class="nook-field-body">
+                                                    <label class="nook-field-label" for="setup-password" x-text="setupPasswordRequired ? 'Web password' : 'New web password'"></label>
                                                     <input id="setup-password" :type="shown ? 'text' : 'password'" autocomplete="new-password" x-model="setupPassword">
                                                 </div>
-                                                <button type="button" class="setup-field-toggle" :aria-label="shown ? 'Hide password' : 'Show password'" :aria-pressed="shown" @click="shown = !shown">
+                                                <button type="button" class="nook-icon-button is-quiet" :aria-label="shown ? 'Hide password' : 'Show password'" :aria-pressed="shown" @click="shown = !shown">
                                                     <svg x-show="!shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5" /><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0" /></svg>
                                                     <svg x-show="shown" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10" /></svg>
                                                 </button>
                                             </div>
                                             <div>
-                                                <div class="setup-field" :class="setupPasswordMismatch ? 'is-invalid' : ''">
-                                                    <div class="setup-field-body">
-                                                        <label for="setup-password-confirm">Confirm password</label>
+                                                <div class="nook-field" :class="setupPasswordMismatch ? 'is-invalid' : ''">
+                                                    <div class="nook-field-body">
+                                                        <label class="nook-field-label" for="setup-password-confirm">Confirm password</label>
                                                         <input id="setup-password-confirm" type="password" autocomplete="new-password" x-model="setupPasswordConfirm"
                                                                :aria-invalid="setupPasswordMismatch" aria-describedby="setup-password-mismatch">
                                                     </div>
@@ -426,38 +426,38 @@
 
                     <!-- One footer for every step: Back on the left, the step's commit action on the right -->
                     <div class="setup-modal-footer" x-show="setupData && setupAuth && !setupCompletionVisible && (setupForced || setupRerun || !setupData?.completed)">
-                        <button type="button" class="setup-btn" x-show="setupFlowStep > 1" :disabled="setupSavingAuth || setupAuthSuccessPending || setupFinishing" @click="goToSetupStep(setupFlowStep - 1)">Back</button>
-                        <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 1"
+                        <button type="button" class="nook-button" x-show="setupFlowStep > 1" :disabled="setupSavingAuth || setupAuthSuccessPending || setupFinishing" @click="goToSetupStep(setupFlowStep - 1)">Back</button>
+                        <button type="button" class="nook-button is-primary" x-show="setupFlowStep === 1"
                                 :disabled="setupArchiveAction.disabled" @click="setupArchiveAction.run()">
                             <span class="setup-btn-spinner" x-show="setupStartingImport" aria-hidden="true"></span>
                             <span x-text="setupStartingImport ? 'Starting import…' : setupArchiveAction.label"></span>
                         </button>
-                        <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 2"
+                        <button type="button" class="nook-button is-primary" x-show="setupFlowStep === 2"
                                 @click="if (!setupAuthSuccessPending) saveSetupAuth()" :disabled="setupSavingAuth"
                                 :aria-disabled="setupAuthSuccessPending">
                             <span class="setup-btn-spinner" x-show="setupSavingAuth" aria-hidden="true"></span>
                             <span x-text="setupSavingAuth ? (setupReplayConnected ? 'Saving…' : 'Testing connection…') : (setupAuthSuccessPending ? 'Connected' : (setupAuthNeedsTest &amp;&amp; !setupReplayConnected ? 'Test and continue' : 'Continue'))"></span>
                         </button>
-                        <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 3"
+                        <button type="button" class="nook-button is-primary" x-show="setupFlowStep === 3"
                                 :disabled="!scheduleForm || scheduleSaving || !scheduleRandomWindowValid()" @click="saveSetupSchedule()">
                             <span class="setup-btn-spinner" x-show="scheduleSaving" aria-hidden="true"></span>
                             <span x-text="scheduleSaving ? 'Saving…' : 'Continue'"></span>
                         </button>
-                        <button type="button" class="setup-btn is-primary" x-show="setupFlowStep === 4" @click="goToSetupStep(5)">Continue</button>
-                        <button type="submit" form="setup-password-form" class="setup-btn is-primary" x-show="setupFlowStep === 5"
+                        <button type="button" class="nook-button is-primary" x-show="setupFlowStep === 4" @click="goToSetupStep(5)">Continue</button>
+                        <button type="submit" form="setup-password-form" class="nook-button is-primary" x-show="setupFlowStep === 5"
                                 :disabled="!setupCanFinish" x-text="setupFinishing ? 'Finishing…' : 'Finish setup'"></button>
                     </div>
 
                     <div class="setup-modal-footer setup-completion-footer" x-show="setupCompletionVisible">
-                        <button type="button" class="setup-btn" @click="closeSetup()">Browse archive</button>
-                        <button type="button" class="setup-btn is-primary" @click="setupCompletionAction()" x-text="setupCompletion.needsConnection ? 'Connect X' : 'View activity'"></button>
+                        <button type="button" class="nook-button" @click="closeSetup()">Browse archive</button>
+                        <button type="button" class="nook-button is-primary" @click="setupCompletionAction()" x-text="setupCompletion.needsConnection ? 'Connect X' : 'View activity'"></button>
                     </div>
 
                     <!-- Cookie instructions, generated from docs/getting-started.md -->
-                    <div class="nook-sheet-backdrop" x-cloak x-show="setupHelpOpen" @click.self="closeSetupHelp()">
-                        <div class="nook-sheet setup-help-sheet" role="dialog" aria-modal="true" aria-labelledby="setup-help-title" @keydown.tab="nookTrapFocus($event, $event.currentTarget)">
+                    <div class="nook-backdrop nook-sheet-backdrop" x-cloak x-show="setupHelpOpen" @click.self="closeSetupHelp()">
+                        <div class="nook-dialog nook-sheet setup-help-sheet" role="dialog" aria-modal="true" aria-labelledby="setup-help-title" @keydown.tab="nookTrapFocus($event, $event.currentTarget)">
                             <div class="nook-sheet-header">
-                                <button type="button" class="setup-modal-close" aria-label="Close instructions" @click="closeSetupHelp()">
+                                <button type="button" class="nook-icon-button setup-modal-close" aria-label="Close instructions" @click="closeSetupHelp()">
                                     <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M18.7 6.7 13.42 12l5.3 5.3-1.42 1.4-5.3-5.29-5.28 5.3-1.42-1.42L10.6 12 5.3 6.7l1.42-1.4L12 10.58l5.3-5.3z" /></svg>
                                 </button>
                                 <h3 id="setup-help-title">Find your cookies</h3>
@@ -472,7 +472,7 @@
                                                     @click="setupHelpBrowser = index"
                                                     @keydown.arrow-right.prevent="setupHelpBrowser = (index + 1) % setupHelp.browsers.length; $nextTick(() => document.getElementById(`setup-help-tab-${setupHelpBrowser}`)?.focus())"
                                                     @keydown.arrow-left.prevent="setupHelpBrowser = (index - 1 + setupHelp.browsers.length) % setupHelp.browsers.length; $nextTick(() => document.getElementById(`setup-help-tab-${setupHelpBrowser}`)?.focus())">
-                                                <span x-text="setupHelpTabLabel(browser)"></span>
+                                                <span class="nook-tab-label" x-text="setupHelpTabLabel(browser)"></span>
                                             </button>
                                         </template>
                                     </div>
@@ -516,12 +516,12 @@
                     </div>
 
                     <!-- In-app confirmation instead of the browser's blocking confirm() -->
-                    <div class="nook-sheet-backdrop" x-cloak x-show="setupConfirm" @click.self="setupConfirm?.resolve(false)">
-                        <div class="nook-sheet nook-confirm setup-confirm" role="alertdialog" aria-modal="true" aria-labelledby="setup-confirm-title" aria-describedby="setup-confirm-copy" @keydown.tab="nookTrapFocus($event, $event.currentTarget)">
+                    <div class="nook-backdrop nook-sheet-backdrop" x-cloak x-show="setupConfirm" @click.self="setupConfirm?.resolve(false)">
+                        <div class="nook-dialog nook-sheet nook-confirm setup-confirm" role="alertdialog" aria-modal="true" aria-labelledby="setup-confirm-title" aria-describedby="setup-confirm-copy" @keydown.tab="nookTrapFocus($event, $event.currentTarget)">
                             <h3 id="setup-confirm-title" x-text="setupConfirm?.title"></h3>
                             <p id="setup-confirm-copy" x-text="setupConfirm?.body"></p>
-                            <button type="button" class="setup-confirm-accept" :class="setupConfirm?.destructive ? 'nook-destructive-button' : 'nook-confirm-primary'" @click="setupConfirm?.resolve(true)" x-text="setupConfirm?.confirmLabel"></button>
-                            <button type="button" class="nook-secondary-button" @click="setupConfirm?.resolve(false)">Cancel</button>
+                            <button type="button" class="setup-confirm-accept nook-button is-lg" :class="setupConfirm?.destructive ? 'is-danger' : 'is-primary'" @click="setupConfirm?.resolve(true)" x-text="setupConfirm?.confirmLabel"></button>
+                            <button type="button" class="nook-button is-lg" @click="setupConfirm?.resolve(false)">Cancel</button>
                         </div>
                     </div>
             </div>

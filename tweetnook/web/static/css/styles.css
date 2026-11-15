@@ -38,6 +38,19 @@
     --selected-text: #e7e9ea;
     --edge-light: #3a3d40;
     --edge-dark: #000000;
+    --button-bg: transparent;
+    --button-text: #e7e9ea;
+    --button-border: #2f3336;
+    --button-hover-bg: rgba(239, 243, 244, 0.1);
+    --button-primary-bg: #e7e9ea;
+    --button-primary-text: #000000;
+    --button-primary-hover-bg: color-mix(in srgb, var(--button-primary-bg) 88%, var(--bg-primary));
+    --popover-bg: #000000;
+    --popover-shadow: 0 0 15px 0 rgba(101, 119, 134, .2), 0 0 3px 1px rgba(101, 119, 134, .15);
+    --option-active-bg: rgba(239, 243, 244, 0.1);
+    --backdrop-bg: rgba(91, 112, 131, .4);
+    --dialog-bg: #000000;
+    --dialog-shadow: none;
     --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 

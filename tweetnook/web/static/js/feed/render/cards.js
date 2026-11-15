@@ -79,7 +79,7 @@ function feedCardMethods() {
                 html`</div>`,
                 html`<div class="tweet-menu-trigger">`,
                 rawHTML(missing),
-                html`<button type="button" class="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)] select-none touch-manipulation${menuOpen ? ' opacity-0' : ''}" aria-label="More actions" aria-haspopup="menu" aria-expanded="${String(menuOpen)}" title="More actions (hold for Tags)" data-action="menu">`,
+                html`<button type="button" class="nook-icon-button is-action select-none touch-manipulation${menuOpen ? ' opacity-0' : ''}" aria-label="More actions" aria-haspopup="menu" aria-expanded="${String(menuOpen)}" title="More actions (hold for Tags)" data-action="menu">`,
                 html`<span class="tweet-icon tweet-icon-more w-[18px] h-[18px]" aria-hidden="true"></span>`,
                 html`</button></div></div>`,
             ]}`;

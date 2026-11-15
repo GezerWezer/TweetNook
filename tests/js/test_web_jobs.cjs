@@ -651,7 +651,7 @@ test('sync panel labels unknown progress without fabricated fractions and animat
 
     const html = pageHtml();
     const css = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'header.css'), 'utf8');
-    assert.match(html, /class="cs-step-tab"[^\n]*stepState\(steps\(\)\[index\]\)/);
+    assert.match(html, /class="nook-tab is-sm cs-step-tab"[^\n]*stepState\(steps\(\)\[index\]\)/);
     assert.match(html, /class="bd-part" :class="'is-' \+ part.kind" :style="`width:\$\{part.width\}%`"/);
     assert.match(css, /\.bd-part\.is-indeterminate \{[^}]*animation: nook-sync-bounce[^}]*infinite alternate/);
     assert.match(css, /@keyframes nook-sync-bounce \{[^\n]*translateX\(233\.333333%\)/);

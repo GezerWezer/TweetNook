@@ -21,11 +21,13 @@
 .nook-stats .stats-section-title { display:flex; align-items:center; gap:10px; margin:0; font-size:20px; line-height:24px; font-weight:800; letter-spacing:-.01em; }
 .nook-section-icon { display:inline-flex; width:22px; height:22px; color:var(--text-primary); }
 .nook-section-note { margin:0; color:var(--text-secondary); font-size:13px; line-height:16px; }
+/* The conversations scope sits at the end of the section tools. */
+.nook-scope { margin-left:auto; }
 @media (max-width:520px) {
   .nook-section-head .nook-segmented { width:100%; }
   .nook-section-tools { width:100%; }
-  .nook-section-tools .nook-scope { width:100%; margin-left:0; }
-  .nook-section-tools .nook-scope button { flex:1 1 0; }
+  .nook-section-tools .nook-segmented { width:100%; margin-left:0; }
+  .nook-section-tools .nook-segmented button { flex:1 1 0; }
   .nook-section-head .nook-segmented button { flex:1 1 auto; padding:0 8px; font-size:13px; }
 }
 .nook-inline-icon { display:inline-flex; flex-shrink:0; width:16px; height:16px; color:var(--text-secondary); }
@@ -54,16 +56,8 @@
 .nook-section-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px 12px; }
 /* Which posts a section counts: separate outlined pills with an inverted selection (XDS
    chips), so the choice reads apart from the gray segmented collection filter beside it. */
-.nook-scope { display:inline-flex; gap:8px; margin-left:auto; }
-.nook-scope button { min-height:32px; padding:0 14px; border:1px solid var(--border-color); border-radius:var(--radius-full); background:transparent; color:var(--text-primary); font-size:14px; line-height:16px; font-weight:600; white-space:nowrap; cursor:pointer; transition:background-color 100ms ease, transform 100ms ease; }
-.nook-scope button:hover { background:var(--bg-secondary); }
-.nook-scope button:active { transform:scale(.97); }
-.nook-scope button[aria-checked="true"] { border-color:var(--text-primary); background:var(--text-primary); color:var(--bg-primary); }
-.nook-scope button:focus-visible { outline:2px solid var(--accent-color); outline-offset:2px; }
 /* Selections search saved posts only, so they do nothing while conversations are included. */
 /* Conversations belong to no collection: the filter stays in place, so the head doesn't reflow, but rests. */
-.nook-segmented.is-disabled { opacity:.45; }
-.nook-segmented.is-disabled button { cursor:default; }
 .nook-years.is-static .nook-year,.nook-cal-grid.is-static .nook-cal-day { cursor:default; }
 .nook-chips { display:flex; flex-wrap:wrap; gap:8px; }
 .nook-chips-label { margin-bottom:12px; }
@@ -170,15 +164,9 @@
 .nook-heat-legend .nook-heat-cell { width:12px; min-width:12px; height:12px; }
 .nook-heat-legend span:first-child { margin-right:4px; }
 .nook-heat-legend span:last-child { margin-left:4px; }
-.nook-text-button { padding:0; border:0; background:none; color:var(--accent-color); font:inherit; cursor:pointer; }
-.nook-text-button:hover { text-decoration:underline; }
 .nook-cal-title { display:flex; align-items:center; gap:8px; }
 .nook-year-stepper { display:inline-flex; align-items:center; gap:2px; }
 .nook-year-current { min-width:40px; color:var(--text-primary); font-size:14px; font-weight:700; line-height:20px; text-align:center; font-variant-numeric:tabular-nums; }
-.nook-stats .nook-icon-button { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:0; border-radius:var(--radius-full); background:transparent; color:var(--text-primary); cursor:pointer; transition:background-color 120ms ease; }
-.nook-stats .nook-icon-button svg { width:18px; height:18px; }
-.nook-stats .nook-icon-button:hover:not(:disabled) { background:var(--bg-tertiary); }
-.nook-stats .nook-icon-button:disabled { color:var(--text-secondary); opacity:.4; cursor:default; }
 /* GitHub-style year of days: weeks run left to right, weekdays top to bottom. */
 .nook-calendar { display:grid; grid-template-columns:28px minmax(0,1fr); grid-template-rows:auto auto; gap:4px 6px; }
 .nook-cal-months { grid-column:2; display:grid; grid-template-columns:repeat(var(--weeks),minmax(0,1fr)); gap:3px; color:var(--text-secondary); font-size:11px; line-height:14px; white-space:nowrap; }

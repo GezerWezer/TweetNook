@@ -1,7 +1,7 @@
         <!-- HEADER: title, sync / analytics / settings, collection tabs (the tabs tuck away on scroll) -->
         <header data-video-occluder class="nook-header">
             <div class="nook-title-row">
-                <button x-cloak x-show="pageView !== 'list'" @click="goBack()" class="nook-icon-button nook-back" type="button" aria-label="Back to archive"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                <button x-cloak x-show="pageView !== 'list'" @click="goBack()" class="nook-icon-button is-lg nook-back" type="button" aria-label="Back to archive"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="m12.41 6-5 5H20v2H7.41l5 5L11 19.41 3.59 12 11 4.59z" />
 </svg></button>
                 <div class="nook-title-block">
@@ -13,24 +13,24 @@
                     <span x-show="pageView === 'list'" class="nook-sync" x-text="activityHeaderText()" :title="displayActivity?.summary || (lastSyncFormatted ? 'Last synced ' + lastSyncFormatted : null)"></span>
                 </div>
                 <div class="nook-utilities">
-                    <button x-cloak x-show="pageView === 'thread' && articleForTweet(threadData?.main)" type="button" class="article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M11.46 13.96 6.4 19H11v2H3v-8h2v4.59l5.04-5.05zM21 11h-2V6.41l-5.04 5.05-1.42-1.42L17.6 5H13V3h8z" /></svg><span class="article-focus-label">Focus mode</span></button>
-                    <button type="button" class="nook-icon-button nook-activity-button" @click="nookToggleActivity($data, $el)" aria-controls="nook-activity-drawer" :aria-expanded="activityDrawerOpen" :aria-label="(activity || activityStartPending) ? activityCommandLabel() + ', in progress' : 'Sync activity'" :title="(activity || activityStartPending) ? activityCommandLabel() + ' in progress' : 'Sync activity'"><span x-show="!(activity || activityStartPending)" class="nook-activity-glyph"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                    <button x-cloak x-show="pageView === 'thread' && articleForTweet(threadData?.main)" type="button" class="nook-icon-button is-quiet article-focus-toggle" @click.stop="openArticleFocus(threadData.main)" aria-label="Open article focus mode" title="Focus mode"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M11.46 13.96 6.4 19H11v2H3v-8h2v4.59l5.04-5.05zM21 11h-2V6.41l-5.04 5.05-1.42-1.42L17.6 5H13V3h8z" /></svg><span class="article-focus-label">Focus mode</span></button>
+                    <button type="button" class="nook-icon-button is-lg nook-activity-button" @click="nookToggleActivity($data, $el)" aria-controls="nook-activity-drawer" :aria-expanded="activityDrawerOpen" :aria-label="(activity || activityStartPending) ? activityCommandLabel() + ', in progress' : 'Sync activity'" :title="(activity || activityStartPending) ? activityCommandLabel() + ' in progress' : 'Sync activity'"><span x-show="!(activity || activityStartPending)" class="nook-activity-glyph"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <defs><mask id="nook-jobs-db-arrow-clearance" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect x="0" y="0" width="24" height="24" fill="white" /><g transform="translate(6 6)"><path d="m7.54 12.96 1.42-1.42L11 13.6V7h2v6.59l2.04-2.05 1.42 1.42L12 17.4z" fill="black" stroke="black" stroke-width="6" stroke-linejoin="round" stroke-linecap="round" /></g></mask></defs>
   <g mask="url(#nook-jobs-db-arrow-clearance)"><path d="M20.5 18c0 .78-.4 1.42-.9 1.9a6 6 0 0 1-1.93 1.15c-1.5.6-3.5.95-5.67.95s-4.17-.35-5.67-.95a6 6 0 0 1-1.93-1.16A2.6 2.6 0 0 1 3.5 18V5.5c0-.78.48-1.37.97-1.76.5-.4 1.17-.71 1.91-.96C7.86 2.28 9.85 2 12 2s4.14.29 5.62.78c.74.25 1.4.56 1.9.96s.98.98.98 1.76zm-2-3.83q-.4.2-.83.38c-1.5.6-3.5.95-5.67.95s-4.17-.35-5.67-.95a8 8 0 0 1-.83-.38V18c0 .05.02.2.28.44q.38.37 1.29.75c1.21.49 2.95.81 4.93.81s3.72-.32 4.93-.8q.91-.39 1.3-.76c.25-.24.27-.39.27-.44zm-13-2.67c0 .05.02.2.28.44q.38.37 1.29.75c1.21.49 2.95.81 4.93.81s3.72-.32 4.93-.8q.91-.39 1.3-.76c.25-.24.27-.39.27-.44V7.87a9 9 0 0 1-.88.35c-1.48.5-3.47.78-5.62.78s-4.14-.29-5.62-.78q-.46-.15-.88-.35zM12 4c-2 0-3.76.27-4.99.68q-.93.32-1.3.63l-.19.19q.03.06.19.19.37.3 1.3.63c1.23.4 3 .68 4.99.68s3.76-.27 4.99-.68q.93-.32 1.3-.63.16-.13.19-.19l-.19-.19q-.37-.3-1.3-.63c-1.23-.4-3-.68-4.99-.68" /></g>
   <g transform="translate(6 6)"><path d="m7.54 12.96 1.42-1.42L11 13.6V7h2v6.59l2.04-2.05 1.42 1.42L12 17.4z" /></g>
 </svg></span><span x-cloak x-show="activity || activityStartPending" class="nook-activity-spinner" aria-hidden="true"></span></button>
-                    <button type="button" class="nook-icon-button" @click="openStatsModal()" aria-label="Analytics" title="Analytics"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                    <button type="button" class="nook-icon-button is-lg" @click="openStatsModal()" aria-label="Analytics" title="Analytics"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M6 21H4V11h2zm4.66 0h-2V3h2zm4.67 0h-2v-7h2zM20 21h-2V8h2z" />
 </svg></button>
-                    <button type="button" class="nook-icon-button" @click="openSettings()" :aria-label="noticeCount ? `Settings, ${noticeCount} unread notifications` : 'Settings'" title="Settings"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                    <button type="button" class="nook-icon-button is-lg" @click="openSettings()" :aria-label="noticeCount ? `Settings, ${noticeCount} unread notifications` : 'Settings'" title="Settings"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="m13.46 1.75.3.45c.82 1.24 1.19 1.65 1.55 1.81.32.15.82.17 2.24-.15l.54-.13 2.17 2.17-.12.54c-.33 1.43-.3 1.92-.16 2.25.17.36.57.72 1.82 1.55l.45.3v2.92l-.45.3c-1.25.83-1.65 1.2-1.82 1.55-.14.33-.17.82.16 2.25l.12.54-2.17 2.17-.54-.13c-1.42-.32-1.92-.3-2.24-.15-.36.16-.73.57-1.56 1.81l-.3.45h-2.91l-.3-.45c-.83-1.24-1.2-1.65-1.56-1.81-.32-.15-.82-.17-2.24.15l-.54.13-2.17-2.17.12-.54c.33-1.43.3-1.92.16-2.25-.17-.36-.57-.72-1.82-1.55l-.44-.3v-2.92l.44-.3c1.25-.83 1.65-1.2 1.82-1.55.14-.33.17-.82-.16-2.25l-.12-.54L5.9 3.73l.54.13c1.42.32 1.92.3 2.24.15.36-.16.73-.57 1.56-1.81l.3-.45zm-1.86 2c-.63.93-1.25 1.7-2.09 2.08-.87.4-1.84.33-2.98.1l-.61.6c.23 1.14.3 2.11-.1 2.99-.38.84-1.14 1.45-2.07 2.09v.78c.93.64 1.7 1.25 2.08 2.1.4.87.32 1.84.09 2.97l.61.61c1.14-.23 2.1-.3 2.98.1.84.38 1.46 1.15 2.1 2.08h.78c.63-.93 1.25-1.7 2.09-2.08.88-.4 1.84-.33 2.98-.1l.61-.6c-.23-1.14-.3-2.11.1-2.99.38-.84 1.15-1.45 2.08-2.09v-.78c-.93-.64-1.7-1.25-2.09-2.1-.4-.87-.32-1.84-.09-2.97l-.61-.62c-1.14.24-2.1.31-2.98-.09-.84-.38-1.46-1.15-2.1-2.08zM14 12a2 2 0 1 0-4 0 2 2 0 0 0 4 0m2 0a4 4 0 1 1-8 0 4 4 0 0 1 8 0" />
 </svg><span x-cloak x-show="noticeCount" class="nook-notice-count" aria-hidden="true" x-text="noticeCount > 9 ? '9+' : noticeCount"></span></button>
                 </div>
             </div>
             <div x-show="pageView === 'list'" class="nook-tabs-frame" x-init="nookTabsInit($el)">
-                <nav class="nook-tabs" role="tablist" aria-label="Archive collection">
+                <nav class="nook-tabs is-fill" role="tablist" aria-label="Archive collection">
                     <template x-for="option in feedOptions('collection')" :key="option.value">
-                        <button type="button" role="tab" class="nook-tab" :id="'nook-tab-' + option.value" aria-controls="nook-feed" :aria-selected="collectionFilter === option.value" :tabindex="collectionFilter === option.value ? 0 : -1" @pointerenter="prefetchFeedTab(option.value)" @pointerdown="prefetchFeedTab(option.value)" @focus="prefetchFeedTab(option.value)" @click="selectFeedOption('collection', option.value); nookRevealTab($el)" @keydown="nookTabKey($event, $data)"><span x-text="option.label"></span></button>
+                        <button type="button" role="tab" class="nook-tab" :id="'nook-tab-' + option.value" aria-controls="nook-feed" :aria-selected="collectionFilter === option.value" :tabindex="collectionFilter === option.value ? 0 : -1" @pointerenter="prefetchFeedTab(option.value)" @pointerdown="prefetchFeedTab(option.value)" @focus="prefetchFeedTab(option.value)" @click="selectFeedOption('collection', option.value); nookRevealTab($el)" @keydown="nookTabKey($event, $data)"><span class="nook-tab-label" x-text="option.label"></span></button>
                     </template>
                 </nav>
             </div>
@@ -42,7 +42,7 @@
             <template x-if="!setupData?.archive?.upgrade_error">
                 <div>
                     <p class="text-sm text-[var(--text-secondary)] mt-2">Browsing becomes available when local initialization finishes.</p>
-                    <div class="flex gap-3 mt-4"><button class="setup-btn" @click="activityDrawerOpen = true">View activity</button><button class="setup-btn" @click="openSetup()">Open Setup</button></div>
+                    <div class="flex gap-3 mt-4"><button class="nook-button" @click="activityDrawerOpen = true">View activity</button><button class="nook-button" @click="openSetup()">Open Setup</button></div>
                 </div>
             </template>
         </section>
@@ -51,6 +51,6 @@
              class="px-4 py-3 border-b border-[var(--border-color)] bg-[color-mix(in_srgb,var(--accent-color)_12%,var(--bg-primary))] text-sm text-[var(--text-primary)]">
             <div class="font-semibold">Archive enrichment is incomplete</div>
             <div class="mt-1 text-[var(--text-secondary)]"><span x-text="archiveEnrichmentIncomplete.toLocaleString()"></span> tweets remain.</div>
-            <button type="button" class="setup-btn mt-3" :disabled="!!activity || activityStartPending" @click="startActivity('enrich')">Continue enrichment</button>
+            <button type="button" class="nook-button mt-3" :disabled="!!activity || activityStartPending" @click="startActivity('enrich')">Continue enrichment</button>
             <span x-show="activity && !activity?.title?.includes('enrich')" class="ml-2 text-[var(--text-secondary)]">Wait for the active task to finish.</span>
         </div>

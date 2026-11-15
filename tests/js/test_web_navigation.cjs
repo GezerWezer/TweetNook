@@ -949,7 +949,7 @@ test('a phone post slides as a layer over the feed, with its own header', () => 
     // outside the scroller, so it can stay put while the post slides.
     const bar = html.slice(html.indexOf('<!-- /detail-stage -->'), html.indexOf('<div x-ignore data-detail-snapshot'));
     assert.match(bar, /<header x-cloak x-show="detailLayer && detailLayerOpen" data-video-occluder class="nook-header detail-layer-header">/);
-    assert.match(bar, /@click="goBack\(\)" class="nook-icon-button nook-back" type="button" aria-label="Back"/);
+    assert.match(bar, /@click="goBack\(\)" class="nook-icon-button is-lg nook-back" type="button" aria-label="Back"/);
     assert.doesNotMatch(body, /detail-layer-header/);
     assert.match(css, /\.detail-layer-header\.nook-header \{ position: fixed;/);
     assert.match(body, /<!-- THREAD VIEW/);

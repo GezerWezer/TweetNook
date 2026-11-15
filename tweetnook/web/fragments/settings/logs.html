@@ -29,8 +29,8 @@
                                         <button type="button" class="is-warning" x-show="countOf('warning')" @click="jumpTo('warning')" x-text="plural(countOf('warning'), 'warning')"></button>
                                     </span>
                                     <span class="nook-log-actions">
-                                        <button type="button" class="nook-secondary-button" :disabled="!nookLogLines?.length" @click="copy()" x-text="copied ? 'Copied' : 'Copy'"></button>
-                                        <button type="button" class="nook-secondary-button" :disabled="!nookLogLines?.length" @click="download()">Download</button>
+                                        <button type="button" class="nook-button" :disabled="!nookLogLines?.length" @click="copy()" x-text="copied ? 'Copied' : 'Copy'"></button>
+                                        <button type="button" class="nook-button" :disabled="!nookLogLines?.length" @click="download()">Download</button>
                                     </span>
                                 </div>
 

@@ -6,17 +6,17 @@
             <div class="nook-sync-edge" aria-hidden="true"></div>
             <div class="nook-sync-anchor">
             <template x-if="dialogMounted('jobs', activityDrawerOpen || activityShadeProgress > 0)">
-            <section id="nook-activity-drawer" class="nook-sync-panel" x-cloak x-show="activityDrawerOpen" x-transition:leave="cs-leave" x-transition:leave-end="cs-leave-end" x-data="nookSyncPanel()" role="dialog" aria-label="Jobs" @keydown.escape="if (view !== 'main') { $event.stopPropagation(); back(); }">
+            <section id="nook-activity-drawer" class="nook-dialog is-floating nook-sync-panel" x-cloak x-show="activityDrawerOpen" x-transition:leave="cs-leave" x-transition:leave-end="cs-leave-end" x-data="nookSyncPanel()" role="dialog" aria-label="Jobs" @keydown.escape="if (view !== 'main') { $event.stopPropagation(); back(); }">
                 <div class="cs-grab" aria-hidden="true" @pointerdown="grab($event)"></div>
                 <div x-show="view === 'main'" class="cs-view" :class="view === 'main' && viewDir">
                     <div class="cs-top">
                         <div class="cs-head"><strong x-text="headTitle()"></strong><span class="cs-time" x-text="headTime()"></span></div>
-                        <div class="cs-tabs-frame" x-ref="stepTabsFrame" x-show="steps().length">
+                        <div class="nook-tabs-frame cs-tabs-frame" x-ref="stepTabsFrame" x-show="steps().length">
                             <button type="button" class="cs-tab-arrow is-start" tabindex="-1" aria-label="Earlier steps" @click="scrollTabs(-1)"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M17.41 12 10 19.41 8.59 18l6-6-6-6L10 4.59z" /></svg></button>
                             <button type="button" class="cs-tab-arrow is-end" tabindex="-1" aria-label="Later steps" @click="scrollTabs(1)"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M17.41 12 10 19.41 8.59 18l6-6-6-6L10 4.59z" /></svg></button>
-                            <div class="cs-tabs" x-ref="stepTabs" role="tablist" aria-label="Job steps" @scroll.passive="updateTabFades()">
+                            <div class="nook-tabs cs-tabs" x-ref="stepTabs" role="tablist" aria-label="Job steps" @scroll.passive="updateTabFades()">
                                 <template x-for="index in tabPages()" :key="index === null ? 'overview' : steps()[index].key">
-                                    <button type="button" role="tab" class="cs-step-tab" :class="index === null ? 'is-overview' : 'is-' + stepState(steps()[index])" :aria-label="index === null ? 'Overview, run summary' : steps()[index].title + ', ' + stepStateLabel(steps()[index])" :aria-selected="index === focusIndex()" :tabindex="index === focusIndex() ? 0 : -1" @click="pick(index)" @keydown="segKey($event, index)" x-text="tabLabel(index)"></button>
+                                    <button type="button" role="tab" class="nook-tab is-sm cs-step-tab" :class="index === null ? 'is-overview' : 'is-' + stepState(steps()[index])" :aria-label="index === null ? 'Overview, run summary' : steps()[index].title + ', ' + stepStateLabel(steps()[index])" :aria-selected="index === focusIndex()" :tabindex="index === focusIndex() ? 0 : -1" @click="pick(index)" @keydown="segKey($event, index)"><span class="nook-tab-label" x-text="tabLabel(index)"></span></button>
                                 </template>
                             </div>
                         </div>
@@ -47,7 +47,7 @@
                                         <span class="cs-grow cs-two"><span x-text="job.name"></span><span class="cs-sub" x-text="jobSub(job)" :title="jobSub(job)"></span></span>
                                         <span class="cs-job-next" x-text="jobNext(job)"></span>
                                     </button>
-                                    <button type="button" class="cs-job-act" :class="job.state === 'running' && 'is-danger'" :aria-label="jobActionLabel(job)" :title="jobActionLabel(job)" :disabled="jobActionDisabled(job)" @click="jobAction(job)"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="jobActionGlyph(job)"/></svg></button>
+                                    <button type="button" class="nook-icon-button is-sm is-quiet" :class="job.state === 'running' && 'is-danger'" :aria-label="jobActionLabel(job)" :title="jobActionLabel(job)" :disabled="jobActionDisabled(job)" @click="jobAction(job)"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="jobActionGlyph(job)"/></svg></button>
                                 </li>
                             </template>
                         </ul>
@@ -60,8 +60,8 @@
                                         <span class="cs-grow cs-two"><span x-text="job.name"></span><span class="cs-sub" x-text="jobSub(job)" :title="jobSub(job)"></span></span>
                                         <span class="cs-job-next" x-text="jobNext(job)"></span>
                                     </button>
-                                    <button type="button" class="cs-job-act" :aria-label="'Run options for ' + job.name" :title="'Run options for ' + job.name" @click="openOptions(job.key)"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="NOOK_JOB_ICONS.options"/></svg></button>
-                                    <button type="button" class="cs-job-act" :class="job.state === 'running' && 'is-danger'" :aria-label="jobActionLabel(job)" :title="jobActionLabel(job)" :disabled="jobActionDisabled(job)" @click="jobAction(job)"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="jobActionGlyph(job)"/></svg></button>
+                                    <button type="button" class="nook-icon-button is-sm is-quiet" :aria-label="'Run options for ' + job.name" :title="'Run options for ' + job.name" @click="openOptions(job.key)"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="NOOK_JOB_ICONS.options"/></svg></button>
+                                    <button type="button" class="nook-icon-button is-sm is-quiet" :class="job.state === 'running' && 'is-danger'" :aria-label="jobActionLabel(job)" :title="jobActionLabel(job)" :disabled="jobActionDisabled(job)" @click="jobAction(job)"><svg viewBox="0 0 24 24" aria-hidden="true"><path :d="jobActionGlyph(job)"/></svg></button>
                                 </li>
                             </template>
                         </ul>
@@ -72,7 +72,7 @@
                     </ul>
                 </div>
                 <div x-show="view === 'settings'" x-cloak class="cs-view" :class="view === 'settings' && viewDir">
-                    <div class="cs-subhead"><button type="button" class="cs-back" @click="back()" aria-label="Back" x-ref="settingsBack"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                    <div class="cs-subhead"><button type="button" class="nook-icon-button is-sm" @click="back()" aria-label="Back" x-ref="settingsBack"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="m12.41 6-5 5H20v2H7.41l5 5L11 19.41 3.59 12 11 4.59z" />
 </svg></button><span class="cs-two"><strong>Sync settings</strong><span class="cs-sub" x-text="running() ? 'Changes apply from the next sync' : 'Used by Sync now and scheduled syncs'"></span></span></div>
                     <div class="cs-label">When</div>
@@ -82,20 +82,20 @@
                     <div class="cs-label">What</div>
                     <ul class="cs-menu cs-flush cs-last" role="menu" aria-label="What to sync"><li><button type="button" role="menuitemcheckbox" class="cs-row cs-check" :aria-checked="nookSyncCollections.includes('bookmarks')" @click="nookToggleSyncCollection($data, 'bookmarks')"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M18.5 7c0-.72 0-1.2-.03-1.56a2 2 0 0 0-.13-.62 1.5 1.5 0 0 0-.66-.66c-.1-.05-.26-.1-.62-.13S16.22 4 15.5 4h-7c-.72 0-1.2 0-1.56.03s-.52.08-.62.13a1.5 1.5 0 0 0-.66.66c-.05.1-.1.26-.13.62-.03.37-.03.84-.03 1.56v11.33l6.5-3.46 6.5 3.46zm2 14.67L12 17.13l-8.5 4.54V7q-.01-1.03.04-1.72c.04-.48.12-.94.34-1.37a3.5 3.5 0 0 1 1.53-1.53c.43-.22.89-.3 1.37-.34q.7-.05 1.72-.04h7q1.02-.01 1.72.04c.48.04.94.12 1.37.34.66.34 1.2.87 1.53 1.53.22.43.3.89.34 1.37q.05.7.04 1.72z" />
-</svg><span class="cs-grow"><span class="cs-two"><span>Bookmarks</span><span class="cs-sub">Posts you’ve bookmarked</span></span></span><span class="cs-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+</svg><span class="cs-grow"><span class="cs-two"><span>Bookmarks</span><span class="cs-sub">Posts you’ve bookmarked</span></span></span><span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button></li><li><button type="button" role="menuitemcheckbox" class="cs-row cs-check" :aria-checked="nookSyncCollections.includes('likes')" @click="nookToggleSyncCollection($data, 'likes')"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M17.06 3a5.7 5.7 0 0 1 4.81 3.16c.94 1.9.89 4.36-.54 6.98-1.42 2.61-4.2 5.4-8.83 8.09l-.5.29-.5-.3c-4.62-2.68-7.4-5.47-8.83-8.08S1.2 8.05 2.13 6.16a5.7 5.7 0 0 1 4.8-3.15c1.75-.09 3.56.6 5.07 2.15a6.6 6.6 0 0 1 5.06-2.15m-.1 2c-1.3-.06-2.86.55-4.15 2.3L12 8.4l-.81-1.1C9.9 5.55 8.35 4.94 7.04 5a3.7 3.7 0 0 0-3.12 2.05c-.6 1.2-.67 2.97.5 5.14 1.15 2.1 3.47 4.53 7.58 7 4.1-2.47 6.43-4.9 7.57-7 1.18-2.17 1.1-3.94.5-5.14A3.7 3.7 0 0 0 16.98 5" />
-</svg><span class="cs-grow"><span class="cs-two"><span>Likes</span><span class="cs-sub">Posts you’ve liked</span></span></span><span class="cs-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+</svg><span class="cs-grow"><span class="cs-two"><span>Likes</span><span class="cs-sub">Posts you’ve liked</span></span></span><span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button></li><li><button type="button" role="menuitemcheckbox" class="cs-row cs-check" :aria-checked="nookSyncCollections.includes('tweets')" @click="nookToggleSyncCollection($data, 'tweets')"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M13.54 4.04a4.54 4.54 0 0 1 6.42 6.42l-8.73 8.72a5 5 0 0 1-3.08 1.45l-5.25.47.47-5.25a5 5 0 0 1 1.45-3.08zm-7.3 10.14a3 3 0 0 0-.87 1.85L5.1 18.9l2.87-.26a3 3 0 0 0 1.85-.86L16.59 11 13 7.4zm12.3-8.72a2.54 2.54 0 0 0-3.58 0L14.4 6 18 9.58l.54-.54c1-.99 1-2.6 0-3.58" />
-</svg><span class="cs-grow"><span class="cs-two"><span>Your tweets</span><span class="cs-sub">Posts you’ve written</span></span></span><span class="cs-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+</svg><span class="cs-grow"><span class="cs-two"><span>Your tweets</span><span class="cs-sub">Posts you’ve written</span></span></span><span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button></li></ul>
                 </div>
                 <div x-show="view === 'history'" x-cloak class="cs-view" :class="view === 'history' && viewDir">
-                    <div class="cs-subhead"><button type="button" class="cs-back" @click="back()" aria-label="Back" x-ref="historyBack"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="m12.41 6-5 5H20v2H7.41l5 5L11 19.41 3.59 12 11 4.59z" /></svg></button><span class="cs-two"><strong>Run history</strong><span class="cs-sub">All jobs, newest first</span></span></div>
+                    <div class="cs-subhead"><button type="button" class="nook-icon-button is-sm" @click="back()" aria-label="Back" x-ref="historyBack"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="m12.41 6-5 5H20v2H7.41l5 5L11 19.41 3.59 12 11 4.59z" /></svg></button><span class="cs-two"><strong>Run history</strong><span class="cs-sub">All jobs, newest first</span></span></div>
                     <ul class="cs-menu cs-flush cs-last cs-history">
                         <template x-for="run in history" :key="run.run_id">
                             <li><button type="button" class="cs-row" @click="openRunLog(run.run_id)" :aria-label="'Open the log for ' + runName(run) + ', ' + nookJobWhen(run.started_at)">
@@ -108,29 +108,29 @@
                     </ul>
                 </div>
                 <div x-show="view === 'options'" x-cloak class="cs-view" :class="view === 'options' && viewDir">
-                    <div class="cs-subhead"><button type="button" class="cs-back" @click="back()" aria-label="Back" x-ref="optionsBack"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="m12.41 6-5 5H20v2H7.41l5 5L11 19.41 3.59 12 11 4.59z" /></svg></button><span class="cs-two"><strong x-text="optJob()?.name"></strong><span class="cs-sub" x-text="optJob()?.description"></span></span></div>
+                    <div class="cs-subhead"><button type="button" class="nook-icon-button is-sm" @click="back()" aria-label="Back" x-ref="optionsBack"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="m12.41 6-5 5H20v2H7.41l5 5L11 19.41 3.59 12 11 4.59z" /></svg></button><span class="cs-two"><strong x-text="optJob()?.name"></strong><span class="cs-sub" x-text="optJob()?.description"></span></span></div>
                     <div class="cs-opts">
                         <template x-for="option in optJob()?.options || []" :key="optKey + option.key">
                             <div class="cs-opt" :class="{ 'is-danger': option.danger, 'is-off': optDisabled(option), 'is-stack': ['text', 'archive'].includes(option.kind) }">
                                 <span class="cs-opt-copy"><span class="cs-opt-label" :id="'cs-opt-' + option.key" x-text="option.label"></span><span class="cs-sub" x-text="option.help"></span></span>
                                 <template x-if="['flag', 'negflag', 'level'].includes(option.kind)">
-                                    <button type="button" role="switch" class="cs-switch" :aria-checked="String(Boolean(optValue(option)))" :aria-labelledby="'cs-opt-' + option.key" :disabled="optDisabled(option)" @click="optToggle(option)"></button>
+                                    <button type="button" role="switch" class="nook-switch-button" :aria-checked="String(Boolean(optValue(option)))" :aria-labelledby="'cs-opt-' + option.key" :disabled="optDisabled(option)" @click="optToggle(option)"><span class="nook-switch"></span></button>
                                 </template>
                                 <template x-if="option.kind === 'int'">
-                                    <label class="cs-opt-input is-num"><input type="number" inputmode="numeric" :min="option.minimum ?? 0" :value="optValue(option) ?? ''" placeholder="All" :aria-labelledby="'cs-opt-' + option.key" :disabled="optDisabled(option)" @input="optSet(option, $event.target.value)"><span class="cs-opt-unit" x-text="option.unit"></span></label>
+                                    <label class="nook-input is-number cs-opt-input"><input type="number" inputmode="numeric" :min="option.minimum ?? 0" :value="optValue(option) ?? ''" placeholder="All" :aria-labelledby="'cs-opt-' + option.key" :disabled="optDisabled(option)" @input="optSet(option, $event.target.value)"><span class="nook-input-affix" x-text="option.unit"></span></label>
                                 </template>
                                 <template x-if="option.kind === 'text'">
-                                    <label class="cs-opt-input is-wide"><input type="text" spellcheck="false" autocomplete="off" :value="optValue(option) ?? ''" :placeholder="option.placeholder" :aria-labelledby="'cs-opt-' + option.key" @input="optSet(option, $event.target.value)"></label>
+                                    <label class="nook-input is-block"><input type="text" spellcheck="false" autocomplete="off" :value="optValue(option) ?? ''" :placeholder="option.placeholder" :aria-labelledby="'cs-opt-' + option.key" @input="optSet(option, $event.target.value)"></label>
                                 </template>
                                 <template x-if="option.kind === 'archive'">
-                                    <div class="cs-opt-file"><span class="cs-opt-file-name" x-text="archiveLabel()"></span><button type="button" class="nook-secondary-button is-compact" :disabled="uploadPct !== null" @click="$refs.archiveInput.click()" x-text="archiveInfo?.uploaded ? 'Change' : 'Choose…'"></button><input type="file" accept=".zip,application/zip" hidden x-ref="archiveInput" @change="uploadArchive($event.target.files[0]); $event.target.value = ''"></div>
+                                    <div class="cs-opt-file"><span class="cs-opt-file-name" x-text="archiveLabel()"></span><button type="button" class="nook-button" :disabled="uploadPct !== null" @click="$refs.archiveInput.click()" x-text="archiveInfo?.uploaded ? 'Change' : 'Choose…'"></button><input type="file" accept=".zip,application/zip" hidden x-ref="archiveInput" @change="uploadArchive($event.target.files[0]); $event.target.value = ''"></div>
                                 </template>
                             </div>
                         </template>
                     </div>
                     <div class="cs-cli"><span class="cs-cli-k">Same as running</span><code x-text="optCommand()"></code></div>
                     <p class="cs-job-error" x-show="jobError && view === 'options'" x-text="jobError" role="alert"></p>
-                    <div class="cs-opt-foot"><span class="cs-sub" x-text="optNote()"></span><button type="button" class="cs-text-button" @click="optReset()">Reset</button><button type="button" class="cs-run" :disabled="optRunDisabled()" @click="runOptions()" x-text="optRunLabel()"></button></div>
+                    <div class="cs-opt-foot"><span class="cs-sub" x-text="optNote()"></span><button type="button" class="nook-button is-text" @click="optReset()">Reset</button><button type="button" class="nook-button is-primary" :disabled="optRunDisabled()" @click="runOptions()" x-text="optRunLabel()"></button></div>
                 </div>
             </section>
             </template>

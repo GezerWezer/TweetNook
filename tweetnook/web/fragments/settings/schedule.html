@@ -20,19 +20,19 @@
 
                                 <div class="nook-choice-row nook-schedule-master">
                                     <span><strong>Sync automatically</strong><span>Keeps your archive up to date. Needs internet access from the server; turn it off for local-only browsing.</span></span>
-                                    <button type="button" role="switch" class="nook-switch-button" aria-label="Sync automatically" :aria-checked="scheduleForm.enabled" @click="scheduleForm.enabled = !scheduleForm.enabled; scheduleFieldChanged()"><span class="nook-switch-track"><span></span></span></button>
+                                    <button type="button" role="switch" class="nook-switch-button" aria-label="Sync automatically" :aria-checked="scheduleForm.enabled" @click="scheduleForm.enabled = !scheduleForm.enabled; scheduleFieldChanged()"><span class="nook-switch"></span></button>
                                 </div>
 
                                 <section class="nook-setting-section nook-sync-what">
                                     <h3 id="nook-sync-what-title">What to sync</h3>
                                     <div role="group" aria-labelledby="nook-sync-what-title">
-                                        <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('bookmarks')" @click="nookToggleSyncCollection($data, 'bookmarks')"><span><strong>Bookmarks</strong><span>Posts you’ve bookmarked</span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                                        <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('bookmarks')" @click="nookToggleSyncCollection($data, 'bookmarks')"><span><strong>Bookmarks</strong><span>Posts you’ve bookmarked</span></span><span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button>
-                                        <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('likes')" @click="nookToggleSyncCollection($data, 'likes')"><span><strong>Likes</strong><span>Posts you’ve liked</span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                                        <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('likes')" @click="nookToggleSyncCollection($data, 'likes')"><span><strong>Likes</strong><span>Posts you’ve liked</span></span><span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button>
-                                        <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('tweets')" @click="nookToggleSyncCollection($data, 'tweets')"><span><strong>Your tweets</strong><span>Posts you’ve written</span></span><span class="nook-sync-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                                        <button type="button" role="checkbox" class="nook-choice-row nook-sync-choice" :aria-checked="nookSyncCollections.includes('tweets')" @click="nookToggleSyncCollection($data, 'tweets')"><span><strong>Your tweets</strong><span>Posts you’ve written</span></span><span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span></button>
                                     </div>
@@ -57,13 +57,13 @@
   <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
-                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                <div class="nook-popover nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
                     <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
                         <template x-for="(option, index) in filtered()" :key="option.value">
-                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                            <li class="nook-option" role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
-                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                                <span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
@@ -75,8 +75,8 @@
                                             <p class="nook-setting-help">Counted from when you save, then after each sync.</p>
                                         </div>
                                         <div class="nook-schedule-detail" x-show="scheduleForm.cadence === 'weekly'">
-                                            <span class="nook-field-label" id="nook-weekday-title">On</span>
-                                            <div class="nook-day-chips" role="radiogroup" aria-labelledby="nook-weekday-title">
+                                            <span class="nook-group-label" id="nook-weekday-title">On</span>
+                                            <div class="nook-segmented nook-segmented-full nook-day-chips" role="radiogroup" aria-labelledby="nook-weekday-title">
                                                 <template x-for="(day, index) in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']" :key="day">
                                                     <button type="button" role="radio" :aria-checked="scheduleForm.weekday === index" :aria-label="day" @click="scheduleForm.weekday = index; scheduleFieldChanged()" x-text="day.slice(0, 3)"></button>
                                                 </template>
@@ -93,13 +93,13 @@
   <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
-                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                <div class="nook-popover nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
                     <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
                         <template x-for="(option, index) in filtered()" :key="option.value">
-                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                            <li class="nook-option" role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
-                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                                <span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
@@ -125,13 +125,13 @@
   <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
-                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                <div class="nook-popover nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
                     <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
                         <template x-for="(option, index) in filtered()" :key="option.value">
-                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                            <li class="nook-option" role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
-                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                                <span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
@@ -151,13 +151,13 @@
   <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
-                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                <div class="nook-popover nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
                     <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
                         <template x-for="(option, index) in filtered()" :key="option.value">
-                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                            <li class="nook-option" role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
-                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                                <span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
@@ -182,17 +182,17 @@
   <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
-                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                <div class="nook-popover nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
                 <div class="nook-select-search" x-show="searchable">
-                    <input type="search" x-ref="search" x-model="query" :placeholder="placeholder" role="combobox" aria-autocomplete="list" :aria-expanded="open"
-                           :aria-controls="uid + '-list'" :aria-activedescendant="filtered().length ? uid + '-' + active : null" @input="active = 0" autocomplete="off" spellcheck="false">
+                    <label class="nook-search is-sm"><input type="search" x-ref="search" x-model="query" :placeholder="placeholder" role="combobox" aria-autocomplete="list" :aria-expanded="open"
+                           :aria-controls="uid + '-list'" :aria-activedescendant="filtered().length ? uid + '-' + active : null" @input="active = 0" autocomplete="off" spellcheck="false"></label>
                 </div>
                     <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
                         <template x-for="(option, index) in filtered()" :key="option.value">
-                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                            <li class="nook-option" role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
-                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                                <span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
@@ -208,7 +208,7 @@
                                     <section class="nook-setting-section" x-show="scheduleForm.cadence !== 'hours'">
                                         <div class="nook-choice-row">
                                             <span><strong>Vary the start time</strong><span>Each sync starts at a random moment after the time above, instead of the same minute every time.</span></span>
-                                            <button type="button" role="switch" class="nook-switch-button" aria-label="Vary the start time" :aria-checked="scheduleForm.randomize_time" @click="scheduleForm.randomize_time = !scheduleForm.randomize_time; scheduleFieldChanged()"><span class="nook-switch-track"><span></span></span></button>
+                                            <button type="button" role="switch" class="nook-switch-button" aria-label="Vary the start time" :aria-checked="scheduleForm.randomize_time" @click="scheduleForm.randomize_time = !scheduleForm.randomize_time; scheduleFieldChanged()"><span class="nook-switch"></span></button>
                                         </div>
                                         <div class="nook-delay-row" x-show="scheduleForm.randomize_time">
                                             <div class="nook-select" x-data="nookSelect({ label: 'Earliest', searchable: false, options: () => nookDelayOptions(scheduleForm.random_offset_min_hours), value: () => scheduleForm.random_offset_min_hours, choose: value => { scheduleForm.random_offset_min_hours = value; scheduleFieldChanged() } })"
@@ -221,13 +221,13 @@
   <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
-                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                <div class="nook-popover nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
                     <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
                         <template x-for="(option, index) in filtered()" :key="option.value">
-                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                            <li class="nook-option" role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
-                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                                <span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>
@@ -247,13 +247,13 @@
   <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg></span>
                 </button>
-                <div class="nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
+                <div class="nook-popover nook-select-menu" :class="{ 'is-up': up }" x-show="open" x-cloak x-transition.opacity.duration.100ms>
                     <ul role="listbox" :id="uid + '-list'" x-ref="list" tabindex="-1" :aria-label="label" :aria-activedescendant="!searchable && filtered().length ? uid + '-' + active : null">
                         <template x-for="(option, index) in filtered()" :key="option.value">
-                            <li role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
+                            <li class="nook-option" role="option" :id="uid + '-' + index" :aria-selected="isSelected(option)" :data-active="index === active" @click="pick(option)" @mousemove="active = index">
                                 <span class="nook-select-option" x-text="option.label"></span>
                                 <span class="nook-select-detail" x-show="option.detail" x-text="option.detail"></span>
-                                <span class="nook-select-check" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+                                <span class="nook-tick" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" />
 </svg></span>
                             </li>

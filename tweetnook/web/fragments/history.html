@@ -2,8 +2,8 @@
         <template x-if="dialogMounted('notes', notesOpen)">
         <div class="nook-td-layer" x-show="notesOpen" x-cloak
              @keydown.escape.window="notesOpen && closeNoteHistory()">
-            <div class="nook-td-backdrop" @click="closeNoteHistory()"></div>
-            <section class="nook-td nook-history" role="dialog" aria-modal="true" aria-labelledby="nook-notes-title">
+            <div class="nook-backdrop nook-td-backdrop" @click="closeNoteHistory()"></div>
+            <section class="nook-dialog nook-td nook-history" role="dialog" aria-modal="true" aria-labelledby="nook-notes-title">
                 <header class="nook-td-head">
                     <button type="button" class="nook-icon-button" @click="closeNoteHistory()" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M18.7 6.7 13.42 12l5.3 5.3-1.42 1.4-5.3-5.29-5.28 5.3-1.42-1.42L10.6 12 5.3 6.7l1.42-1.4L12 10.58l5.3-5.3z" />
@@ -53,8 +53,8 @@
         <template x-if="dialogMounted('history', historyOpen)">
         <div class="nook-td-layer" x-show="historyOpen" x-cloak
              @keydown.escape.window="historyOpen && closeTweetHistory()">
-            <div class="nook-td-backdrop" @click="closeTweetHistory()"></div>
-            <section class="nook-td nook-history nook-post-history" role="dialog" aria-modal="true" aria-labelledby="nook-history-title">
+            <div class="nook-backdrop nook-td-backdrop" @click="closeTweetHistory()"></div>
+            <section class="nook-dialog nook-td nook-history nook-post-history" role="dialog" aria-modal="true" aria-labelledby="nook-history-title">
                 <header class="nook-td-head">
                     <button type="button" class="nook-icon-button" @click="closeTweetHistory()" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M18.7 6.7 13.42 12l5.3 5.3-1.42 1.4-5.3-5.29-5.28 5.3-1.42-1.42L10.6 12 5.3 6.7l1.42-1.4L12 10.58l5.3-5.3z" />

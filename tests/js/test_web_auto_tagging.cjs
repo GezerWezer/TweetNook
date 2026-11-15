@@ -24,14 +24,16 @@ test('automated tagging has a dedicated conditional Settings page', () => {
     assert.match(automatedTaggingHtml, /<fieldset[^>]*:disabled="!automatedTagging\.enabled"/);
     assert.match(automatedTaggingHtml, /<input type="checkbox" role="switch" aria-label="Enable automated tagging" x-model="automatedTagging\.enabled"/);
     assert.match(automatedTaggingHtml, /<input type="checkbox" x-model="automatedTagging\.google_search"/);
-    assert.match(automatedTaggingHtml, /<select[^>]*x-model="automatedTagging\.model"/);
-    assert.match(automatedTaggingHtml, /<option[^>]*:value="model\.id"[^>]*x-text="model\.name"/);
+    // Dropdowns are the shared listbox (nookSelect), never native selects.
+    assert.doesNotMatch(automatedTaggingHtml, /<select\b/);
+    assert.match(automatedTaggingHtml, /x-data="nookSelect\(\{ label: 'Gemini model', searchable: true, options: \(\) => automatedTaggingModels\.map\(model => \(\{ value: model\.id, label: model\.name \}\)\), value: \(\) => automatedTagging\.model, choose: value => \{ automatedTagging\.model = value \} \}\)"/);
     assert.match(automatedTaggingHtml, /loadAutomatedTaggingModels\(true\)/);
     assert.match(automatedTaggingHtml, /automatedTagging\.thinking_level = level\.key/);
     assert.match(automatedTaggingHtml, /automatedTagging\.processing_tier = 'standard'/);
     assert.match(automatedTaggingHtml, /automatedTagging\.processing_tier = 'flex'/);
     assert.match(automatedTaggingHtml, /x-model="automatedTaggingSpendAmount"/);
-    assert.match(automatedTaggingHtml, /<select[^>]*x-model="automatedTaggingSpendPeriod"/);
+    assert.match(automatedTaggingHtml, /value: \(\) => automatedTaggingSpendPeriod, choose: value => \{ automatedTaggingSpendPeriod = value; setAutomatedTaggingSpendPeriod\(value\) \}/);
+    for (const period of ['day', 'week', 'month', 'year']) assert.ok(automatedTaggingHtml.includes(`{ value: '${period}', label: '`), period);
     assert.match(html, /x-model\.number="automatedTagging\.free_batch_size"/);
     assert.match(html, /x-model="automatedTaggingInstructionInput"/);
     assert.match(html, /addAutomatedTaggingInstruction\(\)/);
@@ -268,7 +270,9 @@ test('automated tagging saves uncertainty policies and exposes their controls', 
     ]) {
         assert.equal(submitted[field], values[field]);
         assert.equal(app.automatedTagging[field], values[field]);
-        assert.ok(html.includes(`automatedTagging.${field}"`));
+        const bound = html.includes(`x-model.number="automatedTagging.${field}"`)
+            || (html.includes(`value: () => automatedTagging.${field},`) && html.includes(`{ automatedTagging.${field} = value }`));
+        assert.ok(bound, field);
     }
     assert.ok(html.includes('actual charges may differ'));
     assert.ok(html.includes('Five is not a provider limit'));

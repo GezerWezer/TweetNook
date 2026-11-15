@@ -1,10 +1,10 @@
         <!-- Analytics dialog -->
         <div x-data="statsDialog()" x-show="showStatsModal"
              @keydown.window.escape="closeStatsModal()"
-             class="fixed inset-0 z-[100] bg-black/60 flex justify-center items-center p-4 md:p-6"
+             class="nook-backdrop fixed inset-0 z-[100] flex justify-center items-center p-4 md:p-6"
              x-cloak
              @click.self="closeStatsModal()">
-            <div role="dialog" aria-modal="true" aria-labelledby="nook-stats-title" class="nook-stats bg-[var(--bg-primary)] rounded-2xl w-full h-full md:h-[85vh] md:max-w-5xl flex flex-col overflow-hidden shadow-2xl relative border border-[var(--border-color)]">
+            <div role="dialog" aria-modal="true" aria-labelledby="nook-stats-title" class="nook-dialog nook-stats w-full h-full md:h-[85vh] md:max-w-5xl flex flex-col overflow-hidden relative">
 
         <div class="stats-modal-header">
             <div class="nook-stats-heading">
@@ -12,7 +12,7 @@
                 <span x-show="statsGeneratedAt" role="status" x-text="statsAgeLabel()"></span>
             </div>
             <div class="nook-stats-actions">
-                <button type="button" class="nook-secondary-button nook-refresh" @click="refreshStats()" :disabled="statsRefreshing || loadingStatsSnapshot">
+                <button type="button" class="nook-button nook-refresh" @click="refreshStats()" :disabled="statsRefreshing || loadingStatsSnapshot">
                     <span class="nook-refresh-icon" :class="statsRefreshing && 'is-spinning'" x-html="statsIcon('refresh')"></span>
                     <span class="sr-only" x-show="statsRefreshing">Refreshing analytics</span>
                     <span x-text="statsRefreshing ? 'Refreshing' : 'Refresh'"></span>
@@ -105,7 +105,7 @@
                         <div class="nook-section-head">
                             <h3 id="nook-stats-highlights" class="stats-section-title"><span class="nook-section-icon" x-html="statsIcon('sparkles')"></span>Highlights</h3>
                             <span class="nook-section-note">Fun facts from everything you've saved</span>
-                            <div class="nook-scope" role="radiogroup" aria-label="Posts counted in this section" x-show="insightHasConversations">
+                            <div class="nook-segmented nook-scope" role="radiogroup" aria-label="Posts counted in this section" x-show="insightHasConversations">
                                 <button type="button" role="radio" :aria-checked="!insightConversations" @click="setInsightConversations(false)">Saved</button>
                                 <button type="button" role="radio" :aria-checked="insightConversations" @click="setInsightConversations(true)">With conversations</button>
                             </div>
@@ -193,7 +193,7 @@
                                         <button type="button" role="radio" :aria-checked="insightSeries === option.id" :disabled="insightConversations" @click="selectInsightSeries(option.id)" x-text="option.label"></button>
                                     </template>
                                 </div>
-                                <div class="nook-scope" role="radiogroup" aria-label="Posts counted in this section" x-show="insightHasConversations">
+                                <div class="nook-segmented nook-scope" role="radiogroup" aria-label="Posts counted in this section" x-show="insightHasConversations">
                                 <button type="button" role="radio" :aria-checked="!insightConversations" @click="setInsightConversations(false)">Saved</button>
                                 <button type="button" role="radio" :aria-checked="insightConversations" @click="setInsightConversations(true)">With conversations</button>
                             </div>
@@ -221,9 +221,9 @@
                                         <div class="nook-cal-title">
                                             <div class="stats-label">Posting days</div>
                                             <div class="nook-year-stepper">
-                                                <button type="button" class="nook-icon-button" @click="stepInsightCalendar(-1)" :disabled="!insightCalendarCanStep(-1)" aria-label="Previous year with posts" x-html="statsIcon('chevronLeft')"></button>
+                                                <button type="button" class="nook-icon-button is-xs" @click="stepInsightCalendar(-1)" :disabled="!insightCalendarCanStep(-1)" aria-label="Previous year with posts" x-html="statsIcon('chevronLeft')"></button>
                                                 <span class="nook-year-current" aria-live="polite" x-text="insightCalendar.year"></span>
-                                                <button type="button" class="nook-icon-button" @click="stepInsightCalendar(1)" :disabled="!insightCalendarCanStep(1)" aria-label="Next year with posts" x-html="statsIcon('chevronRight')"></button>
+                                                <button type="button" class="nook-icon-button is-xs" @click="stepInsightCalendar(1)" :disabled="!insightCalendarCanStep(1)" aria-label="Next year with posts" x-html="statsIcon('chevronRight')"></button>
                                             </div>
                                         </div>
                                         <div class="stats-subtitle" x-text="insightCalendarSummary()"></div>
@@ -410,7 +410,7 @@
                             <h3 id="nook-stats-status" class="stats-section-title"><span class="nook-section-icon" x-html="statsIcon('shield')"></span>Archive status</h3>
                             <label class="nook-stats-switch">
                                 <span>Show all reasons</span>
-                                <button type="button" role="switch" class="nook-switch-button" :aria-checked="showEmptyUnavailableReasons" @click="showEmptyUnavailableReasons = !showEmptyUnavailableReasons"><span class="nook-switch-track"><span></span></span></button>
+                                <button type="button" role="switch" class="nook-switch-button" :aria-checked="showEmptyUnavailableReasons" @click="showEmptyUnavailableReasons = !showEmptyUnavailableReasons"><span class="nook-switch"></span></button>
                             </label>
                         </div>
 
@@ -553,7 +553,7 @@
                     <section class="nook-stats-section" aria-labelledby="nook-stats-tagging">
                         <div class="nook-section-head">
                             <h3 id="nook-stats-tagging" class="stats-section-title"><span class="nook-section-icon" x-html="statsIcon('tag')"></span>Tagging &amp; search</h3>
-                            <button type="button" class="nook-text-button" @click="nookManageTags($data)">Manage tags</button>
+                            <button type="button" class="nook-button is-text" @click="nookManageTags($data)">Manage tags</button>
                         </div>
 
                         <template x-if="loadingStatsTags">

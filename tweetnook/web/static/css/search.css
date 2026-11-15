@@ -2,7 +2,7 @@
 /* Rich Search Input Capsules */
 
 .rich-search-input {
-    outline: none !important; /* Managed by focus ring classes */
+    outline: none !important; /* The surrounding .nook-search draws focus. */
 }
 .rich-search-input:empty::before {
     content: attr(data-placeholder);

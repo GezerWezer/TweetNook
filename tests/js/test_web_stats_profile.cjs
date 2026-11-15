@@ -457,14 +457,14 @@ test('reply-recipient markup opens profile cards on every tweet surface', () => 
 
 test('sync, analytics, and settings live in the top bar on every screen size', () => {
     const html = pageHtml();
-    const utilities = html.slice(html.indexOf('<div class="nook-utilities">'), html.indexOf('<nav class="nook-tabs"'));
+    const utilities = html.slice(html.indexOf('<div class="nook-utilities">'), html.indexOf('<nav class="nook-tabs is-fill"'));
 
-    assert.match(utilities, /class="nook-icon-button nook-activity-button" @click="nookToggleActivity\(\$data, \$el\)" aria-controls="nook-activity-drawer"/);
+    assert.match(utilities, /class="nook-icon-button is-lg nook-activity-button" @click="nookToggleActivity\(\$data, \$el\)" aria-controls="nook-activity-drawer"/);
     assert.match(utilities, /@click="openStatsModal\(\)" aria-label="Analytics"/);
     assert.match(utilities, /@click="openSettings\(\)"/);
     assert.doesNotMatch(utilities, /hidden sm:flex/);
     assert.doesNotMatch(html, /<!-- Stats Button -->|<!-- Settings Button -->/);
-    assert.match(html, /<section id="nook-activity-drawer" class="nook-sync-panel"/);
+    assert.match(html, /<section id="nook-activity-drawer" class="nook-dialog is-floating nook-sync-panel"/);
 });
 
 run();

@@ -97,7 +97,7 @@ function nookTabsInit(frame) {
   });
   observer.observe(nav);
   // Text-size changes resize the labels without resizing the strip.
-  requestAnimationFrame(() => nav.querySelectorAll('.nook-tab span').forEach(label => observer.observe(label)));
+  requestAnimationFrame(() => nav.querySelectorAll('.nook-tab-label').forEach(label => observer.observe(label)));
 }
 
 // Sync panel. Runs inside the app scope, so activity, schedule, and actions are the app's own.

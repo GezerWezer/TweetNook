@@ -1,7 +1,7 @@
         <!-- LIST VIEW -->
         <div id="nook-feed" role="tabpanel" :aria-labelledby="'nook-tab-' + collectionFilter" x-show="archiveReady && !setupForced" :class="{ 'feed-collapsed': pageView !== 'list' }" :aria-hidden="viewMode !== 'list' ? 'true' : null" data-feed-stage class="pb-4">
             <div class="nook-search-wrap relative" x-data="searchAutocomplete()" @click.away="showDropdown = false">
-                <div class="nook-search-field relative w-full">
+                <div class="nook-search nook-search-field">
                     <span class="nook-search-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M10.75 1.75a9 9 0 0 1 7.03 14.62l4.43 4.42-1.42 1.42-4.42-4.43a9 9 0 1 1-5.62-16.03m0 2a7 7 0 1 0 0 14 7 7 0 0 0 0-14" />
 </svg></span>
@@ -26,22 +26,22 @@
                          role="searchbox" aria-label="Search your archive" data-placeholder="Search your archive"
                          aria-controls="nook-suggest" :aria-expanded="String(showDropdown && (options.length > 0 || !!emptyNote))"
                          :aria-activedescendant="showDropdown && options.length && !options[0].isDatePicker ? 'nook-suggest-' + selectedIndex : null" 
-                         class="nook-search-input rich-search-input w-full bg-[var(--field-bg)] text-[var(--text-primary)] rounded-full py-2 pl-4 pr-10 focus:outline-none focus:ring-1 focus:ring-[var(--accent-color)] border border-[var(--input-border)] whitespace-pre-wrap overflow-hidden block min-h-[38px] leading-relaxed"></div>
-                    <button type="button" aria-label="Clear search" x-show="searchQuery" @click="clearSearch()" class="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-[var(--text-secondary)] rounded-full hover:bg-[var(--text-primary)] transition z-10">
-                        <svg viewBox="0 0 24 24" class="w-3 h-3 fill-[var(--bg-primary)]" fill="currentColor"><path d="M17.7 7.7 13.42 12l4.3 4.3-1.42 1.4-4.3-4.28-4.3 4.3-1.4-1.42 4.28-4.3-4.3-4.3L7.7 6.3l4.3 4.28 4.3-4.3z" /></svg>
+                         class="nook-search-input rich-search-input"></div>
+                    <button type="button" aria-label="Clear search" x-show="searchQuery" @click="clearSearch()" class="nook-search-clear">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.7 7.7 13.42 12l4.3 4.3-1.42 1.4-4.3-4.28-4.3 4.3-1.4-1.42 4.28-4.3-4.3-4.3L7.7 6.3l4.3 4.28 4.3-4.3z" /></svg>
                     </button>
                 </div>
                 
                 <div x-ref="dropdownMenu" id="nook-suggest" role="listbox" aria-label="Search suggestions"
                      x-show="showDropdown && (options.length > 0 || emptyNote)" x-transition.opacity.duration.100ms
-                     :class="options[0]?.isDatePicker && 'is-calendar'" class="nook-suggest">
+                     :class="options[0]?.isDatePicker && 'is-calendar'" class="nook-popover nook-suggest">
                     <template x-for="(opt, index) in options" :key="index">
                         <div :id="opt.isDatePicker ? null : 'nook-suggest-' + index"
                              :role="opt.isDatePicker ? null : 'option'"
                              :aria-selected="opt.isDatePicker ? null : String(selectedIndex === index)"
                              @click="!opt.isDatePicker && selectOptionIndex(index)"
                              @mouseenter="!opt.isDatePicker && (selectedIndex = index)"
-                             :class="opt.isDatePicker ? 'nook-suggest-calendar' : (opt.isAuthor ? 'nook-suggest-row is-person' : 'nook-suggest-row')">
+                             :class="opt.isDatePicker ? 'nook-suggest-calendar' : ['nook-option nook-suggest-row', opt.isAuthor && 'is-person', selectedIndex === index && 'is-active'].filter(Boolean).join(' ')">
                             <template x-if="opt.glyph">
                                 <span class="nook-suggest-glyph" x-html="suggestionGlyph(opt.glyph)"></span>
                             </template>
@@ -124,11 +124,11 @@
   <path d="M17.91 11 12 16.91 6.09 11 7.5 9.59l4.5 4.5 4.5-4.5z" />
 </svg>
                         </button>
-                        <div x-cloak x-show="feedMenu === 'sort'" x-transition.opacity.duration.100ms class="feed-picker-menu nook-sort-menu" id="feed-menu-sort" data-feed-menu="sort" role="menu" aria-labelledby="feed-trigger-sort" @keydown.tab="closeFeedMenu()">
+                        <div x-cloak x-show="feedMenu === 'sort'" x-transition.opacity.duration.100ms class="nook-popover feed-picker-menu nook-sort-menu" id="feed-menu-sort" data-feed-menu="sort" role="menu" aria-labelledby="feed-trigger-sort" @keydown.tab="closeFeedMenu()">
                             <template x-for="(option, index) in feedOptions('sort')" :key="option.value">
-                                <button type="button" class="feed-picker-option" role="menuitemradio" tabindex="-1" :aria-checked="sortOrder === option.value" @click="selectFeedOption('sort', option.value)" @keydown.arrow-down.prevent="focusFeedOption('sort', index + 1)" @keydown.arrow-up.prevent="focusFeedOption('sort', index - 1)" @keydown.home.prevent="focusFeedOption('sort', 0)" @keydown.end.prevent="focusFeedOption('sort', feedOptions('sort').length - 1)">
+                                <button type="button" class="nook-option feed-picker-option" role="menuitemradio" tabindex="-1" :aria-checked="sortOrder === option.value" @click="selectFeedOption('sort', option.value)" @keydown.arrow-down.prevent="focusFeedOption('sort', index + 1)" @keydown.arrow-up.prevent="focusFeedOption('sort', index - 1)" @keydown.home.prevent="focusFeedOption('sort', 0)" @keydown.end.prevent="focusFeedOption('sort', feedOptions('sort').length - 1)">
                                     <span x-text="option.label"></span>
-                                    <svg viewBox="0 0 24 24" aria-hidden="true" :class="{ 'is-selected': sortOrder === option.value }" fill="currentColor"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg>
+                                    <span class="nook-tick" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 6.32 9.64 18.95 4.1 14.1l1.32-1.5 3.95 3.46L17.82 5.1z" /></svg></span>
                                 </button>
                             </template>
                         </div>
@@ -157,32 +157,32 @@
                 <div x-show="tweetMenuOpen === listMenu.key" x-cloak
                      x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
                      x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
-                     class="absolute z-50 w-56 origin-top-right overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--dropdown-bg)] shadow-2xl"
+                     class="absolute z-50 w-56 origin-top-right nook-popover overflow-hidden"
                      :style="{ top: listMenu.top + 'px', right: listMenu.right + 'px' }"
                      role="menu"
                      @click.outside="closeTweetMenu(listMenu.key)" @keydown.escape.window="closeTweetMenu(listMenu.key)">
                     <button type="button" role="menuitem" @click.stop="openTagModal(listMenu.tweet.tweet_id, listMenu.tweet.media_tags)"
-                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                            class="nook-option">
                         <svg class="w-5 h-5 flex-shrink-0"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4" /><path d="M7.04 2a3.5 3.5 0 0 0-2.48 1.03L3.03 4.56A3.5 3.5 0 0 0 2 7.04v4.92c0 .93.37 1.82 1.03 2.48l6.43 6.44a5 5 0 0 0 7.08 0l4.34-4.34a5 5 0 0 0 0-7.08l-6.44-6.43A3.5 3.5 0 0 0 11.96 2zm4.92 2q.62.01 1.07.44l6.43 6.44a3 3 0 0 1 0 4.24l-4.34 4.34a3 3 0 0 1-4.24 0l-6.44-6.43A1.5 1.5 0 0 1 4 11.96V7.04q.01-.62.44-1.07l1.53-1.53A1.5 1.5 0 0 1 7.04 4z" /></svg>
                         <span>Tags</span>
                     </button>
                     <button type="button" role="menuitem" @click.stop="copyRawTweet(listMenu.tweet)"
-                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                            class="nook-option">
                         <svg class="w-5 h-5 flex-shrink-0"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="m15.45 4.3-5 16-1.9-.6 5-16zM6.78 7.63 3.28 12l3.5 4.38-1.56 1.25L.72 12l4.5-5.62zM23.28 12l-4.5 5.63-1.56-1.25 3.5-4.38-3.5-4.37 1.56-1.25z" /></svg>
                         <span>Copy raw</span>
                     </button>
                     <button type="button" role="menuitem" @click.stop="openTweetHistory(listMenu.key.slice('list:'.length))"
-                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                            class="nook-option">
                         <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5a9.5 9.5 0 1 1-9.43 10.62l1.98-.24A7.5 7.5 0 1 0 6.41 7H9.5v2h-6V3h2v2.07A9.5 9.5 0 0 1 12 2.5"/><path d="m13 11.59 3.2 3.2-1.4 1.42-3.8-3.8V8h2z"/></svg>
                         <span>History</span>
                     </button>
                     <button type="button" role="menuitem" x-show="hasNoteHistory(listMenu.tweet)" @click.stop="openNoteHistory(listMenu.key.slice('list:'.length))"
-                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                            class="nook-option">
                         <svg class="w-5 h-5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a6 6 0 0 1 6 6v2H6v-2a6 6 0 0 1 6-6m-6.24 1A8 8 0 0 0 4 18v1H0v-1a5 5 0 0 1 5-5zM19 13a5 5 0 0 1 5 5v1h-4v-1c0-1.9-.66-3.63-1.76-5zM4.25 5.5a3 3 0 1 1 0 6 3 3 0 0 1 0-6m15.5 0a3 3 0 1 1 0 6 3 3 0 0 1 0-6M12 3.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7" /></svg>
                         <span>Community notes</span>
                     </button>
                     <button type="button" role="menuitem" @click.stop="setTweetHidden(listMenu.key.slice('list:'.length), !listMenu.hidden)"
-                            class="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] font-bold text-[var(--text-primary)] hover:bg-[var(--hover-bg)]">
+                            class="nook-option">
                         <svg class="w-5 h-5 flex-shrink-0" x-show="!listMenu.hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 16.63c1.14-1.4 2-2.96 2.67-4.63l-.02-.06q-.91-2.34-2.44-4.3l-1.43 1.42A16 16 0 0 1 20.91 12q-.12.3-.37.79c-.37.7-.93 1.64-1.7 2.58C17.33 17.25 15.09 19 12 19q-1.29-.01-2.38-.37l-1.55 1.54A10 10 0 0 0 12 21c3.92 0 6.68-2.25 8.4-4.37M2.7 22.7l20-20-1.4-1.4-3.57 3.55A10 10 0 0 0 12 3C8.08 3 5.32 5.25 3.6 7.37A17 17 0 0 0 .93 12a17 17 0 0 0 3.8 5.86L1.28 21.3zM12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79a16 16 0 0 0 2.68 3.66l2.41-2.42a4 4 0 0 1 5.48-5.48L16.3 6.3A8 8 0 0 0 12 5m0 5a2 2 0 0 0-1.93 2.52l2.45-2.45A2 2 0 0 0 12 10" /></svg>
                         <svg class="w-5 h-5 flex-shrink-0" x-show="listMenu.hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"><path d="M20.4 7.37C18.68 5.25 15.92 3 12 3S5.32 5.25 3.6 7.37a18 18 0 0 0-2.5 4.17l-.02.07v.02l-.02.02-.13.35.13.35v.01l.02.03.03.07a11 11 0 0 0 .58 1.25c.41.8 1.04 1.86 1.9 2.92C5.33 18.75 8.09 21 12 21s6.68-2.25 8.4-4.37a18 18 0 0 0 2.5-4.17l.02-.07.01-.03.14-.36-.13-.35v-.01l-.02-.03-.03-.07a11 11 0 0 0-.58-1.25c-.41-.8-1.04-1.86-1.9-2.92M12 5C8.92 5 6.68 6.75 5.15 8.63A16 16 0 0 0 3.08 12l.38.79c.37.7.93 1.64 1.7 2.58C6.67 17.25 8.91 19 12 19s5.32-1.75 6.85-3.63A16 16 0 0 0 20.9 12q-.12-.3-.37-.79a16 16 0 0 0-1.7-2.58C17.33 6.75 15.09 5 12 5" /><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0m-2 0a2 2 0 1 0-4 0 2 2 0 0 0 4 0" /></svg>
                         <span x-text="listMenu.hidden ? 'Unhide' : 'Hide'"></span>

@@ -592,8 +592,8 @@ test('Settings and Setup stay above an expanded activity drawer', () => {
     const settingsCss = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/settings.css'), 'utf8');
     const zIndex = (css, selector) => Number(css.match(new RegExp(`${selector.replace('.', '\\.')}\\s*\\{[^}]*z-index:\\s*(\\d+)`))?.[1]);
 
-    assert.match(html, /class="settings-modal-backdrop nook-settings-backdrop"/);
-    assert.match(html, /class="settings-modal-backdrop fixed inset-0 z-\[100\]/);
+    assert.match(html, /class="nook-backdrop nook-settings-backdrop"/);
+    assert.match(html, /class="nook-backdrop settings-modal-backdrop fixed inset-0 z-\[100\]/);
     assert.equal(zIndex(settingsCss, '.nook-settings-backdrop'), 100);
     assert.ok(zIndex(headerCss, '.nook-sync-panel') < 100);
 });

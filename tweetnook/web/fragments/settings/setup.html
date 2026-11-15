@@ -28,8 +28,8 @@
                                     </div>
                                 </div>
                                 <div class="flex flex-wrap gap-3 pt-2">
-                                    <button class="setup-btn is-primary" @click="rerunSetup()" :disabled="isDemo">Run setup again</button>
-                                    <button class="setup-btn" x-show="setupData.archive.pending_enrichment > 0 && !activity" @click="startActivity('enrich')">Retry enrichment</button>
+                                    <button class="nook-button is-primary" @click="rerunSetup()" :disabled="isDemo">Run setup again</button>
+                                    <button class="nook-button" x-show="setupData.archive.pending_enrichment > 0 && !activity" @click="startActivity('enrich')">Retry enrichment</button>
                                 </div>
                             </div>
                         </template>

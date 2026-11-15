@@ -535,8 +535,11 @@ test('Settings hidden checkboxes stay anchored inside the modal', () => {
         const beforeInput = settingsHtml.slice(Math.max(0, inputAt - 300), inputAt);
         const anchorAt = Math.max(beforeInput.lastIndexOf('<label'), beforeInput.lastIndexOf('<span'), beforeInput.lastIndexOf('<div'));
         const anchor = beforeInput.slice(anchorAt);
-        assert.match(anchor, /class="[^"]*\brelative\b[^"]*"/, `${model} needs a positioned ancestor`);
+        // .nook-checkbox is positioned by controls.css.
+        assert.match(anchor, /class="[^"]*\b(relative|nook-checkbox)\b[^"]*"/, `${model} needs a positioned ancestor`);
     }
+    const controls = fs.readFileSync(path.join(ROOT, 'tweetnook', 'web', 'static', 'css', 'controls.css'), 'utf8');
+    assert.match(controls, /\.nook-checkbox \{\s*position: relative;/);
 });
 
 test('offline fonts use local families, permission-based discovery, and no stylesheets', async () => {

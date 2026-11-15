@@ -1,0 +1,802 @@
+/* Shared controls. Every button in the app is one of these, so a theme
+   restyles all of them through the --button-* tokens (themes.js) instead of
+   chasing each feature's own class. Feature stylesheets may place and size a
+   control, but not recolour it. */
+
+/* Text buttons: .nook-button is the outlined secondary action; add
+   .is-primary for the main action of a view, .is-danger for an irreversible
+   one, and .is-text for a borderless accent action. Sizes: .is-sm (32px),
+   the default (36px) and .is-lg (44px, dialog footers); .is-block fills the
+   row. */
+.nook-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 64px;
+    min-height: 36px;
+    padding: 0 16px;
+    border: 1px solid var(--button-border);
+    border-radius: var(--radius-full);
+    background: var(--button-bg);
+    color: var(--button-text);
+    font: inherit;
+    font-size: 14px;
+    line-height: 16px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.nook-button:hover:not(:disabled) {
+    background: var(--button-hover-bg);
+}
+.nook-button.is-primary {
+    border-color: transparent;
+    background: var(--button-primary-bg);
+    color: var(--button-primary-text);
+}
+.nook-button.is-primary:hover:not(:disabled) {
+    background: var(--button-primary-hover-bg);
+}
+.nook-button.is-danger {
+    border-color: transparent;
+    background: var(--destructive-color);
+    color: var(--destructive-text);
+}
+.nook-button.is-danger:hover:not(:disabled) {
+    background: var(--destructive-hover);
+}
+.nook-button.is-text {
+    min-width: 0;
+    padding: 0 12px;
+    border-color: transparent;
+    background: transparent;
+    color: var(--accent-color);
+}
+.nook-button.is-text:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+}
+.nook-button.is-sm {
+    min-height: 32px;
+    padding: 0 12px;
+    font-size: 13px;
+}
+.nook-button.is-lg {
+    min-height: 44px;
+    padding: 0 24px;
+    font-size: 15px;
+    line-height: 20px;
+}
+.nook-button.is-block {
+    width: 100%;
+}
+.nook-button:disabled,
+.nook-button[aria-disabled="true"] {
+    opacity: .5;
+    cursor: default;
+}
+.nook-button:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
+/* Icon buttons: round, label-less, 36px by default; .is-lg (44px) in top
+   bars, .is-sm (32px) in dense panels, .is-xs (28px) inline with text.
+   .is-quiet mutes the glyph until hover, .is-action is the feed's accent
+   hover (the tweet "more" button), and .is-danger marks a removal. */
+.nook-icon-button {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.nook-icon-button svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+.nook-icon-button:hover:not(:disabled) {
+    background: var(--button-hover-bg);
+}
+.nook-icon-button.is-lg { width: 44px; height: 44px; }
+.nook-icon-button.is-sm { width: 32px; height: 32px; }
+.nook-icon-button.is-xs { width: 28px; height: 28px; }
+.nook-icon-button.is-sm svg { width: 18px; height: 18px; }
+.nook-icon-button.is-xs svg { width: 16px; height: 16px; }
+.nook-icon-button.is-quiet {
+    color: var(--text-secondary);
+}
+.nook-icon-button.is-quiet:hover:not(:disabled) {
+    color: var(--text-primary);
+}
+.nook-icon-button.is-action {
+    color: var(--text-secondary);
+}
+.nook-icon-button.is-action:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    color: var(--accent-color);
+}
+.nook-icon-button.is-danger,
+.nook-icon-button.is-danger:hover:not(:disabled) {
+    color: var(--destructive-color);
+}
+.nook-icon-button.is-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--destructive-color) 10%, transparent);
+}
+.nook-icon-button:disabled {
+    opacity: .4;
+    cursor: default;
+}
+.nook-icon-button:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -2px;
+}
+
+/* Segmented control: a track of mutually exclusive options. The chosen one is
+   aria-checked in a radiogroup or aria-pressed in a button group.
+   .nook-segmented-full stretches it across the row with equal options. */
+.nook-segmented {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: var(--radius-full);
+    background: var(--bg-secondary);
+}
+.nook-segmented button {
+    min-height: 32px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.nook-segmented button:hover {
+    color: var(--text-primary);
+}
+.nook-segmented button:is([aria-checked="true"], [aria-pressed="true"]) {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    box-shadow: 0 1px 3px rgba(15, 20, 25, .12), 0 0 0 1px var(--border-color);
+}
+.nook-segmented button:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+.nook-segmented-full {
+    display: flex;
+    width: 100%;
+}
+.nook-segmented-full button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 4px;
+}
+.nook-segmented.is-disabled { opacity: .45; }
+.nook-segmented.is-disabled button { cursor: default; }
+
+/* Switch: .nook-switch is the track and draws its own thumb. It is on when
+   it or its button is aria-checked, when it follows a checked input (a
+   visually hidden checkbox in a label), or with .is-on. .nook-switch-button
+   gives a switch drawn inside it a 44px touch target. */
+.nook-switch-button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    height: 44px;
+    padding: 2px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+.nook-switch-button:disabled {
+    cursor: default;
+}
+.nook-switch-button:disabled .nook-switch {
+    opacity: .5;
+}
+.nook-switch-button:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+.nook-switch {
+    position: relative;
+    display: inline-block;
+    flex: none;
+    width: 40px;
+    height: 20px;
+    border-radius: var(--radius-full);
+    background: var(--text-secondary);
+    transition: background-color 120ms;
+}
+.nook-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--bg-primary);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
+    transition: transform 120ms;
+}
+.nook-switch.is-on,
+[aria-checked="true"] > .nook-switch,
+input:checked + .nook-switch {
+    background: var(--accent-color);
+}
+.nook-switch.is-on::after,
+[aria-checked="true"] > .nook-switch::after,
+input:checked + .nook-switch::after {
+    transform: translateX(20px);
+    background: var(--accent-text);
+}
+@media (prefers-reduced-motion: reduce) {
+    .nook-switch, .nook-switch::after { transition: none; }
+}
+
+/* Checkbox: a native checkbox laid invisibly over a drawn box, so clicks,
+   keyboard and form state stay native. Markup:
+   <span class="nook-checkbox"><input type="checkbox"><svg>tick</svg></span>
+   Without the input it is only the mark, checked when its parent is
+   aria-checked (a row button with role="checkbox"). */
+.nook-checkbox {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--text-secondary);
+    border-radius: min(4px, var(--radius-md));
+    color: transparent;
+}
+.nook-checkbox input {
+    position: absolute;
+    inset: -2px;
+    width: calc(100% + 4px);
+    height: calc(100% + 4px);
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+.nook-checkbox svg {
+    width: 100%;
+    height: 100%;
+    fill: currentColor;
+    pointer-events: none;
+}
+.nook-checkbox:has(input:checked),
+[aria-checked="true"] > .nook-checkbox {
+    border-color: var(--accent-color);
+    background: var(--accent-color);
+    color: var(--accent-text);
+}
+.nook-checkbox:has(input:focus-visible) {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+.nook-checkbox:has(input:disabled) {
+    opacity: .5;
+}
+.nook-checkbox:has(input:disabled) input {
+    cursor: default;
+}
+
+/* Radio: the mark of a choice row (a button with role="radio"), filled
+   when the row is aria-checked. It draws its own dot. */
+.nook-radio {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--text-secondary);
+    border-radius: 50%;
+}
+.nook-radio::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    transform: scale(0);
+    transition: transform 120ms;
+}
+[aria-checked="true"] > .nook-radio,
+input:checked + .nook-radio {
+    border-color: var(--accent-color);
+}
+[aria-checked="true"] > .nook-radio::after,
+input:checked + .nook-radio::after {
+    transform: scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+    .nook-radio::after { transition: none; }
+}
+
+/* Tick: marks the chosen rows of a list or menu (multi-select rows, listbox
+   options). Hidden until its row is checked or selected. */
+.nook-tick {
+    display: flex;
+    flex: none;
+    width: 20px;
+    color: var(--accent-color);
+    visibility: hidden;
+}
+.nook-tick svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+[aria-checked="true"] .nook-tick,
+[aria-selected="true"] .nook-tick,
+.nook-tick.is-on {
+    visibility: visible;
+}
+
+/* Popover: the floating surface of every menu, listbox and suggestion list.
+   The feature sheet positions and sizes it; the surface comes from
+   --popover-bg and --popover-shadow. */
+.nook-popover {
+    border-radius: var(--radius-lg);
+    background: var(--popover-bg);
+    color: var(--text-primary);
+    box-shadow: var(--popover-shadow);
+}
+
+/* Option: one row of a popover. Menu items are bold, as X draws them;
+   listbox options stay regular and mark the chosen one with a .nook-tick.
+   The highlighted row is the hovered or focused one, or the one a listbox
+   or combobox marks with data-active / .is-active while the keyboard moves. */
+.nook-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 16px;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 15px;
+    line-height: 20px;
+    text-align: left;
+    cursor: pointer;
+}
+.nook-option:is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]) {
+    font-weight: 700;
+}
+.nook-option:is(button, a):hover,
+.nook-option:focus-visible,
+.nook-option[data-active="true"],
+.nook-option.is-active {
+    background: var(--option-active-bg);
+    outline: none;
+}
+.nook-option.is-danger {
+    color: var(--destructive-color);
+}
+
+/* Dialogs: .nook-backdrop dims the page behind a modal and .nook-dialog is
+   the window on it, from --backdrop-bg, --dialog-bg and --dialog-shadow. The
+   feature sheet sizes and places both. .is-floating is a non-modal panel
+   over the page (the jobs drawer), lifted like a popover; .is-fullscreen-mobile
+   drops the corners where the dialog fills a phone screen. */
+.nook-backdrop {
+    background: var(--backdrop-bg);
+}
+.nook-dialog {
+    border-radius: var(--radius-xl);
+    background: var(--dialog-bg);
+    color: var(--text-primary);
+    box-shadow: var(--dialog-shadow);
+}
+.nook-dialog.is-floating {
+    box-shadow: var(--popover-shadow);
+}
+@media (max-width: 767px) {
+    .nook-dialog.is-fullscreen-mobile { border-radius: 0; }
+}
+
+/* Text fields. A typed value sits in one of these boxes:
+   - .nook-field: a labelled box with the label inside, above the value, as
+     the dropdown trigger draws it (Setup, the tag editor, settings forms).
+     Markup: .nook-field > .nook-field-body > .nook-field-label + input, with
+     optional trailing icon buttons after the body.
+   - .nook-input: a compact one-line box for a value inside a settings row,
+     with optional .nook-input-affix text ($, units) before or after the
+     input. .is-number right-aligns digits, .is-block fills the row and
+     .is-tokens lets .nook-token chips wrap in front of the input.
+   - .nook-search: the pill for search queries, with a leading
+     .nook-search-icon and an optional .nook-search-clear button.
+   The boxes take the surface they sit on; a bevelled theme sinks them. */
+.nook-field,
+.nook-input {
+    border: 1px solid var(--input-border);
+    border-radius: min(4px, var(--radius-md));
+    background: transparent;
+    color: var(--text-primary);
+    cursor: text;
+}
+.nook-field:hover,
+.nook-input:hover {
+    border-color: color-mix(in srgb, var(--text-secondary) 60%, var(--input-border));
+}
+.nook-field:focus-within,
+.nook-input:focus-within {
+    border-color: var(--accent-color);
+    box-shadow: inset 0 0 0 1px var(--accent-color);
+}
+.nook-field.is-invalid,
+.nook-input.is-invalid {
+    border-color: var(--destructive-color);
+    box-shadow: inset 0 0 0 1px var(--destructive-color);
+}
+/* A disabled field is dimmed by the fieldset or row that disables it. */
+:is(.nook-field, .nook-input):has(:disabled) {
+    cursor: default;
+}
+.nook-field :is(input, textarea),
+.nook-input input,
+.nook-search :is(input, [contenteditable]) {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    -moz-appearance: textfield;
+}
+:is(.nook-field, .nook-input, .nook-search) :is(input, textarea)::placeholder {
+    color: var(--text-secondary);
+}
+:is(.nook-field, .nook-input) input::-webkit-inner-spin-button,
+:is(.nook-field, .nook-input) input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.nook-field {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 58px;
+    padding: 8px 8px 6px 12px;
+}
+.nook-field-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+.nook-field-label {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 16px;
+    cursor: inherit;
+}
+.nook-field:focus-within .nook-field-label {
+    color: var(--accent-color);
+}
+.nook-field.is-invalid .nook-field-label {
+    color: var(--destructive-color);
+}
+.nook-field :is(input, textarea) {
+    width: 100%;
+    padding-top: 2px;
+    font-size: 17px;
+    line-height: 24px;
+}
+.nook-field textarea {
+    resize: none;
+}
+
+.nook-input {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 10px;
+}
+.nook-input input {
+    flex: 1;
+    width: 100%;
+    font-size: 15px;
+    line-height: 20px;
+}
+.nook-input.is-number input {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.nook-input.is-block {
+    display: flex;
+    width: 100%;
+}
+.nook-input.is-tokens {
+    flex-wrap: wrap;
+    padding: 4px;
+}
+.nook-input.is-tokens input {
+    flex: 1 1 120px;
+    min-height: 30px;
+    padding: 0 6px;
+}
+.nook-input-affix {
+    flex: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+/* A prefix such as a currency sign reads as part of the value, so it takes
+   the value's size; a trailing unit stays small. */
+.nook-input-affix:has(+ input) {
+    font-size: 15px;
+}
+
+/* Token: one removable value in a field, such as a tag being added. */
+.nook-token {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 32px;
+    padding-left: 12px;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+    color: var(--accent-color);
+    font-size: 14px;
+    line-height: 16px;
+    font-weight: 600;
+}
+.nook-token > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.nook-token button {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: 0 2px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: none;
+    color: inherit;
+    cursor: pointer;
+}
+.nook-token button:hover {
+    background: color-mix(in srgb, var(--accent-color) 20%, transparent);
+}
+.nook-token button:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -1px;
+}
+.nook-token svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+.nook-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
+    background: var(--field-bg);
+    color: var(--text-secondary);
+}
+.nook-search:focus-within {
+    border-color: var(--accent-color);
+    background: var(--bg-primary);
+    box-shadow: 0 0 0 1px var(--accent-color);
+    color: var(--accent-color);
+}
+.nook-search.is-sm {
+    min-height: 40px;
+    padding: 0 14px;
+}
+.nook-search-icon {
+    display: flex;
+    flex: none;
+    pointer-events: none;
+}
+.nook-search-icon svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+.nook-search input {
+    flex: 1;
+    font-size: 15px;
+}
+.nook-search input::-webkit-search-cancel-button {
+    cursor: pointer;
+}
+/* The clear button is a small filled disc, so it reads as part of the field
+   rather than another toolbar action. */
+.nook-search-clear {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-right: -4px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    color: var(--bg-primary);
+    cursor: pointer;
+}
+.nook-search-clear:hover {
+    background: var(--text-primary);
+}
+.nook-search-clear:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+.nook-search-clear svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+}
+
+/* Tabs: .nook-tabs is a role="tablist" strip that scrolls sideways when its
+   tabs don't fit; .is-fill shares the width equally. A .nook-tab holds its
+   text in a .nook-tab-label; the selected tab (aria-selected) gets an accent
+   bar under the label, so the bar keeps the label's width in a wide column.
+   The tab's own ::before is free for a feature (the jobs panel's status
+   dots). .is-sm is the 40px tab of dense panels. Wrap a strip in .nook-tabs-frame
+   and toggle .is-clipped-start / .is-clipped-end on the frame to fade the
+   edge where tabs are cut off. */
+.nook-tabs {
+    position: relative;
+    display: flex;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+}
+.nook-tabs::-webkit-scrollbar { display: none; }
+.nook-tabs.is-fill {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(max-content, 1fr);
+}
+.nook-tab {
+    --tab-pad: 16px;
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    height: 53px;
+    padding: 0 var(--tab-pad);
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: var(--font-size-base);
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 120ms;
+}
+.nook-tab:hover {
+    background: var(--button-hover-bg);
+}
+.nook-tab[aria-selected="true"] {
+    color: var(--selected-text);
+    font-weight: 700;
+}
+.nook-tab-label {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+.nook-tab[aria-selected="true"] .nook-tab-label::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 100%;
+    min-width: 32px;
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: var(--accent-color);
+    transform: translateX(-50%);
+}
+.nook-tab:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: -3px;
+}
+.nook-tab.is-sm {
+    --tab-pad: 10px;
+    height: 40px;
+    font-size: 14px;
+}
+.nook-tabs-frame {
+    position: relative;
+}
+.nook-tabs-frame::before,
+.nook-tabs-frame::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    width: 32px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+.nook-tabs-frame::before { left: 0; background: linear-gradient(to left, transparent, var(--bg-primary)); }
+.nook-tabs-frame::after { right: 0; background: linear-gradient(to right, transparent, var(--bg-primary)); }
+.nook-tabs-frame.is-clipped-start::before,
+.nook-tabs-frame.is-clipped-end::after { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+    .nook-tab, .nook-tabs-frame::before, .nook-tabs-frame::after { transition: none; }
+}
+
+/* Dropdown: the listbox trigger and menu that nookSelect (settings.js) drives.
+   The trigger is a labelled field showing the current value; .is-wide fills
+   the row, .is-compact is a one-line field without the label. Options are
+   .nook-option rows in a .nook-popover. */
+.nook-select { position:relative; min-width:0; }
+.nook-select.is-wide { width:100%; }
+.nook-select-trigger { display:grid; grid-template-columns:minmax(0,1fr) 20px; grid-template-rows:auto auto; align-items:center; column-gap:8px; width:100%; min-height:56px; padding:7px 12px; border:1px solid var(--input-border); border-radius:4px; background:var(--bg-primary); color:var(--text-primary); text-align:left; cursor:pointer; }
+.nook-select-trigger:hover { border-color:color-mix(in srgb,var(--text-secondary) 60%,var(--input-border)); }
+.nook-select-trigger[aria-expanded="true"],.nook-select-trigger:focus-visible { border-color:var(--accent-color); box-shadow:0 0 0 1px var(--accent-color); outline:none!important; }
+.nook-select-label { grid-column:1; color:var(--text-secondary); font-size:13px; line-height:16px; }
+.nook-select-trigger[aria-expanded="true"] .nook-select-label { color:var(--accent-color); }
+.nook-select-value { grid-column:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:17px; line-height:24px; }
+.nook-select-chevron { grid-column:2; grid-row:1 / span 2; display:flex; color:var(--text-secondary); }
+.nook-select-chevron svg { width:20px; height:20px; transition:transform 120ms ease; }
+.nook-select-trigger[aria-expanded="true"] .nook-select-chevron svg { transform:rotate(180deg); }
+fieldset:disabled .nook-select-trigger { cursor:default; }
+.nook-select-menu { position:absolute; z-index:20; top:calc(100% + 4px); left:0; min-width:100%; width:max-content; max-width:min(360px,calc(100vw - 32px)); overflow:hidden; }
+.nook-select.is-wide .nook-select-menu { width:100%; max-width:none; }
+.nook-select-menu.is-up { top:auto; bottom:calc(100% + 4px); }
+.nook-select-search { padding:8px; border-bottom:1px solid var(--border-color); }
+.nook-select-menu ul { max-height:264px; overflow-y:auto; overscroll-behavior:contain; margin:0; padding:4px 0; list-style:none; outline:none; }
+.nook-select-option { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nook-select-menu li[aria-selected="true"] .nook-select-option { font-weight:700; }
+.nook-select-detail { color:var(--text-secondary); font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.nook-select-empty { padding:12px 16px; color:var(--text-secondary); font-size:14px; }
+.nook-select.is-compact { flex:0 0 128px; }
+.nook-select.is-compact .nook-select-trigger { min-height:40px; padding:0 10px; grid-template-rows:auto; }
+.nook-select.is-compact .nook-select-label { display:none; }
+.nook-select.is-compact .nook-select-value { font-size:15px; line-height:20px; }
+.nook-select.is-compact .nook-select-chevron { grid-row:1; }
+.nook-select.is-compact .nook-select-chevron svg { width:18px; height:18px; }
+.nook-select.is-compact .nook-select-menu { left:auto; right:0; }

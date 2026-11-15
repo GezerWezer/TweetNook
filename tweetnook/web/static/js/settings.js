@@ -350,7 +350,7 @@ function nookTagsPage() {
       this.returnFocus = this.menuTrigger;
       this.closeMenu(false);
       this.confirmDelete = name;
-      this.$nextTick(() => requestAnimationFrame(() => document.querySelector('.nook-tags-page .nook-confirm .nook-secondary-button')?.focus()));
+      this.$nextTick(() => requestAnimationFrame(() => document.querySelector('.nook-tags-page .nook-confirm .nook-button:not(.is-danger)')?.focus()));
     },
     async deleteTag() {
       const name = this.confirmDelete;

@@ -70,13 +70,63 @@ test('header tabs ignore overscroll and a page shrinking under a reader at the e
     assert.equal(hidden(), false);
 });
 
-test('unchecked square checkboxes use thinner outlines while checked states retain weight', () => {
+test('checkboxes use the shared drawn box over a native input', () => {
     const html = pageHtml();
-    assert.equal(
-        (html.match(/class="flex h-6 w-6 items-center justify-center rounded-lg border-2 transition"/g) || []).length,
-        1,
-    );
-    assert.equal((html.match(/text-white border-\[3px\]'/g) || []).length, 1);
+    // Automated tagging's Google Search and Setup's three replay options.
+    const boxes = html.match(/<span class="nook-checkbox"><input type="checkbox"[^>]*><svg viewBox="0 0 24 24" aria-hidden="true">/g) || [];
+    assert.equal(boxes.length, 4);
+    assert.doesNotMatch(html, /<input type="checkbox"(?![^>]*\bsr-only\b)(?![^>]*role="switch")[^>]*>(?!<svg)/);
+    const controls = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/controls.css'), 'utf8');
+    assert.match(controls, /\.nook-checkbox:has\(input:checked\),\n\[aria-checked="true"\] > \.nook-checkbox \{[^}]*background: var\(--accent-color\);/);
+    // A row button with role="checkbox" carries the mark without an input.
+    assert.match(html, /:role="selecting \? 'checkbox' : null"[^>]*>\s*<span class="nook-checkbox" x-show="selecting" aria-hidden="true">/);
+});
+
+test('choice rows mark the chosen option with the shared radio', () => {
+    const html = pageHtml();
+    // Desktop layout's two rows and the merge sheet's tag-to-keep rows.
+    const rows = html.match(/role="radio" class="nook-choice-row"[\s\S]*?<\/button>/g) || [];
+    assert.equal(rows.length, 3);
+    for (const row of rows) assert.match(row, /<span class="nook-radio" aria-hidden="true"><\/span>\s*<\/button>$/);
+    const controls = fs.readFileSync(path.join(ROOT, 'tweetnook/web/static/css/controls.css'), 'utf8');
+    assert.match(controls, /\[aria-checked="true"\] > \.nook-radio::after,\ninput:checked \+ \.nook-radio::after \{\n    transform: scale\(1\);/);
+});
+
+test('typed values sit in a shared field box', () => {
+    // Walk the page's tags with a stack of the open elements' classes, so each
+    // text input can be checked against its ancestors.
+    const html = pageHtml().replace(/<!--[\s\S]*?-->/g, '');
+    const VOID = new Set(['input', 'img', 'br', 'hr', 'meta', 'link', 'source', 'track', 'wbr', 'col', 'area', 'base', 'embed', 'param']);
+    const BOXES = /\bnook-(?:field|input|search)\b/;
+    const NOT_TYPED = /\btype="(?:checkbox|radio|range|file|hidden|color)"/;
+    const stack = [];
+    const loose = [];
+    for (const match of html.matchAll(/<(\/?)([a-zA-Z][\w-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/g)) {
+        const [tag, closing, rawName, attrs] = match;
+        const name = rawName.toLowerCase();
+        if (closing) {
+            const at = stack.map(entry => entry.name).lastIndexOf(name);
+            if (at >= 0) stack.length = at;
+            continue;
+        }
+        const typed = (name === 'input' && !NOT_TYPED.test(attrs) && !/\bsr-only\b/.test(attrs))
+            || name === 'textarea' || /\bcontenteditable="true"/.test(attrs);
+        if (typed && !stack.some(entry => BOXES.test(entry.cls))) loose.push(tag.slice(0, 120));
+        if (!VOID.has(name) && !tag.endsWith('/>')) stack.push({ name, cls: (/\bclass="([^"]*)"/.exec(attrs) || [])[1] || '' });
+    }
+    assert.deepEqual(loose, []);
+});
+
+test('tab strips use the shared tab with its label span', () => {
+    const html = pageHtml();
+    const tabs = html.match(/<button[^>]*role="tab"[\s\S]*?<\/button>/g) || [];
+    // Feed collections, Setup's browser help and the jobs panel's steps.
+    assert.equal(tabs.length, 3);
+    for (const tab of tabs) {
+        assert.match(tab, /class="nook-tab[ "]/);
+        assert.match(tab, /<span class="nook-tab-label"/);
+    }
+    for (const list of html.match(/<[a-z]+ [^>]*role="tablist"[^>]*>/g) || []) assert.match(list, /class="nook-tabs[ "]/);
 });
 
 test('packaged page loads only same-origin runtime assets', () => {

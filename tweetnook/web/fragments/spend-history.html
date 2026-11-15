@@ -1,15 +1,15 @@
         <!-- Automated Tagging Spend History Modal -->
         <div x-show="showSettingsModal && showAutomatedTaggingSpendModal"
-             class="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-0 md:p-6"
+             class="nook-backdrop fixed inset-0 z-[130] flex items-center justify-center p-0 md:p-6"
              x-cloak
              role="dialog"
              aria-modal="true"
              aria-labelledby="automated-tagging-spend-title"
              @click.self="closeAutomatedTaggingSpendHistory()">
-            <div class="flex h-full w-full flex-col overflow-hidden bg-[var(--bg-primary)] shadow-2xl md:h-[88vh] md:max-w-5xl md:rounded-2xl md:border md:border-[var(--border-color)]">
+            <div class="nook-dialog is-fullscreen-mobile flex h-full w-full flex-col overflow-hidden md:h-[88vh] md:max-w-5xl">
                 <div class="stats-modal-header">
                     <h2 id="automated-tagging-spend-title" class="stats-modal-title">Spend history</h2>
-                    <button type="button" x-ref="automatedTaggingSpendClose" @click="closeAutomatedTaggingSpendHistory()" class="rounded-full p-2 text-[var(--text-secondary)] hover-bg hover:text-[var(--text-primary)]" aria-label="Close spend history">
+                    <button type="button" x-ref="automatedTaggingSpendClose" @click="closeAutomatedTaggingSpendHistory()" class="nook-icon-button is-quiet" aria-label="Close spend history">
                         <svg viewBox="0 0 24 24" class="h-5 w-5 fill-current" aria-hidden="true" fill="currentColor"><path d="M18.7 6.7 13.42 12l5.3 5.3-1.42 1.4-5.3-5.29-5.28 5.3-1.42-1.42L10.6 12 5.3 6.7l1.42-1.4L12 10.58l5.3-5.3z" /></svg>
                     </button>
                 </div>
@@ -19,7 +19,7 @@
                     <div>
                         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                             <h3 class="stats-section-title">Pricing overview</h3>
-                            <div class="flex items-center gap-2" role="group" aria-label="Spend history range">
+                            <div class="nook-segmented" role="group" aria-label="Spend history range">
                                 <template x-for="range in [
                                     {key: '7d', label: '7D'},
                                     {key: '30d', label: '30D'},
@@ -30,8 +30,6 @@
                                     <button type="button"
                                             @click="automatedTaggingSpendRange = range.key"
                                             :aria-pressed="automatedTaggingSpendRange === range.key"
-                                            :class="automatedTaggingSpendRange === range.key ? 'border-[var(--accent-color)] bg-[var(--accent-color)] text-[var(--accent-text)]' : 'border-[var(--border-color)] text-[var(--text-primary)] hover:bg-[var(--hover-bg)]'"
-                                            class="min-w-11 rounded-full border px-3 py-1.5 text-xs font-bold"
                                             x-text="range.label"></button>
                                 </template>
                             </div>

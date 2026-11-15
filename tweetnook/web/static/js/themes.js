@@ -155,6 +155,15 @@ function _generateTheme(seed) {
         '--edge-light':            _surface(bg, muted, dark ? 16 : 8),
         '--edge-dark':             _surface(bg, muted, dark ? -8 : -24),
         '--font-ui':               seed.font || SYSTEM_FONT,
+        // Buttons (controls.css). Secondary buttons are outlined on whatever
+        // they sit on; the primary fill derives from the theme's own text.
+        '--button-bg':             'transparent',
+        '--button-primary-hover-bg': 'color-mix(in srgb, var(--button-primary-bg) 88%, var(--bg-primary))',
+        // Menus and listboxes (controls.css): X's soft halo.
+        '--popover-shadow':        '0 0 15px 0 rgba(101, 119, 134, .2), 0 0 3px 1px rgba(101, 119, 134, .15)',
+        // Dialogs sit on a dimmed page with no shadow of their own, as X's do.
+        '--backdrop-bg':           'rgba(91, 112, 131, .4)',
+        '--dialog-shadow':         'none',
         ...SHAPES[seed.shape || 'rounded'],
     };
     // Plain properties, not CSS variables; paintTheme sets the attribute.
@@ -165,7 +174,14 @@ function _generateTheme(seed) {
     // Roles a theme can separate from broader ones. Unless overridden, each
     // follows the variable its elements used before they had their own role,
     // after that variable's own override.
-    const roles = { '--field-bg': '--bg-secondary', '--heading-color': '--text-primary', '--selected-text': '--text-primary' };
+    // The primary button is X's inverted fill; a theme that wants an accent
+    // button sets --button-primary-bg and --button-primary-text.
+    const roles = {
+        '--field-bg': '--bg-secondary', '--heading-color': '--text-primary', '--selected-text': '--text-primary',
+        '--button-primary-bg': '--text-primary', '--button-primary-text': '--bg-primary',
+        '--button-text': '--text-primary', '--button-border': '--input-border', '--button-hover-bg': '--bg-tertiary',
+        '--popover-bg': '--dropdown-bg', '--option-active-bg': '--bg-tertiary', '--dialog-bg': '--bg-primary',
+    };
     for (const [role, base] of Object.entries(roles)) {
         if (!(seed.overrides && role in seed.overrides)) vars[role] = vars[base];
     }
@@ -301,6 +317,18 @@ const THEME_SEEDS = {
             '--edge-dark': '#282e22',
             '--heading-color': '#dccd62',
             '--selected-text': '#dccd62',
+            // Buttons are raised panels, not fills; the bevel draws the edge
+            // and hover lights the label instead of the face.
+            '--button-primary-bg': '#4c5844',
+            '--button-primary-text': '#d8ded3',
+            '--button-primary-hover-bg': '#4c5844',
+            '--button-bg': '#4c5844',
+            '--button-hover-bg': '#4c5844',
+            // Menus are raised windows with a hard drop, not a soft halo.
+            '--popover-shadow': '0 2px 0 rgba(0, 0, 0, .25)',
+            '--dialog-shadow': '0 2px 0 rgba(0, 0, 0, .25)',
+            // X's blue-grey dimming turns the olive cold; dim it neutrally.
+            '--backdrop-bg': 'rgba(0, 0, 0, .45)',
             // Yellow darkened toward the bg loses contrast; hover brightens it.
             '--accent-hover': '#d9ca66',
             '--accent-text': '#282e22',

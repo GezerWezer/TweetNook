@@ -11,14 +11,14 @@
                             <span class="avatar-initial" x-text="profileCard?.initial"></span>
                             <img :src="avatarUrl(profileCard?.id)" @load="avatarLoaded($el)" @error="avatarFailed($el)" class="avatar-image absolute inset-0 w-full h-full object-cover z-10" loading="lazy">
                         </div>
-                        <button class="bg-[var(--text-primary)] text-[var(--bg-primary)] px-4 py-1.5 rounded-full font-bold text-[15px] hover:opacity-90 transition"
+                        <button class="nook-button is-primary"
                                 @click="searchFrom(profileCard?.username); closeProfileCard()">
                             Search
                         </button>
                     </div>
                     <template x-if="profileCard?.snapshots?.length > 1">
                         <div class="flex items-center justify-between mb-2 text-[13px] text-[var(--text-secondary)]">
-                            <button type="button" class="p-1 rounded-full hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            <button type="button" class="nook-icon-button is-xs is-quiet"
                                     aria-label="Older profile capture" title="Older profile capture"
                                     :disabled="profileCard?.snapshotIndex >= profileCard?.snapshots?.length - 1"
                                     @click="showProfileSnapshot(profileCard?.snapshotIndex + 1)">
@@ -28,7 +28,7 @@
                                 Fetched <span x-text="formatRelativeDate(profileCard?.syncDate)"></span>
                                 · <span x-text="profileCard?.snapshots?.length - profileCard?.snapshotIndex"></span> of <span x-text="profileCard?.snapshots?.length"></span>
                             </span>
-                            <button type="button" class="p-1 rounded-full hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            <button type="button" class="nook-icon-button is-xs is-quiet"
                                     aria-label="Newer profile capture" title="Newer profile capture"
                                     :disabled="profileCard?.snapshotIndex <= 0"
                                     @click="showProfileSnapshot(profileCard?.snapshotIndex - 1)">
