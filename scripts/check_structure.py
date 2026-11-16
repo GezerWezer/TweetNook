@@ -45,8 +45,8 @@ SIZE_EXCLUDED = (
 # exempted, so it can shrink but not grow; split the file instead of raising the number.
 SIZE_EXEMPT: dict[str, int] = {}
 
-# config belongs to core but stays a top-level module: install.sh imports it by name.
-CORE = {"core", "config"}
+# config stays top-level for install.sh. The package version is shared metadata.
+CORE = {"core", "config", "__version__"}
 STORAGE = {"storage"}
 # Talking to X and running jobs: every feature uses these, and they use no feature.
 SERVICES = {"auth", "client", "query_ids", "jobs"}

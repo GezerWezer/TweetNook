@@ -438,12 +438,6 @@ class EnrichmentMixin(ChecksMixin, ObjectsMixin):
             (now,),
         )
 
-    def count_incomplete_initial_enrichment(self) -> int:
-        return self._count(
-            f"record_type = '{RecordType.TWEET_OBJECT}' "
-            "AND (enrichment_state = 'pending' OR enrichment_state = 'transient_failure')"
-        )
-
     def enrichment_status_counts(self) -> dict[str, int]:
         return {
             "pending_initial_enrichment": self.count_pending_initial_enrichment(),

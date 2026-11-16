@@ -29,12 +29,14 @@ def _config() -> AppConfig:
 @router.get("")
 def list_jobs(_auth: Annotated[bool, Depends(verify_credentials)]) -> dict[str, Any]:
     paths = server_state.get("paths")
+    if paths is None:
+        raise HTTPException(status_code=503, detail="The job service is not initialized.")
     supervisor = server_state.get("job_supervisor")
     manager = server_state.get("schedule_manager")
     coordinator = server_state.get("setup_coordinator")
     payload = jobs_payload(
         config=_config(),
-        data_dir=getattr(paths, "data_dir", None),
+        data_dir=paths.data_dir,
         active=read_active_snapshot(),
         queue=getattr(supervisor, "queue", []) if supervisor is not None else [],
         schedule=manager.status() if manager is not None else {},

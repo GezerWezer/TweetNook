@@ -100,6 +100,12 @@ class StatsMixin(SyncStateMixin, RelationsMixin):
             "sync_state": self._count(f"record_type = '{RecordType.SYNC_STATE}'"),
         }
 
+    def count_incomplete_initial_enrichment(self) -> int:
+        return self._count(
+            f"record_type = '{RecordType.TWEET_OBJECT}' "
+            "AND (enrichment_state = 'pending' OR enrichment_state = 'transient_failure')"
+        )
+
     def archive_stats(
         self, max_linked_depth: int = 1, *, include_dates: bool = True
     ) -> ArchiveStats:
