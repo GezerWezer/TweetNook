@@ -878,7 +878,7 @@ function nookSyncPanel() {
       this.mobileSheet = nookJobsSheet(this.$root, this);
       this.lastActiveStep = this.activity?.steps?.find(step => step.state === 'active')?.key || null;
       // Follow each newly active step, while allowing inspection of other steps between transitions.
-      this.$watch('activityDrawerOpen', open => {
+      const opened = open => {
         this.mobileSheet.sync();
         clearInterval(this.jobsTimer);
         if (!open) return;
@@ -887,7 +887,10 @@ function nookSyncPanel() {
         // Times and queue positions drift while the panel stays open.
         this.jobsTimer = setInterval(() => this.loadJobs(), 30000);
         this.$nextTick(() => this.revealStepTab());
-      });
+      };
+      this.$watch('activityDrawerOpen', opened);
+      // The panel mounts on first open, after the change the watcher would have seen.
+      if (this.activityDrawerOpen) opened(true);
       // A job starting or finishing changes every row.
       this.$watch('activity?.run_id', () => { if (this.activityDrawerOpen) this.loadJobs(); });
       this.$watch('activity', (now, before) => {
