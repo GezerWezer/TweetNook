@@ -452,10 +452,7 @@ def test_run_server_sets_state_and_invokes_uvicorn(monkeypatch, tmp_path: Path) 
     config = AppConfig()
     run_calls: list[tuple[object, dict[str, object]]] = []
 
-    monkeypatch.setattr(
-        "uvicorn.run",
-        lambda app, **kwargs: run_calls.append((app, kwargs)),
-    )
+    monkeypatch.setattr(server, "serve", lambda app, **kwargs: run_calls.append((app, kwargs)))
 
     server.run_server(config, paths, "127.0.0.2", 9123, "hash")
 

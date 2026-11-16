@@ -33,7 +33,7 @@ def test_configured_host_has_one_listener_and_display_contract(
         lambda family: "192.168.1.42" if family == socket.AF_INET else "2001:db8::42",
     )
     launched = []
-    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: launched.append(kwargs))
+    monkeypatch.setattr("tweetnook.web.server.serve", lambda app, **kwargs: launched.append(kwargs))
 
     result = CliRunner().invoke(app, ["serve"])
 
@@ -52,6 +52,6 @@ def test_blank_listener_is_rejected_before_bootstrap(paths, monkeypatch):
         pytest.fail("blank listener must fail before bootstrap or launch")
 
     monkeypatch.setattr("tweetnook.web.server.upgrade_config", unexpected)
-    monkeypatch.setattr("uvicorn.run", unexpected)
+    monkeypatch.setattr("tweetnook.web.server.serve", unexpected)
     with pytest.raises(ConfigError, match="host"):
         run_server(None, paths, "   ", 9123, None)

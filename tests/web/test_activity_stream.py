@@ -5,15 +5,20 @@ import base64
 import hashlib
 import json
 import os
+import socket
 import threading
+import time
 from types import SimpleNamespace
 
+import httpx
 import pytest
+import uvicorn
+from fastapi import FastAPI
 
 from tweetnook.web.activity_stream import ActivityStream
 from tweetnook.web.deps import SESSION_COOKIE, create_session_token, server_state
 from tweetnook.web.routes import activity
-from tweetnook.web.server import app
+from tweetnook.web.server import StreamClosingServer, app
 
 
 async def _next_status(events):
@@ -253,3 +258,35 @@ async def test_authenticated_stream_setup_gate_proxy_headers_and_disconnect(auth
     finally:
         connection.cancel()
         await server_state["activity_stream"].close()
+
+
+def test_stopping_the_server_ends_an_open_activity_stream(caplog):
+    # A browser keeps the stream open; stopping must not wait out the graceful timeout and
+    # then cancel the response with a traceback.
+    server_state["activity_stream"] = ActivityStream(lambda: {"active": False}, interval=0.01)
+    web = FastAPI()
+    web.include_router(activity.router)
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    port = listener.getsockname()[1]
+    config = uvicorn.Config(web, lifespan="off", log_config=None, timeout_graceful_shutdown=3)
+    server = StreamClosingServer(config)
+    thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 5
+    while not server.started and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    url = f"http://127.0.0.1:{port}/api/activity/events"
+    with httpx.stream("GET", url, timeout=5) as response:
+        frames = response.iter_text()
+        assert next(frames).startswith("retry: 2000")
+        started = time.monotonic()
+        server.should_exit = True
+        for _frame in frames:
+            pass
+    thread.join(5)
+
+    assert not thread.is_alive()
+    assert time.monotonic() - started < 2
+    assert "timeout graceful shutdown exceeded" not in caplog.text

@@ -141,15 +141,13 @@ def test_activity_fallback_requires_the_recorded_lifetime(
 
 
 def test_foreground_server_records_and_cleans_its_own_identity(paths, monkeypatch):
-    import uvicorn
-
     def run(*_args, **_kwargs):
         recorded = processes.find_web_process(paths.data_dir, 8123)
         assert recorded is not None
         assert recorded.pid == os.getpid()
         raise RuntimeError("listener failure")
 
-    monkeypatch.setattr(uvicorn, "run", run)
+    monkeypatch.setattr(server, "serve", run)
     with pytest.raises(RuntimeError, match="listener failure"):
         server.run_server(AppConfig(), paths, "127.0.0.1", 8123, None)
     assert list(paths.data_dir.glob(".web-process-*.json")) == []

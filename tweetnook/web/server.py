@@ -4,12 +4,14 @@ import gzip
 import hashlib
 import os
 import re
+import sys
 import threading
 from contextlib import ExitStack, asynccontextmanager, suppress
 from pathlib import Path
 from stat import S_ISREG
 from typing import Annotated, Any
 
+import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi import Path as PathParameter
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
@@ -570,6 +572,35 @@ def _resolved_media_root(media_dir: Path) -> str:
     return cached[1]
 
 
+# Uvicorn's exit status when the server never started, such as a port already in use.
+STARTUP_FAILURE = 3
+
+
+class StreamClosingServer(uvicorn.Server):
+    """Uvicorn's server, ending the activity stream when shutdown begins.
+
+    Uvicorn waits for open responses to finish before it runs the lifespan shutdown, and a
+    browser's activity stream never finishes on its own. Left open, it would hold every
+    stop for the graceful-shutdown timeout, then be cancelled with a traceback logged as an
+    error.
+    """
+
+    async def shutdown(self, sockets=None) -> None:
+        if stream := server_state.get("activity_stream"):
+            with suppress(Exception):
+                await stream.close()
+        await super().shutdown(sockets)
+
+
+def serve(app: ASGIApp, **options: Any) -> None:
+    """``uvicorn.run`` for one process, with the stream-closing server."""
+    server = StreamClosingServer(uvicorn.Config(app, **options))
+    with suppress(KeyboardInterrupt):
+        server.run()
+    if not server.started:
+        sys.exit(STARTUP_FAILURE)
+
+
 def run_server(
     config: AppConfig | None,
     paths: XDGPaths,
@@ -577,8 +608,6 @@ def run_server(
     port: int,
     password_hash: str | None,
 ) -> None:
-    import uvicorn
-
     from tweetnook.core.process_identity import process_identity
     from tweetnook.web.server_log import server_logging_config
 
@@ -588,19 +617,19 @@ def run_server(
     server_state["paths"] = paths
     server_state["password_hash"] = password_hash
     watch_saved_password(paths)
-    # Persistent SSE clients must not keep Uvicorn waiting forever before it
-    # enters lifespan shutdown and stops the worker (up to another 70 seconds).
     identity = process_identity(os.getpid())
     if identity is None:
         raise RuntimeError("Cannot read the Web server's process identity.")
     record_web_process(paths.data_dir, identity, port)
     try:
-        uvicorn.run(
+        serve(
             app,
             host=host,
             port=port,
             log_level="info",
             log_config=server_logging_config(paths.server_log_file),
+            # Any other response still open can't hold up the lifespan shutdown, which
+            # then stops the worker (up to another 70 seconds).
             timeout_graceful_shutdown=5,
         )
     finally:
