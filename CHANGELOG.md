@@ -3,6 +3,121 @@
 This changelog records user-visible changes to TweetNook. The project follows
 semantic-style versioning.
 
+## [1.5.0] - 2026-11-15
+
+### Upgrade notes
+
+- The first start after upgrading updates your archive database (`archive.db`)
+  from schema 14 to 15. Going back to 1.4.0 means restoring a database backup,
+  so make one before upgrading.
+- The first start can take a minute or two on a large archive. Don't stop the
+  server while it runs.
+- New dependencies, `httptools` and `uvloop`, make the web server faster. They
+  install automatically (`uvloop` is omitted on Windows).
+
+### Added
+
+- The first part of a larger theme rework. Themes now set their own corner
+  shape, edge style and font, and can draw their own versions of controls.
+  Three themes in the new `Special` group change how the whole web app looks:
+  a restyled Steam Green, Windows 95 and Frutiger Aero. Check them out! The
+  rework and these themes are still a work in progress.
+- X's Chirp font is now the default. The server downloads it from X's font
+  servers in the background when it starts and serves it itself, so your
+  browser never contacts X for the font. A copy of Chirp installed on your
+  computer is used first.
+- Settings > Logs (formerly Activity logs) has a new Server tab. It shows the
+  web server's own log, which is also written to `logs/server.log` in the data
+  directory.
+- Run logs have a Verbose switch that shows the full log: every repeated
+  warning, the tracebacks of errors, and X's response when an X request fails.
+  Download always saves the full log. The Copy button is removed.
+- Run logs now start with the TweetNook and Python versions, the platform and
+  the command line. They also end with how a killed or hung worker stopped and
+  what it was doing.
+- Full support for posts with more than four photos or videos. These galleries
+  show as a carousel and keep their original order, and compact quote
+  thumbnails show how many items are hidden.
+- A password changed from the terminal takes effect without restarting the
+  server, and signs out existing sessions.
+
+### Changed
+
+Measured on a test server with all changes together, compared with 1.4.0:
+
+- The first feed after a restart loads in 0.5 s instead of 10.4 s (95% faster).
+- Page loads are 43% faster on a 20 Mbit connection (857 → 492 ms), 44% faster
+  on a local network, 35% faster with a warm cache and 32% faster on a phone.
+- Page loads make 60% fewer requests (85 → 34), because scripts and styles are
+  served as one minified bundle each.
+- Static files load 94% faster (156 → 9 ms), because they're sent
+  precompressed.
+- Startup sends one feed request instead of four and downloads 76% less feed
+  data (67 → 16 KB). Pointing at a collection tab starts loading that
+  collection.
+- The feed requests the page makes on startup finish 63% faster (87 → 32 ms).
+- The first page of Likes is 89% faster (23.7 → 2.5 ms) and the first page of
+  All 88% faster (19.5 → 2.4 ms).
+- The first page of Most-liked is 93% faster (37 → 2.6 ms).
+- Later pages of searches and sorts take 2-3 ms instead of 24-52 ms.
+- Search result counts are 88% faster (16-18 → 2 ms).
+- Tag autocomplete takes 5-6 ms instead of 27-33 ms, and author autocomplete
+  3 ms instead of 12-22 ms.
+- Long threads open 44% faster on desktop (129 → 73 ms) and 45% faster on
+  phones (564 → 312 ms).
+- Videos stream 2.2x faster (284 → 611 MB/s on one CPU core).
+- Photos load 53% faster (3.5 → 1.6 ms), and six photos at once 54% faster.
+- Feed responses are 12% smaller.
+- While the archive is idle, the page stops sending its 40 background requests
+  a minute and checks Setup and notices once a minute instead.
+- Cards that scroll back into view are restored 50% faster on desktop
+  (436 → 220 ms) and 39% faster on phones (1,083 → 656 ms).
+- Scrolling back to the top of a long feed takes 29% less main-thread work on
+  desktop and 20% less on phones.
+- Adding the next page while scrolling is 21% faster on desktop, and media
+  cards skip drawing until they're near the screen, cutting the style and
+  layout work of each new page by 64% on phones and 80% on desktop.
+- The longest frame while adding a page is 44% shorter on phones.
+- Browsers no longer download every avatar again each day.
+- Generating a video poster no longer blocks scrolling.
+- The Vesper and Steam Modern themes are removed. If you used one, the default
+  theme is used instead.
+
+### Fixed
+
+- Link previews no longer hang on large or slow links, such as saved links to
+  videos. Each link is saved as soon as it's fetched, so a stopped run doesn't
+  lose progress.
+  ([#1](https://github.com/GezerWezer/TweetNook/issues/1))
+- Media downloads and retries of unavailable posts are also saved one at a
+  time, so a stopped run doesn't download files again or spend extra X
+  requests.
+- A media download that timed out is recorded as failed and retried later,
+  instead of being marked done with no file.
+- Setup can be finished after copying an existing archive into a new install.
+- Stopping or updating the server while TweetNook is open in a browser no
+  longer waits five seconds and logs an error.
+- Search suggestions, the Sort menu and post menus are no longer cut off on a
+  short feed.
+- When scrolling fast, the feed no longer stalls at the bottom without loading
+  the next page. The longest stall is 97% shorter.
+- On phones, the collection tabs no longer flash back in at the end of the
+  feed.
+- With a post open in the split view, autoplay stays on the side you're using.
+- Closing Settings or Setup while Analytics is open no longer lets the page
+  scroll behind it.
+- Text fields in Settings and the tag editor show one focus ring, not two.
+- The search date picker no longer opens inside a highlighted suggestion.
+- On touch screens, the themed scrollbars give way to the thin overlay
+  scrollbar.
+- A link with an unknown collection shows an error instead of quietly showing
+  every post.
+- Server errors no longer include internal details such as SQL errors or file
+  paths.
+- Saving settings no longer fails on secret fields you didn't change. Changing
+  the replay source's URL clears its saved password, so it's never sent to the
+  new host.
+
 ## [1.4.0] - 2026-11-07
 
 ### Upgrade notes
@@ -830,6 +945,7 @@ semantic-style versioning.
 - Added PyPI Trusted Publishing through the tagged GitHub Actions release
   workflow.
 
+[1.5.0]: https://github.com/gezerwezer/tweetnook/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/gezerwezer/tweetnook/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/gezerwezer/tweetnook/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/gezerwezer/tweetnook/compare/v1.2.0...v1.3.0
