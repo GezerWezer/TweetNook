@@ -284,7 +284,8 @@ class EmbeddingsMixin(ConnectionMixin):
         else:
             sql = direct_sql
 
-        best_by_tweet: dict[str, float] = {}
+        tids: list[str] = []
+        blobs: list[bytes] = []
         for row in self.conn.execute(sql, params).fetchall():
             tid = row["result_tweet_id"]
             if allowed_tweet_ids is not None and tid not in allowed_tweet_ids:
@@ -292,7 +293,21 @@ class EmbeddingsMixin(ConnectionMixin):
             blob = bytes(row["embedding"])
             if len(blob) != expected_bytes:
                 continue
-            score = _cosine_dot(query_vec, blob, dims)
+            tids.append(tid)
+            blobs.append(blob)
+
+        if not tids:
+            return []
+
+        if _np is not None:
+            q = _np.frombuffer(query_vec, dtype=_np.float32, count=dims)
+            matrix = _np.frombuffer(b"".join(blobs), dtype=_np.float32).reshape(len(blobs), dims)
+            raw_scores: Sequence[float] = (matrix @ q).tolist()
+        else:
+            raw_scores = [_cosine_dot(query_vec, blob, dims) for blob in blobs]
+
+        best_by_tweet: dict[str, float] = {}
+        for tid, score in zip(tids, raw_scores, strict=True):
             if not math.isfinite(score) or score < min_score:
                 continue
             prev = best_by_tweet.get(tid)

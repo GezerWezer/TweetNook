@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from tweetnook.config import load_config
 from tweetnook.core import fastjson
 from tweetnook.core.collection_names import normalize_collection_name
-from tweetnook.smart_search.query import get_cached_encoder, split_smart_query
+from tweetnook.smart_search.query import encode_smart_query, get_cached_encoder, split_smart_query
 from tweetnook.smart_search.sdk import SmartSearchUnavailable, smart_search_installed
 from tweetnook.storage.common import position_order
 from tweetnook.storage.search_query import (
@@ -158,11 +158,12 @@ def _smart_search_matches(
         allowed_ids = {str(row["tweet_id"]) for row in filtered.rows}
         if not allowed_ids:
             return []
-    encoder = get_cached_encoder(
+    query_vec = encode_smart_query(
         config.smart_search.model,
         paths.models_cache_dir,
+        smart_query,
+        encoder_fn=get_cached_encoder,
     )
-    query_vec = encoder.encode_text(smart_query).tobytes()
     matches = store.search_media_embeddings(
         query_vec,
         config.smart_search.model,

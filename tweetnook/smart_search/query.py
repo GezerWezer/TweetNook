@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import re
 import threading
+from collections import OrderedDict
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 _ENCODER_LOCK = threading.Lock()
 _ENCODER_CACHE: tuple[tuple[str, str], Any] | None = None
+_TEXT_VEC_CACHE: OrderedDict[tuple[int, str, str, str], bytes] = OrderedDict()
+_TEXT_VEC_CACHE_MAX = 32
 _SMART_TOKEN_RE = re.compile(r'(?i)(?:^|\s)smart:(?:"([^"]*)"|([^\s]+))')
 _OTHER_FILTER_RE = re.compile(r'(?:^|\s)-?[a-z_]+:(?:"[^"]*"|\S+)', re.IGNORECASE)
 
@@ -67,3 +71,27 @@ def get_cached_encoder(model_id: str, models_cache_dir: Path) -> Any:
         encoder = ClipOnnxEncoder.from_cache(model_id, models_cache_dir)
         _ENCODER_CACHE = (cache_key, encoder)
         return encoder
+
+
+def encode_smart_query(
+    model_id: str,
+    models_cache_dir: Path,
+    query: str,
+    *,
+    encoder_fn: Callable[[str, Path], Any] = get_cached_encoder,
+) -> bytes:
+    """Encode *query* to normalized float32 bytes, caching the last 32 text vectors."""
+    key = (id(encoder_fn), model_id, str(models_cache_dir), query)
+    with _ENCODER_LOCK:
+        cached = _TEXT_VEC_CACHE.get(key)
+        if cached is not None:
+            _TEXT_VEC_CACHE.move_to_end(key)
+            return cached
+    encoder = encoder_fn(model_id, models_cache_dir)
+    vec_bytes = encoder.encode_text(query).tobytes()
+    with _ENCODER_LOCK:
+        _TEXT_VEC_CACHE[key] = vec_bytes
+        _TEXT_VEC_CACHE.move_to_end(key)
+        while len(_TEXT_VEC_CACHE) > _TEXT_VEC_CACHE_MAX:
+            _TEXT_VEC_CACHE.popitem(last=False)
+    return vec_bytes
