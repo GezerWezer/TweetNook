@@ -742,7 +742,7 @@
       "description": "Index archived images for semantic search",
       "command": "tweetnook smart-search index",
       "scheduled": false,
-      "sync_step": null,
+      "sync_step": "smart-search",
       "options": [
         {
           "key": "limit",
