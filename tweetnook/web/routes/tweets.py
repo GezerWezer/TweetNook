@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from tweetnook.config import load_config
 from tweetnook.core import fastjson
 from tweetnook.core.collection_names import normalize_collection_name
-from tweetnook.smart_search.query import get_cached_encoder, parse_smart_query
+from tweetnook.smart_search.query import get_cached_encoder, split_smart_query
 from tweetnook.smart_search.sdk import SmartSearchUnavailable, smart_search_installed
 from tweetnook.storage.common import position_order
 from tweetnook.storage.search_query import (
@@ -129,6 +129,7 @@ def _smart_search_matches(
     store: object,
     smart_query: str,
     *,
+    remaining_query: str | None,
     collections: set[str] | None,
     limit: int,
 ) -> list[tuple[str, float]]:
@@ -145,19 +146,33 @@ def _smart_search_matches(
             status_code=400,
             detail="Smart Search is disabled. Enable it in Settings > Smart search or config.toml.",
         )
+    allowed_ids: set[str] | None = None
+    if remaining_query:
+        filtered = search_posts(
+            store,
+            remaining_query,
+            collections=collections,
+            limit=10_000,
+            hydrate=False,
+        )
+        allowed_ids = {str(row["tweet_id"]) for row in filtered.rows}
+        if not allowed_ids:
+            return []
     encoder = get_cached_encoder(
         config.smart_search.model,
         paths.models_cache_dir,
     )
     query_vec = encoder.encode_text(smart_query).tobytes()
-    return store.search_media_embeddings(
+    matches = store.search_media_embeddings(
         query_vec,
         config.smart_search.model,
         collections=collections,
         include_quoted_media=config.smart_search.include_quoted_media,
+        allowed_tweet_ids=allowed_ids,
         min_score=config.smart_search.min_score,
         limit=limit,
     )
+    return matches
 
 
 @router.get("/api/tweets")
@@ -177,11 +192,12 @@ def api_tweets(
         internal_col = _collection_param(collection)
 
         collections = {internal_col} if internal_col != "all" else None
-        smart_query = parse_smart_query(q)
+        smart_query, remaining_query = split_smart_query(q)
         if smart_query is not None:
             matches = _smart_search_matches(
                 store,
                 smart_query,
+                remaining_query=remaining_query,
                 collections=collections,
                 limit=max(page * limit + 1, 200),
             )
@@ -258,11 +274,12 @@ def api_tweets_count(
     try:
         internal_col = _collection_param(collection)
         collections = {internal_col} if internal_col != "all" else None
-        smart_query = parse_smart_query(q)
+        smart_query, remaining_query = split_smart_query(q)
         if smart_query is not None:
             matches = _smart_search_matches(
                 store.pooled_reader(),
                 smart_query,
+                remaining_query=remaining_query,
                 collections=collections,
                 limit=500,
             )

@@ -14,7 +14,7 @@ from tweetnook.config import AppConfig, XDGPaths
 from tweetnook.jobs.pipeline import PipelineReporter
 from tweetnook.smart_search import sdk
 from tweetnook.smart_search.indexer import index_media_embeddings
-from tweetnook.smart_search.query import parse_smart_query
+from tweetnook.smart_search.query import parse_smart_query, split_smart_query
 from tweetnook.storage.backend import ArchiveStore
 from tweetnook.storage.record_types import RecordType
 
@@ -45,6 +45,9 @@ def test_parse_smart_query() -> None:
     assert parse_smart_query("smart:sunset over ocean") == "sunset over ocean"
     assert parse_smart_query('SMART:"red car"') == "red car"
     assert parse_smart_query("smart:") == ""
+    assert split_smart_query("until:2020-12-31 smart:test") == ("test", "until:2020-12-31")
+    assert split_smart_query("smart:person until:2020-12-31") == ("person", "until:2020-12-31")
+    assert split_smart_query('smart:"red car" from:alice') == ("red car", "from:alice")
 
 
 def test_smart_search_installed_flag(monkeypatch) -> None:

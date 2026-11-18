@@ -2,25 +2,57 @@
 
 from __future__ import annotations
 
+import re
 import threading
 from pathlib import Path
 from typing import Any
 
 _ENCODER_LOCK = threading.Lock()
 _ENCODER_CACHE: tuple[tuple[str, str], Any] | None = None
+_SMART_TOKEN_RE = re.compile(r'(?i)(?:^|\s)smart:(?:"([^"]*)"|([^\s]+))')
+_OTHER_FILTER_RE = re.compile(r'(?:^|\s)-?[a-z_]+:(?:"[^"]*"|\S+)', re.IGNORECASE)
+
+
+def split_smart_query(query: str | None) -> tuple[str | None, str | None]:
+    """Split *query* into `(smart_text, remaining_filter_query)`.
+
+    Supports both leading `smart:sunset over ocean` (all words as semantic text when no
+    other `key:value` filters appear) and mixed queries like `until:2020-12-31 smart:cat`
+    or `smart:"red car" from:alice`.
+    """
+    if not query or not query.strip():
+        return None, None
+    stripped = query.strip()
+    if stripped[:6].casefold() == "smart:":
+        rest = stripped[6:].strip()
+        if not _OTHER_FILTER_RE.search(rest):
+            if len(rest) >= 2 and rest[0] == '"' and rest[-1] == '"':
+                rest = rest[1:-1].strip()
+            return rest, None
+
+    smart_parts: list[str] = []
+
+    def _collect(match: re.Match[str]) -> str:
+        val = match.group(1) if match.group(1) is not None else (match.group(2) or "")
+        if val.strip():
+            smart_parts.append(val.strip())
+        return " "
+
+    remainder = _SMART_TOKEN_RE.sub(_collect, stripped)
+    # Also handle bare `smart:` with no value so it triggers Smart Search rather than FTS error.
+    if not smart_parts and re.search(r"(?i)(?:^|\s)smart:(?:\s|$)", stripped):
+        remainder = re.sub(r"(?i)(?:^|\s)smart:(?=\s|$)", " ", stripped)
+        return "", " ".join(remainder.split()) or None
+    if not smart_parts:
+        return None, stripped
+    cleaned_remainder = " ".join(remainder.split()) or None
+    return " ".join(smart_parts), cleaned_remainder
 
 
 def parse_smart_query(query: str | None) -> str | None:
     """Return the semantic image query when *query* uses the `smart:` prefix."""
-    if not query:
-        return None
-    stripped = query.strip()
-    if len(stripped) < 6 or stripped[:6].casefold() != "smart:":
-        return None
-    body = stripped[6:].strip()
-    if len(body) >= 2 and body[0] == '"' and body[-1] == '"':
-        body = body[1:-1].strip()
-    return body
+    smart_text, _ = split_smart_query(query)
+    return smart_text
 
 
 def get_cached_encoder(model_id: str, models_cache_dir: Path) -> Any:

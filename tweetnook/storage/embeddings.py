@@ -219,11 +219,14 @@ class EmbeddingsMixin(ConnectionMixin):
         exclude_hidden: bool = True,
         exclude_uncaptured: bool = True,
         include_quoted_media: bool = True,
+        allowed_tweet_ids: set[str] | None = None,
         min_score: float = 0.0,
         limit: int = 100,
     ) -> list[tuple[str, float]]:
         """Score stored embeddings against *query_vec* and return top `(tweet_id, score)`."""
         if limit < 1 or not self._media_embeddings_exists():
+            return []
+        if allowed_tweet_ids is not None and not allowed_tweet_ids:
             return []
         expected_bytes = len(query_vec)
         if expected_bytes == 0 or expected_bytes % 4 != 0:
@@ -237,6 +240,13 @@ class EmbeddingsMixin(ConnectionMixin):
             col_filter = f"AND t.collection_type IN ({placeholders})"
             col_params = sorted(collections)
 
+        id_filter = ""
+        id_params: list[Any] = []
+        if allowed_tweet_ids is not None and len(allowed_tweet_ids) <= 900:
+            id_placeholders = ", ".join("?" for _ in allowed_tweet_ids)
+            id_filter = f"AND t.tweet_id IN ({id_placeholders})"
+            id_params = sorted(allowed_tweet_ids)
+
         excluded_sql = listed_tweet_sql(
             "t.tweet_id",
             exclude_hidden=exclude_hidden,
@@ -244,18 +254,19 @@ class EmbeddingsMixin(ConnectionMixin):
         )
         excluded_clause = f"AND {excluded_sql}" if excluded_sql else ""
 
-        params: list[Any] = [model, dims, *col_params]
+        params: list[Any] = [model, dims, *col_params, *id_params]
         direct_sql = f"""
             SELECT t.tweet_id AS result_tweet_id, e.embedding AS embedding
             FROM media_embeddings e
             JOIN archive t ON t.tweet_id = e.tweet_id AND t.record_type = '{RecordType.TWEET}'
             WHERE e.model = ? AND e.dims = ?
               {col_filter}
+              {id_filter}
               {excluded_clause}
         """
 
         if include_quoted_media:
-            params.extend([model, dims, *col_params])
+            params.extend([model, dims, *col_params, *id_params])
             quoted_sql = f"""
                 UNION ALL
                 SELECT t.tweet_id AS result_tweet_id, e.embedding AS embedding
@@ -266,6 +277,7 @@ class EmbeddingsMixin(ConnectionMixin):
                 JOIN archive t ON t.tweet_id = r.tweet_id AND t.record_type = '{RecordType.TWEET}'
                 WHERE e.model = ? AND e.dims = ?
                   {col_filter}
+                  {id_filter}
                   {excluded_clause}
             """
             sql = direct_sql + quoted_sql
@@ -274,13 +286,15 @@ class EmbeddingsMixin(ConnectionMixin):
 
         best_by_tweet: dict[str, float] = {}
         for row in self.conn.execute(sql, params).fetchall():
+            tid = row["result_tweet_id"]
+            if allowed_tweet_ids is not None and tid not in allowed_tweet_ids:
+                continue
             blob = bytes(row["embedding"])
             if len(blob) != expected_bytes:
                 continue
             score = _cosine_dot(query_vec, blob, dims)
             if not math.isfinite(score) or score < min_score:
                 continue
-            tid = row["result_tweet_id"]
             prev = best_by_tweet.get(tid)
             if prev is None or score > prev:
                 best_by_tweet[tid] = score

@@ -131,6 +131,14 @@ def test_api_tweets_smart_prefix(tmp_path: Path, monkeypatch, make_web_client) -
         count_res = client.get("/api/tweets/count", params={"q": "smart:sunset"})
         assert count_res.status_code == 200
         assert count_res.json() == {"total": 1}
+
+        mixed_res = client.get("/api/tweets", params={"q": "since_id:999 smart:sunset"})
+        assert mixed_res.status_code == 200
+        assert mixed_res.json()["total"] == 0
+
+        mixed_match_res = client.get("/api/tweets", params={"q": "smart:sunset max_id:500"})
+        assert mixed_match_res.status_code == 200
+        assert mixed_match_res.json()["total"] == 1
     finally:
         from tweetnook.web.card_cache import _WRITER
 
