@@ -221,10 +221,10 @@ class EmbeddingsMixin(ConnectionMixin):
         include_quoted_media: bool = True,
         allowed_tweet_ids: set[str] | None = None,
         min_score: float = 0.0,
-        limit: int = 100,
+        limit: int | None = 100,
     ) -> list[tuple[str, float]]:
         """Score stored embeddings against *query_vec* and return top `(tweet_id, score)`."""
-        if limit < 1 or not self._media_embeddings_exists():
+        if (limit is not None and limit < 1) or not self._media_embeddings_exists():
             return []
         if allowed_tweet_ids is not None and not allowed_tweet_ids:
             return []
@@ -315,4 +315,4 @@ class EmbeddingsMixin(ConnectionMixin):
                 best_by_tweet[tid] = score
 
         ranked = sorted(best_by_tweet.items(), key=lambda item: (-item[1], -int(item[0])))
-        return ranked[:limit]
+        return ranked[:limit] if limit is not None else ranked

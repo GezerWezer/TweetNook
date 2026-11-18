@@ -131,7 +131,7 @@ def _smart_search_matches(
     *,
     remaining_query: str | None,
     collections: set[str] | None,
-    limit: int,
+    limit: int | None = None,
 ) -> list[tuple[str, float]]:
     if not smart_search_installed():
         raise HTTPException(
@@ -200,7 +200,6 @@ def api_tweets(
                 smart_query,
                 remaining_query=remaining_query,
                 collections=collections,
-                limit=max(page * limit + 1, 200),
             )
             total = len(matches)
             start = (page - 1) * limit
@@ -282,7 +281,6 @@ def api_tweets_count(
                 smart_query,
                 remaining_query=remaining_query,
                 collections=collections,
-                limit=500,
             )
             return {"total": len(matches)}
         total = count_posts(

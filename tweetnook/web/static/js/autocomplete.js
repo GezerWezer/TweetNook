@@ -8,7 +8,7 @@ const SUGGESTION_DELAY_MS = 100;
 
 // Filters whose value is edited inside its capsule, so spaces stay part of the
 // value without typing quotes.
-const BOX_FILTER_KEYS = ['description', 'tag'];
+const BOX_FILTER_KEYS = ['description', 'smart', 'tag'];
 
 // Private-use markers for the caret and capsule edges while the editor is
 // read back and re-rendered.
