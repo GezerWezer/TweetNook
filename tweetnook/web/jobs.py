@@ -96,7 +96,11 @@ def jobs_payload(
         elif job.key == "check":
             next_at = check.get("next_run_at")
             next_info = {"at": next_at, "label": None if next_at else "Off"}
-        elif job.sync_step and (job.key != "tagging" or config.tagging.enabled):
+        elif job.sync_step and (
+            (job.key == "tagging" and config.tagging.enabled)
+            or (job.key == "smart-search" and config.smart_search.enabled)
+            or job.key not in {"tagging", "smart-search"}
+        ):
             next_info = {"at": None, "label": "With sync"}
         else:
             next_info = {"at": None, "label": None}

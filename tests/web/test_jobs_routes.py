@@ -204,6 +204,7 @@ def test_jobs_endpoint_lists_state_last_and_next_runs(tmp_path, make_web_client)
         "media",
         "urls",
         "tagging",
+        "smart-search",
         "import",
         "enrich",
     ]

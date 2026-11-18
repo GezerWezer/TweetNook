@@ -8,7 +8,7 @@ const SUGGESTION_DELAY_MS = 100;
 
 // Filters whose value is edited inside its capsule, so spaces stay part of the
 // value without typing quotes.
-const BOX_FILTER_KEYS = ['description', 'tag'];
+const BOX_FILTER_KEYS = ['description', 'smart', 'tag'];
 
 // Private-use markers for the caret and capsule edges while the editor is
 // read back and re-rendered.
@@ -88,7 +88,8 @@ function searchAutocomplete() {
             { prefix: 'until:', glyph: 'calendar', desc: 'Before a specific date (YYYY-MM-DD)', excludeDesc: 'Hide tweets before a date (YYYY-MM-DD)' },
             { prefix: 'url:', glyph: 'link', desc: 'Contains a specific URL', excludeDesc: 'Hide tweets containing a specific URL' },
             { prefix: 'tag:', glyph: 'sticker', desc: 'Matches media tag', excludeDesc: 'Hide tweets with a media tag' },
-            { prefix: 'description:', glyph: 'edit', desc: 'Words in a tag description', excludeDesc: 'Hide tweets with these words in a tag description' }
+            { prefix: 'description:', glyph: 'edit', desc: 'Words in a tag description', excludeDesc: 'Hide tweets with these words in a tag description' },
+            { prefix: 'smart:', glyph: 'photo', desc: 'Semantic image search (CLIP/SigLIP)', excludeDesc: 'Semantic image search (CLIP/SigLIP)' }
         ],
         
         hasOptions: [

@@ -18,11 +18,13 @@ from tweetnook.jobs.steps import (
     ARTICLES,
     MEDIA,
     RESURRECTION,
+    SMART_SEARCH,
     TAGGING,
     THREADS,
     URLS,
     StepSpec,
 )
+from tweetnook.smart_search.sdk import smart_search_installed
 from tweetnook.storage import open_archive_store
 from tweetnook.sync.steps import (
     add_head_step,
@@ -131,6 +133,19 @@ async def _tag(ctx: _FollowupContext) -> Any:
         )
 
 
+async def _smart_search(ctx: _FollowupContext) -> Any:
+    from tweetnook.jobs.context import archive_job
+    from tweetnook.smart_search.indexer import index_media_embeddings
+
+    with archive_job(config=ctx.config, paths=ctx.paths, console=ctx.console) as job:
+        return index_media_embeddings(
+            job.store,
+            ctx.paths,
+            ctx.config,
+            pipeline=current_pipeline(),
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class _Followup:
     step: StepSpec
@@ -193,6 +208,14 @@ _TAGGING = _Followup(
     _tag,
     lambda r: f"tagging: {r.tagged} tagged",
 )
+_SMART_SEARCH = _Followup(
+    SMART_SEARCH,
+    "smart search",
+    "smart_search",
+    "tweetnook smart-search index",
+    _smart_search,
+    lambda r: f"smart search: {r.indexed} indexed",
+)
 
 
 def _selected_followups(plan: SyncFollowupPlan, config: AppConfig) -> list[_Followup]:
@@ -207,6 +230,7 @@ def _selected_followups(plan: SyncFollowupPlan, config: AppConfig) -> list[_Foll
             (_MEDIA, plan.media),
             (_UNFURL, plan.unfurl),
             (_TAGGING, config.tagging.enabled),
+            (_SMART_SEARCH, config.smart_search.enabled and smart_search_installed()),
         )
         if wanted
     ]
@@ -225,7 +249,11 @@ def plan_sync_pipeline(
         add_head_step(pipeline, collection)
     if followups is not None:
         for followup in _selected_followups(followups, config):
-            detail = config.tagging.model if followup is _TAGGING else None
+            detail = (
+                config.tagging.model
+                if followup is _TAGGING
+                else (config.smart_search.model if followup is _SMART_SEARCH else None)
+            )
             followup.step.declare(pipeline, detail=detail)
 
 

@@ -388,6 +388,9 @@ function tweetApp() {
             this.$nextTick(() => nookSettingsFocus(this));
             this.showSetupModal = false;
             this.showSettingsModal = true;
+            if (this.settingsTab === 'smart-search') {
+                this.fetchSmartSearch();
+            }
         },
 
         // Body scroll stays locked while any modal is open, whichever closes first.
@@ -416,6 +419,7 @@ function tweetApp() {
         tweetMetaMethods(),
         statsMethods(),
         automatedTaggingMethods(),
+        smartSearchMethods(),
         tweetMenuMethods(),
         tagMethods(),
         setupMethods(),

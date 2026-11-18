@@ -28,6 +28,7 @@ from tweetnook.cli.maintenance import (
     rehydrate_archive,
 )
 from tweetnook.cli.server import serve_daemon_internal, update_command
+from tweetnook.cli.smart_search import smart_search_app
 from tweetnook.cli.sync import SYNC_GROUP_HELP, sync_app
 from tweetnook.cli.view import export_app, search_archive, stats_archive, view_app
 from tweetnook.cli.web import set_password, web_app
@@ -40,6 +41,11 @@ app.add_typer(db_app, name="db", help="Inspect the local SQLite archive database
 app.add_typer(export_app, name="export", help="Export the local archive.")
 app.add_typer(import_app, name="import", help="Import and enrich official Twitter/X archives.")
 app.add_typer(media_app, name="media", help="Download archived tweet media.")
+app.add_typer(
+    smart_search_app,
+    name="smart-search",
+    help="Index and search archived images with local CLIP/SigLIP embeddings.",
+)
 app.add_typer(
     sync_app,
     name="sync",

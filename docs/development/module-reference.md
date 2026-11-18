@@ -9,7 +9,7 @@ Each package belongs to one layer, and a module may only import from its own lay
 | Layer | Packages and modules |
 | --- | --- |
 | Interface | `cli/`, `cli_service.py`, `web/`, `__main__.py`, `system_install.py` |
-| Features | `sync/`, `importer/`, `enrichment/`, `tagging/`, `export/`, `stats/` |
+| Features | `sync/`, `importer/`, `enrichment/`, `tagging/`, `smart_search/`, `export/`, `stats/` |
 | Services | `client/`, `auth/`, `query_ids/`, `jobs/` |
 | Storage | `storage/` |
 | Core | `core/`, `config.py` |
@@ -73,6 +73,7 @@ Some modules sit where their dependencies put them rather than where their name 
 | `tagging/prompts.py` | System prompts. |
 | `tagging/sdk.py` | Optional dependency checks and model catalog. |
 | `tagging/accounting.py`, `tagging/pricing.py`, `tagging/rpd.py` | Local spend, Search usage and request allowances. |
+| `smart_search/` | Local ONNX CLIP/SigLIP model catalog, encoder, batch indexer and `smart:` query helpers. |
 | `jobs/context.py`, `jobs/resource_failure.py` | Locked job context and storage-failure handling. |
 | `jobs/pipeline.py`, `jobs/outcome.py`, `jobs/activity_history.py`, `jobs/worker_logging.py` | Progress stages, the typed job outcome, durable run records and timestamped logs. |
 | `jobs/steps.py` | Pipeline steps more than one job runs (follow-ups, archive auth and enrichment), each declared once. |

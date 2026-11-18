@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 from tweetnook.config import AppConfig
-from tweetnook.jobs.steps import ARTICLES, MEDIA, TAGGING, THREADS, URLS
+from tweetnook.jobs.steps import ARTICLES, MEDIA, SMART_SEARCH, TAGGING, THREADS, URLS
 
 
 def command_title(cli: Sequence[str]) -> str:
@@ -214,6 +214,14 @@ JOBS: tuple[JobSpec, ...] = (
                 "Leave empty to use the model from Settings.",
             ),
         ),
+    ),
+    JobSpec(
+        "smart-search",
+        "Smart search index",
+        "Index archived images for semantic search",
+        ("smart-search", "index"),
+        sync_step=SMART_SEARCH.key,
+        options=(_limit("images"),),
     ),
     JobSpec(
         "import",

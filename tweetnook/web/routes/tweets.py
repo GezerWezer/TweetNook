@@ -8,8 +8,11 @@ import unicodedata
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
+from tweetnook.config import load_config
 from tweetnook.core import fastjson
 from tweetnook.core.collection_names import normalize_collection_name
+from tweetnook.smart_search.query import encode_smart_query, get_cached_encoder, split_smart_query
+from tweetnook.smart_search.sdk import SmartSearchUnavailable, smart_search_installed
 from tweetnook.storage.common import position_order
 from tweetnook.storage.search_query import (
     SearchCursorExpiredError,
@@ -122,6 +125,57 @@ def _collection_param(collection: str) -> str:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _smart_search_matches(
+    store: object,
+    smart_query: str,
+    *,
+    remaining_query: str | None,
+    collections: set[str] | None,
+    limit: int | None = None,
+) -> list[tuple[str, float]]:
+    if not smart_search_installed():
+        raise HTTPException(
+            status_code=400,
+            detail="Smart Search is not installed. Install 'tweetnook[smart-search]' to enable it.",
+        )
+    if not smart_query:
+        return []
+    config, paths = load_config()
+    if not config.smart_search.enabled:
+        raise HTTPException(
+            status_code=400,
+            detail="Smart Search is disabled. Enable it in Settings > Smart search or config.toml.",
+        )
+    allowed_ids: set[str] | None = None
+    if remaining_query:
+        filtered = search_posts(
+            store,
+            remaining_query,
+            collections=collections,
+            limit=10_000,
+            hydrate=False,
+        )
+        allowed_ids = {str(row["tweet_id"]) for row in filtered.rows}
+        if not allowed_ids:
+            return []
+    query_vec = encode_smart_query(
+        config.smart_search.model,
+        paths.models_cache_dir,
+        smart_query,
+        encoder_fn=get_cached_encoder,
+    )
+    matches = store.search_media_embeddings(
+        query_vec,
+        config.smart_search.model,
+        collections=collections,
+        include_quoted_media=config.smart_search.include_quoted_media,
+        allowed_tweet_ids=allowed_ids,
+        min_score=config.smart_search.min_score,
+        limit=limit,
+    )
+    return matches
+
+
 @router.get("/api/tweets")
 def api_tweets(
     q: str | None = None,
@@ -139,6 +193,37 @@ def api_tweets(
         internal_col = _collection_param(collection)
 
         collections = {internal_col} if internal_col != "all" else None
+        smart_query, remaining_query = split_smart_query(q)
+        if smart_query is not None:
+            matches = _smart_search_matches(
+                store,
+                smart_query,
+                remaining_query=remaining_query,
+                collections=collections,
+            )
+            total = len(matches)
+            start = (page - 1) * limit
+            page_matches = matches[start : start + limit]
+            scores = {tweet_id: score for tweet_id, score in page_matches}
+            cards = []
+            for tweet_id, card in feed_cards(store, list(scores), collections):
+                card = card[:-1] + b',"match_score":' + fastjson.dumps(scores[tweet_id]) + b"}"
+                cards.append(card)
+            pages = max(1, (total + limit - 1) // limit) if total else 0
+            rest = fastjson.dumps(
+                {
+                    "total": total,
+                    "page": page,
+                    "pages": pages,
+                    "has_more": start + limit < total,
+                    "next_cursor": None,
+                    "truncated": False,
+                    "highlight_terms": [],
+                }
+            )
+            body = b'{"tweets":[' + b",".join(cards) + b"]," + rest[1:]
+            return Response(body, media_type="application/json")
+
         result = search_posts(
             store,
             q,
@@ -170,6 +255,8 @@ def api_tweets(
         )
         body = b'{"tweets":[' + b",".join(cards) + b"]," + rest[1:]
         return Response(body, media_type="application/json")
+    except SmartSearchUnavailable as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except SearchCursorExpiredError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except SearchQueryError as exc:
@@ -186,12 +273,24 @@ def api_tweets_count(
     """Count a search separately so the first page can render immediately."""
     try:
         internal_col = _collection_param(collection)
+        collections = {internal_col} if internal_col != "all" else None
+        smart_query, remaining_query = split_smart_query(q)
+        if smart_query is not None:
+            matches = _smart_search_matches(
+                store.pooled_reader(),
+                smart_query,
+                remaining_query=remaining_query,
+                collections=collections,
+            )
+            return {"total": len(matches)}
         total = count_posts(
             store.pooled_reader(),
             q,
-            collections={internal_col} if internal_col != "all" else None,
+            collections=collections,
         )
         return {"total": total}
+    except SmartSearchUnavailable as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except SearchQueryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

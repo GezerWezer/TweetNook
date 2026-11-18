@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from tweetnook.config import ReplayConfig, TaggingConfig
+from tweetnook.config import ReplayConfig, SmartSearchConfig, TaggingConfig
 
 
 def get_config_ui_schema() -> dict[str, Any]:
@@ -48,6 +48,7 @@ def get_config_ui_schema() -> dict[str, Any]:
             "activity.max_runs",
             "activity.retention_days",
             *[f"tagging.{field}" for field in TaggingConfig.model_fields],
+            *[f"smart_search.{field}" for field in SmartSearchConfig.model_fields],
             *[f"replay.{field}" for field in ReplayConfig.model_fields],
         ],
         "types": {"check.cadence": "select", "check.weekday": "select"},

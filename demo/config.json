@@ -54,6 +54,13 @@
       "tagging.tagging_context",
       "tagging.additional_instructions",
       "tagging.max_media_size_mb",
+      "smart_search.enabled",
+      "smart_search.model",
+      "smart_search.batch_size",
+      "smart_search.min_score",
+      "smart_search.include_video_thumbnails",
+      "smart_search.include_quoted_media",
+      "smart_search.include_thread_media",
       "replay.url",
       "replay.password",
       "replay.placeholder_media",
@@ -503,6 +510,15 @@
       "additional_instructions": null,
       "max_media_size_mb": 100
     },
+    "smart_search": {
+      "enabled": false,
+      "model": "ViT-B-16-SigLIP",
+      "batch_size": 16,
+      "min_score": 0.0,
+      "include_video_thumbnails": true,
+      "include_quoted_media": true,
+      "include_thread_media": false
+    },
     "replay": {
       "url": null,
       "password": null,
@@ -717,6 +733,32 @@
       ],
       "defaults": {
         "retry_failed": false,
+        "limit": null
+      }
+    },
+    {
+      "key": "smart-search",
+      "name": "Smart search index",
+      "description": "Index archived images for semantic search",
+      "command": "tweetnook smart-search index",
+      "scheduled": false,
+      "sync_step": "smart-search",
+      "options": [
+        {
+          "key": "limit",
+          "kind": "int",
+          "flag": "--limit",
+          "label": "Limit",
+          "help": "Leave empty for all.",
+          "unit": "images",
+          "minimum": 1,
+          "maximum": null,
+          "placeholder": "",
+          "danger": false,
+          "disabled_when": []
+        }
+      ],
+      "defaults": {
         "limit": null
       }
     },

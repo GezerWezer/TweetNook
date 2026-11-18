@@ -106,6 +106,8 @@ function activityViewMethods() {
                 'media download': 'Media Download',
                 unfurl: 'Link Preview Refresh',
                 tag: 'Automated Tagging',
+                'smart-search': 'Smart Search Indexing',
+                'smart-search index': 'Smart Search Indexing',
                 migrate: 'Archive Migration',
             };
             return labels[command] || rawTitle.replace(/^tweetnook\s+/i, '') || 'Activity';

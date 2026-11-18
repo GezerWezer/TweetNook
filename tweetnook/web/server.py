@@ -52,6 +52,7 @@ from tweetnook.web.routes.fonts import router as fonts_router
 from tweetnook.web.routes.jobs import router as jobs_router
 from tweetnook.web.routes.notices import router as notices_router
 from tweetnook.web.routes.setup import router as setup_router
+from tweetnook.web.routes.smart_search import router as smart_search_router
 from tweetnook.web.routes.stats import router as stats_router
 from tweetnook.web.routes.tags import router as tags_router
 from tweetnook.web.routes.tweets import router as tweets_router
@@ -331,6 +332,7 @@ app.include_router(dev_replay_router)
 app.include_router(fonts_router)
 
 app.include_router(automated_tagging_router)
+app.include_router(smart_search_router)
 
 
 class TextGZipMiddleware:

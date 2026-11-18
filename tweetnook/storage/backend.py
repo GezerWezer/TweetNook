@@ -17,6 +17,7 @@ from .connection import SerializedConnection
 from .conversations import ConversationsMixin
 from .db import ConnectionMixin, connect_read_only
 from .details import DetailsMixin
+from .embeddings import EmbeddingsMixin
 from .enrichment import EnrichmentMixin
 from .imports import ImportsMixin
 from .ingestion import IngestionMixin
@@ -54,6 +55,7 @@ class ArchiveStore(
     TweetsMixin,
     StatsMixin,
     SearchMixin,
+    EmbeddingsMixin,
     PresentationMixin,
     EnrichmentMixin,
     ChecksMixin,

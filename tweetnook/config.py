@@ -58,6 +58,7 @@ CONFIG_SECTION_ORDER = (
     "activity",
     "database",
     "tagging",
+    "smart_search",
     "replay",
 )
 
@@ -256,6 +257,20 @@ class TaggingConfig(BaseModel):
         return self
 
 
+class SmartSearchConfig(BaseModel):
+    """Settings for local multimodal image Smart Search (CLIP/SigLIP ONNX)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = False
+    model: str = "ViT-B-16-SigLIP"
+    batch_size: int = Field(default=16, ge=1, le=256)
+    min_score: float = Field(default=0.0, ge=-1.0, le=1.0)
+    include_video_thumbnails: bool = True
+    include_quoted_media: bool = True
+    include_thread_media: bool = False
+
+
 class ReplayConfig(BaseModel):
     """Developer replay source for a test install (see ``tweetnook.core.dev_replay``).
 
@@ -288,6 +303,7 @@ class AppConfig(BaseModel):
     activity: ActivityConfig = Field(default_factory=ActivityConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     tagging: TaggingConfig = Field(default_factory=TaggingConfig)
+    smart_search: SmartSearchConfig = Field(default_factory=SmartSearchConfig)
     replay: ReplayConfig = Field(default_factory=ReplayConfig)
 
     @property
@@ -347,6 +363,10 @@ class XDGPaths(BaseModel):
     @property
     def query_id_cache_file(self) -> Path:
         return self.cache_dir / QUERY_ID_CACHE_FILENAME
+
+    @property
+    def models_cache_dir(self) -> Path:
+        return self.cache_dir / "models"
 
     @property
     def lock_file(self) -> Path:

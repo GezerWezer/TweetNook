@@ -1,0 +1,113 @@
+                    <!-- Local CLIP/SigLIP Smart Search -->
+                    <div class="nook-setting-body nook-original-body" x-show="settingsTab === 'smart-search'">
+                        <template x-if="!smartSearch">
+                            <div class="text-center p-8 text-[var(--text-secondary)]">Loading…</div>
+                        </template>
+                        <template x-if="smartSearch">
+                            <div class="pb-10">
+                                <div x-show="smartSearchError" role="alert" class="mb-4 rounded-xl border border-[var(--destructive-color)] p-4 text-sm text-[var(--destructive-color)]" x-text="smartSearchError"></div>
+
+                                <div x-show="!smartSearchInstalled" class="mb-6 rounded-xl border border-[var(--border-color)] p-4 text-sm text-[var(--text-secondary)]">
+                                    <div class="font-semibold text-[var(--text-primary)] mb-1">Optional extra not installed</div>
+                                    <p>Install <code class="font-mono text-xs">tweetnook[smart-search]</code> (ONNX Runtime, Tokenizers, Pillow, NumPy) to index and search images locally with CLIP/SigLIP.</p>
+                                </div>
+
+                                <div class="mb-8">
+                                    <div class="flex items-start justify-between gap-4">
+                                        <div>
+                                            <h3 class="text-lg font-bold text-[var(--text-primary)] mb-1">Enable Smart Search</h3>
+                                            <p class="text-sm text-[var(--text-secondary)]">Search archived images and video thumbnails by natural-language description using <code class="font-mono text-xs">smart:</code> in the search bar.</p>
+                                        </div>
+                                        <div class="flex shrink-0 items-center">
+                                            <button type="button" role="switch" class="nook-switch-button" aria-label="Enable Smart Search" :aria-checked="smartSearch.enabled" @click="smartSearch.enabled = !smartSearch.enabled"><span class="nook-switch"></span></button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-8">
+                                    <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Index status</h3>
+                                    <div class="text-sm text-[var(--text-secondary)] mb-2 flex flex-wrap items-center gap-3">
+                                        <template x-if="!smartSearchStats && smartSearchStatsLoading">
+                                            <span class="inline-flex items-center gap-2">
+                                                <span class="nook-activity-spinner" style="width: 14px; height: 14px;" aria-hidden="true"></span>
+                                                <span>Counting eligible images…</span>
+                                            </span>
+                                        </template>
+                                        <template x-if="smartSearchStats">
+                                            <span class="inline-flex items-center gap-2">
+                                                <span>
+                                                    <span x-text="smartSearchStats.indexed.toLocaleString()"></span> indexed,
+                                                    <span x-text="smartSearchStats.pending.toLocaleString()"></span> pending
+                                                    (<span x-text="smartSearchStats.total.toLocaleString()"></span> eligible)
+                                                </span>
+                                                <span x-show="smartSearchStatsLoading" class="nook-activity-spinner" style="width: 14px; height: 14px;" aria-label="Refreshing counts"></span>
+                                            </span>
+                                        </template>
+                                        <button type="button" class="nook-button" :disabled="smartSearchStatsLoading" @click="fetchSmartSearchStats()">Refresh</button>
+                                    </div>
+                                    <p class="text-xs text-[var(--text-secondary)]">You can start and stop indexing from the Sync activity popup.</p>
+                                </div>
+
+                                <div class="mb-8">
+                                    <h3 class="text-lg font-bold text-[var(--text-primary)] mb-2">Embedding model</h3>
+                                    <p class="text-sm text-[var(--text-secondary)] mb-3">Weights download once into the cache directory when indexing or searching first runs.</p>
+                                    <div class="flex flex-col gap-2" role="radiogroup" aria-label="Embedding model">
+                                        <template x-for="m in smartSearchModels" :key="m.id">
+                                            <button type="button" role="radio" :aria-checked="smartSearch.model === m.id"
+                                                    @click="smartSearch.model = m.id"
+                                                    :class="smartSearch.model === m.id ? 'border-[var(--accent-color)] bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)]' : 'border-[var(--border-color)]'"
+                                                    class="text-left rounded-xl border p-3 transition-colors">
+                                                <div class="font-semibold text-sm text-[var(--text-primary)]" x-text="m.label"></div>
+                                                <div class="text-xs text-[var(--text-secondary)] mt-0.5" x-text="m.description"></div>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <div class="mb-6 flex items-start justify-between gap-4">
+                                    <div>
+                                        <h3 class="text-base font-bold text-[var(--text-primary)] mb-1">Include video thumbnails</h3>
+                                        <p class="text-sm text-[var(--text-secondary)]">Index downloaded video poster thumbnails in addition to photos and GIFs.</p>
+                                    </div>
+                                    <div class="flex shrink-0 items-center">
+                                        <button type="button" role="switch" class="nook-switch-button" aria-label="Include video thumbnails" :aria-checked="smartSearch.include_video_thumbnails" @click="smartSearch.include_video_thumbnails = !smartSearch.include_video_thumbnails"><span class="nook-switch"></span></button>
+                                    </div>
+                                </div>
+
+                                <div class="mb-6 flex items-start justify-between gap-4">
+                                    <div>
+                                        <h3 class="text-base font-bold text-[var(--text-primary)] mb-1">Include quoted tweet media</h3>
+                                        <p class="text-sm text-[var(--text-secondary)]">Index images inside tweets quoted by your saved posts.</p>
+                                    </div>
+                                    <div class="flex shrink-0 items-center">
+                                        <button type="button" role="switch" class="nook-switch-button" aria-label="Include quoted tweet media" :aria-checked="smartSearch.include_quoted_media" @click="smartSearch.include_quoted_media = !smartSearch.include_quoted_media"><span class="nook-switch"></span></button>
+                                    </div>
+                                </div>
+
+                                <div class="mb-8 flex items-start justify-between gap-4">
+                                    <div>
+                                        <h3 class="text-base font-bold text-[var(--text-primary)] mb-1">Include expanded thread media</h3>
+                                        <p class="text-sm text-[var(--text-secondary)]">Also index images from other context tweets pulled in by thread expansion.</p>
+                                    </div>
+                                    <div class="flex shrink-0 items-center">
+                                        <button type="button" role="switch" class="nook-switch-button" aria-label="Include expanded thread media" :aria-checked="smartSearch.include_thread_media" @click="smartSearch.include_thread_media = !smartSearch.include_thread_media"><span class="nook-switch"></span></button>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <label class="nook-field">
+                                        <span class="nook-field-body">
+                                            <span class="nook-field-label">Batch size</span>
+                                            <input type="number" min="1" max="256" x-model.number="smartSearch.batch_size">
+                                        </span>
+                                    </label>
+                                    <label class="nook-field">
+                                        <span class="nook-field-body">
+                                            <span class="nook-field-label">Minimum similarity score</span>
+                                            <input type="number" min="-1" max="1" step="0.01" x-model.number="smartSearch.min_score">
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
