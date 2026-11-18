@@ -216,6 +216,13 @@ JOBS: tuple[JobSpec, ...] = (
         ),
     ),
     JobSpec(
+        "smart-search",
+        "Smart search index",
+        "Index archived images for semantic search",
+        ("smart-search", "index"),
+        options=(_limit("images"),),
+    ),
+    JobSpec(
         "import",
         "Import X archive",
         "Load posts from a downloaded archive",

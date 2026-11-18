@@ -152,7 +152,7 @@ def _fill_media_payload(winner: Any, donor: Any) -> Any:
     return donor if winner in (None, "", [], {}) else winner
 
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 # An upgrade rewrites every archive row in one transaction. The write-ahead log and SQLite's
 # temporary files together peak near twice the database size.
 MIGRATION_SPACE_FACTOR = 2
@@ -346,9 +346,9 @@ class SchemaMixin(ConnectionMixin):
 
         # Releases shipped schema 5 (0.0.9 and 0.1.0), schema 8 (0.1.1 to 0.1.6),
         # schema 9 (0.1.7 and 0.1.8), schema 10 (0.2.0 to 1.1.0), schema 12 (1.2.0) and
-        # schema 13 (1.3.0 and 1.3.1) and schema 14 (1.4.0). Schema 11 was only on development
-        # builds before 1.2.0.
-        if current_version in {13, 14}:
+        # schema 13 (1.3.0 and 1.3.1), schema 14 (1.4.0) and schema 15 (1.5.0).
+        # Schema 11 was only on development builds before 1.2.0.
+        if current_version in {13, 14, 15}:
             self._run_migration(
                 self._migrate_search_facts,
                 current_version,
@@ -754,6 +754,7 @@ class SchemaMixin(ConnectionMixin):
         self._create_tweet_content()
         self._create_description_fts()
         self._create_cache_revisions()
+        self._create_media_embeddings()
 
     def _create_search_indexes(self) -> None:
         """Indexes that hold every column search reads from memberships and attachments.
@@ -984,6 +985,29 @@ class SchemaMixin(ConnectionMixin):
                     "UPDATE archive_revisions SET generation = generation + 1 "
                     f"WHERE scope = '{scope}'; END"
                 )
+
+    def _create_media_embeddings(self) -> None:
+        """Derived CLIP/SigLIP vectors for local media files, keyed by media row and model."""
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS media_embeddings ("
+            "media_row_key TEXT NOT NULL, "
+            "tweet_id TEXT NOT NULL, "
+            "model TEXT NOT NULL, "
+            "dims INTEGER NOT NULL, "
+            "embedding BLOB NOT NULL, "
+            "indexed_at TEXT NOT NULL, "
+            "PRIMARY KEY (media_row_key, model)"
+            ")"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_media_embeddings_model_tweet "
+            "ON media_embeddings(model, tweet_id)"
+        )
+        self.conn.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_archive_media_downloaded "
+            f"ON archive(tweet_id, row_key, media_type, local_path, thumbnail_local_path) "
+            f"WHERE record_type = '{RecordType.MEDIA}' AND download_state = 'done'"
+        )
 
     def rebuild_search_index(self) -> None:
         """Finalize timestamp and full-text indexes after an explicit bulk import."""

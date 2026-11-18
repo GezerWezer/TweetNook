@@ -32,6 +32,7 @@ RELEASED_SCHEMAS = {
     12: "v1.2.0",
     13: "v1.3.1",
     14: "v1.4.0",
+    15: "v1.5.0",
 }
 # Schema 13 had already dropped the follow-up columns and merged duplicate media.
 BEFORE_SCHEMA_13 = sorted(version for version in RELEASED_SCHEMAS if version < 13)
@@ -547,7 +548,7 @@ def test_upgrade_replaces_every_stale_trigger_body(tmp_path: Path, version: int)
     connection = sqlite3.connect(db_path)
     try:
         for row in connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'archive'"
+            "SELECT name FROM sqlite_master WHERE type = 'trigger'"
         ).fetchall():
             connection.execute(f"DROP TRIGGER {row[0]}")
         # A body no definition has, under the name of every trigger a fresh archive has.
@@ -578,7 +579,7 @@ def test_refreshed_triggers_keep_working_after_upgrade(tmp_path: Path, version: 
             "VALUES ('tweet:like::1', 'tweet', '1', 'like', '5', 'first words')"
         )
         for row in connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'archive'"
+            "SELECT name FROM sqlite_master WHERE type = 'trigger'"
         ).fetchall():
             connection.execute(f"DROP TRIGGER {row[0]}")
             connection.execute(

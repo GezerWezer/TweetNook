@@ -88,7 +88,8 @@ function searchAutocomplete() {
             { prefix: 'until:', glyph: 'calendar', desc: 'Before a specific date (YYYY-MM-DD)', excludeDesc: 'Hide tweets before a date (YYYY-MM-DD)' },
             { prefix: 'url:', glyph: 'link', desc: 'Contains a specific URL', excludeDesc: 'Hide tweets containing a specific URL' },
             { prefix: 'tag:', glyph: 'sticker', desc: 'Matches media tag', excludeDesc: 'Hide tweets with a media tag' },
-            { prefix: 'description:', glyph: 'edit', desc: 'Words in a tag description', excludeDesc: 'Hide tweets with these words in a tag description' }
+            { prefix: 'description:', glyph: 'edit', desc: 'Words in a tag description', excludeDesc: 'Hide tweets with these words in a tag description' },
+            { prefix: 'smart:', glyph: 'photo', desc: 'Semantic image search (CLIP/SigLIP)', excludeDesc: 'Semantic image search (CLIP/SigLIP)' }
         ],
         
         hasOptions: [

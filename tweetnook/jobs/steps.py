@@ -75,6 +75,13 @@ URLS = StepSpec(
     rate_unit="URLs/s",
 )
 TAGGING = StepSpec("tagging", "Automated tags", "tweets", show_rate=False, show_eta=False)
+SMART_SEARCH = StepSpec(
+    "smart-search",
+    "Smart search",
+    "images",
+    "archived media indexed for semantic search",
+    rate_unit="images/s",
+)
 ARCHIVE_AUTH = StepSpec(
     "archive-auth",
     "Authentication",

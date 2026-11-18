@@ -9,7 +9,7 @@ function nookSettingsRestoreFocus() {
 }
 function nookSettingsTitle(key) {
   return {appearance:'Appearance',schedule:'Schedule',tags:'Tags',
-    'automated-tagging':'Automated tagging',notifications:'Notifications',
+    'automated-tagging':'Automated tagging','smart-search':'Smart search',notifications:'Notifications',
     setup:'Setup',config:'Configuration',logs:'Logs'}[key] || 'Settings';
 }
 function nookSettingsFocus(app) {
@@ -25,6 +25,7 @@ function nookSettingsNavigate(app, key) {
   if (key === 'setup' && !app.isDemo) app.fetchSetup();
   if (key === 'schedule') app.fetchScheduleSettings();
   if (key === 'automated-tagging') app.fetchAutomatedTagging();
+  if (key === 'smart-search') app.fetchSmartSearch();
   if (key === 'notifications') app.fetchNotices();
   if (key === 'config') app.fetchConfig();
   if (key === 'logs') app.fetchActivityRuns();
@@ -47,7 +48,7 @@ function nookSettingsInit(app) {
   const requested = nookInitialSettings;
   if (!requested) return;
   app.openSettings();
-  if (['appearance','schedule','tags','automated-tagging','notifications','config','logs','setup'].includes(requested))
+  if (['appearance','schedule','tags','automated-tagging','smart-search','notifications','config','logs','setup'].includes(requested))
     nookSettingsNavigate(app, requested);
 }
 function nookSettingsTrap(event, shell) {

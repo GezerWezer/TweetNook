@@ -33,6 +33,11 @@
 </svg></span><span class="nook-category-copy"><span>Automated tagging</span></span><span class="nook-category-arrow"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M15.91 12 10 17.91 8.59 16.5l4.5-4.5-4.5-4.5L10 6.09z" />
 </svg></span></button>
+<button type="button" class="nook-settings-nav" id="nook-nav-smart-search" aria-label="Smart search" aria-controls="nook-settings-detail" :aria-current="settingsTab === 'smart-search' ? 'page' : null" @click="nookSettingsNavigate($data, 'smart-search')"><span class="nook-category-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M10.75 1.75a9 9 0 0 1 7.03 14.62l4.43 4.42-1.42 1.42-4.42-4.43a9 9 0 1 1-5.62-16.03m0 2a7 7 0 1 0 0 14 7 7 0 0 0 0-14" />
+</svg></span><span class="nook-category-copy"><span>Smart search</span></span><span class="nook-category-arrow"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M15.91 12 10 17.91 8.59 16.5l4.5-4.5-4.5-4.5L10 6.09z" />
+</svg></span></button>
 <button type="button" class="nook-settings-nav" id="nook-nav-notifications" :aria-label="noticeCount ? 'Notifications, ' + noticeCount + ' unread' : 'Notifications'" aria-controls="nook-settings-detail" :aria-current="settingsTab === 'notifications' ? 'page' : null" @click="nookSettingsNavigate($data, 'notifications')"><span class="nook-category-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
   <path d="M12 2a8.06 8.06 0 0 1 8 7.04L21.13 18H16.9a5 5 0 0 1-9.8 0H2.87L4 9.05A8.06 8.06 0 0 1 12 2M9.17 18a3 3 0 0 0 5.66 0zM12 4a6.06 6.06 0 0 0-6.02 5.3L5.13 16h13.73l-.85-6.7A6.06 6.06 0 0 0 12 4" />
 </svg></span><span class="nook-category-copy"><span>Notifications</span></span><span x-cloak x-show="noticeCount" class="nook-nav-count" aria-hidden="true" x-text="noticeCount"></span><span class="nook-category-arrow"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true" focusable="false">
@@ -66,6 +71,7 @@
                         <div class="nook-detail-actions">
                             <button type="button" id="save-schedule-btn" class="nook-button is-primary" x-show="settingsTab === 'schedule'" @click="saveScheduleSettings()" :disabled="scheduleSaving || !scheduleHasChanges() || !scheduleRandomWindowValid()" x-text="scheduleSaving ? 'Saving…' : scheduleSaved ? 'Saved' : 'Save'"></button>
                             <button type="button" id="save-automated-tagging-btn" class="nook-button is-primary" x-show="settingsTab === 'automated-tagging'" @click="saveAutomatedTagging()" :disabled="automatedTaggingSaving || !automatedTagging" x-text="automatedTaggingSaving ? 'Saving…' : 'Save'"></button>
+                            <button type="button" id="save-smart-search-btn" class="nook-button is-primary" x-show="settingsTab === 'smart-search'" @click="saveSmartSearch()" :disabled="smartSearchSaving || !smartSearch" x-text="smartSearchSaving ? 'Saving…' : 'Save'"></button>
                             <button type="button" role="switch" class="nook-switch-button nook-config-advanced" x-show="settingsTab === 'config' && configData && configSchema" aria-labelledby="nook-config-advanced-title" title="Show advanced settings" :aria-checked="showAdvancedConfig" @click="showAdvancedConfig = !showAdvancedConfig"><span id="nook-config-advanced-title">Show advanced settings</span><span class="nook-switch" aria-hidden="true"></span></button>
                             <button type="button" id="save-config-btn" class="nook-button is-primary" x-show="settingsTab === 'config'" @click="nookSaveConfig($data)" :disabled="!configData || !Object.keys(changedConfigValues()).length" x-text="nookConfigSaved ? 'Saved' : 'Save'"></button>
                         </div>
@@ -75,6 +81,8 @@
                     <!-- include settings/tags.html -->
 
                     <!-- include settings/automated-tagging.html -->
+
+                    <!-- include settings/smart-search.html -->
 
                     <!-- include settings/config.html -->
 

@@ -183,6 +183,18 @@ Defaults are defined by `AppConfig` in `config.py`; the [documentation checks](t
 | `additional_instructions` | `unset` | Optional user preferences, at most 4000 characters. |
 | `max_media_size_mb` | `100` | Maximum tagging media size in MiB. |
 
+### smart_search
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `false` | Enable local CLIP/SigLIP Smart Search. |
+| `model` | `"ViT-B-16-SigLIP"` | ONNX embedding model identifier. |
+| `batch_size` | `16` | Images encoded per ONNX batch, 1 through 256. |
+| `min_score` | `0.0` | Minimum cosine similarity score for matches, -1.0 through 1.0. |
+| `include_video_thumbnails` | `true` | Index downloaded video poster thumbnails as well as photos and GIFs. |
+| `include_quoted_media` | `true` | Index images inside tweets quoted by your saved posts. |
+| `include_thread_media` | `false` | Also index media from expanded thread context tweets outside saved collections. |
+
 ### replay
 
 | Field | Default | Meaning |
